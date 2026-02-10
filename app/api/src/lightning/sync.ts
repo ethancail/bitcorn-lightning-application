@@ -1,5 +1,6 @@
 import { isLndAvailable } from "./lnd";
 import { persistNodeInfo } from "./persist";
+import { persistPeers, persistChannels } from "./persist-channels";
 
 export async function syncLndState() {
   if (!isLndAvailable()) {
@@ -7,6 +8,8 @@ export async function syncLndState() {
   }
 
   await persistNodeInfo();
+  await persistPeers();
+  await persistChannels();
 
   return { ok: true };
 }

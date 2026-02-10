@@ -1,5 +1,11 @@
 // LND (Lightning Network Daemon) client integration
-import { authenticatedLndGrpc, getWalletInfo, getIdentity } from "ln-service";
+import {
+  authenticatedLndGrpc,
+  getWalletInfo,
+  getIdentity,
+  getPeers,
+  getChannels
+} from "ln-service";
 import fs from "fs";
 import path from "path";
 import { ENV } from "../config/env";
@@ -105,4 +111,20 @@ export async function getLndInfo(): Promise<{
       );
     }
   }
+}
+
+/**
+ * Lists connected LND peers (read-only)
+ */
+export async function getLndPeers() {
+  const { lnd } = getLndClient();
+  return getPeers({ lnd });
+}
+
+/**
+ * Lists open LND channels (read-only)
+ */
+export async function getLndChannels() {
+  const { lnd } = getLndClient();
+  return getChannels({ lnd });
 }

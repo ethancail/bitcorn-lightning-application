@@ -34,4 +34,32 @@ declare module "ln-service" {
   export function getIdentity(options: {
     lnd: any;
   }): Promise<Identity>;
+
+  // 👇 ADD THESE
+  export interface Peer {
+    public_key: string;
+    socket?: string;
+    address?: string;
+    bytes_sent?: number;
+    bytes_received?: number;
+    ping_time?: number;
+  }
+
+  export function getPeers(options: {
+    lnd: any;
+  }): Promise<{ peers: Peer[] }>;
+
+  export interface Channel {
+    id: string;
+    partner_public_key: string;
+    capacity: number;
+    local_balance: number;
+    remote_balance: number;
+    is_active: boolean;
+    is_private?: boolean;
+  }
+
+  export function getChannels(options: {
+    lnd: any;
+  }): Promise<{ channels: Channel[] }>;
 }
