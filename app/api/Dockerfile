@@ -18,6 +18,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Explicit dev mode (removed in Umbrel / production)
+ENV NODE_ENV=development
+
 # Ensure mount targets exist
 RUN mkdir -p /scripts /data
 
