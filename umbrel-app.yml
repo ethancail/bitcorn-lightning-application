@@ -1,0 +1,26 @@
+# Umbrel Community Store app configuration
+# TODO: Add app metadata and configuration
+manifestVersion: 1
+
+id: bitcorn-lightning
+name: Bitcorn Lightning
+version: "0.1.0"
+category: Finance
+tagline: Lightning-native community treasury and liquidity manager
+description: >
+  Bitcorn Lightning is a Lightning Network community treasury and liquidity
+  management application built on a hub-and-spoke LSP model.
+
+developer: Bitcorn
+website: https://bitcorn.io
+repo: https://github.com/YOUR_ORG/bitcorn-lightning-application
+support: https://github.com/YOUR_ORG/bitcorn-lightning-application/issues
+
+port: 3200
+
+services:
+  web:
+    port: 3200
+  api:
+    port: 3101
+    internal: false

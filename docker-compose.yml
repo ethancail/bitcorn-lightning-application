@@ -3,10 +3,13 @@
 services:
   api:
     build: ./app/api
-    container_name: bitcorn-lightning-api
     volumes:
       - ./data:/data
-      - ./scripts:/scripts:ro
-    command: sh -c "/scripts/init-secrets.sh && node dist/index.js"
-    ports:
-      - "3101:3101"
+      - ./scripts:/scripts
+    command: >
+      sh -c "/scripts/init-secrets.sh && node dist/index.js"
+
+  web:
+    build: ./app/web
+    depends_on:
+      - api
