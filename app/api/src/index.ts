@@ -1,12 +1,23 @@
 // API server entry point
-// TODO: Initialize Express/Fastify server and configure routes
 import http from "http";
 import { PORTS } from "./config/ports";
+import { initDb, getDb } from "./db";
+
+// Initialize database deterministically at startup
+initDb();
 
 const server = http.createServer((req, res) => {
   if (req.url === "/health") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok" }));
+    try {
+      const db = getDb();
+      db.prepare("SELECT 1").get();
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", db: "ok" }));
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "error", db: "error" }));
+    }
     return;
   }
 
