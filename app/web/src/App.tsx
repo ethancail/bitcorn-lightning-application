@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { checkHealth } from "./api/client";
-import { API_BASE } from "./api";
+import { API_BASE } from "./config/api";
 
 type NodeInfo = {
   alias: string;
