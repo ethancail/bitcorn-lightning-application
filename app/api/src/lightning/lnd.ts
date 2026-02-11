@@ -101,17 +101,22 @@ export async function getLndInfo(): Promise<{
       synced_to_chain: walletInfo.synced_to_chain,
       synced_to_graph: walletInfo.synced_to_graph,
     };
-  } catch (err) {
-    // Fallback to getIdentity if getWalletInfo fails
+  } catch (err: any) {
+    console.error("🔥 getWalletInfo error FULL OBJECT:");
+    console.error(err);
+    console.error("🔥 error.message:", err?.message);
+    console.error("🔥 error.code:", err?.code);
+    console.error("🔥 error.details:", err?.details);
+  
     try {
       const identity = await getIdentity({ lnd });
       return {
         public_key: identity.public_key,
       };
-    } catch (fallbackErr) {
-      throw new Error(
-        `Failed to get LND info: ${err instanceof Error ? err.message : String(err)}`
-      );
+    } catch (fallbackErr: any) {
+      console.error("🔥 getIdentity fallback error:");
+      console.error(fallbackErr);
+      throw fallbackErr;
     }
   }
 }
