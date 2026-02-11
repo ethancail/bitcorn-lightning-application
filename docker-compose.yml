@@ -6,8 +6,8 @@ services:
       - ./scripts:/scripts:ro
       - ${APP_LIGHTNING_NODE_DATA_DIR:-/home/umbrel/umbrel/app-data/lightning/data/lnd}:/lnd:ro
     environment:
-      BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
-      LND_GRPC_HOST: lnd:10009
+      BITCOIN_NETWORK: mainnet
+      LND_GRPC_HOST: 10.21.21.9:10009
     networks:
       - umbrel
 
