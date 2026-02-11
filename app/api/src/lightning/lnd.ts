@@ -1,7 +1,8 @@
 // LND (Lightning Network Daemon) client integration
 import {
   authenticatedLndGrpc,
-  getInfo,
+  getWalletInfo,
+  getHeight,
   getIdentity,
   getPeers,
   getChannels
@@ -81,27 +82,22 @@ export async function getLndInfo(): Promise<{
   active_channels_count?: number;
   peers_count?: number;
   block_height?: number;
-  block_hash?: string;
-  synced_to_chain?: boolean;
-  synced_to_graph?: boolean;
 }> {
   const { lnd } = getLndClient();
 
   try {
-    const info = await getInfo({ lnd });
+    const walletInfo = await getWalletInfo({ lnd });
+    const height = await getHeight({ lnd });
     return {
-      public_key: info.public_key,
-      alias: info.alias,
-      version: info.version,
-      active_channels_count: info.active_channels_count,
-      peers_count: info.peers_count,
-      block_height: info.block_height,
-      block_hash: info.block_hash,
-      synced_to_chain: info.synced_to_chain,
-      synced_to_graph: info.synced_to_graph,
+      public_key: walletInfo.public_key,
+      alias: walletInfo.alias,
+      version: walletInfo.version,
+      active_channels_count: walletInfo.active_channels_count,
+      peers_count: walletInfo.peers_count,
+      block_height: height.current_block_height,
     };
   } catch (err: any) {
-    console.error("🔥 getInfo error FULL OBJECT:");
+    console.error("🔥 getWalletInfo error FULL OBJECT:");
     console.error(err);
     console.error("🔥 error.message:", err?.message);
     console.error("🔥 error.code:", err?.code);

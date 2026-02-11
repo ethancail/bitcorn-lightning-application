@@ -30,9 +30,9 @@ declare module "ln-service" {
     lnd: any;
   }): Promise<WalletInfo>;
 
-  export function getInfo(options: {
+  export function getHeight(options: {
     lnd: any;
-  }): Promise<WalletInfo>;
+  }): Promise<{ current_block_height: number }>;
 
   export interface Identity {
     public_key: string;
