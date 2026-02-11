@@ -51,12 +51,12 @@ function getLndClient() {
   }
 
   try {
-    const cert = fs.readFileSync(TLS_CERT_PATH);
-    const macaroon = fs.readFileSync(MACAROON_PATH);
+    const cert = fs.readFileSync(TLS_CERT_PATH).toString("base64");
+    const macaroon = fs.readFileSync(MACAROON_PATH).toString("base64");
 
     lndClient = authenticatedLndGrpc({
-      cert: cert.toString(),
-      macaroon: macaroon.toString(),
+      cert,
+      macaroon,
       socket: ENV.lndGrpcHost,
     });
 
