@@ -13,6 +13,21 @@ persistNodeInfo().catch(err => {
   console.warn("[lnd] unable to persist node info:", err.message);
 });
 
+(async () => {
+  try {
+    await syncLndState();
+    console.log("[lnd] initial sync complete");
+  } catch (err: any) {
+    console.warn("[lnd] initial sync failed:", err.message);
+  }
+
+  setInterval(() => {
+    syncLndState().catch(err =>
+      console.warn("[lnd] periodic sync failed:", err.message)
+    );
+  }, 15000);
+})();
+
 const server = http.createServer(async (req, res) => {
   // ✅ CORS HEADERS
   res.setHeader("Access-Control-Allow-Origin", "*");
