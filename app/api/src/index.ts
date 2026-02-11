@@ -2,9 +2,9 @@ import http from "http";
 import { PORTS } from "./config/ports";
 import { initDb, db } from "./db";
 import { runMigrations } from "./db/migrate";
-import "./db/migrate";
 import { persistNodeInfo } from "./lightning/persist";
 import { syncLndState } from "./lightning/sync";
+import { getChannels, getPeers, getNodeInfo } from "./api/read";
 
 initDb();
 runMigrations();
@@ -38,13 +38,50 @@ const server = http.createServer(async (req, res) => {
 
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
-    } catch (err) {
+    } catch {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ status: "error" }));
     }
     return;
   }
 
+  if (req.method === "GET" && req.url === "/api/node") {
+    try {
+      const data = getNodeInfo();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data ?? {}));
+    } catch {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: "failed_to_fetch_node" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/peers") {
+    try {
+      const data = getPeers();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: "failed_to_fetch_peers" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/channels") {
+    try {
+      const data = getChannels();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: "failed_to_fetch_channels" }));
+    }
+    return;
+  }
+
+  // ✅ 404 MUST BE LAST
   res.writeHead(404);
   res.end();
 });
