@@ -16,5 +16,6 @@ services:
     depends_on:
       - api
 networks:
-  umbrel_main_network:
+  umbrel:
     external: true
+    name: umbrel_main_network
