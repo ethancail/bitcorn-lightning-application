@@ -9,6 +9,9 @@ declare module "ln-service" {
     cert: string;
     macaroon: string;
     socket: string;
+    tls?: {
+      rejectUnauthorized?: boolean;
+    };
   }): AuthenticatedLndGrpc;
 
   export interface WalletInfo {

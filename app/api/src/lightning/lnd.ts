@@ -58,6 +58,9 @@ function getLndClient() {
       cert,
       macaroon,
       socket: ENV.lndGrpcHost,
+      tls: {
+        rejectUnauthorized: false,
+      },
     });
 
     return lndClient;
