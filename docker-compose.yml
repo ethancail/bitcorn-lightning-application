@@ -8,6 +8,8 @@ services:
     environment:
       BITCOIN_NETWORK: mainnet
       LND_GRPC_HOST: 10.21.21.9:10009
+    ports:
+      - "3101:3101"
     networks:
       - umbrel
 
