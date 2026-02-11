@@ -11,5 +11,5 @@ declare global {
   export const API_BASE =
     window.__API_BASE__ ||
     import.meta.env.VITE_API_BASE ||
-    "http://localhost:3101";
+    `http://${window.location.hostname}:3101`;
   
