@@ -30,6 +30,10 @@ declare module "ln-service" {
     lnd: any;
   }): Promise<WalletInfo>;
 
+  export function getInfo(options: {
+    lnd: any;
+  }): Promise<WalletInfo>;
+
   export interface Identity {
     public_key: string;
   }
