@@ -18,7 +18,7 @@ const MACAROON_PATH = path.join(
   "chain",
   "bitcoin",
   ENV.bitcoinNetwork,
-  "readonly.macaroon"
+  "admin.macaroon"
 );
 
 let lndClient: ReturnType<typeof authenticatedLndGrpc> | null = null;
