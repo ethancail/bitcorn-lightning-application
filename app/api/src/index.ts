@@ -14,6 +14,18 @@ persistNodeInfo().catch(err => {
 });
 
 const server = http.createServer(async (req, res) => {
+  // ✅ CORS HEADERS
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+  // Handle preflight
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+  
   if (req.url === "/health") {
     try {
       db.prepare("SELECT 1").get();
