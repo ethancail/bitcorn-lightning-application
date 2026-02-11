@@ -3,7 +3,7 @@ import path from "path";
 import { db } from "./index";
 
 export function runMigrations() {
-  const MIGRATIONS_DIR = path.join(__dirname, "migrations");
+  const MIGRATIONS_DIR = path.join(process.cwd(), "dist", "db", "migrations");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS migrations (
