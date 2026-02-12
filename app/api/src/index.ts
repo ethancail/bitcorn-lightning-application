@@ -135,15 +135,28 @@ const server = http.createServer(async (req, res) => {
             return;
           }
 
-          assertActiveMember(node.membership_status);
+          try {
+            console.log("Node membership:", node?.membership_status);
 
-          const result = await payInvoice(payment_request);
+            assertActiveMember(node.membership_status);
 
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ status: "paid", result }));
+            console.log("Membership passed");
+
+            const result = await payInvoice(payment_request);
+
+            console.log("Payment result:", result);
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(result));
+          } catch (err) {
+            console.error("PAY ERROR:", err);
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: String(err) }));
+          }
         } catch (err: any) {
-          res.writeHead(403);
-          res.end(JSON.stringify({ error: err.message }));
+          console.error("PAY ERROR (outer):", err);
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err?.message ?? "payment_failed" }));
         }
       });
     } catch {
