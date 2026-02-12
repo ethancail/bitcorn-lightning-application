@@ -34,19 +34,6 @@ declare module "ln-service" {
     lnd: any;
   }): Promise<{ current_block_height: number }>;
 
-  export interface GetInfo {
-    public_key?: string;
-    alias?: string;
-    version?: string;
-    block_height?: number;
-    synced_to_chain?: boolean;
-    synced_to_graph?: boolean;
-  }
-
-  export function getInfo(options: {
-    lnd: any;
-  }): Promise<GetInfo>;
-
   export interface Identity {
     public_key: string;
   }
