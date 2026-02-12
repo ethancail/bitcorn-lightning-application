@@ -7,7 +7,6 @@ type NodeInfo = {
   pubkey: string;
   block_height: number | null;
   synced_to_chain: number;
-  block_drift: number | null;
   has_treasury_channel: number;
 };
 
@@ -22,21 +21,12 @@ type Channel = {
   updated_at: number;
 };
 
-function getSyncLabel(drift: number | null) {
-  if (drift === null) return "⚪ Unknown";
-
-  if (drift <= 2) return "🟢 Synced";
-  if (drift === 3) return "🟡 3 blocks behind";
-  if (drift <= 5) return "🟠 5 blocks behind";
-  return "🔴 Out of sync";
+function getSyncLabel(synced: boolean) {
+  return synced ? "🟢 Synced" : "🔴 Out of sync";
 }
 
-function getSyncColor(drift: number | null) {
-  if (drift === null) return "#aaa";
-  if (drift <= 2) return "#16a34a";      // green
-  if (drift === 3) return "#eab308";     // yellow
-  if (drift <= 5) return "#f97316";      // orange
-  return "#dc2626";                      // red
+function getSyncColor(synced: boolean) {
+  return synced ? "#16a34a" : "#dc2626";  // green : red
 }
 
 function App() {
@@ -95,8 +85,8 @@ function App() {
           <p><strong>Block Height:</strong> {node.block_height ?? "Unknown"}</p>
           <p>
             <strong>Status:</strong>{" "}
-            <span style={{ color: getSyncColor(node.block_drift) }}>
-              {getSyncLabel(node.block_drift)}
+            <span style={{ color: getSyncColor(node.synced_to_chain === 1) }}>
+              {getSyncLabel(node.synced_to_chain === 1)}
             </span>
           </p>
           <p>

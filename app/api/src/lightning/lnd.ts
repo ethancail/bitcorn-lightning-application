@@ -83,7 +83,6 @@ export async function getLndInfo(): Promise<{
   peers_count?: number;
   block_height?: number;
   synced_to_chain?: boolean;
-  block_drift?: number;
 }> {
   const { lnd } = getLndClient();
 
@@ -92,7 +91,6 @@ export async function getLndInfo(): Promise<{
     const height = await getHeight({ lnd });
     
     const synced = walletInfo.synced_to_chain ?? false;
-    const drift = 0; // Use LND's built-in sync flag, drift not needed
     
     return {
       public_key: walletInfo.public_key,
@@ -102,7 +100,6 @@ export async function getLndInfo(): Promise<{
       peers_count: walletInfo.peers_count,
       block_height: height.current_block_height,
       synced_to_chain: synced,
-      block_drift: drift,
     };
   } catch (err: any) {
     console.error("🔥 getWalletInfo error FULL OBJECT:");
