@@ -1,9 +1,9 @@
 import { db } from "../db";
+import { NodeInfo } from "../types/node";
 
-export function getNodeInfo() {
-  return db
-    .prepare("SELECT * FROM lnd_node_info WHERE id = 1")
-    .get() ?? null;
+export function getNodeInfo(): NodeInfo | null {
+  const row = db.prepare("SELECT * FROM lnd_node_info WHERE id = 1").get();
+  return row ? (row as NodeInfo) : null;
 }
 
 export function getPeers() {
