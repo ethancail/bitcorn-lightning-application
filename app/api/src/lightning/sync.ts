@@ -17,11 +17,29 @@ export async function syncLndState() {
   // Check for treasury channel after channels are persisted
   const { channels } = await getLndChannels();
   const treasuryPubkey = ENV.treasuryPubkey;
-  const hasTreasuryChannel = channels.some(
+  
+  const treasuryChannel = channels.find(
     c => c.partner_public_key === treasuryPubkey
   );
+  
+  const hasTreasuryChannel = !!treasuryChannel;
+  const treasuryChannelActive = treasuryChannel?.is_active ?? false;
+  
+  // Compute membership status
+  const synced = walletInfo.synced_to_chain ?? false;
+  let membershipStatus: string;
+  
+  if (!synced) {
+    membershipStatus = "unsynced";
+  } else if (!hasTreasuryChannel) {
+    membershipStatus = "no_treasury_channel";
+  } else if (!treasuryChannelActive) {
+    membershipStatus = "treasury_channel_inactive";
+  } else {
+    membershipStatus = "active_member";
+  }
 
-  await persistNodeInfo(hasTreasuryChannel);
+  await persistNodeInfo(hasTreasuryChannel, membershipStatus);
 
   return { ok: true };
 }

@@ -2,7 +2,10 @@ import { db } from "../db";
 import { getLndInfo, isLndAvailable } from "./lnd";
 import { ENV } from "../config/env";
 
-export async function persistNodeInfo(hasTreasuryChannel: boolean = false) {
+export async function persistNodeInfo(
+  hasTreasuryChannel: boolean = false,
+  membershipStatus: string = "unsynced"
+) {
   if (!isLndAvailable()) return;
 
   const info = await getLndInfo();
@@ -10,8 +13,8 @@ export async function persistNodeInfo(hasTreasuryChannel: boolean = false) {
 
   db.prepare(`
     INSERT OR REPLACE INTO lnd_node_info
-    (id, pubkey, alias, network, block_height, synced_to_chain, has_treasury_channel, updated_at)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+    (id, pubkey, alias, network, block_height, synced_to_chain, has_treasury_channel, membership_status, updated_at)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     info.public_key,
     info.alias ?? null,
@@ -19,13 +22,14 @@ export async function persistNodeInfo(hasTreasuryChannel: boolean = false) {
     info.block_height ?? null,
     info.synced_to_chain ? 1 : 0,
     hasTreasuryChannel ? 1 : 0,
+    membershipStatus,
     now
   );
 
   db.prepare(`
     INSERT INTO lnd_node_info_history
-    (pubkey, alias, network, block_height, synced_to_chain, has_treasury_channel, recorded_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    (pubkey, alias, network, block_height, synced_to_chain, has_treasury_channel, membership_status, recorded_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     info.public_key,
     info.alias ?? null,
@@ -33,6 +37,7 @@ export async function persistNodeInfo(hasTreasuryChannel: boolean = false) {
     info.block_height ?? null,
     info.synced_to_chain ? 1 : 0,
     hasTreasuryChannel ? 1 : 0,
+    membershipStatus,
     now
   );
 }

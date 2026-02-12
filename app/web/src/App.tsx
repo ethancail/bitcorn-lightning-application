@@ -8,6 +8,7 @@ type NodeInfo = {
   block_height: number | null;
   synced_to_chain: number;
   has_treasury_channel: number;
+  membership_status: string;
 };
 
 type Channel = {
@@ -21,12 +22,33 @@ type Channel = {
   updated_at: number;
 };
 
-function getSyncLabel(synced: boolean) {
-  return synced ? "🟢 Synced" : "🔴 Out of sync";
+function getNetworkStatusLabel(status: string) {
+  switch (status) {
+    case "active_member":
+      return "🟢 Active Member";
+    case "unsynced":
+      return "🔴 Node Not Synced";
+    case "no_treasury_channel":
+      return "🔴 Not Connected To Treasury";
+    case "treasury_channel_inactive":
+      return "⚠ Treasury Channel Inactive";
+    default:
+      return "⚪ Unknown";
+  }
 }
 
-function getSyncColor(synced: boolean) {
-  return synced ? "#16a34a" : "#dc2626";  // green : red
+function getNetworkStatusColor(status: string) {
+  switch (status) {
+    case "active_member":
+      return "#16a34a";  // green
+    case "unsynced":
+    case "no_treasury_channel":
+      return "#dc2626";  // red
+    case "treasury_channel_inactive":
+      return "#eab308";  // yellow/warning
+    default:
+      return "#aaa";  // gray
+  }
 }
 
 function App() {
@@ -84,18 +106,10 @@ function App() {
           <p><strong>Pubkey:</strong> {node.pubkey}</p>
           <p><strong>Block Height:</strong> {node.block_height ?? "Unknown"}</p>
           <p>
-            <strong>Status:</strong>{" "}
-            <span style={{ color: getSyncColor(node.synced_to_chain === 1) }}>
-              {getSyncLabel(node.synced_to_chain === 1)}
+            <strong>Network Status:</strong>{" "}
+            <span style={{ color: getNetworkStatusColor(node.membership_status) }}>
+              {getNetworkStatusLabel(node.membership_status)}
             </span>
-          </p>
-          <p>
-            <strong>Treasury Connection:</strong>{" "}
-            {node.has_treasury_channel ? (
-              <span style={{ color: "#16a34a" }}>🟢 Connected</span>
-            ) : (
-              <span style={{ color: "#dc2626" }}>🔴 Not Connected</span>
-            )}
           </p>
         </div>
       )}
