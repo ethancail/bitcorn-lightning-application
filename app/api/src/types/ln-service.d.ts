@@ -20,10 +20,10 @@ declare module "ln-service" {
     version?: string;
     active_channels_count?: number;
     peers_count?: number;
-    block_height?: number;
+    current_block_height?: number;
     block_hash?: string;
-    synced_to_chain?: boolean;
-    synced_to_graph?: boolean;
+    is_synced_to_chain?: boolean;
+    is_synced_to_graph?: boolean;
   }
 
   export function getWalletInfo(options: {

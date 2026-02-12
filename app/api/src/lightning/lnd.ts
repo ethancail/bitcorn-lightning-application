@@ -78,7 +78,7 @@ export async function getLndInfo(): Promise<{
   public_key?: string;
   alias?: string;
   version?: string;
-  block_height?: number;
+  block_height?: number | null;
   synced_to_chain?: boolean;
 }> {
   const { lnd } = getLndClient();
@@ -86,12 +86,14 @@ export async function getLndInfo(): Promise<{
   try {
     const walletInfo = await getWalletInfo({ lnd });
 
+    console.log("[lnd] wallet info:", walletInfo);
+
     return {
       public_key: walletInfo.public_key,
       alias: walletInfo.alias,
       version: walletInfo.version,
-      block_height: walletInfo.block_height,
-      synced_to_chain: walletInfo.synced_to_chain ?? false,
+      block_height: walletInfo.current_block_height ?? null,
+      synced_to_chain: walletInfo.is_synced_to_chain ?? false,
     };
   } catch (error: any) {
     console.error("🔥 getWalletInfo error:", error);
