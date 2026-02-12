@@ -91,16 +91,8 @@ export async function getLndInfo(): Promise<{
     const walletInfo = await getWalletInfo({ lnd });
     const height = await getHeight({ lnd });
     
-    console.log("[lnd] height check:", {
-      wallet: walletInfo.block_height,
-      chain: height.current_block_height
-    });
-    
-    const wallet = walletInfo.block_height ?? 0;
-    const chain = height.current_block_height ?? 0;
-    
-    const drift = chain - wallet;
-    const synced = drift >= 0 && drift <= 2;
+    const synced = walletInfo.synced_to_chain ?? false;
+    const drift = 0; // Use LND's built-in sync flag, drift not needed
     
     return {
       public_key: walletInfo.public_key,
