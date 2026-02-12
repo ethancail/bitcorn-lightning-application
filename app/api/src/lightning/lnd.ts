@@ -83,6 +83,7 @@ export async function getLndInfo(): Promise<{
   peers_count?: number;
   block_height?: number;
   synced_to_chain?: boolean;
+  block_drift?: number;
 }> {
   const { lnd } = getLndClient();
 
@@ -90,10 +91,16 @@ export async function getLndInfo(): Promise<{
     const walletInfo = await getWalletInfo({ lnd });
     const height = await getHeight({ lnd });
     
-    const synced =
-      walletInfo.block_height !== undefined &&
-      height.current_block_height !== undefined &&
-      walletInfo.block_height >= height.current_block_height - 1;
+    console.log("[lnd] height check:", {
+      wallet: walletInfo.block_height,
+      chain: height.current_block_height
+    });
+    
+    const wallet = walletInfo.block_height ?? 0;
+    const chain = height.current_block_height ?? 0;
+    
+    const drift = chain - wallet;
+    const synced = drift >= 0 && drift <= 2;
     
     return {
       public_key: walletInfo.public_key,
@@ -103,6 +110,7 @@ export async function getLndInfo(): Promise<{
       peers_count: walletInfo.peers_count,
       block_height: height.current_block_height,
       synced_to_chain: synced,
+      block_drift: drift,
     };
   } catch (err: any) {
     console.error("🔥 getWalletInfo error FULL OBJECT:");

@@ -10,27 +10,29 @@ export async function persistNodeInfo() {
 
   db.prepare(`
     INSERT OR REPLACE INTO lnd_node_info
-    (id, pubkey, alias, network, block_height, synced_to_chain, updated_at)
-    VALUES (1, ?, ?, ?, ?, ?, ?)
+    (id, pubkey, alias, network, block_height, synced_to_chain, block_drift, updated_at)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     info.public_key,
     info.alias ?? null,
     ENV.bitcoinNetwork,
     info.block_height ?? null,
     info.synced_to_chain ? 1 : 0,
+    info.block_drift ?? null,
     now
   );
 
   db.prepare(`
     INSERT INTO lnd_node_info_history
-    (pubkey, alias, network, block_height, synced_to_chain, recorded_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    (pubkey, alias, network, block_height, synced_to_chain, block_drift, recorded_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
     info.public_key,
     info.alias ?? null,
     ENV.bitcoinNetwork,
     info.block_height ?? null,
     info.synced_to_chain ? 1 : 0,
+    info.block_drift ?? null,
     now
   );
 }
