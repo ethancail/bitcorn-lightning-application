@@ -82,12 +82,19 @@ export async function getLndInfo(): Promise<{
   active_channels_count?: number;
   peers_count?: number;
   block_height?: number;
+  synced_to_chain?: boolean;
 }> {
   const { lnd } = getLndClient();
 
   try {
     const walletInfo = await getWalletInfo({ lnd });
     const height = await getHeight({ lnd });
+    
+    const synced =
+      walletInfo.block_height !== undefined &&
+      height.current_block_height !== undefined &&
+      walletInfo.block_height >= height.current_block_height - 1;
+    
     return {
       public_key: walletInfo.public_key,
       alias: walletInfo.alias,
@@ -95,6 +102,7 @@ export async function getLndInfo(): Promise<{
       active_channels_count: walletInfo.active_channels_count,
       peers_count: walletInfo.peers_count,
       block_height: height.current_block_height,
+      synced_to_chain: synced,
     };
   } catch (err: any) {
     console.error("🔥 getWalletInfo error FULL OBJECT:");

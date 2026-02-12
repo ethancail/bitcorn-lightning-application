@@ -17,7 +17,7 @@ export async function persistNodeInfo() {
     info.alias ?? null,
     ENV.bitcoinNetwork,
     info.block_height ?? null,
-    0, // synced_to_chain: derive later
+    info.synced_to_chain ? 1 : 0,
     now
   );
 
@@ -30,7 +30,7 @@ export async function persistNodeInfo() {
     info.alias ?? null,
     ENV.bitcoinNetwork,
     info.block_height ?? null,
-    0, // synced_to_chain: derive later
+    info.synced_to_chain ? 1 : 0,
     now
   );
 }
