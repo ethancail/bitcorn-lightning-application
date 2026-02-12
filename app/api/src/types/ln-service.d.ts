@@ -69,4 +69,14 @@ declare module "ln-service" {
   export function getChannels(options: {
     lnd: any;
   }): Promise<{ channels: Channel[] }>;
+
+  export function payViaPaymentRequest(options: {
+    lnd: any;
+    request: string;
+  }): Promise<{
+    id: string;
+    tokens: number;
+    fee: number;
+    confirmed_at?: string;
+  }>;
 }

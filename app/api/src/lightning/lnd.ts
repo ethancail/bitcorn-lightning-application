@@ -41,7 +41,7 @@ export function isLndAvailable(): boolean {
  * Initializes the LND client if files are available
  * @throws Error if LND files are missing or client initialization fails
  */
-function getLndClient() {
+export function getLndClient() {
   if (!isLndAvailable()) {
     throw new Error("LND files not available: missing TLS cert or readonly macaroon");
   }
@@ -86,7 +86,9 @@ export async function getLndInfo(): Promise<{
   try {
     const walletInfo = await getWalletInfo({ lnd });
 
-    console.log("[lnd] wallet info:", walletInfo);
+    if (ENV.debug) {
+      console.log("[lnd] wallet info:", walletInfo);
+    }
 
     return {
       public_key: walletInfo.public_key,

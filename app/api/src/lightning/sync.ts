@@ -9,7 +9,9 @@ export async function syncLndState() {
   }
 
   const walletInfo = await getLndInfo();
-  console.log("[lnd] wallet info:", walletInfo);
+  if (ENV.debug) {
+    console.log("[lnd] wallet info:", walletInfo);
+  }
 
   await persistPeers();
   await persistChannels();

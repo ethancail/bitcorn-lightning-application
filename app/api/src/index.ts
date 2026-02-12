@@ -4,6 +4,8 @@ import { initDb, db } from "./db";
 import { runMigrations } from "./db/migrate";
 import { persistNodeInfo } from "./lightning/persist";
 import { syncLndState } from "./lightning/sync";
+import { payInvoice } from "./lightning/pay";
+import { assertActiveMember } from "./utils/membership";
 import { getChannels, getPeers, getNodeInfo } from "./api/read";
 
 initDb();
@@ -104,6 +106,49 @@ const server = http.createServer(async (req, res) => {
     } catch {
       res.writeHead(500);
       res.end(JSON.stringify({ error: "failed_to_fetch_channels" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/pay") {
+    try {
+      let body = "";
+
+      req.on("data", chunk => {
+        body += chunk.toString();
+      });
+
+      req.on("end", async () => {
+        try {
+          const { payment_request } = JSON.parse(body);
+
+          if (!payment_request) {
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: "missing_payment_request" }));
+            return;
+          }
+
+          const node = getNodeInfo();
+          if (!node) {
+            res.writeHead(500);
+            res.end(JSON.stringify({ error: "node_info_unavailable" }));
+            return;
+          }
+
+          assertActiveMember(node.membership_status);
+
+          const result = await payInvoice(payment_request);
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ status: "paid", result }));
+        } catch (err: any) {
+          res.writeHead(403);
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+    } catch {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: "payment_failed" }));
     }
     return;
   }
