@@ -8,6 +8,7 @@ type NodeInfo = {
   block_height: number | null;
   synced_to_chain: number;
   block_drift: number | null;
+  has_treasury_channel: number;
 };
 
 type Channel = {
@@ -97,6 +98,14 @@ function App() {
             <span style={{ color: getSyncColor(node.block_drift) }}>
               {getSyncLabel(node.block_drift)}
             </span>
+          </p>
+          <p>
+            <strong>Treasury Connection:</strong>{" "}
+            {node.has_treasury_channel ? (
+              <span style={{ color: "#16a34a" }}>🟢 Connected</span>
+            ) : (
+              <span style={{ color: "#dc2626" }}>🔴 Not Connected</span>
+            )}
           </p>
         </div>
       )}
