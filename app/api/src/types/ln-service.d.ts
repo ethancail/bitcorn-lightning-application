@@ -116,4 +116,10 @@ declare module "ln-service" {
     limit?: number;
     token?: string;
   }): Promise<{ forwards: Forward[]; next?: string }>;
+
+  export function updateRoutingFees(args: {
+    lnd: any;
+    base_fee_mtokens?: string;
+    fee_rate?: number;
+  }): Promise<{ failures?: Array<{ failure: string }> }>;
 }

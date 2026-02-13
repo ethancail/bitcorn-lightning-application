@@ -12,6 +12,12 @@ import { decodePaymentRequest } from "ln-service";
 import { getChannels, getPeers, getNodeInfo } from "./api/read";
 import { getTreasuryMetrics } from "./api/treasury";
 import { getChannelMetrics } from "./api/treasury-channel-metrics";
+import {
+  getTreasuryFeePolicy,
+  setTreasuryFeePolicy,
+  markTreasuryFeePolicyApplied,
+} from "./api/treasury-fee-policy";
+import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
 
 initDb();
@@ -142,6 +148,66 @@ const server = http.createServer(async (req, res) => {
       const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
       res.writeHead(statusCode, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_channel_metrics" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/treasury/fee-policy") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const policy = getTreasuryFeePolicy();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(policy));
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const code = msg.includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/treasury/fee-policy") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const base_fee_msat = Number(parsed.base_fee_msat);
+          const fee_rate_ppm = Number(parsed.fee_rate_ppm);
+
+          if (!Number.isFinite(base_fee_msat) || base_fee_msat < 0) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Invalid base_fee_msat" }));
+            return;
+          }
+          if (!Number.isFinite(fee_rate_ppm) || fee_rate_ppm < 0) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Invalid fee_rate_ppm" }));
+            return;
+          }
+
+          setTreasuryFeePolicy(base_fee_msat, fee_rate_ppm);
+          await applyTreasuryFeePolicy(base_fee_msat, fee_rate_ppm);
+          const applied = markTreasuryFeePolicyApplied();
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, policy: applied }));
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err?.message ?? err) }));
+        }
+      });
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const code = msg.includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
     }
     return;
   }
