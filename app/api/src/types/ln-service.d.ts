@@ -79,4 +79,41 @@ declare module "ln-service" {
     fee: number;
     confirmed_at?: string;
   }>;
+
+  export function decodePaymentRequest(options: {
+    request: string;
+  }): {
+    id: string;
+    destination: string;
+    tokens: number;
+  };
+
+  export interface Invoice {
+    id: string;
+    received?: number;
+    is_confirmed?: boolean;
+    confirmed_at?: string;
+  }
+
+  export function getInvoices(options: {
+    lnd: any;
+  }): Promise<{ invoices: Invoice[] }>;
+
+  export interface Forward {
+    created_at: string;
+    fee: number;
+    fee_mtokens?: string;
+    incoming_channel: string;
+    mtokens?: string;
+    outgoing_channel: string;
+    tokens: number;
+  }
+
+  export function getForwards(options: {
+    lnd: any;
+    after?: string;
+    before?: string;
+    limit?: number;
+    token?: string;
+  }): Promise<{ forwards: Forward[]; next?: string }>;
 }

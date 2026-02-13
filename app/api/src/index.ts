@@ -6,6 +6,9 @@ import { persistNodeInfo } from "./lightning/persist";
 import { syncLndState } from "./lightning/sync";
 import { payInvoice } from "./lightning/pay";
 import { assertActiveMember } from "./utils/membership";
+import { assertRateLimit } from "./utils/rate-limit";
+import { insertOutboundPayment } from "./lightning/persist-payments";
+import { decodePaymentRequest } from "ln-service";
 import { getChannels, getPeers, getNodeInfo } from "./api/read";
 
 initDb();
@@ -135,22 +138,65 @@ const server = http.createServer(async (req, res) => {
             return;
           }
 
+          // Decode payment request first (needed for rate limiting and logging)
+          let decodedRequest: { id: string; destination: string; tokens: number } | null = null;
+          try {
+            decodedRequest = decodePaymentRequest({ request: payment_request });
+          } catch (decodeErr) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "invalid_payment_request" }));
+            return;
+          }
+
+          if (!decodedRequest) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "failed_to_decode_payment_request" }));
+            return;
+          }
+
           try {
             console.log("Node membership:", node?.membership_status);
 
             assertActiveMember(node.membership_status);
+            assertRateLimit(decodedRequest.tokens);
 
             console.log("Membership passed");
+            console.log("Rate limit passed");
 
             const result = await payInvoice(payment_request);
 
             console.log("Payment result:", result);
 
+            // Persist successful payment
+            insertOutboundPayment({
+              payment_hash: result.id,
+              payment_request,
+              destination: decodedRequest.destination,
+              tokens: result.tokens,
+              fee: result.fee,
+              status: "succeeded",
+            });
+
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify(result));
           } catch (err) {
             console.error("PAY ERROR:", err);
-            res.writeHead(403, { "Content-Type": "application/json" });
+
+            // Persist failed payment (includes rate-limited payments)
+            insertOutboundPayment({
+              payment_hash: decodedRequest.id,
+              payment_request,
+              destination: decodedRequest.destination,
+              tokens: decodedRequest.tokens,
+              fee: 0,
+              status: "failed",
+            });
+
+            // Check if it's a rate limit error (429) or other error (403)
+            const isRateLimitError = String(err).includes("Rate limit exceeded");
+            const statusCode = isRateLimitError ? 429 : 403;
+            
+            res.writeHead(statusCode, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: String(err) }));
           }
         } catch (err: any) {

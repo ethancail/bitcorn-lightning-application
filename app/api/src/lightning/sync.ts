@@ -1,6 +1,8 @@
 import { isLndAvailable, getLndInfo, getLndChannels } from "./lnd";
 import { persistNodeInfo } from "./persist";
 import { persistPeers, persistChannels } from "./persist-channels";
+import { syncInboundPayments } from "./persist-inbound";
+import { syncForwardingHistory } from "./persist-forwarded";
 import { ENV } from "../config/env";
 
 export async function syncLndState() {
@@ -42,6 +44,8 @@ export async function syncLndState() {
   }
 
   await persistNodeInfo(hasTreasuryChannel, membershipStatus);
+  await syncInboundPayments();
+  await syncForwardingHistory();
 
   return { ok: true };
 }

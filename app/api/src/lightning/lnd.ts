@@ -4,7 +4,9 @@ import {
   getWalletInfo,
   getIdentity,
   getPeers,
-  getChannels
+  getChannels,
+  getInvoices,
+  getForwards
 } from "ln-service";
 import fs from "fs";
 import path from "path";
@@ -117,4 +119,25 @@ export async function getLndPeers() {
 export async function getLndChannels() {
   const { lnd } = getLndClient();
   return getChannels({ lnd });
+}
+
+/**
+ * Gets LND invoices
+ */
+export async function getLndInvoices() {
+  const { lnd } = getLndClient();
+  return getInvoices({ lnd });
+}
+
+/**
+ * Gets LND forwarding history (routing revenue).
+ */
+export async function getLndForwards(options?: {
+  after?: string;
+  before?: string;
+  limit?: number;
+  token?: string;
+}) {
+  const { lnd } = getLndClient();
+  return getForwards({ lnd, ...options });
 }
