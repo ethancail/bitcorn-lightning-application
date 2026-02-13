@@ -53,7 +53,7 @@ export async function syncLndState() {
     membershipStatus = "active_member";
   }
 
-  const nodeRole = deriveNodeRole(walletInfo.public_key, hasTreasuryChannel);
+  const nodeRole = deriveNodeRole(walletInfo.public_key ?? "", hasTreasuryChannel);
   await persistNodeInfo(hasTreasuryChannel, membershipStatus, nodeRole);
   await syncInboundPayments();
   await syncForwardingHistory();
