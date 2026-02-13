@@ -11,6 +11,8 @@ import { insertOutboundPayment } from "./lightning/persist-payments";
 import { decodePaymentRequest } from "ln-service";
 import { getChannels, getPeers, getNodeInfo } from "./api/read";
 import { getTreasuryMetrics } from "./api/treasury";
+import { getChannelMetrics } from "./api/treasury-channel-metrics";
+import { assertTreasury } from "./utils/role";
 
 initDb();
 runMigrations();
@@ -116,12 +118,30 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && req.url === "/api/treasury/metrics") {
     try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
       const data = getTreasuryMetrics();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
     } catch (err: any) {
-      res.writeHead(500, { "Content-Type": "application/json" });
+      const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(statusCode, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_metrics" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/treasury/channel-metrics") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const data = getChannelMetrics();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(statusCode, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_channel_metrics" }));
     }
     return;
   }

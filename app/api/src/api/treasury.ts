@@ -37,6 +37,18 @@ export type TreasuryMetrics = {
       updated_at: number;
     };
   };
+
+  /** Layer 2 — Capital efficiency: how hard capital is working, runway. */
+  capital_efficiency: {
+    /** Total local liquidity across all channels (capital deployed). */
+    capital_deployed_sats: number;
+    /** Forwarding fees / capital deployed (revenue yield ratio). */
+    revenue_yield: number;
+    /** Revenue per 1M sats deployed — normalized LSP comparison metric. */
+    revenue_per_1m_sats_deployed: number;
+    /** Days until liquidity exhaustion at current burn rate; null if not net outbound. */
+    runway_days: number | null;
+  };
 };
 
 function sumNumber(sql: string, params: any[] = []): number {
@@ -109,6 +121,22 @@ export function getTreasuryMetrics(): TreasuryMetrics {
     )
     .get() as any;
 
+  const capitalDeployed = channelsTotals?.local_sats ?? 0;
+
+  // Layer 2 — Capital efficiency
+  const revenueYield =
+    capitalDeployed > 0 ? forwardedFeesAll / capitalDeployed : 0;
+  const revenuePer1mSats =
+    capitalDeployed > 0
+      ? (forwardedFeesAll / capitalDeployed) * 1_000_000
+      : 0;
+  const avgDailyOutbound = outbound24;
+  const isNetOutbound = outbound24 > inbound24;
+  const runwayDays: number | null =
+    isNetOutbound && avgDailyOutbound > 0 && capitalDeployed > 0
+      ? capitalDeployed / avgDailyOutbound
+      : null;
+
   let treasuryChannel: TreasuryMetrics["liquidity"]["treasury_channel"] = null;
 
   if (ENV.treasuryPubkey) {
@@ -165,6 +193,12 @@ export function getTreasuryMetrics(): TreasuryMetrics {
         total_count: channelsTotals?.total_count ?? 0,
       },
       treasury_channel: treasuryChannel,
+    },
+    capital_efficiency: {
+      capital_deployed_sats: capitalDeployed,
+      revenue_yield: Math.round(revenueYield * 1e6) / 1e6,
+      revenue_per_1m_sats_deployed: Math.round(revenuePer1mSats * 2) / 2,
+      runway_days: runwayDays != null ? Math.round(runwayDays * 10) / 10 : null,
     },
   };
 }

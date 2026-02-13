@@ -4,6 +4,16 @@ import { persistPeers, persistChannels } from "./persist-channels";
 import { syncInboundPayments } from "./persist-inbound";
 import { syncForwardingHistory } from "./persist-forwarded";
 import { ENV } from "../config/env";
+import type { NodeRole } from "../types/node";
+
+export function deriveNodeRole(
+  pubkey: string,
+  hasTreasuryChannel: boolean
+): NodeRole {
+  if (pubkey === ENV.treasuryPubkey) return "treasury";
+  if (hasTreasuryChannel) return "member";
+  return "external";
+}
 
 export async function syncLndState() {
   if (!isLndAvailable()) {
@@ -43,7 +53,8 @@ export async function syncLndState() {
     membershipStatus = "active_member";
   }
 
-  await persistNodeInfo(hasTreasuryChannel, membershipStatus);
+  const nodeRole = deriveNodeRole(walletInfo.public_key, hasTreasuryChannel);
+  await persistNodeInfo(hasTreasuryChannel, membershipStatus, nodeRole);
   await syncInboundPayments();
   await syncForwardingHistory();
 
