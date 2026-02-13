@@ -10,6 +10,7 @@ import { assertRateLimit } from "./utils/rate-limit";
 import { insertOutboundPayment } from "./lightning/persist-payments";
 import { decodePaymentRequest } from "ln-service";
 import { getChannels, getPeers, getNodeInfo } from "./api/read";
+import { getTreasuryMetrics } from "./api/treasury";
 
 initDb();
 runMigrations();
@@ -109,6 +110,18 @@ const server = http.createServer(async (req, res) => {
     } catch {
       res.writeHead(500);
       res.end(JSON.stringify({ error: "failed_to_fetch_channels" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/treasury/metrics") {
+    try {
+      const data = getTreasuryMetrics();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_metrics" }));
     }
     return;
   }
