@@ -25,8 +25,8 @@ export type ChannelLiquiditySnapshot = {
 
 const clamp0 = (n: number) => (n < 0 ? 0 : n);
 
-/** Build a liquidity snapshot from an LND/ln-service channel object. */
-export function snapshotChannelLiquidity(ch: {
+/** Input shape for LND/ln-service channel (no index signature so Channel is assignable). */
+export type ChannelLiquidityInput = {
   id?: string;
   capacity?: number;
   local_balance?: number;
@@ -34,18 +34,17 @@ export function snapshotChannelLiquidity(ch: {
   local_reserve?: number;
   remote_reserve?: number;
   is_active?: boolean;
-  [k: string]: unknown;
-}): ChannelLiquiditySnapshot {
+};
+
+/** Build a liquidity snapshot from an LND/ln-service channel object. */
+export function snapshotChannelLiquidity(ch: ChannelLiquidityInput): ChannelLiquiditySnapshot {
   const capacity = Number(ch.capacity ?? 0);
   const local = Number(ch.local_balance ?? 0);
   const remote = Number(ch.remote_balance ?? 0);
 
-  const localReserve = Number(
-    (ch as { local_reserve_sats?: number }).local_reserve_sats ?? ch.local_reserve ?? 0
-  );
-  const remoteReserve = Number(
-    (ch as { remote_reserve_sats?: number }).remote_reserve_sats ?? ch.remote_reserve ?? 0
-  );
+  const ext = ch as ChannelLiquidityInput & { local_reserve_sats?: number; remote_reserve_sats?: number };
+  const localReserve = Number(ext.local_reserve_sats ?? ch.local_reserve ?? 0);
+  const remoteReserve = Number(ext.remote_reserve_sats ?? ch.remote_reserve ?? 0);
 
   const localAvail = clamp0(local - localReserve);
   const remoteAvail = clamp0(remote - remoteReserve);
