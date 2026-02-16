@@ -25,6 +25,14 @@ import {
   updateExpansionExecution,
   getExpansionExecution,
 } from "./api/treasury-expansion";
+import {
+  getCapitalPolicy,
+  setCapitalPolicy,
+} from "./api/treasury-capital-policy";
+import {
+  assertCanExpand,
+  CapitalGuardrailError,
+} from "./utils/capital-guardrails";
 import { getLndChainBalance, getLndPeers, openTreasuryChannel } from "./lightning/lnd";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
@@ -221,6 +229,57 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url === "/api/treasury/capital-policy") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const policy = getCapitalPolicy();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(policy));
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const code = msg.includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/treasury/capital-policy") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const policy = setCapitalPolicy({
+            min_onchain_reserve_sats: parsed.min_onchain_reserve_sats != null ? Number(parsed.min_onchain_reserve_sats) : undefined,
+            max_deploy_ratio_ppm: parsed.max_deploy_ratio_ppm != null ? Number(parsed.max_deploy_ratio_ppm) : undefined,
+            max_pending_opens: parsed.max_pending_opens != null ? Number(parsed.max_pending_opens) : undefined,
+            max_peer_capacity_sats: parsed.max_peer_capacity_sats != null ? Number(parsed.max_peer_capacity_sats) : undefined,
+            peer_cooldown_minutes: parsed.peer_cooldown_minutes != null ? Number(parsed.peer_cooldown_minutes) : undefined,
+            max_expansions_per_day: parsed.max_expansions_per_day != null ? Number(parsed.max_expansions_per_day) : undefined,
+            max_daily_deploy_sats: parsed.max_daily_deploy_sats != null ? Number(parsed.max_daily_deploy_sats) : undefined,
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(policy));
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err?.message ?? err) }));
+        }
+      });
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const code = msg.includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/treasury/liquidity-health") {
     try {
       const node = getNodeInfo();
@@ -288,6 +347,17 @@ const server = http.createServer(async (req, res) => {
           if (!Number.isFinite(capacitySats) || capacitySats < 100000 || capacitySats > 2000000) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "Invalid capacity_sats (must be 100k-2M)" }));
+            return;
+          }
+
+          // Capital guardrails (policy limits) — enforce before any LND call
+          try {
+            await assertCanExpand(peerPubkey, capacitySats);
+          } catch (err: any) {
+            const isGuardrail = err instanceof CapitalGuardrailError;
+            const statusCode = isGuardrail ? 429 : 500;
+            res.writeHead(statusCode, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: String(err?.message ?? err) }));
             return;
           }
 
