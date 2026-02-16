@@ -15,6 +15,23 @@ import { insertRebalanceCost } from "../api/treasury-rebalance-costs";
 
 const RESERVE_SATS = 1000;
 
+/** Compact numeric channel id (lncli-style) to ln-service format (blockxindexxout). */
+function compactChannelIdToLndFormat(chanId: string): string | null {
+  const trimmed = String(chanId).trim();
+  if (/^\d+$/.test(trimmed)) {
+    try {
+      const n = BigInt(trimmed);
+      const out = Number(n & 0xffffn);
+      const tx = Number((n >> 16n) & 0xffffffn);
+      const block = Number((n >> 40n) & 0xffffffn);
+      return `${block}x${tx}x${out}`;
+    } catch {
+      return null;
+    }
+  }
+  return trimmed || null;
+}
+
 export type CircularRebalanceParams = {
   tokens: number;
   outgoing_channel: string;
@@ -64,14 +81,19 @@ export async function executeCircularRebalance(
   }
 
   const { channels } = await getLndChannels();
-  const outChan = channels.find((c) => c.id === outgoing_channel);
-  const inChan = channels.find((c) => c.id === incoming_channel);
+  const outId = compactChannelIdToLndFormat(outgoing_channel) ?? outgoing_channel;
+  const inId = compactChannelIdToLndFormat(incoming_channel) ?? incoming_channel;
+  const outChan = channels.find((c) => c.id === outId) ?? channels.find((c) => c.id === outgoing_channel);
+  const inChan = channels.find((c) => c.id === inId) ?? channels.find((c) => c.id === incoming_channel);
 
   if (!outChan) {
     throw new CircularRebalanceError(`outgoing_channel not found: ${outgoing_channel}`);
   }
   if (!inChan) {
     throw new CircularRebalanceError(`incoming_channel not found: ${incoming_channel}`);
+  }
+  if (outChan.id === inChan.id) {
+    throw new CircularRebalanceError("outgoing_channel and incoming_channel must differ");
   }
   if (!outChan.is_active) {
     throw new CircularRebalanceError("outgoing_channel is not active");
@@ -96,8 +118,8 @@ export async function executeCircularRebalance(
   const execId = createRebalanceExecution({
     type: "circular",
     tokens,
-    outgoing_channel,
-    incoming_channel,
+    outgoing_channel: outChan.id,
+    incoming_channel: inChan.id,
     max_fee_sats,
   });
 
@@ -112,7 +134,7 @@ export async function executeCircularRebalance(
     const { route } = await getLndRouteToDestination({
       destination: selfPubkey,
       tokens,
-      outgoing_channel,
+      outgoing_channel: outChan.id,
       incoming_peer: inChan.partner_public_key,
       max_fee: max_fee_sats,
       payment,
@@ -123,15 +145,15 @@ export async function executeCircularRebalance(
     const feePaid = payResult.fee ?? 0;
 
     updateRebalanceExecution(execId, "succeeded", paymentHash, feePaid, null);
-    insertRebalanceCost("circular", tokens, feePaid, outgoing_channel);
+    insertRebalanceCost("circular", tokens, feePaid, outChan.id);
 
     return {
       ok: true,
       rebalance: {
         tokens,
         fee_paid_sats: feePaid,
-        outgoing_channel,
-        incoming_channel,
+        outgoing_channel: outChan.id,
+        incoming_channel: inChan.id,
         payment_hash: paymentHash,
       },
     };

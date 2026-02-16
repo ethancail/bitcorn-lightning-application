@@ -27,7 +27,7 @@ Base URL is the API container (see `docker-compose.yml`). All responses are JSON
 | POST | `/api/treasury/capital-policy` | Treasury | Update capital guardrail policy (partial body) |
 | GET | `/api/treasury/expansion/recommendations` | Treasury | Expansion recommendations from liquidity health |
 | POST | `/api/treasury/expansion/execute` | Treasury | Open a channel to a peer (body: `peer_pubkey`, `capacity_sats`, optional `is_private`) |
-| POST | `/api/treasury/rebalance/circular` | Treasury | Run a circular rebalance (body: `tokens`, `outgoing_channel`, `incoming_channel`, `max_fee_sats`). Returns `{ ok, rebalance: { tokens, fee_paid_sats, outgoing_channel, incoming_channel, payment_hash } }`. |
+| POST | `/api/treasury/rebalance/circular` | Treasury | Run a circular rebalance (body: `tokens`, `outgoing_channel`, `incoming_channel`, `max_fee_sats`). Channel IDs may be ln-service format (`blockxindexxout`, e.g. `934752x1552x0`) or compact numeric (e.g. `1027770693188583424`). Response uses ln-service format. Returns `{ ok, rebalance: { tokens, fee_paid_sats, outgoing_channel, incoming_channel, payment_hash } }`. |
 | GET | `/api/treasury/rebalance/executions` | Treasury | List rebalance execution history. Query: `limit` (default 50, max 500). |
 
 ## Error handling
