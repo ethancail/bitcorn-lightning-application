@@ -256,7 +256,12 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/api/treasury/expansion/execute") {
     try {
       const node = getNodeInfo();
-      assertTreasury(node?.node_role);
+      if (!node) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Node info unavailable" }));
+        return;
+      }
+      assertTreasury(node.node_role);
 
       // Verify synced
       if (!node.synced_to_chain) {
