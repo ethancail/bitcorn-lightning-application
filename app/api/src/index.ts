@@ -17,6 +17,15 @@ import {
   setTreasuryFeePolicy,
   markTreasuryFeePolicyApplied,
 } from "./api/treasury-fee-policy";
+import { getLiquidityHealth } from "./api/treasury-liquidity-health";
+import {
+  generateExpansionRecommendations,
+  saveExpansionRecommendations,
+  createExpansionExecution,
+  updateExpansionExecution,
+  getExpansionExecution,
+} from "./api/treasury-expansion";
+import { getLndChainBalance, getLndPeers, openTreasuryChannel } from "./lightning/lnd";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
 
@@ -198,6 +207,135 @@ const server = http.createServer(async (req, res) => {
 
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true, policy: applied }));
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err?.message ?? err) }));
+        }
+      });
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const code = msg.includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/treasury/liquidity-health") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const data = getLiquidityHealth();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(statusCode, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_liquidity_health" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/treasury/expansion/recommendations") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const recommendations = await generateExpansionRecommendations();
+      // Optionally save to DB for audit trail
+      saveExpansionRecommendations(recommendations);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(recommendations));
+    } catch (err: any) {
+      const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(statusCode, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_generate_recommendations" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/treasury/expansion/execute") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+
+      // Verify synced
+      if (!node.synced_to_chain) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Node not synced to chain" }));
+        return;
+      }
+
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const peerPubkey = parsed.peer_pubkey;
+          const capacitySats = Number(parsed.capacity_sats);
+          const isPrivate = parsed.is_private ?? false;
+
+          if (!peerPubkey || typeof peerPubkey !== "string") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Invalid peer_pubkey" }));
+            return;
+          }
+
+          if (!Number.isFinite(capacitySats) || capacitySats < 100000 || capacitySats > 2000000) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Invalid capacity_sats (must be 100k-2M)" }));
+            return;
+          }
+
+          // Check wallet balance
+          const { chain_balance } = await getLndChainBalance();
+          if (chain_balance < capacitySats) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: `Insufficient balance: ${chain_balance} < ${capacitySats}` }));
+            return;
+          }
+
+          // Verify peer is connected (Phase 1 requirement)
+          const { peers } = await getLndPeers();
+          const peer = peers.find((p) => p.public_key === peerPubkey);
+          if (!peer) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Peer not connected. Connect peer first." }));
+            return;
+          }
+
+          // Create execution record
+          const execId = createExpansionExecution(peerPubkey, capacitySats);
+
+          try {
+            // Open channel
+            const result = await openTreasuryChannel(peerPubkey, capacitySats, {
+              isPrivate: isPrivate,
+              partnerSocket: peer.socket,
+            });
+
+            // Update execution as submitted
+            updateExpansionExecution(
+              execId,
+              "submitted",
+              result.transaction_id,
+              null
+            );
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                ok: true,
+                status: "submitted",
+                funding_txid: result.transaction_id,
+                execution_id: execId,
+              })
+            );
+          } catch (openErr: any) {
+            // Update execution as failed
+            updateExpansionExecution(execId, "failed", null, String(openErr?.message ?? openErr));
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: String(openErr?.message ?? openErr) }));
+          }
         } catch (err: any) {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: String(err?.message ?? err) }));

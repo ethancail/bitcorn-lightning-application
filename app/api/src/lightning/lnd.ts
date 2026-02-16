@@ -6,7 +6,10 @@ import {
   getPeers,
   getChannels,
   getInvoices,
-  getForwards
+  getForwards,
+  getChainBalance,
+  addPeer,
+  openChannel
 } from "ln-service";
 import fs from "fs";
 import path from "path";
@@ -140,4 +143,47 @@ export async function getLndForwards(options?: {
 }) {
   const { lnd } = getLndClient();
   return getForwards({ lnd, ...options });
+}
+
+/**
+ * Gets confirmed on-chain balance.
+ */
+export async function getLndChainBalance() {
+  const { lnd } = getLndClient();
+  return getChainBalance({ lnd });
+}
+
+/**
+ * Connects to a peer (optional - Phase 1 requires peer already connected).
+ */
+export async function connectToPeer(publicKey: string, socket?: string) {
+  const { lnd } = getLndClient();
+  if (socket) {
+    await addPeer({ lnd, public_key: publicKey, socket });
+  }
+}
+
+/**
+ * Opens a channel from treasury to a peer.
+ */
+export async function openTreasuryChannel(
+  peerPubkey: string,
+  capacitySats: number,
+  options?: {
+    isPrivate?: boolean;
+    chainFeeTokensPerVbyte?: number;
+    minConfirmations?: number;
+    partnerSocket?: string;
+  }
+) {
+  const { lnd } = getLndClient();
+  return openChannel({
+    lnd,
+    partner_public_key: peerPubkey,
+    local_tokens: capacitySats,
+    is_private: options?.isPrivate ?? false,
+    chain_fee_tokens_per_vbyte: options?.chainFeeTokensPerVbyte,
+    min_confirmations: options?.minConfirmations,
+    partner_socket: options?.partnerSocket,
+  });
 }

@@ -122,4 +122,28 @@ declare module "ln-service" {
     base_fee_mtokens?: string;
     fee_rate?: number;
   }): Promise<{ failures?: Array<{ failure: string }> }>;
+
+  export function getChainBalance(options: {
+    lnd: any;
+  }): Promise<{ chain_balance: number }>;
+
+  export function addPeer(options: {
+    lnd: any;
+    public_key: string;
+    socket?: string;
+    timeout?: number;
+  }): Promise<void>;
+
+  export function openChannel(options: {
+    lnd: any;
+    partner_public_key: string;
+    local_tokens: number;
+    is_private?: boolean;
+    chain_fee_tokens_per_vbyte?: number;
+    min_confirmations?: number;
+    partner_socket?: string;
+  }): Promise<{
+    transaction_id: string;
+    transaction_vout: number;
+  }>;
 }
