@@ -146,4 +146,68 @@ declare module "ln-service" {
     transaction_id: string;
     transaction_vout: number;
   }>;
+
+  export interface PendingChannel {
+    capacity: number;
+    is_opening?: boolean;
+    is_closing?: boolean;
+    partner_public_key: string;
+  }
+
+  export function getPendingChannels(options: {
+    lnd: any;
+  }): Promise<{ pending_channels: PendingChannel[] }>;
+
+  export function createInvoice(options: {
+    lnd: any;
+    tokens?: number;
+    mtokens?: string;
+    description?: string;
+  }): Promise<{
+    id: string;
+    request: string;
+    secret: string;
+    tokens?: number;
+    mtokens?: string;
+    payment?: string;
+  }>;
+
+  export interface RouteHop {
+    channel: string;
+    public_key: string;
+    forward: number;
+    fee: number;
+    timeout: number;
+  }
+
+  export interface Route {
+    fee: number;
+    fee_mtokens?: string;
+    hops: RouteHop[];
+    tokens: number;
+    timeout: number;
+  }
+
+  export function getRouteToDestination(options: {
+    lnd: any;
+    destination: string;
+    tokens: number;
+    outgoing_channel?: string;
+    incoming_peer?: string;
+    max_fee?: number;
+    payment?: string;
+    total_mtokens?: string;
+  }): Promise<{ route: Route }>;
+
+  export function payViaRoutes(options: {
+    lnd: any;
+    id: string;
+    routes: Route[];
+  }): Promise<{
+    fee: number;
+    tokens: number;
+    secret: string;
+    id: string;
+    is_confirmed: boolean;
+  }>;
 }

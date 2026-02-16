@@ -9,6 +9,7 @@ export type TreasuryMetrics = {
     outbound_sats: number;
     outbound_fees_sats: number;
     forwarded_fees_sats: number;
+    rebalance_costs_sats: number;
     net_sats: number;
   };
 
@@ -17,6 +18,7 @@ export type TreasuryMetrics = {
     outbound_sats: number;
     outbound_fees_sats: number;
     forwarded_fees_sats: number;
+    rebalance_costs_sats: number;
     net_sats: number;
   };
 
@@ -105,8 +107,19 @@ export function getTreasuryMetrics(): TreasuryMetrics {
     [since24h]
   );
 
-  const netAll = inboundAll + forwardedFeesAll - outboundAll - outboundFeesAll;
-  const net24 = inbound24 + forwardedFees24 - outbound24 - outboundFees24;
+  // REBALANCE COSTS: circular rebalance, loop, manual — reduces true net
+  const rebalanceCostsAll = sumNumber(
+    `SELECT COALESCE(SUM(fee_paid_sats), 0) AS v FROM treasury_rebalance_costs`
+  );
+  const rebalanceCosts24 = sumNumber(
+    `SELECT COALESCE(SUM(fee_paid_sats), 0) AS v FROM treasury_rebalance_costs WHERE created_at >= ?`,
+    [since24h]
+  );
+
+  const netAll =
+    inboundAll + forwardedFeesAll - outboundAll - outboundFeesAll - rebalanceCostsAll;
+  const net24 =
+    inbound24 + forwardedFees24 - outbound24 - outboundFees24 - rebalanceCosts24;
 
   // Liquidity snapshot (from your persisted channels table)
   const channelsTotals = db
@@ -175,6 +188,7 @@ export function getTreasuryMetrics(): TreasuryMetrics {
       outbound_sats: outboundAll,
       outbound_fees_sats: outboundFeesAll,
       forwarded_fees_sats: forwardedFeesAll,
+      rebalance_costs_sats: rebalanceCostsAll,
       net_sats: netAll,
     },
     last_24h: {
@@ -182,6 +196,7 @@ export function getTreasuryMetrics(): TreasuryMetrics {
       outbound_sats: outbound24,
       outbound_fees_sats: outboundFees24,
       forwarded_fees_sats: forwardedFees24,
+      rebalance_costs_sats: rebalanceCosts24,
       net_sats: net24,
     },
     liquidity: {

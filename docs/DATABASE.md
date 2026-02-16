@@ -19,6 +19,8 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `011_treasury_fee_policy.sql` | Single-row routing fee policy and last-applied time |
 | `012_treasury_expansions.sql` | Expansion recommendations log and execution audit (pending/success/failure) |
 | `013_treasury_capital_policy.sql` | Single-row capital guardrail policy (reserve, deploy ratio, per-peer and daily limits) |
+| `014_rebalance_costs.sql` | Rebalance cost ledger (circular, loop_out, loop_in, manual) for true net accounting |
+| `015_treasury_rebalance_executions.sql` | Audit log for rebalance runs (type, channels, status, fee, error) |
 
 ## Table roles (summary)
 
@@ -28,5 +30,7 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 - **treasury_fee_policy:** Routing fee settings and when last applied to LND.
 - **treasury_expansion_recommendations / treasury_expansion_executions:** Expansion recommendations and per-attempt audit (requested/submitted/failed).
 - **treasury_capital_policy:** Limits used by the capital guardrail (reserve, deploy ratio, pending opens, per-peer and daily caps).
+- **treasury_rebalance_costs:** Ledger of rebalance costs (type, tokens, fee_paid_sats, related_channel) so net = inbound + forwarding_fees − outbound − outbound_fees − rebalance_costs.
+- **treasury_rebalance_executions:** Per-run audit for circular (and future) rebalances: type, tokens, outgoing/incoming channel, max_fee_sats, status (requested/submitted/succeeded/failed), payment_hash, fee_paid_sats, error, created_at.
 
 All timestamps are stored as milliseconds (or as returned by the app) unless noted in a migration.

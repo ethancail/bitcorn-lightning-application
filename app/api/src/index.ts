@@ -36,6 +36,8 @@ import {
 import { getLndChainBalance, getLndPeers, openTreasuryChannel } from "./lightning/lnd";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
+import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
+import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 
 initDb();
 runMigrations();
@@ -295,6 +297,24 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url?.startsWith("/api/treasury/rebalance/executions")) {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const url = new URL(req.url ?? "", "http://localhost");
+      const limitParam = url.searchParams.get("limit");
+      const limit = Math.min(500, Math.max(1, parseInt(limitParam ?? "50", 10) || 50));
+      const executions = getRebalanceExecutions(limit);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(executions));
+    } catch (err: any) {
+      const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(statusCode, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_rebalance_executions" }));
+    }
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/treasury/expansion/recommendations") {
     try {
       const node = getNodeInfo();
@@ -414,6 +434,55 @@ const server = http.createServer(async (req, res) => {
         } catch (err: any) {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: String(err?.message ?? err) }));
+        }
+      });
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const code = msg.includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/treasury/rebalance/circular") {
+    try {
+      const node = getNodeInfo();
+      if (!node) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Node info unavailable" }));
+        return;
+      }
+      assertTreasury(node.node_role);
+
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const tokens = Number(parsed.tokens);
+          const outgoing_channel = parsed.outgoing_channel;
+          const incoming_channel = parsed.incoming_channel;
+          const max_fee_sats = Number(parsed.max_fee_sats);
+
+          const result = await executeCircularRebalance({
+            tokens,
+            outgoing_channel: String(outgoing_channel ?? ""),
+            incoming_channel: String(incoming_channel ?? ""),
+            max_fee_sats: Number.isFinite(max_fee_sats) ? max_fee_sats : 0,
+          });
+
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (err: any) {
+          const msg = String(err?.message ?? err);
+          if (err instanceof CircularRebalanceError) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: msg }));
+          } else {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: msg || "circular_rebalance_failed" }));
+          }
         }
       });
     } catch (err: any) {

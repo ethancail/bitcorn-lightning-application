@@ -9,7 +9,11 @@ import {
   getForwards,
   getChainBalance,
   addPeer,
-  openChannel
+  openChannel,
+  getPendingChannels,
+  createInvoice,
+  getRouteToDestination,
+  payViaRoutes
 } from "ln-service";
 import fs from "fs";
 import path from "path";
@@ -151,6 +155,57 @@ export async function getLndForwards(options?: {
 export async function getLndChainBalance() {
   const { lnd } = getLndClient();
   return getChainBalance({ lnd });
+}
+
+/**
+ * Gets our node's public key (for circular rebalance destination).
+ */
+export async function getLndIdentity() {
+  const { lnd } = getLndClient();
+  return getIdentity({ lnd });
+}
+
+/**
+ * Creates an invoice on the treasury node (e.g. for self-pay rebalance).
+ */
+export async function createLndInvoice(tokens: number) {
+  const { lnd } = getLndClient();
+  return createInvoice({ lnd, tokens });
+}
+
+/**
+ * Gets a route to a destination with optional outgoing channel and incoming peer (for circular rebalance).
+ */
+export async function getLndRouteToDestination(options: {
+  destination: string;
+  tokens: number;
+  outgoing_channel?: string;
+  incoming_peer?: string;
+  max_fee?: number;
+  payment?: string;
+  total_mtokens?: string;
+}) {
+  const { lnd } = getLndClient();
+  return getRouteToDestination({ lnd, ...options });
+}
+
+/**
+ * Pays via a pre-built route (e.g. circular rebalance).
+ */
+export type LndRoute = Awaited<ReturnType<typeof getLndRouteToDestination>>["route"];
+
+export async function payLndViaRoutes(id: string, routes: LndRoute[]) {
+  const { lnd } = getLndClient();
+  return payViaRoutes({ lnd, id, routes });
+}
+
+/**
+ * Gets channels in pending state (opening/closing). Used for guardrail
+ * accounting so pending capacity is correct even if channels were opened outside the app.
+ */
+export async function getLndPendingChannels() {
+  const { lnd } = getLndClient();
+  return getPendingChannels({ lnd });
 }
 
 /**

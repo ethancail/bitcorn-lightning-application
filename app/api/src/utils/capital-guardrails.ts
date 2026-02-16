@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { getCapitalPolicy } from "../api/treasury-capital-policy";
-import { getLndChainBalance } from "../lightning/lnd";
+import { getLndChainBalance, getLndPendingChannels } from "../lightning/lnd";
 
 const MIN_CHANNEL_SATS = 100_000;
 const MAX_CHANNEL_SATS = 2_000_000;
@@ -13,7 +13,8 @@ export class CapitalGuardrailError extends Error {
   }
 }
 
-function getPendingSats(): number {
+/** Pending capacity from our own execution records (requested/submitted). */
+function getDbPendingSats(): number {
   const row = db
     .prepare(
       `SELECT COALESCE(SUM(requested_capacity_sats), 0) AS v
@@ -22,6 +23,11 @@ function getPendingSats(): number {
     )
     .get() as { v: number };
   return row?.v ?? 0;
+}
+
+/** Total pending sats = DB pending + LND pending opens (source of truth for locked funds). */
+function getTotalPendingSats(lndPendingOpenSats: number): number {
+  return getDbPendingSats() + lndPendingOpenSats;
 }
 
 function getDeployedSats(): number {
@@ -55,7 +61,8 @@ function getPeerDeployedSats(peerPubkey: string): number {
   return channelSats + pendingSats;
 }
 
-function getPendingOpensCount(): number {
+/** DB count of requested/submitted expansions. */
+function getDbPendingOpensCount(): number {
   const row = db
     .prepare(
       `SELECT COUNT(*) AS v
@@ -64,6 +71,23 @@ function getPendingOpensCount(): number {
     )
     .get() as { v: number };
   return row?.v ?? 0;
+}
+
+/** Pending opens count: DB + LND so we never undercount when some opens are from outside the app.
+ *  Conservative: may overcount when all pending are from this app (same channel in both), but ensures
+ *  we treat "1 from app + 1 external" as 2 pending, not 1. */
+function getTotalPendingOpensCount(lndOpeningCount: number): number {
+  return getDbPendingOpensCount() + lndOpeningCount;
+}
+
+/** Sum capacity of LND pending-opening channels to a given peer. */
+function getLndPendingOpenSatsToPeer(
+  pendingChannels: Array<{ is_opening?: boolean; capacity?: number; partner_public_key: string }>,
+  peerPubkey: string
+): number {
+  return pendingChannels
+    .filter((ch) => ch.is_opening === true && ch.partner_public_key === peerPubkey)
+    .reduce((sum, ch) => sum + (ch.capacity ?? 0), 0);
 }
 
 function getExpansionsTodayCount(): number {
@@ -118,11 +142,21 @@ export async function assertCanExpand(
   }
 
   const policy = getCapitalPolicy();
-  const confirmedBalance = (await getLndChainBalance()).chain_balance;
-  const pendingSats = getPendingSats();
+  const [confirmedBalance, pendingChannels] = await Promise.all([
+    getLndChainBalance().then((r) => r.chain_balance),
+    getLndPendingChannels(),
+  ]);
+  const channels = pendingChannels.pending_channels ?? [];
+  const lndPendingOpenSats = channels
+    .filter((ch) => ch.is_opening === true)
+    .reduce((sum, ch) => sum + (ch.capacity ?? 0), 0);
+  const pendingSats = getTotalPendingSats(lndPendingOpenSats);
+  const pendingOpensCount = getTotalPendingOpensCount(
+    channels.filter((ch) => ch.is_opening === true).length
+  );
   const deployedSats = getDeployedSats();
-  const pendingOpensCount = getPendingOpensCount();
-  const peerDeployedSats = getPeerDeployedSats(peerPubkey);
+  const peerDeployedSats =
+    getPeerDeployedSats(peerPubkey) + getLndPendingOpenSatsToPeer(channels, peerPubkey);
   const expansionsToday = getExpansionsTodayCount();
   const dailyDeploySats = getDailyDeploySats();
   const lastPeerAt = getLastPeerExpansionAt(peerPubkey);

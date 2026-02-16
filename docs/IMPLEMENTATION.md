@@ -15,7 +15,9 @@ Short guide for engineers: what exists and where it lives. No secrets or deep in
 
 ## Treasury metrics and fee policy
 
-- **Metrics:** `app/api/src/api/treasury.ts` aggregates inbound, outbound, outbound fees, and forwarded fees (all-time and last 24h), computes net flow and liquidity from DB, and adds capital efficiency (yield, revenue per 1M sats, runway). Used by GET `/api/treasury/metrics`.
+- **Metrics:** `app/api/src/api/treasury.ts` aggregates inbound, outbound, outbound fees, forwarded fees, and rebalance costs (all-time and last 24h). Net = inbound + forwarded_fees − outbound − outbound_fees − rebalance_costs. Also computes liquidity and capital efficiency (yield, revenue per 1M sats, runway). GET `/api/treasury/metrics`.
+- **Rebalance costs:** `treasury_rebalance_costs` table and `app/api/src/api/treasury-rebalance-costs.ts` (`insertRebalanceCost(type, tokens, feePaidSats, relatedChannel?)`). Call after circular rebalance, loop out/in, or when recording manual channel open costs so true net and ROI stay accurate.
+- **Circular rebalance:** POST `/api/treasury/rebalance/circular` (treasury-only). Validates channels and liquidity, creates an execution row in `treasury_rebalance_executions`, creates a self-invoice, gets a route to self via `outgoing_channel` and back via `incoming_channel` (ln-service `getRouteToDestination` + `payViaRoutes`), then updates the execution and logs cost. GET `/api/treasury/rebalance/executions` lists execution history. Logic in `app/api/src/lightning/rebalance-circular.ts` and `app/api/src/api/treasury-rebalance-executions.ts`.
 - **Channel metrics:** `app/api/src/api/treasury-channel-metrics.ts` aggregates forwards by channel, joins with `lnd_channels`, and computes volume, fees, fee-per-1k, ROI, liquidity efficiency, and payback days (from 24h fee rate). Used by GET `/api/treasury/channel-metrics`.
 - **Fee policy:** Stored in `treasury_fee_policy`; read/write in `app/api/src/api/treasury-fee-policy.ts`. Apply to LND in `app/api/src/lightning/fees.ts` via ln-service. GET/POST `/api/treasury/fee-policy` in `index.ts`.
 
