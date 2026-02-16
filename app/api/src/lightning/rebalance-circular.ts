@@ -12,8 +12,14 @@ import {
 } from "./lnd";
 import { createRebalanceExecution, updateRebalanceExecution } from "../api/treasury-rebalance-executions";
 import { insertRebalanceCost } from "../api/treasury-rebalance-costs";
-
-const RESERVE_SATS = 1000;
+import {
+  snapshotChannelLiquidity,
+  assertRebalancePairIsViable,
+  scoreOutgoing,
+  scoreIncoming,
+} from "../utils/rebalance-liquidity";
+import { ENV } from "../config/env";
+import { pickAutoRebalancePair, type AutoRebalanceSelection } from "./rebalance-auto";
 
 /** Compact numeric channel id (lncli-style) to ln-service format (blockxindexxout). */
 function compactChannelIdToLndFormat(chanId: string): string | null {
@@ -34,8 +40,8 @@ function compactChannelIdToLndFormat(chanId: string): string | null {
 
 export type CircularRebalanceParams = {
   tokens: number;
-  outgoing_channel: string;
-  incoming_channel: string;
+  outgoing_channel?: string;
+  incoming_channel?: string;
   max_fee_sats: number;
 };
 
@@ -47,6 +53,12 @@ export type CircularRebalanceResult = {
   payment_hash: string;
 };
 
+export type CircularRebalanceResponse = {
+  ok: true;
+  rebalance: CircularRebalanceResult;
+  selected?: AutoRebalanceSelection;
+};
+
 export class CircularRebalanceError extends Error {
   constructor(message: string) {
     super(message);
@@ -56,12 +68,13 @@ export class CircularRebalanceError extends Error {
 
 /**
  * Validates request and channel state, then executes circular rebalance.
+ * If outgoing_channel or incoming_channel are omitted, picks a pair via pickAutoRebalancePair().
  * On success: creates execution record, creates invoice, gets route to self, pays via route,
  * updates execution and inserts rebalance cost. On failure: updates execution with error.
  */
 export async function executeCircularRebalance(
   params: CircularRebalanceParams
-): Promise<{ ok: true; rebalance: CircularRebalanceResult }> {
+): Promise<CircularRebalanceResponse> {
   const { tokens, outgoing_channel, incoming_channel, max_fee_sats } = params;
 
   if (!Number.isFinite(tokens) || tokens <= 0) {
@@ -70,43 +83,67 @@ export async function executeCircularRebalance(
   if (!Number.isFinite(max_fee_sats) || max_fee_sats < 0) {
     throw new CircularRebalanceError("max_fee_sats must be a non-negative number");
   }
-  if (!outgoing_channel || typeof outgoing_channel !== "string") {
-    throw new CircularRebalanceError("outgoing_channel is required");
-  }
-  if (!incoming_channel || typeof incoming_channel !== "string") {
-    throw new CircularRebalanceError("incoming_channel is required");
-  }
-  if (outgoing_channel === incoming_channel) {
-    throw new CircularRebalanceError("outgoing_channel and incoming_channel must differ");
+
+  let outgoingId: string;
+  let incomingId: string;
+  let selected: AutoRebalanceSelection | undefined;
+
+  if (
+    outgoing_channel != null &&
+    incoming_channel != null &&
+    String(outgoing_channel).trim() !== "" &&
+    String(incoming_channel).trim() !== ""
+  ) {
+    outgoingId = String(outgoing_channel).trim();
+    incomingId = String(incoming_channel).trim();
+    if (outgoingId === incomingId) {
+      throw new CircularRebalanceError("outgoing_channel and incoming_channel must differ");
+    }
+  } else {
+    const picked = await pickAutoRebalancePair({ tokens, maxFeeSats: max_fee_sats });
+    outgoingId = picked.outgoing_channel;
+    incomingId = picked.incoming_channel;
+    selected = picked;
   }
 
   const { channels } = await getLndChannels();
-  const outId = compactChannelIdToLndFormat(outgoing_channel) ?? outgoing_channel;
-  const inId = compactChannelIdToLndFormat(incoming_channel) ?? incoming_channel;
-  const outChan = channels.find((c) => c.id === outId) ?? channels.find((c) => c.id === outgoing_channel);
-  const inChan = channels.find((c) => c.id === inId) ?? channels.find((c) => c.id === incoming_channel);
+  const outIdResolved =
+    compactChannelIdToLndFormat(outgoingId) ?? outgoingId;
+  const inIdResolved = compactChannelIdToLndFormat(incomingId) ?? incomingId;
+  const outChan =
+    channels.find((c) => c.id === outIdResolved) ??
+    channels.find((c) => c.id === outgoingId);
+  const inChan =
+    channels.find((c) => c.id === inIdResolved) ??
+    channels.find((c) => c.id === incomingId);
 
   if (!outChan) {
-    throw new CircularRebalanceError(`outgoing_channel not found: ${outgoing_channel}`);
+    throw new CircularRebalanceError(`outgoing_channel not found: ${outgoingId}`);
   }
   if (!inChan) {
-    throw new CircularRebalanceError(`incoming_channel not found: ${incoming_channel}`);
+    throw new CircularRebalanceError(`incoming_channel not found: ${incomingId}`);
   }
   if (outChan.id === inChan.id) {
     throw new CircularRebalanceError("outgoing_channel and incoming_channel must differ");
   }
-  if (!outChan.is_active) {
-    throw new CircularRebalanceError("outgoing_channel is not active");
-  }
-  if (!inChan.is_active) {
-    throw new CircularRebalanceError("incoming_channel is not active");
+
+  const outSnap = snapshotChannelLiquidity(outChan);
+  const inSnap = snapshotChannelLiquidity(inChan);
+
+  try {
+    assertRebalancePairIsViable({
+      outgoing: outSnap,
+      incoming: inSnap,
+      tokens,
+      maxFeeSats: max_fee_sats,
+    });
+  } catch (e) {
+    throw new CircularRebalanceError(e instanceof Error ? e.message : String(e));
   }
 
-  const requiredLocal = tokens + max_fee_sats + RESERVE_SATS;
-  if (outChan.local_balance < requiredLocal) {
-    throw new CircularRebalanceError(
-      `outgoing channel has insufficient local balance: ${outChan.local_balance} < ${requiredLocal} (tokens + max_fee + reserve)`
-    );
+  if (ENV.debug) {
+    console.log("[rebalance] outgoing score:", scoreOutgoing(outSnap), outSnap);
+    console.log("[rebalance] incoming score:", scoreIncoming(inSnap), inSnap);
   }
 
   const selfIdentity = await getLndIdentity();
@@ -147,7 +184,7 @@ export async function executeCircularRebalance(
     updateRebalanceExecution(execId, "succeeded", paymentHash, feePaid, null);
     insertRebalanceCost("circular", tokens, feePaid, outChan.id);
 
-    return {
+    const response: CircularRebalanceResponse = {
       ok: true,
       rebalance: {
         tokens,
@@ -157,6 +194,8 @@ export async function executeCircularRebalance(
         payment_hash: paymentHash,
       },
     };
+    if (selected) response.selected = selected;
+    return response;
   } catch (err: any) {
     const msg = err?.message ?? String(err);
     updateRebalanceExecution(execId, "failed", null, null, msg);

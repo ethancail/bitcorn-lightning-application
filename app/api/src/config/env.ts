@@ -9,4 +9,23 @@ export const ENV = {
     rateLimitSatsPerMinute: parseInt(process.env.RATE_LIMIT_SATS_PER_MINUTE || "100000", 10),
     rateLimitSatsPerHour: parseInt(process.env.RATE_LIMIT_SATS_PER_HOUR || "1000000", 10),
     rateLimitMaxSinglePayment: parseInt(process.env.RATE_LIMIT_MAX_SINGLE_PAYMENT || "250000", 10),
+
+    rebalanceMinIncomingRemoteRatioPpm: Number(
+        process.env.REBALANCE_MIN_INCOMING_REMOTE_RATIO_PPM ?? "200000"
+    ),
+    rebalanceMinOutgoingLocalRatioPpm: Number(
+        process.env.REBALANCE_MIN_OUTGOING_LOCAL_RATIO_PPM ?? "200000"
+    ),
+    rebalanceSafetyBufferSats: Number(process.env.REBALANCE_SAFETY_BUFFER_SATS ?? "1000"),
+
+    rebalanceSchedulerEnabled: process.env.REBALANCE_SCHEDULER_ENABLED === "true",
+    rebalanceSchedulerIntervalMs: Number(
+        process.env.REBALANCE_SCHEDULER_INTERVAL_MS ?? "60000"
+    ),
+    rebalanceDefaultTokens: Number(process.env.REBALANCE_DEFAULT_TOKENS ?? "5000"),
+    rebalanceMaxTokens: Number(process.env.REBALANCE_MAX_TOKENS ?? "25000"),
+    rebalanceDefaultMaxFeeSats: Number(
+        process.env.REBALANCE_DEFAULT_MAX_FEE_SATS ?? "10"
+    ),
+    rebalanceCooldownMinutes: Number(process.env.REBALANCE_COOLDOWN_MINUTES ?? "30"),
 };

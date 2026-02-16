@@ -38,6 +38,7 @@ import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
+import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
 
 initDb();
 runMigrations();
@@ -467,8 +468,8 @@ const server = http.createServer(async (req, res) => {
 
           const result = await executeCircularRebalance({
             tokens,
-            outgoing_channel: String(outgoing_channel ?? ""),
-            incoming_channel: String(incoming_channel ?? ""),
+            outgoing_channel: outgoing_channel != null ? String(outgoing_channel) : undefined,
+            incoming_channel: incoming_channel != null ? String(incoming_channel) : undefined,
             max_fee_sats: Number.isFinite(max_fee_sats) ? max_fee_sats : 0,
           });
 
@@ -601,4 +602,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORTS.userApi, () => {
   console.log(`[api] listening on port ${PORTS.userApi}`);
+  startRebalanceScheduler();
 });
