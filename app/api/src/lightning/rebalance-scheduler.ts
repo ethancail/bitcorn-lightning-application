@@ -14,6 +14,7 @@ import {
   assertRebalancePairIsViable,
 } from "../utils/rebalance-liquidity";
 import { executeCircularRebalance } from "./rebalance-circular";
+import { assertDailyLossCapNotExceeded, DailyLossCapError } from "../utils/loss-cap";
 import { db } from "../db";
 
 let running = false;
@@ -107,6 +108,27 @@ export function startRebalanceScheduler(): void {
           });
         } catch {
           continue;
+        }
+
+        // Daily loss cap: halt automation if fee spend would exceed the cap
+        try {
+          assertDailyLossCapNotExceeded(ENV.rebalanceDefaultMaxFeeSats);
+        } catch (err) {
+          if (err instanceof DailyLossCapError) {
+            console.warn("[rebalance-scheduler] daily loss cap reached — skipping:", err.message);
+            return;
+          }
+          throw err;
+        }
+
+        if (ENV.rebalanceSchedulerDryRun) {
+          console.log("[rebalance-scheduler][dry-run] would rebalance:", {
+            outgoing_channel: outgoing.id,
+            incoming_channel: incoming.id,
+            tokens,
+            max_fee_sats: ENV.rebalanceDefaultMaxFeeSats,
+          });
+          return;
         }
 
         await executeCircularRebalance({

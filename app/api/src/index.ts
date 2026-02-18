@@ -21,6 +21,8 @@ import {
   updateRotationExecution,
   getRotationExecutions,
 } from "./api/treasury-rotation";
+import { getTreasuryAlerts } from "./api/treasury-alerts";
+import { assertDailyLossCapNotExceeded, DailyLossCapError } from "./utils/loss-cap";
 import {
   getTreasuryFeePolicy,
   setTreasuryFeePolicy,
@@ -257,6 +259,21 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url === "/api/treasury/alerts") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const alerts = await getTreasuryAlerts();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(alerts));
+    } catch (err: any) {
+      const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(statusCode, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_alerts" }));
+    }
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/treasury/fees/dynamic-preview") {
     try {
       const node = getNodeInfo();
@@ -420,6 +437,7 @@ const server = http.createServer(async (req, res) => {
           const peerPubkey = parsed.peer_pubkey;
           const capacitySats = Number(parsed.capacity_sats);
           const isPrivate = parsed.is_private ?? false;
+          const isDryRun = parsed.dry_run === true;
 
           if (!peerPubkey || typeof peerPubkey !== "string") {
             res.writeHead(400, { "Content-Type": "application/json" });
@@ -458,6 +476,15 @@ const server = http.createServer(async (req, res) => {
           if (!peer) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "Peer not connected. Connect peer first." }));
+            return;
+          }
+
+          if (isDryRun) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              dry_run: true,
+              would_open: { peer_pubkey: peerPubkey, capacity_sats: capacitySats, is_private: isPrivate },
+            }));
             return;
           }
 
@@ -564,6 +591,7 @@ const server = http.createServer(async (req, res) => {
           const parsed = JSON.parse(body || "{}");
           const channelId = parsed.channel_id;
           const isForceClose = parsed.is_force_close === true;
+          const isDryRun = parsed.dry_run === true;
 
           if (!channelId || typeof channelId !== "string") {
             res.writeHead(400, { "Content-Type": "application/json" });
@@ -610,6 +638,35 @@ const server = http.createServer(async (req, res) => {
           const candidate = candidates.find(c => c.channel_id === channelId);
           const roiPpm = candidate?.roi_ppm ?? 0;
           const reason = candidate?.reason ?? "manual rotation";
+
+          // Daily loss cap check (skip for dry runs)
+          if (!isDryRun) {
+            try {
+              assertDailyLossCapNotExceeded(0);
+            } catch (err: any) {
+              const isCapError = err instanceof DailyLossCapError;
+              res.writeHead(isCapError ? 429 : 500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: String(err?.message ?? err) }));
+              return;
+            }
+          }
+
+          if (isDryRun) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              dry_run: true,
+              would_close: {
+                channel_id: channel.channel_id,
+                peer_pubkey: channel.peer_pubkey,
+                capacity_sats: channel.capacity_sat,
+                local_sats: channel.local_balance_sat,
+                roi_ppm: roiPpm,
+                reason,
+                is_force_close: isForceClose,
+              },
+            }));
+            return;
+          }
 
           const execId = createRotationExecution(
             channel.channel_id,
@@ -675,6 +732,33 @@ const server = http.createServer(async (req, res) => {
           const outgoing_channel = parsed.outgoing_channel;
           const incoming_channel = parsed.incoming_channel;
           const max_fee_sats = Number(parsed.max_fee_sats);
+          const isDryRun = parsed.dry_run === true;
+
+          // Daily loss cap check (skip for dry runs)
+          if (!isDryRun) {
+            try {
+              assertDailyLossCapNotExceeded(Number.isFinite(max_fee_sats) ? max_fee_sats : 0);
+            } catch (err: any) {
+              const isCapError = err instanceof DailyLossCapError;
+              res.writeHead(isCapError ? 429 : 500, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: String(err?.message ?? err) }));
+              return;
+            }
+          }
+
+          if (isDryRun) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              dry_run: true,
+              would_rebalance: {
+                tokens: Number.isFinite(tokens) ? tokens : null,
+                outgoing_channel: outgoing_channel ?? "auto",
+                incoming_channel: incoming_channel ?? "auto",
+                max_fee_sats: Number.isFinite(max_fee_sats) ? max_fee_sats : 0,
+              },
+            }));
+            return;
+          }
 
           const result = await executeCircularRebalance({
             tokens,

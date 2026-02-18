@@ -9,6 +9,8 @@ export type TreasuryCapitalPolicy = {
   peer_cooldown_minutes: number;
   max_expansions_per_day: number;
   max_daily_deploy_sats: number;
+  /** Maximum rebalance fees that can be spent in a 24h window before automation halts. */
+  max_daily_loss_sats: number;
   updated_at: number;
   last_applied_at: number | null;
 };
@@ -18,7 +20,7 @@ export function getCapitalPolicy(): TreasuryCapitalPolicy {
     .prepare(
       `SELECT id, min_onchain_reserve_sats, max_deploy_ratio_ppm, max_pending_opens,
               max_peer_capacity_sats, peer_cooldown_minutes, max_expansions_per_day,
-              max_daily_deploy_sats, updated_at, last_applied_at
+              max_daily_deploy_sats, max_daily_loss_sats, updated_at, last_applied_at
        FROM treasury_capital_policy
        WHERE id = 1`
     )
@@ -30,8 +32,8 @@ export function getCapitalPolicy(): TreasuryCapitalPolicy {
       `INSERT INTO treasury_capital_policy (
          id, min_onchain_reserve_sats, max_deploy_ratio_ppm, max_pending_opens,
          max_peer_capacity_sats, peer_cooldown_minutes, max_expansions_per_day,
-         max_daily_deploy_sats, updated_at, last_applied_at
-       ) VALUES (1, 300000, 600000, 1, 300000, 720, 3, 400000, ?, NULL)`
+         max_daily_deploy_sats, max_daily_loss_sats, updated_at, last_applied_at
+       ) VALUES (1, 300000, 600000, 1, 300000, 720, 3, 400000, 5000, ?, NULL)`
     ).run(now);
 
     return {
@@ -43,6 +45,7 @@ export function getCapitalPolicy(): TreasuryCapitalPolicy {
       peer_cooldown_minutes: 720,
       max_expansions_per_day: 3,
       max_daily_deploy_sats: 400000,
+      max_daily_loss_sats: 5000,
       updated_at: now,
       last_applied_at: null,
     };
@@ -59,6 +62,7 @@ export function setCapitalPolicy(policy: {
   peer_cooldown_minutes?: number;
   max_expansions_per_day?: number;
   max_daily_deploy_sats?: number;
+  max_daily_loss_sats?: number;
 }): TreasuryCapitalPolicy {
   const now = Date.now();
   const current = getCapitalPolicy();
@@ -72,6 +76,7 @@ export function setCapitalPolicy(policy: {
        peer_cooldown_minutes = ?,
        max_expansions_per_day = ?,
        max_daily_deploy_sats = ?,
+       max_daily_loss_sats = ?,
        updated_at = ?
      WHERE id = 1`
   ).run(
@@ -82,6 +87,7 @@ export function setCapitalPolicy(policy: {
     policy.peer_cooldown_minutes ?? current.peer_cooldown_minutes,
     policy.max_expansions_per_day ?? current.max_expansions_per_day,
     policy.max_daily_deploy_sats ?? current.max_daily_deploy_sats,
+    policy.max_daily_loss_sats ?? current.max_daily_loss_sats,
     now
   );
 

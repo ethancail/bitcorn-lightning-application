@@ -19,6 +19,7 @@ export const ENV = {
     rebalanceSafetyBufferSats: Number(process.env.REBALANCE_SAFETY_BUFFER_SATS ?? "1000"),
 
     rebalanceSchedulerEnabled: process.env.REBALANCE_SCHEDULER_ENABLED === "true",
+    rebalanceSchedulerDryRun: process.env.REBALANCE_SCHEDULER_DRY_RUN === "true",
     rebalanceSchedulerIntervalMs: Number(
         process.env.REBALANCE_SCHEDULER_INTERVAL_MS ?? "60000"
     ),
