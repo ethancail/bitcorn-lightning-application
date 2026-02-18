@@ -1,5 +1,6 @@
 import { db } from "../db";
 import { getLiquidityHealth } from "./treasury-liquidity-health";
+import { getPeerScores } from "./treasury-peer-scoring";
 
 // Expansion policy defaults
 const MIN_CHANNEL_SATS = 100_000;
@@ -15,6 +16,8 @@ export type ExpansionRecommendation = {
   suggested_capacity_sats: number;
   reason: string;
   priority_score: number;
+  /** Composite peer ROI score at time of recommendation (weighted_roi_ppm × uptime_ratio). */
+  peer_score: number;
 };
 
 export type ExpansionExecution = {
@@ -49,24 +52,32 @@ function computeSuggestedCapacity(
 function computePriorityScore(
   classification: string,
   velocity24h: number,
-  imbalanceRatio: number
+  imbalanceRatio: number,
+  peerScore: number
 ): number {
   let score = 0;
-  
-  // Classification weight
+
+  // Classification weight (liquidity urgency)
   if (classification === "critical") score += 100;
   else if (classification === "outbound_starved") score += 80;
   else if (classification === "weak") score += 40;
-  
+
   // Velocity weight (negative = draining)
   if (velocity24h < -100000) score += 30;
   else if (velocity24h < -50000) score += 20;
   else if (velocity24h < 0) score += 10;
-  
+
   // Imbalance weight (lower = worse)
   if (imbalanceRatio < 0.1) score += 20;
   else if (imbalanceRatio < 0.2) score += 10;
-  
+
+  // Peer ROI bonus: up to 50 points for profitable peers.
+  // Scaled linearly up to peer_score = 2000 (a well-performing routing peer).
+  // Unprofitable peers (negative score) get no bonus — liquidity urgency still applies.
+  if (peerScore > 0) {
+    score += Math.min(50, Math.floor(peerScore / 40));
+  }
+
   return score;
 }
 
@@ -75,9 +86,12 @@ function computePriorityScore(
  */
 export async function generateExpansionRecommendations(): Promise<ExpansionRecommendation[]> {
   const health = getLiquidityHealth();
-  
+  const peerScoreMap = new Map(
+    getPeerScores().map(p => [p.peer_pubkey, p.peer_score])
+  );
+
   const recommendations: ExpansionRecommendation[] = [];
-  
+
   for (const channelHealth of health) {
     // Filter: only outbound_starved or critical with negative velocity
     if (
@@ -89,15 +103,18 @@ export async function generateExpansionRecommendations(): Promise<ExpansionRecom
         channelHealth.capacity_sats,
         channelHealth.local_sats
       );
-      
+
+      const peerScore = peerScoreMap.get(channelHealth.peer_pubkey) ?? 0;
+
       const priorityScore = computePriorityScore(
         channelHealth.health_classification,
         channelHealth.velocity_24h_sats,
-        channelHealth.imbalance_ratio
+        channelHealth.imbalance_ratio,
+        peerScore
       );
-      
-      const reason = `${channelHealth.health_classification} channel with ${channelHealth.velocity_24h_sats} sats net outflow in 24h`;
-      
+
+      const reason = `${channelHealth.health_classification} channel with ${channelHealth.velocity_24h_sats} sats net outflow in 24h; peer_score=${peerScore}`;
+
       recommendations.push({
         peer_pubkey: channelHealth.peer_pubkey,
         channel_id: channelHealth.channel_id,
@@ -107,13 +124,14 @@ export async function generateExpansionRecommendations(): Promise<ExpansionRecom
         suggested_capacity_sats: suggestedCapacity,
         reason,
         priority_score: priorityScore,
+        peer_score: peerScore,
       });
     }
   }
-  
+
   // Sort by priority (highest first)
   recommendations.sort((a, b) => b.priority_score - a.priority_score);
-  
+
   return recommendations;
 }
 
