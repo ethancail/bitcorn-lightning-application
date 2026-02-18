@@ -2,6 +2,52 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Read First
+
+Before working on any feature or bug, read the relevant docs:
+
+| Doc | When to read |
+|-----|-------------|
+| `docs/ARCHITECTURE.md` | Understanding data flow, node roles, sync loop |
+| `docs/IMPLEMENTATION.md` | Finding exact file locations for any major flow |
+| `docs/API.md` | Full endpoint reference |
+| `docs/DATABASE.md` | Schema details and table relationships |
+
+These docs are the authoritative reference for how the system works. The sections below are a summary.
+
+---
+
+## Mission & Vision
+
+Bitcorn Lightning is building a **self-managing Lightning Treasury Engine** — a capital optimization engine for Lightning, not a general wallet or passive routing node.
+
+**The treasury node is:**
+- The capital allocator
+- The expansion authority
+- The rebalance scheduler
+- The profitability engine
+
+**Member nodes are liquidity consumers only.**
+
+### Design Principles
+
+- **Capital safety first** — guardrails are non-negotiable; automation must never bypass them
+- **Automation with control** — all automated behavior must be deterministic, observable, auditable, and policy-driven
+- **Economic truth over vanity metrics** — optimize for net sats earned, channel ROI, and yield on deployed capital; not channel count or gossip visibility
+- **Treasury-only intelligence** — all allocation decisions originate from the treasury
+
+### Development Phases
+
+| Phase | Status | Focus |
+|-------|--------|-------|
+| 1 — Infrastructure & Risk Controls | Completed | Expansion engine, capital guardrails, circular rebalance, scheduler, cost ledger, metrics API |
+| 2 — Intelligent Capital Allocation | In Progress | Channel-level ROI, liquidity scoring, peer performance scoring, expansion ranking |
+| 3 — Adaptive LSP Behavior | Future | Dynamic fees, yield-driven reallocation, peer reputation, autonomous pruning |
+
+**Success is:** positive net yield after rebalance costs, controlled capital deployment, measurable ROI on deployed sats.
+
+---
+
 ## Project Overview
 
 Bitcorn Lightning is a hub-and-spoke Lightning Service Provider (LSP) Umbrel Community Store app. The treasury node is the hub; member nodes are spokes. All Lightning is routed-native (no custodial shortcuts). This is a production Lightning application — ask before touching networking, auth, Lightning flows, or Umbrel manifests.
