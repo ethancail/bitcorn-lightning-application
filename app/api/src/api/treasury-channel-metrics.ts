@@ -11,15 +11,45 @@ export type ChannelMetric = {
   forwarded_fees_sats: number;
   /** Fee per 1,000 sats routed (fee / tokens * 1000). */
   fee_per_1k_sats: number;
-  /** Revenue as % of local liquidity (forwarded_fees / local_sats * 100). */
+  /** Gross revenue as % of local liquidity (forwarded_fees / local_sats * 100). */
   roi_percent: number;
   /** Revenue per 1 sat of local liquidity (forwarded_fees / local_sats). */
   liquidity_efficiency_score: number;
   /** Days until channel pays for itself at current daily forward fee rate; null if no recent fees. */
   payback_days: number | null;
+  /** Rebalance fees attributed to this channel (as the incoming/receiver side of each rebalance). */
+  rebalance_costs_sats: number;
+  /** Net fees after rebalance costs: forwarded_fees − rebalance_costs. */
+  net_fees_sats: number;
+  /** True net yield per million sats of local liquidity: net_fees / local_sats * 1_000_000. */
+  roi_ppm: number;
 };
 
 type ForwardAgg = { channel_id: string; volume: number; fees: number };
+
+/**
+ * Returns rebalance costs attributed per channel.
+ * Costs are attributed to the incoming (receiver) channel — the channel that
+ * received local liquidity and therefore benefited from the rebalance.
+ */
+function getRebalanceCostsByChannel(): Map<string, number> {
+  const rows = db
+    .prepare(
+      `SELECT
+         incoming_channel AS channel_id,
+         COALESCE(SUM(fee_paid_sats), 0) AS costs
+       FROM treasury_rebalance_executions
+       WHERE status = 'succeeded'
+       GROUP BY incoming_channel`
+    )
+    .all() as Array<{ channel_id: string; costs: number }>;
+
+  const map = new Map<string, number>();
+  for (const row of rows) {
+    map.set(row.channel_id, row.costs ?? 0);
+  }
+  return map;
+}
 
 function getIncomingAggregates(since?: number): ForwardAgg[] {
   if (since != null) {
@@ -131,6 +161,8 @@ export function getChannelMetrics(): ChannelMetric[] {
   const outgoing24 = getOutgoingAggregates(since24h);
   const forwardByChannel24h = mergeForwardAggregates(incoming24, outgoing24);
 
+  const rebalanceCostsByChannel = getRebalanceCostsByChannel();
+
   return channels.map(c => {
     const fwd = forwardByChannel.get(c.channel_id) ?? {
       volume: 0,
@@ -154,6 +186,11 @@ export function getChannelMetrics(): ChannelMetric[] {
     const payback_days: number | null =
       fees24h > 0 && local > 0 ? local / fees24h : null;
 
+    // Layer 4 — True net ROI: forwarded fees minus rebalance costs attributed to this channel
+    const rebalance_costs_sats = rebalanceCostsByChannel.get(c.channel_id) ?? 0;
+    const net_fees_sats = fees - rebalance_costs_sats;
+    const roi_ppm = local > 0 ? (net_fees_sats / local) * 1_000_000 : 0;
+
     return {
       channel_id: c.channel_id,
       peer_pubkey: c.peer_pubkey,
@@ -168,6 +205,9 @@ export function getChannelMetrics(): ChannelMetric[] {
       liquidity_efficiency_score: Math.round(liquidity_efficiency_score * 1e6) / 1e6,
       payback_days:
         payback_days != null ? Math.round(payback_days * 10) / 10 : null,
+      rebalance_costs_sats,
+      net_fees_sats,
+      roi_ppm: Math.round(roi_ppm),
     };
   });
 }
