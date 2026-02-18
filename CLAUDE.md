@@ -19,32 +19,36 @@ These docs are the authoritative reference for how the system works. The section
 
 ## Mission & Vision
 
-Bitcorn Lightning is building a **self-managing Lightning Treasury Engine** — a capital optimization engine for Lightning, not a general wallet or passive routing node.
+Bitcorn Lightning is a **Lightning Treasury Capital Allocation Engine** — not a wallet, not a UI product, not a generic routing node.
 
-**The treasury node is:**
-- The capital allocator
-- The expansion authority
-- The rebalance scheduler
-- The profitability engine
+**Core objective:** Maximize risk-adjusted net sats by deploying capital into channels, rebalancing intelligently, enforcing strict capital guardrails, and tracking true profitability:
 
-**Member nodes are liquidity consumers only.**
+```
+Net Sats = inbound + forwarding fees − outbound fees − rebalance costs
+```
 
-### Design Principles
+Economic truth > vanity metrics. Do not optimize for channel count, node size, or gossip presence.
 
-- **Capital safety first** — guardrails are non-negotiable; automation must never bypass them
-- **Automation with control** — all automated behavior must be deterministic, observable, auditable, and policy-driven
-- **Economic truth over vanity metrics** — optimize for net sats earned, channel ROI, and yield on deployed capital; not channel count or gossip visibility
-- **Treasury-only intelligence** — all allocation decisions originate from the treasury
+### Architectural Roles
 
-### Development Phases
+**Treasury node** — capital allocator, expansion authority, rebalance scheduler, profitability engine, guardrail enforcer. All intelligence lives here.
 
-| Phase | Status | Focus |
-|-------|--------|-------|
-| 1 — Infrastructure & Risk Controls | Completed | Expansion engine, capital guardrails, circular rebalance, scheduler, cost ledger, metrics API |
-| 2 — Intelligent Capital Allocation | In Progress | Channel-level ROI, liquidity scoring, peer performance scoring, expansion ranking |
-| 3 — Adaptive LSP Behavior | Future | Dynamic fees, yield-driven reallocation, peer reputation, autonomous pruning |
+**Member nodes** — liquidity consumers only. Not capital allocators. Not strategy engines.
 
-**Success is:** positive net yield after rebalance costs, controlled capital deployment, measurable ROI on deployed sats.
+### Non-Negotiables
+
+- Guardrails cannot be bypassed by automation
+- Capital reserve floors must always be respected
+- Deploy ratio limits must always be enforced
+- Rebalance costs must always be accounted for
+- Automation must be auditable and deterministic
+- Safety > growth
+
+### Current Capabilities
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API.
+
+### Future Direction
+Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
 
 ---
 
