@@ -64,6 +64,8 @@ declare module "ln-service" {
     remote_balance: number;
     is_active: boolean;
     is_private?: boolean;
+    transaction_id: string;
+    transaction_vout: number;
   }
 
   export function getChannels(options: {
@@ -121,6 +123,8 @@ declare module "ln-service" {
     lnd: any;
     base_fee_mtokens?: string;
     fee_rate?: number;
+    transaction_id?: string;
+    transaction_vout?: number;
   }): Promise<{ failures?: Array<{ failure: string }> }>;
 
   export function getChainBalance(options: {

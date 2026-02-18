@@ -13,6 +13,8 @@ import { getChannels, getPeers, getNodeInfo } from "./api/read";
 import { getTreasuryMetrics } from "./api/treasury";
 import { getChannelMetrics } from "./api/treasury-channel-metrics";
 import { getPeerScores } from "./api/treasury-peer-scoring";
+import { computeDynamicFeeAdjustments, logChannelFeeAdjustments } from "./api/treasury-dynamic-fees";
+import { applyDynamicFees } from "./lightning/fees";
 import {
   getTreasuryFeePolicy,
   setTreasuryFeePolicy,
@@ -242,6 +244,43 @@ const server = http.createServer(async (req, res) => {
     } catch (err: any) {
       const msg = String(err?.message ?? err);
       const code = msg.includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/treasury/fees/dynamic-preview") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const adjustments = computeDynamicFeeAdjustments();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(adjustments));
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const code = msg.includes("Treasury privileges required") ? 403 : 400;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/treasury/fees/apply-dynamic") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const adjustments = computeDynamicFeeAdjustments();
+      const results = await applyDynamicFees(adjustments);
+      logChannelFeeAdjustments(adjustments.filter(adj =>
+        results.find(r => r.channel_id === adj.channel_id && r.applied)
+      ));
+      const applied = results.filter(r => r.applied).length;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, applied, total: adjustments.length, results }));
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const code = msg.includes("Treasury privileges required") ? 403 : 400;
       res.writeHead(code, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: msg }));
     }
