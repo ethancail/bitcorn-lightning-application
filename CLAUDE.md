@@ -15,6 +15,22 @@ Before working on any feature or bug, read the relevant docs:
 
 These docs are the authoritative reference for how the system works. The sections below are a summary.
 
+### Files to share when getting external AI assistance
+
+When using Claude chat or another AI for brainstorming, the docs describe *what* exists — but the source code shows *how* it works. Paste the relevant source files for the area you're discussing:
+
+| Area | Files to share |
+|------|---------------|
+| Channel ROI / peer scoring (Phase 2) | `src/api/treasury-channel-metrics.ts`, `src/api/treasury-liquidity-health.ts`, `src/api/treasury.ts` |
+| Capital guardrails | `src/utils/capital-guardrails.ts`, migration `013_treasury_capital_policy.sql` |
+| Rebalance logic | `src/lightning/rebalance-circular.ts`, `src/lightning/rebalance-auto.ts`, `src/utils/rebalance-liquidity.ts`, migrations `014`, `015` |
+| Expansion engine | `src/api/treasury-expansion.ts`, `src/utils/capital-guardrails.ts` |
+| Metrics / net yield | `src/api/treasury.ts`, migrations `007`–`009`, `014` |
+| Schema / data model | All files in `src/db/migrations/` |
+| All routes | `src/index.ts` |
+
+Always include `CLAUDE.md` + `docs/IMPLEMENTATION.md` as base context.
+
 ---
 
 ## Mission & Vision
