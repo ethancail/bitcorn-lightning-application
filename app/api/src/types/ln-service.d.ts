@@ -119,6 +119,13 @@ declare module "ln-service" {
     token?: string;
   }): Promise<{ forwards: Forward[]; next?: string }>;
 
+  export function closeChannel(args: {
+    lnd: any;
+    transaction_id: string;
+    transaction_vout: number;
+    is_force_close?: boolean;
+  }): Promise<{ transaction_id?: string }>;
+
   export function updateRoutingFees(args: {
     lnd: any;
     base_fee_mtokens?: string;

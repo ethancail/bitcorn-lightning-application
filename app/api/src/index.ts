@@ -16,6 +16,12 @@ import { getPeerScores } from "./api/treasury-peer-scoring";
 import { computeDynamicFeeAdjustments, logChannelFeeAdjustments } from "./api/treasury-dynamic-fees";
 import { applyDynamicFees } from "./lightning/fees";
 import {
+  getRotationCandidates,
+  createRotationExecution,
+  updateRotationExecution,
+  getRotationExecutions,
+} from "./api/treasury-rotation";
+import {
   getTreasuryFeePolicy,
   setTreasuryFeePolicy,
   markTreasuryFeePolicyApplied,
@@ -36,7 +42,8 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndChainBalance, getLndPeers, openTreasuryChannel } from "./lightning/lnd";
+import { getLndChainBalance, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel } from "./lightning/lnd";
+import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
@@ -486,6 +493,154 @@ const server = http.createServer(async (req, res) => {
             updateExpansionExecution(execId, "failed", null, String(openErr?.message ?? openErr));
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: String(openErr?.message ?? openErr) }));
+          }
+        } catch (err: any) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: String(err?.message ?? err) }));
+        }
+      });
+    } catch (err: any) {
+      const msg = String(err?.message ?? err);
+      const code = msg.includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/treasury/rotation/candidates") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const candidates = getRotationCandidates();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(candidates));
+    } catch (err: any) {
+      const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(statusCode, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_rotation_candidates" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/treasury/rotation/executions")) {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const url = new URL(req.url ?? "", "http://localhost");
+      const limitParam = url.searchParams.get("limit");
+      const limit = Math.min(500, Math.max(1, parseInt(limitParam ?? "50", 10) || 50));
+      const executions = getRotationExecutions(limit);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(executions));
+    } catch (err: any) {
+      const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(statusCode, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_rotation_executions" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/treasury/rotation/execute") {
+    try {
+      const node = getNodeInfo();
+      if (!node) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Node info unavailable" }));
+        return;
+      }
+      assertTreasury(node.node_role);
+
+      if (!node.synced_to_chain) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Node not synced to chain" }));
+        return;
+      }
+
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const channelId = parsed.channel_id;
+          const isForceClose = parsed.is_force_close === true;
+
+          if (!channelId || typeof channelId !== "string") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Invalid channel_id" }));
+            return;
+          }
+
+          // Look up channel in DB
+          const channel = db
+            .prepare(`SELECT channel_id, peer_pubkey, capacity_sat, local_balance_sat, active FROM lnd_channels WHERE channel_id = ?`)
+            .get(channelId) as { channel_id: string; peer_pubkey: string; capacity_sat: number; local_balance_sat: number; active: number } | undefined;
+
+          if (!channel) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Channel not found" }));
+            return;
+          }
+
+          if (!channel.active) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Channel is not active — cannot cooperatively close" }));
+            return;
+          }
+
+          // Safety: never rotate the treasury channel
+          if (ENV.treasuryPubkey && channel.peer_pubkey === ENV.treasuryPubkey) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Cannot close the treasury channel" }));
+            return;
+          }
+
+          // Fetch live LND channels to resolve transaction_id and transaction_vout
+          const { channels: lndChannels } = await getLndChannels();
+          const lndChannel = lndChannels.find(c => c.id === channelId);
+
+          if (!lndChannel) {
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Channel not found in LND — may already be closed" }));
+            return;
+          }
+
+          // Get rotation candidate info for the audit record
+          const candidates = getRotationCandidates();
+          const candidate = candidates.find(c => c.channel_id === channelId);
+          const roiPpm = candidate?.roi_ppm ?? 0;
+          const reason = candidate?.reason ?? "manual rotation";
+
+          const execId = createRotationExecution(
+            channel.channel_id,
+            channel.peer_pubkey,
+            channel.capacity_sat,
+            channel.local_balance_sat,
+            roiPpm,
+            reason,
+            isForceClose
+          );
+
+          try {
+            const result = await closeTreasuryChannel(
+              lndChannel.transaction_id,
+              lndChannel.transaction_vout,
+              { isForce: isForceClose }
+            );
+
+            updateRotationExecution(execId, "submitted", result.transaction_id ?? null, null);
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              ok: true,
+              status: "submitted",
+              closing_txid: result.transaction_id ?? null,
+              execution_id: execId,
+            }));
+          } catch (closeErr: any) {
+            updateRotationExecution(execId, "failed", null, String(closeErr?.message ?? closeErr));
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: String(closeErr?.message ?? closeErr) }));
           }
         } catch (err: any) {
           res.writeHead(500, { "Content-Type": "application/json" });

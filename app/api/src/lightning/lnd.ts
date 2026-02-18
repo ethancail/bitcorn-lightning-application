@@ -10,6 +10,7 @@ import {
   getChainBalance,
   addPeer,
   openChannel,
+  closeChannel,
   getPendingChannels,
   createInvoice,
   getRouteToDestination,
@@ -206,6 +207,24 @@ export async function payLndViaRoutes(id: string, routes: LndRoute[]) {
 export async function getLndPendingChannels() {
   const { lnd } = getLndClient();
   return getPendingChannels({ lnd });
+}
+
+/**
+ * Cooperatively (or force) closes a channel by its funding outpoint.
+ * Returns the closing transaction ID once broadcast.
+ */
+export async function closeTreasuryChannel(
+  transactionId: string,
+  transactionVout: number,
+  options?: { isForce?: boolean }
+): Promise<{ transaction_id?: string }> {
+  const { lnd } = getLndClient();
+  return closeChannel({
+    lnd,
+    transaction_id: transactionId,
+    transaction_vout: transactionVout,
+    is_force_close: options?.isForce ?? false,
+  });
 }
 
 /**
