@@ -12,6 +12,7 @@ import { decodePaymentRequest } from "ln-service";
 import { getChannels, getPeers, getNodeInfo } from "./api/read";
 import { getTreasuryMetrics } from "./api/treasury";
 import { getChannelMetrics } from "./api/treasury-channel-metrics";
+import { getPeerScores } from "./api/treasury-peer-scoring";
 import {
   getTreasuryFeePolicy,
   setTreasuryFeePolicy,
@@ -168,6 +169,21 @@ const server = http.createServer(async (req, res) => {
       const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
       res.writeHead(statusCode, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_channel_metrics" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/treasury/peers/performance") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const data = getPeerScores();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(statusCode, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_peer_scores" }));
     }
     return;
   }
