@@ -1,14 +1,16 @@
 services:
   api:
     build: ./app/api
+    restart: unless-stopped
     volumes:
       - ${APP_DATA_DIR:-./data}:/data
       - ./scripts:/scripts:ro
       - ${APP_LIGHTNING_NODE_DATA_DIR:-/home/umbrel/umbrel/app-data/lightning/data/lnd}:/lnd:ro
     environment:
-      BITCOIN_NETWORK: mainnet
-      LND_GRPC_HOST: 10.21.21.9:10009
-      TREASURY_PUBKEY: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
+      BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
+      LND_GRPC_HOST: ${LND_GRPC_HOST:-10.21.21.9:10009}
+      # REQUIRED: set to the compressed public key of your treasury node
+      TREASURY_PUBKEY: ${TREASURY_PUBKEY:-}
     ports:
       - "3101:3101"
     networks:
@@ -16,6 +18,7 @@ services:
 
   web:
     build: ./app/web
+    restart: unless-stopped
     depends_on:
       - api
     ports:

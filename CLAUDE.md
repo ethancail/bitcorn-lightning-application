@@ -12,6 +12,7 @@ Before working on any feature or bug, read the relevant docs:
 | `docs/IMPLEMENTATION.md` | Finding exact file locations for any major flow |
 | `docs/API.md` | Full endpoint reference |
 | `docs/DATABASE.md` | Schema details and table relationships |
+| `docs/COINBASE_INTEGRATION.md` | Future Coinbase OAuth2 flow (not yet implemented) |
 
 These docs are the authoritative reference for how the system works. The sections below are a summary.
 
@@ -121,7 +122,7 @@ A sync loop runs every 15s (`src/lightning/sync.ts`), pulling LND state into SQL
 Do not reuse ports 3001 or 3009. Do not expose port 3109 via Umbrel app-proxy.
 
 ### Database
-SQLite at `data/bitcorn.db`. Migrations in `src/db/migrations/` (001–015). Migrations must be idempotent and run on startup. Never mutate schema manually.
+SQLite at `data/bitcorn.db`. Migrations in `src/db/migrations/` (001–018). Migrations must be idempotent and run on startup. Never mutate schema manually.
 
 Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `payments_outbound`, `payments_forwarded`, `treasury_fee_policy`, `treasury_capital_policy`, `treasury_expansion_recommendations`, `treasury_expansion_executions`, `treasury_rebalance_costs`, `treasury_rebalance_executions`.
 

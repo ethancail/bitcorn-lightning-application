@@ -1,26 +1,25 @@
-# Umbrel Community Store app configuration
-# TODO: Add app metadata and configuration
 manifestVersion: 1
 
 id: bitcorn-lightning
-name: Bitcorn Lightning
-version: "0.1.0"
+name: Bitcorn Lightning Treasury
+tagline: Self-optimizing Lightning capital allocation engine
+icon: https://raw.githubusercontent.com/YOUR_ORG/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-tagline: Lightning-native community treasury and liquidity manager
-description: >
-  Bitcorn Lightning is a Lightning Network community treasury and liquidity
-  management application built on a hub-and-spoke LSP model.
-
-developer: Bitcorn
-website: https://bitcorn.io
-repo: https://github.com/YOUR_ORG/bitcorn-lightning-application
-support: https://github.com/YOUR_ORG/bitcorn-lightning-application/issues
-
+version: "1.0.0"
 port: 3200
 
-services:
-  web:
-    port: 3200
-  api:
-    port: 3101
-    internal: false
+description: >
+  Bitcorn Lightning is a Lightning Treasury Capital Allocation Engine.
+  Allocates capital across channels intelligently, rebalances only when
+  profitable, tracks true net yield, and enforces strict capital guardrails.
+  Hub-and-spoke LSP model with per-channel ROI scoring, dynamic fee
+  adjustment, peer profitability ranking, and automated capital rotation.
+
+developer: Bitcorn
+website: https://github.com/YOUR_ORG/bitcorn-lightning-application
+dependencies:
+  - lightning
+repo: https://github.com/YOUR_ORG/bitcorn-lightning-application
+support: https://github.com/YOUR_ORG/bitcorn-lightning-application/issues
+gallery: []
+releaseNotes: Initial release.
