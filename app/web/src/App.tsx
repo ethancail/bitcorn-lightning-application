@@ -7,17 +7,19 @@ import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
 import MemberDashboard from "./pages/MemberDashboard";
-import MemberOnboarding from "./pages/MemberOnboarding";
 
 // ─── App status hook ──────────────────────────────────────────────────────
 //
 // Determines which shell to render based on node_role:
 //   "treasury_setup" → wizard (/setup)
 //   "treasury"       → treasury AppShell
-//   "member"         → member MemberShell
-//   "onboarding"     → fullscreen MemberOnboarding (no shell)
+//   "node"           → member MemberShell (all non-treasury nodes)
+//
+// All non-treasury nodes get the same MemberShell regardless of whether
+// they have a channel to the hub. MemberDashboard handles the no-channel
+// state contextually with a "Connect to Hub" CTA.
 
-type AppStatus = "loading" | "treasury_setup" | "treasury" | "member" | "onboarding";
+type AppStatus = "loading" | "treasury_setup" | "treasury" | "node";
 
 function useAppStatus(): AppStatus {
   const [status, setStatus] = useState<AppStatus>("loading");
@@ -48,16 +50,12 @@ function useAppStatus(): AppStatus {
               setStatus("treasury");
             }
           });
-        } else if (
-          node.node_role === "member" &&
-          node.membership_status === "active_member"
-        ) {
-          setStatus("member");
         } else {
-          setStatus("onboarding");
+          // All non-treasury nodes — member, external, unsynced — same shell
+          setStatus("node");
         }
       })
-      .catch(() => setStatus("onboarding"));
+      .catch(() => setStatus("node"));
   }, []);
 
   return status;
@@ -411,10 +409,8 @@ function Root() {
         <Route path="*" element={<Navigate to="/setup" replace />} />
       ) : status === "treasury" ? (
         <Route path="*" element={<AppShell />} />
-      ) : status === "member" ? (
-        <Route path="*" element={<MemberShell />} />
       ) : (
-        <Route path="*" element={<MemberOnboarding />} />
+        <Route path="*" element={<MemberShell />} />
       )}
     </Routes>
   );
