@@ -78,10 +78,11 @@ function Screen1({
       )}
 
       {error && (
-        <div className="alert critical">
-          <span className="alert-icon">✕</span>
+        <div className="alert warning">
+          <span className="alert-icon">⚠</span>
           <div className="alert-body">
-            <div className="alert-msg">{error}</div>
+            <div className="alert-type">API unreachable</div>
+            <div className="alert-msg">{error} You can still proceed — config will be validated on the final step.</div>
           </div>
         </div>
       )}
@@ -131,7 +132,7 @@ function Screen1({
         <span />
         <button
           className="btn btn-primary"
-          disabled={!node || !synced}
+          disabled={loading}
           onClick={onNext}
         >
           Next →
