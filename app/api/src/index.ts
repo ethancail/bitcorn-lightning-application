@@ -130,6 +130,27 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url === "/api/node/balances") {
+    try {
+      const { chain_balance } = await getLndChainBalance();
+      const row = db
+        .prepare("SELECT COALESCE(SUM(local_balance_sat), 0) as total FROM lnd_channels WHERE active = 1")
+        .get() as { total: number };
+      const onchain_sats = chain_balance ?? 0;
+      const lightning_sats = row?.total ?? 0;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        onchain_sats,
+        lightning_sats,
+        total_sats: onchain_sats + lightning_sats,
+      }));
+    } catch {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "failed_to_fetch_balances" }));
+    }
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/peers") {
     try {
       const data = getPeers();
