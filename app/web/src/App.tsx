@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
+import bitcornLogo from "./assets/bitcorn-logo.svg";
 import { api, type NodeInfo } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
@@ -50,8 +51,7 @@ function Topbar({ node }: { node: NodeInfo | null }) {
   return (
     <header className="topbar">
       <div className="topbar-logo">
-        <span style={{ fontSize: "1.125rem" }}>⚡</span>
-        <span className="topbar-wordmark">BITCORN LIGHTNING</span>
+        <img src={bitcornLogo} alt="Bitcorn" style={{ height: 22, width: "auto" }} />
         <span className="topbar-tag">TREASURY</span>
       </div>
       <div className="topbar-spacer" />
