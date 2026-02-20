@@ -202,7 +202,7 @@ export default function MemberDashboard() {
             <ConnectToHub />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              <div className="dashboard-grid">
+              <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
                 <div className="stat-card">
                   <div className="stat-label">Local Balance</div>
                   <div className="stat-value">{ch!.local_sats.toLocaleString()}</div>
@@ -265,7 +265,7 @@ export default function MemberDashboard() {
             </span>
           </div>
           <div className="panel-body">
-            <div className="dashboard-grid">
+            <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
               <div className="stat-card">
                 <div className="stat-label">Last 24h</div>
                 <div className="stat-value">{fees?.last_24h_sats.toLocaleString() ?? "—"}</div>
