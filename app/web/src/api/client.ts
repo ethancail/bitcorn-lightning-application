@@ -24,6 +24,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   getNode: () => apiFetch<NodeInfo>("/api/node"),
+  getNodeBalances: () => apiFetch<NodeBalances>("/api/node/balances"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   openMemberChannel: (body: { capacity_sats: number; partner_socket?: string }) =>
     apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/member/open-channel", {
@@ -218,6 +219,12 @@ export type RotationPreviewResult = {
   local_sats: number;
   roi_ppm: number;
   reason: string;
+};
+
+export type NodeBalances = {
+  onchain_sats: number;
+  lightning_sats: number;
+  total_sats: number;
 };
 
 export type MemberStats = {
