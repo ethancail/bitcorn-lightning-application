@@ -6,7 +6,48 @@ export async function checkHealth(): Promise<{ status: string }> {
   return res.json();
 }
 
-// ---- Shared helpers ----
+// ─── Core fetch helper ────────────────────────────────────────────────────
+
+async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw Object.assign(new Error(err.error ?? "Request failed"), { status: res.status });
+  }
+  return res.json();
+}
+
+// ─── Namespaced API object (used by App, Wizard, Dashboard) ──────────────
+
+export const api = {
+  getNode: () => apiFetch<NodeInfo>("/api/node"),
+  getTreasuryMetrics: () => apiFetch<TreasuryMetrics>("/api/treasury/metrics"),
+  getAlerts: () => apiFetch<TreasuryAlert[]>("/api/treasury/alerts"),
+  getChannelMetrics: () => apiFetch<ChannelMetric[]>("/api/treasury/channel-metrics"),
+  getPeerScores: () => apiFetch<PeerScore[]>("/api/treasury/peers/performance"),
+  getRotationCandidates: () => apiFetch<RotationCandidate[]>("/api/treasury/rotation/candidates"),
+  getDynamicFeePreview: () => apiFetch<ChannelFeeAdjustment[]>("/api/treasury/fees/dynamic-preview"),
+  applyDynamicFees: () => apiFetch<{ ok: boolean; applied: number }>("/api/treasury/fees/apply-dynamic", { method: "POST", body: "{}" }),
+  getCapitalPolicy: () => apiFetch<TreasuryCapitalPolicy>("/api/treasury/capital-policy"),
+  setCapitalPolicy: (body: Partial<TreasuryCapitalPolicy>) =>
+    apiFetch<TreasuryCapitalPolicy>("/api/treasury/capital-policy", { method: "POST", body: JSON.stringify(body) }),
+  getFeePolicy: () => apiFetch<TreasuryFeePolicy>("/api/treasury/fee-policy"),
+  setFeePolicy: (base_fee_msat: number, fee_rate_ppm: number) =>
+    apiFetch<TreasuryFeePolicy>("/api/treasury/fee-policy", {
+      method: "POST",
+      body: JSON.stringify({ base_fee_msat, fee_rate_ppm }),
+    }),
+  previewRotation: (channel_id: string) =>
+    apiFetch<RotationPreviewResult>("/api/treasury/rotation/execute", {
+      method: "POST",
+      body: JSON.stringify({ channel_id, dry_run: true }),
+    }),
+};
+
+// ─── Shared helpers ───────────────────────────────────────────────────────
 
 /** Shorten a pubkey to first 12 + last 6 chars for display. */
 export function truncPubkey(pk: string): string {
@@ -18,7 +59,7 @@ export function fmtSats(n: number): string {
   return n.toLocaleString() + " sats";
 }
 
-// ---- Node ----
+// ─── Shared types ─────────────────────────────────────────────────────────
 
 export type NodeInfo = {
   alias: string;
@@ -27,15 +68,8 @@ export type NodeInfo = {
   synced_to_chain: number;
   has_treasury_channel: number;
   membership_status: string;
+  node_role: string;
 };
-
-export async function fetchNode(): Promise<NodeInfo> {
-  const res = await fetch(`${API_BASE}/api/node`);
-  if (!res.ok) throw new Error(`/api/node failed: ${res.status}`);
-  return res.json();
-}
-
-// ---- Treasury Metrics ----
 
 export type TreasuryMetrics = {
   as_of: number;
@@ -80,82 +114,6 @@ export type TreasuryMetrics = {
   };
 };
 
-export async function fetchTreasuryMetrics(): Promise<TreasuryMetrics> {
-  const res = await fetch(`${API_BASE}/api/treasury/metrics`);
-  if (!res.ok) throw new Error(`${res.status}`);
-  return res.json();
-}
-
-// ---- Fee Policy ----
-
-export type TreasuryFeePolicy = {
-  id: 1;
-  base_fee_msat: number;
-  fee_rate_ppm: number;
-  updated_at: number;
-  last_applied_at: number | null;
-};
-
-export async function fetchFeePolicy(): Promise<TreasuryFeePolicy> {
-  const res = await fetch(`${API_BASE}/api/treasury/fee-policy`);
-  if (!res.ok) throw new Error(`fee-policy failed: ${res.status}`);
-  return res.json();
-}
-
-export async function setFeePolicy(fee_rate_ppm: number): Promise<TreasuryFeePolicy> {
-  const res = await fetch(`${API_BASE}/api/treasury/fee-policy`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fee_rate_ppm }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).error ?? `POST fee-policy failed: ${res.status}`);
-  }
-  return res.json();
-}
-
-// ---- Capital Policy ----
-
-export type TreasuryCapitalPolicy = {
-  id: 1;
-  min_onchain_reserve_sats: number;
-  max_deploy_ratio_ppm: number;
-  max_pending_opens: number;
-  max_peer_capacity_sats: number;
-  peer_cooldown_minutes: number;
-  max_expansions_per_day: number;
-  max_daily_deploy_sats: number;
-  max_daily_loss_sats: number;
-  updated_at: number;
-  last_applied_at: number | null;
-};
-
-export async function fetchCapitalPolicy(): Promise<TreasuryCapitalPolicy> {
-  const res = await fetch(`${API_BASE}/api/treasury/capital-policy`);
-  if (!res.ok) throw new Error(`capital-policy failed: ${res.status}`);
-  return res.json();
-}
-
-export async function setCapitalPolicy(policy: {
-  min_onchain_reserve_sats?: number;
-  max_deploy_ratio_ppm?: number;
-  max_daily_loss_sats?: number;
-}): Promise<TreasuryCapitalPolicy> {
-  const res = await fetch(`${API_BASE}/api/treasury/capital-policy`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(policy),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).error ?? `POST capital-policy failed: ${res.status}`);
-  }
-  return res.json();
-}
-
-// ---- Alerts ----
-
 export type AlertSeverity = "info" | "warning" | "critical";
 
 export type TreasuryAlert = {
@@ -165,14 +123,6 @@ export type TreasuryAlert = {
   data: Record<string, unknown>;
   at: number;
 };
-
-export async function fetchAlerts(): Promise<TreasuryAlert[]> {
-  const res = await fetch(`${API_BASE}/api/treasury/alerts`);
-  if (!res.ok) throw new Error(`alerts failed: ${res.status}`);
-  return res.json();
-}
-
-// ---- Channel Metrics ----
 
 export type ChannelMetric = {
   channel_id: string;
@@ -192,14 +142,6 @@ export type ChannelMetric = {
   roi_ppm: number;
 };
 
-export async function fetchChannelMetrics(): Promise<ChannelMetric[]> {
-  const res = await fetch(`${API_BASE}/api/treasury/channel-metrics`);
-  if (!res.ok) throw new Error(`channel-metrics failed: ${res.status}`);
-  return res.json();
-}
-
-// ---- Peer Scores ----
-
 export type PeerScore = {
   peer_pubkey: string;
   channel_count: number;
@@ -215,14 +157,6 @@ export type PeerScore = {
   peer_score: number;
 };
 
-export async function fetchPeerScores(): Promise<PeerScore[]> {
-  const res = await fetch(`${API_BASE}/api/treasury/peers/performance`);
-  if (!res.ok) throw new Error(`peers/performance failed: ${res.status}`);
-  return res.json();
-}
-
-// ---- Rotation Candidates ----
-
 export type RotationCandidate = {
   channel_id: string;
   peer_pubkey: string;
@@ -234,6 +168,49 @@ export type RotationCandidate = {
   forwarded_volume_sats: number;
   payback_days: number | null;
   rotation_score: number;
+  reason: string;
+};
+
+export type ChannelFeeAdjustment = {
+  channel_id: string;
+  peer_pubkey: string;
+  health_classification: string;
+  imbalance_ratio: number;
+  base_fee_rate_ppm: number;
+  target_fee_rate_ppm: number;
+  adjustment_factor: number;
+};
+
+export type TreasuryCapitalPolicy = {
+  id: 1;
+  min_onchain_reserve_sats: number;
+  max_deploy_ratio_ppm: number;
+  max_pending_opens: number;
+  max_peer_capacity_sats: number;
+  peer_cooldown_minutes: number;
+  max_expansions_per_day: number;
+  max_daily_deploy_sats: number;
+  max_daily_loss_sats: number;
+  updated_at: number;
+  last_applied_at: number | null;
+};
+
+export type TreasuryFeePolicy = {
+  id: 1;
+  base_fee_msat: number;
+  fee_rate_ppm: number;
+  updated_at: number;
+  last_applied_at: number | null;
+};
+
+export type RotationPreviewResult = {
+  ok: boolean;
+  dry_run: boolean;
+  channel_id: string;
+  peer_pubkey: string;
+  capacity_sats: number;
+  local_sats: number;
+  roi_ppm: number;
   reason: string;
 };
 
@@ -250,10 +227,56 @@ export type RotationDryRunResult = {
   };
 };
 
+// ─── Named fetch exports (legacy compat) ─────────────────────────────────
+
+export async function fetchNode(): Promise<NodeInfo> {
+  return apiFetch<NodeInfo>("/api/node");
+}
+
+export async function fetchTreasuryMetrics(): Promise<TreasuryMetrics> {
+  return apiFetch<TreasuryMetrics>("/api/treasury/metrics");
+}
+
+export async function fetchFeePolicy(): Promise<TreasuryFeePolicy> {
+  return apiFetch<TreasuryFeePolicy>("/api/treasury/fee-policy");
+}
+
+export async function setFeePolicy(fee_rate_ppm: number): Promise<TreasuryFeePolicy> {
+  return apiFetch<TreasuryFeePolicy>("/api/treasury/fee-policy", {
+    method: "POST",
+    body: JSON.stringify({ fee_rate_ppm }),
+  });
+}
+
+export async function fetchCapitalPolicy(): Promise<TreasuryCapitalPolicy> {
+  return apiFetch<TreasuryCapitalPolicy>("/api/treasury/capital-policy");
+}
+
+export async function setCapitalPolicy(policy: {
+  min_onchain_reserve_sats?: number;
+  max_deploy_ratio_ppm?: number;
+  max_daily_loss_sats?: number;
+}): Promise<TreasuryCapitalPolicy> {
+  return apiFetch<TreasuryCapitalPolicy>("/api/treasury/capital-policy", {
+    method: "POST",
+    body: JSON.stringify(policy),
+  });
+}
+
+export async function fetchAlerts(): Promise<TreasuryAlert[]> {
+  return apiFetch<TreasuryAlert[]>("/api/treasury/alerts");
+}
+
+export async function fetchChannelMetrics(): Promise<ChannelMetric[]> {
+  return apiFetch<ChannelMetric[]>("/api/treasury/channel-metrics");
+}
+
+export async function fetchPeerScores(): Promise<PeerScore[]> {
+  return apiFetch<PeerScore[]>("/api/treasury/peers/performance");
+}
+
 export async function fetchRotationCandidates(): Promise<RotationCandidate[]> {
-  const res = await fetch(`${API_BASE}/api/treasury/rotation/candidates`);
-  if (!res.ok) throw new Error(`rotation/candidates failed: ${res.status}`);
-  return res.json();
+  return apiFetch<RotationCandidate[]>("/api/treasury/rotation/candidates");
 }
 
 export async function executeRotation(params: {
@@ -261,45 +284,19 @@ export async function executeRotation(params: {
   dry_run?: boolean;
   is_force_close?: boolean;
 }): Promise<RotationDryRunResult | { ok: boolean; status: string; closing_txid: string | null }> {
-  const res = await fetch(`${API_BASE}/api/treasury/rotation/execute`, {
+  return apiFetch("/api/treasury/rotation/execute", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(params),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).error ?? `rotation/execute failed: ${res.status}`);
-  }
-  return res.json();
 }
 
-// ---- Dynamic Fees ----
-
-export type ChannelFeeAdjustment = {
-  channel_id: string;
-  peer_pubkey: string;
-  health_classification: string;
-  imbalance_ratio: number;
-  base_fee_rate_ppm: number;
-  target_fee_rate_ppm: number;
-  adjustment_factor: number;
-};
-
 export async function fetchDynamicFeePreview(): Promise<ChannelFeeAdjustment[]> {
-  const res = await fetch(`${API_BASE}/api/treasury/fees/dynamic-preview`);
-  if (!res.ok) throw new Error(`fees/dynamic-preview failed: ${res.status}`);
-  return res.json();
+  return apiFetch<ChannelFeeAdjustment[]>("/api/treasury/fees/dynamic-preview");
 }
 
 export async function applyDynamicFees(): Promise<unknown> {
-  const res = await fetch(`${API_BASE}/api/treasury/fees/apply-dynamic`, {
+  return apiFetch("/api/treasury/fees/apply-dynamic", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).error ?? `apply-dynamic failed: ${res.status}`);
-  }
-  return res.json();
 }
