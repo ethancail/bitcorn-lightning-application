@@ -2,62 +2,88 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
-import { api, type NodeInfo } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
+import MemberDashboard from "./pages/MemberDashboard";
+import MemberOnboarding from "./pages/MemberOnboarding";
 
-// ─── Setup guard ──────────────────────────────────────────────────────────
+// ─── App status hook ──────────────────────────────────────────────────────
 //
-// Redirect to /setup if:
-//   1. The treasury metrics endpoint returns 403 (TREASURY_PUBKEY not set), OR
-//   2. The fee policy has fee_rate_ppm = 0
-// Once setup is done (localStorage flag), skip the check.
+// Determines which shell to render based on node_role:
+//   "treasury_setup" → wizard (/setup)
+//   "treasury"       → treasury AppShell
+//   "member"         → member MemberShell
+//   "onboarding"     → fullscreen MemberOnboarding (no shell)
 
-function useSetupStatus() {
-  const [ready, setReady] = useState<"loading" | "needs_setup" | "ready">("loading");
+type AppStatus = "loading" | "treasury_setup" | "treasury" | "member" | "onboarding";
+
+function useAppStatus(): AppStatus {
+  const [status, setStatus] = useState<AppStatus>("loading");
 
   useEffect(() => {
-    if (localStorage.getItem("bitcorn_setup_done") === "1") {
-      setReady("ready");
-      return;
-    }
-
-    // Check if treasury metrics work and fee policy is configured
-    Promise.all([
-      api.getTreasuryMetrics().catch((e: { status?: number }) => ({ _error: e.status ?? 0 })),
-      api.getFeePolicy().catch(() => null),
-    ]).then(([metrics, feePolicy]) => {
-      const metricsError = "_error" in metrics;
-      const feeNotSet = feePolicy == null || (feePolicy as { fee_rate_ppm: number }).fee_rate_ppm === 0;
-
-      if (metricsError || feeNotSet) {
-        setReady("needs_setup");
-      } else {
-        localStorage.setItem("bitcorn_setup_done", "1");
-        setReady("ready");
-      }
-    });
+    api
+      .getNode()
+      .then((node) => {
+        if (node.node_role === "treasury") {
+          if (localStorage.getItem("bitcorn_setup_done") === "1") {
+            setStatus("treasury");
+            return;
+          }
+          Promise.all([
+            api
+              .getTreasuryMetrics()
+              .catch((e: { status?: number }) => ({ _error: e.status ?? 0 })),
+            api.getFeePolicy().catch(() => null),
+          ]).then(([metrics, feePolicy]) => {
+            const metricsError = "_error" in (metrics as object);
+            const feeNotSet =
+              feePolicy == null ||
+              (feePolicy as TreasuryFeePolicy).fee_rate_ppm === 0;
+            if (metricsError || feeNotSet) {
+              setStatus("treasury_setup");
+            } else {
+              localStorage.setItem("bitcorn_setup_done", "1");
+              setStatus("treasury");
+            }
+          });
+        } else if (
+          node.node_role === "member" &&
+          node.membership_status === "active_member"
+        ) {
+          setStatus("member");
+        } else {
+          setStatus("onboarding");
+        }
+      })
+      .catch(() => setStatus("onboarding"));
   }, []);
 
-  return ready;
+  return status;
 }
 
-// ─── App shell (after setup) ─────────────────────────────────────────────
+// ─── Shared Topbar ────────────────────────────────────────────────────────
 
-function Topbar({ node }: { node: NodeInfo | null }) {
+function Topbar({ node, role }: { node: NodeInfo | null; role: "TREASURY" | "MEMBER" }) {
   const syncColor = node?.synced_to_chain ? "var(--green)" : "var(--red)";
 
   return (
     <header className="topbar">
       <div className="topbar-logo">
         <img src={bitcornLogo} alt="Bitcorn" style={{ height: 22, width: "auto" }} />
-        <span className="topbar-tag">TREASURY</span>
+        <span className="topbar-tag">{role}</span>
       </div>
       <div className="topbar-spacer" />
       {node && (
         <div className="topbar-node">
-          <span className="pulse-dot" style={{ background: syncColor, boxShadow: node.synced_to_chain ? undefined : "none" }} />
+          <span
+            className="pulse-dot"
+            style={{
+              background: syncColor,
+              boxShadow: node.synced_to_chain ? undefined : "none",
+            }}
+          />
           <span>{node.alias || "—"}</span>
           <span style={{ color: "var(--text-3)" }}>
             ·{" "}
@@ -71,7 +97,9 @@ function Topbar({ node }: { node: NodeInfo | null }) {
   );
 }
 
-function Sidebar() {
+// ─── Treasury AppShell ─────────────────────────────────────────────────────
+
+function TreasurySidebar() {
   const navigate = useNavigate();
 
   const navItems = [
@@ -127,8 +155,8 @@ function AppShell() {
 
   return (
     <div className="app-shell">
-      <Topbar node={node} />
-      <Sidebar />
+      <Topbar node={node} role="TREASURY" />
+      <TreasurySidebar />
       <main className="main-content">
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
@@ -142,23 +170,81 @@ function AppShell() {
   );
 }
 
-// ─── Stub pages (channels, payments, liquidity) ───────────────────────────
+// ─── Member AppShell ───────────────────────────────────────────────────────
+
+function MemberSidebar() {
+  const navItems = [
+    { to: "/dashboard", icon: "▤", label: "My Dashboard" },
+    { to: "/channels", icon: "◈", label: "My Channels" },
+    { to: "/payments", icon: "↗", label: "My Payments" },
+  ];
+
+  return (
+    <nav className="sidebar">
+      <div className="sidebar-label">Navigate</div>
+      {navItems.map((item) => (
+        <div key={item.to} className="sidebar-section">
+          <NavLink
+            to={item.to}
+            className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
+          >
+            <span className="icon">{item.icon}</span>
+            {item.label}
+          </NavLink>
+        </div>
+      ))}
+    </nav>
+  );
+}
+
+function MemberShell() {
+  const [node, setNode] = useState<NodeInfo | null>(null);
+
+  useEffect(() => {
+    const load = () => api.getNode().then(setNode).catch(() => {});
+    load();
+    const id = setInterval(load, 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="app-shell">
+      <Topbar node={node} role="MEMBER" />
+      <MemberSidebar />
+      <main className="main-content">
+        <Routes>
+          <Route path="/dashboard" element={<MemberDashboard />} />
+          <Route path="/channels" element={<ChannelsPage />} />
+          <Route path="/payments" element={<MemberPaymentsPage />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}
+
+// ─── Page stubs ────────────────────────────────────────────────────────────
 
 function ChannelsPage() {
-  const [channels, setChannels] = useState<Array<{
-    channel_id: string;
-    peer_pubkey: string;
-    capacity_sat: number;
-    local_balance_sat: number;
-    remote_balance_sat: number;
-    active: number;
-  }>>([]);
+  const [channels, setChannels] = useState<
+    Array<{
+      channel_id: string;
+      peer_pubkey: string;
+      capacity_sat: number;
+      local_balance_sat: number;
+      remote_balance_sat: number;
+      active: number;
+    }>
+  >([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/channels`)
       .then((r) => r.json())
-      .then((d) => { setChannels(d); setLoading(false); })
+      .then((d) => {
+        setChannels(d);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, []);
 
@@ -166,16 +252,29 @@ function ChannelsPage() {
     <div>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Channels</h1>
-        <p className="text-dim" style={{ fontSize: "0.875rem" }}>Active LND channel list</p>
+        <p className="text-dim" style={{ fontSize: "0.875rem" }}>
+          Active LND channel list
+        </p>
       </div>
 
       <div className="panel fade-in">
         <div className="panel-header">
-          <span className="panel-title"><span className="icon">◈</span>All Channels</span>
+          <span className="panel-title">
+            <span className="icon">◈</span>All Channels
+          </span>
         </div>
         {loading ? (
-          <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {[100, 80, 90].map((w, i) => <div key={i} className="loading-shimmer" style={{ height: 16, width: `${w}%` }} />)}
+          <div
+            className="panel-body"
+            style={{ display: "flex", flexDirection: "column", gap: 10 }}
+          >
+            {[100, 80, 90].map((w, i) => (
+              <div
+                key={i}
+                className="loading-shimmer"
+                style={{ height: 16, width: `${w}%` }}
+              />
+            ))}
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -194,20 +293,26 @@ function ChannelsPage() {
                 {channels.map((c) => (
                   <tr key={c.channel_id}>
                     <td className="td-mono">{c.channel_id.slice(0, 16)}…</td>
-                    <td className="td-mono">{c.peer_pubkey.slice(0, 12)}…{c.peer_pubkey.slice(-6)}</td>
+                    <td className="td-mono">
+                      {c.peer_pubkey.slice(0, 12)}…{c.peer_pubkey.slice(-6)}
+                    </td>
                     <td className="td-num">{c.capacity_sat.toLocaleString()}</td>
                     <td className="td-num">{c.local_balance_sat.toLocaleString()}</td>
                     <td className="td-num">{c.remote_balance_sat.toLocaleString()}</td>
                     <td>
-                      {c.active
-                        ? <span className="badge badge-green">active</span>
-                        : <span className="badge badge-muted">inactive</span>}
+                      {c.active ? (
+                        <span className="badge badge-green">active</span>
+                      ) : (
+                        <span className="badge badge-muted">inactive</span>
+                      )}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {channels.length === 0 && <div className="empty-state">No channels found.</div>}
+            {channels.length === 0 && (
+              <div className="empty-state">No channels found.</div>
+            )}
           </div>
         )}
       </div>
@@ -220,7 +325,9 @@ function PaymentsPage() {
     <div>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Payments</h1>
-        <p className="text-dim" style={{ fontSize: "0.875rem" }}>Payment history coming soon</p>
+        <p className="text-dim" style={{ fontSize: "0.875rem" }}>
+          Payment history coming soon
+        </p>
       </div>
       <div className="panel">
         <div className="empty-state" style={{ padding: "60px 20px" }}>
@@ -236,7 +343,9 @@ function LiquidityPage() {
     <div>
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Liquidity</h1>
-        <p className="text-dim" style={{ fontSize: "0.875rem" }}>Liquidity management coming soon</p>
+        <p className="text-dim" style={{ fontSize: "0.875rem" }}>
+          Liquidity management coming soon
+        </p>
       </div>
       <div className="panel">
         <div className="empty-state" style={{ padding: "60px 20px" }}>
@@ -247,12 +356,30 @@ function LiquidityPage() {
   );
 }
 
+function MemberPaymentsPage() {
+  return (
+    <div>
+      <div style={{ marginBottom: 24 }}>
+        <h1 style={{ marginBottom: 4 }}>My Payments</h1>
+        <p className="text-dim" style={{ fontSize: "0.875rem" }}>
+          Payment history coming soon
+        </p>
+      </div>
+      <div className="panel">
+        <div className="empty-state" style={{ padding: "60px 20px" }}>
+          Payment history view — coming soon.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Root router ──────────────────────────────────────────────────────────
 
 function Root() {
-  const setupStatus = useSetupStatus();
+  const status = useAppStatus();
 
-  if (setupStatus === "loading") {
+  if (status === "loading") {
     return (
       <div
         style={{
@@ -280,10 +407,14 @@ function Root() {
   return (
     <Routes>
       <Route path="/setup" element={<Wizard />} />
-      {setupStatus === "needs_setup" ? (
+      {status === "treasury_setup" ? (
         <Route path="*" element={<Navigate to="/setup" replace />} />
-      ) : (
+      ) : status === "treasury" ? (
         <Route path="*" element={<AppShell />} />
+      ) : status === "member" ? (
+        <Route path="*" element={<MemberShell />} />
+      ) : (
+        <Route path="*" element={<MemberOnboarding />} />
       )}
     </Routes>
   );

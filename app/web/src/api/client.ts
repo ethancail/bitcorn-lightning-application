@@ -24,6 +24,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
 export const api = {
   getNode: () => apiFetch<NodeInfo>("/api/node"),
+  getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   getTreasuryMetrics: () => apiFetch<TreasuryMetrics>("/api/treasury/metrics"),
   getAlerts: () => apiFetch<TreasuryAlert[]>("/api/treasury/alerts"),
   getChannelMetrics: () => apiFetch<ChannelMetric[]>("/api/treasury/channel-metrics"),
@@ -212,6 +213,24 @@ export type RotationPreviewResult = {
   local_sats: number;
   roi_ppm: number;
   reason: string;
+};
+
+export type MemberStats = {
+  hub_pubkey: string | null;
+  membership_status: string;
+  node_role: string;
+  treasury_channel: null | {
+    channel_id: string;
+    local_sats: number;
+    remote_sats: number;
+    capacity_sats: number;
+    is_active: boolean;
+  };
+  forwarded_fees: {
+    total_sats: number;
+    last_24h_sats: number;
+    last_30d_sats: number;
+  };
 };
 
 export type RotationDryRunResult = {

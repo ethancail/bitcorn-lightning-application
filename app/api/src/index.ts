@@ -888,6 +888,74 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url === "/api/member/stats") {
+    try {
+      const node = getNodeInfo();
+      const hubPubkey = ENV.treasuryPubkey;
+
+      const treasuryChannel = hubPubkey
+        ? (db
+            .prepare(
+              "SELECT channel_id, local_balance_sat, remote_balance_sat, capacity_sat, active FROM lnd_channels WHERE peer_pubkey = ? LIMIT 1"
+            )
+            .get(hubPubkey) as
+            | {
+                channel_id: string;
+                local_balance_sat: number;
+                remote_balance_sat: number;
+                capacity_sat: number;
+                active: number;
+              }
+            | undefined)
+        : undefined;
+
+      const now = Math.floor(Date.now() / 1000);
+      const cutoff24h = now - 86400;
+      const cutoff30d = now - 86400 * 30;
+
+      const feesTotal = db
+        .prepare("SELECT COALESCE(SUM(fee), 0) as total FROM payments_forwarded")
+        .get() as { total: number };
+      const fees24h = db
+        .prepare(
+          "SELECT COALESCE(SUM(fee), 0) as total FROM payments_forwarded WHERE created_at >= ?"
+        )
+        .get(cutoff24h) as { total: number };
+      const fees30d = db
+        .prepare(
+          "SELECT COALESCE(SUM(fee), 0) as total FROM payments_forwarded WHERE created_at >= ?"
+        )
+        .get(cutoff30d) as { total: number };
+
+      const result = {
+        hub_pubkey: hubPubkey || null,
+        membership_status: node?.membership_status ?? "unsynced",
+        node_role: node?.node_role ?? "external",
+        treasury_channel: treasuryChannel
+          ? {
+              channel_id: treasuryChannel.channel_id,
+              local_sats: treasuryChannel.local_balance_sat,
+              remote_sats: treasuryChannel.remote_balance_sat,
+              capacity_sats: treasuryChannel.capacity_sat,
+              is_active: Boolean(treasuryChannel.active),
+            }
+          : null,
+        forwarded_fees: {
+          total_sats: feesTotal.total,
+          last_24h_sats: fees24h.total,
+          last_30d_sats: fees30d.total,
+        },
+      };
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_member_stats" }));
+    }
+    return;
+  }
+
   // ✅ 404 MUST BE LAST
   res.writeHead(404);
   res.end();
