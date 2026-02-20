@@ -37,3 +37,7 @@ data/*.sqlite
 secrets/
 *.key
 *.pem
+
+# Local dev overrides (contain local pubkeys and paths)
+docker-compose.override.yml
+dev/lnd/

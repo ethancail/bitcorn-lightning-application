@@ -3,7 +3,7 @@ manifestVersion: 1
 id: bitcorn-lightning
 name: Bitcorn Lightning Treasury
 tagline: Self-optimizing Lightning capital allocation engine
-icon: https://raw.githubusercontent.com/YOUR_ORG/bitcorn-lightning-application/main/app/web/public/icon.png
+icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
 version: "1.0.0"
 port: 3200
@@ -16,10 +16,10 @@ description: >
   adjustment, peer profitability ranking, and automated capital rotation.
 
 developer: Bitcorn
-website: https://github.com/YOUR_ORG/bitcorn-lightning-application
+website: https://github.com/ethancail/bitcorn-lightning-application
 dependencies:
   - lightning
-repo: https://github.com/YOUR_ORG/bitcorn-lightning-application
-support: https://github.com/YOUR_ORG/bitcorn-lightning-application/issues
+repo: https://github.com/ethancail/bitcorn-lightning-application
+support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: Initial release.
