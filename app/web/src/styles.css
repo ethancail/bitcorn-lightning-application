@@ -64,7 +64,7 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
   display: grid;
   grid-template-columns: 220px 1fr;
   grid-template-rows: 56px 1fr;
-  min-height: 100vh;
+  height: 100vh;
 }
 
 .topbar {
