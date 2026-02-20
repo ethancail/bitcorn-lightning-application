@@ -62,7 +62,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding.
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -149,7 +149,7 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 
 ## Role-Based Access Control
 
-- **Public**: `/health`, `/api/node`, `/api/peers`, `/api/channels`, `/api/member/stats`, `POST /api/member/open-channel`
+- **Public**: `/health`, `/api/node`, `/api/node/balances`, `/api/peers`, `/api/channels`, `/api/member/stats`, `POST /api/member/open-channel`
 - **Member** (active treasury channel): `POST /api/pay`
 - **Treasury only**: All `/api/treasury/*` endpoints
 
@@ -179,10 +179,11 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 |------|---------|
 | `app/web/src/App.tsx` | Root router, both shells (AppShell + MemberShell), all page stubs |
 | `app/web/src/api/client.ts` | `apiFetch<T>` helper, namespaced `api.*` object, all types |
-| `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (monolithic: Panel, AlertsBar, NetYield, ChannelROI, PeerScores, Rotation, DynamicFees) |
+| `app/web/src/components/NodeBalancePanel.tsx` | Shared balance panel (Total/Bitcoin/Lightning) — rendered at top of both dashboards |
+| `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (monolithic: NodeBalancePanel, AlertsBar, NetYield, ChannelROI, PeerScores, Rotation, DynamicFees) |
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
 | `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form (no channel) or hub channel stats + forwarded fees |
-| `app/web/src/styles.css` | Full design system (727 lines) |
+| `app/web/src/styles.css` | Full design system |
 | `app/web/src/config/api.ts` | `API_BASE` constant |
 
 **`ConnectToHub` component** (inside `MemberDashboard.tsx`): shown when `treasury_channel` is null. Shows capacity presets (500k / 1M / 2M sats), number input (min 100k), and either a green "Already connected via gossip" banner (when `is_peered_to_hub: true`) or an optional hub address field. Calls `api.openMemberChannel()` → transitions to a success state showing the funding txid.
@@ -190,6 +191,10 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 **3-column stat grids:** `dashboard-grid` CSS class defaults to `1fr 1fr`. Override inline with `style={{ gridTemplateColumns: "1fr 1fr 1fr" }}` when 3 cards are needed (hub channel stats, forwarded fees).
 
 **API client pattern:** All calls go through `api.*` methods defined in `client.ts`. Add new endpoints there as `api.methodName: () => apiFetch<ReturnType>("/api/path")`. Types live in the same file.
+
+**`NodeBalancePanel` component** (`app/web/src/components/NodeBalancePanel.tsx`): shared component rendered at the top of both `Dashboard.tsx` (treasury) and `MemberDashboard.tsx`. Calls `api.getNodeBalances()` on mount, polls every 15s. Shows three stat cards: Total Node Balance, Bitcoin Balance, Lightning Wallet — each displaying sats and BTC (8 decimal places). Uses loading shimmer while data is pending; silently swallows fetch errors (cards stay in shimmer state).
+
+**Scroll layout constraint:** `.app-shell` in `styles.css` uses `height: 100vh` (not `min-height`). This is intentional — it constrains the CSS grid to the viewport so that `overflow-y: auto` on `.main-content` triggers correctly. Changing it to `min-height` will break scrolling (the grid grows to fit content, body scrolls instead, and the sidebar disappears). `.main-content` uses `padding-bottom: 64px` to ensure the last panel has breathing room.
 
 ## Capital Guardrails
 
