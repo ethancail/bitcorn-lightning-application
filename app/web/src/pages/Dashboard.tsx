@@ -10,6 +10,7 @@ import {
   type TreasuryFeePolicy,
 } from "../api/client";
 
+import NodeBalancePanel from "../components/NodeBalancePanel";
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
@@ -688,6 +689,7 @@ export default function Dashboard() {
         </p>
       </div>
 
+      <NodeBalancePanel />
       <AlertsBar />
 
       <div className="dashboard-grid">
