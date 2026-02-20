@@ -62,7 +62,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member onboarding/dashboard).
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding.
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -149,13 +149,15 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 
 ## Role-Based Access Control
 
-- **Public**: `/health`, `/api/node`, `/api/peers`, `/api/channels`, `/api/member/stats`
+- **Public**: `/health`, `/api/node`, `/api/peers`, `/api/channels`, `/api/member/stats`, `POST /api/member/open-channel`
 - **Member** (active treasury channel): `POST /api/pay`
 - **Treasury only**: All `/api/treasury/*` endpoints
 
 Role is derived from identity + treasury channel state — not bearer tokens.
 
-`/api/member/stats` returns `hub_pubkey`, `treasury_channel` (channel to hub with balances), and `forwarded_fees` (24h / 30d / all-time) for any node.
+`/api/member/stats` returns: `hub_pubkey`, `membership_status`, `node_role`, `is_peered_to_hub` (bool — live LND peer check, best-effort), `treasury_channel` (balances/capacity/active or null), `forwarded_fees` (24h / 30d / all-time).
+
+`POST /api/member/open-channel` accepts `{ capacity_sats, partner_socket? }`. Validates capacity ≥ 100,000 sats, optionally calls `connectToPeer(hubPubkey, socket)` if socket provided, then calls `openTreasuryChannel`. Returns `{ ok, funding_txid }`.
 
 ## Frontend Architecture
 
@@ -164,12 +166,13 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 **Design system** lives entirely in `app/web/src/styles.css`. Key CSS custom properties: `--bg`, `--amber`, `--green`, `--red`, `--mono`, `--sans`. Key classes: `.panel`, `.panel-header`, `.panel-title`, `.panel-body`, `.stat-card`, `.stat-value`, `.stat-label`, `.stat-sub`, `.dashboard-grid`, `.data-table`, `.td-mono`, `.td-num`, `.badge-green/.red/.amber/.blue/.muted`, `.btn`, `.btn-primary/.outline/.ghost`, `.form-input`, `.loading-shimmer`, `.empty-state`, `.alert.critical/.warning/.info/.healthy`, `.wizard-*`, `.fade-in`.
 
 **Dual-role routing** (`App.tsx`): `useAppStatus()` fetches `/api/node` → branches on `node_role`:
-- `"treasury"` + localStorage flag → `AppShell` (treasury dashboard)
-- `"treasury"` without flag → wizard (`/setup`)
-- `"member"` + `active_member` → `MemberShell` (member dashboard)
-- any other state → `MemberOnboarding` fullscreen (no shell)
+- `"treasury"` + `localStorage.bitcorn_setup_done === "1"` → `AppShell` (treasury dashboard)
+- `"treasury"` without localStorage flag → wizard (`/setup`)
+- any other role (`"member"`, `"external"`, `"unsynced"`, errors) → `MemberShell`
 
-`TREASURY_PUBKEY` is **hard-coded** in `docker-compose.yml` (not an env var to configure). This means member nodes get correct role detection automatically.
+All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the no-channel state contextually with a `ConnectToHub` form — no routing-level gate based on membership status.
+
+`TREASURY_PUBKEY` is **hard-coded** in `docker-compose.yml` as `02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca`. This means all member installs get correct role detection automatically without configuration.
 
 **Key frontend files:**
 | File | Purpose |
@@ -178,10 +181,13 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 | `app/web/src/api/client.ts` | `apiFetch<T>` helper, namespaced `api.*` object, all types |
 | `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (monolithic: Panel, AlertsBar, NetYield, ChannelROI, PeerScores, Rotation, DynamicFees) |
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
-| `app/web/src/pages/MemberDashboard.tsx` | Member view: hub channel balances + forwarded fees |
-| `app/web/src/pages/MemberOnboarding.tsx` | Fullscreen join guide: hub pubkey copy + steps |
+| `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form (no channel) or hub channel stats + forwarded fees |
 | `app/web/src/styles.css` | Full design system (727 lines) |
 | `app/web/src/config/api.ts` | `API_BASE` constant |
+
+**`ConnectToHub` component** (inside `MemberDashboard.tsx`): shown when `treasury_channel` is null. Shows capacity presets (500k / 1M / 2M sats), number input (min 100k), and either a green "Already connected via gossip" banner (when `is_peered_to_hub: true`) or an optional hub address field. Calls `api.openMemberChannel()` → transitions to a success state showing the funding txid.
+
+**3-column stat grids:** `dashboard-grid` CSS class defaults to `1fr 1fr`. Override inline with `style={{ gridTemplateColumns: "1fr 1fr 1fr" }}` when 3 cards are needed (hub channel stats, forwarded fees).
 
 **API client pattern:** All calls go through `api.*` methods defined in `client.ts`. Add new endpoints there as `api.methodName: () => apiFetch<ReturnType>("/api/path")`. Types live in the same file.
 

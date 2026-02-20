@@ -44,7 +44,7 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndChainBalance, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel } from "./lightning/lnd";
+import { getLndChainBalance, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer } from "./lightning/lnd";
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
@@ -893,6 +893,16 @@ const server = http.createServer(async (req, res) => {
       const node = getNodeInfo();
       const hubPubkey = ENV.treasuryPubkey;
 
+      let isPeeredToHub = false;
+      if (hubPubkey) {
+        try {
+          const { peers } = await getLndPeers();
+          isPeeredToHub = peers.some((p: any) => p.public_key === hubPubkey);
+        } catch {
+          // non-fatal — gossip check best-effort
+        }
+      }
+
       const treasuryChannel = hubPubkey
         ? (db
             .prepare(
@@ -931,6 +941,7 @@ const server = http.createServer(async (req, res) => {
         hub_pubkey: hubPubkey || null,
         membership_status: node?.membership_status ?? "unsynced",
         node_role: node?.node_role ?? "external",
+        is_peered_to_hub: isPeeredToHub,
         treasury_channel: treasuryChannel
           ? {
               channel_id: treasuryChannel.channel_id,
@@ -953,6 +964,51 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_member_stats" }));
     }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/member/open-channel") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const capacitySats = Number(parsed.capacity_sats);
+        const partnerSocket: string | undefined =
+          parsed.partner_socket && typeof parsed.partner_socket === "string"
+            ? parsed.partner_socket.trim() || undefined
+            : undefined;
+
+        if (!Number.isFinite(capacitySats) || capacitySats < 100_000) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "capacity_sats must be at least 100,000" }));
+          return;
+        }
+
+        const hubPubkey = ENV.treasuryPubkey;
+        if (!hubPubkey) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Hub pubkey not configured on this node" }));
+          return;
+        }
+
+        // Connect to peer first if socket address provided
+        if (partnerSocket) {
+          await connectToPeer(hubPubkey, partnerSocket);
+        }
+
+        const result = await openTreasuryChannel(hubPubkey, capacitySats, {
+          isPrivate: false,
+          partnerSocket,
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, funding_txid: result.transaction_id ?? null }));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err?.message ?? "failed_to_open_channel" }));
+      }
+    });
     return;
   }
 

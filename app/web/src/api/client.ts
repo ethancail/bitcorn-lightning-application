@@ -25,6 +25,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   getNode: () => apiFetch<NodeInfo>("/api/node"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
+  openMemberChannel: (body: { capacity_sats: number; partner_socket?: string }) =>
+    apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/member/open-channel", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   getTreasuryMetrics: () => apiFetch<TreasuryMetrics>("/api/treasury/metrics"),
   getAlerts: () => apiFetch<TreasuryAlert[]>("/api/treasury/alerts"),
   getChannelMetrics: () => apiFetch<ChannelMetric[]>("/api/treasury/channel-metrics"),
@@ -219,6 +224,7 @@ export type MemberStats = {
   hub_pubkey: string | null;
   membership_status: string;
   node_role: string;
+  is_peered_to_hub: boolean;
   treasury_channel: null | {
     channel_id: string;
     local_sats: number;
