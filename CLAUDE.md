@@ -62,7 +62,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API.
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member onboarding/dashboard).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -90,6 +90,11 @@ npm start       # serve -s dist -l 3200
 **Full stack (Docker):**
 ```bash
 docker compose up -d --build
+```
+
+**Web dev server:**
+```bash
+cd app/web && npm run dev   # Vite dev server, hot reload
 ```
 
 No automated test suite exists yet. Migrations run automatically on API startup.
@@ -144,11 +149,41 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 
 ## Role-Based Access Control
 
-- **Public**: `/health`, `/api/node`, `/api/peers`, `/api/channels`
+- **Public**: `/health`, `/api/node`, `/api/peers`, `/api/channels`, `/api/member/stats`
 - **Member** (active treasury channel): `POST /api/pay`
 - **Treasury only**: All `/api/treasury/*` endpoints
 
 Role is derived from identity + treasury channel state — not bearer tokens.
+
+`/api/member/stats` returns `hub_pubkey`, `treasury_channel` (channel to hub with balances), and `forwarded_fees` (24h / 30d / all-time) for any node.
+
+## Frontend Architecture
+
+**Stack:** React 18 + TypeScript + Vite, react-router-dom v6, amber-on-black design system.
+
+**Design system** lives entirely in `app/web/src/styles.css`. Key CSS custom properties: `--bg`, `--amber`, `--green`, `--red`, `--mono`, `--sans`. Key classes: `.panel`, `.panel-header`, `.panel-title`, `.panel-body`, `.stat-card`, `.stat-value`, `.stat-label`, `.stat-sub`, `.dashboard-grid`, `.data-table`, `.td-mono`, `.td-num`, `.badge-green/.red/.amber/.blue/.muted`, `.btn`, `.btn-primary/.outline/.ghost`, `.form-input`, `.loading-shimmer`, `.empty-state`, `.alert.critical/.warning/.info/.healthy`, `.wizard-*`, `.fade-in`.
+
+**Dual-role routing** (`App.tsx`): `useAppStatus()` fetches `/api/node` → branches on `node_role`:
+- `"treasury"` + localStorage flag → `AppShell` (treasury dashboard)
+- `"treasury"` without flag → wizard (`/setup`)
+- `"member"` + `active_member` → `MemberShell` (member dashboard)
+- any other state → `MemberOnboarding` fullscreen (no shell)
+
+`TREASURY_PUBKEY` is **hard-coded** in `docker-compose.yml` (not an env var to configure). This means member nodes get correct role detection automatically.
+
+**Key frontend files:**
+| File | Purpose |
+|------|---------|
+| `app/web/src/App.tsx` | Root router, both shells (AppShell + MemberShell), all page stubs |
+| `app/web/src/api/client.ts` | `apiFetch<T>` helper, namespaced `api.*` object, all types |
+| `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (monolithic: Panel, AlertsBar, NetYield, ChannelROI, PeerScores, Rotation, DynamicFees) |
+| `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
+| `app/web/src/pages/MemberDashboard.tsx` | Member view: hub channel balances + forwarded fees |
+| `app/web/src/pages/MemberOnboarding.tsx` | Fullscreen join guide: hub pubkey copy + steps |
+| `app/web/src/styles.css` | Full design system (727 lines) |
+| `app/web/src/config/api.ts` | `API_BASE` constant |
+
+**API client pattern:** All calls go through `api.*` methods defined in `client.ts`. Add new endpoints there as `api.methodName: () => apiFetch<ReturnType>("/api/path")`. Types live in the same file.
 
 ## Capital Guardrails
 
@@ -168,7 +203,7 @@ Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbou
 ## Environment Variables
 
 See `src/config/env.ts` for all variables. Key ones:
-- `TREASURY_PUBKEY` — required; identifies the treasury node
+- `TREASURY_PUBKEY` — hard-coded in `docker-compose.yml` as `02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca`; identifies the treasury node and enables role detection for all member installs
 - `LND_GRPC_HOST` — default `lightning_lnd_1:10009`
 - `BITCOIN_NETWORK` — default `mainnet`
 - `REBALANCE_SCHEDULER_ENABLED` — default `false`
