@@ -44,7 +44,7 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndChainBalance, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer } from "./lightning/lnd";
+import { getLndChainBalance, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress } from "./lightning/lnd";
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
@@ -147,6 +147,37 @@ const server = http.createServer(async (req, res) => {
     } catch {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "failed_to_fetch_balances" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/coinbase/onramp-url") {
+    try {
+      if (!ENV.coinbaseAppId) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "coinbase_not_configured" }));
+        return;
+      }
+      const { address } = await createLndChainAddress();
+      const node = getNodeInfo();
+      const destinationWallets = JSON.stringify([
+        { address, assets: ["BTC"], network: "bitcoin" },
+      ]);
+      const url =
+        `https://pay.coinbase.com/buy/select-asset` +
+        `?appId=${ENV.coinbaseAppId}` +
+        `&destinationWallets=${encodeURIComponent(destinationWallets)}` +
+        `&defaultAsset=BTC` +
+        `&defaultNetwork=bitcoin` +
+        `&fiatCurrency=USD`;
+      db.prepare(
+        "INSERT INTO coinbase_onramp_sessions (node_pubkey, wallet_address, onramp_url, created_at) VALUES (?, ?, ?, ?)"
+      ).run(node?.pubkey ?? "", address, url, Date.now());
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ url, wallet_address: address }));
+    } catch {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "failed_to_generate_onramp_url" }));
     }
     return;
   }
