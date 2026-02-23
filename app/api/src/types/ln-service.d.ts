@@ -224,7 +224,7 @@ declare module "ln-service" {
 
   export function createChainAddress(options: {
     lnd: any;
-    format: 'p2wpkh' | 'p2sh' | 'p2pkh';
+    format: 'p2wpkh' | 'np2wpkh' | 'p2tr';
     is_unused?: boolean;
   }): Promise<{ address: string }>;
 }
