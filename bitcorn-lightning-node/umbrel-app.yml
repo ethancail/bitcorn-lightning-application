@@ -1,0 +1,29 @@
+manifestVersion: 1
+
+id: bitcorn-lightning-node
+name: BitCorn Lightning
+tagline: Self-optimizing Lightning capital allocation engine
+icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
+category: Finance
+version: "1.0.0"
+port: 3200
+
+description: >
+  Bitcorn Lightning is a Lightning Treasury Capital Allocation Engine for
+  hub-and-spoke Lightning Service Providers. It allocates capital across
+  channels intelligently, rebalances only when profitable, tracks true net
+  yield (forwarding fees minus rebalance costs), and enforces strict capital
+  guardrails. Features per-channel ROI scoring, dynamic fee adjustment, peer
+  profitability ranking, and automated capital rotation. Includes a dual-role
+  web UI — treasury dashboard for the hub operator and member dashboard for
+  spoke nodes — with in-app channel creation and Coinbase Onramp for on-chain
+  funding.
+
+developer: Bitcorn
+website: https://github.com/ethancail/bitcorn-lightning-application
+dependencies:
+  - lightning
+repo: https://github.com/ethancail/bitcorn-lightning-application
+support: https://github.com/ethancail/bitcorn-lightning-application/issues
+gallery: []
+releaseNotes: Initial release.
