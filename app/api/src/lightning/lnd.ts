@@ -14,7 +14,8 @@ import {
   getPendingChannels,
   createInvoice,
   getRouteToDestination,
-  payViaRoutes
+  payViaRoutes,
+  createChainAddress
 } from "ln-service";
 import fs from "fs";
 import path from "path";
@@ -260,4 +261,13 @@ export async function openTreasuryChannel(
     min_confirmations: options?.minConfirmations,
     partner_socket: options?.partnerSocket,
   });
+}
+
+/**
+ * Generates a fresh native-segwit (bech32) on-chain receiving address.
+ * Each Coinbase Onramp session should use a new address.
+ */
+export async function createLndChainAddress(): Promise<{ address: string }> {
+  const { lnd } = getLndClient();
+  return createChainAddress({ lnd, format: "p2wpkh" });
 }
