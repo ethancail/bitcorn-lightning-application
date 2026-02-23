@@ -510,9 +510,9 @@ export default function Wizard() {
         max_daily_loss_sats: data.maxDailyLossSats,
       });
 
-      // Mark setup complete
+      // Mark setup complete and force a full reload so useAppStatus() re-runs
       localStorage.setItem("bitcorn_setup_done", "1");
-      navigate("/dashboard");
+      window.location.href = "/dashboard";
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : "Save failed. Check API logs.");
     } finally {
