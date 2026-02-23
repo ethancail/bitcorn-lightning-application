@@ -11,6 +11,7 @@ import {
 } from "../api/client";
 
 import NodeBalancePanel from "../components/NodeBalancePanel";
+import FundNodePanel from "../components/FundNodePanel";
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
@@ -690,6 +691,7 @@ export default function Dashboard() {
       </div>
 
       <NodeBalancePanel />
+      <FundNodePanel />
       <AlertsBar />
 
       <div className="dashboard-grid">

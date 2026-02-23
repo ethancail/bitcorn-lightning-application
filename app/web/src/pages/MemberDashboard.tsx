@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type MemberStats } from "../api/client";
 import NodeBalancePanel from "../components/NodeBalancePanel";
+import FundNodePanel from "../components/FundNodePanel";
 
 const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
 
@@ -279,6 +280,7 @@ export default function MemberDashboard() {
       </div>
 
       <NodeBalancePanel />
+      <FundNodePanel />
 
       {/* Membership status */}
       <div className="panel fade-in" style={{ marginBottom: 16 }}>
