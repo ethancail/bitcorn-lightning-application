@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.0.0"
+version: "1.0.1"
 port: 3200
 
 description: >
@@ -26,4 +26,8 @@ dependencies:
 repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
-releaseNotes: Initial release.
+releaseNotes: >
+  Amber-on-black dashboard UI with node balance panel (total, on-chain,
+  lightning), Coinbase Onramp integration for one-click on-chain funding,
+  dual-role views for treasury hub and member nodes, and in-app channel
+  creation.
