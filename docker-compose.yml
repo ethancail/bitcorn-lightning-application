@@ -1,0 +1,28 @@
+services:
+  api:
+    build: ./app/api
+    restart: unless-stopped
+    volumes:
+      - ${APP_DATA_DIR}:/data
+      - ./scripts:/scripts:ro
+      - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
+    environment:
+      BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
+      LND_GRPC_HOST: ${LND_GRPC_HOST:-lightning_lnd_1:10009}
+      TREASURY_PUBKEY: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
+      COINBASE_APP_ID: 1cebd598-0a9d-4567-8603-8ef051fd1101
+    networks:
+      - umbrel
+
+  web:
+    build: ./app/web
+    restart: unless-stopped
+    depends_on:
+      - api
+    networks:
+      - umbrel
+
+networks:
+  umbrel:
+    external: true
+    name: umbrel_main_network
