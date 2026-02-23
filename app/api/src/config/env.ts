@@ -62,4 +62,10 @@ export const ENV = {
     // Required to build Onramp URLs. Get from Coinbase Developer Platform.
     // If unset, GET /api/coinbase/onramp-url returns 503.
     coinbaseAppId: process.env.COINBASE_APP_ID || "",
+    // CDP Secret API Key name (e.g. "organizations/xxx/apiKeys/yyy").
+    // Required when the project has Secure Initialization enabled.
+    coinbaseCdpKeyName: process.env.COINBASE_CDP_KEY_NAME || "",
+    // CDP Secret API Key private key (PEM). Store with literal \n for newlines.
+    // e.g. "-----BEGIN EC PRIVATE KEY-----\nABCD...\n-----END EC PRIVATE KEY-----\n"
+    coinbaseCdpPrivateKey: process.env.COINBASE_CDP_PRIVATE_KEY || "",
 };

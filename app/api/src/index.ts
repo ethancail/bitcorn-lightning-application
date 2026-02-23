@@ -51,6 +51,7 @@ import { assertTreasury } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
+import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
 
 initDb();
 runMigrations();
@@ -162,16 +163,33 @@ const server = http.createServer(async (req, res) => {
       }
       const { address } = await createLndChainAddress();
       const node = getNodeInfo();
-      const destinationWallets = JSON.stringify([
-        { address, assets: ["BTC"], network: "bitcoin" },
-      ]);
-      const url =
-        `https://pay.coinbase.com/buy/select-asset` +
-        `?appId=${encodeURIComponent(ENV.coinbaseAppId)}` +
-        `&destinationWallets=${encodeURIComponent(destinationWallets)}` +
-        `&defaultAsset=BTC` +
-        `&defaultNetwork=bitcoin` +
-        `&fiatCurrency=USD`;
+
+      let url: string;
+      if (ENV.coinbaseCdpKeyName && ENV.coinbaseCdpPrivateKey) {
+        // Secure Initialization path: exchange CDP API key for a session token.
+        // The private key env var stores literal \n for newlines.
+        const privateKeyPem = ENV.coinbaseCdpPrivateKey.replace(/\\n/g, "\n");
+        const sessionToken = await getCoinbaseSessionToken(
+          ENV.coinbaseCdpKeyName,
+          privateKeyPem,
+          address
+        );
+        url =
+          `https://pay.coinbase.com/buy/select-asset` +
+          `?appId=${encodeURIComponent(ENV.coinbaseAppId)}` +
+          `&sessionToken=${encodeURIComponent(sessionToken)}`;
+      } else {
+        // Fallback: URL-only flow (requires Secure Initialization to be disabled).
+        const addresses = JSON.stringify({ [address]: ["bitcoin"] });
+        url =
+          `https://pay.coinbase.com/buy/select-asset` +
+          `?appId=${encodeURIComponent(ENV.coinbaseAppId)}` +
+          `&addresses=${encodeURIComponent(addresses)}` +
+          `&assets=${encodeURIComponent(JSON.stringify(["BTC"]))}` +
+          `&defaultAsset=BTC` +
+          `&defaultNetwork=bitcoin`;
+      }
+
       db.prepare(
         "INSERT INTO coinbase_onramp_sessions (node_pubkey, wallet_address, onramp_url, created_at) VALUES (?, ?, ?, ?)"
       ).run(node?.pubkey ?? "", address, url, Date.now());
