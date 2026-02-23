@@ -62,4 +62,7 @@ export const ENV = {
     // Required to build Onramp URLs. Get from Coinbase Developer Platform.
     // If unset, GET /api/coinbase/onramp-url returns 503.
     coinbaseAppId: process.env.COINBASE_APP_ID || "",
+    // Cloudflare Worker URL that generates Coinbase Onramp session tokens.
+    // If unset, GET /api/coinbase/onramp-url returns coinbase_not_configured.
+    coinbaseWorkerUrl: process.env.COINBASE_WORKER_URL || "",
 };

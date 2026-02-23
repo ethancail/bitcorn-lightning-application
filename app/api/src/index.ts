@@ -51,6 +51,7 @@ import { assertTreasury } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
+import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
 
 initDb();
 runMigrations();
@@ -155,7 +156,7 @@ const server = http.createServer(async (req, res) => {
   // No role gate: both roles need on-chain funding capability.
   if (req.method === "GET" && req.url === "/api/coinbase/onramp-url") {
     try {
-      if (!ENV.coinbaseAppId) {
+      if (!ENV.coinbaseAppId || !ENV.coinbaseWorkerUrl) {
         res.writeHead(503, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "coinbase_not_configured" }));
         return;
@@ -163,14 +164,14 @@ const server = http.createServer(async (req, res) => {
       const { address } = await createLndChainAddress();
       const node = getNodeInfo();
 
-      const addresses = JSON.stringify({ [address]: ["bitcoin"] });
+      const sessionToken = await getCoinbaseSessionToken(
+        ENV.coinbaseWorkerUrl,
+        address
+      );
       const url =
         `https://pay.coinbase.com/buy/select-asset` +
         `?appId=${encodeURIComponent(ENV.coinbaseAppId)}` +
-        `&addresses=${encodeURIComponent(addresses)}` +
-        `&assets=${encodeURIComponent(JSON.stringify(["BTC"]))}` +
-        `&defaultAsset=BTC` +
-        `&defaultNetwork=bitcoin`;
+        `&sessionToken=${encodeURIComponent(sessionToken)}`;
 
       db.prepare(
         "INSERT INTO coinbase_onramp_sessions (node_pubkey, wallet_address, onramp_url, created_at) VALUES (?, ?, ?, ?)"
