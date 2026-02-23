@@ -149,7 +149,7 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 
 ## Role-Based Access Control
 
-- **Public**: `/health`, `/api/node`, `/api/node/balances`, `/api/peers`, `/api/channels`, `/api/member/stats`, `POST /api/member/open-channel`
+- **Public**: `/health`, `/api/node`, `/api/node/balances`, `/api/coinbase/onramp-url`, `/api/peers`, `/api/channels`, `/api/member/stats`, `POST /api/member/open-channel`
 - **Member** (active treasury channel): `POST /api/pay`
 - **Treasury only**: All `/api/treasury/*` endpoints
 

@@ -151,6 +151,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Public — accessible to both treasury and member nodes.
+  // No role gate: both roles need on-chain funding capability.
   if (req.method === "GET" && req.url === "/api/coinbase/onramp-url") {
     try {
       if (!ENV.coinbaseAppId) {
@@ -165,7 +167,7 @@ const server = http.createServer(async (req, res) => {
       ]);
       const url =
         `https://pay.coinbase.com/buy/select-asset` +
-        `?appId=${ENV.coinbaseAppId}` +
+        `?appId=${encodeURIComponent(ENV.coinbaseAppId)}` +
         `&destinationWallets=${encodeURIComponent(destinationWallets)}` +
         `&defaultAsset=BTC` +
         `&defaultNetwork=bitcoin` +
