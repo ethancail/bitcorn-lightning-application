@@ -2,6 +2,8 @@ services:
   api:
     image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.0.1
     restart: unless-stopped
+    ports:
+      - "3101:3101"
     volumes:
       - ${APP_DATA_DIR}/data:/data
       - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
@@ -16,6 +18,8 @@ services:
   web:
     image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.0.1
     restart: unless-stopped
+    ports:
+      - "3200:3200"
     depends_on:
       - api
     networks:
