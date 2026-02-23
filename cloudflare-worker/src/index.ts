@@ -101,11 +101,6 @@ export default {
         .setProtectedHeader({ alg: "ES256", kid: keyName })
         .sign(privateKey);
 
-      // Log JWT header + payload (not signature) to aid debugging
-      const [hdr, pay] = jwt.split(".");
-      console.log("JWT header:", atob(hdr.replace(/-/g, "+").replace(/_/g, "/")));
-      console.log("JWT payload:", atob(pay.replace(/-/g, "+").replace(/_/g, "/")));
-
       const tokenRes = await fetch(
         "https://api.developer.coinbase.com/onramp/v1/token",
         {
