@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:latest
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.0.1
     restart: unless-stopped
     volumes:
       - ${APP_DATA_DIR}/data:/data
@@ -14,7 +14,7 @@ services:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:latest
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.0.1
     restart: unless-stopped
     depends_on:
       - api
