@@ -57,4 +57,9 @@ export const ENV = {
     ),
     // Minimum minutes between two successful automated rebalances
     rebalanceCooldownMinutes: Number(process.env.REBALANCE_COOLDOWN_MINUTES ?? "30"),
+
+    // --- Coinbase Onramp ---
+    // Required to build Onramp URLs. Get from Coinbase Developer Platform.
+    // If unset, GET /api/coinbase/onramp-url returns 503.
+    coinbaseAppId: process.env.COINBASE_APP_ID || "",
 };
