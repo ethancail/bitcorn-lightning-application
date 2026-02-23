@@ -25,6 +25,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   getNode: () => apiFetch<NodeInfo>("/api/node"),
   getNodeBalances: () => apiFetch<NodeBalances>("/api/node/balances"),
+  getCoinbaseOnrampUrl: () => apiFetch<OnrampUrlResponse>("/api/coinbase/onramp-url"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   openMemberChannel: (body: { capacity_sats: number; partner_socket?: string }) =>
     apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/member/open-channel", {
@@ -225,6 +226,11 @@ export type NodeBalances = {
   onchain_sats: number;
   lightning_sats: number;
   total_sats: number;
+};
+
+export type OnrampUrlResponse = {
+  url: string;
+  wallet_address: string;
 };
 
 export type MemberStats = {
