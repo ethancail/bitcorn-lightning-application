@@ -11,7 +11,7 @@ services:
       LND_GRPC_HOST: ${LND_GRPC_HOST:-lightning_lnd_1:10009}
       TREASURY_PUBKEY: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
       COINBASE_APP_ID: 1cebd598-0a9d-4567-8603-8ef051fd1101
-      COINBASE_WORKER_URL: ""
+      COINBASE_WORKER_URL: "https://bitcorn-onramp.ethancail.workers.dev"
     networks:
       - umbrel
 
