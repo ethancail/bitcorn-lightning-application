@@ -21,7 +21,12 @@ import { SignJWT, importPKCS8 } from "jose";
 // ("-----BEGIN EC PRIVATE KEY-----"). This function wraps the SEC1 DER in a
 // PKCS#8 AlgorithmIdentifier envelope for P-256 (secp256r1).
 function sec1ToPkcs8Pem(sec1Pem: string): string {
-  const b64 = sec1Pem.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
+  // Strip PEM header/footer lines and all whitespace to get raw base64
+  const b64 = sec1Pem
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "" && !line.trim().startsWith("-----"))
+    .join("")
+    .replace(/\s/g, "");
   const sec1Der = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
   const derLen = (n: number): number[] =>
@@ -111,7 +116,7 @@ export default {
       const { token } = (await tokenRes.json()) as { token: string };
       return Response.json({ sessionToken: token });
     } catch (err) {
-      console.error("Worker error:", err);
+      console.error("Worker error:", err instanceof Error ? err.message : err);
       return new Response("Internal error", { status: 500 });
     }
   },
