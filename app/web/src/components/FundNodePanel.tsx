@@ -7,7 +7,10 @@ export default function FundNodePanel() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.getNodeBalances().then(setBalances).catch(() => {});
+    api
+      .getNodeBalances()
+      .then(setBalances)
+      .catch(() => setBalances({ onchain_sats: 0, lightning_sats: 0, total_sats: 0 }));
   }, []);
 
   async function handleFund() {
@@ -61,7 +64,11 @@ export default function FundNodePanel() {
             {loading ? "Opening…" : "Fund Node via Coinbase →"}
           </button>
           {error && (
-            <span style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</span>
+            <span style={{ color: "var(--red)", fontSize: "0.8125rem" }}>
+              {error === "coinbase_not_configured"
+                ? "Coinbase App ID not configured — set COINBASE_APP_ID in environment"
+                : error}
+            </span>
           )}
         </div>
       </div>
