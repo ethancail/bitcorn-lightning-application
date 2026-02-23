@@ -12,7 +12,7 @@ Before working on any feature or bug, read the relevant docs:
 | `docs/IMPLEMENTATION.md` | Finding exact file locations for any major flow |
 | `docs/API.md` | Full endpoint reference |
 | `docs/DATABASE.md` | Schema details and table relationships |
-| `docs/COINBASE_INTEGRATION.md` | Future Coinbase OAuth2 flow (not yet implemented) |
+| `docs/COINBASE_INTEGRATION.md` | Coinbase Onramp URL-based flow (implemented; OAuth2 notes are legacy/future) |
 
 These docs are the authoritative reference for how the system works. The sections below are a summary.
 
@@ -62,7 +62,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards).
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (URL-based, no OAuth — fresh on-chain address per session, audit log in SQLite).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -127,9 +127,9 @@ A sync loop runs every 15s (`src/lightning/sync.ts`), pulling LND state into SQL
 Do not reuse ports 3001 or 3009. Do not expose port 3109 via Umbrel app-proxy.
 
 ### Database
-SQLite at `data/bitcorn.db`. Migrations in `src/db/migrations/` (001–018). Migrations must be idempotent and run on startup. Never mutate schema manually.
+SQLite at `data/bitcorn.db`. Migrations in `src/db/migrations/` (001–019). Migrations must be idempotent and run on startup. Never mutate schema manually.
 
-Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `payments_outbound`, `payments_forwarded`, `treasury_fee_policy`, `treasury_capital_policy`, `treasury_expansion_recommendations`, `treasury_expansion_executions`, `treasury_rebalance_costs`, `treasury_rebalance_executions`.
+Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `payments_outbound`, `payments_forwarded`, `treasury_fee_policy`, `treasury_capital_policy`, `treasury_expansion_recommendations`, `treasury_expansion_executions`, `treasury_rebalance_costs`, `treasury_rebalance_executions`, `coinbase_onramp_sessions`.
 
 ## Key Files
 
@@ -180,7 +180,8 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/App.tsx` | Root router, both shells (AppShell + MemberShell), all page stubs |
 | `app/web/src/api/client.ts` | `apiFetch<T>` helper, namespaced `api.*` object, all types |
 | `app/web/src/components/NodeBalancePanel.tsx` | Shared balance panel (Total/Bitcoin/Lightning) — rendered at top of both dashboards |
-| `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (monolithic: NodeBalancePanel, AlertsBar, NetYield, ChannelROI, PeerScores, Rotation, DynamicFees) |
+| `app/web/src/components/FundNodePanel.tsx` | Coinbase Onramp panel — shows on-chain balance + "Fund Node via Coinbase →" button; rendered below NodeBalancePanel on both dashboards |
+| `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (monolithic: NodeBalancePanel, FundNodePanel, AlertsBar, NetYield, ChannelROI, PeerScores, Rotation, DynamicFees) |
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
 | `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form (no channel) or hub channel stats + forwarded fees |
 | `app/web/src/styles.css` | Full design system |
@@ -191,6 +192,8 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 **3-column stat grids:** `dashboard-grid` CSS class defaults to `1fr 1fr`. Override inline with `style={{ gridTemplateColumns: "1fr 1fr 1fr" }}` when 3 cards are needed (hub channel stats, forwarded fees).
 
 **API client pattern:** All calls go through `api.*` methods defined in `client.ts`. Add new endpoints there as `api.methodName: () => apiFetch<ReturnType>("/api/path")`. Types live in the same file.
+
+**`FundNodePanel` component** (`app/web/src/components/FundNodePanel.tsx`): rendered below `NodeBalancePanel` on both dashboards. Calls `api.getNodeBalances()` on mount (one-shot, no poll) and displays on-chain balance; falls back to `0 sats` on fetch error (no infinite shimmer). "Fund Node via Coinbase →" button calls `api.getCoinbaseOnrampUrl()` → opens the returned URL in a new tab (`window.open`, `noopener,noreferrer`). Maps machine-readable API error `coinbase_not_configured` to operator-readable message. Returns 503 if `COINBASE_APP_ID` env var is unset.
 
 **`NodeBalancePanel` component** (`app/web/src/components/NodeBalancePanel.tsx`): shared component rendered at the top of both `Dashboard.tsx` (treasury) and `MemberDashboard.tsx`. Calls `api.getNodeBalances()` on mount, polls every 15s. Shows three stat cards: Total Node Balance, Bitcoin Balance, Lightning Wallet — each displaying sats and BTC (8 decimal places). Uses loading shimmer while data is pending; silently swallows fetch errors (cards stay in shimmer state).
 
@@ -219,3 +222,4 @@ See `src/config/env.ts` for all variables. Key ones:
 - `BITCOIN_NETWORK` — default `mainnet`
 - `REBALANCE_SCHEDULER_ENABLED` — default `false`
 - `RATE_LIMIT_MAX_SINGLE_PAYMENT` — default `250000` sats
+- `COINBASE_APP_ID` — Coinbase Developer Platform Project ID; set in `docker-compose.yml`; if unset, `GET /api/coinbase/onramp-url` returns 503. **Not a secret** — it is embedded in the Onramp URL visible to users.
