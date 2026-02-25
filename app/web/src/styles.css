@@ -729,6 +729,30 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
 /* ─── Power Law chart container ───────────────────────────────── */
 .power-law-chart-container { height: 480px; }
 
+/* ─── TradingView mini chart grid ────────────────────────────── */
+.tv-mini-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+}
+.tv-mini-chart-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.tv-mini-chart-label {
+  padding: 8px 12px 0;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  text-transform: uppercase;
+}
+.tv-mini-chart-widget {
+  height: 180px;
+}
+
 /* ─── Mobile hamburger button ─────────────────────────────────── */
 .hamburger-btn {
   display: none;
@@ -867,4 +891,8 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
 
   /* Power law chart: shorter on mobile */
   .power-law-chart-container { height: 300px; }
+
+  /* TradingView grid: 2 columns on mobile */
+  .tv-mini-chart-grid { grid-template-columns: repeat(2, 1fr); }
+  .tv-mini-chart-widget { height: 160px; }
 }
