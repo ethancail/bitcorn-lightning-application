@@ -10,6 +10,7 @@
 //   wrangler secret put CDP_KEY_NAME      # paste your key name
 //   wrangler secret put CDP_PRIVATE_KEY   # paste your full PEM (one line with \n)
 //   wrangler secret put USDA_NASS_KEY     # paste your USDA NASS API key
+//   wrangler secret put GOLD_API_KEY      # paste your goldapi.io key
 //   wrangler deploy
 //
 // The deployed URL (https://bitcorn-onramp.<you>.workers.dev) goes into
@@ -62,6 +63,7 @@ interface Env {
   CDP_KEY_NAME: string;
   CDP_PRIVATE_KEY: string;
   USDA_NASS_KEY: string;
+  GOLD_API_KEY: string;
   PRICES_CACHE: KVNamespace;
 }
 
@@ -91,13 +93,18 @@ type CommodityPrices = {
 
 // ─── Price fetchers ──────────────────────────────────────────────────────
 
-async function fetchGoldPrice(): Promise<CommodityPrice> {
+async function fetchGoldPrice(env: Env): Promise<CommodityPrice> {
   try {
-    const res = await fetch("https://api.frankfurter.app/latest?from=XAU&to=USD");
+    const key = env.GOLD_API_KEY?.replace(/^["']|["']$/g, "");
+    if (!key) return null;
+    const res = await fetch("https://www.goldapi.io/api/XAU/USD", {
+      headers: { "x-access-token": key },
+    });
     if (!res.ok) return null;
-    const data = (await res.json()) as { rates: { USD: number } };
+    const data = (await res.json()) as { price: number };
+    if (!data.price) return null;
     return {
-      price: Math.round(data.rates.USD * 100) / 100,
+      price: Math.round(data.price * 100) / 100,
       unit: "$/oz",
       label: "Gold",
       updated_at: new Date().toISOString(),
@@ -161,7 +168,7 @@ async function handlePrices(env: Env): Promise<Response> {
 
   // Fetch all four in parallel
   const [gold, corn, soybeans, wheat] = await Promise.all([
-    fetchGoldPrice(),
+    fetchGoldPrice(env),
     fetchUsdaPrice(env, "CORN", "Corn"),
     fetchUsdaPrice(env, "SOYBEANS", "Soybeans"),
     fetchUsdaPrice(env, "WHEAT", "Wheat"),

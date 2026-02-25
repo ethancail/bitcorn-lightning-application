@@ -254,9 +254,13 @@ FundNodePanel (browser)
 
 - Source: `cloudflare-worker/src/index.ts`
 - Deployed at: `https://bitcorn-onramp.ethancail.workers.dev`
-- Accepts `POST { address: string }` → returns `{ sessionToken: string }`
-- Secrets stored in Cloudflare (never in git): `CDP_KEY_NAME` (key ID) and `CDP_PRIVATE_KEY` (EC private key PEM)
+- Two endpoints:
+  - `POST /` — Coinbase Onramp: accepts `{ address: string }` → returns `{ sessionToken: string }`
+  - `GET /prices` — Commodity prices (gold, corn, soybeans, wheat) cached in KV for 24h
+- Secrets stored in Cloudflare (never in git): `CDP_KEY_NAME`, `CDP_PRIVATE_KEY`, `USDA_NASS_KEY`, `GOLD_API_KEY`
 - CDP keys are SEC1 format (`-----BEGIN EC PRIVATE KEY-----`); Worker converts to PKCS#8 for the Web Crypto API via `sec1ToPkcs8Pem()`
+- Gold price from goldapi.io (100 requests/month free tier); grain prices from USDA NASS API (free, no limit)
+- KV namespace `PRICES_CACHE` caches the combined JSON for 24 hours to minimize upstream API calls
 
 ### Redeploying the Worker
 
@@ -267,9 +271,13 @@ npx wrangler deploy          # redeploy code changes
 # Update secrets (paste value, then Ctrl-D):
 npx wrangler secret put CDP_KEY_NAME
 npx wrangler secret put CDP_PRIVATE_KEY
+npx wrangler secret put USDA_NASS_KEY
+npx wrangler secret put GOLD_API_KEY
 ```
 
 **Secret format:** paste the raw key name / raw PEM from the CDP JSON file — do **not** wrap in quotes. Wrangler tails: `npx wrangler tail` for live Worker logs.
+
+**Clear price cache** (e.g. after changing API keys): `npx wrangler kv key delete commodity_prices --namespace-id=62c68c41830141cc8b0b6e7cdb193461`
 
 ## Security Constraints
 
