@@ -726,6 +726,9 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
 .fade-in-4 { animation-delay: 0.20s; }
 .fade-in-5 { animation-delay: 0.25s; }
 
+/* ─── Power Law chart container ───────────────────────────────── */
+.power-law-chart-container { height: 480px; }
+
 /* ─── Mobile hamburger button ─────────────────────────────────── */
 .hamburger-btn {
   display: none;
@@ -861,4 +864,7 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
     padding: 4px 8px;
     font-size: 0.6875rem;
   }
+
+  /* Power law chart: shorter on mobile */
+  .power-law-chart-container { height: 300px; }
 }

@@ -7,6 +7,7 @@ import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
 import MemberDashboard from "./pages/MemberDashboard";
+import Charts from "./pages/Charts";
 
 // ─── App status hook ──────────────────────────────────────────────────────
 //
@@ -113,6 +114,7 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
 
   const navItems = [
     { to: "/dashboard", icon: "▤", label: "Dashboard" },
+    { to: "/charts", icon: "⟠", label: "Charts" },
     { to: "/channels", icon: "◈", label: "Channels" },
     { to: "/payments", icon: "↗", label: "Payments" },
     { to: "/liquidity", icon: "≋", label: "Liquidity" },
@@ -177,6 +179,7 @@ function AppShell() {
       <main className="main-content">
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/charts" element={<Charts />} />
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/payments" element={<PaymentsPage />} />
           <Route path="/liquidity" element={<LiquidityPage />} />
@@ -192,6 +195,7 @@ function AppShell() {
 function MemberSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navItems = [
     { to: "/dashboard", icon: "▤", label: "My Dashboard" },
+    { to: "/charts", icon: "⟠", label: "Charts" },
     { to: "/channels", icon: "◈", label: "My Channels" },
     { to: "/payments", icon: "↗", label: "My Payments" },
   ];
@@ -238,6 +242,7 @@ function MemberShell() {
       <main className="main-content">
         <Routes>
           <Route path="/dashboard" element={<MemberDashboard />} />
+          <Route path="/charts" element={<Charts />} />
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/payments" element={<MemberPaymentsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

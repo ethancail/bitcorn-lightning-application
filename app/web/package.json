@@ -8,6 +8,7 @@
     "start": "serve -s dist -l 3200"
   },
   "dependencies": {
+    "date-fns": "^4.1.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-router-dom": "^6.28.0",
