@@ -63,7 +63,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards).
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -180,7 +180,7 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 
 **Stack:** React 18 + TypeScript + Vite, react-router-dom v6, amber-on-black design system.
 
-**Design system** lives entirely in `app/web/src/styles.css`. Key CSS custom properties: `--bg`, `--amber`, `--green`, `--red`, `--mono`, `--sans`. Key classes: `.panel`, `.panel-header`, `.panel-title`, `.panel-body`, `.stat-card`, `.stat-value`, `.stat-label`, `.stat-sub`, `.dashboard-grid`, `.data-table`, `.td-mono`, `.td-num`, `.badge-green/.red/.amber/.blue/.muted`, `.btn`, `.btn-primary/.outline/.ghost`, `.form-input`, `.loading-shimmer`, `.empty-state`, `.alert.critical/.warning/.info/.healthy`, `.wizard-*`, `.fade-in`.
+**Design system** lives entirely in `app/web/src/styles.css`. Key CSS custom properties: `--bg`, `--amber`, `--green`, `--red`, `--mono`, `--sans`. Key classes: `.panel`, `.panel-header`, `.panel-title`, `.panel-body`, `.stat-card`, `.stat-value`, `.stat-label`, `.stat-sub`, `.dashboard-grid`, `.data-table`, `.td-mono`, `.td-num`, `.badge-green/.red/.amber/.blue/.muted`, `.btn`, `.btn-primary/.outline/.ghost`, `.form-input`, `.loading-shimmer`, `.empty-state`, `.alert.critical/.warning/.info/.healthy`, `.wizard-*`, `.fade-in`. Mobile classes (inside `@media max-width: 767px`): `.hamburger-btn`, `.sidebar-overlay`, `.sidebar-close-btn`, `.sidebar-mobile-header`, `.sidebar.open`.
 
 **Dual-role routing** (`App.tsx`): `useAppStatus()` fetches `/api/node` → branches on `node_role`:
 - `"treasury"` + `localStorage.bitcorn_setup_done === "1"` → `AppShell` (treasury dashboard)
@@ -194,7 +194,7 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 **Key frontend files:**
 | File | Purpose |
 |------|---------|
-| `app/web/src/App.tsx` | Root router, both shells (AppShell + MemberShell), all page stubs |
+| `app/web/src/App.tsx` | Root router, both shells (AppShell + MemberShell), mobile hamburger menu state, all page stubs |
 | `app/web/src/api/client.ts` | `apiFetch<T>` helper, namespaced `api.*` object, all types |
 | `app/web/src/components/NodeBalancePanel.tsx` | Shared balance panel (Total/Bitcoin/Lightning) — rendered at top of both dashboards |
 | `app/web/src/components/FundNodePanel.tsx` | Coinbase Onramp panel — shows on-chain balance + "Fund Node via Coinbase →" button; rendered below NodeBalancePanel on both dashboards |
@@ -216,6 +216,8 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 **`NodeBalancePanel` component** (`app/web/src/components/NodeBalancePanel.tsx`): shared component rendered at the top of both `Dashboard.tsx` (treasury) and `MemberDashboard.tsx`. Calls `api.getNodeBalances()` on mount, polls every 15s. Shows three stat cards: Total Node Balance, Bitcoin Balance, Lightning Wallet — each displaying sats and BTC (8 decimal places). Uses loading shimmer while data is pending; silently swallows fetch errors (cards stay in shimmer state).
 
 **Scroll layout constraint:** `.app-shell` in `styles.css` uses `height: 100vh` (not `min-height`). This is intentional — it constrains the CSS grid to the viewport so that `overflow-y: auto` on `.main-content` triggers correctly. Changing it to `min-height` will break scrolling (the grid grows to fit content, body scrolls instead, and the sidebar disappears). `.main-content` uses `padding-bottom: 64px` to ensure the last panel has breathing room.
+
+**Mobile navigation (< 768px):** On screens under 768px, the sidebar is hidden and replaced by a hamburger menu (☰) in the topbar. Clicking it slides the sidebar in from the left (`transform: translateX(-100%) → translateX(0)`, 200ms ease) over a dark backdrop overlay (`rgba(0,0,0,0.6)`). Menu closes via: X button inside the drawer, clicking the backdrop, or clicking any nav link. Both `AppShell` and `MemberShell` manage a `menuOpen` boolean state, passed as `open`/`onClose` props to their respective sidebar components and `onMenuToggle` to `Topbar`. On mobile, `.dashboard-grid` collapses to single column, `.data-table` gets `min-width: 600px` for horizontal scroll, and `.main-content` padding is reduced. Desktop layout (768px+) is completely unchanged — CSS-only via `@media (max-width: 767px)`.
 
 ## Capital Guardrails
 
