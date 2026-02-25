@@ -254,6 +254,82 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
   margin-top: 4px;
 }
 
+/* ─── Price Ticker Strip ──────────────────────────────────────── */
+.price-ticker-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.price-ticker {
+  flex: 1 1 0;
+  min-width: 140px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 10px 12px;
+  transition: border-color 0.2s;
+}
+.price-ticker:hover {
+  border-color: var(--border-hi);
+}
+
+.price-ticker-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.price-ticker-info {
+  min-width: 0;
+}
+
+.price-ticker-label {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+  margin-bottom: 2px;
+}
+
+.price-ticker-value {
+  font-family: var(--mono);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.price-ticker-dollar {
+  font-weight: 400;
+  opacity: 0.5;
+}
+
+.price-ticker-unit {
+  font-family: var(--mono);
+  font-size: 0.5625rem;
+  color: var(--text-3);
+  letter-spacing: 0.04em;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+@media (max-width: 600px) {
+  .price-ticker-strip { gap: 6px; }
+  .price-ticker { min-width: calc(50% - 3px); }
+}
+
 /* ─── Alerts ───────────────────────────────────────────────────── */
 .alerts-bar {
   display: flex;

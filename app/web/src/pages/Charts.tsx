@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import PowerLawChart from "../components/PowerLawChart";
-import CommodityPricesPanel from "../components/CommodityPricesPanel";
+import PriceTickerStrip from "../components/CommodityPricesPanel";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -122,7 +122,7 @@ export default function Charts() {
         </div>
       </div>
 
-      <CommodityPricesPanel />
+      <PriceTickerStrip btcPrice={currentPrice || undefined} btcLoading={loading} />
     </div>
   );
 }
