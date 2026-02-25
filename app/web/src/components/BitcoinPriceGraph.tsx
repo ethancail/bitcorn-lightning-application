@@ -10,7 +10,7 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
-type Period = "24h" | "7d" | "30d" | "1y";
+type Period = "24h" | "7d" | "30d" | "1y" | "5y";
 
 type PricePoint = {
   time: number;
@@ -37,9 +37,10 @@ const PERIOD_MAP: Record<Period, string> = {
   "7d": "week",
   "30d": "month",
   "1y": "year",
+  "5y": "all",
 };
 
-const PERIODS: Period[] = ["24h", "7d", "30d", "1y"];
+const PERIODS: Period[] = ["24h", "7d", "30d", "1y", "5y"];
 
 const REFRESH_MS = 60_000;
 
@@ -81,6 +82,8 @@ function formatTimeLabel(unixSeconds: number, period: Period): string {
       return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
     case "1y":
       return d.toLocaleDateString("en-US", { month: "short" });
+    case "5y":
+      return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
   }
 }
 
@@ -92,7 +95,7 @@ function formatTooltipTime(unixSeconds: number, period: Period): string {
   return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
-    year: period === "1y" ? "numeric" : undefined,
+    year: period === "1y" || period === "5y" ? "numeric" : undefined,
   });
 }
 
@@ -109,12 +112,14 @@ async function fetchHistoricPrices(period: Period): Promise<PricePoint[]> {
   const res = await fetch(`${COINBASE_BASE}/historic?period=${PERIOD_MAP[period]}`);
   if (!res.ok) throw new Error("Historic prices fetch failed");
   const json: CoinbaseHistoricResponse = await res.json();
+  const fiveYearsAgo = Math.floor(Date.now() / 1000) - 5 * 365.25 * 86400;
   return json.data.prices
     .map((p) => ({
       time: parseInt(p.time, 10),
       price: parseFloat(p.price),
       label: formatTimeLabel(parseInt(p.time, 10), period),
     }))
+    .filter((p) => period !== "5y" || p.time >= fiveYearsAgo)
     .sort((a, b) => a.time - b.time);
 }
 
