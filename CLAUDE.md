@@ -114,6 +114,8 @@ Merge path: `feature/*` → `develop` → sideload test on Umbrel → `main`.
 
 Docker images are built and pushed to `ghcr.io` automatically by `.github/workflows/docker-publish.yml` on push to `main` (when `app/api/**`, `app/web/**`, or `umbrel-app.yml` change). The workflow reads the version from `umbrel-app.yml` and tags images accordingly. **Version in `umbrel-app.yml` must match image tags in `bitcorn-lightning-node/docker-compose.yml`** — if they drift, Umbrel will pull stale images.
 
+**If Umbrel install fails (flips back to "Install" at 0%):** The Docker images likely don't exist on ghcr.io. Check `gh run list` for a failed build. Common cause: transient npm 403 errors (e.g. `npm install -g serve` in the web Dockerfile getting rate-limited by registry.npmjs.org). Fix: re-run the failed workflow with `gh run rerun <run-id> --failed`. Always verify the build is green after pushing a version bump.
+
 ## Architecture
 
 ### Hub-and-Spoke Model
