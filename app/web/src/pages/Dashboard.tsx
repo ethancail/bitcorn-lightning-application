@@ -12,6 +12,7 @@ import {
 
 import NodeBalancePanel from "../components/NodeBalancePanel";
 import FundNodePanel from "../components/FundNodePanel";
+import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 function fmt(n: number) {
@@ -692,6 +693,7 @@ export default function Dashboard() {
 
       <NodeBalancePanel />
       <FundNodePanel />
+      <BitcoinPriceGraph />
       <AlertsBar />
 
       <div className="dashboard-grid">
