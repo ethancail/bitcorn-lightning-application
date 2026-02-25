@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.2.2"
+version: "1.2.3"
 port: 3200
 
 description: >
@@ -27,6 +27,6 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  Commodity Prices panel on Charts page showing real gold ($/oz) and
-  corn, soybeans, wheat ($/bu) prices via USDA NASS and Frankfurter APIs.
-  Prices cached 24h in Cloudflare KV. Replaces TradingView ETF widgets.
+  Redesigned price tickers below Power Law chart — BTC, Gold, Corn, Soy,
+  Wheat with color-coded icons. Gold now uses goldapi.io for accurate
+  spot pricing. Mobile-friendly wrapping layout (no horizontal scroll).
