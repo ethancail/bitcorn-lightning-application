@@ -12,7 +12,7 @@ Before working on any feature or bug, read the relevant docs:
 | `docs/IMPLEMENTATION.md` | Finding exact file locations for any major flow |
 | `docs/API.md` | Full endpoint reference |
 | `docs/DATABASE.md` | Schema details and table relationships |
-| `docs/COINBASE_INTEGRATION.md` | Coinbase Onramp URL-based flow (implemented; OAuth2 notes are legacy/future) |
+| `docs/COINBASE_INTEGRATION.md` | Coinbase Onramp session-token flow via Cloudflare Worker (OAuth2 notes are legacy/unused) |
 
 These docs are the authoritative reference for how the system works. The sections below are a summary.
 
@@ -29,6 +29,7 @@ When using Claude chat or another AI for brainstorming, the docs describe *what*
 | Metrics / net yield | `src/api/treasury.ts`, migrations `007`–`009`, `014` |
 | Schema / data model | All files in `src/db/migrations/` |
 | All routes | `src/index.ts` |
+| Coinbase Onramp | `app/api/src/api/coinbase-onramp.ts`, `cloudflare-worker/src/index.ts` |
 
 Always include `CLAUDE.md` + `docs/IMPLEMENTATION.md` as base context.
 
@@ -62,7 +63,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (URL-based, no OAuth — fresh on-chain address per session, audit log in SQLite).
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -146,6 +147,8 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 | `src/api/treasury-expansion.ts` | Channel expansion recommendations & execution |
 | `src/utils/capital-guardrails.ts` | Pre-expansion policy enforcement |
 | `src/config/env.ts` | All environment variables with defaults |
+| `src/api/coinbase-onramp.ts` | Calls Cloudflare Worker to obtain a Coinbase session token |
+| `cloudflare-worker/src/index.ts` | Cloudflare Worker: signs CDP JWT, converts SEC1→PKCS#8, exchanges for session token |
 
 ## Role-Based Access Control
 
@@ -193,7 +196,7 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 
 **API client pattern:** All calls go through `api.*` methods defined in `client.ts`. Add new endpoints there as `api.methodName: () => apiFetch<ReturnType>("/api/path")`. Types live in the same file.
 
-**`FundNodePanel` component** (`app/web/src/components/FundNodePanel.tsx`): rendered below `NodeBalancePanel` on both dashboards. Calls `api.getNodeBalances()` on mount (one-shot, no poll) and displays on-chain balance; falls back to `0 sats` on fetch error (no infinite shimmer). "Fund Node via Coinbase →" button calls `api.getCoinbaseOnrampUrl()` → opens the returned URL in a new tab (`window.open`, `noopener,noreferrer`). Maps machine-readable API error `coinbase_not_configured` to operator-readable message. Returns 503 if `COINBASE_APP_ID` env var is unset.
+**`FundNodePanel` component** (`app/web/src/components/FundNodePanel.tsx`): rendered below `NodeBalancePanel` on both dashboards. Calls `api.getNodeBalances()` on mount (one-shot, no poll) and displays on-chain balance; falls back to `0 sats` on fetch error (no infinite shimmer). "Fund Node via Coinbase →" button calls `api.getCoinbaseOnrampUrl()` → opens the returned URL in a new tab (`window.open`, `noopener,noreferrer`). Maps machine-readable API error `coinbase_not_configured` to operator-readable message. Returns 503 if `COINBASE_APP_ID` or `COINBASE_WORKER_URL` env var is unset. Flow: button → `GET /api/coinbase/onramp-url` → `coinbase-onramp.ts` POSTs to Cloudflare Worker → Worker signs CDP JWT, calls `POST api.developer.coinbase.com/onramp/v1/token` → returns `{ sessionToken }` → API builds `https://pay.coinbase.com/buy/select-asset?appId=...&sessionToken=...` and returns it to the frontend.
 
 **`NodeBalancePanel` component** (`app/web/src/components/NodeBalancePanel.tsx`): shared component rendered at the top of both `Dashboard.tsx` (treasury) and `MemberDashboard.tsx`. Calls `api.getNodeBalances()` on mount, polls every 15s. Shows three stat cards: Total Node Balance, Bitcoin Balance, Lightning Wallet — each displaying sats and BTC (8 decimal places). Uses loading shimmer while data is pending; silently swallows fetch errors (cards stay in shimmer state).
 
@@ -206,6 +209,45 @@ Before any channel open, `capital-guardrails.ts` checks: minimum on-chain reserv
 ## Liquidity Management
 
 Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`. Circular rebalance forces a payment over path `outgoing_channel → ... → incoming_channel`. Scheduler enabled via `REBALANCE_SCHEDULER_ENABLED=true`, runs every 60s.
+
+## Coinbase Onramp
+
+The "Fund Node via Coinbase" feature lets operators buy bitcoin directly into their node's on-chain wallet. Coinbase Onramp **requires a server-side session token** (Secure Initialization is enabled on the CDP project). CDP credentials (private key) cannot live in the public repo or on user nodes — a **Cloudflare Worker** holds them securely.
+
+### Architecture
+
+```
+FundNodePanel (browser)
+  → GET /api/coinbase/onramp-url (API container)
+    → coinbase-onramp.ts
+      → POST https://bitcorn-onramp.ethancail.workers.dev  (Cloudflare Worker)
+        → signs ES256 JWT with CDP private key
+        → POST https://api.developer.coinbase.com/onramp/v1/token
+        → returns { sessionToken }
+    → builds https://pay.coinbase.com/buy/select-asset?appId=...&sessionToken=...
+  → window.open(url)  (Coinbase Onramp page opens in new tab)
+```
+
+### Cloudflare Worker (`cloudflare-worker/`)
+
+- Source: `cloudflare-worker/src/index.ts`
+- Deployed at: `https://bitcorn-onramp.ethancail.workers.dev`
+- Accepts `POST { address: string }` → returns `{ sessionToken: string }`
+- Secrets stored in Cloudflare (never in git): `CDP_KEY_NAME` (key ID) and `CDP_PRIVATE_KEY` (EC private key PEM)
+- CDP keys are SEC1 format (`-----BEGIN EC PRIVATE KEY-----`); Worker converts to PKCS#8 for the Web Crypto API via `sec1ToPkcs8Pem()`
+
+### Redeploying the Worker
+
+```bash
+cd cloudflare-worker
+npm install
+npx wrangler deploy          # redeploy code changes
+# Update secrets (paste value, then Ctrl-D):
+npx wrangler secret put CDP_KEY_NAME
+npx wrangler secret put CDP_PRIVATE_KEY
+```
+
+**Secret format:** paste the raw key name / raw PEM from the CDP JSON file — do **not** wrap in quotes. Wrangler tails: `npx wrangler tail` for live Worker logs.
 
 ## Security Constraints
 
@@ -223,3 +265,4 @@ See `src/config/env.ts` for all variables. Key ones:
 - `REBALANCE_SCHEDULER_ENABLED` — default `false`
 - `RATE_LIMIT_MAX_SINGLE_PAYMENT` — default `250000` sats
 - `COINBASE_APP_ID` — Coinbase Developer Platform Project ID; set in `docker-compose.yml`; if unset, `GET /api/coinbase/onramp-url` returns 503. **Not a secret** — it is embedded in the Onramp URL visible to users.
+- `COINBASE_WORKER_URL` — URL of the Cloudflare Worker that holds CDP credentials and mints session tokens (e.g. `https://bitcorn-onramp.ethancail.workers.dev`); set in `docker-compose.yml`. Required; if unset, `GET /api/coinbase/onramp-url` returns 503.

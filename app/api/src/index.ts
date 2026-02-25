@@ -178,7 +178,8 @@ const server = http.createServer(async (req, res) => {
       ).run(node?.pubkey ?? "", address, url, Date.now());
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ url, wallet_address: address }));
-    } catch {
+    } catch (err) {
+      console.error("[coinbase onramp]", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "failed_to_generate_onramp_url" }));
     }
