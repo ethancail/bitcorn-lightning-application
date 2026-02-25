@@ -63,7 +63,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite).
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -100,6 +100,20 @@ cd app/web && npm run dev   # Vite dev server, hot reload
 
 No automated test suite exists yet. Migrations run automatically on API startup.
 
+**Frontend dependencies:** `react`, `react-dom`, `react-router-dom`, `recharts` (for BitcoinPriceGraph).
+
+## Branching Model
+
+- `main` — production; pushes trigger Docker image builds via GitHub Actions
+- `develop` — integration branch between feature work and main
+- `feature/*` — feature branches off develop (e.g. `feature/btc-price-graph`)
+
+Merge path: `feature/*` → `develop` → sideload test on Umbrel → `main`.
+
+## Umbrel Deployment
+
+Docker images are built and pushed to `ghcr.io` automatically by `.github/workflows/docker-publish.yml` on push to `main` (when `app/api/**`, `app/web/**`, or `umbrel-app.yml` change). The workflow reads the version from `umbrel-app.yml` and tags images accordingly. **Version in `umbrel-app.yml` must match image tags in `bitcorn-lightning-node/docker-compose.yml`** — if they drift, Umbrel will pull stale images.
+
 ## Architecture
 
 ### Hub-and-Spoke Model
@@ -128,7 +142,7 @@ A sync loop runs every 15s (`src/lightning/sync.ts`), pulling LND state into SQL
 Do not reuse ports 3001 or 3009. Do not expose port 3109 via Umbrel app-proxy.
 
 ### Database
-SQLite at `data/bitcorn.db`. Migrations in `src/db/migrations/` (001–019). Migrations must be idempotent and run on startup. Never mutate schema manually.
+SQLite at `data/db/bitcorn.sqlite` (mounted at `/data` inside the API container; on Umbrel host: `/home/umbrel/umbrel/app-data/bitcorn-lightning-node/data/db/bitcorn.sqlite`). Migrations in `src/db/migrations/` (001–019). Migrations must be idempotent and run on startup. Never mutate schema manually. Note: `sqlite3` is not installed in the API Docker image — to query the DB directly, install it on the Umbrel host (`sudo apt install sqlite3`) and access the file at the host path.
 
 Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `payments_outbound`, `payments_forwarded`, `treasury_fee_policy`, `treasury_capital_policy`, `treasury_expansion_recommendations`, `treasury_expansion_executions`, `treasury_rebalance_costs`, `treasury_rebalance_executions`, `coinbase_onramp_sessions`.
 
@@ -184,7 +198,7 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/api/client.ts` | `apiFetch<T>` helper, namespaced `api.*` object, all types |
 | `app/web/src/components/NodeBalancePanel.tsx` | Shared balance panel (Total/Bitcoin/Lightning) — rendered at top of both dashboards |
 | `app/web/src/components/FundNodePanel.tsx` | Coinbase Onramp panel — shows on-chain balance + "Fund Node via Coinbase →" button; rendered below NodeBalancePanel on both dashboards |
-| `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph — recharts AreaChart, Coinbase public API, 24h/7d/30d/1y selector, 60s auto-refresh |
+| `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph — recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh |
 | `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (monolithic: NodeBalancePanel, FundNodePanel, BitcoinPriceGraph, AlertsBar, NetYield, ChannelROI, PeerScores, Rotation, DynamicFees) |
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
 | `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form (no channel) or hub channel stats + forwarded fees |
