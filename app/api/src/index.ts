@@ -186,6 +186,32 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Public — commodity prices proxied from Cloudflare Worker (KV-cached)
+  if (req.method === "GET" && req.url === "/api/commodity-prices") {
+    try {
+      const workerUrl = ENV.coinbaseWorkerUrl;
+      if (!workerUrl) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "commodity_prices_not_configured" }));
+        return;
+      }
+      const response = await fetch(`${workerUrl}/prices`);
+      if (!response.ok) {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "commodity_prices_unavailable" }));
+        return;
+      }
+      const data = await response.json();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err) {
+      console.error("[commodity-prices]", err);
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "commodity_prices_unavailable" }));
+    }
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/peers") {
     try {
       const data = getPeers();

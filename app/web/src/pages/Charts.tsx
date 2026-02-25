@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import PowerLawChart from "../components/PowerLawChart";
-import TradingViewMiniChart from "../components/TradingViewMiniChart";
+import CommodityPricesPanel from "../components/CommodityPricesPanel";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -13,14 +13,6 @@ type CoinbaseSpotResponse = {
 // ─── Constants ───────────────────────────────────────────────────────────
 
 const PERIODS: Period[] = ["1Y", "5Y", "All", "2042"];
-
-const MARKET_WIDGETS = [
-  { symbol: "COINBASE:BTCUSD", label: "Bitcoin" },
-  { symbol: "AMEX:GLD", label: "Gold" },
-  { symbol: "AMEX:CORN", label: "Corn" },
-  { symbol: "AMEX:SOYB", label: "Soybeans" },
-  { symbol: "AMEX:WEAT", label: "Wheat" },
-];
 
 const COINBASE_SPOT = "https://api.coinbase.com/v2/prices/BTC-USD/spot";
 
@@ -130,21 +122,7 @@ export default function Charts() {
         </div>
       </div>
 
-      {/* Market Overview — TradingView Mini Charts */}
-      <div className="panel fade-in">
-        <div className="panel-header">
-          <span className="panel-title">
-            <span className="icon">◈</span>Market Overview
-          </span>
-        </div>
-        <div className="panel-body">
-          <div className="tv-mini-chart-grid">
-            {MARKET_WIDGETS.map((w) => (
-              <TradingViewMiniChart key={w.symbol} symbol={w.symbol} label={w.label} />
-            ))}
-          </div>
-        </div>
-      </div>
+      <CommodityPricesPanel />
     </div>
   );
 }

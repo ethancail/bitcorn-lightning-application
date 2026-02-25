@@ -26,6 +26,7 @@ export const api = {
   getNode: () => apiFetch<NodeInfo>("/api/node"),
   getNodeBalances: () => apiFetch<NodeBalances>("/api/node/balances"),
   getCoinbaseOnrampUrl: () => apiFetch<OnrampUrlResponse>("/api/coinbase/onramp-url"),
+  getCommodityPrices: () => apiFetch<CommodityPrices>("/api/commodity-prices"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   openMemberChannel: (body: { capacity_sats: number; partner_socket?: string }) =>
     apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/member/open-channel", {
@@ -263,6 +264,20 @@ export type RotationDryRunResult = {
     reason: string;
     is_force_close: boolean;
   };
+};
+
+export type CommodityPrice = {
+  price: number;
+  unit: string;
+  label: string;
+  updated_at: string;
+} | null;
+
+export type CommodityPrices = {
+  gold: CommodityPrice;
+  corn: CommodityPrice;
+  soybeans: CommodityPrice;
+  wheat: CommodityPrice;
 };
 
 // ─── Named fetch exports (legacy compat) ─────────────────────────────────
