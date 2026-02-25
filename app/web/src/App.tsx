@@ -63,11 +63,22 @@ function useAppStatus(): AppStatus {
 
 // ─── Shared Topbar ────────────────────────────────────────────────────────
 
-function Topbar({ node, role }: { node: NodeInfo | null; role: "TREASURY" | "MEMBER" }) {
+function Topbar({
+  node,
+  role,
+  onMenuToggle,
+}: {
+  node: NodeInfo | null;
+  role: "TREASURY" | "MEMBER";
+  onMenuToggle: () => void;
+}) {
   const syncColor = node?.synced_to_chain ? "var(--green)" : "var(--red)";
 
   return (
     <header className="topbar">
+      <button className="hamburger-btn" onClick={onMenuToggle} aria-label="Toggle menu">
+        ☰
+      </button>
       <div className="topbar-logo">
         <img src={bitcornLogo} alt="Bitcorn" style={{ height: 22, width: "auto" }} />
         <span className="topbar-tag">{role}</span>
@@ -97,7 +108,7 @@ function Topbar({ node, role }: { node: NodeInfo | null; role: "TREASURY" | "MEM
 
 // ─── Treasury AppShell ─────────────────────────────────────────────────────
 
-function TreasurySidebar() {
+function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
 
   const navItems = [
@@ -108,13 +119,18 @@ function TreasurySidebar() {
   ];
 
   return (
-    <nav className="sidebar">
+    <nav className={`sidebar ${open ? "open" : ""}`}>
+      <div className="sidebar-mobile-header">
+        <span className="sidebar-mobile-title">Menu</span>
+        <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">✕</button>
+      </div>
       <div className="sidebar-label">Navigate</div>
       {navItems.map((item) => (
         <div key={item.to} className="sidebar-section">
           <NavLink
             to={item.to}
             className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
+            onClick={onClose}
           >
             <span className="icon">{item.icon}</span>
             {item.label}
@@ -129,6 +145,7 @@ function TreasurySidebar() {
           className="sidebar-item"
           onClick={() => {
             localStorage.removeItem("bitcorn_setup_done");
+            onClose();
             navigate("/setup");
           }}
           style={{ width: "100%" }}
@@ -143,6 +160,7 @@ function TreasurySidebar() {
 
 function AppShell() {
   const [node, setNode] = useState<NodeInfo | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const load = () => api.getNode().then(setNode).catch(() => {});
@@ -153,8 +171,9 @@ function AppShell() {
 
   return (
     <div className="app-shell">
-      <Topbar node={node} role="TREASURY" />
-      <TreasurySidebar />
+      <Topbar node={node} role="TREASURY" onMenuToggle={() => setMenuOpen((v) => !v)} />
+      <div className={`sidebar-overlay ${menuOpen ? "visible" : ""}`} onClick={() => setMenuOpen(false)} />
+      <TreasurySidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
       <main className="main-content">
         <Routes>
           <Route path="/dashboard" element={<Dashboard />} />
@@ -170,7 +189,7 @@ function AppShell() {
 
 // ─── Member AppShell ───────────────────────────────────────────────────────
 
-function MemberSidebar() {
+function MemberSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navItems = [
     { to: "/dashboard", icon: "▤", label: "My Dashboard" },
     { to: "/channels", icon: "◈", label: "My Channels" },
@@ -178,13 +197,18 @@ function MemberSidebar() {
   ];
 
   return (
-    <nav className="sidebar">
+    <nav className={`sidebar ${open ? "open" : ""}`}>
+      <div className="sidebar-mobile-header">
+        <span className="sidebar-mobile-title">Menu</span>
+        <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">✕</button>
+      </div>
       <div className="sidebar-label">Navigate</div>
       {navItems.map((item) => (
         <div key={item.to} className="sidebar-section">
           <NavLink
             to={item.to}
             className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
+            onClick={onClose}
           >
             <span className="icon">{item.icon}</span>
             {item.label}
@@ -197,6 +221,7 @@ function MemberSidebar() {
 
 function MemberShell() {
   const [node, setNode] = useState<NodeInfo | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const load = () => api.getNode().then(setNode).catch(() => {});
@@ -207,8 +232,9 @@ function MemberShell() {
 
   return (
     <div className="app-shell">
-      <Topbar node={node} role="MEMBER" />
-      <MemberSidebar />
+      <Topbar node={node} role="MEMBER" onMenuToggle={() => setMenuOpen((v) => !v)} />
+      <div className={`sidebar-overlay ${menuOpen ? "visible" : ""}`} onClick={() => setMenuOpen(false)} />
+      <MemberSidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
       <main className="main-content">
         <Routes>
           <Route path="/dashboard" element={<MemberDashboard />} />

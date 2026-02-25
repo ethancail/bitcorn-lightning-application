@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.1.1"
+version: "1.1.2"
 port: 3200
 
 description: >
@@ -27,5 +27,6 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  Bitcoin price graph with 24h/7d/30d/1y views and auto-refresh, displayed
-  on both treasury and member dashboards. Powered by Coinbase public API.
+  Mobile-responsive navigation: hamburger menu on small screens, sidebar
+  slides in as an overlay with backdrop. Dashboard panels stack single-column,
+  tables scroll horizontally. Desktop layout unchanged.

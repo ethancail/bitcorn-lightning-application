@@ -725,3 +725,140 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
 .fade-in-3 { animation-delay: 0.15s; }
 .fade-in-4 { animation-delay: 0.20s; }
 .fade-in-5 { animation-delay: 0.25s; }
+
+/* ─── Mobile hamburger button ─────────────────────────────────── */
+.hamburger-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--amber);
+  font-size: 1.25rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.hamburger-btn:hover { background: var(--bg-2); }
+
+/* ─── Mobile sidebar overlay ──────────────────────────────────── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 90;
+}
+.sidebar-overlay.visible { display: block; }
+
+/* ─── Mobile sidebar close button ─────────────────────────────── */
+.sidebar-close-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-hi);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.sidebar-close-btn:hover { background: var(--bg-2); color: var(--text); }
+
+/* ─── Mobile sidebar header (hidden on desktop) ──────────────── */
+.sidebar-mobile-header { display: none; }
+
+/* ─── Mobile table scroll wrapper ─────────────────────────────── */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ─── Mobile responsive (< 768px) ─────────────────────────────── */
+@media (max-width: 767px) {
+  /* Layout: collapse to single column */
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  /* Topbar: show hamburger */
+  .hamburger-btn { display: flex; }
+
+  .topbar { padding: 0 16px; gap: 8px; }
+
+  .topbar-node {
+    font-size: 0.6875rem;
+    gap: 6px;
+  }
+
+  /* Sidebar: off-screen by default, slides in when open */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 260px;
+    z-index: 100;
+    transform: translateX(-100%);
+    transition: transform 200ms ease;
+    box-shadow: none;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Show close button inside mobile sidebar */
+  .sidebar-close-btn { display: flex; }
+
+  .sidebar-mobile-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 16px 8px;
+  }
+
+  .sidebar-mobile-title {
+    font-family: var(--mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+
+  /* Main content: full width, reduced padding */
+  .main-content {
+    padding: 20px 16px 64px;
+  }
+
+  /* Dashboard grid: single column on mobile */
+  .dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Stat grids: collapse to single column */
+  .stat-grid-3, .stat-grid-4 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Tables: wrap for horizontal scroll */
+  .data-table { min-width: 600px; }
+
+  /* Page headings: smaller on mobile */
+  h1 { font-size: 1.25rem; }
+
+  /* Bitcoin price graph: compact period buttons */
+  .panel-header {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .btn-sm {
+    padding: 4px 8px;
+    font-size: 0.6875rem;
+  }
+}
