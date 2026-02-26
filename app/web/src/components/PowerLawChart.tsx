@@ -179,7 +179,7 @@ export default function PowerLawChart({ period, currentPrice }: PowerLawChartPro
         btc:
           d.btc != null
             ? d.btc
-            : d.date === todayStr && currentPrice > 0
+            : d.date <= todayStr && currentPrice > 0
               ? currentPrice
               : null,
         ts: parseISO(d.date).getTime(),
@@ -209,14 +209,37 @@ export default function PowerLawChart({ period, currentPrice }: PowerLawChartPro
     tick *= 10;
   }
 
-  // X axis ticks — sample ~6 evenly
-  const xTicks: number[] = [];
-  if (chartData.length > 0) {
-    const step = Math.max(1, Math.floor(chartData.length / 6));
-    for (let i = 0; i < chartData.length; i += step) {
-      xTicks.push(chartData[i].ts);
+  // X axis ticks — aligned to year or month boundaries
+  const xTicks = useMemo(() => {
+    if (chartData.length === 0) return [];
+    const first = chartData[0].ts;
+    const last = chartData[chartData.length - 1].ts;
+    const ticks: number[] = [];
+
+    if (period === "1Y") {
+      // Monthly ticks — every 2 months
+      const d = new Date(first);
+      d.setDate(1);
+      d.setMonth(d.getMonth() + 1);
+      while (d.getTime() <= last) {
+        ticks.push(d.getTime());
+        d.setMonth(d.getMonth() + 2);
+      }
+    } else {
+      // Yearly ticks
+      const startYear = new Date(first).getFullYear();
+      const endYear = new Date(last).getFullYear();
+      const span = endYear - startYear;
+      const step = span <= 6 ? 1 : span <= 15 ? 2 : 5;
+      // Start at a clean multiple of step
+      const firstTick = Math.ceil(startYear / step) * step;
+      for (let y = firstTick; y <= endYear; y += step) {
+        const t = new Date(y, 0, 1).getTime();
+        if (t >= first && t <= last) ticks.push(t);
+      }
     }
-  }
+    return ticks;
+  }, [chartData, period]);
 
   return (
     <ResponsiveContainer width="100%" height="100%">
