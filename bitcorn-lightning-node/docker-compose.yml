@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.2.4
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.2.5
     restart: unless-stopped
     ports:
       - "3101:3101"
@@ -17,7 +17,7 @@ services:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.2.4
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.2.5
     restart: unless-stopped
     ports:
       - "3200:3200"

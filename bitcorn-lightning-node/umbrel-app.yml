@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.2.4"
+version: "1.2.5"
 port: 3200
 
 description: >
@@ -27,5 +27,6 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  Fix Power Law chart: X-axis ticks now align to year/month boundaries,
-  BTC price line extends to today via live Coinbase spot price.
+  Redesigned Channels page with visual balance bars showing local (green)
+  vs remote (red) proportional to capacity. Channel cards replace plain
+  data table for better readability.
