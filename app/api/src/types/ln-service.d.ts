@@ -222,6 +222,12 @@ declare module "ln-service" {
     is_confirmed: boolean;
   }>;
 
+  export function getNode(options: {
+    lnd: any;
+    public_key: string;
+    is_omitting_channels?: boolean;
+  }): Promise<{ alias: string; color: string; updated_at: string }>;
+
   export function createChainAddress(options: {
     lnd: any;
     format: 'p2wpkh' | 'np2wpkh' | 'p2tr';

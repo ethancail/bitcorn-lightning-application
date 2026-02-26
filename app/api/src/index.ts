@@ -8,7 +8,7 @@ import { payInvoice } from "./lightning/pay";
 import { assertActiveMember } from "./utils/membership";
 import { assertRateLimit } from "./utils/rate-limit";
 import { insertOutboundPayment } from "./lightning/persist-payments";
-import { decodePaymentRequest } from "ln-service";
+import { decodePaymentRequest, getNode } from "ln-service";
 import { getChannels, getPeers, getNodeInfo } from "./api/read";
 import { getTreasuryMetrics } from "./api/treasury";
 import { getChannelMetrics } from "./api/treasury-channel-metrics";
@@ -44,7 +44,7 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndChainBalance, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress } from "./lightning/lnd";
+import { getLndClient, getLndChainBalance, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress } from "./lightning/lnd";
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
@@ -78,7 +78,7 @@ persistNodeInfo().catch(err => {
 const server = http.createServer(async (req, res) => {
   // ✅ CORS HEADERS
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
   // Handle preflight
@@ -1117,6 +1117,247 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: err?.message ?? "failed_to_open_channel" }));
       }
     });
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // CONTACTS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Helper: build contact response with parsed tags + joined channels
+  function contactRow(row: any) {
+    const channels = db
+      .prepare(
+        "SELECT channel_id, capacity_sat, local_balance_sat, remote_balance_sat, active FROM lnd_channels WHERE peer_pubkey = ?"
+      )
+      .all(row.pubkey) as Array<{
+      channel_id: string;
+      capacity_sat: number;
+      local_balance_sat: number;
+      remote_balance_sat: number;
+      active: number;
+    }>;
+    return {
+      id: row.id,
+      pubkey: row.pubkey,
+      name: row.name,
+      notes: row.notes ?? null,
+      tags: row.tags
+        ? row.tags
+            .split(",")
+            .map((t: string) => t.trim())
+            .filter(Boolean)
+        : [],
+      source: row.source,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      channels: channels.map((ch) => ({
+        channel_id: ch.channel_id,
+        capacity_sats: ch.capacity_sat,
+        local_sats: ch.local_balance_sat,
+        remote_sats: ch.remote_balance_sat,
+        is_active: !!ch.active,
+      })),
+    };
+  }
+
+  // GET /api/contacts
+  if (req.method === "GET" && req.url === "/api/contacts") {
+    try {
+      const rows = db
+        .prepare("SELECT * FROM contacts ORDER BY name COLLATE NOCASE ASC")
+        .all() as any[];
+      const contacts = rows.map(contactRow);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(contacts));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_contacts" }));
+    }
+    return;
+  }
+
+  // POST /api/contacts/sync-peers  (must be before POST /api/contacts)
+  if (req.method === "POST" && req.url === "/api/contacts/sync-peers") {
+    try {
+      const peerPubkeys = db
+        .prepare("SELECT DISTINCT peer_pubkey FROM lnd_channels")
+        .all() as Array<{ peer_pubkey: string }>;
+
+      const existing = new Set(
+        (
+          db.prepare("SELECT pubkey FROM contacts").all() as Array<{ pubkey: string }>
+        ).map((r) => r.pubkey)
+      );
+
+      let added = 0;
+      let skipped = 0;
+      const now = Date.now();
+
+      for (const { peer_pubkey } of peerPubkeys) {
+        if (existing.has(peer_pubkey)) {
+          skipped++;
+          continue;
+        }
+
+        // Try to get alias from LND gossip graph
+        let name = `${peer_pubkey.slice(0, 8)}…${peer_pubkey.slice(-6)}`;
+        try {
+          const { lnd } = getLndClient();
+          const nodeInfo = await getNode({ lnd, public_key: peer_pubkey, is_omitting_channels: true });
+          if (nodeInfo.alias && nodeInfo.alias.trim()) {
+            name = nodeInfo.alias.trim();
+          }
+        } catch {
+          // gossip lookup failed — use truncated pubkey
+        }
+
+        db.prepare(
+          "INSERT INTO contacts (pubkey, name, notes, tags, source, created_at, updated_at) VALUES (?, ?, NULL, NULL, 'auto', ?, ?)"
+        ).run(peer_pubkey, name, now, now);
+        added++;
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, added, skipped }));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_sync_peers" }));
+    }
+    return;
+  }
+
+  // POST /api/contacts
+  if (req.method === "POST" && req.url === "/api/contacts") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const { pubkey, name, notes, tags } = parsed;
+
+        if (!pubkey || typeof pubkey !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "pubkey is required" }));
+          return;
+        }
+        if (!name || typeof name !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "name is required" }));
+          return;
+        }
+
+        const tagsStr = Array.isArray(tags) ? tags.join(",") : tags ?? null;
+        const now = Date.now();
+
+        try {
+          db.prepare(
+            "INSERT INTO contacts (pubkey, name, notes, tags, source, created_at, updated_at) VALUES (?, ?, ?, ?, 'manual', ?, ?)"
+          ).run(pubkey.trim(), name.trim(), notes ?? null, tagsStr, now, now);
+        } catch (sqlErr: any) {
+          if (sqlErr?.message?.includes("UNIQUE constraint failed")) {
+            res.writeHead(409, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "Contact with this pubkey already exists" }));
+            return;
+          }
+          throw sqlErr;
+        }
+
+        const row = db
+          .prepare("SELECT * FROM contacts WHERE pubkey = ?")
+          .get(pubkey.trim()) as any;
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, contact: contactRow(row) }));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err?.message ?? "failed_to_create_contact" }));
+      }
+    });
+    return;
+  }
+
+  // PATCH /api/contacts/:pubkey
+  if (req.method === "PATCH" && req.url?.startsWith("/api/contacts/")) {
+    const pubkey = decodeURIComponent(req.url.slice("/api/contacts/".length));
+    if (!pubkey) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "pubkey is required" }));
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const sets: string[] = [];
+        const params: any[] = [];
+
+        if (parsed.name !== undefined) {
+          sets.push("name = ?");
+          params.push(parsed.name);
+        }
+        if (parsed.notes !== undefined) {
+          sets.push("notes = ?");
+          params.push(parsed.notes);
+        }
+        if (parsed.tags !== undefined) {
+          const tagsStr = Array.isArray(parsed.tags) ? parsed.tags.join(",") : parsed.tags;
+          sets.push("tags = ?");
+          params.push(tagsStr);
+        }
+
+        if (sets.length === 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "No fields to update" }));
+          return;
+        }
+
+        sets.push("updated_at = ?");
+        params.push(Date.now());
+        params.push(pubkey);
+
+        const result = db
+          .prepare(`UPDATE contacts SET ${sets.join(", ")} WHERE pubkey = ?`)
+          .run(...params);
+
+        if (result.changes === 0) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Contact not found" }));
+          return;
+        }
+
+        const row = db.prepare("SELECT * FROM contacts WHERE pubkey = ?").get(pubkey) as any;
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, contact: contactRow(row) }));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err?.message ?? "failed_to_update_contact" }));
+      }
+    });
+    return;
+  }
+
+  // DELETE /api/contacts/:pubkey
+  if (req.method === "DELETE" && req.url?.startsWith("/api/contacts/")) {
+    const pubkey = decodeURIComponent(req.url.slice("/api/contacts/".length));
+    if (!pubkey) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "pubkey is required" }));
+      return;
+    }
+    try {
+      const result = db.prepare("DELETE FROM contacts WHERE pubkey = ?").run(pubkey);
+      if (result.changes === 0) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Contact not found" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_delete_contact" }));
+    }
     return;
   }
 
