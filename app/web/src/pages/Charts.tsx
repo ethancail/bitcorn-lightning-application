@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import PowerLawChart from "../components/PowerLawChart";
 import MovingAveragesChart from "../components/MovingAveragesChart";
 import CornBitcoinChart from "../components/CornBitcoinChart";
+import CornMovingAveragesChart from "../components/CornMovingAveragesChart";
 import PriceTickerStrip from "../components/CommodityPricesPanel";
 
 // ─── Types ───────────────────────────────────────────────────────────────
@@ -9,6 +10,7 @@ import PriceTickerStrip from "../components/CommodityPricesPanel";
 type Period = "1Y" | "5Y" | "All" | "2042";
 type MAPeriod = "1M" | "1Y" | "5Y" | "10Y";
 type CBPeriod = "1M" | "1Y" | "5Y" | "10Y";
+type CMAPeriod = "1M" | "1Y" | "5Y" | "10Y";
 
 type CoinbaseSpotResponse = {
   data: { amount: string };
@@ -19,6 +21,7 @@ type CoinbaseSpotResponse = {
 const PERIODS: Period[] = ["1Y", "5Y", "All", "2042"];
 const MA_PERIODS: MAPeriod[] = ["1M", "1Y", "5Y", "10Y"];
 const CB_PERIODS: CBPeriod[] = ["1M", "1Y", "5Y", "10Y"];
+const CMA_PERIODS: CMAPeriod[] = ["1M", "1Y", "5Y", "10Y"];
 
 const COINBASE_SPOT = "https://api.coinbase.com/v2/prices/BTC-USD/spot";
 
@@ -28,6 +31,7 @@ export default function Charts() {
   const [period, setPeriod] = useState<Period>("All");
   const [maPeriod, setMaPeriod] = useState<MAPeriod>("1Y");
   const [cbPeriod, setCbPeriod] = useState<CBPeriod>("5Y");
+  const [cmaPeriod, setCmaPeriod] = useState<CMAPeriod>("5Y");
   const [currentPrice, setCurrentPrice] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -249,6 +253,61 @@ export default function Charts() {
               />
               <span style={{ color: "var(--text-2)" }}>Bushels of corn per 1 BTC</span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="panel fade-in" style={{ marginTop: 16 }}>
+        <div className="panel-header">
+          <span className="panel-title">
+            <span className="icon">🌽</span>Corn Price Moving Averages
+          </span>
+          <div style={{ display: "flex", gap: 4 }}>
+            {CMA_PERIODS.map((p) => (
+              <button
+                key={p}
+                className={`btn btn-sm ${p === cmaPeriod ? "btn-primary" : "btn-outline"}`}
+                onClick={() => setCmaPeriod(p)}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="panel-body">
+          <div className="power-law-chart-container">
+            <CornMovingAveragesChart period={cmaPeriod} />
+          </div>
+
+          {/* Legend */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "12px 20px",
+              marginTop: 16,
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: "0.6875rem",
+            }}
+          >
+            {[
+              { color: "#22c55e", label: "Corn Price" },
+              { color: "#06b6d4", label: "50-day MA" },
+              { color: "#a78bfa", label: "100-day MA" },
+              { color: "#f59e0b", label: "200-day MA" },
+            ].map((item) => (
+              <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div
+                  style={{
+                    width: 16,
+                    height: 2,
+                    background: item.color,
+                    borderRadius: 1,
+                  }}
+                />
+                <span style={{ color: "var(--text-2)" }}>{item.label}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>

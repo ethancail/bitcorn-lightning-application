@@ -63,7 +63,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells), price ticker strip below Power Law chart (BTC from Coinbase, gold from goldapi.io, corn/soybeans/wheat from USDA NASS — all cached 24h in Cloudflare KV), BTC Moving Averages chart (50/100/200-day MAs, linear scale, 1M/1Y/5Y/10Y periods, computed client-side from power-law-data.json).
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells), price ticker strip below Power Law chart (BTC from Coinbase, gold from goldapi.io, corn/soybeans/wheat from USDA NASS — all cached 24h in Cloudflare KV), BTC Moving Averages chart (50/100/200-day MAs, linear scale, 1M/1Y/5Y/10Y periods, computed client-side from power-law-data.json), Corn-Bitcoin ratio chart (bushels of corn per 1 BTC, historical corn prices from USDA NASS via Worker endpoint `GET /prices/corn-history`, monthly data interpolated to daily, 1M/1Y/5Y/10Y periods).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -203,9 +203,10 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph — recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh |
 | `app/web/src/components/PowerLawChart.tsx` | Bitcoin Power Law chart — recharts ComposedChart, log Y axis, percentile bands (p2.5/p16.5/p83.5/p97.5), trend line, live spot price overlay, downsampling; fills gap days with live Coinbase price so chart extends to today |
 | `app/web/src/components/MovingAveragesChart.tsx` | BTC Moving Averages chart — recharts LineChart, linear Y axis, 50/100/200-day MA lines over daily BTC price; reuses power-law-data.json, computes MAs client-side over full dataset before slicing to visible window; periods: 1M/1Y/5Y/10Y |
+| `app/web/src/components/CornBitcoinChart.tsx` | Corn-Bitcoin ratio chart — recharts LineChart, shows bushels of corn per 1 BTC; fetches monthly corn history from `/api/corn-history`, interpolates to daily, divides BTC price by corn price; periods: 1M/1Y/5Y/10Y |
 | `app/web/src/components/CommodityPricesPanel.tsx` | Price ticker strip — BTC + 4 commodities (gold, corn, soy, wheat) with color-coded SVG icons; fetches from `/api/commodity-prices`, 60min refresh; wraps on mobile |
 | `app/web/src/data/power-law-data.json` | Power law dataset — ~10,000 daily entries from 2015-01-01 to 2042-05-31, includes btc price + trend + percentile bands; bundled by Vite; BTC prices go stale — chart fills nulls up to today with live Coinbase price |
-| `app/web/src/pages/Charts.tsx` | Charts page — PowerLawChart (1Y/5Y/All/2042), PriceTickerStrip, MovingAveragesChart (1M/1Y/5Y/10Y); fetches Coinbase spot price and passes to both charts; available to both treasury and member shells |
+| `app/web/src/pages/Charts.tsx` | Charts page — PowerLawChart (1Y/5Y/All/2042), PriceTickerStrip, MovingAveragesChart (1M/1Y/5Y/10Y), CornBitcoinChart (1M/1Y/5Y/10Y); fetches Coinbase spot price and passes to all charts; available to both treasury and member shells |
 | `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (monolithic: NodeBalancePanel, FundNodePanel, BitcoinPriceGraph, AlertsBar, NetYield, ChannelROI, PeerScores, Rotation, DynamicFees) |
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
 | `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form (no channel) or hub channel stats + forwarded fees |
@@ -260,9 +261,10 @@ FundNodePanel (browser)
 
 - Source: `cloudflare-worker/src/index.ts`
 - Deployed at: `https://bitcorn-onramp.ethancail.workers.dev`
-- Two endpoints:
+- Three endpoints:
   - `POST /` — Coinbase Onramp: accepts `{ address: string }` → returns `{ sessionToken: string }`
   - `GET /prices` — Commodity prices (gold, corn, soybeans, wheat) cached in KV for 24h
+  - `GET /prices/corn-history` — Historical monthly corn PRICE RECEIVED from USDA NASS (2014+), cached in KV for 24h; returns `[{ year, month, price }]`
 - Secrets stored in Cloudflare (never in git): `CDP_KEY_NAME`, `CDP_PRIVATE_KEY`, `USDA_NASS_KEY`, `GOLD_API_KEY`
 - CDP keys are SEC1 format (`-----BEGIN EC PRIVATE KEY-----`); Worker converts to PKCS#8 for the Web Crypto API via `sec1ToPkcs8Pem()`
 - Gold price from goldapi.io (100 requests/month free tier); grain prices from USDA NASS API (free, no limit)

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -10,46 +10,38 @@ import {
 } from "recharts";
 import { format, parseISO } from "date-fns";
 import powerLawData from "../data/power-law-data.json";
+import { api, type CornHistoryEntry } from "../api/client";
+import { computeMA } from "./MovingAveragesChart";
+import { interpolateCornPrices } from "./CornBitcoinChart";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
-type MAPeriod = "1M" | "1Y" | "5Y" | "10Y";
-
-type RawDataPoint = {
-  date: string;
-  btc: number | null;
-  trend: number;
-  p2_5: number;
-  p16_5: number;
-  p83_5: number;
-  p97_5: number;
-};
+type CMAPeriod = "1M" | "1Y" | "5Y" | "10Y";
 
 type ChartPoint = {
   date: string;
   ts: number;
-  btc: number | null;
+  corn: number | null;
   ma50: number | null;
   ma100: number | null;
   ma200: number | null;
 };
 
-interface MovingAveragesChartProps {
-  period: MAPeriod;
-  currentPrice: number;
+interface CornMovingAveragesChartProps {
+  period: CMAPeriod;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────
 
 const COLORS = {
-  btc: "#f59e0b",
+  corn: "#22c55e",
   ma50: "#06b6d4",
   ma100: "#a78bfa",
-  ma200: "#22c55e",
+  ma200: "#f59e0b",
 };
 
 const LABELS: Record<string, string> = {
-  btc: "BTC Price",
+  corn: "Corn Price",
   ma50: "50-day MA",
   ma100: "100-day MA",
   ma200: "200-day MA",
@@ -64,21 +56,14 @@ const MONO = "'IBM Plex Mono', monospace";
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
 function formatPrice(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(0)}k`;
-  return `$${n.toFixed(0)}`;
+  return `$${n.toFixed(2)}`;
 }
 
-function formatUsd(n: number): string {
-  return n.toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+function formatYAxis(n: number): string {
+  return `$${n.toFixed(2)}`;
 }
 
-function getDateRange(period: MAPeriod): { start: string; end: string } {
+function getDateRange(period: CMAPeriod): { start: string; end: string } {
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
   const start = new Date(today);
@@ -99,33 +84,9 @@ function getDateRange(period: MAPeriod): { start: string; end: string } {
   return { start: start.toISOString().slice(0, 10), end: todayStr };
 }
 
-export function computeMA(prices: (number | null)[], window: number): (number | null)[] {
-  const result: (number | null)[] = new Array(prices.length).fill(null);
-  let sum = 0;
-  let count = 0;
-
-  for (let i = 0; i < prices.length; i++) {
-    if (prices[i] != null) {
-      sum += prices[i]!;
-      count++;
-    }
-    if (i >= window) {
-      if (prices[i - window] != null) {
-        sum -= prices[i - window]!;
-        count--;
-      }
-    }
-    if (count >= window) {
-      result[i] = sum / window;
-    }
-  }
-  return result;
-}
-
 function downsample(data: ChartPoint[]): ChartPoint[] {
   const len = data.length;
   if (len <= 400) return data;
-  // Keep every 7th point, always keep last 90 days and endpoints
   const last90 = len > 90 ? data[len - 90].ts : 0;
   const result: ChartPoint[] = [];
   for (let i = 0; i < len; i++) {
@@ -138,7 +99,7 @@ function downsample(data: ChartPoint[]): ChartPoint[] {
 
 // ─── Custom Tooltip ──────────────────────────────────────────────────────
 
-function MATooltip({
+function CMATooltip({
   active,
   payload,
 }: {
@@ -178,7 +139,7 @@ function MATooltip({
           >
             <span style={{ color: entry.color }}>{label}</span>
             <span style={{ color: TEXT, fontWeight: 500 }}>
-              {formatUsd(entry.value)}
+              {formatPrice(entry.value)}/bu
             </span>
           </div>
         );
@@ -189,21 +150,40 @@ function MATooltip({
 
 // ─── Component ───────────────────────────────────────────────────────────
 
-export default function MovingAveragesChart({ period, currentPrice }: MovingAveragesChartProps) {
+export default function CornMovingAveragesChart({ period }: CornMovingAveragesChartProps) {
+  const [cornHistory, setCornHistory] = useState<CornHistoryEntry[]>([]);
+  const [cornLoading, setCornLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .getCornHistory()
+      .then(setCornHistory)
+      .catch(() => {})
+      .finally(() => setCornLoading(false));
+  }, []);
+
   const chartData = useMemo(() => {
+    if (cornHistory.length === 0) return [];
+
     const todayStr = new Date().toISOString().slice(0, 10);
     const { start, end } = getDateRange(period);
 
-    // Build full price array (fill gap days with current price)
-    const allData = (powerLawData as RawDataPoint[])
-      .filter((d) => d.date <= end)
-      .map((d) => ({
-        date: d.date,
-        btc: d.btc != null ? d.btc : d.date <= todayStr && currentPrice > 0 ? currentPrice : null,
-      }));
+    // Get all dates from power-law-data up to today
+    const allDates = (powerLawData as Array<{ date: string }>)
+      .filter((d) => d.date <= end && d.date <= todayStr)
+      .map((d) => d.date);
 
-    // Extract prices for MA computation
-    const prices = allData.map((d) => d.btc);
+    // Interpolate corn prices to daily
+    const cornDaily = interpolateCornPrices(cornHistory, allDates);
+
+    // Build full price array for MA computation
+    const allData = allDates.map((date) => ({
+      date,
+      corn: cornDaily.get(date) ?? null,
+    }));
+
+    // Compute MAs over full dataset before filtering to visible window
+    const prices = allData.map((d) => d.corn);
     const ma50 = computeMA(prices, 50);
     const ma100 = computeMA(prices, 100);
     const ma200 = computeMA(prices, 200);
@@ -213,25 +193,25 @@ export default function MovingAveragesChart({ period, currentPrice }: MovingAver
       .map((d, i) => ({
         date: d.date,
         ts: parseISO(d.date).getTime(),
-        btc: d.btc,
+        corn: d.corn,
         ma50: ma50[i],
         ma100: ma100[i],
         ma200: ma200[i],
       }))
-      .filter((d) => d.date >= start && d.date <= end);
+      .filter((d) => d.date >= start && d.date <= end && d.corn != null);
 
     return downsample(points);
-  }, [period, currentPrice]);
+  }, [period, cornHistory]);
 
-  // Y domain from visible data
+  // Y domain
   const allValues = chartData
-    .flatMap((d) => [d.btc, d.ma50, d.ma100, d.ma200])
+    .flatMap((d) => [d.corn, d.ma50, d.ma100, d.ma200])
     .filter((v): v is number => v != null && v > 0);
 
-  const yMin = Math.min(...allValues) * 0.95;
-  const yMax = Math.max(...allValues) * 1.05;
+  const yMin = allValues.length > 0 ? Math.min(...allValues) * 0.95 : 0;
+  const yMax = allValues.length > 0 ? Math.max(...allValues) * 1.05 : 10;
 
-  // X axis ticks — aligned to boundaries
+  // X axis ticks
   const xTicks = useMemo(() => {
     if (chartData.length === 0) return [];
     const first = chartData[0].ts;
@@ -239,15 +219,13 @@ export default function MovingAveragesChart({ period, currentPrice }: MovingAver
     const ticks: number[] = [];
 
     if (period === "1M") {
-      // Weekly ticks
       const d = new Date(first);
-      d.setDate(d.getDate() + (7 - d.getDay()) % 7); // next Sunday
+      d.setDate(d.getDate() + (7 - d.getDay()) % 7);
       while (d.getTime() <= last) {
         ticks.push(d.getTime());
         d.setDate(d.getDate() + 7);
       }
     } else if (period === "1Y") {
-      // Monthly ticks — every 2 months
       const d = new Date(first);
       d.setDate(1);
       d.setMonth(d.getMonth() + 1);
@@ -256,7 +234,6 @@ export default function MovingAveragesChart({ period, currentPrice }: MovingAver
         d.setMonth(d.getMonth() + 2);
       }
     } else {
-      // Yearly ticks
       const startYear = new Date(first).getFullYear();
       const endYear = new Date(last).getFullYear();
       const span = endYear - startYear;
@@ -269,6 +246,43 @@ export default function MovingAveragesChart({ period, currentPrice }: MovingAver
     }
     return ticks;
   }, [chartData, period]);
+
+  if (cornLoading) {
+    return (
+      <div
+        style={{
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: MONO,
+          color: TEXT_3,
+          fontSize: "0.8125rem",
+          letterSpacing: "0.06em",
+        }}
+      >
+        LOADING…
+      </div>
+    );
+  }
+
+  if (chartData.length === 0) {
+    return (
+      <div
+        style={{
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: MONO,
+          color: TEXT_3,
+          fontSize: "0.8125rem",
+        }}
+      >
+        No corn price data available
+      </div>
+    );
+  }
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -295,15 +309,15 @@ export default function MovingAveragesChart({ period, currentPrice }: MovingAver
         />
         <YAxis
           domain={[yMin, yMax]}
-          tickFormatter={formatPrice}
+          tickFormatter={formatYAxis}
           axisLine={false}
           tickLine={false}
           tick={{ fill: TEXT_3, fontFamily: MONO, fontSize: 11 }}
           width={60}
         />
-        <Tooltip content={<MATooltip />} />
+        <Tooltip content={<CMATooltip />} />
 
-        {/* 200-day MA (green, behind) */}
+        {/* 200-day MA (amber, behind) */}
         <Line
           type="monotone"
           dataKey="ma200"
@@ -333,14 +347,14 @@ export default function MovingAveragesChart({ period, currentPrice }: MovingAver
           activeDot={false}
           isAnimationActive={false}
         />
-        {/* BTC Price (amber, on top) */}
+        {/* Corn Price (green, on top) */}
         <Line
           type="monotone"
-          dataKey="btc"
-          stroke={COLORS.btc}
+          dataKey="corn"
+          stroke={COLORS.corn}
           strokeWidth={2}
           dot={false}
-          activeDot={{ r: 3, fill: COLORS.btc, stroke: "#0a0a0c", strokeWidth: 2 }}
+          activeDot={{ r: 3, fill: COLORS.corn, stroke: "#0a0a0c", strokeWidth: 2 }}
           connectNulls={false}
           isAnimationActive={false}
         />

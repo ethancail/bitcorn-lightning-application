@@ -82,7 +82,7 @@ function getDateRange(period: CBPeriod): { start: string; end: string } {
 }
 
 /** Interpolate monthly corn prices to daily using linear interpolation. */
-function interpolateCornPrices(
+export function interpolateCornPrices(
   entries: CornHistoryEntry[],
   dates: string[],
 ): Map<string, number> {
