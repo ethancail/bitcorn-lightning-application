@@ -38,6 +38,9 @@ secrets/
 *.key
 *.pem
 
+# Screenshots (Playwright/dev previews)
+screenshots/
+
 # Local dev overrides (contain local pubkeys and paths)
 docker-compose.override.yml
 dev/lnd/

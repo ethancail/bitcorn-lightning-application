@@ -291,57 +291,66 @@ function ChannelsPage() {
           <span className="panel-title">
             <span className="icon">◈</span>All Channels
           </span>
+          {!loading && channels.length > 0 && (
+            <span className="badge badge-amber">{channels.length}</span>
+          )}
         </div>
         {loading ? (
           <div
             className="panel-body"
-            style={{ display: "flex", flexDirection: "column", gap: 10 }}
+            style={{ display: "flex", flexDirection: "column", gap: 12 }}
           >
-            {[100, 80, 90].map((w, i) => (
-              <div
-                key={i}
-                className="loading-shimmer"
-                style={{ height: 16, width: `${w}%` }}
-              />
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="channel-card">
+                <div className="loading-shimmer" style={{ height: 14, width: "50%", marginBottom: 8 }} />
+                <div className="loading-shimmer" style={{ height: 8, width: "100%", borderRadius: 4, marginBottom: 8 }} />
+                <div className="loading-shimmer" style={{ height: 12, width: "70%" }} />
+              </div>
             ))}
           </div>
+        ) : channels.length === 0 ? (
+          <div className="empty-state">No channels found.</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Channel ID</th>
-                  <th>Peer</th>
-                  <th style={{ textAlign: "right" }}>Capacity</th>
-                  <th style={{ textAlign: "right" }}>Local</th>
-                  <th style={{ textAlign: "right" }}>Remote</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {channels.map((c) => (
-                  <tr key={c.channel_id}>
-                    <td className="td-mono">{c.channel_id.slice(0, 16)}…</td>
-                    <td className="td-mono">
+          <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {channels.map((c) => {
+              const localPct = c.capacity_sat > 0 ? (c.local_balance_sat / c.capacity_sat) * 100 : 0;
+              const remotePct = c.capacity_sat > 0 ? (c.remote_balance_sat / c.capacity_sat) * 100 : 0;
+              return (
+                <div key={c.channel_id} className="channel-card">
+                  <div className="channel-card-top">
+                    <span className="channel-peer mono">
                       {c.peer_pubkey.slice(0, 12)}…{c.peer_pubkey.slice(-6)}
-                    </td>
-                    <td className="td-num">{c.capacity_sat.toLocaleString()}</td>
-                    <td className="td-num">{c.local_balance_sat.toLocaleString()}</td>
-                    <td className="td-num">{c.remote_balance_sat.toLocaleString()}</td>
-                    <td>
-                      {c.active ? (
-                        <span className="badge badge-green">active</span>
-                      ) : (
-                        <span className="badge badge-muted">inactive</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {channels.length === 0 && (
-              <div className="empty-state">No channels found.</div>
-            )}
+                    </span>
+                    {c.active ? (
+                      <span className="badge badge-green">active</span>
+                    ) : (
+                      <span className="badge badge-muted">inactive</span>
+                    )}
+                  </div>
+                  <div className="channel-capacity mono">
+                    {c.capacity_sat.toLocaleString()} sats
+                  </div>
+                  <div className="channel-balance-bar">
+                    <div
+                      className="channel-balance-local"
+                      style={{ width: `${localPct}%` }}
+                    />
+                  </div>
+                  <div className="channel-balance-labels">
+                    <span className="channel-label-local">
+                      <span className="channel-dot" style={{ background: "var(--green)" }} />
+                      Local: {c.local_balance_sat.toLocaleString()}
+                      <span className="channel-pct">({localPct.toFixed(0)}%)</span>
+                    </span>
+                    <span className="channel-label-remote">
+                      <span className="channel-dot" style={{ background: "var(--red)" }} />
+                      Remote: {c.remote_balance_sat.toLocaleString()}
+                      <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
