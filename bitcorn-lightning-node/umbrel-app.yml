@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.2.3"
+version: "1.2.4"
 port: 3200
 
 description: >
@@ -27,6 +27,5 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  Redesigned price tickers below Power Law chart — BTC, Gold, Corn, Soy,
-  Wheat with color-coded icons. Gold now uses goldapi.io for accurate
-  spot pricing. Mobile-friendly wrapping layout (no horizontal scroll).
+  Fix Power Law chart: X-axis ticks now align to year/month boundaries,
+  BTC price line extends to today via live Coinbase spot price.
