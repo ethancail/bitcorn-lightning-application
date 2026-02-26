@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.2.7"
+version: "1.2.8"
 port: 3200
 
 description: >
@@ -27,6 +27,5 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  Added Corn-Bitcoin ratio chart showing bushels of corn needed to buy 1 BTC
-  over time. Historical corn prices from USDA NASS via Cloudflare Worker.
-  Period selector: 1M, 1Y, 5Y, 10Y. Worker must be redeployed.
+  Added Corn Price Moving Averages chart showing daily corn price with
+  50/100/200-day MA overlays. Period selector: 1M, 1Y, 5Y, 10Y.
