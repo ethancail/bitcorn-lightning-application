@@ -53,6 +53,23 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ channel_id, dry_run: true }),
     }),
+  getContacts: () => apiFetch<Contact[]>("/api/contacts"),
+  createContact: (body: { pubkey: string; name: string; notes?: string; tags?: string[] }) =>
+    apiFetch<{ ok: boolean; contact: Contact }>("/api/contacts", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateContact: (pubkey: string, body: { name?: string; notes?: string; tags?: string[] }) =>
+    apiFetch<{ ok: boolean; contact: Contact }>(`/api/contacts/${pubkey}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+  deleteContact: (pubkey: string) =>
+    apiFetch<{ ok: boolean }>(`/api/contacts/${pubkey}`, { method: "DELETE" }),
+  syncPeers: () =>
+    apiFetch<{ ok: boolean; added: number; skipped: number }>("/api/contacts/sync-peers", {
+      method: "POST",
+    }),
 };
 
 // ─── Shared helpers ───────────────────────────────────────────────────────
@@ -264,6 +281,32 @@ export type RotationDryRunResult = {
     is_force_close: boolean;
   };
 };
+
+export type ContactChannel = {
+  channel_id: string;
+  capacity_sats: number;
+  local_sats: number;
+  remote_sats: number;
+  is_active: boolean;
+};
+
+export type Contact = {
+  id: number;
+  pubkey: string;
+  name: string;
+  notes: string | null;
+  tags: string[];
+  source: "auto" | "manual";
+  created_at: number;
+  updated_at: number;
+  channels: ContactChannel[];
+};
+
+/** Resolve a pubkey to a contact name, or fall back to truncated pubkey. */
+export function resolveContactName(pubkey: string, contacts: Contact[]): string {
+  const contact = contacts.find((c) => c.pubkey === pubkey);
+  return contact ? contact.name : `${pubkey.slice(0, 12)}…${pubkey.slice(-6)}`;
+}
 
 // ─── Named fetch exports (legacy compat) ─────────────────────────────────
 

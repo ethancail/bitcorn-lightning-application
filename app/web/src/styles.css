@@ -376,6 +376,18 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
 .badge-blue   { background: var(--blue-glow);   color: var(--blue); }
 .badge-muted  { background: var(--bg-3); color: var(--text-3); }
 
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  background: var(--amber-glow);
+  color: var(--amber);
+  letter-spacing: 0.02em;
+}
+
 /* ─── Buttons ──────────────────────────────────────────────────── */
 .btn {
   display: inline-flex;
