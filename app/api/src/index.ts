@@ -212,6 +212,32 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Public — historical corn prices proxied from Cloudflare Worker
+  if (req.method === "GET" && req.url === "/api/corn-history") {
+    try {
+      const workerUrl = ENV.coinbaseWorkerUrl;
+      if (!workerUrl) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "worker_not_configured" }));
+        return;
+      }
+      const response = await fetch(`${workerUrl}/prices/corn-history`);
+      if (!response.ok) {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "corn_history_unavailable" }));
+        return;
+      }
+      const data = await response.json();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err) {
+      console.error("[corn-history]", err);
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "corn_history_unavailable" }));
+    }
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/peers") {
     try {
       const data = getPeers();

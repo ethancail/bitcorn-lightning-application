@@ -152,6 +152,84 @@ async function fetchUsdaPrice(
   }
 }
 
+// ─── /prices/corn-history handler ────────────────────────────────────────
+
+type CornHistoryEntry = { year: number; month: number; price: number };
+
+const CORN_HISTORY_KV_KEY = "corn_price_history";
+
+async function handleCornHistory(env: Env): Promise<Response> {
+  // Check KV cache first
+  const cached = await env.PRICES_CACHE.get(CORN_HISTORY_KV_KEY);
+  if (cached) {
+    return new Response(cached, {
+      headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+    });
+  }
+
+  const key = env.USDA_NASS_KEY?.replace(/^["']|["']$/g, "");
+  if (!key) {
+    return new Response(JSON.stringify({ error: "USDA key not configured" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+    });
+  }
+
+  try {
+    const params = new URLSearchParams({
+      key,
+      commodity_desc: "CORN",
+      statisticcat_desc: "PRICE RECEIVED",
+      unit_desc: "$ / BU",
+      freq_desc: "MONTHLY",
+      year__GE: "2014",
+      format: "JSON",
+    });
+    const res = await fetch(
+      `https://quickstats.nass.usda.gov/api/api_GET/?${params.toString()}`,
+    );
+    if (!res.ok) {
+      return new Response("USDA API error", { status: 502, headers: CORS_HEADERS });
+    }
+    const data = (await res.json()) as {
+      data: Array<{ year: number; reference_period_desc: string; Value: string }>;
+    };
+    if (!data.data || data.data.length === 0) {
+      return new Response(JSON.stringify([]), {
+        headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+      });
+    }
+
+    const MONTHS: Record<string, number> = {
+      JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+      JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12,
+    };
+
+    const entries: CornHistoryEntry[] = [];
+    for (const row of data.data) {
+      const monthKey = row.reference_period_desc?.toUpperCase().slice(0, 3);
+      const month = MONTHS[monthKey];
+      if (!month) continue;
+      const price = parseFloat(row.Value.replace(/,/g, ""));
+      if (isNaN(price) || price <= 0) continue;
+      entries.push({ year: row.year, month, price });
+    }
+
+    // Sort chronologically
+    entries.sort((a, b) => a.year - b.year || a.month - b.month);
+
+    const body = JSON.stringify(entries);
+    await env.PRICES_CACHE.put(CORN_HISTORY_KV_KEY, body, { expirationTtl: CACHE_TTL });
+
+    return new Response(body, {
+      headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+    });
+  } catch (err) {
+    console.error("Corn history error:", err instanceof Error ? err.message : err);
+    return new Response("Internal error", { status: 500, headers: CORS_HEADERS });
+  }
+}
+
 // ─── /prices handler ─────────────────────────────────────────────────────
 
 const KV_KEY = "commodity_prices";
@@ -258,6 +336,11 @@ export default {
     // CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    // GET /prices/corn-history — historical monthly corn prices
+    if (request.method === "GET" && url.pathname === "/prices/corn-history") {
+      return handleCornHistory(env);
     }
 
     // GET /prices — commodity prices with KV caching

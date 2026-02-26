@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import PowerLawChart from "../components/PowerLawChart";
 import MovingAveragesChart from "../components/MovingAveragesChart";
+import CornBitcoinChart from "../components/CornBitcoinChart";
 import PriceTickerStrip from "../components/CommodityPricesPanel";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
 type Period = "1Y" | "5Y" | "All" | "2042";
 type MAPeriod = "1M" | "1Y" | "5Y" | "10Y";
+type CBPeriod = "1M" | "1Y" | "5Y" | "10Y";
 
 type CoinbaseSpotResponse = {
   data: { amount: string };
@@ -16,6 +18,7 @@ type CoinbaseSpotResponse = {
 
 const PERIODS: Period[] = ["1Y", "5Y", "All", "2042"];
 const MA_PERIODS: MAPeriod[] = ["1M", "1Y", "5Y", "10Y"];
+const CB_PERIODS: CBPeriod[] = ["1M", "1Y", "5Y", "10Y"];
 
 const COINBASE_SPOT = "https://api.coinbase.com/v2/prices/BTC-USD/spot";
 
@@ -24,6 +27,7 @@ const COINBASE_SPOT = "https://api.coinbase.com/v2/prices/BTC-USD/spot";
 export default function Charts() {
   const [period, setPeriod] = useState<Period>("All");
   const [maPeriod, setMaPeriod] = useState<MAPeriod>("1Y");
+  const [cbPeriod, setCbPeriod] = useState<CBPeriod>("5Y");
   const [currentPrice, setCurrentPrice] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -197,6 +201,54 @@ export default function Charts() {
                 <span style={{ color: "var(--text-2)" }}>{item.label}</span>
               </div>
             ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="panel fade-in" style={{ marginTop: 16 }}>
+        <div className="panel-header">
+          <span className="panel-title">
+            <span className="icon">🌽</span>Corn-Bitcoin Ratio
+          </span>
+          <div style={{ display: "flex", gap: 4 }}>
+            {CB_PERIODS.map((p) => (
+              <button
+                key={p}
+                className={`btn btn-sm ${p === cbPeriod ? "btn-primary" : "btn-outline"}`}
+                onClick={() => setCbPeriod(p)}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="panel-body">
+          <div className="power-law-chart-container">
+            <CornBitcoinChart period={cbPeriod} currentPrice={currentPrice} />
+          </div>
+
+          {/* Legend */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "12px 20px",
+              marginTop: 16,
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: "0.6875rem",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div
+                style={{
+                  width: 16,
+                  height: 2,
+                  background: "#f59e0b",
+                  borderRadius: 1,
+                }}
+              />
+              <span style={{ color: "var(--text-2)" }}>Bushels of corn per 1 BTC</span>
+            </div>
           </div>
         </div>
       </div>

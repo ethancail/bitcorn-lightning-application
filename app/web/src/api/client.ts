@@ -27,6 +27,7 @@ export const api = {
   getNodeBalances: () => apiFetch<NodeBalances>("/api/node/balances"),
   getCoinbaseOnrampUrl: () => apiFetch<OnrampUrlResponse>("/api/coinbase/onramp-url"),
   getCommodityPrices: () => apiFetch<CommodityPrices>("/api/commodity-prices"),
+  getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   openMemberChannel: (body: { capacity_sats: number; partner_socket?: string }) =>
     apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/member/open-channel", {
@@ -264,6 +265,12 @@ export type RotationDryRunResult = {
     reason: string;
     is_force_close: boolean;
   };
+};
+
+export type CornHistoryEntry = {
+  year: number;
+  month: number;
+  price: number;
 };
 
 export type CommodityPrice = {
