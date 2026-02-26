@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import PowerLawChart from "../components/PowerLawChart";
+import MovingAveragesChart from "../components/MovingAveragesChart";
 import PriceTickerStrip from "../components/CommodityPricesPanel";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
 type Period = "1Y" | "5Y" | "All" | "2042";
+type MAPeriod = "1M" | "1Y" | "5Y" | "10Y";
 
 type CoinbaseSpotResponse = {
   data: { amount: string };
@@ -13,6 +15,7 @@ type CoinbaseSpotResponse = {
 // ─── Constants ───────────────────────────────────────────────────────────
 
 const PERIODS: Period[] = ["1Y", "5Y", "All", "2042"];
+const MA_PERIODS: MAPeriod[] = ["1M", "1Y", "5Y", "10Y"];
 
 const COINBASE_SPOT = "https://api.coinbase.com/v2/prices/BTC-USD/spot";
 
@@ -20,6 +23,7 @@ const COINBASE_SPOT = "https://api.coinbase.com/v2/prices/BTC-USD/spot";
 
 export default function Charts() {
   const [period, setPeriod] = useState<Period>("All");
+  const [maPeriod, setMaPeriod] = useState<MAPeriod>("1Y");
   const [currentPrice, setCurrentPrice] = useState(0);
   const [loading, setLoading] = useState(true);
 
@@ -123,6 +127,79 @@ export default function Charts() {
       </div>
 
       <PriceTickerStrip btcPrice={currentPrice || undefined} btcLoading={loading} />
+
+      <div className="panel fade-in" style={{ marginTop: 16 }}>
+        <div className="panel-header">
+          <span className="panel-title">
+            <span className="icon">⟠</span>BTC Moving Averages
+          </span>
+          <div style={{ display: "flex", gap: 4 }}>
+            {MA_PERIODS.map((p) => (
+              <button
+                key={p}
+                className={`btn btn-sm ${p === maPeriod ? "btn-primary" : "btn-outline"}`}
+                onClick={() => setMaPeriod(p)}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="panel-body">
+          {loading ? (
+            <div
+              className="power-law-chart-container"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
+            >
+              <div
+                style={{
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  color: "var(--text-3)",
+                  fontSize: "0.8125rem",
+                  letterSpacing: "0.06em",
+                }}
+              >
+                LOADING…
+              </div>
+            </div>
+          ) : (
+            <div className="power-law-chart-container">
+              <MovingAveragesChart period={maPeriod} currentPrice={currentPrice} />
+            </div>
+          )}
+
+          {/* Legend */}
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "12px 20px",
+              marginTop: 16,
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: "0.6875rem",
+            }}
+          >
+            {[
+              { color: "#f59e0b", label: "BTC Price" },
+              { color: "#06b6d4", label: "50-day MA" },
+              { color: "#a78bfa", label: "100-day MA" },
+              { color: "#22c55e", label: "200-day MA" },
+            ].map((item) => (
+              <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div
+                  style={{
+                    width: 16,
+                    height: 2,
+                    background: item.color,
+                    borderRadius: 1,
+                  }}
+                />
+                <span style={{ color: "var(--text-2)" }}>{item.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
