@@ -63,7 +63,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells).
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells), price ticker strip below Power Law chart (BTC from Coinbase, gold from goldapi.io, corn/soybeans/wheat from USDA NASS — all cached 24h in Cloudflare KV).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -164,11 +164,11 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 | `src/utils/capital-guardrails.ts` | Pre-expansion policy enforcement |
 | `src/config/env.ts` | All environment variables with defaults |
 | `src/api/coinbase-onramp.ts` | Calls Cloudflare Worker to obtain a Coinbase session token |
-| `cloudflare-worker/src/index.ts` | Cloudflare Worker: signs CDP JWT, converts SEC1→PKCS#8, exchanges for session token |
+| `cloudflare-worker/src/index.ts` | Cloudflare Worker: Coinbase Onramp (POST /), commodity prices (GET /prices), KV caching |
 
 ## Role-Based Access Control
 
-- **Public**: `/health`, `/api/node`, `/api/node/balances`, `/api/coinbase/onramp-url`, `/api/peers`, `/api/channels`, `/api/member/stats`, `POST /api/member/open-channel`
+- **Public**: `/health`, `/api/node`, `/api/node/balances`, `/api/coinbase/onramp-url`, `/api/commodity-prices`, `/api/peers`, `/api/channels`, `/api/member/stats`, `POST /api/member/open-channel`
 - **Member** (active treasury channel): `POST /api/pay`
 - **Treasury only**: All `/api/treasury/*` endpoints
 
@@ -201,9 +201,10 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/components/NodeBalancePanel.tsx` | Shared balance panel (Total/Bitcoin/Lightning) — rendered at top of both dashboards |
 | `app/web/src/components/FundNodePanel.tsx` | Coinbase Onramp panel — shows on-chain balance + "Fund Node via Coinbase →" button; rendered below NodeBalancePanel on both dashboards |
 | `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph — recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh |
-| `app/web/src/components/PowerLawChart.tsx` | Bitcoin Power Law chart — recharts ComposedChart, log Y axis, percentile bands (p2.5/p16.5/p83.5/p97.5), trend line, live spot price overlay, downsampling |
-| `app/web/src/data/power-law-data.json` | Power law dataset — ~10,000 daily entries from 2015-01-01 to 2042-05-31, includes btc price + trend + percentile bands; bundled by Vite |
-| `app/web/src/pages/Charts.tsx` | Charts page — period selector (1Y/5Y/All/2042), spot price fetch, PowerLawChart + legend; available to both treasury and member shells |
+| `app/web/src/components/PowerLawChart.tsx` | Bitcoin Power Law chart — recharts ComposedChart, log Y axis, percentile bands (p2.5/p16.5/p83.5/p97.5), trend line, live spot price overlay, downsampling; fills gap days with live Coinbase price so chart extends to today |
+| `app/web/src/components/CommodityPricesPanel.tsx` | Price ticker strip — BTC + 4 commodities (gold, corn, soy, wheat) with color-coded SVG icons; fetches from `/api/commodity-prices`, 60min refresh; wraps on mobile |
+| `app/web/src/data/power-law-data.json` | Power law dataset — ~10,000 daily entries from 2015-01-01 to 2042-05-31, includes btc price + trend + percentile bands; bundled by Vite; BTC prices go stale — chart fills nulls up to today with live Coinbase price |
+| `app/web/src/pages/Charts.tsx` | Charts page — period selector (1Y/5Y/All/2042), spot price fetch, PowerLawChart + legend, PriceTickerStrip below chart; available to both treasury and member shells |
 | `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (monolithic: NodeBalancePanel, FundNodePanel, BitcoinPriceGraph, AlertsBar, NetYield, ChannelROI, PeerScores, Rotation, DynamicFees) |
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
 | `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form (no channel) or hub channel stats + forwarded fees |
@@ -219,6 +220,10 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 **`FundNodePanel` component** (`app/web/src/components/FundNodePanel.tsx`): rendered below `NodeBalancePanel` on both dashboards. Calls `api.getNodeBalances()` on mount (one-shot, no poll) and displays on-chain balance; falls back to `0 sats` on fetch error (no infinite shimmer). "Fund Node via Coinbase →" button calls `api.getCoinbaseOnrampUrl()` → opens the returned URL in a new tab (`window.open`, `noopener,noreferrer`). Maps machine-readable API error `coinbase_not_configured` to operator-readable message. Returns 503 if `COINBASE_APP_ID` or `COINBASE_WORKER_URL` env var is unset. Flow: button → `GET /api/coinbase/onramp-url` → `coinbase-onramp.ts` POSTs to Cloudflare Worker → Worker signs CDP JWT, calls `POST api.developer.coinbase.com/onramp/v1/token` → returns `{ sessionToken }` → API builds `https://pay.coinbase.com/buy/select-asset?appId=...&sessionToken=...` and returns it to the frontend.
 
 **`NodeBalancePanel` component** (`app/web/src/components/NodeBalancePanel.tsx`): shared component rendered at the top of both `Dashboard.tsx` (treasury) and `MemberDashboard.tsx`. Calls `api.getNodeBalances()` on mount, polls every 15s. Shows three stat cards: Total Node Balance, Bitcoin Balance, Lightning Wallet — each displaying sats and BTC (8 decimal places). Uses loading shimmer while data is pending; silently swallows fetch errors (cards stay in shimmer state).
+
+**`PriceTickerStrip` component** (`app/web/src/components/CommodityPricesPanel.tsx`): horizontal strip of 5 compact price tickers (BTC, Gold, Corn, Soy, Wheat) rendered below the Power Law chart on `Charts.tsx`. BTC price is passed down from Charts (Coinbase Spot API); commodity prices fetched from `api.getCommodityPrices()` with 60-minute refresh. Each ticker has a color-coded SVG icon in a tinted pill, colored label, formatted price with dimmed `$`, and unit. Desktop: all 5 in one `flex` row. Mobile (< 600px): `flex-wrap` into 2-column grid (no horizontal scroll). CSS classes: `.price-ticker-strip`, `.price-ticker`, `.price-ticker-icon`, `.price-ticker-label`, `.price-ticker-value`, `.price-ticker-unit`.
+
+**`/api/commodity-prices` endpoint** (public, in `app/api/src/index.ts`): proxies `GET` requests to the Cloudflare Worker's `/prices` endpoint using `COINBASE_WORKER_URL` env var. Returns `{ gold, corn, soybeans, wheat }` where each is `{ price, unit, label, updated_at } | null`. Returns 503 if `COINBASE_WORKER_URL` is unset, 502 if the Worker is down.
 
 **Scroll layout constraint:** `.app-shell` in `styles.css` uses `height: 100vh` (not `min-height`). This is intentional — it constrains the CSS grid to the viewport so that `overflow-y: auto` on `.main-content` triggers correctly. Changing it to `min-height` will break scrolling (the grid grows to fit content, body scrolls instead, and the sidebar disappears). `.main-content` uses `padding-bottom: 64px` to ensure the last panel has breathing room.
 
