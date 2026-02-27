@@ -1,7 +1,6 @@
 # Web frontend Dockerfile
-# TODO: Configure React build and serve setup
-# ---- Build stage ----
-FROM node:20-alpine AS build
+# ---- Build stage (runs on native arch — Vite output is static) ----
+FROM --platform=$BUILDPLATFORM node:20-alpine AS build
 
 WORKDIR /app
 
@@ -15,8 +14,8 @@ COPY index.html ./index.html
 
 RUN npm run build
 
-# ---- Runtime stage ----
-FROM node:20-alpine
+# ---- Runtime stage (multi-arch: amd64 + arm64) ----
+FROM node:20-slim
 
 WORKDIR /app
 
