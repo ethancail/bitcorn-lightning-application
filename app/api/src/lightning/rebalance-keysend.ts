@@ -112,7 +112,7 @@ export async function executeKeysendRebalance(params: {
     updateRebalanceExecution(execId, "succeeded", result.id, feePaid, null);
 
     if (feePaid > 0) {
-      insertRebalanceCost("keysend" as any, amount_sats, feePaid, channel_id);
+      insertRebalanceCost("keysend", amount_sats, feePaid, channel_id);
     }
 
     return {

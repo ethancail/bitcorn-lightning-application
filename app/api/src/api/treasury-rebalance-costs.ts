@@ -1,6 +1,6 @@
 import { db } from "../db";
 
-export type RebalanceCostType = "circular" | "loop_out" | "loop_in" | "manual";
+export type RebalanceCostType = "circular" | "keysend" | "loop_out" | "loop_in" | "manual";
 
 /**
  * Log a rebalance cost for true net accounting.
