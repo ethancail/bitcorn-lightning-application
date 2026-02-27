@@ -55,6 +55,8 @@ export const ENV = {
     rebalanceDefaultMaxFeeSats: Number(
         process.env.REBALANCE_DEFAULT_MAX_FEE_SATS ?? "10"
     ),
+    // Max fee-to-amount ratio in ppm the scheduler will tolerate (default: 1000 = 0.1%)
+    rebalanceMaxFeePpm: Number(process.env.REBALANCE_MAX_FEE_PPM ?? "1000"),
     // Minimum minutes between two successful automated rebalances
     rebalanceCooldownMinutes: Number(process.env.REBALANCE_COOLDOWN_MINUTES ?? "30"),
 

@@ -59,6 +59,17 @@ export function startRebalanceScheduler(): void {
 
       if (!receivers.length) return;
 
+      // Daily loss cap: check once per tick before any LND I/O
+      try {
+        assertDailyLossCapNotExceeded(ENV.rebalanceDefaultMaxFeeSats);
+      } catch (err) {
+        if (err instanceof DailyLossCapError) {
+          console.warn("[rebalance-scheduler] daily loss cap reached — skipping:", err.message);
+          return;
+        }
+        throw err;
+      }
+
       const { channels } = await getLndChannels();
       const byId = new Map(channels.map((c) => [c.id, c]));
 
@@ -66,79 +77,82 @@ export function startRebalanceScheduler(): void {
         const incoming = byId.get(target.channel_id);
         if (!incoming) continue;
 
-        const outgoing = channels
+        const incomingSnap = snapshotChannelLiquidity(incoming);
+
+        // Pre-filter and rank donor candidates by local ratio (mirrors rebalance-auto.ts)
+        const maxFee = ENV.rebalanceDefaultMaxFeeSats;
+        const buffer = ENV.rebalanceSafetyBufferSats;
+        const candidateTokens = Math.min(ENV.rebalanceDefaultTokens, ENV.rebalanceMaxTokens);
+        const outgoingCandidates = channels
           .filter((c) => c.is_active)
           .filter((c) => c.id !== incoming.id)
           .filter((c) => c.partner_public_key !== incoming.partner_public_key)
           .map((c) => ({ ch: c, snap: snapshotChannelLiquidity(c) }))
-          .sort((a, b) => b.snap.local_ratio_ppm - a.snap.local_ratio_ppm)[0]
-          ?.ch;
+          .filter((x) => x.snap.local_available >= candidateTokens + maxFee + buffer)
+          .sort((a, b) => b.snap.local_ratio_ppm - a.snap.local_ratio_ppm);
 
-        if (!outgoing) continue;
+        for (const { ch: outgoing, snap: outgoingSnap } of outgoingCandidates) {
+          const maxByOutgoing = Math.max(
+            0,
+            outgoingSnap.local_available - maxFee - buffer
+          );
+          const maxByIncoming = Math.max(
+            0,
+            incomingSnap.remote_available - buffer
+          );
 
-        const incomingSnap = snapshotChannelLiquidity(incoming);
-        const outgoingSnap = snapshotChannelLiquidity(outgoing);
+          const tokens = Math.min(
+            ENV.rebalanceDefaultTokens,
+            ENV.rebalanceMaxTokens,
+            maxByOutgoing,
+            maxByIncoming
+          );
 
-        const maxByOutgoing = Math.max(
-          0,
-          outgoingSnap.local_available -
-            ENV.rebalanceDefaultMaxFeeSats -
-            ENV.rebalanceSafetyBufferSats
-        );
-        const maxByIncoming = Math.max(
-          0,
-          incomingSnap.remote_available - ENV.rebalanceSafetyBufferSats
-        );
+          if (tokens <= 0) continue;
 
-        const tokens = Math.min(
-          ENV.rebalanceDefaultTokens,
-          ENV.rebalanceMaxTokens,
-          maxByOutgoing,
-          maxByIncoming
-        );
+          // Fee PPM guard: reject if fee/amount ratio is uneconomic
+          const feePpm = Math.round((maxFee / tokens) * 1_000_000);
+          if (feePpm > ENV.rebalanceMaxFeePpm) {
+            if (ENV.debug) {
+              console.log(
+                `[rebalance-scheduler] skipping pair — fee PPM too high: ${feePpm}ppm > ${ENV.rebalanceMaxFeePpm}ppm max ` +
+                  `(tokens=${tokens}, maxFee=${maxFee})`
+              );
+            }
+            continue;
+          }
 
-        if (tokens <= 0) continue;
+          try {
+            assertRebalancePairIsViable({
+              outgoing: outgoingSnap,
+              incoming: incomingSnap,
+              tokens,
+              maxFeeSats: maxFee,
+            });
+          } catch {
+            continue;
+          }
 
-        try {
-          assertRebalancePairIsViable({
-            outgoing: outgoingSnap,
-            incoming: incomingSnap,
-            tokens,
-            maxFeeSats: ENV.rebalanceDefaultMaxFeeSats,
-          });
-        } catch {
-          continue;
-        }
-
-        // Daily loss cap: halt automation if fee spend would exceed the cap
-        try {
-          assertDailyLossCapNotExceeded(ENV.rebalanceDefaultMaxFeeSats);
-        } catch (err) {
-          if (err instanceof DailyLossCapError) {
-            console.warn("[rebalance-scheduler] daily loss cap reached — skipping:", err.message);
+          if (ENV.rebalanceSchedulerDryRun) {
+            console.log("[rebalance-scheduler][dry-run] would rebalance:", {
+              outgoing_channel: outgoing.id,
+              incoming_channel: incoming.id,
+              tokens,
+              fee_ppm: feePpm,
+              max_fee_sats: maxFee,
+            });
             return;
           }
-          throw err;
-        }
 
-        if (ENV.rebalanceSchedulerDryRun) {
-          console.log("[rebalance-scheduler][dry-run] would rebalance:", {
+          await executeCircularRebalance({
+            tokens,
             outgoing_channel: outgoing.id,
             incoming_channel: incoming.id,
-            tokens,
-            max_fee_sats: ENV.rebalanceDefaultMaxFeeSats,
+            max_fee_sats: maxFee,
           });
+
           return;
         }
-
-        await executeCircularRebalance({
-          tokens,
-          outgoing_channel: outgoing.id,
-          incoming_channel: incoming.id,
-          max_fee_sats: ENV.rebalanceDefaultMaxFeeSats,
-        });
-
-        return;
       }
     } catch (e) {
       if (ENV.debug) console.error("[rebalance-scheduler] error:", e);
