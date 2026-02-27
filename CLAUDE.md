@@ -239,7 +239,7 @@ Before any channel open, `capital-guardrails.ts` checks: minimum on-chain reserv
 
 ## Liquidity Management
 
-Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`. Circular rebalance forces a payment over path `outgoing_channel → ... → incoming_channel`. Scheduler enabled via `REBALANCE_SCHEDULER_ENABLED=true`, runs every 60s.
+Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`. Circular rebalance forces a payment over path `outgoing_channel → ... → incoming_channel`. Scheduler enabled via `REBALANCE_SCHEDULER_ENABLED=true`, runs every 60s. Scheduler guards (in order): daily loss cap (checked once per tick before LND I/O), donor pre-filter (mirrors `rebalance-auto.ts` — filters by `local_available >= tokens + fee + buffer`), multi-donor fallback (tries donors in rank order instead of only `[0]`), fee PPM guard (rejects rebalances where `fee / tokens * 1M > REBALANCE_MAX_FEE_PPM`).
 
 ## Coinbase Onramp
 
@@ -304,5 +304,6 @@ See `src/config/env.ts` for all variables. Key ones:
 - `BITCOIN_NETWORK` — default `mainnet`
 - `REBALANCE_SCHEDULER_ENABLED` — default `false`
 - `RATE_LIMIT_MAX_SINGLE_PAYMENT` — default `250000` sats
+- `REBALANCE_MAX_FEE_PPM` — default `1000` (0.1%); max fee-to-amount ratio the scheduler will tolerate. Prevents net-negative micro-rebalances when token amounts are small due to tight liquidity. At default, a 5,000 sat rebalance caps effective fee at 5 sats.
 - `COINBASE_APP_ID` — Coinbase Developer Platform Project ID; set in `docker-compose.yml`; if unset, `GET /api/coinbase/onramp-url` returns 503. **Not a secret** — it is embedded in the Onramp URL visible to users.
 - `COINBASE_WORKER_URL` — URL of the Cloudflare Worker that holds CDP credentials and mints session tokens (e.g. `https://bitcorn-onramp.ethancail.workers.dev`); set in `docker-compose.yml`. Required; if unset, `GET /api/coinbase/onramp-url` returns 503.
