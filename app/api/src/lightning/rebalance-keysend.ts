@@ -6,9 +6,8 @@
  * Pushing to outbound_starved channels worsens the imbalance.
  */
 
-import { getLndChannels } from "./lnd";
-import { keysendPush } from "./lnd";
-import { getLiquidityHealth, type ChannelLiquidityHealth } from "../api/treasury-liquidity-health";
+import { getLndChannels, keysendPush } from "./lnd";
+import { getLiquidityHealth } from "../api/treasury-liquidity-health";
 import { assertDailyLossCapNotExceeded, DailyLossCapError } from "../utils/loss-cap";
 import { createRebalanceExecution, updateRebalanceExecution } from "../api/treasury-rebalance-executions";
 import { insertRebalanceCost } from "../api/treasury-rebalance-costs";

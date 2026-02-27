@@ -39,7 +39,7 @@ export const ENV = {
     rebalanceSafetyBufferSats: Number(process.env.REBALANCE_SAFETY_BUFFER_SATS ?? "1000"),
 
     // --- Rebalance scheduler ---
-    // Set to "true" to enable the automated circular rebalance scheduler (default: off)
+    // Set to "true" to enable the automated rebalance scheduler (default: off)
     rebalanceSchedulerEnabled: process.env.REBALANCE_SCHEDULER_ENABLED === "true",
     // Set to "true" to run the scheduler in dry-run mode (logs decisions, no LND calls)
     rebalanceSchedulerDryRun: process.env.REBALANCE_SCHEDULER_DRY_RUN === "true",
