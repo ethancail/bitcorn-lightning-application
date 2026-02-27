@@ -24,7 +24,7 @@ When using Claude chat or another AI for brainstorming, the docs describe *what*
 |------|---------------|
 | Channel ROI / peer scoring (Phase 2) | `src/api/treasury-channel-metrics.ts`, `src/api/treasury-liquidity-health.ts`, `src/api/treasury.ts` |
 | Capital guardrails | `src/utils/capital-guardrails.ts`, migration `013_treasury_capital_policy.sql` |
-| Rebalance logic | `src/lightning/rebalance-circular.ts`, `src/lightning/rebalance-auto.ts`, `src/utils/rebalance-liquidity.ts`, migrations `014`, `015` |
+| Rebalance logic | `src/lightning/rebalance-keysend.ts`, `src/lightning/rebalance-circular.ts`, `src/lightning/rebalance-auto.ts`, `src/utils/rebalance-liquidity.ts`, migrations `014`, `015` |
 | Expansion engine | `src/api/treasury-expansion.ts`, `src/utils/capital-guardrails.ts` |
 | Metrics / net yield | `src/api/treasury.ts`, migrations `007`–`009`, `014` |
 | Schema / data model | All files in `src/db/migrations/` |
@@ -63,7 +63,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells), price ticker strip below Power Law chart (BTC from Coinbase, gold from goldapi.io, corn/soybeans/wheat from USDA NASS — all cached 24h in Cloudflare KV), BTC Moving Averages chart (50/100/200-day MAs, linear scale, 1M/1Y/5Y/10Y periods, computed client-side from power-law-data.json), Corn-Bitcoin ratio chart (bushels of corn per 1 BTC, historical corn prices from USDA NASS via Worker endpoint `GET /prices/corn-history`, monthly data interpolated to daily, 1M/1Y/5Y/10Y periods), Corn Price Moving Averages chart (50/100/200-day MAs over interpolated daily corn prices, reuses `computeMA` and `interpolateCornPrices` from sibling components, 1M/1Y/5Y/10Y periods), Contacts page (full CRUD address book for Lightning peers — search, inline edit/delete, channel balance bars, tag pills, sync-from-peers; available to both treasury and member shells).
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells), price ticker strip below Power Law chart (BTC from Coinbase, gold from goldapi.io, corn/soybeans/wheat from USDA NASS — all cached 24h in Cloudflare KV), BTC Moving Averages chart (50/100/200-day MAs, linear scale, 1M/1Y/5Y/10Y periods, computed client-side from power-law-data.json), Corn-Bitcoin ratio chart (bushels of corn per 1 BTC, historical corn prices from USDA NASS via Worker endpoint `GET /prices/corn-history`, monthly data interpolated to daily, 1M/1Y/5Y/10Y periods), Corn Price Moving Averages chart (50/100/200-day MAs over interpolated daily corn prices, reuses `computeMA` and `interpolateCornPrices` from sibling components, 1M/1Y/5Y/10Y periods), Contacts page (full CRUD address book for Lightning peers — search, inline edit/delete, channel balance bars, tag pills, sync-from-peers; available to both treasury and member shells), keysend push rebalance (direct-push channel balancing for hub-and-spoke topology — replaces circular rebalance, targets critical channels only).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -155,7 +155,8 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 | `src/index.ts` | All HTTP routes (600+ lines) |
 | `src/lightning/sync.ts` | Main sync orchestrator |
 | `src/lightning/lnd.ts` | LND client, TLS + macaroon setup |
-| `src/lightning/rebalance-circular.ts` | Circular rebalance execution |
+| `src/lightning/rebalance-keysend.ts` | Keysend push rebalance execution + auto-select |
+| `src/lightning/rebalance-circular.ts` | Circular rebalance execution (legacy — not used in hub-and-spoke) |
 | `src/lightning/rebalance-auto.ts` | Auto-select donor/receiver channels |
 | `src/lightning/rebalance-scheduler.ts` | Scheduled rebalance loop |
 | `src/api/treasury.ts` | Aggregate treasury metrics |
@@ -239,7 +240,7 @@ Before any channel open, `capital-guardrails.ts` checks: minimum on-chain reserv
 
 ## Liquidity Management
 
-Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`. Circular rebalance forces a payment over path `outgoing_channel → ... → incoming_channel`. Scheduler enabled via `REBALANCE_SCHEDULER_ENABLED=true`, runs every 60s. Scheduler guards (in order): daily loss cap (checked once per tick before LND I/O), donor pre-filter (mirrors `rebalance-auto.ts` — filters by `local_available >= tokens + fee + buffer`), multi-donor fallback (tries donors in rank order instead of only `[0]`), fee PPM guard (rejects rebalances where `fee / tokens * 1M > REBALANCE_MAX_FEE_PPM`).
+Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`. Keysend push rebalance: treasury pushes sats directly to member nodes on critical channels (>85% local) using `payViaPaymentDetails` (no invoice, no routing). Safety bounds: 10k-100k sats per push, max 50% of local balance. Scheduler uses keysend instead of circular for hub-and-spoke topology. Circular rebalance (legacy) forces a payment over path `outgoing_channel → ... → incoming_channel` but requires external peers. Scheduler enabled via `REBALANCE_SCHEDULER_ENABLED=true`, runs every 60s.
 
 ## Coinbase Onramp
 

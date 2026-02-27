@@ -1,0 +1,23 @@
+{
+  "initialized": false,
+  "topology": "star",
+  "workers": [],
+  "consensus": {
+    "pending": [],
+    "history": [
+      {
+        "proposalId": "proposal-1772218757843-re5ppp",
+        "type": "decision",
+        "result": "approved",
+        "votes": {
+          "for": 2,
+          "against": 0
+        },
+        "decidedAt": "2026-02-27T18:59:23.003Z"
+      }
+    ]
+  },
+  "sharedMemory": {},
+  "createdAt": "2026-02-27T18:58:53.918Z",
+  "updatedAt": "2026-02-27T19:01:26.869Z"
+}

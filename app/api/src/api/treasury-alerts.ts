@@ -1,4 +1,5 @@
 import { db } from "../db";
+import { getLiquidityHealth } from "./treasury-liquidity-health";
 import { getCapitalPolicy } from "./treasury-capital-policy";
 import { getRotationCandidates } from "./treasury-rotation";
 import { getDailyLossSats } from "../utils/loss-cap";
@@ -145,6 +146,27 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
       severity: "info",
       message: "Rebalance scheduler is running in dry-run (simulation) mode — no rebalances are being executed",
       data: { interval_ms: ENV.rebalanceSchedulerIntervalMs },
+      at: now,
+    });
+  }
+
+  // --- Keysend rebalance available ---
+  const health = getLiquidityHealth();
+  const criticalChannels = health.filter((h) => h.is_active && h.health_classification === "critical");
+  if (criticalChannels.length > 0) {
+    alerts.push({
+      type: "KEYSEND_REBALANCE_AVAILABLE",
+      severity: "info",
+      message: `${criticalChannels.length} channel(s) have >85% local balance — keysend push rebalance available`,
+      data: {
+        count: criticalChannels.length,
+        channels: criticalChannels.map((c) => ({
+          channel_id: c.channel_id,
+          imbalance_ratio: c.imbalance_ratio,
+          local_sats: c.local_sats,
+          capacity_sats: c.capacity_sats,
+        })),
+      },
       at: now,
     });
   }

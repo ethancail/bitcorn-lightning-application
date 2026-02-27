@@ -222,6 +222,24 @@ declare module "ln-service" {
     is_confirmed: boolean;
   }>;
 
+  export function payViaPaymentDetails(options: {
+    lnd: any;
+    destination: string;
+    tokens: number;
+    id?: string;
+    max_fee?: number;
+    outgoing_channel?: string;
+    features?: { type: number; is_required?: boolean }[];
+    messages?: { type: string; value: string }[];
+  }): Promise<{
+    fee: number;
+    fee_mtokens: string;
+    id: string;
+    is_confirmed: boolean;
+    tokens: number;
+    secret: string;
+  }>;
+
   export function getNode(options: {
     lnd: any;
     public_key: string;

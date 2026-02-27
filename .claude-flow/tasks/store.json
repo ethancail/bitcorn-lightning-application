@@ -1,0 +1,25 @@
+{
+  "tasks": {
+    "task-1772218617502-vkim84": {
+      "taskId": "task-1772218617502-vkim84",
+      "type": "research",
+      "description": "Review the contacts API endpoints in app/api/src/index.ts. Focus on: input validation, error handling, SQL injection risk, CORS handling, and route ordering. The 5 endpoints are: GET /api/contacts, POST /api/contacts, PATCH /api/contacts/:pubkey, DELETE /api/contacts/:pubkey, POST /api/contacts/sync-peers. The API uses raw http.createServer with if/else chain routing (not Express). More specific paths like /api/contacts/sync-peers must come before /api/contacts.",
+      "priority": "high",
+      "status": "pending",
+      "progress": 0,
+      "assignedTo": [
+        "contacts-reviewer"
+      ],
+      "tags": [
+        "code-review",
+        "contacts",
+        "api",
+        "security"
+      ],
+      "createdAt": "2026-02-27T18:56:57.502Z",
+      "startedAt": null,
+      "completedAt": null
+    }
+  },
+  "version": "3.0.0"
+}

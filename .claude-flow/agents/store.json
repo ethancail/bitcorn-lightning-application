@@ -1,0 +1,64 @@
+{
+  "agents": {
+    "contacts-reviewer": {
+      "agentId": "contacts-reviewer",
+      "agentType": "reviewer",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "files": [
+          "app/api/src/index.ts"
+        ],
+        "focus": "contacts endpoints: GET /api/contacts, POST /api/contacts, PATCH /api/contacts/:pubkey, DELETE /api/contacts/:pubkey, POST /api/contacts/sync-peers",
+        "model": "sonnet"
+      },
+      "createdAt": "2026-02-27T18:56:40.487Z",
+      "domain": "code-review",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
+    },
+    "rebalance-improver": {
+      "agentId": "rebalance-improver",
+      "agentType": "coder",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "sonnet"
+      },
+      "createdAt": "2026-02-27T18:58:30.322Z",
+      "domain": "rebalance-analysis",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
+    },
+    "rebalance-auditor": {
+      "agentId": "rebalance-auditor",
+      "agentType": "reviewer",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "sonnet"
+      },
+      "createdAt": "2026-02-27T18:58:32.290Z",
+      "domain": "rebalance-analysis",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
+    },
+    "cf-rebalance-reviewer": {
+      "agentId": "cf-rebalance-reviewer",
+      "agentType": "reviewer",
+      "status": "idle",
+      "health": 1,
+      "taskCount": 0,
+      "config": {
+        "model": "sonnet"
+      },
+      "createdAt": "2026-02-27T19:03:48.057Z",
+      "model": "sonnet",
+      "modelRoutedBy": "explicit"
+    }
+  },
+  "version": "3.0.0"
+}
