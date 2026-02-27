@@ -15,8 +15,10 @@ import {
   createInvoice,
   getRouteToDestination,
   payViaRoutes,
-  createChainAddress
+  createChainAddress,
+  payViaPaymentDetails
 } from "ln-service";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { ENV } from "../config/env";
@@ -270,4 +272,45 @@ export async function openTreasuryChannel(
 export async function createLndChainAddress(): Promise<{ address: string }> {
   const { lnd } = getLndClient();
   return createChainAddress({ lnd, format: "p2wpkh" });
+}
+
+/**
+ * Keysend push: sends sats directly to a peer via their pubkey using
+ * payViaPaymentDetails. No invoice needed — the payment preimage is
+ * generated locally and included via the keysend TLV (type 5482373484).
+ *
+ * @param destination - Peer's public key
+ * @param tokens - Amount in sats to push
+ * @param maxFee - Maximum routing fee in sats (usually 0 for direct peer)
+ * @param outgoingChannel - Optional: force payment through this channel
+ */
+export async function keysendPush(options: {
+  destination: string;
+  tokens: number;
+  max_fee?: number;
+  outgoing_channel?: string;
+}): Promise<{
+  fee: number;
+  id: string;
+  is_confirmed: boolean;
+  tokens: number;
+  secret: string;
+}> {
+  const { lnd } = getLndClient();
+  const preimage = crypto.randomBytes(32);
+  const id = crypto.createHash("sha256").update(preimage).digest("hex");
+
+  return payViaPaymentDetails({
+    lnd,
+    destination: options.destination,
+    tokens: options.tokens,
+    id,
+    max_fee: options.max_fee ?? 0,
+    outgoing_channel: options.outgoing_channel,
+    features: [{ type: 9, is_required: true }],
+    messages: [{
+      type: "5482373484",
+      value: preimage.toString("hex"),
+    }],
+  });
 }
