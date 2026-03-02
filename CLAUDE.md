@@ -63,7 +63,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells), Contacts page (full CRUD address book for Lightning peers — search, inline edit/delete, channel balance bars, tag pills, sync-from-peers; available to both treasury and member shells), keysend push rebalance (direct-push channel balancing for hub-and-spoke topology — replaces circular rebalance, targets critical channels only).
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells), Contacts page (full CRUD address book for Lightning peers — search, inline edit/delete, channel balance bars, tag pills, sync-from-peers; available to both treasury and member shells), keysend push rebalance (direct-push channel balancing for hub-and-spoke topology — replaces circular rebalance, targets critical channels only), keysend enforcement (pre-flight check in member ConnectToHub form, runtime failure tracking with 24h retry, MEMBER_KEYSEND_DISABLED treasury alert, member dashboard keysend warning banner).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -146,7 +146,7 @@ Do not reuse ports 3001 or 3009. Do not expose port 3109 via Umbrel app-proxy.
 ### Database
 SQLite at `data/db/bitcorn.sqlite` (mounted at `/data` inside the API container; on Umbrel host: `/home/umbrel/umbrel/app-data/bitcorn-lightning-node/data/db/bitcorn.sqlite`). Migrations in `src/db/migrations/` (001–020). Migrations must be idempotent and run on startup. Never mutate schema manually. Note: `sqlite3` is not installed in the API Docker image — to query the DB directly, install it on the Umbrel host (`sudo apt install sqlite3`) and access the file at the host path.
 
-Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `payments_outbound`, `payments_forwarded`, `treasury_fee_policy`, `treasury_capital_policy`, `treasury_expansion_recommendations`, `treasury_expansion_executions`, `treasury_rebalance_costs`, `treasury_rebalance_executions`, `coinbase_onramp_sessions`, `contacts`.
+Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `payments_outbound`, `payments_forwarded`, `treasury_fee_policy`, `treasury_capital_policy`, `treasury_expansion_recommendations`, `treasury_expansion_executions`, `treasury_rebalance_costs`, `treasury_rebalance_executions`, `coinbase_onramp_sessions`, `contacts`, `member_keysend_status`.
 
 ## Key Files
 
@@ -169,13 +169,13 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 
 ## Role-Based Access Control
 
-- **Public**: `/health`, `/api/node`, `/api/node/balances`, `/api/coinbase/onramp-url`, `/api/peers`, `/api/channels`, `/api/member/stats`, `POST /api/member/open-channel`, `/api/contacts`, `POST /api/contacts`, `PATCH /api/contacts/:pubkey`, `DELETE /api/contacts/:pubkey`, `POST /api/contacts/sync-peers`
+- **Public**: `/health`, `/api/node`, `/api/node/balances`, `/api/node/preflight`, `/api/coinbase/onramp-url`, `/api/peers`, `/api/channels`, `/api/member/stats`, `POST /api/member/open-channel`, `/api/contacts`, `POST /api/contacts`, `PATCH /api/contacts/:pubkey`, `DELETE /api/contacts/:pubkey`, `POST /api/contacts/sync-peers`
 - **Member** (active treasury channel): `POST /api/pay`
 - **Treasury only**: All `/api/treasury/*` endpoints
 
 Role is derived from identity + treasury channel state — not bearer tokens.
 
-`/api/member/stats` returns: `hub_pubkey`, `membership_status`, `node_role`, `is_peered_to_hub` (bool — live LND peer check, best-effort), `treasury_channel` (balances/capacity/active or null), `forwarded_fees` (24h / 30d / all-time).
+`/api/member/stats` returns: `hub_pubkey`, `membership_status`, `node_role`, `is_peered_to_hub` (bool — live LND peer check, best-effort), `treasury_channel` (balances/capacity/active or null), `forwarded_fees` (24h / 30d / all-time), `keysend_enabled`.
 
 `POST /api/member/open-channel` accepts `{ capacity_sats, partner_socket? }`. Validates capacity ≥ 100,000 sats, optionally calls `connectToPeer(hubPubkey, socket)` if socket provided, then calls `openTreasuryChannel`. Returns `{ ok, funding_txid }`.
 
@@ -233,6 +233,8 @@ Before any channel open, `capital-guardrails.ts` checks: minimum on-chain reserv
 ## Liquidity Management
 
 Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`. Keysend push rebalance: treasury pushes sats directly to member nodes on critical channels (>85% local) using `payViaPaymentDetails` (no invoice, no routing). Safety bounds: 10k-100k sats per push, max 50% of local balance. Scheduler uses keysend instead of circular for hub-and-spoke topology. Circular rebalance (legacy) forces a payment over path `outgoing_channel → ... → incoming_channel` but requires external peers. Scheduler enabled via `REBALANCE_SCHEDULER_ENABLED=true`, runs every 60s.
+
+Keysend enforcement: member pre-flight check via `GET /api/node/preflight` inspects feature bit 55 — blocks channel open if keysend disabled. Runtime: `member_keysend_status` table tracks peers that reject keysend; auto-rebalancer skips disabled peers for 24h then retries. `MEMBER_KEYSEND_DISABLED` alert (warning severity) shows on treasury dashboard. Member dashboard shows non-dismissible banner when keysend is off.
 
 ## Coinbase Onramp
 
