@@ -117,6 +117,20 @@ export async function getLndInfo(): Promise<{
 }
 
 /**
+ * Check if the local LND node has keysend enabled by inspecting
+ * feature bit 55 in the getWalletInfo response.
+ * Returns true if accept-keysend=true is set in LND config.
+ * Falls back to false if features field is absent.
+ */
+export async function isKeysendEnabled(): Promise<boolean> {
+  const { lnd } = getLndClient();
+  const info = await getWalletInfo({ lnd });
+  if (!info.features || !Array.isArray(info.features)) return false;
+  const keysendBit = info.features.find((f) => f.bit === 55);
+  return !!keysendBit?.is_known;
+}
+
+/**
  * Lists connected LND peers (read-only)
  */
 export async function getLndPeers() {

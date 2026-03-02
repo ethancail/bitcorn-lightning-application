@@ -29,6 +29,7 @@ export const api = {
   getCommodityPrices: () => apiFetch<CommodityPrices>("/api/commodity-prices"),
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
+  getNodePreflight: () => apiFetch<PreflightResult>("/api/node/preflight"),
   openMemberChannel: (body: { capacity_sats: number; partner_socket?: string }) =>
     apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/member/open-channel", {
       method: "POST",
@@ -257,6 +258,7 @@ export type MemberStats = {
   membership_status: string;
   node_role: string;
   is_peered_to_hub: boolean;
+  keysend_enabled: boolean;
   treasury_channel: null | {
     channel_id: string;
     local_sats: number;
@@ -269,6 +271,18 @@ export type MemberStats = {
     last_24h_sats: number;
     last_30d_sats: number;
   };
+};
+
+export type PreflightCheck = {
+  check: string;
+  passed: boolean;
+  message: string;
+  required: boolean;
+};
+
+export type PreflightResult = {
+  checks: PreflightCheck[];
+  all_passed: boolean;
 };
 
 export type RotationDryRunResult = {

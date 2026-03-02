@@ -24,6 +24,12 @@ declare module "ln-service" {
     block_hash?: string;
     is_synced_to_chain?: boolean;
     is_synced_to_graph?: boolean;
+    features?: Array<{
+      bit: number;
+      is_known: boolean;
+      is_required: boolean;
+      type: string;
+    }>;
   }
 
   export function getWalletInfo(options: {

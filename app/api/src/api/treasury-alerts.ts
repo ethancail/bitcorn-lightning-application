@@ -171,5 +171,28 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     });
   }
 
+  // --- Member keysend disabled (only peers within 24h skip window) ---
+  const keysendSkipWindow = now - 24 * 60 * 60 * 1000;
+  const keysendDisabled = db.prepare(
+    `SELECT peer_pubkey, last_failure_at FROM member_keysend_status
+     WHERE keysend_disabled = 1 AND last_failure_at >= ?`
+  ).all(keysendSkipWindow) as Array<{ peer_pubkey: string; last_failure_at: number }>;
+
+  if (keysendDisabled.length > 0) {
+    alerts.push({
+      type: "MEMBER_KEYSEND_DISABLED",
+      severity: "warning",
+      message: `${keysendDisabled.length} member node(s) have keysend disabled and cannot be auto-rebalanced`,
+      data: {
+        count: keysendDisabled.length,
+        peers: keysendDisabled.map((p) => ({
+          peer_pubkey: p.peer_pubkey,
+          last_failure_at: p.last_failure_at,
+        })),
+      },
+      at: now,
+    });
+  }
+
   return alerts;
 }
