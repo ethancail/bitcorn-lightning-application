@@ -11,6 +11,7 @@ import { getLiquidityHealth } from "../api/treasury-liquidity-health";
 import { assertDailyLossCapNotExceeded, DailyLossCapError } from "../utils/loss-cap";
 import { createRebalanceExecution, updateRebalanceExecution } from "../api/treasury-rebalance-executions";
 import { insertRebalanceCost } from "../api/treasury-rebalance-costs";
+import { db } from "../db";
 
 /** Safety bounds */
 const MIN_PUSH_SATS = 10_000;
@@ -114,6 +115,11 @@ export async function executeKeysendRebalance(params: {
       insertRebalanceCost("keysend", amount_sats, feePaid, channel_id);
     }
 
+    // Clear keysend-disabled flag on success (peer may have re-enabled)
+    db.prepare(
+      `UPDATE member_keysend_status SET keysend_disabled = 0, last_checked_at = ? WHERE peer_pubkey = ?`
+    ).run(Date.now(), channel.partner_public_key);
+
     return {
       channel_id,
       peer_pubkey: channel.partner_public_key,
@@ -126,6 +132,16 @@ export async function executeKeysendRebalance(params: {
   } catch (err: any) {
     const msg = err?.message ?? String(err);
     updateRebalanceExecution(execId, "failed", null, null, msg);
+
+    // Detect keysend-disabled specifically
+    if (msg.includes("PaymentRejectedByDestination") || msg.includes("rejected by destination")) {
+      db.prepare(
+        `INSERT INTO member_keysend_status (peer_pubkey, keysend_disabled, last_failure_at, failure_message)
+         VALUES (?, 1, ?, ?)
+         ON CONFLICT(peer_pubkey) DO UPDATE SET
+           keysend_disabled = 1, last_failure_at = excluded.last_failure_at, failure_message = excluded.failure_message`
+      ).run(channel.partner_public_key, Date.now(), msg);
+    }
 
     return {
       channel_id,
@@ -165,6 +181,24 @@ export async function autoKeysendRebalance(): Promise<{
   const results: KeysendRebalanceResult[] = [];
 
   for (const ch of criticalChannels) {
+    // Skip peers with keysend disabled within last 24 hours
+    const keysendStatus = db.prepare(
+      `SELECT keysend_disabled, last_failure_at FROM member_keysend_status WHERE peer_pubkey = ?`
+    ).get(ch.peer_pubkey) as { keysend_disabled: number; last_failure_at: number } | undefined;
+
+    if (keysendStatus?.keysend_disabled && (Date.now() - keysendStatus.last_failure_at) < 86_400_000) {
+      results.push({
+        channel_id: ch.channel_id,
+        peer_pubkey: ch.peer_pubkey,
+        amount_sats: 0,
+        fee_paid_sats: 0,
+        payment_hash: "",
+        status: "failed",
+        error: "Skipped — peer has keysend disabled. Will retry in 24h.",
+      });
+      continue;
+    }
+
     // Calculate amount to bring toward 50% local ratio
     const targetLocal = Math.floor(ch.capacity_sats * 0.5);
     const excess = ch.local_sats - targetLocal;
