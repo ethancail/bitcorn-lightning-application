@@ -49,9 +49,7 @@ import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
-import { executeKeysendRebalance, autoKeysendRebalance, KeysendRebalanceError } from "./lightning/rebalance-keysend";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
-import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
 import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
 
 initDb();
@@ -898,97 +896,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ── Keysend push rebalance (manual) ─────────────────────────────────
-  if (req.method === "POST" && req.url === "/api/treasury/rebalance/keysend") {
-    try {
-      const node = getNodeInfo();
-      if (!node) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Node info unavailable" }));
-        return;
-      }
-      assertTreasury(node.node_role);
-
-      let body = "";
-      req.on("data", (chunk: string) => (body += chunk));
-      req.on("end", async () => {
-        try {
-          const parsed = JSON.parse(body || "{}");
-          const channel_id = parsed.channel_id;
-          const amount_sats = Number(parsed.amount_sats);
-          const max_fee_sats = parsed.max_fee_sats != null ? Number(parsed.max_fee_sats) : 0;
-
-          if (!channel_id || typeof channel_id !== "string") {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "channel_id is required" }));
-            return;
-          }
-
-          const result = await executeKeysendRebalance({
-            channel_id: channel_id.trim(),
-            amount_sats,
-            max_fee_sats,
-          });
-
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ ok: true, result }));
-        } catch (err: any) {
-          const msg = String(err?.message ?? err);
-          if (err instanceof KeysendRebalanceError) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: msg }));
-          } else if (err instanceof DailyLossCapError) {
-            res.writeHead(429, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: msg }));
-          } else {
-            res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: msg || "keysend_rebalance_failed" }));
-          }
-        }
-      });
-    } catch (err: any) {
-      const msg = String(err?.message ?? err);
-      const code = msg.includes("Treasury privileges required") ? 403 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: msg }));
-    }
-    return;
-  }
-
-  // ── Keysend push rebalance (auto — all critical channels) ───────────
-  if (req.method === "POST" && req.url === "/api/treasury/rebalance/keysend/auto") {
-    try {
-      const node = getNodeInfo();
-      if (!node) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Node info unavailable" }));
-        return;
-      }
-      assertTreasury(node.node_role);
-
-      try {
-        assertDailyLossCapNotExceeded(0);
-      } catch (err: any) {
-        if (err instanceof DailyLossCapError) {
-          res.writeHead(429, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: String(err.message) }));
-          return;
-        }
-        throw err;
-      }
-
-      const response = await autoKeysendRebalance();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(response));
-    } catch (err: any) {
-      const msg = String(err?.message ?? err);
-      const code = msg.includes("Treasury privileges required") ? 403 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: msg }));
-    }
-    return;
-  }
-
   if (req.method === "POST" && req.url === "/api/pay") {
     try {
       let body = "";
@@ -1493,5 +1400,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORTS.userApi, () => {
   console.log(`[api] listening on port ${PORTS.userApi}`);
-  startRebalanceScheduler();
+  // Keysend rebalance scheduler disabled — keysend push sends sats
+  // as one-way payments rather than true circular rebalancing.
 });

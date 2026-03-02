@@ -273,8 +273,6 @@ function ChannelsPage() {
   const [loading, setLoading] = useState(true);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [health, setHealth] = useState<ChannelLiquidityHealth[]>([]);
-  const [rebalancing, setRebalancing] = useState<string | null>(null);
-  const [rebalanceResult, setRebalanceResult] = useState<Record<string, { ok: boolean; message: string }>>({});
 
   useEffect(() => {
     Promise.all([
@@ -295,32 +293,6 @@ function ChannelsPage() {
     healthy: "var(--green)",
     inbound_heavy: "var(--blue)",
     critical: "var(--text-3)",
-  };
-
-  const handleRebalance = async (channelId: string, localSats: number, capacitySats: number) => {
-    setRebalancing(channelId);
-    setRebalanceResult((prev) => { const next = { ...prev }; delete next[channelId]; return next; });
-    try {
-      const excess = localSats - Math.floor(capacitySats * 0.5);
-      const amount = Math.min(100_000, Math.max(10_000, excess));
-      const res = await api.keysendRebalance(channelId, amount);
-      setRebalanceResult((prev) => ({
-        ...prev,
-        [channelId]: { ok: true, message: `Pushed ${res.result.amount_sats.toLocaleString()} sats` },
-      }));
-      // Re-fetch to update balances
-      Promise.all([
-        fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
-        api.getLiquidityHealth().catch(() => [] as ChannelLiquidityHealth[]),
-      ]).then(([ch, lh]) => { setChannels(ch); setHealth(lh); });
-    } catch (e) {
-      setRebalanceResult((prev) => ({
-        ...prev,
-        [channelId]: { ok: false, message: e instanceof Error ? e.message : "Failed" },
-      }));
-    } finally {
-      setRebalancing(null);
-    }
   };
 
   return (
@@ -362,7 +334,6 @@ function ChannelsPage() {
               const localPct = c.capacity_sat > 0 ? (c.local_balance_sat / c.capacity_sat) * 100 : 0;
               const remotePct = c.capacity_sat > 0 ? (c.remote_balance_sat / c.capacity_sat) * 100 : 0;
               const h = health.find((x) => x.channel_id === c.channel_id);
-              const isCritical = h?.health_classification === "critical";
               return (
                 <div key={c.channel_id} className="channel-card">
                   <div className="channel-card-top">
@@ -407,28 +378,6 @@ function ChannelsPage() {
                       <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
                     </span>
                   </div>
-                  {isCritical && (
-                    <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10 }}>
-                      <button
-                        className="btn btn-primary btn-sm"
-                        disabled={rebalancing === c.channel_id}
-                        onClick={() => handleRebalance(c.channel_id, c.local_balance_sat, c.capacity_sat)}
-                      >
-                        {rebalancing === c.channel_id ? "Rebalancing\u2026" : "Rebalance"}
-                      </button>
-                      {rebalanceResult[c.channel_id] && (
-                        <span
-                          style={{
-                            fontFamily: "var(--mono)",
-                            fontSize: "0.75rem",
-                            color: rebalanceResult[c.channel_id].ok ? "var(--green)" : "var(--red)",
-                          }}
-                        >
-                          {rebalanceResult[c.channel_id].message}
-                        </span>
-                      )}
-                    </div>
-                  )}
                 </div>
               );
             })}

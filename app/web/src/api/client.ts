@@ -42,11 +42,6 @@ export const api = {
   getRotationCandidates: () => apiFetch<RotationCandidate[]>("/api/treasury/rotation/candidates"),
   getDynamicFeePreview: () => apiFetch<ChannelFeeAdjustment[]>("/api/treasury/fees/dynamic-preview"),
   getLiquidityHealth: () => apiFetch<ChannelLiquidityHealth[]>("/api/treasury/liquidity-health"),
-  keysendRebalance: (channel_id: string, amount_sats: number) =>
-    apiFetch<KeysendRebalanceResult>("/api/treasury/rebalance/keysend", {
-      method: "POST",
-      body: JSON.stringify({ channel_id, amount_sats }),
-    }),
   applyDynamicFees: () => apiFetch<{ ok: boolean; applied: number }>("/api/treasury/fees/apply-dynamic", { method: "POST", body: "{}" }),
   getCapitalPolicy: () => apiFetch<TreasuryCapitalPolicy>("/api/treasury/capital-policy"),
   setCapitalPolicy: (body: Partial<TreasuryCapitalPolicy>) =>
@@ -335,20 +330,6 @@ export type ChannelLiquidityHealth = {
   velocity_24h_sats: number;
   recommended_action: string;
   is_active: boolean;
-};
-
-export type KeysendRebalanceResult = {
-  ok: boolean;
-  result: {
-    channel_id: string;
-    peer_pubkey: string;
-    amount_sats: number;
-    fee_paid_sats: number;
-    payment_hash: string;
-    status: string;
-    warning?: string;
-    error?: string;
-  };
 };
 
 export type ContactChannel = {
