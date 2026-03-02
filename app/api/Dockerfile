@@ -35,5 +35,8 @@ COPY --from=build /app/dist ./dist
 
 COPY --from=build /app/src/db/migrations ./dist/db/migrations
 
+# Loop Out proto files (loaded at runtime by @grpc/proto-loader)
+COPY proto ./proto
+
 CMD ["node", "dist/index.js"]
     
