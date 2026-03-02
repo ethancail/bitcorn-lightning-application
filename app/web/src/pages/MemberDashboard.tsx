@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type MemberStats } from "../api/client";
+import { api, type MemberStats, type PreflightResult } from "../api/client";
 import NodeBalancePanel from "../components/NodeBalancePanel";
 import FundNodePanel from "../components/FundNodePanel";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
@@ -34,6 +34,23 @@ function ConnectToHub({ isPeered }: { isPeered: boolean }) {
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [preflight, setPreflight] = useState<PreflightResult | null>(null);
+  const [preflightLoading, setPreflightLoading] = useState(true);
+
+  useEffect(() => {
+    api.getNodePreflight()
+      .then(setPreflight)
+      .catch(() => setPreflight(null))
+      .finally(() => setPreflightLoading(false));
+  }, []);
+
+  function retryPreflight() {
+    setPreflightLoading(true);
+    api.getNodePreflight()
+      .then(setPreflight)
+      .catch(() => setPreflight(null))
+      .finally(() => setPreflightLoading(false));
+  }
 
   function handleCopy() {
     navigator.clipboard.writeText(HUB_PUBKEY).catch(() => {});
@@ -117,6 +134,29 @@ function ConnectToHub({ isPeered }: { isPeered: boolean }) {
         </div>
       </div>
 
+      {/* Preflight warning */}
+      {!preflightLoading && preflight && !preflight.all_passed && (
+        <div className="alert warning" style={{ marginBottom: 0 }}>
+          <span className="alert-icon">⚠</span>
+          <div className="alert-body">
+            <div className="alert-type">Configuration Required</div>
+            {preflight.checks
+              .filter((c) => !c.passed)
+              .map((c) => (
+                <div key={c.check} className="alert-msg">{c.message}</div>
+              ))}
+            <button
+              className="btn btn-outline"
+              style={{ marginTop: 8 }}
+              onClick={retryPreflight}
+              disabled={preflightLoading}
+            >
+              {preflightLoading ? "Checking…" : "Retry Check"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Open channel form */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
@@ -193,7 +233,7 @@ function ConnectToHub({ isPeered }: { isPeered: boolean }) {
         <button
           className="btn btn-primary"
           onClick={handleOpen}
-          disabled={submitting || capacity < 100_000}
+          disabled={submitting || capacity < 100_000 || preflightLoading || (preflight != null && !preflight.all_passed)}
         >
           {submitting ? "Opening…" : "Open Channel →"}
         </button>
@@ -283,6 +323,20 @@ export default function MemberDashboard() {
       <NodeBalancePanel />
       <FundNodePanel />
       <BitcoinPriceGraph />
+
+      {/* Keysend disabled warning */}
+      {!loading && stats && stats.keysend_enabled === false && (
+        <div className="alert warning" style={{ marginBottom: 16 }}>
+          <span className="alert-icon">⚠</span>
+          <div className="alert-body">
+            <div className="alert-type">Keysend Payments Disabled</div>
+            <div className="alert-msg">
+              Your node cannot receive rebalancing payments from the treasury.
+              Enable "Receive Keysend Payments" in Umbrel → Lightning → Settings, then restart LND.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Membership status */}
       <div className="panel fade-in" style={{ marginBottom: 16 }}>
