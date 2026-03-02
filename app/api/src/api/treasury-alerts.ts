@@ -1,8 +1,10 @@
 import { db } from "../db";
 import { getCapitalPolicy } from "./treasury-capital-policy";
 import { getRotationCandidates } from "./treasury-rotation";
+import { getLiquidityHealth } from "./treasury-liquidity-health";
 import { getDailyLossSats } from "../utils/loss-cap";
 import { getLndChainBalance } from "../lightning/lnd";
+import { isLoopAvailable } from "../lightning/loop";
 import { ENV } from "../config/env";
 
 export type AlertSeverity = "info" | "warning" | "critical";
@@ -147,6 +149,33 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
       data: { interval_ms: ENV.rebalanceSchedulerIntervalMs },
       at: now,
     });
+  }
+
+  // --- Loop Out availability vs critical channels ---
+  const health = getLiquidityHealth();
+  const criticalCount = health.filter(
+    (h) => h.is_active && h.health_classification === "critical"
+  ).length;
+
+  if (criticalCount > 0) {
+    const loop = await isLoopAvailable();
+    if (loop.available) {
+      alerts.push({
+        type: "LOOP_OUT_AVAILABLE",
+        severity: "info",
+        message: `${criticalCount} critical channel(s) can be rebalanced via Loop Out`,
+        data: { critical_channels: criticalCount, loop_version: loop.version },
+        at: now,
+      });
+    } else {
+      alerts.push({
+        type: "LOOP_NOT_INSTALLED",
+        severity: "warning",
+        message: `${criticalCount} critical channel(s) need rebalancing but Lightning Terminal (Loop) is not available`,
+        data: { critical_channels: criticalCount, error: loop.error },
+        at: now,
+      });
+    }
   }
 
   // --- Member keysend disabled (only peers within 24h skip window) ---
