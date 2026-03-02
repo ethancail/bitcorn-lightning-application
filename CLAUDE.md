@@ -144,7 +144,7 @@ A sync loop runs every 15s (`src/lightning/sync.ts`), pulling LND state into SQL
 Do not reuse ports 3001 or 3009. Do not expose port 3109 via Umbrel app-proxy.
 
 ### Database
-SQLite at `data/db/bitcorn.sqlite` (mounted at `/data` inside the API container; on Umbrel host: `/home/umbrel/umbrel/app-data/bitcorn-lightning-node/data/db/bitcorn.sqlite`). Migrations in `src/db/migrations/` (001–020). Migrations must be idempotent and run on startup. Never mutate schema manually. Note: `sqlite3` is not installed in the API Docker image — to query the DB directly, install it on the Umbrel host (`sudo apt install sqlite3`) and access the file at the host path.
+SQLite at `data/db/bitcorn.sqlite` (mounted at `/data` inside the API container; on Umbrel host: `/home/umbrel/umbrel/app-data/bitcorn-lightning-node/data/db/bitcorn.sqlite`). Migrations in `src/db/migrations/` (001–021). Migrations must be idempotent and run on startup. Never mutate schema manually. Note: `sqlite3` is not installed in the API Docker image — to query the DB directly, install it on the Umbrel host (`sudo apt install sqlite3`) and access the file at the host path.
 
 Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `payments_outbound`, `payments_forwarded`, `treasury_fee_policy`, `treasury_capital_policy`, `treasury_expansion_recommendations`, `treasury_expansion_executions`, `treasury_rebalance_costs`, `treasury_rebalance_executions`, `coinbase_onramp_sessions`, `contacts`, `member_keysend_status`.
 

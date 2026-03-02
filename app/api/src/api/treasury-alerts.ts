@@ -171,10 +171,12 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     });
   }
 
-  // --- Member keysend disabled ---
+  // --- Member keysend disabled (only peers within 24h skip window) ---
+  const keysendSkipWindow = now - 24 * 60 * 60 * 1000;
   const keysendDisabled = db.prepare(
-    `SELECT peer_pubkey, last_failure_at FROM member_keysend_status WHERE keysend_disabled = 1`
-  ).all() as Array<{ peer_pubkey: string; last_failure_at: number }>;
+    `SELECT peer_pubkey, last_failure_at FROM member_keysend_status
+     WHERE keysend_disabled = 1 AND last_failure_at >= ?`
+  ).all(keysendSkipWindow) as Array<{ peer_pubkey: string; last_failure_at: number }>;
 
   if (keysendDisabled.length > 0) {
     alerts.push({
