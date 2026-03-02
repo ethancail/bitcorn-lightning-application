@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, resolveContactName } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -272,17 +272,56 @@ function ChannelsPage() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [health, setHealth] = useState<ChannelLiquidityHealth[]>([]);
+  const [rebalancing, setRebalancing] = useState<string | null>(null);
+  const [rebalanceResult, setRebalanceResult] = useState<Record<string, { ok: boolean; message: string }>>({});
 
   useEffect(() => {
     Promise.all([
       fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
       api.getContacts().catch(() => [] as Contact[]),
-    ]).then(([ch, ct]) => {
+      api.getLiquidityHealth().catch(() => [] as ChannelLiquidityHealth[]),
+    ]).then(([ch, ct, lh]) => {
       setChannels(ch);
       setContacts(ct);
+      setHealth(lh);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
+
+  const healthColor: Record<string, string> = {
+    outbound_starved: "var(--red)",
+    weak: "var(--yellow)",
+    healthy: "var(--green)",
+    inbound_heavy: "var(--blue)",
+    critical: "var(--text-3)",
+  };
+
+  const handleRebalance = async (channelId: string, localSats: number, capacitySats: number) => {
+    setRebalancing(channelId);
+    setRebalanceResult((prev) => { const next = { ...prev }; delete next[channelId]; return next; });
+    try {
+      const excess = localSats - Math.floor(capacitySats * 0.5);
+      const amount = Math.min(100_000, Math.max(10_000, excess));
+      const res = await api.keysendRebalance(channelId, amount);
+      setRebalanceResult((prev) => ({
+        ...prev,
+        [channelId]: { ok: true, message: `Pushed ${res.result.amount_sats.toLocaleString()} sats` },
+      }));
+      // Re-fetch to update balances
+      Promise.all([
+        fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
+        api.getLiquidityHealth().catch(() => [] as ChannelLiquidityHealth[]),
+      ]).then(([ch, lh]) => { setChannels(ch); setHealth(lh); });
+    } catch (e) {
+      setRebalanceResult((prev) => ({
+        ...prev,
+        [channelId]: { ok: false, message: e instanceof Error ? e.message : "Failed" },
+      }));
+    } finally {
+      setRebalancing(null);
+    }
+  };
 
   return (
     <div>
@@ -322,12 +361,25 @@ function ChannelsPage() {
             {channels.map((c) => {
               const localPct = c.capacity_sat > 0 ? (c.local_balance_sat / c.capacity_sat) * 100 : 0;
               const remotePct = c.capacity_sat > 0 ? (c.remote_balance_sat / c.capacity_sat) * 100 : 0;
+              const h = health.find((x) => x.channel_id === c.channel_id);
+              const isCritical = h?.health_classification === "critical";
               return (
                 <div key={c.channel_id} className="channel-card">
                   <div className="channel-card-top">
                     <span className="channel-peer mono">
                       {resolveContactName(c.peer_pubkey, contacts)}
                     </span>
+                    {h && (
+                      <span
+                        className="badge"
+                        style={{
+                          background: `${healthColor[h.health_classification] ?? "var(--text-3)"}22`,
+                          color: healthColor[h.health_classification] ?? "var(--text-3)",
+                        }}
+                      >
+                        {h.health_classification.replace(/_/g, " ")}
+                      </span>
+                    )}
                     {c.active ? (
                       <span className="badge badge-green">active</span>
                     ) : (
@@ -355,6 +407,28 @@ function ChannelsPage() {
                       <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
                     </span>
                   </div>
+                  {isCritical && (
+                    <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 10 }}>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        disabled={rebalancing === c.channel_id}
+                        onClick={() => handleRebalance(c.channel_id, c.local_balance_sat, c.capacity_sat)}
+                      >
+                        {rebalancing === c.channel_id ? "Rebalancing\u2026" : "Rebalance"}
+                      </button>
+                      {rebalanceResult[c.channel_id] && (
+                        <span
+                          style={{
+                            fontFamily: "var(--mono)",
+                            fontSize: "0.75rem",
+                            color: rebalanceResult[c.channel_id].ok ? "var(--green)" : "var(--red)",
+                          }}
+                        >
+                          {rebalanceResult[c.channel_id].message}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
