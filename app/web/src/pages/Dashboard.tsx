@@ -11,6 +11,7 @@ import {
   type TreasuryFeePolicy,
   type Contact,
 } from "../api/client";
+import { API_BASE } from "../config/api";
 
 import NodeBalancePanel from "../components/NodeBalancePanel";
 import FundNodePanel from "../components/FundNodePanel";
@@ -539,6 +540,8 @@ function DynamicFeesPanel({ contacts }: { contacts: Contact[] }) {
   const [applying, setApplying] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [applyResult, setApplyResult] = useState<string | null>(null);
+  const [rebalancing, setRebalancing] = useState<string | null>(null);
+  const [rebalanceResult, setRebalanceResult] = useState<Record<string, { ok: boolean; message: string }>>({});
 
   const load = useCallback(() => {
     setError(null);
@@ -568,6 +571,33 @@ function DynamicFeesPanel({ contacts }: { contacts: Contact[] }) {
       setApplyResult(`✕ ${e instanceof Error ? e.message : "Failed"}`);
     } finally {
       setApplying(false);
+    }
+  };
+
+  const handleRebalance = async (a: ChannelFeeAdjustment) => {
+    setRebalancing(a.channel_id);
+    setRebalanceResult((prev) => { const next = { ...prev }; delete next[a.channel_id]; return next; });
+    try {
+      const channels = await fetch(`${API_BASE}/api/channels`).then((r) => r.json()) as Array<{
+        channel_id: string; local_balance_sat: number; capacity_sat: number;
+      }>;
+      const ch = channels.find((c) => c.channel_id === a.channel_id);
+      if (!ch) throw new Error("Channel not found");
+      const excess = ch.local_balance_sat - Math.floor(ch.capacity_sat * 0.5);
+      const amount = Math.min(100_000, Math.max(10_000, excess));
+      const res = await api.keysendRebalance(a.channel_id, amount);
+      setRebalanceResult((prev) => ({
+        ...prev,
+        [a.channel_id]: { ok: true, message: `Pushed ${res.result.amount_sats.toLocaleString()}` },
+      }));
+      load();
+    } catch (e) {
+      setRebalanceResult((prev) => ({
+        ...prev,
+        [a.channel_id]: { ok: false, message: e instanceof Error ? e.message : "Failed" },
+      }));
+    } finally {
+      setRebalancing(null);
     }
   };
 
@@ -642,6 +672,7 @@ function DynamicFeesPanel({ contacts }: { contacts: Contact[] }) {
                   <th style={{ textAlign: "right" }}>Current</th>
                   <th style={{ textAlign: "right" }}>Target</th>
                   <th style={{ textAlign: "right" }}>Factor</th>
+                  <th style={{ textAlign: "center" }}>Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -669,6 +700,33 @@ function DynamicFeesPanel({ contacts }: { contacts: Contact[] }) {
                     </td>
                     <td className="td-num" style={{ color: "var(--text-3)" }}>
                       {a.adjustment_factor}×
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      {a.health_classification === "critical" ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, justifyContent: "center" }}>
+                          <button
+                            className="btn btn-primary btn-sm"
+                            disabled={rebalancing === a.channel_id}
+                            onClick={() => handleRebalance(a)}
+                            style={{ fontSize: "0.6875rem", padding: "2px 10px" }}
+                          >
+                            {rebalancing === a.channel_id ? "\u2026" : "Rebalance"}
+                          </button>
+                          {rebalanceResult[a.channel_id] && (
+                            <span
+                              style={{
+                                fontFamily: "var(--mono)",
+                                fontSize: "0.625rem",
+                                color: rebalanceResult[a.channel_id].ok ? "var(--green)" : "var(--red)",
+                              }}
+                            >
+                              {rebalanceResult[a.channel_id].message}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>{"\u2014"}</span>
+                      )}
                     </td>
                   </tr>
                 ))}
