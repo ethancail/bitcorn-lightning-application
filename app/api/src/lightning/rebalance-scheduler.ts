@@ -1,14 +1,18 @@
 /**
- * Automated keysend push rebalance scheduler: on the treasury node, periodically
- * finds critical channels (>85% local) and pushes sats to members via keysend.
- * Respects cooldown and never overlaps runs.
+ * Automated Loop Out rebalance scheduler: on the treasury node, periodically
+ * finds critical channels (>85% local) and initiates submarine swaps via
+ * loopd to restore receive capacity. Monitors in-flight swaps each tick.
  */
 
 import { ENV } from "../config/env";
 import { getNodeInfo } from "../api/read";
 import { assertTreasury } from "../utils/role";
-import { assertDailyLossCapNotExceeded, DailyLossCapError } from "../utils/loss-cap";
-import { autoKeysendRebalance } from "./rebalance-keysend";
+import {
+  assertDailyLossCapNotExceeded,
+  DailyLossCapError,
+} from "../utils/loss-cap";
+import { isLoopAvailable } from "./loop";
+import { autoLoopOutRebalance, monitorLoopSwaps } from "./rebalance-loop";
 import { db } from "../db";
 
 let running = false;
@@ -38,44 +42,92 @@ export function startRebalanceScheduler(): void {
       if (node?.node_role !== "treasury") return;
       assertTreasury(node.node_role);
 
+      // Check Loop availability — graceful skip if not installed
+      const loop = await isLoopAvailable();
+      if (!loop.available) {
+        if (ENV.debug)
+          console.log(
+            "[rebalance-scheduler] Loop not available, skipping:",
+            loop.error
+          );
+        return;
+      }
+
+      // Monitor in-flight swaps every tick (regardless of cooldown)
+      try {
+        await monitorLoopSwaps();
+      } catch (err) {
+        if (ENV.debug)
+          console.error("[rebalance-scheduler] monitor error:", err);
+      }
+
       if (hasRecentSucceededRebalance(ENV.rebalanceCooldownMinutes)) return;
 
-      // Daily loss cap: check once per tick before any LND I/O
+      // Daily loss cap: check once per tick before any swap initiation
       try {
         assertDailyLossCapNotExceeded(0);
       } catch (err) {
         if (err instanceof DailyLossCapError) {
-          console.warn("[rebalance-scheduler] daily loss cap reached — skipping:", err.message);
+          console.warn(
+            "[rebalance-scheduler] daily loss cap reached — skipping:",
+            err.message
+          );
           return;
         }
         throw err;
       }
 
       if (ENV.rebalanceSchedulerDryRun) {
-        // In dry-run mode, import health and log what would happen
-        const { getLiquidityHealth } = await import("../api/treasury-liquidity-health");
+        // In dry-run mode: log what would happen with quote estimates
+        const { getLiquidityHealth } = await import(
+          "../api/treasury-liquidity-health"
+        );
+        const { getLoopOutQuote } = await import("./loop");
         const health = getLiquidityHealth();
-        const critical = health.filter((h) => h.is_active && h.health_classification === "critical");
-        if (critical.length > 0) {
-          console.log("[rebalance-scheduler][dry-run] would keysend push to critical channels:", critical.map((c) => ({
-            channel_id: c.channel_id,
-            imbalance_ratio: c.imbalance_ratio,
-            local_sats: c.local_sats,
-            capacity_sats: c.capacity_sats,
-          })));
+        const critical = health.filter(
+          (h) => h.is_active && h.health_classification === "critical"
+        );
+        for (const ch of critical) {
+          const targetLocal = Math.floor(ch.capacity_sats * 0.5);
+          const amount = Math.max(
+            ENV.loopMinRebalanceSats,
+            ch.local_sats - targetLocal
+          );
+          try {
+            const quote = await getLoopOutQuote(amount);
+            console.log("[rebalance-scheduler][dry-run] would Loop Out:", {
+              channel_id: ch.channel_id,
+              amount_sats: amount,
+              estimated_cost: quote.total_cost_sats,
+              imbalance_ratio: ch.imbalance_ratio,
+            });
+          } catch {
+            console.log("[rebalance-scheduler][dry-run] quote failed:", {
+              channel_id: ch.channel_id,
+              amount_sats: amount,
+            });
+          }
         }
         return;
       }
 
-      const { results } = await autoKeysendRebalance();
+      const { results, skipped } = await autoLoopOutRebalance();
 
-      if (results.length > 0 && ENV.debug) {
-        console.log("[rebalance-scheduler] keysend results:", results.map((r) => ({
-          channel_id: r.channel_id,
-          status: r.status,
-          amount_sats: r.amount_sats,
-          fee_paid_sats: r.fee_paid_sats,
-        })));
+      if (ENV.debug) {
+        if (results.length > 0) {
+          console.log(
+            "[rebalance-scheduler] Loop Out results:",
+            results.map((r) => ({
+              channel_id: r.channel_id,
+              status: r.status,
+              amount_sats: r.amount_sats,
+              total_cost_sats: r.total_cost_sats,
+            }))
+          );
+        }
+        if (skipped.length > 0) {
+          console.log("[rebalance-scheduler] skipped:", skipped);
+        }
       }
     } catch (e) {
       if (ENV.debug) console.error("[rebalance-scheduler] error:", e);

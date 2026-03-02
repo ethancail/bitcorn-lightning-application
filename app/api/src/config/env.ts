@@ -60,6 +60,24 @@ export const ENV = {
     // Minimum minutes between two successful automated rebalances
     rebalanceCooldownMinutes: Number(process.env.REBALANCE_COOLDOWN_MINUTES ?? "30"),
 
+    // --- Loop Out (submarine swap rebalancing via Lightning Terminal / loopd) ---
+    // gRPC hostname of the loopd instance (inside litd on Umbrel)
+    loopGrpcHost: process.env.LOOP_GRPC_HOST || "lightning-terminal_web_1",
+    // gRPC port — litd unified endpoint
+    loopGrpcPort: Number(process.env.LOOP_GRPC_PORT ?? "8443"),
+    // TLS certificate for the litd gRPC connection
+    loopTlsCertPath: process.env.LOOP_TLS_CERT_PATH || "/loop-data/.lit/tls.cert",
+    // Loop macaroon for authentication
+    loopMacaroonPath: process.env.LOOP_MACAROON_PATH || "/loop-data/.loop/mainnet/loop.macaroon",
+    // Max swap fee as a percentage of the swap amount (default: 0.5%)
+    loopMaxSwapFeePct: Number(process.env.LOOP_MAX_SWAP_FEE_PCT ?? "0.5"),
+    // Max miner fee in sats for the on-chain sweep (default: 20,000)
+    loopMaxMinerFeeSats: Number(process.env.LOOP_MAX_MINER_FEE_SATS ?? "20000"),
+    // Minimum sats to rebalance via Loop Out (default: 50,000)
+    loopMinRebalanceSats: Number(process.env.LOOP_MIN_REBALANCE_SATS ?? "50000"),
+    // On-chain confirmation target for the sweep transaction (default: 6 blocks)
+    loopConfTarget: Number(process.env.LOOP_CONF_TARGET ?? "6"),
+
     // --- Coinbase Onramp ---
     // Required to build Onramp URLs. Get from Coinbase Developer Platform.
     // If unset, GET /api/coinbase/onramp-url returns 503.

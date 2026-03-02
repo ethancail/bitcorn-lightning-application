@@ -1,23 +1,26 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.3.5
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.4.0
     restart: unless-stopped
     ports:
       - "3101:3101"
     volumes:
       - ${APP_DATA_DIR}/data:/data
       - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
+      - /home/umbrel/umbrel/app-data/lightning-terminal/data:/loop-data:ro
     environment:
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
       LND_GRPC_HOST: 10.21.21.9:10009
       TREASURY_PUBKEY: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
       COINBASE_APP_ID: 1cebd598-0a9d-4567-8603-8ef051fd1101
       COINBASE_WORKER_URL: "https://bitcorn-onramp.ethancail.workers.dev"
+      LOOP_GRPC_HOST: lightning-terminal_web_1
+      LOOP_GRPC_PORT: "8443"
     networks:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.3.5
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.4.0
     restart: unless-stopped
     ports:
       - "3200:3200"

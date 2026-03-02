@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.3.5"
+version: "1.4.0"
 port: 3200
 
 description: >
@@ -27,6 +27,8 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  Disabled keysend push rebalance — sends sats as one-way payments rather
-  than truly rebalancing. Removed rebalance buttons and scheduler. Health
-  badges for channel liquidity status are retained.
+  Loop Out submarine swap rebalancing via Lightning Terminal. Treasury
+  performs real rebalances that restore receive capacity while preserving
+  total balance. Five new API endpoints, auto-select scheduler, and
+  treasury alerts for Loop availability. Requires Lightning Terminal
+  (optional — app works without it, Loop features gracefully degrade).

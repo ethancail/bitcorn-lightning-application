@@ -13,6 +13,7 @@ Before working on any feature or bug, read the relevant docs:
 | `docs/API.md` | Full endpoint reference |
 | `docs/DATABASE.md` | Schema details and table relationships |
 | `docs/COINBASE_INTEGRATION.md` | Coinbase Onramp session-token flow via Cloudflare Worker (OAuth2 notes are legacy/unused) |
+| `docs/LOOP_SETUP.md` | Loop Out submarine swap rebalancing setup and API reference |
 
 These docs are the authoritative reference for how the system works. The sections below are a summary.
 
@@ -24,7 +25,7 @@ When using Claude chat or another AI for brainstorming, the docs describe *what*
 |------|---------------|
 | Channel ROI / peer scoring (Phase 2) | `src/api/treasury-channel-metrics.ts`, `src/api/treasury-liquidity-health.ts`, `src/api/treasury.ts` |
 | Capital guardrails | `src/utils/capital-guardrails.ts`, migration `013_treasury_capital_policy.sql` |
-| Rebalance logic | `src/lightning/rebalance-keysend.ts`, `src/lightning/rebalance-circular.ts`, `src/lightning/rebalance-auto.ts`, `src/utils/rebalance-liquidity.ts`, migrations `014`, `015` |
+| Rebalance logic | `src/lightning/loop.ts`, `src/lightning/rebalance-loop.ts`, `src/lightning/rebalance-scheduler.ts`, `src/lightning/rebalance-circular.ts`, migrations `014`, `015` |
 | Expansion engine | `src/api/treasury-expansion.ts`, `src/utils/capital-guardrails.ts` |
 | Metrics / net yield | `src/api/treasury.ts`, migrations `007`–`009`, `014` |
 | Schema / data model | All files in `src/db/migrations/` |
@@ -63,7 +64,7 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Safety > growth
 
 ### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), circular rebalance engine, auto channel selection, rebalance scheduler, rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells), price ticker strip below Power Law chart (BTC from Coinbase, gold from goldapi.io, corn/soybeans/wheat from USDA NASS — all cached 24h in Cloudflare KV), BTC Moving Averages chart (50/100/200-day MAs, linear scale, 1M/1Y/5Y/10Y periods, computed client-side from power-law-data.json), Corn-Bitcoin ratio chart (bushels of corn per 1 BTC, historical corn prices from USDA NASS via Worker endpoint `GET /prices/corn-history`, monthly data interpolated to daily, 1M/1Y/5Y/10Y periods), Corn Price Moving Averages chart (50/100/200-day MAs over interpolated daily corn prices, reuses `computeMA` and `interpolateCornPrices` from sibling components, 1M/1Y/5Y/10Y periods), Contacts page (full CRUD address book for Lightning peers — search, inline edit/delete, channel balance bars, tag pills, sync-from-peers; available to both treasury and member shells), keysend enforcement (pre-flight check in member ConnectToHub form, runtime failure tracking with 24h retry, MEMBER_KEYSEND_DISABLED treasury alert, member dashboard keysend warning banner).
+Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits), Loop Out submarine swap rebalancing (via Lightning Terminal / loopd — restores receive capacity while preserving total balance), auto channel selection, rebalance scheduler (Loop Out), rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), gossip-aware peer detection for frictionless member onboarding, node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells), price ticker strip below Power Law chart (BTC from Coinbase, gold from goldapi.io, corn/soybeans/wheat from USDA NASS — all cached 24h in Cloudflare KV), BTC Moving Averages chart (50/100/200-day MAs, linear scale, 1M/1Y/5Y/10Y periods, computed client-side from power-law-data.json), Corn-Bitcoin ratio chart (bushels of corn per 1 BTC, historical corn prices from USDA NASS via Worker endpoint `GET /prices/corn-history`, monthly data interpolated to daily, 1M/1Y/5Y/10Y periods), Corn Price Moving Averages chart (50/100/200-day MAs over interpolated daily corn prices, reuses `computeMA` and `interpolateCornPrices` from sibling components, 1M/1Y/5Y/10Y periods), Contacts page (full CRUD address book for Lightning peers — search, inline edit/delete, channel balance bars, tag pills, sync-from-peers; available to both treasury and member shells), keysend enforcement (pre-flight check in member ConnectToHub form, runtime failure tracking with 24h retry, MEMBER_KEYSEND_DISABLED treasury alert, member dashboard keysend warning banner).
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, dynamic fee adjustment based on imbalance, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -155,10 +156,10 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 | `src/index.ts` | All HTTP routes (600+ lines) |
 | `src/lightning/sync.ts` | Main sync orchestrator |
 | `src/lightning/lnd.ts` | LND client, TLS + macaroon setup |
-| `src/lightning/rebalance-keysend.ts` | Keysend push rebalance execution + auto-select |
+| `src/lightning/loop.ts` | loopd gRPC client (Lightning Terminal subserver) |
+| `src/lightning/rebalance-loop.ts` | Loop Out rebalance execution + auto-select + monitoring |
+| `src/lightning/rebalance-scheduler.ts` | Scheduled Loop Out rebalance loop |
 | `src/lightning/rebalance-circular.ts` | Circular rebalance execution (legacy — not used in hub-and-spoke) |
-| `src/lightning/rebalance-auto.ts` | Auto-select donor/receiver channels |
-| `src/lightning/rebalance-scheduler.ts` | Scheduled rebalance loop |
 | `src/api/treasury.ts` | Aggregate treasury metrics |
 | `src/api/treasury-liquidity-health.ts` | Per-channel liquidity assessment |
 | `src/api/treasury-expansion.ts` | Channel expansion recommendations & execution |
@@ -171,7 +172,7 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 
 - **Public**: `/health`, `/api/node`, `/api/node/balances`, `/api/node/preflight`, `/api/coinbase/onramp-url`, `/api/commodity-prices`, `/api/peers`, `/api/channels`, `/api/member/stats`, `POST /api/member/open-channel`, `/api/contacts`, `POST /api/contacts`, `PATCH /api/contacts/:pubkey`, `DELETE /api/contacts/:pubkey`, `POST /api/contacts/sync-peers`
 - **Member** (active treasury channel): `POST /api/pay`
-- **Treasury only**: All `/api/treasury/*` endpoints
+- **Treasury only**: All `/api/treasury/*` endpoints (includes Loop Out: `GET /api/treasury/rebalance/loop-out/terms`, `GET .../quote`, `GET .../status`, `POST .../loop-out`, `POST .../loop-out/auto`)
 
 Role is derived from identity + treasury channel state — not bearer tokens.
 
@@ -240,7 +241,7 @@ Before any channel open, `capital-guardrails.ts` checks: minimum on-chain reserv
 
 ## Liquidity Management
 
-Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`. Keysend push rebalance is **disabled** — it sends sats as one-way payments rather than truly rebalancing (hub-and-spoke topology has no external peers for circular routes). The API endpoints and scheduler are removed from `index.ts`; the implementation files remain on disk but are unreachable. Circular rebalance requires external routing peers to form a loop and is not viable in the current topology. No automated rebalancing is active.
+Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`. **Loop Out** is the primary rebalancing strategy: submarine swaps via Lightning Terminal (loopd) move sats off-chain through a channel and return them on-chain minus fees — total balance preserved, receive capacity restored. Only targets critical channels (>85% local). See `docs/LOOP_SETUP.md` for setup. Keysend push rebalance is disabled (sends sats as one-way payments). Circular rebalance requires external routing peers and is not viable in hub-and-spoke topology.
 
 Keysend enforcement: member pre-flight check via `GET /api/node/preflight` inspects feature bit 55 — blocks channel open if keysend disabled. Runtime: `member_keysend_status` table tracks peers that reject keysend; auto-rebalancer skips disabled peers for 24h then retries. `MEMBER_KEYSEND_DISABLED` alert (warning severity) shows on treasury dashboard. Member dashboard shows non-dismissible banner when keysend is off.
 
@@ -308,5 +309,13 @@ See `src/config/env.ts` for all variables. Key ones:
 - `REBALANCE_SCHEDULER_ENABLED` — default `false`
 - `RATE_LIMIT_MAX_SINGLE_PAYMENT` — default `250000` sats
 - `REBALANCE_MAX_FEE_PPM` — default `1000` (0.1%); max fee-to-amount ratio the scheduler will tolerate. Prevents net-negative micro-rebalances when token amounts are small due to tight liquidity. At default, a 5,000 sat rebalance caps effective fee at 5 sats.
+- `LOOP_GRPC_HOST` — default `lightning-terminal_web_1` (litd container DNS on Umbrel)
+- `LOOP_GRPC_PORT` — default `8443` (litd unified gRPC port)
+- `LOOP_TLS_CERT_PATH` — default `/loop-data/.lit/tls.cert`
+- `LOOP_MACAROON_PATH` — default `/loop-data/.loop/mainnet/loop.macaroon`
+- `LOOP_MAX_SWAP_FEE_PCT` — default `0.5` (max swap fee as % of amount)
+- `LOOP_MAX_MINER_FEE_SATS` — default `20000`
+- `LOOP_MIN_REBALANCE_SATS` — default `50000` (auto-mode minimum)
+- `LOOP_CONF_TARGET` — default `6` (on-chain confirmation target)
 - `COINBASE_APP_ID` — Coinbase Developer Platform Project ID; set in `docker-compose.yml`; if unset, `GET /api/coinbase/onramp-url` returns 503. **Not a secret** — it is embedded in the Onramp URL visible to users.
 - `COINBASE_WORKER_URL` — URL of the Cloudflare Worker that holds CDP credentials and mints session tokens (e.g. `https://bitcorn-onramp.ethancail.workers.dev`); set in `docker-compose.yml`. Required; if unset, `GET /api/coinbase/onramp-url` returns 503.

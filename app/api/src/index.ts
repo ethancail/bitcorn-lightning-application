@@ -51,6 +51,9 @@ import { assertTreasury } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
+import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
+import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
+import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
 
 initDb();
 runMigrations();
@@ -820,6 +823,172 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ─── Loop Out rebalance endpoints ────────────────────────────────────────
+
+  if (req.method === "GET" && req.url === "/api/treasury/rebalance/loop-out/terms") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const loop = await isLoopAvailable();
+      if (!loop.available) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Loop not available", details: loop.error }));
+        return;
+      }
+      const terms = await getLoopOutTerms();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(terms));
+    } catch (err: any) {
+      const code = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_get_loop_terms" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/treasury/rebalance/loop-out/quote")) {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const loop = await isLoopAvailable();
+      if (!loop.available) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Loop not available", details: loop.error }));
+        return;
+      }
+      const url = new URL(req.url ?? "", "http://localhost");
+      const amountSats = Number(url.searchParams.get("amount_sats"));
+      const channelId = url.searchParams.get("channel_id") ?? undefined;
+      if (!Number.isFinite(amountSats) || amountSats <= 0) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "amount_sats query param required (positive number)" }));
+        return;
+      }
+      const quote = await getLoopOutQuote(amountSats);
+      const maxSwapFee = Math.ceil(amountSats * (ENV.loopMaxSwapFeePct / 100));
+      const acceptable = quote.swap_fee_sat <= maxSwapFee && quote.miner_fee <= ENV.loopMaxMinerFeeSats;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ...quote, channel_id: channelId, acceptable }));
+    } catch (err: any) {
+      const code = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_get_loop_quote" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/treasury/rebalance/loop-out/status") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const loop = await isLoopAvailable();
+      const executions = getRebalanceExecutions(100);
+      const inFlight = executions.filter(
+        (e) => e.type === "loop_out" && (e.status === "requested" || e.status === "submitted")
+      );
+      const since24h = Date.now() - 24 * 60 * 60 * 1000;
+      const completedToday = executions.filter(
+        (e) => e.type === "loop_out" && e.status === "succeeded" && e.created_at >= since24h
+      );
+      const totalCostToday = completedToday.reduce((sum, e) => sum + (e.fee_paid_sats ?? 0), 0);
+      const { getDailyLossSats } = await import("./utils/loss-cap");
+      const { getCapitalPolicy } = await import("./api/treasury-capital-policy");
+      const policy = getCapitalPolicy();
+      const dailyLoss = getDailyLossSats();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        loop_available: loop.available,
+        loop_version: loop.version ?? null,
+        in_flight_swaps: inFlight.length,
+        completed_today: completedToday.length,
+        total_cost_today_sats: totalCostToday,
+        daily_loss_cap_remaining_sats: Math.max(0, policy.max_daily_loss_sats - dailyLoss),
+      }));
+    } catch (err: any) {
+      const code = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_get_loop_status" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/treasury/rebalance/loop-out/auto") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const loop = await isLoopAvailable();
+      if (!loop.available) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Loop not available", details: loop.error }));
+        return;
+      }
+      const result = await autoLoopOutRebalance();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
+    } catch (err: any) {
+      if (err instanceof DailyLossCapError) {
+        res.writeHead(429, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err.message }));
+        return;
+      }
+      const code = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "auto_loop_out_failed" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/treasury/rebalance/loop-out") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const loop = await isLoopAvailable();
+      if (!loop.available) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Loop not available", details: loop.error }));
+        return;
+      }
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const { channel_id, amount_sats, max_swap_fee_sats, max_miner_fee_sats, conf_target } = parsed;
+          if (!channel_id || !amount_sats) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "channel_id and amount_sats are required" }));
+            return;
+          }
+          const result = await executeLoopOut({
+            channel_id: String(channel_id),
+            amount_sats: Number(amount_sats),
+            max_swap_fee_sats: max_swap_fee_sats != null ? Number(max_swap_fee_sats) : undefined,
+            max_miner_fee_sats: max_miner_fee_sats != null ? Number(max_miner_fee_sats) : undefined,
+            conf_target: conf_target != null ? Number(conf_target) : undefined,
+          });
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (err: any) {
+          if (err instanceof LoopOutError) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err.message }));
+          } else if (err instanceof DailyLossCapError) {
+            res.writeHead(429, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err.message }));
+          } else {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err?.message ?? "loop_out_failed" }));
+          }
+        }
+      });
+    } catch (err: any) {
+      const code = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+    }
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/treasury/rebalance/circular") {
     try {
       const node = getNodeInfo();
@@ -1400,6 +1569,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORTS.userApi, () => {
   console.log(`[api] listening on port ${PORTS.userApi}`);
-  // Keysend rebalance scheduler disabled — keysend push sends sats
-  // as one-way payments rather than true circular rebalancing.
+  // Loop Out rebalance scheduler — requires REBALANCE_SCHEDULER_ENABLED=true
+  // and Lightning Terminal (loopd) to be installed on the Umbrel node.
+  startRebalanceScheduler();
 });
