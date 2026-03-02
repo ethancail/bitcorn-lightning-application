@@ -44,7 +44,7 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndClient, getLndChainBalance, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress } from "./lightning/lnd";
+import { getLndClient, getLndChainBalance, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled } from "./lightning/lnd";
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
@@ -1036,6 +1036,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url === "/api/node/preflight") {
+    try {
+      const keysendEnabled = await isKeysendEnabled();
+
+      const checks = [
+        {
+          check: "keysend_enabled",
+          passed: keysendEnabled,
+          message: keysendEnabled
+            ? "Keysend payments are enabled"
+            : 'Keysend is not enabled. Go to Umbrel → Lightning → Settings → Enable "Receive Keysend Payments" → Restart LND, then retry.',
+          required: true,
+        },
+      ];
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ checks, all_passed: checks.every((c) => c.passed) }));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "preflight_check_failed" }));
+    }
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/member/stats") {
     try {
       const node = getNodeInfo();
@@ -1049,6 +1073,13 @@ const server = http.createServer(async (req, res) => {
         } catch {
           // non-fatal — gossip check best-effort
         }
+      }
+
+      let keysendEnabled = false;
+      try {
+        keysendEnabled = await isKeysendEnabled();
+      } catch {
+        // non-fatal — keysend check best-effort
       }
 
       const treasuryChannel = hubPubkey
@@ -1090,6 +1121,7 @@ const server = http.createServer(async (req, res) => {
         membership_status: node?.membership_status ?? "unsynced",
         node_role: node?.node_role ?? "external",
         is_peered_to_hub: isPeeredToHub,
+        keysend_enabled: keysendEnabled,
         treasury_channel: treasuryChannel
           ? {
               channel_id: treasuryChannel.channel_id,
