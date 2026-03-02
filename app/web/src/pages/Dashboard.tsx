@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   api,
+  resolveContactName,
   type TreasuryAlert,
   type TreasuryMetrics,
   type ChannelMetric,
@@ -8,6 +9,7 @@ import {
   type RotationCandidate,
   type ChannelFeeAdjustment,
   type TreasuryFeePolicy,
+  type Contact,
 } from "../api/client";
 
 import NodeBalancePanel from "../components/NodeBalancePanel";
@@ -244,7 +246,7 @@ function NetYieldPanel() {
 
 // ─── Channel ROI Table ─────────────────────────────────────────────────────
 
-function ChannelRoiTable() {
+function ChannelRoiTable({ contacts }: { contacts: Contact[] }) {
   const [raw, setRaw] = useState<ChannelMetric[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -297,7 +299,7 @@ function ChannelRoiTable() {
               {sorted.map((c) => (
                 <tr key={c.channel_id} className={c.roi_ppm < 0 ? "negative-roi" : ""}>
                   <td className="td-mono">{truncPk(c.channel_id)}</td>
-                  <td className="td-mono">{truncPk(c.peer_pubkey)}</td>
+                  <td className="td-mono">{resolveContactName(c.peer_pubkey, contacts)}</td>
                   <td className="td-num">{sats(c.local_sats)}</td>
                   <td className="td-num">{sats(c.forwarded_fees_sats)}</td>
                   <td className="td-num" style={{ color: "var(--red)" }}>-{sats(c.rebalance_costs_sats)}</td>
@@ -323,7 +325,7 @@ function ChannelRoiTable() {
 
 // ─── Peer Scores Panel ────────────────────────────────────────────────────
 
-function PeerScoresPanel() {
+function PeerScoresPanel({ contacts }: { contacts: Contact[] }) {
   const [raw, setRaw] = useState<PeerScore[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -368,7 +370,7 @@ function PeerScoresPanel() {
             <tbody>
               {sorted.map((p) => (
                 <tr key={p.peer_pubkey} className={p.peer_score < 0 ? "negative-roi" : ""}>
-                  <td className="td-mono">{truncPk(p.peer_pubkey)}</td>
+                  <td className="td-mono">{resolveContactName(p.peer_pubkey, contacts)}</td>
                   <td className="td-num">{p.channel_count}</td>
                   <td className="td-num">{sats(p.total_local_sats)}</td>
                   <td
@@ -399,7 +401,7 @@ function PeerScoresPanel() {
 
 // ─── Rotation Candidates Panel ────────────────────────────────────────────
 
-function RotationPanel() {
+function RotationPanel({ contacts }: { contacts: Contact[] }) {
   const [candidates, setCandidates] = useState<RotationCandidate[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -489,7 +491,7 @@ function RotationPanel() {
                     {[
                       { l: "ROI", v: `${c.roi_ppm} ppm`, neg: c.roi_ppm < 0 },
                       { l: "Local", v: `${sats(c.local_sats)} sats` },
-                      { l: "Peer", v: truncPk(c.peer_pubkey) },
+                      { l: "Peer", v: resolveContactName(c.peer_pubkey, contacts) },
                     ].map((x) => (
                       <div key={x.l} style={{ fontSize: "0.75rem" }}>
                         <span
@@ -529,7 +531,7 @@ function RotationPanel() {
 
 // ─── Dynamic Fees Panel ───────────────────────────────────────────────────
 
-function DynamicFeesPanel() {
+function DynamicFeesPanel({ contacts }: { contacts: Contact[] }) {
   const [adjustments, setAdjustments] = useState<ChannelFeeAdjustment[]>([]);
   const [policy, setPolicy] = useState<TreasuryFeePolicy | null>(null);
   const [loading, setLoading] = useState(true);
@@ -646,7 +648,7 @@ function DynamicFeesPanel() {
                 {adjustments.map((a) => (
                   <tr key={a.channel_id}>
                     <td className="td-mono">{truncPk(a.channel_id)}</td>
-                    <td className="td-mono">{truncPk(a.peer_pubkey)}</td>
+                    <td className="td-mono">{resolveContactName(a.peer_pubkey, contacts)}</td>
                     <td>
                       <span
                         className="badge"
@@ -682,6 +684,9 @@ function DynamicFeesPanel() {
 // ─── Dashboard ────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  useEffect(() => { api.getContacts().then(setContacts).catch(() => {}); }, []);
+
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -698,10 +703,10 @@ export default function Dashboard() {
 
       <div className="dashboard-grid">
         <NetYieldPanel />
-        <PeerScoresPanel />
-        <ChannelRoiTable />
-        <RotationPanel />
-        <DynamicFeesPanel />
+        <PeerScoresPanel contacts={contacts} />
+        <ChannelRoiTable contacts={contacts} />
+        <RotationPanel contacts={contacts} />
+        <DynamicFeesPanel contacts={contacts} />
       </div>
     </div>
   );

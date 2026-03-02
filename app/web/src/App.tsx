@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -271,15 +271,17 @@ function ChannelsPage() {
     }>
   >([]);
   const [loading, setLoading] = useState(true);
+  const [contacts, setContacts] = useState<Contact[]>([]);
 
   useEffect(() => {
-    fetch(`${API_BASE}/api/channels`)
-      .then((r) => r.json())
-      .then((d) => {
-        setChannels(d);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    Promise.all([
+      fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
+      api.getContacts().catch(() => [] as Contact[]),
+    ]).then(([ch, ct]) => {
+      setChannels(ch);
+      setContacts(ct);
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   return (
@@ -324,7 +326,7 @@ function ChannelsPage() {
                 <div key={c.channel_id} className="channel-card">
                   <div className="channel-card-top">
                     <span className="channel-peer mono">
-                      {c.peer_pubkey.slice(0, 12)}…{c.peer_pubkey.slice(-6)}
+                      {resolveContactName(c.peer_pubkey, contacts)}
                     </span>
                     {c.active ? (
                       <span className="badge badge-green">active</span>
