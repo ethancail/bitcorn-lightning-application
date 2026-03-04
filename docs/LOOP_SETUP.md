@@ -24,9 +24,31 @@ balance is preserved.
 3. Click Install — it runs as a subserver alongside LND
 4. Wait for it to fully sync (check its web UI at port 8443)
 
+**Requires LND v0.19.0+** — Lightning Terminal v0.16.1 will not start with older LND versions. Update LND from the Umbrel App Store if needed.
+
+**If install fails at ~50%:** Check for port conflicts with `sudo journalctl -u umbreld -n 100`. Remove any conflicting container and retry.
+
+## Configure litd for Cross-Container Access
+
+By default, litd binds its gRPC listener to `localhost:8443`, which is only reachable from inside the litd container. BitCorn needs to connect from a separate container, so you must expose the listener:
+
+1. Edit the Lightning Terminal docker-compose on your Umbrel:
+   ```bash
+   sudo nano ~/umbrel/app-data/lightning-terminal/docker-compose.yml
+   ```
+
+2. Add `--httpslisten=0.0.0.0:8443` to the litd command (in the `command:` or `entrypoint:` section)
+
+3. Restart Lightning Terminal:
+   ```bash
+   sudo umbreld client apps.restart.mutate --appId lightning-terminal
+   ```
+
+**Note:** Do NOT use `--rpclisten` — that flag is for subservices only and will crash litd.
+
 ## Verify Connection
 
-After installing Lightning Terminal, BitCorn automatically detects it.
+After installing and configuring Lightning Terminal, BitCorn automatically detects it.
 Check the dashboard alerts — you should see:
 
 - **LOOP_OUT_AVAILABLE** (info) when critical channels exist and Loop is reachable

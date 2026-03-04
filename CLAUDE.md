@@ -117,6 +117,10 @@ Docker images are built and pushed to `ghcr.io` automatically by `.github/workfl
 
 **If Umbrel install fails (flips back to "Install" at 0%):** The Docker images likely don't exist on ghcr.io. Check `gh run list` for a failed build. Common cause: transient npm 403 errors (e.g. `npm install -g serve` in the web Dockerfile getting rate-limited by registry.npmjs.org). Fix: re-run the failed workflow with `gh run rerun <run-id> --failed`. Always verify the build is green after pushing a version bump.
 
+**If Umbrel install reaches ~50% then resets:** A port conflict is likely. Check `sudo journalctl -u umbreld -n 100` for "already allocated" errors. Remove the conflicting container (`sudo docker rm -f <name>`) and retry.
+
+**Deploying hotfixes without a version bump:** Umbrel won't auto-detect image changes under the same tag. Force-pull and restart: `sudo docker pull ghcr.io/ethancail/bitcorn-lightning-application/api:<version> && sudo umbreld client apps.restart.mutate --appId bitcorn-lightning-node`.
+
 ## Architecture
 
 ### Hub-and-Spoke Model
@@ -241,7 +245,9 @@ Before any channel open, `capital-guardrails.ts` checks: minimum on-chain reserv
 
 ## Liquidity Management
 
-Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`. **Loop Out** is the primary rebalancing strategy: submarine swaps via Lightning Terminal (loopd) move sats off-chain through a channel and return them on-chain minus fees — total balance preserved, receive capacity restored. Only targets critical channels (>85% local). See `docs/LOOP_SETUP.md` for setup. Keysend push rebalance is disabled (sends sats as one-way payments). Circular rebalance requires external routing peers and is not viable in hub-and-spoke topology.
+Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`. **Loop Out** is the primary rebalancing strategy: submarine swaps via Lightning Terminal (loopd) move sats off-chain through a channel and return them on-chain minus fees — total balance preserved, receive capacity restored. Only targets critical channels (>85% local). Verified on mainnet with Loop v0.31.8-beta (terms: 250k–240M sats per swap). See `docs/LOOP_SETUP.md` for setup. Keysend push rebalance is disabled (sends sats as one-way payments). Circular rebalance requires external routing peers and is not viable in hub-and-spoke topology.
+
+**Loop Out production notes:** loopd runs inside litd (Lightning Terminal) on port 8443. The gRPC client uses `grpc.ssl_target_name_override: "localhost"` because litd's TLS cert SANs don't include Docker DNS names. litd must be configured with `--httpslisten=0.0.0.0:8443` (default binds localhost only). The `OutQuoteResponse` proto uses `htlc_sweep_fee_sat` for the miner fee field. Loop prepay is ~30,000 sats flat per swap. Minimum swap is 250,000 sats with a 50% local balance safety cap — channels need ≥500k local to be eligible.
 
 Keysend enforcement: member pre-flight check via `GET /api/node/preflight` inspects feature bit 55 — blocks channel open if keysend disabled. Runtime: `member_keysend_status` table tracks peers that reject keysend; auto-rebalancer skips disabled peers for 24h then retries. `MEMBER_KEYSEND_DISABLED` alert (warning severity) shows on treasury dashboard. Member dashboard shows non-dismissible banner when keysend is off.
 
