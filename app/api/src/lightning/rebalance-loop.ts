@@ -96,11 +96,11 @@ export async function executeLoopOut(params: {
     );
   }
 
-  // 3. Safety: never swap more than 50% of local balance
-  const maxSafe = Math.floor(channel.local_balance * 0.5);
+  // 3. Safety: never swap more than 50% of channel capacity
+  const maxSafe = Math.floor(channel.capacity * 0.5);
   if (amount_sats > maxSafe) {
     throw new LoopOutError(
-      `Amount ${amount_sats} exceeds 50% of local balance (${channel.local_balance}). Max: ${maxSafe}`
+      `Amount ${amount_sats} exceeds 50% of channel capacity (${channel.capacity}). Max: ${maxSafe}`
     );
   }
 
@@ -274,12 +274,12 @@ export async function autoLoopOutRebalance(): Promise<AutoLoopOutResult> {
       continue;
     }
 
-    // Safety: skip if amount exceeds 50% of local balance
-    const maxSafe = Math.floor(ch.local_sats * 0.5);
+    // Safety: skip if amount exceeds 50% of channel capacity
+    const maxSafe = Math.floor(ch.capacity_sats * 0.5);
     if (amount > maxSafe) {
       skipped.push({
         channel_id: ch.channel_id,
-        reason: `Amount ${amount} exceeds 50% of local balance ${ch.local_sats}`,
+        reason: `Amount ${amount} exceeds 50% of capacity ${ch.capacity_sats}`,
       });
       continue;
     }
