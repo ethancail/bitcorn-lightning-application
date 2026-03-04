@@ -455,6 +455,7 @@ const server = http.createServer(async (req, res) => {
             peer_cooldown_minutes: parsed.peer_cooldown_minutes != null ? Number(parsed.peer_cooldown_minutes) : undefined,
             max_expansions_per_day: parsed.max_expansions_per_day != null ? Number(parsed.max_expansions_per_day) : undefined,
             max_daily_deploy_sats: parsed.max_daily_deploy_sats != null ? Number(parsed.max_daily_deploy_sats) : undefined,
+            max_daily_loss_sats: parsed.max_daily_loss_sats != null ? Number(parsed.max_daily_loss_sats) : undefined,
           });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(policy));
