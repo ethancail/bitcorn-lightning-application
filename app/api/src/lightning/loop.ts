@@ -58,7 +58,11 @@ function getSwapClient(): any {
   );
 
   const host = `${ENV.loopGrpcHost}:${ENV.loopGrpcPort}`;
-  swapClient = new proto.looprpc.SwapClient(host, combinedCreds);
+  // litd's TLS cert may not include the Docker DNS name as a SAN.
+  // Override the target name to match a SAN in the cert (localhost).
+  swapClient = new proto.looprpc.SwapClient(host, combinedCreds, {
+    "grpc.ssl_target_name_override": "localhost",
+  });
   return swapClient;
 }
 
