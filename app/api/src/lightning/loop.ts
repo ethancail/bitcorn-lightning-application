@@ -152,12 +152,12 @@ export async function getLoopOutQuote(
   const res = await rpcCall<{
     swap_fee_sat: number;
     prepay_amt_sat: number;
-    miner_fee: number;
+    htlc_sweep_fee_sat: number;
   }>("LoopOutQuote", { amt: amountSats, conf_target: target });
 
   const swapFee = Number(res.swap_fee_sat);
   const prepay = Number(res.prepay_amt_sat);
-  const minerFee = Number(res.miner_fee);
+  const minerFee = Number(res.htlc_sweep_fee_sat);
 
   return {
     swap_fee_sat: swapFee,
