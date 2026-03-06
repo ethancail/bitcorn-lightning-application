@@ -132,7 +132,7 @@ Docker images are built and pushed to `ghcr.io` automatically by `.github/workfl
   - `external`: no treasury channel
 
 ### Sync-Driven State
-A sync loop runs every 15s (`src/lightning/sync.ts`), pulling LND state into SQLite. The database is the source of truth for metrics, guardrails, and membership. Live LND calls are only used for critical operations (payments, channel opens, apply fee policy).
+A sync loop runs every 15s (`src/lightning/sync.ts`), pulling LND state into SQLite. The database is the source of truth for metrics, guardrails, and membership. Live LND calls are only used for critical operations (payments, channel opens, apply fee policy). The sync loop upserts current channels/peers and deletes stale rows (closed channels, disconnected peers) each cycle to keep SQLite in sync with LND.
 
 ### Three-Layer Pattern
 1. `src/lightning/` — LND gRPC integration via `ln-service`
@@ -159,6 +159,7 @@ Key tables: `lnd_node_info`, `lnd_channels`, `lnd_peers`, `payments_inbound`, `p
 |------|---------|
 | `src/index.ts` | All HTTP routes (600+ lines) |
 | `src/lightning/sync.ts` | Main sync orchestrator |
+| `src/lightning/persist-channels.ts` | Channel + peer sync to SQLite (upsert current, delete stale) |
 | `src/lightning/lnd.ts` | LND client, TLS + macaroon setup |
 | `src/lightning/loop.ts` | loopd gRPC client (Lightning Terminal subserver) |
 | `src/lightning/rebalance-loop.ts` | Loop Out rebalance execution + auto-select + monitoring |
