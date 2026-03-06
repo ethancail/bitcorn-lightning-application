@@ -68,6 +68,20 @@ function getSwapClient(): any {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * Convert ln-service short channel ID (e.g. "939318x1492x1") to the uint64
+ * string that loopd's proto expects. Channel ID uint64s exceed
+ * Number.MAX_SAFE_INTEGER, so we use BigInt for the calculation.
+ */
+function shortChannelIdToUint64(scid: string): string {
+  const parts = scid.split("x");
+  if (parts.length !== 3) return scid; // already numeric — pass through
+  const [block, tx, output] = parts.map(Number);
+  const id =
+    (BigInt(block) << 40n) | (BigInt(tx) << 16n) | BigInt(output);
+  return id.toString();
+}
+
 /** Wrap a gRPC unary call in a Promise with a deadline. */
 function rpcCall<T>(
   method: string,
@@ -183,7 +197,8 @@ export async function executeLoopOutSwap(params: {
   max_miner_fee: number;
   sweep_conf_target: number;
 }): Promise<LoopOutSwapResult> {
-  // loopd expects channel IDs as uint64 — proto-loader with longs:Number handles this
+  // Convert short channel IDs (e.g. "939318x1492x1") to uint64 strings for loopd proto
+  const chanSet = params.outgoing_chan_set.map(shortChannelIdToUint64);
   const res = await rpcCall<{
     id_bytes: Buffer | string;
     server_message: string;
@@ -192,7 +207,7 @@ export async function executeLoopOutSwap(params: {
     {
       amt: params.amt,
       dest: params.dest,
-      outgoing_chan_set: params.outgoing_chan_set,
+      outgoing_chan_set: chanSet,
       max_swap_fee: params.max_swap_fee,
       max_miner_fee: params.max_miner_fee,
       sweep_conf_target: params.sweep_conf_target,
