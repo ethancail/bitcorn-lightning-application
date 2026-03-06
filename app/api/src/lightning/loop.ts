@@ -15,7 +15,7 @@ const packageDef = protoLoader.loadSync(
   {
     includeDirs: [PROTO_DIR],
     keepCase: true,
-    longs: Number,
+    longs: String,
     enums: String,
     defaults: true,
     oneofs: true,
