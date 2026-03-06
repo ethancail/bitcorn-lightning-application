@@ -9,6 +9,7 @@ import Wizard from "./pages/Wizard";
 import MemberDashboard from "./pages/MemberDashboard";
 import Charts from "./pages/Charts";
 import Contacts from "./pages/Contacts";
+import Payments from "./pages/Payments";
 
 // ─── App status hook ──────────────────────────────────────────────────────
 //
@@ -184,7 +185,7 @@ function AppShell() {
           <Route path="/charts" element={<Charts />} />
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/channels" element={<ChannelsPage />} />
-          <Route path="/payments" element={<PaymentsPage />} />
+          <Route path="/payments" element={<Payments title="Payments" />} />
           <Route path="/liquidity" element={<LiquidityPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
@@ -249,7 +250,7 @@ function MemberShell() {
           <Route path="/charts" element={<Charts />} />
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/channels" element={<ChannelsPage />} />
-          <Route path="/payments" element={<MemberPaymentsPage />} />
+          <Route path="/payments" element={<Payments title="My Payments" />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
@@ -388,24 +389,6 @@ function ChannelsPage() {
   );
 }
 
-function PaymentsPage() {
-  return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ marginBottom: 4 }}>Payments</h1>
-        <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Payment history coming soon
-        </p>
-      </div>
-      <div className="panel">
-        <div className="empty-state" style={{ padding: "60px 20px" }}>
-          Payment history view — coming soon.
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function LiquidityPage() {
   return (
     <div>
@@ -424,23 +407,6 @@ function LiquidityPage() {
   );
 }
 
-function MemberPaymentsPage() {
-  return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ marginBottom: 4 }}>My Payments</h1>
-        <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Payment history coming soon
-        </p>
-      </div>
-      <div className="panel">
-        <div className="empty-state" style={{ padding: "60px 20px" }}>
-          Payment history view — coming soon.
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Root router ──────────────────────────────────────────────────────────
 

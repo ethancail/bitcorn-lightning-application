@@ -54,6 +54,14 @@ import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
 import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
+import {
+  getBtcExchangeRate,
+  createPaymentInvoice,
+  payNetworkInvoice,
+  getNetworkPayments,
+  syncNetworkInvoiceSettlements,
+  decodeInvoice,
+} from "./lightning/network-payments";
 
 initDb();
 runMigrations();
@@ -1318,6 +1326,131 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: err?.message ?? "failed_to_open_channel" }));
       }
     });
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // NETWORK PAYMENTS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  if (req.method === "GET" && req.url === "/api/exchange-rate") {
+    try {
+      const rate = await getBtcExchangeRate();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(rate));
+    } catch (err: any) {
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "exchange_rate_unavailable" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/network/sync-settlements") {
+    try {
+      const result = syncNetworkInvoiceSettlements();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, ...result }));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "sync_failed" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/network/decode") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const { payment_request } = JSON.parse(body || "{}");
+        if (!payment_request) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "missing_payment_request" }));
+          return;
+        }
+        const decoded = decodeInvoice(payment_request);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(decoded));
+      } catch (err: any) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err?.message ?? "invalid_payment_request" }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/network/pay") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const { payment_request } = JSON.parse(body || "{}");
+        if (!payment_request) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "missing_payment_request" }));
+          return;
+        }
+
+        const node = getNodeInfo();
+        if (!node) {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "node_info_unavailable" }));
+          return;
+        }
+        assertActiveMember(node.membership_status);
+
+        const result = await payNetworkInvoice(payment_request);
+        res.writeHead(result.ok ? 200 : 402, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        const msg = String(err?.message ?? err);
+        const isRateLimit = msg.includes("Rate limit exceeded");
+        const isMembership = msg.includes("Active membership required");
+        const code = isRateLimit ? 429 : isMembership ? 403 : 500;
+        res.writeHead(code, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: msg }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/network/invoice") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const { amount_sats, memo } = JSON.parse(body || "{}");
+        if (!amount_sats || amount_sats <= 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "amount_sats must be positive" }));
+          return;
+        }
+        const result = await createPaymentInvoice(amount_sats, memo);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err?.message ?? "invoice_creation_failed" }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/network/payments")) {
+    try {
+      const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const direction = url.searchParams.get("direction") ?? undefined;
+      const status = url.searchParams.get("status") ?? undefined;
+      const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : undefined;
+      const offset = url.searchParams.has("offset") ? Number(url.searchParams.get("offset")) : undefined;
+
+      const payments = getNetworkPayments({ direction, status, limit, offset });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(payments));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed_to_fetch_payments" }));
+    }
     return;
   }
 

@@ -186,9 +186,9 @@ export async function getLndIdentity() {
 /**
  * Creates an invoice on the treasury node (e.g. for self-pay rebalance).
  */
-export async function createLndInvoice(tokens: number) {
+export async function createLndInvoice(tokens: number, description?: string) {
   const { lnd } = getLndClient();
-  return createInvoice({ lnd, tokens });
+  return createInvoice({ lnd, tokens, description });
 }
 
 /**

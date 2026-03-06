@@ -94,6 +94,8 @@ declare module "ln-service" {
     id: string;
     destination: string;
     tokens: number;
+    description?: string;
+    expires_at?: string;
   };
 
   export interface Invoice {

@@ -1032,4 +1032,106 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
   /* Power law chart: shorter on mobile */
   .power-law-chart-container { height: 300px; }
 
+  /* Payments: stack tabs, full-width QR */
+  .payment-tabs { flex-direction: column; }
+  .payment-tab { flex: 1; }
+  .invoice-qr { width: 200px; height: 200px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   NETWORK PAYMENTS
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.payment-tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.payment-tab {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: rgba(245, 158, 11, 0.6);
+  font-family: var(--mono);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.payment-tab:hover {
+  background: rgba(245, 158, 11, 0.05);
+  color: var(--amber);
+}
+
+.payment-tab.active {
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.invoice-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.invoice-qr {
+  width: 280px;
+  height: 280px;
+  border-radius: 12px;
+  border: 3px solid var(--amber);
+}
+
+.bolt11-text {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  line-height: 1.4;
+  word-break: break-all;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 120px;
+  overflow-y: auto;
+  width: 100%;
+  color: rgba(245, 158, 11, 0.7);
+  margin-top: 12px;
+}
+
+.payment-preview {
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.15);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 0.875rem;
+}
+
+.payment-result {
+  border-radius: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.payment-result.success {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.payment-result.failed {
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.form-label {
+  display: block;
+  font-size: 0.8125rem;
+  color: rgba(245, 158, 11, 0.7);
+  margin-bottom: 4px;
+  font-family: var(--mono);
 }

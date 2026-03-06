@@ -74,6 +74,24 @@ export const api = {
     apiFetch<{ ok: boolean; added: number; skipped: number }>("/api/contacts/sync-peers", {
       method: "POST",
     }),
+  // Network Payments
+  getExchangeRate: () => apiFetch<ExchangeRate>("/api/exchange-rate"),
+  getNetworkPayments: (params?: { direction?: string; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.direction) qs.set("direction", params.direction);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset) qs.set("offset", String(params.offset));
+    const q = qs.toString();
+    return apiFetch<NetworkPayment[]>(`/api/network/payments${q ? `?${q}` : ""}`);
+  },
+  createNetworkInvoice: (body: { amount_sats: number; memo?: string }) =>
+    apiFetch<InvoiceResult>("/api/network/invoice", { method: "POST", body: JSON.stringify(body) }),
+  decodeInvoice: (payment_request: string) =>
+    apiFetch<DecodedInvoice>("/api/network/decode", { method: "POST", body: JSON.stringify({ payment_request }) }),
+  payNetworkInvoice: (payment_request: string) =>
+    apiFetch<PaymentResult>("/api/network/pay", { method: "POST", body: JSON.stringify({ payment_request }) }),
+  syncSettlements: () =>
+    apiFetch<{ ok: boolean; updated: number }>("/api/network/sync-settlements", { method: "POST" }),
 };
 
 // ─── Shared helpers ───────────────────────────────────────────────────────
@@ -351,6 +369,51 @@ export type Contact = {
   updated_at: number;
   channels: ContactChannel[];
 };
+
+export type NetworkPayment = {
+  id: number;
+  payment_hash: string;
+  direction: "send" | "receive";
+  status: "pending" | "succeeded" | "failed" | "expired";
+  amount_sats: number;
+  fee_sats: number;
+  exchange_rate_usd: number | null;
+  amount_usd: number | null;
+  memo: string | null;
+  counterparty_pubkey: string | null;
+  payment_request: string | null;
+  created_at: number;
+  settled_at: number | null;
+};
+
+export type InvoiceResult = {
+  payment_hash: string;
+  payment_request: string;
+  amount_sats: number;
+  amount_usd: number | null;
+  exchange_rate_usd: number | null;
+};
+
+export type DecodedInvoice = {
+  id: string;
+  destination: string;
+  tokens: number;
+  description: string | null;
+  expires_at: string | null;
+};
+
+export type PaymentResult = {
+  ok: boolean;
+  payment_hash: string;
+  amount_sats: number;
+  fee_sats: number;
+  amount_usd: number | null;
+  destination: string;
+  memo: string | null;
+  error?: string;
+};
+
+export type ExchangeRate = { usd: number; source: string };
 
 /** Resolve a pubkey to a contact name, or fall back to truncated pubkey. */
 export function resolveContactName(pubkey: string, contacts: Contact[]): string {
