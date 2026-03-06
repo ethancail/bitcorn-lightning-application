@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { decodePaymentRequest } from "ln-service";
-import { createLndInvoice } from "./lnd";
+import { createLndInvoice, getLndClient } from "./lnd";
 import { payInvoice } from "./pay";
 import { insertOutboundPayment } from "./persist-payments";
 import { assertRateLimit } from "../utils/rate-limit";
@@ -81,8 +81,9 @@ export interface DecodedInvoice {
   expires_at: string | null;
 }
 
-export function decodeInvoice(paymentRequest: string): DecodedInvoice {
-  const decoded = decodePaymentRequest({ request: paymentRequest });
+export async function decodeInvoice(paymentRequest: string): Promise<DecodedInvoice> {
+  const { lnd } = getLndClient();
+  const decoded = await decodePaymentRequest({ lnd, request: paymentRequest });
   return {
     id: decoded.id,
     destination: decoded.destination,
@@ -108,7 +109,8 @@ export interface PaymentResult {
 export async function payNetworkInvoice(
   paymentRequest: string
 ): Promise<PaymentResult> {
-  const decoded = decodePaymentRequest({ request: paymentRequest });
+  const { lnd } = getLndClient();
+  const decoded = await decodePaymentRequest({ lnd, request: paymentRequest });
   const { id: paymentHash, destination, tokens, description } = decoded;
 
   assertRateLimit(tokens);

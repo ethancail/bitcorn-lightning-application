@@ -1100,9 +1100,10 @@ const server = http.createServer(async (req, res) => {
           }
 
           // Decode payment request first (needed for rate limiting and logging)
+          const { lnd: lndClient } = getLndClient();
           let decodedRequest: { id: string; destination: string; tokens: number } | null = null;
           try {
-            decodedRequest = decodePaymentRequest({ request: payment_request });
+            decodedRequest = await decodePaymentRequest({ lnd: lndClient, request: payment_request });
           } catch (decodeErr) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "invalid_payment_request" }));
@@ -1360,7 +1361,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/api/network/decode") {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => {
+    req.on("end", async () => {
       try {
         const { payment_request } = JSON.parse(body || "{}");
         if (!payment_request) {
@@ -1368,7 +1369,7 @@ const server = http.createServer(async (req, res) => {
           res.end(JSON.stringify({ error: "missing_payment_request" }));
           return;
         }
-        const decoded = decodeInvoice(payment_request);
+        const decoded = await decodeInvoice(payment_request);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(decoded));
       } catch (err: any) {

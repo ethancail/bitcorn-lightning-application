@@ -13,6 +13,25 @@ import {
 
 type Tab = "request" | "pay";
 
+/** Copy text to clipboard with HTTP fallback (navigator.clipboard requires HTTPS). */
+function copyToClipboard(text: string): void {
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+  } else {
+    fallbackCopy(text);
+  }
+}
+function fallbackCopy(text: string): void {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  document.body.removeChild(ta);
+}
+
 export default function Payments({ title }: { title: string }) {
   const [tab, setTab] = useState<Tab>("request");
   const [payments, setPayments] = useState<NetworkPayment[]>([]);
@@ -187,7 +206,7 @@ function RequestPaymentForm({
 
   const handleCopy = () => {
     if (!invoice) return;
-    navigator.clipboard.writeText(invoice.payment_request);
+    copyToClipboard(invoice.payment_request);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -388,7 +407,7 @@ function PayInvoiceForm({
   }
 
   const usdPreview =
-    rate && decoded
+    rate && decoded && decoded.tokens
       ? `$${((decoded.tokens / 100_000_000) * rate).toFixed(2)}`
       : null;
 
@@ -481,7 +500,7 @@ function PaymentDetail({
 
   const handleCopy = () => {
     if (!p.payment_request) return;
-    navigator.clipboard.writeText(p.payment_request);
+    copyToClipboard(p.payment_request);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

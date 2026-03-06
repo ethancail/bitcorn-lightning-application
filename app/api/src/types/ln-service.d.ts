@@ -89,14 +89,15 @@ declare module "ln-service" {
   }>;
 
   export function decodePaymentRequest(options: {
+    lnd: any;
     request: string;
-  }): {
+  }): Promise<{
     id: string;
     destination: string;
     tokens: number;
     description?: string;
     expires_at?: string;
-  };
+  }>;
 
   export interface Invoice {
     id: string;
