@@ -19,6 +19,7 @@ export default function Payments({ title }: { title: string }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [rate, setRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedPayment, setSelectedPayment] = useState<NetworkPayment | null>(null);
 
   const loadPayments = useCallback(async () => {
     try {
@@ -52,30 +53,45 @@ export default function Payments({ title }: { title: string }) {
         </p>
       </div>
 
-      <div className="payment-tabs">
-        <button
-          className={`payment-tab ${tab === "request" ? "active" : ""}`}
-          onClick={() => setTab("request")}
-        >
-          Request Payment
-        </button>
-        <button
-          className={`payment-tab ${tab === "pay" ? "active" : ""}`}
-          onClick={() => setTab("pay")}
-        >
-          Pay Invoice
-        </button>
-      </div>
-
-      <div className="panel" style={{ marginBottom: 24 }}>
-        <div className="panel-body">
-          {tab === "request" ? (
-            <RequestPaymentForm rate={rate} onCreated={loadPayments} />
-          ) : (
-            <PayInvoiceForm rate={rate} contacts={contacts} onPaid={loadPayments} />
-          )}
+      {selectedPayment ? (
+        <div className="panel" style={{ marginBottom: 24 }}>
+          <div className="panel-body">
+            <PaymentDetail
+              payment={selectedPayment}
+              contacts={contacts}
+              rate={rate}
+              onClose={() => setSelectedPayment(null)}
+            />
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="payment-tabs">
+            <button
+              className={`payment-tab ${tab === "request" ? "active" : ""}`}
+              onClick={() => setTab("request")}
+            >
+              Request Payment
+            </button>
+            <button
+              className={`payment-tab ${tab === "pay" ? "active" : ""}`}
+              onClick={() => setTab("pay")}
+            >
+              Pay Invoice
+            </button>
+          </div>
+
+          <div className="panel" style={{ marginBottom: 24 }}>
+            <div className="panel-body">
+              {tab === "request" ? (
+                <RequestPaymentForm rate={rate} onCreated={loadPayments} />
+              ) : (
+                <PayInvoiceForm rate={rate} contacts={contacts} onPaid={loadPayments} />
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="panel">
         <div className="panel-header">
@@ -104,7 +120,13 @@ export default function Payments({ title }: { title: string }) {
                 </thead>
                 <tbody>
                   {payments.map((p) => (
-                    <PaymentRow key={p.id} payment={p} contacts={contacts} />
+                    <PaymentRow
+                      key={p.id}
+                      payment={p}
+                      contacts={contacts}
+                      selected={selectedPayment?.id === p.id}
+                      onSelect={() => setSelectedPayment(p)}
+                    />
                   ))}
                 </tbody>
               </table>
@@ -431,9 +453,149 @@ function PayInvoiceForm({
   );
 }
 
+// ─── Payment Detail ──────────────────────────────────────────────────────────
+
+function PaymentDetail({
+  payment: p,
+  contacts,
+  rate,
+  onClose,
+}: {
+  payment: NetworkPayment;
+  contacts: Contact[];
+  rate: number | null;
+  onClose: () => void;
+}) {
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (p.payment_request && p.direction === "receive") {
+      QRCode.toDataURL(p.payment_request.toUpperCase(), {
+        width: 280,
+        margin: 2,
+        color: { dark: "#000000", light: "#ffffff" },
+      }).then(setQrDataUrl).catch(() => {});
+    }
+  }, [p.payment_request, p.direction]);
+
+  const handleCopy = () => {
+    if (!p.payment_request) return;
+    navigator.clipboard.writeText(p.payment_request);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const dirLabel = p.direction === "send" ? "Sent" : "Received";
+  const statusBadge: Record<string, { label: string; cls: string }> = {
+    pending: { label: "Pending", cls: "badge-amber" },
+    succeeded: { label: "Success", cls: "badge-green" },
+    failed: { label: "Failed", cls: "badge-red" },
+    expired: { label: "Expired", cls: "badge-muted" },
+  };
+  const sBadge = statusBadge[p.status] || { label: p.status, cls: "badge-muted" };
+
+  return (
+    <div className="invoice-display">
+      {/* QR code for received invoices */}
+      {p.direction === "receive" && qrDataUrl && (
+        <div style={{ textAlign: "center" }}>
+          <img src={qrDataUrl} alt="Invoice QR code" className="invoice-qr" />
+        </div>
+      )}
+
+      <div style={{ textAlign: "center", margin: "16px 0 8px", fontSize: "1.25rem", fontWeight: 600 }}>
+        {fmtSats(p.amount_sats)}
+        {p.amount_usd != null && (
+          <span className="text-dim" style={{ fontSize: "0.875rem", marginLeft: 8 }}>
+            (${p.amount_usd.toFixed(2)} USD)
+          </span>
+        )}
+      </div>
+
+      <div className="payment-preview" style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+          <span>Direction</span>
+          <span>{dirLabel}</span>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+          <span>Status</span>
+          <span className={sBadge.cls}>{sBadge.label}</span>
+        </div>
+        {p.fee_sats > 0 && (
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+            <span>Fee</span>
+            <span>{fmtSats(p.fee_sats)}</span>
+          </div>
+        )}
+        {p.counterparty_pubkey && (
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+            <span>{p.direction === "send" ? "To" : "From"}</span>
+            <span className="td-mono" style={{ fontSize: "0.8rem" }}>
+              {resolveContactName(p.counterparty_pubkey, contacts)}
+            </span>
+          </div>
+        )}
+        {p.memo && (
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+            <span>Memo</span>
+            <span>{p.memo}</span>
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+          <span>Date</span>
+          <span className="text-dim">{new Date(p.created_at).toLocaleString()}</span>
+        </div>
+        {p.settled_at && (
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span>Settled</span>
+            <span className="text-dim">{new Date(p.settled_at).toLocaleString()}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="text-dim" style={{ fontSize: "0.75rem", wordBreak: "break-all", marginBottom: 12 }}>
+        Hash: {p.payment_hash}
+      </div>
+
+      {/* BOLT11 string + copy for received invoices */}
+      {p.payment_request && p.direction === "receive" && (
+        <>
+          <div className="bolt11-text">{p.payment_request}</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <button className="btn btn-primary" onClick={handleCopy} style={{ flex: 1 }}>
+              {copied ? "Copied!" : "Copy Invoice"}
+            </button>
+            <button className="btn btn-outline" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Close button for sent payments */}
+      {p.direction === "send" && (
+        <button className="btn btn-outline" onClick={onClose} style={{ marginTop: 4 }}>
+          Close
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ─── Payment Row ─────────────────────────────────────────────────────────────
 
-function PaymentRow({ payment: p, contacts }: { payment: NetworkPayment; contacts: Contact[] }) {
+function PaymentRow({
+  payment: p,
+  contacts,
+  selected,
+  onSelect,
+}: {
+  payment: NetworkPayment;
+  contacts: Contact[];
+  selected: boolean;
+  onSelect: () => void;
+}) {
   const dirBadge =
     p.direction === "send"
       ? { label: "Sent", cls: "badge-red" }
@@ -448,7 +610,11 @@ function PaymentRow({ payment: p, contacts }: { payment: NetworkPayment; contact
   const sBadge = statusBadge[p.status] || { label: p.status, cls: "badge-muted" };
 
   return (
-    <tr>
+    <tr
+      onClick={onSelect}
+      className={selected ? "row-selected" : ""}
+      style={{ cursor: "pointer" }}
+    >
       <td><span className={dirBadge.cls}>{dirBadge.label}</span></td>
       <td><span className={sBadge.cls}>{sBadge.label}</span></td>
       <td className="td-num">
