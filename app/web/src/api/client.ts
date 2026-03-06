@@ -102,7 +102,8 @@ export function truncPubkey(pk: string): string {
   return `${pk.slice(0, 12)}…${pk.slice(-6)}`;
 }
 
-export function fmtSats(n: number): string {
+export function fmtSats(n: number | undefined | null): string {
+  if (n == null) return "— sats";
   return n.toLocaleString() + " sats";
 }
 
