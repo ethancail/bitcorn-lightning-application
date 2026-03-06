@@ -81,6 +81,7 @@ declare module "ln-service" {
   export function payViaPaymentRequest(options: {
     lnd: any;
     request: string;
+    outgoing_channel?: string;
   }): Promise<{
     id: string;
     tokens: number;
