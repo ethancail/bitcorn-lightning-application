@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.5.0"
+version: "1.5.1"
 port: 3200
 
 description: >
