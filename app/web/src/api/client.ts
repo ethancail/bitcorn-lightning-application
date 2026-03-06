@@ -418,8 +418,9 @@ export type ExchangeRate = { usd: number; source: string };
 
 /** Resolve a pubkey to a contact name, or fall back to truncated pubkey. */
 export function resolveContactName(pubkey: string, contacts: Contact[]): string {
+  if (!pubkey) return "—";
   const contact = contacts.find((c) => c.pubkey === pubkey);
-  return contact ? contact.name : `${pubkey.slice(0, 12)}…${pubkey.slice(-6)}`;
+  return contact ? contact.name : truncPubkey(pubkey);
 }
 
 
