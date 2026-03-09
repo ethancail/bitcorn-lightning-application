@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import QRCode from "qrcode";
+// QR code generation disabled — payments should route through the BitCorn app, not external wallets
+// import QRCode from "qrcode";
 import {
   api,
   type NetworkPayment,
@@ -170,7 +171,7 @@ function RequestPaymentForm({
   const [memo, setMemo] = useState("");
   const [creating, setCreating] = useState(false);
   const [invoice, setInvoice] = useState<InvoiceResult | null>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  // const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
@@ -190,12 +191,11 @@ function RequestPaymentForm({
         memo: memo.trim() || undefined,
       });
       setInvoice(result);
-      const dataUrl = await QRCode.toDataURL(result.payment_request.toUpperCase(), {
-        width: 280,
-        margin: 2,
-        color: { dark: "#000000", light: "#ffffff" },
-      });
-      setQrDataUrl(dataUrl);
+      // QR code disabled — payments should route through the BitCorn app
+      // const dataUrl = await QRCode.toDataURL(result.payment_request.toUpperCase(), {
+      //   width: 280, margin: 2, color: { dark: "#000000", light: "#ffffff" },
+      // });
+      // setQrDataUrl(dataUrl);
       onCreated();
     } catch (err: any) {
       setError(err.message || "Failed to create invoice");
@@ -213,7 +213,7 @@ function RequestPaymentForm({
 
   const handleReset = () => {
     setInvoice(null);
-    setQrDataUrl("");
+    // setQrDataUrl("");
     setAmount("");
     setMemo("");
     setCopied(false);
@@ -223,9 +223,11 @@ function RequestPaymentForm({
     return (
       <div className="invoice-display">
         <div style={{ textAlign: "center" }}>
+          {/* QR code disabled — payments should route through the BitCorn app
           {qrDataUrl && (
             <img src={qrDataUrl} alt="Invoice QR code" className="invoice-qr" />
           )}
+          */}
           <div style={{ margin: "16px 0 8px", fontSize: "1.25rem", fontWeight: 600 }}>
             {fmtSats(sats)}
             {invoice.amount_usd != null && (
@@ -485,18 +487,17 @@ function PaymentDetail({
   rate: number | null;
   onClose: () => void;
 }) {
-  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+  // const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (p.payment_request && p.direction === "receive") {
-      QRCode.toDataURL(p.payment_request.toUpperCase(), {
-        width: 280,
-        margin: 2,
-        color: { dark: "#000000", light: "#ffffff" },
-      }).then(setQrDataUrl).catch(() => {});
-    }
-  }, [p.payment_request, p.direction]);
+  // QR code disabled — payments should route through the BitCorn app
+  // useEffect(() => {
+  //   if (p.payment_request && p.direction === "receive") {
+  //     QRCode.toDataURL(p.payment_request.toUpperCase(), {
+  //       width: 280, margin: 2, color: { dark: "#000000", light: "#ffffff" },
+  //     }).then(setQrDataUrl).catch(() => {});
+  //   }
+  // }, [p.payment_request, p.direction]);
 
   const handleCopy = () => {
     if (!p.payment_request) return;
@@ -516,12 +517,13 @@ function PaymentDetail({
 
   return (
     <div className="invoice-display">
-      {/* QR code for received invoices */}
+      {/* QR code disabled — payments should route through the BitCorn app
       {p.direction === "receive" && qrDataUrl && (
         <div style={{ textAlign: "center" }}>
           <img src={qrDataUrl} alt="Invoice QR code" className="invoice-qr" />
         </div>
       )}
+      */}
 
       <div style={{ textAlign: "center", margin: "16px 0 8px", fontSize: "1.25rem", fontWeight: 600 }}>
         {fmtSats(p.amount_sats)}
