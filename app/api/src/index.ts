@@ -54,6 +54,7 @@ import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
 import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
+import { startClusterRebalanceScheduler } from "./rebalance/rebalanceScheduler";
 import {
   getBtcExchangeRate,
   createPaymentInvoice,
@@ -1707,4 +1708,7 @@ server.listen(PORTS.userApi, () => {
   // Loop Out rebalance scheduler — requires REBALANCE_SCHEDULER_ENABLED=true
   // and Lightning Terminal (loopd) to be installed on the Umbrel node.
   startRebalanceScheduler();
+  // Cluster-based rebalance engine — requires CLUSTER_REBALANCE_ENABLED=true.
+  // Fee steering + circular rebalance + topology monitoring on a 15-min interval.
+  startClusterRebalanceScheduler();
 });

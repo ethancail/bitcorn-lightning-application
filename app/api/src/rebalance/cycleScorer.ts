@@ -129,7 +129,7 @@ function loadRecentFailures(): Map<string, number> {
       `SELECT source_cluster_id || ':' || dest_cluster_id AS pair_id,
               MAX(created_at) AS last_failed_at
        FROM rebalance_outcomes
-       WHERE outcome_status = 'failure'
+       WHERE status = 'failure'
        GROUP BY pair_id`
     )
     .all() as Array<{ pair_id: string; last_failed_at: number }>;
