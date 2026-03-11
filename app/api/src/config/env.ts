@@ -60,6 +60,14 @@ export const ENV = {
     // Minimum minutes between two successful automated rebalances
     rebalanceCooldownMinutes: Number(process.env.REBALANCE_COOLDOWN_MINUTES ?? "30"),
 
+    // --- Cluster rebalance engine (v1) ---
+    // Set to "true" to enable the cluster-based rebalance engine (fee steering + circular rebalance)
+    clusterRebalanceEnabled: process.env.CLUSTER_REBALANCE_ENABLED === "true",
+    // Interval between cluster rebalance runs in milliseconds (default: 15 min)
+    clusterRebalanceIntervalMs: Number(
+        process.env.CLUSTER_REBALANCE_INTERVAL_MS ?? "900000"
+    ),
+
     // --- Loop Out (submarine swap rebalancing via Lightning Terminal / loopd) ---
     // gRPC hostname of the loopd instance (inside litd on Umbrel)
     loopGrpcHost: process.env.LOOP_GRPC_HOST || "lightning-terminal_web_1",
