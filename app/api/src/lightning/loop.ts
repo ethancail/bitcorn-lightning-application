@@ -195,6 +195,7 @@ export async function executeLoopOutSwap(params: {
   outgoing_chan_set: string[];
   max_swap_fee: number;
   max_miner_fee: number;
+  max_prepay_amt: number;
   sweep_conf_target: number;
 }): Promise<LoopOutSwapResult> {
   // Convert short channel IDs (e.g. "939318x1492x1") to uint64 strings for loopd proto
@@ -210,6 +211,7 @@ export async function executeLoopOutSwap(params: {
       outgoing_chan_set: chanSet,
       max_swap_fee: params.max_swap_fee,
       max_miner_fee: params.max_miner_fee,
+      max_prepay_amt: params.max_prepay_amt,
       sweep_conf_target: params.sweep_conf_target,
       max_prepay_routing_fee: params.max_swap_fee,
       max_swap_routing_fee: params.max_swap_fee,

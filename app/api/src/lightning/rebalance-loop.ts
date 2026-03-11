@@ -146,6 +146,7 @@ export async function executeLoopOut(params: {
       outgoing_chan_set: [channel_id],
       max_swap_fee: maxSwapFee,
       max_miner_fee: maxMinerFee,
+      max_prepay_amt: quote.prepay_amt_sat,
       sweep_conf_target: confTarget,
     });
 
