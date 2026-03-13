@@ -65,6 +65,8 @@ interface Env {
   USDA_NASS_KEY: string;
   GOLD_API_KEY: string;
   PRICES_CACHE: KVNamespace;
+  TREASURY_PUBKEY?: string;
+  TREASURY_SOCKET?: string;
 }
 
 // ─── CORS headers ────────────────────────────────────────────────────────
@@ -336,6 +338,13 @@ export default {
     // CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    // GET /treasury-info — treasury node connection info for member auto-connect
+    if (request.method === "GET" && url.pathname === "/treasury-info") {
+      const pubkey = env.TREASURY_PUBKEY || null;
+      const socket = env.TREASURY_SOCKET || null;
+      return Response.json({ pubkey, socket }, { headers: CORS_HEADERS });
     }
 
     // GET /prices/corn-history — historical monthly corn prices

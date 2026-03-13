@@ -28,6 +28,7 @@ export const api = {
   getCoinbaseOnrampUrl: () => apiFetch<OnrampUrlResponse>("/api/coinbase/onramp-url"),
   getCommodityPrices: () => apiFetch<CommodityPrices>("/api/commodity-prices"),
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
+  getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   getNodePreflight: () => apiFetch<PreflightResult>("/api/node/preflight"),
   openMemberChannel: (body: { capacity_sats: number; partner_socket?: string }) =>
@@ -271,6 +272,11 @@ export type NodeBalances = {
 export type OnrampUrlResponse = {
   url: string;
   wallet_address: string;
+};
+
+export type TreasuryInfo = {
+  pubkey: string | null;
+  socket: string | null;
 };
 
 export type MemberStats = {

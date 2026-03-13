@@ -1,32 +1,200 @@
-import { useEffect, useState } from "react";
-import { api, type MemberStats, type PreflightResult, type TreasuryInfo } from "../api/client";
-import NodeBalancePanel from "../components/NodeBalancePanel";
-import FundNodePanel from "../components/FundNodePanel";
-import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
+# Treasury Auto-Connect Implementation Plan
 
-const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
+> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-const CAPACITY_PRESETS = [
-  { label: "500k", value: 500_000 },
-  { label: "1M", value: 1_000_000 },
-  { label: "2M", value: 2_000_000 },
-];
+**Goal:** Let members connect to the treasury hub with one click instead of manually entering a Tor address.
 
-function statusBadge(s: string) {
-  switch (s) {
-    case "active_member":
-      return { text: "Active Member", cls: "badge-green" };
-    case "treasury_channel_inactive":
-      return { text: "Channel Inactive", cls: "badge-amber" };
-    case "no_treasury_channel":
-      return { text: "Not Connected", cls: "badge-muted" };
-    case "unsynced":
-      return { text: "Syncing", cls: "badge-muted" };
-    default:
-      return { text: s.replace(/_/g, " "), cls: "badge-muted" };
-  }
+**Architecture:** Cloudflare Worker stores treasury pubkey + socket as env vars, serves them via `GET /treasury-info`. Member API proxies this. Frontend fetches on mount and pre-fills the connection, replacing the manual text input with a single "Connect to Treasury" button. Falls back to manual input if Worker is unreachable.
+
+**Tech Stack:** Cloudflare Worker (existing), raw HTTP API (`index.ts`), React frontend (`MemberDashboard.tsx`)
+
+**Design doc:** `docs/plans/2026-03-13-treasury-auto-connect-design.md`
+
+---
+
+### Task 1: Add `GET /treasury-info` to Cloudflare Worker
+
+**Files:**
+- Modify: `cloudflare-worker/src/index.ts`
+
+**Step 1: Add env vars to `Env` interface**
+
+In `cloudflare-worker/src/index.ts`, find the `Env` interface (line ~62) and add two optional fields:
+
+```typescript
+interface Env {
+  CDP_KEY_NAME: string;
+  CDP_PRIVATE_KEY: string;
+  USDA_NASS_KEY: string;
+  GOLD_API_KEY: string;
+  PRICES_CACHE: KVNamespace;
+  TREASURY_PUBKEY?: string;   // add
+  TREASURY_SOCKET?: string;   // add
 }
+```
 
+They're optional (`?`) so the Worker still deploys and runs if they're not set yet.
+
+**Step 2: Add the `/treasury-info` route handler**
+
+In the router `fetch()` function (line ~332), add a new route **before** the `GET /prices` route:
+
+```typescript
+    // GET /treasury-info — treasury node connection info for member auto-connect
+    if (request.method === "GET" && url.pathname === "/treasury-info") {
+      const pubkey = env.TREASURY_PUBKEY || null;
+      const socket = env.TREASURY_SOCKET || null;
+      return Response.json({ pubkey, socket }, { headers: CORS_HEADERS });
+    }
+```
+
+**Step 3: Verify locally**
+
+Run: `cd cloudflare-worker && npx wrangler dev`
+Test: `curl http://localhost:8787/treasury-info`
+Expected: `{"pubkey":null,"socket":null}` (secrets not set locally — that's fine)
+
+**Step 4: Deploy and set secrets**
+
+```bash
+cd cloudflare-worker
+npx wrangler deploy
+npx wrangler secret put TREASURY_PUBKEY
+# paste: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
+npx wrangler secret put TREASURY_SOCKET
+# paste: prao2yfb6zmdv4mtc7zumiikla3jah3irrzgs6bilhz2rsp3wgl64cad.onion:9735
+```
+
+Test live: `curl https://bitcorn-onramp.ethancail.workers.dev/treasury-info`
+Expected: `{"pubkey":"02b759b...","socket":"prao2y...onion:9735"}`
+
+**Step 5: Commit**
+
+```bash
+git add cloudflare-worker/src/index.ts
+git commit -m "feat: add GET /treasury-info endpoint to Cloudflare Worker"
+```
+
+---
+
+### Task 2: Add `GET /api/treasury-info` proxy to API
+
+**Files:**
+- Modify: `app/api/src/index.ts` (insert after the `/api/corn-history` block, ~line 250)
+
+**Step 1: Add the proxy route**
+
+Insert this block immediately after the `/api/corn-history` handler (after line 250, before the `/api/peers` handler):
+
+```typescript
+  // Public — treasury connection info proxied from Cloudflare Worker
+  if (req.method === "GET" && req.url === "/api/treasury-info") {
+    try {
+      const workerUrl = ENV.coinbaseWorkerUrl;
+      if (!workerUrl) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "worker_not_configured" }));
+        return;
+      }
+      const response = await fetch(`${workerUrl}/treasury-info`);
+      if (!response.ok) {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "treasury_info_unavailable" }));
+        return;
+      }
+      const data = await response.json();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err) {
+      console.error("[treasury-info]", err);
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "treasury_info_unavailable" }));
+    }
+    return;
+  }
+```
+
+This follows the exact same pattern as `/api/commodity-prices` and `/api/corn-history`.
+
+**Step 2: Build**
+
+Run: `cd app/api && npm run build`
+Expected: Clean compile, no errors.
+
+**Step 3: Commit**
+
+```bash
+git add app/api/src/index.ts
+git commit -m "feat: add GET /api/treasury-info proxy route"
+```
+
+---
+
+### Task 3: Add `api.getTreasuryInfo()` to frontend client
+
+**Files:**
+- Modify: `app/web/src/api/client.ts`
+
+**Step 1: Add the type**
+
+Find the types section near the top of `client.ts`. Add:
+
+```typescript
+export type TreasuryInfo = {
+  pubkey: string | null;
+  socket: string | null;
+};
+```
+
+**Step 2: Add the api method**
+
+Find the `api` object (line ~26). Add after `getCornHistory`:
+
+```typescript
+  getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
+```
+
+**Step 3: Build**
+
+Run: `cd app/web && npm run build`
+Expected: Clean compile.
+
+**Step 4: Commit**
+
+```bash
+git add app/web/src/api/client.ts
+git commit -m "feat: add getTreasuryInfo API client method"
+```
+
+---
+
+### Task 4: Rewrite ConnectToHub for one-click auto-connect
+
+**Files:**
+- Modify: `app/web/src/pages/MemberDashboard.tsx`
+
+**Step 1: Add TreasuryInfo import**
+
+At the top of `MemberDashboard.tsx`, update the import from `client.ts`:
+
+```typescript
+import { api, type MemberStats, type PreflightResult, type TreasuryInfo } from "../api/client";
+```
+
+**Step 2: Rewrite the ConnectToHub component**
+
+Replace the `ConnectToHub` function (lines 30-283) with the updated version. Key changes:
+
+1. **New state:** `treasuryInfo` and `treasuryInfoLoading` for the Worker fetch
+2. **New `useEffect`:** fetch `api.getTreasuryInfo()` on mount
+3. **When NOT peered + socket available:** Show "Connect to Treasury" button (no manual input). The button calls `handleOpen()` with the fetched socket pre-filled.
+4. **When NOT peered + socket unavailable:** Fall back to the manual "Hub Address" text input (existing behavior).
+5. **When peered:** Same green banner as before.
+6. **Remove** the hardcoded `HUB_PUBKEY` constant at the top — use `treasuryInfo.pubkey` instead (with `HUB_PUBKEY` as fallback for backward compat).
+
+The full replacement for `ConnectToHub`:
+
+```tsx
 function ConnectToHub({ isPeered }: { isPeered: boolean }) {
   const [capacity, setCapacity] = useState(1_000_000);
   const [socket, setSocket] = useState("");
@@ -262,7 +430,7 @@ function ConnectToHub({ isPeered }: { isPeered: boolean }) {
           onClick={handleOpen}
           disabled={submitting || capacity < 100_000 || preflightLoading || (preflight != null && !preflight.all_passed)}
         >
-          {submitting ? "Connecting…" : "Open Channel →"}
+          {submitting ? "Connecting…" : isPeered || hasAutoSocket ? "Open Channel →" : "Open Channel →"}
         </button>
       </div>
 
@@ -304,181 +472,84 @@ function ConnectToHub({ isPeered }: { isPeered: boolean }) {
     </div>
   );
 }
+```
 
-export default function MemberDashboard() {
-  const [stats, setStats] = useState<MemberStats | null>(null);
-  const [loading, setLoading] = useState(true);
+Key behavioral changes:
+- `HUB_PUBKEY` constant stays as fallback, but `hubPubkey` now prefers Worker value
+- When `hasAutoSocket` is true and NOT peered: amber banner "Treasury address found — will connect automatically" + button uses the auto socket
+- When `hasAutoSocket` is false and NOT peered: falls back to manual text input (existing behavior)
+- The "Copy" button for the pubkey is removed (it was confusing in the old flow — the pubkey is still displayed for reference)
 
-  useEffect(() => {
-    api
-      .getMemberStats()
-      .then((d) => {
-        setStats(d);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+**Step 3: Build**
 
-    const id = setInterval(() => {
-      api.getMemberStats().then(setStats).catch(() => {});
-    }, 15_000);
-    return () => clearInterval(id);
-  }, []);
+Run: `cd app/web && npm run build`
+Expected: Clean compile.
 
-  const ch = stats?.treasury_channel;
-  const fees = stats?.forwarded_fees;
-  const badge = statusBadge(stats?.membership_status ?? "");
+**Step 4: Test the UI locally**
 
-  const localPct = ch ? Math.round((ch.local_sats / ch.capacity_sats) * 100) : 0;
-  const remotePct = ch ? Math.round((ch.remote_sats / ch.capacity_sats) * 100) : 0;
+Run: `cd app/web && npm run dev`
+Open in browser. Since the local API won't have the Worker URL, you should see the **fallback** manual input (existing behavior). This confirms graceful degradation works.
 
-  const hasChannel = !loading && ch != null;
-  const noChannel = !loading && ch == null;
+**Step 5: Commit**
 
-  return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ marginBottom: 4 }}>My Dashboard</h1>
-        <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Your connection to the Bitcorn Lightning hub
-        </p>
-      </div>
+```bash
+git add app/web/src/pages/MemberDashboard.tsx
+git commit -m "feat: one-click treasury auto-connect via Cloudflare Worker rendezvous"
+```
 
-      <NodeBalancePanel />
-      <FundNodePanel />
-      <BitcoinPriceGraph />
+---
 
-      {/* Keysend disabled warning */}
-      {!loading && stats && stats.keysend_enabled === false && (
-        <div className="alert warning" style={{ marginBottom: 16 }}>
-          <span className="alert-icon">⚠</span>
-          <div className="alert-body">
-            <div className="alert-type">Keysend Payments Disabled</div>
-            <div className="alert-msg">
-              Your node cannot receive rebalancing payments from the treasury.
-              Enable "Receive Keysend Payments" in Umbrel → Lightning → Settings, then restart LND.
-            </div>
-          </div>
-        </div>
-      )}
+### Task 5: Build, deploy, and verify end-to-end
 
-      {/* Membership status */}
-      <div className="panel fade-in" style={{ marginBottom: 16 }}>
-        <div className="panel-body" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ color: "var(--text-3)", fontSize: "0.875rem" }}>Membership status</span>
-          {loading ? (
-            <div className="loading-shimmer" style={{ height: 20, width: 120 }} />
-          ) : (
-            <span className={`badge ${badge.cls}`}>{badge.text}</span>
-          )}
-        </div>
-      </div>
+**Step 1: Final builds**
 
-      {/* Hub channel — or connect CTA */}
-      <div className="panel fade-in" style={{ marginBottom: 16 }}>
-        <div className="panel-header">
-          <span className="panel-title">
-            <span className="icon">◈</span>Hub Channel
-          </span>
-          {hasChannel && (
-            <span className={`badge ${ch!.is_active ? "badge-green" : "badge-muted"}`}>
-              {ch!.is_active ? "active" : "inactive"}
-            </span>
-          )}
-        </div>
-        <div className="panel-body">
-          {loading ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {[100, 80, 90].map((w, i) => (
-                <div key={i} className="loading-shimmer" style={{ height: 16, width: `${w}%` }} />
-              ))}
-            </div>
-          ) : noChannel ? (
-            <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} />
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
-                <div className="stat-card">
-                  <div className="stat-label">Local Balance</div>
-                  <div className="stat-value">{ch!.local_sats.toLocaleString()}</div>
-                  <div className="stat-sub">sats</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Remote Balance</div>
-                  <div className="stat-value">{ch!.remote_sats.toLocaleString()}</div>
-                  <div className="stat-sub">sats</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Capacity</div>
-                  <div className="stat-value">{ch!.capacity_sats.toLocaleString()}</div>
-                  <div className="stat-sub">sats</div>
-                </div>
-              </div>
+```bash
+cd app/api && npm run build
+cd ../web && npm run build
+```
 
-              <div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 6,
-                    fontSize: "0.75rem",
-                    color: "var(--text-3)",
-                  }}
-                >
-                  <span>Local {localPct}%</span>
-                  <span>Remote {remotePct}%</span>
-                </div>
-                <div
-                  style={{
-                    height: 8,
-                    borderRadius: 4,
-                    background: "var(--bg-3)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${localPct}%`,
-                      background: "var(--amber)",
-                      borderRadius: 4,
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+Both must pass clean.
 
-      {/* Forwarded fees — only show once they have / had a channel */}
-      {(hasChannel || (fees && fees.total_sats > 0)) && (
-        <div className="panel fade-in">
-          <div className="panel-header">
-            <span className="panel-title">
-              <span className="icon">↗</span>Forwarded Fees Earned
-            </span>
-          </div>
-          <div className="panel-body">
-            <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
-              <div className="stat-card">
-                <div className="stat-label">Last 24h</div>
-                <div className="stat-value">{fees?.last_24h_sats.toLocaleString() ?? "—"}</div>
-                <div className="stat-sub">sats</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Last 30 days</div>
-                <div className="stat-value">{fees?.last_30d_sats.toLocaleString() ?? "—"}</div>
-                <div className="stat-sub">sats</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">All Time</div>
-                <div className="stat-value">{fees?.total_sats.toLocaleString() ?? "—"}</div>
-                <div className="stat-sub">sats</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+**Step 2: Push to remote**
+
+```bash
+git push origin main
+```
+
+**Step 3: Deploy Worker with secrets**
+
+```bash
+cd cloudflare-worker
+npx wrangler deploy
+npx wrangler secret put TREASURY_PUBKEY
+# paste: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
+npx wrangler secret put TREASURY_SOCKET
+# paste: prao2yfb6zmdv4mtc7zumiikla3jah3irrzgs6bilhz2rsp3wgl64cad.onion:9735
+```
+
+Test: `curl https://bitcorn-onramp.ethancail.workers.dev/treasury-info`
+Expected: `{"pubkey":"02b759b...","socket":"prao2y...onion:9735"}`
+
+**Step 4: Update Umbrel app**
+
+```bash
+sudo docker pull ghcr.io/ethancail/bitcorn-lightning-application/api:1.5.3
+sudo docker pull ghcr.io/ethancail/bitcorn-lightning-application/web:1.5.3
+sudo umbreld client apps.restart.mutate --appId bitcorn-lightning-node
+```
+
+**Step 5: Verify on member node**
+
+On a member node without a treasury channel:
+1. Open the BitCorn app in browser
+2. Should see amber banner "Treasury address found — will connect automatically"
+3. Pick capacity, click "Open Channel →"
+4. Should peer + open channel without manual address entry
+
+**Step 6: Verify fallback**
+
+Temporarily unset `TREASURY_SOCKET` on Worker:
+```bash
+# (or just test before setting the secrets)
+```
+Member should see the old manual "Hub Address" text input — graceful degradation confirmed.

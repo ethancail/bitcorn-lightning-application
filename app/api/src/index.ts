@@ -249,6 +249,32 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Public — treasury connection info proxied from Cloudflare Worker
+  if (req.method === "GET" && req.url === "/api/treasury-info") {
+    try {
+      const workerUrl = ENV.coinbaseWorkerUrl;
+      if (!workerUrl) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "worker_not_configured" }));
+        return;
+      }
+      const response = await fetch(`${workerUrl}/treasury-info`);
+      if (!response.ok) {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "treasury_info_unavailable" }));
+        return;
+      }
+      const data = await response.json();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err) {
+      console.error("[treasury-info]", err);
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "treasury_info_unavailable" }));
+    }
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/peers") {
     try {
       const data = getPeers();
