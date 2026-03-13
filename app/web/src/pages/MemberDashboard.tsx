@@ -396,6 +396,44 @@ export default function MemberDashboard() {
             <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Channel health alert */}
+              {localPct < 15 && (
+                <div className="alert critical" style={{ marginBottom: 0 }}>
+                  <span className="alert-icon">✕</span>
+                  <div className="alert-body">
+                    <div className="alert-type">Spending Capacity Critical</div>
+                    <div className="alert-msg">
+                      Your local balance is only {localPct}% — you have very little capacity to send payments.
+                      The treasury operator has been notified and may initiate a liquidity adjustment.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {localPct >= 15 && localPct < 30 && (
+                <div className="alert warning" style={{ marginBottom: 0 }}>
+                  <span className="alert-icon">⚠</span>
+                  <div className="alert-body">
+                    <div className="alert-type">Spending Capacity Low</div>
+                    <div className="alert-msg">
+                      Your local balance is {localPct}% — sending capacity is getting low.
+                      Consider receiving payments or contact the treasury operator if this persists.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {localPct > 85 && (
+                <div className="alert warning" style={{ marginBottom: 0 }}>
+                  <span className="alert-icon">⚠</span>
+                  <div className="alert-body">
+                    <div className="alert-type">Receive Capacity Low</div>
+                    <div className="alert-msg">
+                      Your local balance is {localPct}% — you have little capacity to receive payments.
+                      Send a payment or contact the treasury operator to rebalance.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
                 <div className="stat-card">
                   <div className="stat-label">Local Balance</div>
@@ -439,7 +477,7 @@ export default function MemberDashboard() {
                     style={{
                       height: "100%",
                       width: `${localPct}%`,
-                      background: "var(--amber)",
+                      background: localPct < 15 ? "var(--red)" : localPct < 30 ? "var(--amber)" : "var(--green)",
                       borderRadius: 4,
                     }}
                   />
