@@ -24,6 +24,13 @@ const CB_PERIODS: CBPeriod[] = ["1M", "1Y", "5Y", "10Y"];
 const CMA_PERIODS: CMAPeriod[] = ["1M", "1Y", "5Y", "10Y"];
 
 const COINBASE_SPOT = "https://api.coinbase.com/v2/prices/BTC-USD/spot";
+const COINBASE_HISTORIC = "https://api.coinbase.com/v2/prices/BTC-USD/historic?period=year";
+
+type CoinbaseHistoricResponse = {
+  data: {
+    prices: Array<{ price: string; time: string }>;
+  };
+};
 
 // ─── Component ───────────────────────────────────────────────────────────
 
@@ -33,16 +40,31 @@ export default function Charts() {
   const [cbPeriod, setCbPeriod] = useState<CBPeriod>("5Y");
   const [cmaPeriod, setCmaPeriod] = useState<CMAPeriod>("5Y");
   const [currentPrice, setCurrentPrice] = useState(0);
+  const [historicPrices, setHistoricPrices] = useState<Map<string, number>>(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(COINBASE_SPOT)
+    const spotFetch = fetch(COINBASE_SPOT)
       .then((r) => r.json())
       .then((json: CoinbaseSpotResponse) => {
         setCurrentPrice(parseFloat(json.data.amount));
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {});
+
+    const historicFetch = fetch(COINBASE_HISTORIC)
+      .then((r) => r.json())
+      .then((json: CoinbaseHistoricResponse) => {
+        const map = new Map<string, number>();
+        for (const p of json.data.prices) {
+          const date = new Date(parseInt(p.time, 10) * 1000).toISOString().slice(0, 10);
+          const price = parseFloat(p.price);
+          if (!isNaN(price) && price > 0) map.set(date, price);
+        }
+        setHistoricPrices(map);
+      })
+      .catch(() => {});
+
+    Promise.all([spotFetch, historicFetch]).finally(() => setLoading(false));
   }, []);
 
   return (
@@ -90,7 +112,7 @@ export default function Charts() {
             </div>
           ) : (
             <div className="power-law-chart-container">
-              <PowerLawChart period={period} currentPrice={currentPrice} />
+              <PowerLawChart period={period} currentPrice={currentPrice} historicPrices={historicPrices} />
             </div>
           )}
 
@@ -172,7 +194,7 @@ export default function Charts() {
             </div>
           ) : (
             <div className="power-law-chart-container">
-              <MovingAveragesChart period={maPeriod} currentPrice={currentPrice} />
+              <MovingAveragesChart period={maPeriod} currentPrice={currentPrice} historicPrices={historicPrices} />
             </div>
           )}
 
@@ -228,7 +250,7 @@ export default function Charts() {
         </div>
         <div className="panel-body">
           <div className="power-law-chart-container">
-            <CornBitcoinChart period={cbPeriod} currentPrice={currentPrice} />
+            <CornBitcoinChart period={cbPeriod} currentPrice={currentPrice} historicPrices={historicPrices} />
           </div>
 
           {/* Legend */}

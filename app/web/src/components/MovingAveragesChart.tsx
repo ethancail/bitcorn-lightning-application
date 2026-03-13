@@ -37,6 +37,7 @@ type ChartPoint = {
 interface MovingAveragesChartProps {
   period: MAPeriod;
   currentPrice: number;
+  historicPrices: Map<string, number>;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────
@@ -189,17 +190,21 @@ function MATooltip({
 
 // ─── Component ───────────────────────────────────────────────────────────
 
-export default function MovingAveragesChart({ period, currentPrice }: MovingAveragesChartProps) {
+export default function MovingAveragesChart({ period, currentPrice, historicPrices }: MovingAveragesChartProps) {
   const chartData = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
     const { start, end } = getDateRange(period);
 
-    // Build full price array (fill gap days with current price)
+    // Build full price array (fill gap days with historic API prices, fall back to spot)
     const allData = (powerLawData as RawDataPoint[])
       .filter((d) => d.date <= end)
       .map((d) => ({
         date: d.date,
-        btc: d.btc != null ? d.btc : d.date <= todayStr && currentPrice > 0 ? currentPrice : null,
+        btc: d.btc != null
+          ? d.btc
+          : d.date <= todayStr
+            ? historicPrices.get(d.date) ?? (currentPrice > 0 ? currentPrice : null)
+            : null,
       }));
 
     // Extract prices for MA computation
@@ -221,7 +226,7 @@ export default function MovingAveragesChart({ period, currentPrice }: MovingAver
       .filter((d) => d.date >= start && d.date <= end);
 
     return downsample(points);
-  }, [period, currentPrice]);
+  }, [period, currentPrice, historicPrices]);
 
   // Y domain from visible data
   const allValues = chartData

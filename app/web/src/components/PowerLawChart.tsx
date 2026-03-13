@@ -32,6 +32,7 @@ type ChartPoint = RawDataPoint & {
 interface PowerLawChartProps {
   period: Period;
   currentPrice: number;
+  historicPrices: Map<string, number>;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────
@@ -167,7 +168,7 @@ function PowerLawTooltip({
 
 // ─── Component ───────────────────────────────────────────────────────────
 
-export default function PowerLawChart({ period, currentPrice }: PowerLawChartProps) {
+export default function PowerLawChart({ period, currentPrice, historicPrices }: PowerLawChartProps) {
   const chartData = useMemo(() => {
     const { start, end } = getDateRange(period);
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -179,14 +180,14 @@ export default function PowerLawChart({ period, currentPrice }: PowerLawChartPro
         btc:
           d.btc != null
             ? d.btc
-            : d.date <= todayStr && currentPrice > 0
-              ? currentPrice
+            : d.date <= todayStr
+              ? historicPrices.get(d.date) ?? (currentPrice > 0 ? currentPrice : null)
               : null,
         ts: parseISO(d.date).getTime(),
       }));
 
     return downsample(filtered);
-  }, [period, currentPrice]);
+  }, [period, currentPrice, historicPrices]);
 
   // Compute Y domain from visible data
   const allValues = chartData.flatMap((d) => [

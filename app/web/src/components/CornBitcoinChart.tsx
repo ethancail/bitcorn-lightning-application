@@ -32,6 +32,7 @@ type ChartPoint = {
 interface CornBitcoinChartProps {
   period: CBPeriod;
   currentPrice: number;
+  historicPrices: Map<string, number>;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────
@@ -199,7 +200,7 @@ function CBTooltip({
 
 // ─── Component ───────────────────────────────────────────────────────────
 
-export default function CornBitcoinChart({ period, currentPrice }: CornBitcoinChartProps) {
+export default function CornBitcoinChart({ period, currentPrice, historicPrices }: CornBitcoinChartProps) {
   const [cornHistory, setCornHistory] = useState<CornHistoryEntry[]>([]);
   const [cornLoading, setCornLoading] = useState(true);
 
@@ -222,7 +223,11 @@ export default function CornBitcoinChart({ period, currentPrice }: CornBitcoinCh
       .filter((d) => d.date >= start && d.date <= end)
       .map((d) => ({
         date: d.date,
-        btc: d.btc != null ? d.btc : d.date <= todayStr && currentPrice > 0 ? currentPrice : null,
+        btc: d.btc != null
+          ? d.btc
+          : d.date <= todayStr
+            ? historicPrices.get(d.date) ?? (currentPrice > 0 ? currentPrice : null)
+            : null,
       }));
 
     // Interpolate corn prices to daily
@@ -247,7 +252,7 @@ export default function CornBitcoinChart({ period, currentPrice }: CornBitcoinCh
       .filter((d) => d.ratio != null);
 
     return downsample(points);
-  }, [period, currentPrice, cornHistory]);
+  }, [period, currentPrice, historicPrices, cornHistory]);
 
   // X axis ticks
   const xTicks = useMemo(() => {
