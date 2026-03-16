@@ -23,13 +23,13 @@ import {
 } from "./api/treasury-rotation";
 import { getTreasuryAlerts } from "./api/treasury-alerts";
 import {
-  getRecommendations as getSwapRecommendations,
-  getQuoteForRecommendation,
+  getRecommendations as getLiquidityRecommendations,
+  getEstimateForRecommendation,
   approveRecommendation,
   rejectRecommendation,
-  getOutcomes as getSwapOutcomes,
-  getOutcomeById as getSwapOutcomeById,
-} from "./memberSwaps/swapRoutes";
+  getOutcomes as getLiquidityOutcomes,
+  getOutcomeById as getLiquidityOutcomeById,
+} from "./memberLiquidity/liquidityRoutes";
 import { getAllClusterStates } from "./rebalance/clusterState";
 import { assertDailyLossCapNotExceeded, DailyLossCapError } from "./utils/loss-cap";
 import {
@@ -1110,9 +1110,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // ─── Member swap endpoints (treasury-only) ─────────────────────────────────
+  // ─── Member liquidity endpoints (treasury-only) ────────────────────────────
 
-  if (req.method === "GET" && req.url === "/api/member-swaps/clusters") {
+  if (req.method === "GET" && req.url === "/api/member-liquidity/clusters") {
     try {
       const node = getNodeInfo();
       assertTreasury(node?.node_role);
@@ -1144,11 +1144,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && req.url === "/api/member-swaps/recommendations") {
+  if (req.method === "GET" && req.url === "/api/member-liquidity/recommendations") {
     try {
       const node = getNodeInfo();
       assertTreasury(node?.node_role);
-      const data = getSwapRecommendations();
+      const data = getLiquidityRecommendations();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
     } catch (err: any) {
@@ -1159,12 +1159,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && req.url?.startsWith("/api/member-swaps/recommendations/") && req.url?.endsWith("/quote")) {
+  if (req.method === "GET" && req.url?.startsWith("/api/member-liquidity/recommendations/") && req.url?.endsWith("/estimate")) {
     try {
       const node = getNodeInfo();
       assertTreasury(node?.node_role);
-      const recId = req.url.slice("/api/member-swaps/recommendations/".length, -"/quote".length);
-      const data = await getQuoteForRecommendation(recId);
+      const recId = req.url.slice("/api/member-liquidity/recommendations/".length, -"/estimate".length);
+      const data = await getEstimateForRecommendation(recId);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
     } catch (err: any) {
@@ -1175,11 +1175,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "POST" && req.url?.startsWith("/api/member-swaps/recommendations/") && req.url?.endsWith("/approve")) {
+  if (req.method === "POST" && req.url?.startsWith("/api/member-liquidity/recommendations/") && req.url?.endsWith("/approve")) {
     try {
       const node = getNodeInfo();
       assertTreasury(node?.node_role);
-      const recId = req.url.slice("/api/member-swaps/recommendations/".length, -"/approve".length);
+      const recId = req.url.slice("/api/member-liquidity/recommendations/".length, -"/approve".length);
       let body = "";
       req.on("data", (chunk) => (body += chunk));
       req.on("end", async () => {
@@ -1202,11 +1202,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "POST" && req.url?.startsWith("/api/member-swaps/recommendations/") && req.url?.endsWith("/reject")) {
+  if (req.method === "POST" && req.url?.startsWith("/api/member-liquidity/recommendations/") && req.url?.endsWith("/reject")) {
     try {
       const node = getNodeInfo();
       assertTreasury(node?.node_role);
-      const recId = req.url.slice("/api/member-swaps/recommendations/".length, -"/reject".length);
+      const recId = req.url.slice("/api/member-liquidity/recommendations/".length, -"/reject".length);
       const data = rejectRecommendation(recId);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
@@ -1218,26 +1218,23 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && req.url?.startsWith("/api/member-swaps/outcomes")) {
+  if (req.method === "GET" && req.url?.startsWith("/api/member-liquidity/outcomes")) {
     try {
       const node = getNodeInfo();
       assertTreasury(node?.node_role);
       const urlObj = new URL(req.url, `http://localhost`);
       const path = urlObj.pathname;
 
-      // Single outcome: /api/member-swaps/outcomes/<id>
-      if (path !== "/api/member-swaps/outcomes" && path.startsWith("/api/member-swaps/outcomes/")) {
-        const outcomeId = decodeURIComponent(path.slice("/api/member-swaps/outcomes/".length));
-        const data = getSwapOutcomeById(outcomeId);
+      if (path !== "/api/member-liquidity/outcomes" && path.startsWith("/api/member-liquidity/outcomes/")) {
+        const outcomeId = decodeURIComponent(path.slice("/api/member-liquidity/outcomes/".length));
+        const data = getLiquidityOutcomeById(outcomeId);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(data));
         return;
       }
 
-      // List outcomes with filters
-      const data = getSwapOutcomes({
+      const data = getLiquidityOutcomes({
         clusterId: urlObj.searchParams.get("clusterId") ?? undefined,
-        swapType: urlObj.searchParams.get("swapType") ?? undefined,
         status: urlObj.searchParams.get("status") ?? undefined,
         limit: urlObj.searchParams.has("limit") ? Number(urlObj.searchParams.get("limit")) : undefined,
       });

@@ -1,10 +1,10 @@
 import { useEffect, useState, useCallback } from "react";
 import {
   api,
-  type SwapCluster,
-  type SwapRecommendation,
-  type SwapQuote,
-  type SwapOutcome,
+  type LiquidityCluster,
+  type LiquidityRecommendation,
+  type LiquidityEstimate,
+  type LiquidityOutcome,
   resolveContactName,
   type Contact,
 } from "../api/client";
@@ -35,17 +35,6 @@ function bandBadge(dir: string) {
   }
 }
 
-function swapTypeBadge(t: string) {
-  switch (t) {
-    case "top_up":
-      return { text: "Top Up", cls: "badge-blue" };
-    case "cash_out":
-      return { text: "Cash Out", cls: "badge-amber" };
-    default:
-      return { text: t, cls: "badge-muted" };
-  }
-}
-
 function statusBadge(s: string) {
   switch (s) {
     case "pending":
@@ -58,8 +47,6 @@ function statusBadge(s: string) {
     case "failure":
     case "failed":
       return { text: "Failed", cls: "badge-red" };
-    case "pending_onchain":
-      return { text: "Pending On-Chain", cls: "badge-amber" };
     case "rejected":
       return { text: "Rejected", cls: "badge-muted" };
     default:
@@ -75,20 +62,20 @@ function formatAge(ts: number): string {
   return `${Math.floor(diff / 86_400_000)}d ago`;
 }
 
-// ─── Quote Modal ──────────────────────────────────────────────────────────
+// ─── Estimate Modal ──────────────────────────────────────────────────────
 
-function QuoteModal({
+function EstimateModal({
   rec,
   clusterLabel,
   onClose,
   onApproved,
 }: {
-  rec: SwapRecommendation;
+  rec: LiquidityRecommendation;
   clusterLabel: string;
   onClose: () => void;
   onApproved: () => void;
 }) {
-  const [quote, setQuote] = useState<SwapQuote | null>(null);
+  const [estimate, setEstimate] = useState<LiquidityEstimate | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [approving, setApproving] = useState(false);
@@ -97,9 +84,9 @@ function QuoteModal({
 
   useEffect(() => {
     api
-      .getSwapQuote(rec.recommendationId)
+      .getLiquidityEstimate(rec.recommendationId)
       .then((res) => {
-        setQuote(res.quote);
+        setEstimate(res.estimate);
         setLoading(false);
       })
       .catch((e: Error) => {
@@ -110,23 +97,23 @@ function QuoteModal({
 
   // TTL countdown
   useEffect(() => {
-    if (!quote) return;
+    if (!estimate) return;
     const update = () => {
-      const elapsed = (Date.now() - quote.quotedAt) / 1000;
-      const rem = Math.max(0, quote.quoteTtlSeconds - elapsed);
+      const elapsed = (Date.now() - estimate.estimatedAt) / 1000;
+      const rem = Math.max(0, estimate.estimateTtlSeconds - elapsed);
       setTtlRemaining(Math.round(rem));
     };
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [quote]);
+  }, [estimate]);
 
   async function handleApprove() {
-    if (!quote) return;
+    if (!estimate) return;
     setApproving(true);
     setError(null);
     try {
-      await api.approveSwap(rec.recommendationId, quote.quoteId);
+      await api.approveLiquidity(rec.recommendationId, estimate.estimateId);
       onApproved();
     } catch (e: any) {
       setError(e.message ?? "Approve failed");
@@ -138,7 +125,7 @@ function QuoteModal({
     setRejecting(true);
     setError(null);
     try {
-      await api.rejectSwap(rec.recommendationId);
+      await api.rejectLiquidity(rec.recommendationId);
       onApproved(); // refresh parent
     } catch (e: any) {
       setError(e.message ?? "Reject failed");
@@ -147,14 +134,13 @@ function QuoteModal({
   }
 
   const expired = ttlRemaining !== null && ttlRemaining <= 0;
-  const stBadge = swapTypeBadge(rec.swapType);
 
   return (
     <div className="dialog-overlay" onClick={onClose}>
       <div className="dialog-card" style={{ maxWidth: 520 }} onClick={(e) => e.stopPropagation()}>
         <div className="dialog-title" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          Swap Confirmation
-          <span className={`badge ${stBadge.cls}`}>{stBadge.text}</span>
+          Member Top-Up
+          <span className="badge badge-blue">Treasury Push</span>
         </div>
         <div className="dialog-body">
           {loading ? (
@@ -163,14 +149,14 @@ function QuoteModal({
                 <div key={i} className="loading-shimmer" style={{ height: 16, width: `${w}%` }} />
               ))}
             </div>
-          ) : error && !quote ? (
+          ) : error && !estimate ? (
             <div className="alert critical" style={{ marginBottom: 0 }}>
               <span className="alert-icon">x</span>
               <div className="alert-body">
                 <div className="alert-msg">{error}</div>
               </div>
             </div>
-          ) : quote ? (
+          ) : estimate ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               {/* Cluster + amount */}
               <div
@@ -185,13 +171,13 @@ function QuoteModal({
                   <div className="stat-value" style={{ fontSize: "1rem" }}>{clusterLabel}</div>
                 </div>
                 <div className="stat-card" style={{ margin: 0 }}>
-                  <div className="stat-label">Swap Amount</div>
-                  <div className="stat-value" style={{ fontSize: "1rem" }}>{fmt(quote.amountSats)}</div>
+                  <div className="stat-label">Push Amount</div>
+                  <div className="stat-value" style={{ fontSize: "1rem" }}>{fmt(estimate.amountSats)}</div>
                   <div className="stat-sub">sats</div>
                 </div>
               </div>
 
-              {/* Fee breakdown */}
+              {/* Delivery info */}
               <div
                 style={{
                   background: "var(--bg-3)",
@@ -209,36 +195,20 @@ function QuoteModal({
                     marginBottom: 8,
                   }}
                 >
-                  Fee Breakdown
+                  Delivery Details
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.875rem" }}>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--text-2)" }}>Swap fee</span>
-                    <span className="td-mono">{fmt(quote.estimatedSwapFeeSats)} sats</span>
+                    <span style={{ color: "var(--text-2)" }}>Method</span>
+                    <span className="td-mono">Keysend (Lightning)</span>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--text-2)" }}>Miner fee</span>
-                    <span className="td-mono">{fmt(quote.estimatedMinerFeeSats)} sats</span>
+                    <span style={{ color: "var(--text-2)" }}>Routing fee</span>
+                    <span className="td-mono">{fmt(estimate.estimatedRoutingFeeSats)} sats</span>
                   </div>
-                  {quote.estimatedPrepayFeeSats != null && (
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "var(--text-2)" }}>Prepay</span>
-                      <span className="td-mono">{fmt(quote.estimatedPrepayFeeSats)} sats</span>
-                    </div>
-                  )}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      borderTop: "1px solid var(--border)",
-                      paddingTop: 4,
-                      fontWeight: 600,
-                    }}
-                  >
-                    <span>Total fee</span>
-                    <span className="td-mono">
-                      {fmt(quote.totalEstimatedFeeSats)} sats ({(quote.feeAsPct * 100).toFixed(2)}%)
-                    </span>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "var(--text-2)" }}>Settlement</span>
+                    <span className="td-mono">Instant</span>
                   </div>
                 </div>
               </div>
@@ -246,28 +216,14 @@ function QuoteModal({
               {/* Projected balances */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div className="stat-card" style={{ margin: 0 }}>
-                  <div className="stat-label">Projected Local</div>
-                  <div className="stat-value" style={{ fontSize: "1rem" }}>{quote.projectedLocalPct}%</div>
+                  <div className="stat-label">Treasury Local (after)</div>
+                  <div className="stat-value" style={{ fontSize: "1rem" }}>{estimate.projectedTreasuryLocalPct}%</div>
                 </div>
                 <div className="stat-card" style={{ margin: 0 }}>
-                  <div className="stat-label">Projected Remote</div>
-                  <div className="stat-value" style={{ fontSize: "1rem" }}>{quote.projectedRemotePct}%</div>
+                  <div className="stat-label">Member Local (after)</div>
+                  <div className="stat-value" style={{ fontSize: "1rem" }}>{estimate.projectedMemberLocalPct}%</div>
                 </div>
               </div>
-
-              {/* Fee tolerance warning */}
-              {!quote.withinFeeTolerance && (
-                <div className="alert warning" style={{ marginBottom: 0 }}>
-                  <span className="alert-icon">!</span>
-                  <div className="alert-body">
-                    <div className="alert-type">Fee Exceeds Tolerance</div>
-                    <div className="alert-msg">
-                      Total fee ({(quote.feeAsPct * 100).toFixed(2)}%) exceeds the configured
-                      max fee tolerance for this cluster.
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* TTL countdown */}
               <div
@@ -279,7 +235,7 @@ function QuoteModal({
                   color: expired ? "var(--red)" : "var(--text-3)",
                 }}
               >
-                <span>Quote TTL</span>
+                <span>Estimate TTL</span>
                 <span className="td-mono" style={{ fontWeight: expired ? 600 : 400 }}>
                   {expired ? "EXPIRED" : `${ttlRemaining}s remaining`}
                 </span>
@@ -312,9 +268,9 @@ function QuoteModal({
           <button
             className="btn btn-primary"
             onClick={handleApprove}
-            disabled={loading || !quote || expired || approving || rejecting}
+            disabled={loading || !estimate || expired || approving || rejecting}
           >
-            {approving ? "Executing..." : "Approve & Execute"}
+            {approving ? "Pushing..." : "Approve & Push"}
           </button>
         </div>
       </div>
@@ -325,19 +281,19 @@ function QuoteModal({
 // ─── Main page ────────────────────────────────────────────────────────────
 
 export default function MemberLiquidity() {
-  const [clusters, setClusters] = useState<SwapCluster[]>([]);
-  const [recs, setRecs] = useState<SwapRecommendation[]>([]);
-  const [outcomes, setOutcomes] = useState<SwapOutcome[]>([]);
+  const [clusters, setClusters] = useState<LiquidityCluster[]>([]);
+  const [recs, setRecs] = useState<LiquidityRecommendation[]>([]);
+  const [outcomes, setOutcomes] = useState<LiquidityOutcome[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedRec, setSelectedRec] = useState<SwapRecommendation | null>(null);
+  const [selectedRec, setSelectedRec] = useState<LiquidityRecommendation | null>(null);
 
   const refresh = useCallback(() => {
     Promise.all([
-      api.getSwapClusters(),
-      api.getSwapRecommendations(),
-      api.getSwapOutcomes({ limit: 20 }),
+      api.getLiquidityClusters(),
+      api.getLiquidityRecommendations(),
+      api.getLiquidityOutcomes({ limit: 20 }),
       api.getContacts(),
     ])
       .then(([c, r, o, ct]) => {
@@ -364,7 +320,7 @@ export default function MemberLiquidity() {
   for (const c of clusters) clusterLabels.set(c.clusterId, c.label);
 
   // Match recommendations to clusters
-  const recsByCluster = new Map<string, SwapRecommendation[]>();
+  const recsByCluster = new Map<string, LiquidityRecommendation[]>();
   for (const r of recs) {
     const list = recsByCluster.get(r.clusterId) ?? [];
     list.push(r);
@@ -384,7 +340,7 @@ export default function MemberLiquidity() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Member Liquidity</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Monitor member channel balance health and manage liquidity swaps
+          Monitor member channel balance health and manage treasury push top-ups
         </p>
       </div>
 
@@ -411,13 +367,12 @@ export default function MemberLiquidity() {
         ) : recs.length === 0 ? (
           <div className="panel-body">
             <div className="empty-state" style={{ color: "var(--green)" }}>
-              No pending swap recommendations
+              No pending top-up recommendations
             </div>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column" }}>
             {recs.map((r) => {
-              const stBadge = swapTypeBadge(r.swapType);
               const sBadge = statusBadge(r.status);
               const label = clusterLabels.get(r.clusterId) ?? r.clusterId;
               return (
@@ -436,7 +391,7 @@ export default function MemberLiquidity() {
                   <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 200 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{ fontWeight: 600 }}>{label}</span>
-                      <span className={`badge ${stBadge.cls}`}>{stBadge.text}</span>
+                      <span className="badge badge-blue">Top-Up</span>
                       <span className={`badge ${sBadge.cls}`}>{sBadge.text}</span>
                     </div>
                     <div style={{ fontSize: "0.8125rem", color: "var(--text-3)" }}>
@@ -615,7 +570,7 @@ export default function MemberLiquidity() {
       <div className="panel fade-in">
         <div className="panel-header">
           <span className="panel-title">
-            <span className="icon">&#x2193;</span>Swap History
+            <span className="icon">&#x2193;</span>Top-Up History
           </span>
           {outcomes.length > 0 && (
             <span className="badge badge-muted">{outcomes.length} recent</span>
@@ -629,7 +584,7 @@ export default function MemberLiquidity() {
           </div>
         ) : outcomes.length === 0 ? (
           <div className="panel-body">
-            <div className="empty-state">No swap outcomes yet</div>
+            <div className="empty-state">No top-up outcomes yet</div>
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -637,7 +592,7 @@ export default function MemberLiquidity() {
               <thead>
                 <tr>
                   <th>Cluster</th>
-                  <th>Type</th>
+                  <th>Method</th>
                   <th style={{ textAlign: "right" }}>Amount</th>
                   <th style={{ textAlign: "right" }}>Fee</th>
                   <th>Status</th>
@@ -646,7 +601,6 @@ export default function MemberLiquidity() {
               </thead>
               <tbody>
                 {outcomes.map((o) => {
-                  const stBadge = swapTypeBadge(o.swapType);
                   const sBadge = statusBadge(o.status);
                   return (
                     <tr key={o.outcomeId}>
@@ -654,7 +608,9 @@ export default function MemberLiquidity() {
                         {clusterLabels.get(o.clusterId) ?? o.clusterId}
                       </td>
                       <td>
-                        <span className={`badge ${stBadge.cls}`}>{stBadge.text}</span>
+                        <span className="badge badge-blue">
+                          {o.executionMethod === "keysend" ? "Keysend" : o.executionMethod ?? "—"}
+                        </span>
                       </td>
                       <td className="td-num td-mono">
                         {o.actualAmountSats != null ? fmt(o.actualAmountSats) : "—"}
@@ -677,9 +633,9 @@ export default function MemberLiquidity() {
         )}
       </div>
 
-      {/* ── Quote/Approval Modal ────────────────────────────────────── */}
+      {/* ── Estimate/Approval Modal ──────────────────────────────────── */}
       {selectedRec && (
-        <QuoteModal
+        <EstimateModal
           rec={selectedRec}
           clusterLabel={clusterLabels.get(selectedRec.clusterId) ?? selectedRec.clusterId}
           onClose={() => setSelectedRec(null)}

@@ -93,29 +93,28 @@ export const api = {
     apiFetch<PaymentResult>("/api/network/pay", { method: "POST", body: JSON.stringify({ payment_request }) }),
   syncSettlements: () =>
     apiFetch<{ ok: boolean; updated: number }>("/api/network/sync-settlements", { method: "POST" }),
-  // Member Swaps (treasury-only)
-  getSwapClusters: () => apiFetch<SwapClustersResponse>("/api/member-swaps/clusters"),
-  getSwapRecommendations: () => apiFetch<SwapRecommendationsResponse>("/api/member-swaps/recommendations"),
-  getSwapQuote: (recId: string) =>
-    apiFetch<SwapQuoteResponse>(`/api/member-swaps/recommendations/${recId}/quote`),
-  approveSwap: (recId: string, quoteId: string) =>
-    apiFetch<SwapApproveResponse>(`/api/member-swaps/recommendations/${recId}/approve`, {
+  // Member Liquidity (treasury-only)
+  getLiquidityClusters: () => apiFetch<LiquidityClustersResponse>("/api/member-liquidity/clusters"),
+  getLiquidityRecommendations: () => apiFetch<LiquidityRecommendationsResponse>("/api/member-liquidity/recommendations"),
+  getLiquidityEstimate: (recId: string) =>
+    apiFetch<LiquidityEstimateResponse>(`/api/member-liquidity/recommendations/${recId}/estimate`),
+  approveLiquidity: (recId: string, estimateId: string) =>
+    apiFetch<LiquidityApproveResponse>(`/api/member-liquidity/recommendations/${recId}/approve`, {
       method: "POST",
-      body: JSON.stringify({ quoteId }),
+      body: JSON.stringify({ estimateId }),
     }),
-  rejectSwap: (recId: string) =>
-    apiFetch<{ ok: boolean }>(`/api/member-swaps/recommendations/${recId}/reject`, {
+  rejectLiquidity: (recId: string) =>
+    apiFetch<{ ok: boolean }>(`/api/member-liquidity/recommendations/${recId}/reject`, {
       method: "POST",
       body: JSON.stringify({}),
     }),
-  getSwapOutcomes: (params?: { clusterId?: string; swapType?: string; status?: string; limit?: number }) => {
+  getLiquidityOutcomes: (params?: { clusterId?: string; status?: string; limit?: number }) => {
     const qs = new URLSearchParams();
     if (params?.clusterId) qs.set("clusterId", params.clusterId);
-    if (params?.swapType) qs.set("swapType", params.swapType);
     if (params?.status) qs.set("status", params.status);
     if (params?.limit) qs.set("limit", String(params.limit));
     const q = qs.toString();
-    return apiFetch<SwapOutcomesResponse>(`/api/member-swaps/outcomes${q ? `?${q}` : ""}`);
+    return apiFetch<LiquidityOutcomesResponse>(`/api/member-liquidity/outcomes${q ? `?${q}` : ""}`);
   },
 };
 
@@ -446,9 +445,9 @@ export type PaymentResult = {
 
 export type ExchangeRate = { usd: number; source: string };
 
-// ─── Member Swap types ───────────────────────────────────────────────────
+// ─── Member Liquidity types ──────────────────────────────────────────────
 
-export type SwapCluster = {
+export type LiquidityCluster = {
   clusterId: string;
   label: string;
   peerPubkey: string;
@@ -466,62 +465,53 @@ export type SwapCluster = {
   activeChannelCount: number;
 };
 
-export type SwapClustersResponse = { clusters: SwapCluster[] };
+export type LiquidityClustersResponse = { clusters: LiquidityCluster[] };
 
-export type SwapRecommendation = {
+export type LiquidityRecommendation = {
   recommendationId: string;
   clusterId: string;
-  swapType: "cash_out" | "top_up";
+  actionType: "treasury_push_topup";
   triggerReason: string;
   suggestedAmountSats: number;
-  estimatedFeeSats: number | null;
-  postSwapLocalPct: number | null;
+  projectedLocalPct: number | null;
   status: string;
   rejectedAt: number | null;
   createdAt: number;
   updatedAt: number;
 };
 
-export type SwapRecommendationsResponse = { recommendations: SwapRecommendation[] };
+export type LiquidityRecommendationsResponse = { recommendations: LiquidityRecommendation[] };
 
-export type SwapQuote = {
-  quoteId: string;
+export type LiquidityEstimate = {
+  estimateId: string;
   recommendationId: string;
-  swapType: string;
   amountSats: number;
-  estimatedSwapFeeSats: number;
-  estimatedMinerFeeSats: number;
-  estimatedPrepayFeeSats: number | null;
-  totalEstimatedFeeSats: number;
-  feeAsPct: number;
-  projectedLocalPct: number;
-  projectedRemotePct: number;
-  withinFeeTolerance: boolean;
-  quotedAt: number;
-  quoteTtlSeconds: number;
+  projectedTreasuryLocalPct: number;
+  projectedMemberLocalPct: number;
+  estimatedRoutingFeeSats: number;
+  estimatedAt: number;
+  estimateTtlSeconds: number;
 };
 
-export type SwapQuoteResponse = { quote: SwapQuote };
+export type LiquidityEstimateResponse = { estimate: LiquidityEstimate };
 
-export type SwapOutcome = {
+export type LiquidityOutcome = {
   outcomeId: string;
   recommendationId: string;
-  quoteId: string;
   clusterId: string;
-  swapType: string;
+  actionType: string;
   status: string;
   actualAmountSats: number | null;
   actualFeeSats: number | null;
-  loopSwapId: string | null;
-  onchainTxid: string | null;
+  paymentHash: string | null;
+  executionMethod: string | null;
   failureReason: string | null;
   executedAt: number;
-  settledAt: number | null;
 };
 
-export type SwapOutcomesResponse = { outcomes: SwapOutcome[] };
+export type LiquidityOutcomesResponse = { outcomes: LiquidityOutcome[] };
 
-export type SwapApproveResponse = { outcome: SwapOutcome };
+export type LiquidityApproveResponse = { outcome: LiquidityOutcome };
 
 /** Resolve a pubkey to a contact name, or fall back to truncated pubkey. */
 export function resolveContactName(pubkey: string, contacts: Contact[]): string {
