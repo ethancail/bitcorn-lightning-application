@@ -10,6 +10,7 @@ import MemberDashboard from "./pages/MemberDashboard";
 import Charts from "./pages/Charts";
 import Contacts from "./pages/Contacts";
 import Payments from "./pages/Payments";
+import MemberLiquidity from "./pages/MemberLiquidity";
 
 // ─── App status hook ──────────────────────────────────────────────────────
 //
@@ -390,21 +391,7 @@ function ChannelsPage() {
 }
 
 function LiquidityPage() {
-  return (
-    <div>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ marginBottom: 4 }}>Liquidity</h1>
-        <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Liquidity management coming soon
-        </p>
-      </div>
-      <div className="panel">
-        <div className="empty-state" style={{ padding: "60px 20px" }}>
-          Liquidity management view — coming soon.
-        </div>
-      </div>
-    </div>
-  );
+  return <MemberLiquidity />;
 }
 
 

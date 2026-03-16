@@ -22,6 +22,15 @@ import {
   getRotationExecutions,
 } from "./api/treasury-rotation";
 import { getTreasuryAlerts } from "./api/treasury-alerts";
+import {
+  getRecommendations as getSwapRecommendations,
+  getQuoteForRecommendation,
+  approveRecommendation,
+  rejectRecommendation,
+  getOutcomes as getSwapOutcomes,
+  getOutcomeById as getSwapOutcomeById,
+} from "./memberSwaps/swapRoutes";
+import { getAllClusterStates } from "./rebalance/clusterState";
 import { assertDailyLossCapNotExceeded, DailyLossCapError } from "./utils/loss-cap";
 import {
   getTreasuryFeePolicy,
@@ -1097,6 +1106,147 @@ const server = http.createServer(async (req, res) => {
       const code = msg.includes("Treasury privileges required") ? 403 : 500;
       res.writeHead(code, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: msg }));
+    }
+    return;
+  }
+
+  // ─── Member swap endpoints (treasury-only) ─────────────────────────────────
+
+  if (req.method === "GET" && req.url === "/api/member-swaps/clusters") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const states = getAllClusterStates();
+      const clusters = states.map((s) => ({
+        clusterId: s.clusterId,
+        label: s.label,
+        peerPubkey: s.peerPubkey,
+        policyRole: s.policyRole,
+        totalCapacitySats: s.totalCapacitySats,
+        localBalanceSats: s.localBalanceSats,
+        remoteBalanceSats: s.remoteBalanceSats,
+        localPct: s.localPct,
+        targetMinPct: s.targetMinPct,
+        targetMidPct: s.targetMidPct,
+        targetMaxPct: s.targetMaxPct,
+        deviationDirection: s.deviationDirection,
+        deviationPct: s.deviationPct,
+        channelCount: s.channels.length,
+        activeChannelCount: s.channels.filter((c) => c.active).length,
+      }));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ clusters }));
+    } catch (err: any) {
+      const code = err?.message?.includes("Treasury") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/member-swaps/recommendations") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const data = getSwapRecommendations();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      const code = err?.message?.includes("Treasury") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/member-swaps/recommendations/") && req.url?.endsWith("/quote")) {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const recId = req.url.slice("/api/member-swaps/recommendations/".length, -"/quote".length);
+      const data = await getQuoteForRecommendation(recId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      const code = err?.message?.includes("Treasury") ? 403 : err?.message?.includes("not found") ? 404 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url?.startsWith("/api/member-swaps/recommendations/") && req.url?.endsWith("/approve")) {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const recId = req.url.slice("/api/member-swaps/recommendations/".length, -"/approve".length);
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", async () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          const data = await approveRecommendation(recId, parsed);
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(data));
+        } catch (err: any) {
+          const code = err?.message?.includes("expired") ? 400 : err?.message?.includes("not found") ? 404 : 500;
+          res.writeHead(code, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err?.message }));
+        }
+      });
+    } catch (err: any) {
+      const code = err?.message?.includes("Treasury") ? 403 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url?.startsWith("/api/member-swaps/recommendations/") && req.url?.endsWith("/reject")) {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const recId = req.url.slice("/api/member-swaps/recommendations/".length, -"/reject".length);
+      const data = rejectRecommendation(recId);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      const code = err?.message?.includes("Treasury") ? 403 : err?.message?.includes("not found") ? 404 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/member-swaps/outcomes")) {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const urlObj = new URL(req.url, `http://localhost`);
+      const path = urlObj.pathname;
+
+      // Single outcome: /api/member-swaps/outcomes/<id>
+      if (path !== "/api/member-swaps/outcomes" && path.startsWith("/api/member-swaps/outcomes/")) {
+        const outcomeId = decodeURIComponent(path.slice("/api/member-swaps/outcomes/".length));
+        const data = getSwapOutcomeById(outcomeId);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(data));
+        return;
+      }
+
+      // List outcomes with filters
+      const data = getSwapOutcomes({
+        clusterId: urlObj.searchParams.get("clusterId") ?? undefined,
+        swapType: urlObj.searchParams.get("swapType") ?? undefined,
+        status: urlObj.searchParams.get("status") ?? undefined,
+        limit: urlObj.searchParams.has("limit") ? Number(urlObj.searchParams.get("limit")) : undefined,
+      });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      const code = err?.message?.includes("Treasury") ? 403 : err?.message?.includes("not found") ? 404 : 500;
+      res.writeHead(code, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
     }
     return;
   }

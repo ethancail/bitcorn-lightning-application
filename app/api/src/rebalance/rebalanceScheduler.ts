@@ -11,7 +11,9 @@
  *   6. Execute the winning candidate (active lever)
  *   7. Analyze topology for structural recommendations
  *   8. Take inventory snapshot
- *   9. Record the run
+ *   9. Detect member swap opportunities (Cash Out / Top Up)
+ *  10. Poll pending swap settlements (loopd status check)
+ *  11. Record the run
  */
 
 import { ENV } from "../config/env";
@@ -24,6 +26,8 @@ import { enumerateCandidates } from "./cycleEnumerator";
 import { scoreCandidates } from "./cycleScorer";
 import { executeCandidate } from "./rebalanceExecutor";
 import { analyzeTopology, takeInventorySnapshot } from "./topologyMonitor";
+import { detectSwapOpportunities } from "../memberSwaps/swapDetector";
+import { pollSwapSettlements } from "../memberSwaps/swapExecutor";
 import type { ClusterState } from "./clusterState";
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -144,7 +148,28 @@ async function runOnce(): Promise<void> {
       // Step 8: Inventory snapshot
       takeInventorySnapshot(states, runId);
 
-      // Step 9: Complete run record
+      // Step 9: Member swap detection
+      try {
+        const swapRecs = detectSwapOpportunities(states);
+        if (ENV.debug && swapRecs.length > 0) {
+          console.log(
+            `[cluster-rebalance] swap recommendations:`,
+            swapRecs.map((r) => `${r.swapType} ${r.memberLabel} ${r.suggestedAmountSats} sats`)
+          );
+        }
+      } catch (err: any) {
+        console.error(`[cluster-rebalance] swap detection error:`, err?.message);
+      }
+
+      // Step 10: Poll pending swap settlements
+      try {
+        await pollSwapSettlements();
+      } catch (err: any) {
+        // Non-fatal — loopd may be unavailable
+        if (ENV.debug) console.log(`[cluster-rebalance] settlement poll skipped:`, err?.message);
+      }
+
+      // Step 11: Complete run record
       completeRun(
         runId,
         states.length,

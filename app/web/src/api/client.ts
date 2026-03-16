@@ -93,6 +93,30 @@ export const api = {
     apiFetch<PaymentResult>("/api/network/pay", { method: "POST", body: JSON.stringify({ payment_request }) }),
   syncSettlements: () =>
     apiFetch<{ ok: boolean; updated: number }>("/api/network/sync-settlements", { method: "POST" }),
+  // Member Swaps (treasury-only)
+  getSwapClusters: () => apiFetch<SwapClustersResponse>("/api/member-swaps/clusters"),
+  getSwapRecommendations: () => apiFetch<SwapRecommendationsResponse>("/api/member-swaps/recommendations"),
+  getSwapQuote: (recId: string) =>
+    apiFetch<SwapQuoteResponse>(`/api/member-swaps/recommendations/${recId}/quote`),
+  approveSwap: (recId: string, quoteId: string) =>
+    apiFetch<SwapApproveResponse>(`/api/member-swaps/recommendations/${recId}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ quoteId }),
+    }),
+  rejectSwap: (recId: string) =>
+    apiFetch<{ ok: boolean }>(`/api/member-swaps/recommendations/${recId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  getSwapOutcomes: (params?: { clusterId?: string; swapType?: string; status?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.clusterId) qs.set("clusterId", params.clusterId);
+    if (params?.swapType) qs.set("swapType", params.swapType);
+    if (params?.status) qs.set("status", params.status);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    const q = qs.toString();
+    return apiFetch<SwapOutcomesResponse>(`/api/member-swaps/outcomes${q ? `?${q}` : ""}`);
+  },
 };
 
 // ─── Shared helpers ───────────────────────────────────────────────────────
@@ -421,6 +445,83 @@ export type PaymentResult = {
 };
 
 export type ExchangeRate = { usd: number; source: string };
+
+// ─── Member Swap types ───────────────────────────────────────────────────
+
+export type SwapCluster = {
+  clusterId: string;
+  label: string;
+  peerPubkey: string;
+  policyRole: string;
+  totalCapacitySats: number;
+  localBalanceSats: number;
+  remoteBalanceSats: number;
+  localPct: number;
+  targetMinPct: number;
+  targetMidPct: number;
+  targetMaxPct: number;
+  deviationDirection: "below" | "above" | "inside";
+  deviationPct: number;
+  channelCount: number;
+  activeChannelCount: number;
+};
+
+export type SwapClustersResponse = { clusters: SwapCluster[] };
+
+export type SwapRecommendation = {
+  recommendationId: string;
+  clusterId: string;
+  swapType: "cash_out" | "top_up";
+  triggerReason: string;
+  suggestedAmountSats: number;
+  estimatedFeeSats: number | null;
+  postSwapLocalPct: number | null;
+  status: string;
+  rejectedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type SwapRecommendationsResponse = { recommendations: SwapRecommendation[] };
+
+export type SwapQuote = {
+  quoteId: string;
+  recommendationId: string;
+  swapType: string;
+  amountSats: number;
+  estimatedSwapFeeSats: number;
+  estimatedMinerFeeSats: number;
+  estimatedPrepayFeeSats: number | null;
+  totalEstimatedFeeSats: number;
+  feeAsPct: number;
+  projectedLocalPct: number;
+  projectedRemotePct: number;
+  withinFeeTolerance: boolean;
+  quotedAt: number;
+  quoteTtlSeconds: number;
+};
+
+export type SwapQuoteResponse = { quote: SwapQuote };
+
+export type SwapOutcome = {
+  outcomeId: string;
+  recommendationId: string;
+  quoteId: string;
+  clusterId: string;
+  swapType: string;
+  status: string;
+  actualAmountSats: number | null;
+  actualFeeSats: number | null;
+  loopSwapId: string | null;
+  onchainTxid: string | null;
+  failureReason: string | null;
+  executedAt: number;
+  settledAt: number | null;
+};
+
+export type SwapOutcomesResponse = { outcomes: SwapOutcome[] };
+
+export type SwapApproveResponse = { outcome: SwapOutcome };
 
 /** Resolve a pubkey to a contact name, or fall back to truncated pubkey. */
 export function resolveContactName(pubkey: string, contacts: Contact[]): string {
