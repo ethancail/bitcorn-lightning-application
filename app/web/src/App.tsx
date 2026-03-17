@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, resolveContactName } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type RecommendedPeer, resolveContactName, truncPubkey } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -303,6 +303,162 @@ function MemberShell() {
 
 // ─── Page stubs ────────────────────────────────────────────────────────────
 
+function RecommendedPeersPanel() {
+  const [peers, setPeers] = useState<RecommendedPeer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const [result, setResult] = useState<{ peerId: string; txid: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  useEffect(() => {
+    api.getRecommendedPeers()
+      .then(setPeers)
+      .catch(() => setPeers([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleOpen(peer: RecommendedPeer) {
+    setOpeningId(peer.id);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await api.openRecommendedChannel(peer.id, peer.recommended_channel_size_sat);
+      setResult({ peerId: peer.id, txid: res.funding_txid ?? "submitted" });
+      // Refresh peer state
+      api.getRecommendedPeers().then(setPeers).catch(() => {});
+    } catch (e: any) {
+      setError(e.message ?? "Failed to open channel");
+    } finally {
+      setOpeningId(null);
+    }
+  }
+
+  const visiblePeers = showAdvanced ? peers : peers.filter((p) => !p.advanced);
+
+  if (loading) {
+    return (
+      <div className="panel fade-in" style={{ marginTop: 16 }}>
+        <div className="panel-header">
+          <span className="panel-title"><span className="icon">⟐</span>Treasury-Approved External Peers</span>
+        </div>
+        <div className="panel-body">
+          <div className="loading-shimmer" style={{ height: 60, borderRadius: 6 }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (peers.length === 0) return null;
+
+  return (
+    <div className="panel fade-in" style={{ marginTop: 16 }}>
+      <div className="panel-header">
+        <span className="panel-title"><span className="icon">⟐</span>Treasury-Approved External Peers</span>
+        <span className="badge badge-muted">optional</span>
+      </div>
+      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ fontSize: "0.8125rem", color: "var(--text-3)", marginBottom: 4 }}>
+          These are curated external routing peers vetted by the treasury operator.
+          Your hub channel is your primary connection — external peers are optional
+          and may improve routing diversity.
+        </div>
+
+        {error && (
+          <div className="alert critical" style={{ marginBottom: 0 }}>
+            <span className="alert-icon">✕</span>
+            <div className="alert-body"><div className="alert-msg">{error}</div></div>
+          </div>
+        )}
+
+        {visiblePeers.map((peer) => {
+          const hasChannel = peer.has_channel && peer.channels.length > 0;
+          const isOpening = openingId === peer.id;
+          const justOpened = result?.peerId === peer.id;
+
+          return (
+            <div
+              key={peer.id}
+              style={{
+                background: "var(--bg-3)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: "12px 16px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontWeight: 600, fontSize: "0.9375rem" }}>{peer.label}</span>
+                  {peer.advanced && <span className="badge badge-muted" style={{ fontSize: "0.625rem" }}>advanced</span>}
+                  {peer.connected && <span className="badge badge-green" style={{ fontSize: "0.625rem" }}>connected</span>}
+                  {hasChannel && <span className="badge badge-blue" style={{ fontSize: "0.625rem" }}>channel open</span>}
+                </div>
+              </div>
+              <div style={{ fontSize: "0.8125rem", color: "var(--text-2)", marginBottom: 8 }}>
+                {peer.description}
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.75rem", color: "var(--text-3)", marginBottom: 10 }}>
+                <div style={{ fontFamily: "var(--mono)" }}>
+                  {truncPubkey(peer.pubkey)} @ {peer.socket}
+                </div>
+                <div>
+                  Recommended size: {peer.recommended_channel_size_sat.toLocaleString()} sats
+                </div>
+              </div>
+
+              {/* Existing channels */}
+              {hasChannel && peer.channels.map((ch) => {
+                const localPct = ch.capacity_sat > 0 ? (ch.local_balance_sat / ch.capacity_sat) * 100 : 0;
+                return (
+                  <div key={ch.channel_id} style={{ marginBottom: 8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-3)", marginBottom: 4 }}>
+                      <span>Local {localPct.toFixed(0)}%</span>
+                      <span>{ch.capacity_sat.toLocaleString()} sats</span>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 3, background: "var(--bg-2)", overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${localPct}%`, background: "var(--green)", borderRadius: 3 }} />
+                    </div>
+                  </div>
+                );
+              })}
+
+              {justOpened ? (
+                <div className="alert healthy" style={{ marginBottom: 0, padding: "6px 10px" }}>
+                  <span className="alert-icon">✓</span>
+                  <div className="alert-body">
+                    <div className="alert-msg" style={{ fontSize: "0.8125rem" }}>
+                      Channel opening submitted{result.txid !== "submitted" ? ` — ${result.txid.slice(0, 16)}...` : ""}
+                    </div>
+                  </div>
+                </div>
+              ) : !hasChannel ? (
+                <button
+                  className="btn btn-outline"
+                  style={{ width: "100%" }}
+                  onClick={() => handleOpen(peer)}
+                  disabled={isOpening}
+                >
+                  {isOpening ? "Opening channel…" : `Open ${peer.recommended_channel_size_sat.toLocaleString()} sat channel`}
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+
+        {peers.some((p) => p.advanced) && (
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: "0.75rem" }}
+            onClick={() => setShowAdvanced(!showAdvanced)}
+          >
+            {showAdvanced ? "Hide advanced peers" : "Show advanced peers"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ChannelsPage() {
   const [channels, setChannels] = useState<
     Array<{
@@ -428,6 +584,8 @@ function ChannelsPage() {
           </div>
         )}
       </div>
+
+      <RecommendedPeersPanel />
     </div>
   );
 }

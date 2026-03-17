@@ -123,6 +123,13 @@ export const api = {
     const q = qs.toString();
     return apiFetch<LiquidityOutcomesResponse>(`/api/member-liquidity/outcomes${q ? `?${q}` : ""}`);
   },
+  // Recommended peers
+  getRecommendedPeers: () => apiFetch<RecommendedPeer[]>("/api/network/recommended-peers"),
+  openRecommendedChannel: (peerId: string, localFundingAmountSat: number) =>
+    apiFetch<OpenRecommendedChannelResult>("/api/lightning/open-recommended-channel", {
+      method: "POST",
+      body: JSON.stringify({ peer_id: peerId, local_funding_amount_sat: localFundingAmountSat }),
+    }),
 };
 
 // ─── Shared helpers ───────────────────────────────────────────────────────
@@ -567,6 +574,36 @@ export type MemberLiquidityStatusResponse = {
 
 export type MemberLiquidityHistoryResponse = {
   history: MemberChannelClassification[];
+};
+
+// ─── Recommended peers ────────────────────────────────────────────────
+
+export type RecommendedPeerChannel = {
+  channel_id: string;
+  capacity_sat: number;
+  local_balance_sat: number;
+  remote_balance_sat: number;
+  active: boolean;
+};
+
+export type RecommendedPeer = {
+  id: string;
+  label: string;
+  pubkey: string;
+  socket: string;
+  description: string;
+  recommended_channel_size_sat: number;
+  advanced: boolean;
+  connected: boolean;
+  has_channel: boolean;
+  channels: RecommendedPeerChannel[];
+};
+
+export type OpenRecommendedChannelResult = {
+  ok: boolean;
+  peer_id: string;
+  peer_label: string;
+  funding_txid: string | null;
 };
 
 /** Resolve a pubkey to a contact name, or fall back to truncated pubkey. */

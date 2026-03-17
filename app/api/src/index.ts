@@ -1544,6 +1544,138 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  // RECOMMENDED PEERS (curated external peer list from Worker)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  if (req.method === "GET" && req.url === "/api/network/recommended-peers") {
+    try {
+      const workerUrl = ENV.coinbaseWorkerUrl;
+      if (!workerUrl) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "worker_not_configured" }));
+        return;
+      }
+
+      // Fetch curated list from Worker
+      const response = await fetch(`${workerUrl}/recommended-peers`);
+      if (!response.ok) {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "recommended_peers_unavailable" }));
+        return;
+      }
+      const peers = (await response.json()) as Array<{
+        id: string; label: string; pubkey: string; socket: string;
+        description: string; recommended_channel_size_sat: number; advanced: boolean;
+      }>;
+
+      // Enrich with local LND state
+      const [lndPeers, lndChannels] = await Promise.all([
+        getLndPeers().then((p) => p.peers ?? []).catch(() => []),
+        getLndChannels().then((c) => c.channels ?? []).catch(() => []),
+      ]);
+
+      const connectedPubkeys = new Set((lndPeers as any[]).map((p: any) => p.public_key));
+      const channelsByPeer = new Map<string, any[]>();
+      for (const ch of lndChannels as any[]) {
+        const pk = ch.partner_public_key;
+        if (!channelsByPeer.has(pk)) channelsByPeer.set(pk, []);
+        channelsByPeer.get(pk)!.push(ch);
+      }
+
+      const enriched = peers.map((peer) => ({
+        ...peer,
+        connected: connectedPubkeys.has(peer.pubkey),
+        has_channel: channelsByPeer.has(peer.pubkey),
+        channels: (channelsByPeer.get(peer.pubkey) ?? []).map((ch: any) => ({
+          channel_id: ch.id,
+          capacity_sat: ch.capacity,
+          local_balance_sat: ch.local_balance,
+          remote_balance_sat: ch.remote_balance,
+          active: ch.is_active,
+        })),
+      }));
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(enriched));
+    } catch (err: any) {
+      console.error("[recommended-peers]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "recommended_peers_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/lightning/open-recommended-channel") {
+    let body = "";
+    req.on("data", (chunk: string) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const peerId = parsed.peer_id;
+        const localFundingAmountSat = Number(parsed.local_funding_amount_sat);
+
+        if (!peerId || typeof peerId !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "peer_id is required" }));
+          return;
+        }
+        if (!Number.isFinite(localFundingAmountSat) || localFundingAmountSat < 100_000) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "local_funding_amount_sat must be at least 100,000" }));
+          return;
+        }
+
+        // Fetch approved list from Worker — peer_id must match
+        const workerUrl = ENV.coinbaseWorkerUrl;
+        if (!workerUrl) {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "worker_not_configured" }));
+          return;
+        }
+
+        const response = await fetch(`${workerUrl}/recommended-peers`);
+        if (!response.ok) {
+          res.writeHead(502, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "could not verify peer against approved list" }));
+          return;
+        }
+        const approvedPeers = (await response.json()) as Array<{
+          id: string; pubkey: string; socket: string; label: string;
+        }>;
+
+        const peer = approvedPeers.find((p) => p.id === peerId);
+        if (!peer) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "peer_not_in_approved_list" }));
+          return;
+        }
+
+        // Connect to peer if needed
+        await connectToPeer(peer.pubkey, peer.socket);
+
+        // Open channel
+        const result = await openTreasuryChannel(peer.pubkey, localFundingAmountSat, {
+          isPrivate: false,
+          partnerSocket: peer.socket,
+        });
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          ok: true,
+          peer_id: peer.id,
+          peer_label: peer.label,
+          funding_txid: result.transaction_id ?? null,
+        }));
+      } catch (err: any) {
+        console.error("[open-recommended-channel]", err);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err?.message ?? "failed_to_open_channel" }));
+      }
+    });
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   // NETWORK PAYMENTS
   // ═══════════════════════════════════════════════════════════════════════
 

@@ -329,6 +329,35 @@ async function handleOnramp(request: Request, env: Env): Promise<Response> {
   }
 }
 
+// ─── Recommended peers (curated, read-only) ─────────────────────────────
+
+type RecommendedPeer = {
+  id: string;
+  label: string;
+  pubkey: string;
+  socket: string;
+  description: string;
+  recommended_channel_size_sat: number;
+  advanced: boolean;
+};
+
+const RECOMMENDED_PEERS: RecommendedPeer[] = [
+  {
+    id: "acinq",
+    label: "ACINQ",
+    pubkey: "03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f",
+    socket: "3.33.236.230:9735",
+    description:
+      "Major Lightning hub and creators of Phoenix wallet. High liquidity, reliable routing.",
+    recommended_channel_size_sat: 1_000_000,
+    advanced: false,
+  },
+];
+
+function handleRecommendedPeers(): Response {
+  return Response.json(RECOMMENDED_PEERS, { headers: CORS_HEADERS });
+}
+
 // ─── Router ──────────────────────────────────────────────────────────────
 
 export default {
@@ -338,6 +367,11 @@ export default {
     // CORS preflight
     if (request.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
+    // GET /recommended-peers — curated external peer list (read-only)
+    if (request.method === "GET" && url.pathname === "/recommended-peers") {
+      return handleRecommendedPeers();
     }
 
     // GET /treasury-info — treasury node connection info for member auto-connect
