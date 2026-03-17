@@ -1668,14 +1668,17 @@ const server = http.createServer(async (req, res) => {
         }));
       } catch (err: any) {
         console.error("[open-recommended-channel]", err);
-        const msg = err?.message ?? "";
+        // ln-service throws [statusCode, 'ErrorName', { err }] arrays
+        const errStr = Array.isArray(err) ? JSON.stringify(err) : (err?.message ?? "");
         let userMsg = "Failed to open channel";
-        if (/insufficient|not enough|funds|balance/i.test(msg)) {
+        if (/insufficient|InsufficientFunds/i.test(errStr)) {
           userMsg = "Insufficient on-chain balance to open this channel. Fund your node first.";
-        } else if (/already.*peer|already.*connected/i.test(msg)) {
+        } else if (/already.*peer|already.*connected/i.test(errStr)) {
           userMsg = "Already connected to this peer";
-        } else if (msg) {
-          userMsg = msg;
+        } else if (/timeout|ETIMEDOUT|connect.*refused/i.test(errStr)) {
+          userMsg = "Could not connect to peer. The node may be offline.";
+        } else if (err?.message) {
+          userMsg = err.message;
         }
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: userMsg }));
