@@ -1330,17 +1330,13 @@ const server = http.createServer(async (req, res) => {
           }
 
           try {
-            console.log("Node membership:", node?.membership_status);
-
-            assertActiveMember(node.membership_status);
+            // Treasury can always pay; members need active membership
+            if (node.node_role !== "treasury") {
+              assertActiveMember(node.membership_status);
+            }
             assertRateLimit(decodedRequest.tokens);
 
-            console.log("Membership passed");
-            console.log("Rate limit passed");
-
             const result = await payInvoice(payment_request);
-
-            console.log("Payment result:", result);
 
             // Persist successful payment
             insertOutboundPayment({
@@ -1755,7 +1751,10 @@ const server = http.createServer(async (req, res) => {
           res.end(JSON.stringify({ error: "node_info_unavailable" }));
           return;
         }
-        assertActiveMember(node.membership_status);
+        // Treasury can always pay; members need active membership
+        if (node.node_role !== "treasury") {
+          assertActiveMember(node.membership_status);
+        }
 
         const result = await payNetworkInvoice(payment_request);
         res.writeHead(result.ok ? 200 : 402, { "Content-Type": "application/json" });
