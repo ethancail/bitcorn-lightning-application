@@ -112,6 +112,34 @@ function Topbar({
 
 // ─── Treasury AppShell ─────────────────────────────────────────────────────
 
+function BuyBitcoinButton() {
+  const [loading, setLoading] = useState(false);
+
+  async function handleBuy() {
+    setLoading(true);
+    try {
+      const { url } = await api.getCoinbaseOnrampUrl();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch {
+      // Silently fail — FundNodePanel on the dashboard is the primary entry point
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      className="sidebar-item"
+      onClick={handleBuy}
+      disabled={loading}
+      style={{ width: "100%" }}
+    >
+      <span className="icon">₿</span>
+      {loading ? "Opening…" : "Buy Bitcoin"}
+    </button>
+  );
+}
+
 function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navigate = useNavigate();
 
@@ -143,6 +171,10 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
           </NavLink>
         </div>
       ))}
+
+      <div className="sidebar-section">
+        <BuyBitcoinButton />
+      </div>
 
       <div style={{ flex: 1 }} />
 
@@ -225,6 +257,10 @@ function MemberSidebar({ open, onClose }: { open: boolean; onClose: () => void }
           </NavLink>
         </div>
       ))}
+
+      <div className="sidebar-section">
+        <BuyBitcoinButton />
+      </div>
     </nav>
   );
 }
