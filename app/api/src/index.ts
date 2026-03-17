@@ -72,6 +72,11 @@ import {
   syncNetworkInvoiceSettlements,
   decodeInvoice,
 } from "./lightning/network-payments";
+import {
+  getLiquidityStatus as getMemberLiquidityStatus,
+  getLiquidityHistory as getMemberLiquidityHistory,
+} from "./memberAdvisor/liquidityAdvisorRoutes";
+import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
 
 initDb();
 runMigrations();
@@ -1110,6 +1115,40 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ─── Member liquidity advisor endpoints (member node) ─────────────────────
+
+  if (req.method === "GET" && req.url === "/api/liquidity/status") {
+    try {
+      const data = await getMemberLiquidityStatus();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/liquidity/history")) {
+    try {
+      const urlObj = new URL(req.url, `http://localhost`);
+      const channelId = urlObj.searchParams.get("channelId") ?? "";
+      const limit = urlObj.searchParams.has("limit") ? Number(urlObj.searchParams.get("limit")) : undefined;
+      if (!channelId) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "channelId query param required" }));
+        return;
+      }
+      const data = getMemberLiquidityHistory(channelId, limit);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+    }
+    return;
+  }
+
   // ─── Member liquidity endpoints (treasury-only) ────────────────────────────
 
   if (req.method === "GET" && req.url === "/api/member-liquidity/clusters") {
@@ -1884,4 +1923,7 @@ server.listen(PORTS.userApi, () => {
   // Cluster-based rebalance engine — requires CLUSTER_REBALANCE_ENABLED=true.
   // Fee steering + circular rebalance + topology monitoring on a 15-min interval.
   startClusterRebalanceScheduler();
+  // Member liquidity advisor — classifies treasury channel health on member nodes.
+  // Runs on all nodes but only acts on non-treasury nodes.
+  startMemberAdvisorScheduler();
 });

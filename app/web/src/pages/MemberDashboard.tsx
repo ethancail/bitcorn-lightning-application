@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
-import { api, type MemberStats, type PreflightResult, type TreasuryInfo } from "../api/client";
+import {
+  api,
+  type MemberStats,
+  type PreflightResult,
+  type TreasuryInfo,
+  type MemberLiquidityStatusResponse,
+} from "../api/client";
 import NodeBalancePanel from "../components/NodeBalancePanel";
 import FundNodePanel from "../components/FundNodePanel";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
@@ -308,6 +314,7 @@ function ConnectToHub({ isPeered }: { isPeered: boolean }) {
 export default function MemberDashboard() {
   const [stats, setStats] = useState<MemberStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
 
   useEffect(() => {
     api
@@ -321,6 +328,15 @@ export default function MemberDashboard() {
     const id = setInterval(() => {
       api.getMemberStats().then(setStats).catch(() => {});
     }, 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Fetch advisor status (less frequently — it's a heavier call with Loop check)
+  useEffect(() => {
+    api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
+    const id = setInterval(() => {
+      api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
+    }, 60_000);
     return () => clearInterval(id);
   }, []);
 
@@ -396,39 +412,103 @@ export default function MemberDashboard() {
             <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              {/* Channel health alert */}
-              {localPct < 15 && (
+              {/* Advisor recommendation (if non-healthy) */}
+              {advisor?.recommendation && advisor.recommendation.action !== "none" && (
+                <div
+                  className={`alert ${
+                    advisor.recommendation.urgency === "high" ? "critical" :
+                    advisor.recommendation.urgency === "medium" ? "warning" : "info"
+                  }`}
+                  style={{ marginBottom: 0 }}
+                >
+                  <span className="alert-icon">
+                    {advisor.recommendation.urgency === "high" ? "✕" : "⚠"}
+                  </span>
+                  <div className="alert-body">
+                    <div className="alert-type" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      {advisor.recommendation.action === "loop_out" ? "Receiving Capacity Low" : "Spending Capacity Low"}
+                      <span className={`badge ${
+                        advisor.classification?.state === "send_saturated" || advisor.classification?.state === "receive_exhausted"
+                          ? "badge-red" : "badge-amber"
+                      }`} style={{ fontSize: "0.6875rem" }}>
+                        {advisor.classification?.state?.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                    <div className="alert-msg" style={{ marginBottom: 8 }}>
+                      {advisor.recommendation.reason}
+                    </div>
+                    {advisor.recommendation.suggestedAmountSats && (
+                      <div
+                        style={{
+                          background: "var(--bg-3)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 6,
+                          padding: "8px 12px",
+                          fontSize: "0.8125rem",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ color: "var(--text-2)" }}>Recommended</span>
+                          <span className="td-mono" style={{ fontWeight: 600 }}>
+                            {advisor.recommendation.action === "loop_out" ? "Loop Out" : "Loop In"}{" "}
+                            {advisor.recommendation.suggestedAmountSats.toLocaleString()} sats
+                          </span>
+                        </div>
+                        {advisor.recommendation.projectedMemberLocalPct != null && (
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span style={{ color: "var(--text-2)" }}>After rebalance</span>
+                            <span className="td-mono">~{advisor.recommendation.projectedMemberLocalPct}% outbound</span>
+                          </div>
+                        )}
+                        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: "0.75rem" }}>
+                          <span style={{ color: "var(--text-3)" }}>Loop</span>
+                          <span className="td-mono" style={{ color: advisor.recommendation.loopAvailable ? "var(--green)" : "var(--text-3)" }}>
+                            {advisor.recommendation.loopAvailable ? "Available" : "Not detected"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {!advisor.recommendation.loopAvailable && advisor.recommendation.suggestedAmountSats && (
+                      <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>
+                        Loop is not detected on this node. You can run{" "}
+                        {advisor.recommendation.action === "loop_out" ? "Loop Out" : "Loop In"}{" "}
+                        manually via Lightning Terminal or the loop CLI.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Fallback static alerts when advisor hasn't loaded yet */}
+              {!advisor && localPct < 15 && (
                 <div className="alert critical" style={{ marginBottom: 0 }}>
                   <span className="alert-icon">✕</span>
                   <div className="alert-body">
                     <div className="alert-type">Spending Capacity Critical</div>
                     <div className="alert-msg">
                       Your local balance is only {localPct}% — you have very little capacity to send payments.
-                      The treasury operator has been notified and may initiate a liquidity adjustment.
                     </div>
                   </div>
                 </div>
               )}
-              {localPct >= 15 && localPct < 30 && (
+              {!advisor && localPct >= 15 && localPct < 30 && (
                 <div className="alert warning" style={{ marginBottom: 0 }}>
                   <span className="alert-icon">⚠</span>
                   <div className="alert-body">
                     <div className="alert-type">Spending Capacity Low</div>
                     <div className="alert-msg">
                       Your local balance is {localPct}% — sending capacity is getting low.
-                      Consider receiving payments or contact the treasury operator if this persists.
                     </div>
                   </div>
                 </div>
               )}
-              {localPct > 85 && (
+              {!advisor && localPct > 85 && (
                 <div className="alert warning" style={{ marginBottom: 0 }}>
                   <span className="alert-icon">⚠</span>
                   <div className="alert-body">
                     <div className="alert-type">Receive Capacity Low</div>
                     <div className="alert-msg">
                       Your local balance is {localPct}% — you have little capacity to receive payments.
-                      Send a payment or contact the treasury operator to rebalance.
                     </div>
                   </div>
                 </div>
@@ -436,12 +516,12 @@ export default function MemberDashboard() {
 
               <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
                 <div className="stat-card">
-                  <div className="stat-label">Local Balance</div>
+                  <div className="stat-label">Outbound (Spend)</div>
                   <div className="stat-value">{ch!.local_sats.toLocaleString()}</div>
                   <div className="stat-sub">sats</div>
                 </div>
                 <div className="stat-card">
-                  <div className="stat-label">Remote Balance</div>
+                  <div className="stat-label">Inbound (Receive)</div>
                   <div className="stat-value">{ch!.remote_sats.toLocaleString()}</div>
                   <div className="stat-sub">sats</div>
                 </div>
@@ -462,8 +542,8 @@ export default function MemberDashboard() {
                     color: "var(--text-3)",
                   }}
                 >
-                  <span>Local {localPct}%</span>
-                  <span>Remote {remotePct}%</span>
+                  <span>Outbound {localPct}%</span>
+                  <span>Inbound {remotePct}%</span>
                 </div>
                 <div
                   style={{
@@ -477,11 +557,25 @@ export default function MemberDashboard() {
                     style={{
                       height: "100%",
                       width: `${localPct}%`,
-                      background: localPct < 15 ? "var(--red)" : localPct < 30 ? "var(--amber)" : "var(--green)",
+                      background: localPct < 15 ? "var(--red)" : localPct < 30 ? "var(--amber)" : localPct > 85 ? "var(--amber)" : "var(--green)",
                       borderRadius: 4,
                     }}
                   />
                 </div>
+                {/* Channel health status badge */}
+                {advisor?.classification && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: "0.75rem" }}>
+                    <span style={{ color: "var(--text-3)" }}>Status:</span>
+                    <span className={`badge ${
+                      advisor.classification.state === "healthy" ? "badge-green" :
+                      advisor.classification.state === "send_saturated" || advisor.classification.state === "receive_exhausted" ? "badge-red" :
+                      "badge-amber"
+                    }`}>
+                      {advisor.classification.state === "healthy" ? "Healthy" :
+                       advisor.classification.state.replace(/_/g, " ")}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}

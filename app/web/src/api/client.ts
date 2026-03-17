@@ -93,6 +93,13 @@ export const api = {
     apiFetch<PaymentResult>("/api/network/pay", { method: "POST", body: JSON.stringify({ payment_request }) }),
   syncSettlements: () =>
     apiFetch<{ ok: boolean; updated: number }>("/api/network/sync-settlements", { method: "POST" }),
+  // Member Liquidity Advisor (member node)
+  getMemberLiquidityStatus: () => apiFetch<MemberLiquidityStatusResponse>("/api/liquidity/status"),
+  getMemberLiquidityHistory: (channelId: string, limit?: number) => {
+    const qs = new URLSearchParams({ channelId });
+    if (limit) qs.set("limit", String(limit));
+    return apiFetch<MemberLiquidityHistoryResponse>(`/api/liquidity/history?${qs}`);
+  },
   // Member Liquidity (treasury-only)
   getLiquidityClusters: () => apiFetch<LiquidityClustersResponse>("/api/member-liquidity/clusters"),
   getLiquidityRecommendations: () => apiFetch<LiquidityRecommendationsResponse>("/api/member-liquidity/recommendations"),
@@ -512,6 +519,55 @@ export type LiquidityOutcome = {
 export type LiquidityOutcomesResponse = { outcomes: LiquidityOutcome[] };
 
 export type LiquidityApproveResponse = { outcome: LiquidityOutcome };
+
+// ─── Member Liquidity Advisor types (member node) ────────────────────────
+
+export type MemberChannelState =
+  | "healthy"
+  | "send_heavy"
+  | "send_saturated"
+  | "receive_heavy"
+  | "receive_exhausted";
+
+export type MemberChannelClassification = {
+  channelId: string;
+  capacitySat: number;
+  memberLocalSat: number;
+  treasuryLocalSat: number;
+  memberLocalPct: number;
+  state: MemberChannelState;
+  urgency: "none" | "low" | "medium" | "high";
+  consecutiveNonHealthyRuns: number;
+  classifiedAt: number;
+};
+
+export type MemberLiquidityRecommendation = {
+  action: "none" | "loop_out" | "loop_in";
+  suggestedAmountSats: number | null;
+  projectedMemberLocalPct: number | null;
+  reason: string;
+  urgency: "none" | "low" | "medium" | "high";
+  loopAvailable: boolean;
+  generatedAt: number;
+};
+
+export type MemberLoopAvailability = {
+  loopDaemonRunning: boolean;
+  loopOutAvailable: boolean;
+  loopInAvailable: boolean;
+  loopOutTerms: { minSats: number; maxSats: number } | null;
+  loopInTerms: { minSats: number; maxSats: number } | null;
+};
+
+export type MemberLiquidityStatusResponse = {
+  classification: MemberChannelClassification | null;
+  recommendation: MemberLiquidityRecommendation | null;
+  loopAvailability: MemberLoopAvailability;
+};
+
+export type MemberLiquidityHistoryResponse = {
+  history: MemberChannelClassification[];
+};
 
 /** Resolve a pubkey to a contact name, or fall back to truncated pubkey. */
 export function resolveContactName(pubkey: string, contacts: Contact[]): string {

@@ -633,6 +633,110 @@ export default function MemberLiquidity() {
         )}
       </div>
 
+      {/* ── Member Channel Health (treasury observability) ─────────── */}
+      {memberClusters.length > 0 && (
+        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <span className="panel-title">
+              <span className="icon">&#x2665;</span>Member Channel Health
+            </span>
+            <span className="badge badge-muted">read-only</span>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Member</th>
+                  <th style={{ textAlign: "right" }}>Member Local</th>
+                  <th style={{ textAlign: "right" }}>Member %</th>
+                  <th>State</th>
+                  <th>Trend</th>
+                </tr>
+              </thead>
+              <tbody>
+                {memberClusters.map((c) => {
+                  // From treasury perspective: member-local = cluster's remote
+                  const memberLocalPct = c.totalCapacitySats > 0
+                    ? Math.round(((c.remoteBalanceSats) / c.totalCapacitySats) * 100)
+                    : 0;
+                  const memberState =
+                    memberLocalPct >= 85 ? "send_saturated" :
+                    memberLocalPct >= 70 ? "send_heavy" :
+                    memberLocalPct <= 15 ? "receive_exhausted" :
+                    memberLocalPct <= 30 ? "receive_heavy" :
+                    "healthy";
+                  const stateLabel =
+                    memberState === "healthy" ? "Healthy" :
+                    memberState.replace(/_/g, " ");
+                  const stateCls =
+                    memberState === "healthy" ? "badge-green" :
+                    memberState === "send_saturated" || memberState === "receive_exhausted" ? "badge-red" :
+                    "badge-amber";
+                  const barColor =
+                    memberLocalPct <= 15 ? "var(--red)" :
+                    memberLocalPct <= 30 ? "var(--amber)" :
+                    memberLocalPct >= 85 ? "var(--amber)" :
+                    "var(--green)";
+
+                  // Build trend hint from cluster recs
+                  const clusterRecs = recsByCluster.get(c.clusterId) ?? [];
+                  const hasPending = clusterRecs.some((r) => r.status === "pending" || r.status === "executing");
+
+                  return (
+                    <tr key={c.clusterId}>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{c.label}</div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+                          {resolveContactName(c.peerPubkey, contacts)}
+                        </div>
+                      </td>
+                      <td className="td-num td-mono">{sats(c.remoteBalanceSats)}</td>
+                      <td className="td-num">
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+                          <span>{memberLocalPct}%</span>
+                          <div
+                            style={{
+                              width: 50,
+                              height: 6,
+                              borderRadius: 3,
+                              background: "var(--bg-3)",
+                              overflow: "hidden",
+                            }}
+                          >
+                            <div
+                              style={{
+                                height: "100%",
+                                width: `${Math.min(100, memberLocalPct)}%`,
+                                background: barColor,
+                                borderRadius: 3,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className={`badge ${stateCls}`}>{stateLabel}</span>
+                      </td>
+                      <td style={{ fontSize: "0.8125rem", color: "var(--text-3)" }}>
+                        {hasPending ? (
+                          <span style={{ color: "var(--amber)" }}>Top-up pending</span>
+                        ) : memberState === "healthy" ? (
+                          "—"
+                        ) : memberState === "receive_exhausted" || memberState === "receive_heavy" ? (
+                          <span>Suggest Loop In</span>
+                        ) : (
+                          <span>Suggest Loop Out</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* ── Estimate/Approval Modal ──────────────────────────────────── */}
       {selectedRec && (
         <EstimateModal
