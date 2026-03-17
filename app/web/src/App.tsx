@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
@@ -159,22 +159,25 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
         <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">✕</button>
       </div>
       <div className="sidebar-label">Navigate</div>
-      {navItems.map((item) => (
-        <div key={item.to} className="sidebar-section">
-          <NavLink
-            to={item.to}
-            className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
-            onClick={onClose}
-          >
-            <span className="icon">{item.icon}</span>
-            {item.label}
-          </NavLink>
-        </div>
+      {navItems.map((item, i) => (
+        <React.Fragment key={item.to}>
+          <div className="sidebar-section">
+            <NavLink
+              to={item.to}
+              className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
+              onClick={onClose}
+            >
+              <span className="icon">{item.icon}</span>
+              {item.label}
+            </NavLink>
+          </div>
+          {i === 0 && (
+            <div className="sidebar-section">
+              <BuyBitcoinButton />
+            </div>
+          )}
+        </React.Fragment>
       ))}
-
-      <div className="sidebar-section">
-        <BuyBitcoinButton />
-      </div>
 
       <div style={{ flex: 1 }} />
 
@@ -245,22 +248,25 @@ function MemberSidebar({ open, onClose }: { open: boolean; onClose: () => void }
         <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">✕</button>
       </div>
       <div className="sidebar-label">Navigate</div>
-      {navItems.map((item) => (
-        <div key={item.to} className="sidebar-section">
-          <NavLink
-            to={item.to}
-            className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
-            onClick={onClose}
-          >
-            <span className="icon">{item.icon}</span>
-            {item.label}
-          </NavLink>
-        </div>
+      {navItems.map((item, i) => (
+        <React.Fragment key={item.to}>
+          <div className="sidebar-section">
+            <NavLink
+              to={item.to}
+              className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
+              onClick={onClose}
+            >
+              <span className="icon">{item.icon}</span>
+              {item.label}
+            </NavLink>
+          </div>
+          {i === 0 && (
+            <div className="sidebar-section">
+              <BuyBitcoinButton />
+            </div>
+          )}
+        </React.Fragment>
       ))}
-
-      <div className="sidebar-section">
-        <BuyBitcoinButton />
-      </div>
     </nav>
   );
 }
