@@ -542,7 +542,7 @@ export type MemberChannelClassification = {
 };
 
 export type MemberLiquidityRecommendation = {
-  action: "none" | "loop_out" | "loop_in";
+  action: "none" | "loop_out" | "loop_in" | "channel_resize_required" | "manual_recovery";
   suggestedAmountSats: number | null;
   projectedMemberLocalPct: number | null;
   reason: string;

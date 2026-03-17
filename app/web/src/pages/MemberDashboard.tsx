@@ -413,71 +413,108 @@ export default function MemberDashboard() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               {/* Advisor recommendation (if non-healthy) */}
-              {advisor?.recommendation && advisor.recommendation.action !== "none" && (
-                <div
-                  className={`alert ${
-                    advisor.recommendation.urgency === "high" ? "critical" :
-                    advisor.recommendation.urgency === "medium" ? "warning" : "info"
-                  }`}
-                  style={{ marginBottom: 0 }}
-                >
-                  <span className="alert-icon">
-                    {advisor.recommendation.urgency === "high" ? "✕" : "⚠"}
-                  </span>
-                  <div className="alert-body">
-                    <div className="alert-type" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      {advisor.recommendation.action === "loop_out" ? "Receiving Capacity Low" : "Spending Capacity Low"}
-                      <span className={`badge ${
-                        advisor.classification?.state === "send_saturated" || advisor.classification?.state === "receive_exhausted"
-                          ? "badge-red" : "badge-amber"
-                      }`} style={{ fontSize: "0.6875rem" }}>
-                        {advisor.classification?.state?.replace(/_/g, " ")}
-                      </span>
-                    </div>
-                    <div className="alert-msg" style={{ marginBottom: 8 }}>
-                      {advisor.recommendation.reason}
-                    </div>
-                    {advisor.recommendation.suggestedAmountSats && (
-                      <div
-                        style={{
-                          background: "var(--bg-3)",
-                          border: "1px solid var(--border)",
-                          borderRadius: 6,
-                          padding: "8px 12px",
-                          fontSize: "0.8125rem",
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                          <span style={{ color: "var(--text-2)" }}>Recommended</span>
-                          <span className="td-mono" style={{ fontWeight: 600 }}>
-                            {advisor.recommendation.action === "loop_out" ? "Loop Out" : "Loop In"}{" "}
-                            {advisor.recommendation.suggestedAmountSats.toLocaleString()} sats
-                          </span>
-                        </div>
-                        {advisor.recommendation.projectedMemberLocalPct != null && (
-                          <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span style={{ color: "var(--text-2)" }}>After rebalance</span>
-                            <span className="td-mono">~{advisor.recommendation.projectedMemberLocalPct}% outbound</span>
+              {advisor?.recommendation && advisor.recommendation.action !== "none" && (() => {
+                const rec = advisor.recommendation;
+                const isResize = rec.action === "channel_resize_required";
+                const isManual = rec.action === "manual_recovery";
+                const isLoop = rec.action === "loop_out" || rec.action === "loop_in";
+
+                const alertTitle = isResize
+                  ? "Channel Resize Recommended"
+                  : isManual
+                    ? "Manual Top-Up Required"
+                    : rec.action === "loop_out"
+                      ? "Receiving Capacity Low"
+                      : "Spending Capacity Low";
+
+                return (
+                  <div
+                    className={`alert ${
+                      rec.urgency === "high" ? "critical" :
+                      rec.urgency === "medium" ? "warning" : "info"
+                    }`}
+                    style={{ marginBottom: 0 }}
+                  >
+                    <span className="alert-icon">
+                      {rec.urgency === "high" ? "✕" : "⚠"}
+                    </span>
+                    <div className="alert-body">
+                      <div className="alert-type" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {alertTitle}
+                        <span className={`badge ${
+                          advisor.classification?.state === "send_saturated" || advisor.classification?.state === "receive_exhausted"
+                            ? "badge-red" : "badge-amber"
+                        }`} style={{ fontSize: "0.6875rem" }}>
+                          {advisor.classification?.state?.replace(/_/g, " ")}
+                        </span>
+                      </div>
+                      <div className="alert-msg" style={{ marginBottom: 8 }}>
+                        {rec.reason}
+                      </div>
+                      {/* Loop recommendation details */}
+                      {isLoop && rec.suggestedAmountSats && (
+                        <div
+                          style={{
+                            background: "var(--bg-3)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 6,
+                            padding: "8px 12px",
+                            fontSize: "0.8125rem",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ color: "var(--text-2)" }}>Recommended</span>
+                            <span className="td-mono" style={{ fontWeight: 600 }}>
+                              {rec.action === "loop_out" ? "Loop Out" : "Loop In"}{" "}
+                              {rec.suggestedAmountSats.toLocaleString()} sats
+                            </span>
                           </div>
-                        )}
-                        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: "0.75rem" }}>
-                          <span style={{ color: "var(--text-3)" }}>Loop</span>
-                          <span className="td-mono" style={{ color: advisor.recommendation.loopAvailable ? "var(--green)" : "var(--text-3)" }}>
-                            {advisor.recommendation.loopAvailable ? "Available" : "Not detected"}
-                          </span>
+                          {rec.projectedMemberLocalPct != null && (
+                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                              <span style={{ color: "var(--text-2)" }}>After rebalance</span>
+                              <span className="td-mono">~{rec.projectedMemberLocalPct}% outbound</span>
+                            </div>
+                          )}
+                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: "0.75rem" }}>
+                            <span style={{ color: "var(--text-3)" }}>Loop</span>
+                            <span className="td-mono" style={{ color: "var(--green)" }}>Available</span>
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {!advisor.recommendation.loopAvailable && advisor.recommendation.suggestedAmountSats && (
-                      <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>
-                        Loop is not detected on this node. You can run{" "}
-                        {advisor.recommendation.action === "loop_out" ? "Loop Out" : "Loop In"}{" "}
-                        manually via Lightning Terminal or the loop CLI.
-                      </div>
-                    )}
+                      )}
+                      {/* Manual / resize recovery details */}
+                      {(isManual || isResize) && (
+                        <div
+                          style={{
+                            background: "var(--bg-3)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 6,
+                            padding: "8px 12px",
+                            fontSize: "0.8125rem",
+                          }}
+                        >
+                          <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span style={{ color: "var(--text-3)" }}>Method</span>
+                            <span className="td-mono" style={{ color: "var(--text-2)" }}>
+                              {isResize ? "Channel resize" : "Manual recovery"}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                      {/* Bottom guidance */}
+                      {isResize && (
+                        <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>
+                          Contact your hub operator if this channel is undersized for your expected usage.
+                        </div>
+                      )}
+                      {isManual && (
+                        <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>
+                          Install Lightning Terminal for self-service Loop recovery, or open a larger channel.
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Fallback static alerts when advisor hasn't loaded yet */}
               {!advisor && localPct < 15 && (
