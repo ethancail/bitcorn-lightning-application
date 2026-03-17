@@ -1668,8 +1668,17 @@ const server = http.createServer(async (req, res) => {
         }));
       } catch (err: any) {
         console.error("[open-recommended-channel]", err);
+        const msg = err?.message ?? "";
+        let userMsg = "Failed to open channel";
+        if (/insufficient|not enough|funds|balance/i.test(msg)) {
+          userMsg = "Insufficient on-chain balance to open this channel. Fund your node first.";
+        } else if (/already.*peer|already.*connected/i.test(msg)) {
+          userMsg = "Already connected to this peer";
+        } else if (msg) {
+          userMsg = msg;
+        }
         res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: err?.message ?? "failed_to_open_channel" }));
+        res.end(JSON.stringify({ error: userMsg }));
       }
     });
     return;

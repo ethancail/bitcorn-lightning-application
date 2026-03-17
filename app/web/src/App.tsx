@@ -310,22 +310,31 @@ function RecommendedPeersPanel() {
   const [result, setResult] = useState<{ peerId: string; txid: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [selectedSize, setSelectedSize] = useState<Record<string, number>>({});
+
+  const PRESETS = [500_000, 1_000_000, 2_000_000];
 
   useEffect(() => {
     api.getRecommendedPeers()
-      .then(setPeers)
+      .then((p) => {
+        setPeers(p);
+        // Default each peer to its recommended size
+        const defaults: Record<string, number> = {};
+        for (const peer of p) defaults[peer.id] = peer.recommended_channel_size_sat;
+        setSelectedSize(defaults);
+      })
       .catch(() => setPeers([]))
       .finally(() => setLoading(false));
   }, []);
 
   async function handleOpen(peer: RecommendedPeer) {
+    const amount = selectedSize[peer.id] ?? peer.recommended_channel_size_sat;
     setOpeningId(peer.id);
     setError(null);
     setResult(null);
     try {
-      const res = await api.openRecommendedChannel(peer.id, peer.recommended_channel_size_sat);
+      const res = await api.openRecommendedChannel(peer.id, amount);
       setResult({ peerId: peer.id, txid: res.funding_txid ?? "submitted" });
-      // Refresh peer state
       api.getRecommendedPeers().then(setPeers).catch(() => {});
     } catch (e: any) {
       setError(e.message ?? "Failed to open channel");
@@ -432,14 +441,45 @@ function RecommendedPeersPanel() {
                   </div>
                 </div>
               ) : !hasChannel ? (
-                <button
-                  className="btn btn-outline"
-                  style={{ width: "100%" }}
-                  onClick={() => handleOpen(peer)}
-                  disabled={isOpening}
-                >
-                  {isOpening ? "Opening channel…" : `Open ${peer.recommended_channel_size_sat.toLocaleString()} sat channel`}
-                </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Channel size (sats)</div>
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {PRESETS.map((preset) => (
+                      <button
+                        key={preset}
+                        className={`btn ${(selectedSize[peer.id] ?? peer.recommended_channel_size_sat) === preset ? "btn-primary" : "btn-outline"}`}
+                        style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto" }}
+                        onClick={() => setSelectedSize((s) => ({ ...s, [peer.id]: preset }))}
+                      >
+                        {preset === peer.recommended_channel_size_sat
+                          ? `${(preset / 1_000_000).toFixed(preset % 1_000_000 === 0 ? 0 : 1)}M ★`
+                          : preset >= 1_000_000
+                            ? `${(preset / 1_000_000).toFixed(preset % 1_000_000 === 0 ? 0 : 1)}M`
+                            : `${(preset / 1_000).toFixed(0)}k`}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    className="form-input"
+                    style={{ fontSize: "0.8125rem" }}
+                    min={100000}
+                    step={100000}
+                    value={selectedSize[peer.id] ?? peer.recommended_channel_size_sat}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      if (!isNaN(val)) setSelectedSize((s) => ({ ...s, [peer.id]: val }));
+                    }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    style={{ width: "100%" }}
+                    onClick={() => handleOpen(peer)}
+                    disabled={isOpening || (selectedSize[peer.id] ?? 0) < 100_000}
+                  >
+                    {isOpening ? "Opening channel…" : `Open ${(selectedSize[peer.id] ?? peer.recommended_channel_size_sat).toLocaleString()} sat channel`}
+                  </button>
+                </div>
               ) : null}
             </div>
           );
