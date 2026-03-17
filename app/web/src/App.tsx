@@ -12,6 +12,20 @@ import Contacts from "./pages/Contacts";
 import Payments from "./pages/Payments";
 import MemberLiquidity from "./pages/MemberLiquidity";
 
+// ─── Theme initialization ─────────────────────────────────────────────────
+// Runs once on load — checks localStorage, falls back to OS preference.
+
+function initTheme() {
+  const stored = localStorage.getItem("bitcorn_theme");
+  if (stored === "light" || stored === "dark") {
+    document.documentElement.dataset.theme = stored;
+  } else {
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    document.documentElement.dataset.theme = prefersDark ? "dark" : "light";
+  }
+}
+initTheme();
+
 // ─── App status hook ──────────────────────────────────────────────────────
 //
 // Determines which shell to render based on node_role:
@@ -182,18 +196,14 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
       <div style={{ flex: 1 }} />
 
       <div className="sidebar-section">
-        <button
-          className="sidebar-item"
-          onClick={() => {
-            localStorage.removeItem("bitcorn_setup_done");
-            onClose();
-            navigate("/setup");
-          }}
-          style={{ width: "100%" }}
+        <NavLink
+          to="/settings"
+          className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
+          onClick={onClose}
         >
           <span className="icon">⚙</span>
-          Re-run Setup
-        </button>
+          Settings
+        </NavLink>
       </div>
     </nav>
   );
@@ -223,6 +233,7 @@ function AppShell() {
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/payments" element={<Payments title="Payments" />} />
           <Route path="/liquidity" element={<LiquidityPage />} />
+          <Route path="/settings" element={<SettingsPage isTreasury />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
@@ -267,6 +278,19 @@ function MemberSidebar({ open, onClose }: { open: boolean; onClose: () => void }
           )}
         </React.Fragment>
       ))}
+
+      <div style={{ flex: 1 }} />
+
+      <div className="sidebar-section">
+        <NavLink
+          to="/settings"
+          className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
+          onClick={onClose}
+        >
+          <span className="icon">⚙</span>
+          Settings
+        </NavLink>
+      </div>
     </nav>
   );
 }
@@ -294,9 +318,95 @@ function MemberShell() {
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/payments" element={<Payments title="My Payments" />} />
+          <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>
+    </div>
+  );
+}
+
+// ─── Settings page ─────────────────────────────────────────────────────────
+
+type ThemeChoice = "dark" | "light" | "system";
+
+function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
+  const navigate = useNavigate();
+  const [theme, setTheme] = useState<ThemeChoice>(() => {
+    const stored = localStorage.getItem("bitcorn_theme");
+    if (stored === "light" || stored === "dark") return stored;
+    return "system";
+  });
+
+  function changeTheme(value: ThemeChoice) {
+    setTheme(value);
+    if (value === "system") {
+      localStorage.removeItem("bitcorn_theme");
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.dataset.theme = prefersDark ? "dark" : "light";
+    } else {
+      localStorage.setItem("bitcorn_theme", value);
+      document.documentElement.dataset.theme = value;
+    }
+  }
+
+  const options: { value: ThemeChoice; icon: string; label: string; desc: string }[] = [
+    { value: "dark", icon: "◐", label: "Dark", desc: "Amber on black — the original" },
+    { value: "light", icon: "○", label: "Light", desc: "Warm cream with amber accents" },
+    { value: "system", icon: "◑", label: "System", desc: "Follow your OS preference" },
+  ];
+
+  return (
+    <div className="fade-in">
+      <h1 style={{ marginBottom: 4 }}>Settings</h1>
+      <p style={{ color: "var(--text-3)", fontSize: "0.875rem", marginBottom: 28 }}>
+        Preferences for your BitCorn node
+      </p>
+
+      <div className="panel">
+        <div className="panel-header">
+          <span className="panel-title"><span className="icon">◐</span>Appearance</span>
+        </div>
+        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              className={`theme-option ${theme === opt.value ? "selected" : ""}`}
+              onClick={() => changeTheme(opt.value)}
+            >
+              <span style={{ fontSize: "1.25rem" }}>{opt.icon}</span>
+              <div>
+                <div style={{ fontWeight: 600 }}>{opt.label}</div>
+                <div style={{ fontSize: "0.75rem", color: theme === opt.value ? "var(--amber-dim)" : "var(--text-3)" }}>
+                  {opt.desc}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isTreasury && (
+        <div className="panel" style={{ marginTop: 20 }}>
+          <div className="panel-header">
+            <span className="panel-title"><span className="icon">⚙</span>Treasury</span>
+          </div>
+          <div className="panel-body">
+            <button
+              className="btn btn-outline"
+              onClick={() => {
+                localStorage.removeItem("bitcorn_setup_done");
+                navigate("/setup");
+              }}
+            >
+              Re-run Setup Wizard
+            </button>
+            <p style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 8 }}>
+              Resets the setup flag and walks through initial configuration again.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
