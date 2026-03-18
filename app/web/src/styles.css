@@ -39,8 +39,10 @@
   --radius:      6px;
   --radius-lg:   10px;
 
+  --text-scale: 1;
+
   font-family: var(--sans);
-  font-size: 14px;
+  font-size: calc(14px * var(--text-scale));
   line-height: 1.5;
   color: var(--text);
   background: var(--bg);

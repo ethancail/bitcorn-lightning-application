@@ -23,6 +23,11 @@ function initTheme() {
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     document.documentElement.dataset.theme = prefersDark ? "dark" : "light";
   }
+  // Restore text scale
+  const scale = localStorage.getItem("bitcorn_text_scale");
+  if (scale) {
+    document.documentElement.style.setProperty("--text-scale", scale);
+  }
 }
 initTheme();
 
@@ -330,6 +335,13 @@ function MemberShell() {
 
 type ThemeChoice = "dark" | "light" | "system";
 
+const TEXT_SCALE_PRESETS = [
+  { value: "0.85", label: "Small" },
+  { value: "1", label: "Default" },
+  { value: "1.15", label: "Large" },
+  { value: "1.3", label: "Extra Large" },
+];
+
 function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
   const navigate = useNavigate();
   const [theme, setTheme] = useState<ThemeChoice>(() => {
@@ -337,6 +349,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
     if (stored === "light" || stored === "dark") return stored;
     return "system";
   });
+  const [textScale, setTextScale] = useState(() => localStorage.getItem("bitcorn_text_scale") || "1");
 
   function changeTheme(value: ThemeChoice) {
     setTheme(value);
@@ -347,6 +360,16 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
     } else {
       localStorage.setItem("bitcorn_theme", value);
       document.documentElement.dataset.theme = value;
+    }
+  }
+
+  function changeTextScale(value: string) {
+    setTextScale(value);
+    document.documentElement.style.setProperty("--text-scale", value);
+    if (value === "1") {
+      localStorage.removeItem("bitcorn_text_scale");
+    } else {
+      localStorage.setItem("bitcorn_text_scale", value);
     }
   }
 
@@ -383,6 +406,43 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
               </div>
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <span className="panel-title"><span className="icon">A</span>Text Size</span>
+          <span className="badge badge-muted">{Math.round(parseFloat(textScale) * 100)}%</span>
+        </div>
+        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", gap: 6 }}>
+            {TEXT_SCALE_PRESETS.map((preset) => (
+              <button
+                key={preset.value}
+                className={`btn ${textScale === preset.value ? "btn-primary" : "btn-outline"}`}
+                style={{ flex: 1, fontSize: "0.75rem", padding: "6px 8px" }}
+                onClick={() => changeTextScale(preset.value)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontFamily: "var(--mono)", whiteSpace: "nowrap" }}>A</span>
+            <input
+              type="range"
+              min="0.75"
+              max="1.5"
+              step="0.05"
+              value={textScale}
+              onChange={(e) => changeTextScale(e.target.value)}
+              style={{ flex: 1, accentColor: "var(--amber)" }}
+            />
+            <span style={{ fontSize: "1.125rem", color: "var(--text-3)", fontFamily: "var(--mono)", whiteSpace: "nowrap" }}>A</span>
+          </div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+            Scales all text from the default 14px base. Preview changes in real time.
+          </div>
         </div>
       </div>
 
