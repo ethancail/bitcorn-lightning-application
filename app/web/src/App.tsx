@@ -15,6 +15,21 @@ import MemberLiquidity from "./pages/MemberLiquidity";
 // ─── Theme initialization ─────────────────────────────────────────────────
 // Runs once on load — checks localStorage, falls back to OS preference.
 
+type FontPreset = { id: string; label: string; mono: string; sans: string; preview: string };
+
+const FONT_PRESETS: FontPreset[] = [
+  { id: "plex", label: "IBM Plex", mono: "'IBM Plex Mono', monospace", sans: "'IBM Plex Sans', sans-serif", preview: "The quick brown fox" },
+  { id: "inter", label: "Inter", mono: "'JetBrains Mono', monospace", sans: "'Inter', sans-serif", preview: "The quick brown fox" },
+  { id: "source", label: "Source", mono: "'Source Code Pro', monospace", sans: "'Source Sans 3', sans-serif", preview: "The quick brown fox" },
+  { id: "system", label: "System", mono: "ui-monospace, 'Cascadia Code', 'Fira Code', monospace", sans: "system-ui, -apple-system, sans-serif", preview: "The quick brown fox" },
+];
+
+function applyFont(presetId: string) {
+  const preset = FONT_PRESETS.find((p) => p.id === presetId) ?? FONT_PRESETS[0];
+  document.documentElement.style.setProperty("--mono", preset.mono);
+  document.documentElement.style.setProperty("--sans", preset.sans);
+}
+
 function initTheme() {
   const stored = localStorage.getItem("bitcorn_theme");
   if (stored === "light" || stored === "dark") {
@@ -27,6 +42,11 @@ function initTheme() {
   const scale = localStorage.getItem("bitcorn_text_scale");
   if (scale) {
     document.documentElement.style.setProperty("--text-scale", scale);
+  }
+  // Restore font
+  const font = localStorage.getItem("bitcorn_font");
+  if (font) {
+    applyFont(font);
   }
 }
 initTheme();
@@ -350,6 +370,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
     return "system";
   });
   const [textScale, setTextScale] = useState(() => localStorage.getItem("bitcorn_text_scale") || "1");
+  const [fontId, setFontId] = useState(() => localStorage.getItem("bitcorn_font") || "plex");
 
   function changeTheme(value: ThemeChoice) {
     setTheme(value);
@@ -370,6 +391,16 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
       localStorage.removeItem("bitcorn_text_scale");
     } else {
       localStorage.setItem("bitcorn_text_scale", value);
+    }
+  }
+
+  function changeFont(id: string) {
+    setFontId(id);
+    applyFont(id);
+    if (id === "plex") {
+      localStorage.removeItem("bitcorn_font");
+    } else {
+      localStorage.setItem("bitcorn_font", id);
     }
   }
 
@@ -443,6 +474,45 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
             Scales all text from the default 14px base. Preview changes in real time.
           </div>
+        </div>
+      </div>
+
+      <div className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <span className="panel-title"><span className="icon">F</span>Font</span>
+        </div>
+        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {FONT_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              className={`theme-option ${fontId === preset.id ? "selected" : ""}`}
+              onClick={() => changeFont(preset.id)}
+            >
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600 }}>{preset.label}</div>
+                <div
+                  style={{
+                    fontSize: "0.8125rem",
+                    fontFamily: preset.sans,
+                    color: fontId === preset.id ? "var(--amber-dim)" : "var(--text-3)",
+                    marginTop: 2,
+                  }}
+                >
+                  {preset.preview}
+                </div>
+                <div
+                  style={{
+                    fontSize: "0.75rem",
+                    fontFamily: preset.mono,
+                    color: fontId === preset.id ? "var(--amber-dim)" : "var(--text-3)",
+                    marginTop: 2,
+                  }}
+                >
+                  0123456789 sats
+                </div>
+              </div>
+            </button>
+          ))}
         </div>
       </div>
 

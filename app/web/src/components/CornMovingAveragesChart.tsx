@@ -51,7 +51,7 @@ const BG_2 = "#17171e";
 const BORDER = "#2a2a38";
 const TEXT_3 = "#5a5a70";
 const TEXT = "#e8e8f0";
-const MONO = "'IBM Plex Mono', monospace";
+const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "'IBM Plex Mono', monospace";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -117,7 +117,7 @@ function CMATooltip({
         border: `1px solid ${BORDER}`,
         borderRadius: 6,
         padding: "10px 14px",
-        fontFamily: MONO,
+        fontFamily: getMono(),
         fontSize: "0.75rem",
       }}
     >
@@ -255,7 +255,7 @@ export default function CornMovingAveragesChart({ period }: CornMovingAveragesCh
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontFamily: MONO,
+          fontFamily: getMono(),
           color: TEXT_3,
           fontSize: "0.8125rem",
           letterSpacing: "0.06em",
@@ -274,7 +274,7 @@ export default function CornMovingAveragesChart({ period }: CornMovingAveragesCh
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontFamily: MONO,
+          fontFamily: getMono(),
           color: TEXT_3,
           fontSize: "0.8125rem",
         }}
@@ -305,14 +305,14 @@ export default function CornMovingAveragesChart({ period }: CornMovingAveragesCh
           }}
           axisLine={{ stroke: BORDER }}
           tickLine={false}
-          tick={{ fill: TEXT_3, fontFamily: MONO, fontSize: 11 }}
+          tick={{ fill: TEXT_3, fontFamily: getMono(), fontSize: 11 }}
         />
         <YAxis
           domain={[yMin, yMax]}
           tickFormatter={formatYAxis}
           axisLine={false}
           tickLine={false}
-          tick={{ fill: TEXT_3, fontFamily: MONO, fontSize: 11 }}
+          tick={{ fill: TEXT_3, fontFamily: getMono(), fontSize: 11 }}
           width={60}
         />
         <Tooltip content={<CMATooltip />} />

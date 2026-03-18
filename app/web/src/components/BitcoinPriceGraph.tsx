@@ -53,7 +53,7 @@ const TEXT_3 = "#5a5a70";
 const BG_2 = "#17171e";
 const BORDER = "#2a2a38";
 const BORDER_HI = "#3a3a50";
-const MONO = "'IBM Plex Mono', monospace";
+const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "'IBM Plex Mono', monospace";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
@@ -143,7 +143,7 @@ function PriceTooltip({
         border: `1px solid ${BORDER}`,
         borderRadius: 6,
         padding: "8px 12px",
-        fontFamily: MONO,
+        fontFamily: getMono(),
         fontSize: "0.75rem",
       }}
     >
@@ -250,7 +250,7 @@ export default function BitcoinPriceGraph() {
             <div style={{ marginBottom: 20 }}>
               <div
                 style={{
-                  fontFamily: MONO,
+                  fontFamily: getMono(),
                   fontSize: "2rem",
                   fontWeight: 600,
                   color: TEXT,
@@ -262,7 +262,7 @@ export default function BitcoinPriceGraph() {
               {changeAmt != null && changePct != null && (
                 <div
                   style={{
-                    fontFamily: MONO,
+                    fontFamily: getMono(),
                     fontSize: "0.875rem",
                     fontWeight: 500,
                     color: isPositive ? GREEN : RED,
@@ -295,14 +295,14 @@ export default function BitcoinPriceGraph() {
                   tickFormatter={(t: number) => formatTimeLabel(t, period)}
                   axisLine={{ stroke: BORDER }}
                   tickLine={false}
-                  tick={{ fill: TEXT_3, fontFamily: MONO, fontSize: 11 }}
+                  tick={{ fill: TEXT_3, fontFamily: getMono(), fontSize: 11 }}
                 />
                 <YAxis
                   domain={[yMin - yPad, yMax + yPad]}
                   tickFormatter={formatAxisPrice}
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: TEXT_3, fontFamily: MONO, fontSize: 11 }}
+                  tick={{ fill: TEXT_3, fontFamily: getMono(), fontSize: 11 }}
                   width={54}
                 />
                 <Tooltip
