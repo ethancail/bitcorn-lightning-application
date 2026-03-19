@@ -177,6 +177,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Public — generates a fresh on-chain address for receiving bitcoin deposits.
+  if (req.method === "GET" && req.url === "/api/node/address") {
+    try {
+      const { address } = await createLndChainAddress();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ address }));
+    } catch {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "failed_to_generate_address" }));
+    }
+    return;
+  }
+
   // Public — accessible to both treasury and member nodes.
   // No role gate: both roles need on-chain funding capability.
   if (req.method === "GET" && req.url === "/api/coinbase/onramp-url") {

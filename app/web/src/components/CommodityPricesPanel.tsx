@@ -83,9 +83,10 @@ export default function PriceTickerStrip({ btcPrice, btcLoading }: Props) {
 
   useEffect(() => {
     api.getCommodityPrices().then(setCommodities).catch(() => {});
+    // Refresh every 10 min to match the Worker's 10-min futures cache TTL
     const id = setInterval(() => {
       api.getCommodityPrices().then(setCommodities).catch(() => {});
-    }, 60 * 60 * 1000);
+    }, 10 * 60 * 1000);
     return () => clearInterval(id);
   }, []);
 
