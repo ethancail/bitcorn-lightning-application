@@ -121,11 +121,13 @@ function KpiStrip({
   atRisk,
   pendingFeeChanges,
   loading,
+  fetchedAt,
 }: {
   metrics: TreasuryMetrics | null;
   atRisk: number;
   pendingFeeChanges: number;
   loading: boolean;
+  fetchedAt: Date | null;
 }) {
   if (loading) {
     return (
@@ -166,7 +168,7 @@ function KpiStrip({
       sub: "sats",
     },
     {
-      label: "At Risk",
+      label: "Channels At Risk",
       value: String(atRisk),
       color: atRisk > 0 ? "var(--red)" : "var(--green)",
       sub: atRisk === 1 ? "channel" : "channels",
@@ -180,16 +182,23 @@ function KpiStrip({
   ];
 
   return (
-    <div className="kpi-strip">
-      {kpis.map((k) => (
-        <div key={k.label} className="kpi-card">
-          <div className="kpi-label">{k.label}</div>
-          <div className="kpi-value" style={k.color ? { color: k.color } : undefined}>
-            {k.value}
+    <div style={{ position: "relative" }}>
+      {fetchedAt && (
+        <span className="freshness-hint" style={{ position: "absolute", top: -18, right: 0 }}>
+          {freshness(fetchedAt)}
+        </span>
+      )}
+      <div className="kpi-strip">
+        {kpis.map((k) => (
+          <div key={k.label} className="kpi-card">
+            <div className="kpi-label">{k.label}</div>
+            <div className="kpi-value" style={k.color ? { color: k.color } : undefined}>
+              {k.value}
+            </div>
+            <div className="kpi-sub">{k.sub}</div>
           </div>
-          <div className="kpi-sub">{k.sub}</div>
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }
@@ -822,6 +831,7 @@ function DynamicFeesPanel({
   loading,
   error,
   onRefresh,
+  fetchedAt,
 }: {
   adjustments: ChannelFeeAdjustment[];
   feePolicy: TreasuryFeePolicy | null;
@@ -829,6 +839,7 @@ function DynamicFeesPanel({
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  fetchedAt: Date | null;
 }) {
   const [applying, setApplying] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -903,7 +914,7 @@ function DynamicFeesPanel({
         </div>
       )}
 
-      <Panel title="Dynamic Fees" icon="⟳" loading={loading} error={error} action={action} className="span-2">
+      <Panel title="Dynamic Fees" icon="⟳" loading={loading} error={error} action={action} className="span-2" updatedAt={fetchedAt}>
         {adjustments.length === 0 && !loading && !error ? (
           <div className="empty-state">
             No active channels or base fee rate not configured.
@@ -1063,6 +1074,7 @@ export default function Dashboard() {
         atRisk={rotationCandidates.length}
         pendingFeeChanges={pendingFeeChanges}
         loading={loading}
+        fetchedAt={fetchedAt}
       />
 
       {/* 4. Action Summary — counts only, complementary to AlertsBar detail */}
@@ -1112,6 +1124,7 @@ export default function Dashboard() {
           loading={loading}
           error={errors.fees ?? null}
           onRefresh={refreshFees}
+          fetchedAt={fetchedAt}
         />
       </div>
 
