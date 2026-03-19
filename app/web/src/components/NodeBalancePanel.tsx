@@ -7,12 +7,23 @@ function toBtc(sats: number): string {
 
 export default function NodeBalancePanel() {
   const [balances, setBalances] = useState<NodeBalances | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [failCount, setFailCount] = useState(0);
 
   useEffect(() => {
-    api.getNodeBalances().then(setBalances).catch(() => {});
-    const id = setInterval(() => {
-      api.getNodeBalances().then(setBalances).catch(() => {});
-    }, 15_000);
+    const fetch = () => {
+      api.getNodeBalances()
+        .then((b) => { setBalances(b); setFetchError(null); setFailCount(0); })
+        .catch((e: Error) => {
+          setFailCount((c) => {
+            const next = c + 1;
+            if (next >= 3) setFetchError(e.message || "Failed to load balances");
+            return next;
+          });
+        });
+    };
+    fetch();
+    const id = setInterval(fetch, 15_000);
     return () => clearInterval(id);
   }, []);
 
@@ -34,7 +45,11 @@ export default function NodeBalancePanel() {
           {cards.map(({ label, sats }) => (
             <div key={label} className="stat-card">
               <div className="stat-label">{label}</div>
-              {sats === null ? (
+              {fetchError && sats === null ? (
+                <div style={{ color: "var(--text-3)", fontFamily: "var(--mono)", fontSize: "0.75rem" }}>
+                  {fetchError}
+                </div>
+              ) : sats === null ? (
                 <div className="loading-shimmer" style={{ height: 28, width: "70%", marginBottom: 6 }} />
               ) : (
                 <>

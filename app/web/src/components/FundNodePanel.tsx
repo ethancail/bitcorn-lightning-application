@@ -27,15 +27,15 @@ export default function FundNodePanel() {
   }
 
   return (
-    <div className="panel fade-in" style={{ marginBottom: 16 }}>
-      <div className="panel-header">
-        <span className="panel-title">
+    <div className="panel fade-in" style={{ marginBottom: 16, borderColor: "var(--border)", opacity: 0.85 }}>
+      <div className="panel-header" style={{ padding: "10px 20px" }}>
+        <span className="panel-title" style={{ fontSize: "0.6875rem" }}>
           <span className="icon">⚡</span>Fund Node
         </span>
       </div>
       <div
         className="panel-body"
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}
+        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 20px" }}
       >
         <div>
           <div
