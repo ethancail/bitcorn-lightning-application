@@ -148,6 +148,30 @@ declare module "ln-service" {
     lnd: any;
   }): Promise<{ chain_balance: number }>;
 
+  export function getPendingChainBalance(options: {
+    lnd: any;
+  }): Promise<{ pending_chain_balance: number }>;
+
+  export interface ChainTransaction {
+    block_id?: string;
+    confirmation_count?: number;
+    confirmation_height?: number;
+    created_at: string;
+    description?: string;
+    fee?: number;
+    id: string;
+    is_confirmed: boolean;
+    is_outgoing: boolean;
+    output_addresses: string[];
+    tokens: number;
+  }
+
+  export function getChainTransactions(options: {
+    lnd: any;
+    after?: number;
+    before?: number;
+  }): Promise<{ transactions: ChainTransaction[] }>;
+
   export function addPeer(options: {
     lnd: any;
     public_key: string;
