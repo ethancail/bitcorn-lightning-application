@@ -53,7 +53,7 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndClient, getLndChainBalance, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled } from "./lightning/lnd";
+import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled } from "./lightning/lnd";
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
@@ -186,6 +186,43 @@ const server = http.createServer(async (req, res) => {
     } catch {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "failed_to_generate_address" }));
+    }
+    return;
+  }
+
+  // Public — on-chain balance and recent deposit transactions from LND.
+  // No role gate: both treasury and member nodes need deposit visibility.
+  if (req.method === "GET" && req.url === "/api/node/onchain-status") {
+    try {
+      const [{ chain_balance }, { pending_chain_balance }, { transactions }] = await Promise.all([
+        getLndChainBalance(),
+        getLndPendingChainBalance(),
+        getLndChainTransactions(),
+      ]);
+
+      // Filter to incoming transactions, most recent first, cap at 20
+      const recent_deposits = transactions
+        .filter((tx) => !tx.is_outgoing)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 20)
+        .map((tx) => ({
+          tx_hash: tx.id,
+          amount_sat: tx.tokens,
+          confirmations: tx.confirmation_count ?? 0,
+          is_confirmed: tx.is_confirmed,
+          block_height: tx.confirmation_height ?? null,
+          time_stamp: tx.created_at,
+        }));
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        confirmed_balance_sat: chain_balance ?? 0,
+        pending_balance_sat: pending_chain_balance ?? 0,
+        recent_deposits,
+      }));
+    } catch {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "failed_to_fetch_onchain_status" }));
     }
     return;
   }

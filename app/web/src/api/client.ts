@@ -26,6 +26,7 @@ export const api = {
   getNode: () => apiFetch<NodeInfo>("/api/node"),
   getNodeBalances: () => apiFetch<NodeBalances>("/api/node/balances"),
   getNodeAddress: () => apiFetch<{ address: string }>("/api/node/address"),
+  getOnChainStatus: () => apiFetch<OnChainStatus>("/api/node/onchain-status"),
   getCoinbaseOnrampUrl: () => apiFetch<OnrampUrlResponse>("/api/coinbase/onramp-url"),
   getCommodityPrices: () => apiFetch<CommodityPrices>("/api/commodity-prices"),
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
@@ -305,6 +306,21 @@ export type NodeBalances = {
   onchain_sats: number;
   lightning_sats: number;
   total_sats: number;
+};
+
+export type OnChainDeposit = {
+  tx_hash: string;
+  amount_sat: number;
+  confirmations: number;
+  is_confirmed: boolean;
+  block_height: number | null;
+  time_stamp: string;
+};
+
+export type OnChainStatus = {
+  confirmed_balance_sat: number;
+  pending_balance_sat: number;
+  recent_deposits: OnChainDeposit[];
 };
 
 export type OnrampUrlResponse = {

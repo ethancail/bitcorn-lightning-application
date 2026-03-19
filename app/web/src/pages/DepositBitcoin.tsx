@@ -1,6 +1,22 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import QRCode from "qrcode";
-import { api } from "../api/client";
+import { api, fmtSats } from "../api/client";
+import type { OnChainStatus, OnChainDeposit } from "../api/client";
+
+function timeAgo(iso: string): string {
+  const seconds = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+function depositStatus(d: OnChainDeposit): { label: string; badge: string } {
+  if (!d.is_confirmed) return { label: "Pending", badge: "badge-amber" };
+  if (d.confirmations < 3) return { label: `${d.confirmations} confirmation${d.confirmations === 1 ? "" : "s"}`, badge: "badge-amber" };
+  if (d.confirmations < 6) return { label: `${d.confirmations} confirmations`, badge: "badge-blue" };
+  return { label: "Confirmed", badge: "badge-green" };
+}
 
 export default function DepositBitcoin() {
   const [address, setAddress] = useState<string | null>(null);
@@ -8,6 +24,11 @@ export default function DepositBitcoin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedTx, setCopiedTx] = useState<string | null>(null);
+
+  // On-chain status
+  const [status, setStatus] = useState<OnChainStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
 
   useEffect(() => {
     api
@@ -25,6 +46,20 @@ export default function DepositBitcoin() {
       .finally(() => setLoading(false));
   }, []);
 
+  const fetchStatus = useCallback(() => {
+    api.getOnChainStatus()
+      .then(setStatus)
+      .catch(() => {})
+      .finally(() => setStatusLoading(false));
+  }, []);
+
+  // Poll on-chain status every 15s
+  useEffect(() => {
+    fetchStatus();
+    const id = setInterval(fetchStatus, 15_000);
+    return () => clearInterval(id);
+  }, [fetchStatus]);
+
   function handleCopy() {
     if (!address) return;
     try {
@@ -39,16 +74,37 @@ export default function DepositBitcoin() {
 
   function fallbackCopy() {
     if (!address) return;
+    copyToClipboard(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function copyToClipboard(text: string) {
     const ta = document.createElement("textarea");
-    ta.value = address;
+    ta.value = text;
     ta.style.position = "fixed";
     ta.style.opacity = "0";
     document.body.appendChild(ta);
     ta.select();
     document.execCommand("copy");
     document.body.removeChild(ta);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleCopyTx(txHash: string) {
+    try {
+      navigator.clipboard.writeText(txHash).then(() => {
+        setCopiedTx(txHash);
+        setTimeout(() => setCopiedTx(null), 2000);
+      }).catch(() => {
+        copyToClipboard(txHash);
+        setCopiedTx(txHash);
+        setTimeout(() => setCopiedTx(null), 2000);
+      });
+    } catch {
+      copyToClipboard(txHash);
+      setCopiedTx(txHash);
+      setTimeout(() => setCopiedTx(null), 2000);
+    }
   }
 
   function handleNewAddress() {
@@ -79,6 +135,7 @@ export default function DepositBitcoin() {
         </p>
       </div>
 
+      {/* ─── Address + QR ─────────────────────────────────────────── */}
       <div className="panel fade-in">
         <div className="panel-header">
           <span className="panel-title">
@@ -138,6 +195,121 @@ export default function DepositBitcoin() {
                 Send bitcoin on the Bitcoin mainnet to this address. This is an on-chain transaction — not Lightning. Funds will appear in your on-chain balance after confirmation.
               </p>
             </>
+          )}
+        </div>
+      </div>
+
+      {/* ─── On-Chain Status ──────────────────────────────────────── */}
+      <div className="panel fade-in" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <span className="panel-title">
+            <span className="icon">◎</span>On-Chain Balance
+          </span>
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: "0.75rem", padding: "2px 8px" }}
+            onClick={() => { setStatusLoading(true); fetchStatus(); }}
+          >
+            Refresh
+          </button>
+        </div>
+        <div className="panel-body">
+          {statusLoading && !status ? (
+            <div style={{ display: "flex", gap: 16 }}>
+              <div className="loading-shimmer" style={{ flex: 1, height: 60, borderRadius: 6 }} />
+              <div className="loading-shimmer" style={{ flex: 1, height: 60, borderRadius: 6 }} />
+            </div>
+          ) : status ? (
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
+                <div className="stat-label">Confirmed</div>
+                <div className="stat-value" style={{ fontSize: "1.125rem" }}>
+                  {fmtSats(status.confirmed_balance_sat)}
+                </div>
+              </div>
+              <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
+                <div className="stat-label">Pending</div>
+                <div className="stat-value" style={{ fontSize: "1.125rem", color: status.pending_balance_sat > 0 ? "var(--amber)" : undefined }}>
+                  {fmtSats(status.pending_balance_sat)}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-dim" style={{ fontSize: "0.8125rem" }}>Unable to load on-chain status</div>
+          )}
+          <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 12, lineHeight: 1.5 }}>
+            Incoming deposits may appear as pending before they are confirmed on-chain. Confirmed funds are available in your on-chain balance after network confirmation.
+          </p>
+        </div>
+      </div>
+
+      {/* ─── Recent Deposits ──────────────────────────────────────── */}
+      <div className="panel fade-in" style={{ marginTop: 20 }}>
+        <div className="panel-header">
+          <span className="panel-title">
+            <span className="icon">↓</span>Recent Deposits
+          </span>
+          <span className="badge badge-muted">on-chain only</span>
+        </div>
+        <div className="panel-body">
+          {statusLoading && !status ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="loading-shimmer" style={{ height: 48, borderRadius: 6 }} />
+              ))}
+            </div>
+          ) : !status || status.recent_deposits.length === 0 ? (
+            <div className="empty-state">No incoming on-chain transactions yet</div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {status.recent_deposits.map((d) => {
+                const { label, badge } = depositStatus(d);
+                return (
+                  <div
+                    key={d.tx_hash}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      padding: "10px 12px",
+                      background: "var(--bg-3)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 120 }}>
+                      <div style={{ fontWeight: 600, fontSize: "0.9375rem" }}>
+                        +{d.amount_sat.toLocaleString()} sats
+                      </div>
+                      <button
+                        onClick={() => handleCopyTx(d.tx_hash)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          padding: 0,
+                          cursor: "pointer",
+                          fontFamily: "var(--mono)",
+                          fontSize: "0.6875rem",
+                          color: "var(--text-3)",
+                        }}
+                        title="Copy transaction hash"
+                      >
+                        {copiedTx === d.tx_hash ? "copied!" : `${d.tx_hash.slice(0, 12)}…${d.tx_hash.slice(-8)}`}
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                      <span className={`badge ${badge}`} style={{ fontSize: "0.6875rem" }}>
+                        {label}
+                      </span>
+                      <span className="text-dim" style={{ fontSize: "0.6875rem", whiteSpace: "nowrap" }}>
+                        {timeAgo(d.time_stamp)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
