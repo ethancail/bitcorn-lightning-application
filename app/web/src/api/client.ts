@@ -25,6 +25,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   getNode: () => apiFetch<NodeInfo>("/api/node"),
   getNodeBalances: () => apiFetch<NodeBalances>("/api/node/balances"),
+  getNodeAddress: () => apiFetch<{ address: string }>("/api/node/address"),
   getCoinbaseOnrampUrl: () => apiFetch<OnrampUrlResponse>("/api/coinbase/onramp-url"),
   getCommodityPrices: () => apiFetch<CommodityPrices>("/api/commodity-prices"),
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),

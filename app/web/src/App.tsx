@@ -11,6 +11,7 @@ import Charts from "./pages/Charts";
 import Contacts from "./pages/Contacts";
 import Payments from "./pages/Payments";
 import MemberLiquidity from "./pages/MemberLiquidity";
+import DepositBitcoin from "./pages/DepositBitcoin";
 
 // ─── Theme initialization ─────────────────────────────────────────────────
 // Runs once on load — checks localStorage, falls back to OS preference.
@@ -211,9 +212,21 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
             </NavLink>
           </div>
           {i === 0 && (
-            <div className="sidebar-section">
-              <BuyBitcoinButton />
-            </div>
+            <>
+              <div className="sidebar-section">
+                <BuyBitcoinButton />
+              </div>
+              <div className="sidebar-section">
+                <NavLink
+                  to="/deposit"
+                  className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
+                  onClick={onClose}
+                >
+                  <span className="icon">↙</span>
+                  Deposit Bitcoin
+                </NavLink>
+              </div>
+            </>
           )}
         </React.Fragment>
       ))}
@@ -258,6 +271,7 @@ function AppShell() {
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/payments" element={<Payments title="Payments" />} />
           <Route path="/liquidity" element={<LiquidityPage />} />
+          <Route path="/deposit" element={<DepositBitcoin />} />
           <Route path="/settings" element={<SettingsPage isTreasury />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
@@ -297,9 +311,21 @@ function MemberSidebar({ open, onClose }: { open: boolean; onClose: () => void }
             </NavLink>
           </div>
           {i === 0 && (
-            <div className="sidebar-section">
-              <BuyBitcoinButton />
-            </div>
+            <>
+              <div className="sidebar-section">
+                <BuyBitcoinButton />
+              </div>
+              <div className="sidebar-section">
+                <NavLink
+                  to="/deposit"
+                  className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
+                  onClick={onClose}
+                >
+                  <span className="icon">↙</span>
+                  Deposit Bitcoin
+                </NavLink>
+              </div>
+            </>
           )}
         </React.Fragment>
       ))}
@@ -343,6 +369,7 @@ function MemberShell() {
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/payments" element={<Payments title="My Payments" />} />
+          <Route path="/deposit" element={<DepositBitcoin />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
