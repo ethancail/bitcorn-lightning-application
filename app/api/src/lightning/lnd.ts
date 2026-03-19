@@ -8,6 +8,8 @@ import {
   getInvoices,
   getForwards,
   getChainBalance,
+  getPendingChainBalance,
+  getChainTransactions,
   addPeer,
   openChannel,
   closeChannel,
@@ -277,6 +279,22 @@ export async function openTreasuryChannel(
     min_confirmations: options?.minConfirmations,
     partner_socket: options?.partnerSocket,
   });
+}
+
+/**
+ * Gets pending (unconfirmed) on-chain balance.
+ */
+export async function getLndPendingChainBalance() {
+  const { lnd } = getLndClient();
+  return getPendingChainBalance({ lnd });
+}
+
+/**
+ * Gets on-chain transaction history from LND.
+ */
+export async function getLndChainTransactions() {
+  const { lnd } = getLndClient();
+  return getChainTransactions({ lnd });
 }
 
 /**
