@@ -1060,7 +1060,16 @@ export default function Dashboard() {
         </p>
       </div>
 
-      {/* 2. Alerts — full detail, 60s polling */}
+      {/* 2. Node Balances */}
+      <NodeBalancePanel />
+
+      {/* 3. Fund Node (secondary utility) */}
+      <FundNodePanel />
+
+      {/* 4. BTC Price Graph */}
+      <BitcoinPriceGraph />
+
+      {/* 5. Alerts — full detail, 60s polling */}
       <AlertsBar
         alerts={alerts}
         loading={loading}
@@ -1068,7 +1077,7 @@ export default function Dashboard() {
         lastFetched={alertsFetchedAt}
       />
 
-      {/* 3. KPI Strip — 5-second treasury health overview */}
+      {/* 6. KPI Strip — 5-second treasury health overview */}
       <KpiStrip
         metrics={metrics}
         atRisk={rotationCandidates.length}
@@ -1077,7 +1086,7 @@ export default function Dashboard() {
         fetchedAt={fetchedAt}
       />
 
-      {/* 4. Action Summary — counts only, complementary to AlertsBar detail */}
+      {/* 7. Action Summary — counts only, complementary to AlertsBar detail */}
       {!loading && (
         <ActionSummary
           alertCritical={criticalAlerts}
@@ -1088,14 +1097,10 @@ export default function Dashboard() {
         />
       )}
 
-      {/* 5. Liquidity Posture — channel health distribution */}
+      {/* 8. Liquidity Posture — channel health distribution */}
       <LiquidityPosture health={liquidityHealth} loading={loading} />
 
-      {/* 6. Node Balances + Fund Node (secondary utility, grouped) */}
-      <NodeBalancePanel />
-      <FundNodePanel />
-
-      {/* 7. Core treasury work surfaces */}
+      {/* 9. Core treasury work surfaces */}
       <div className="dashboard-grid">
         <NetYieldPanel
           data={metrics}
@@ -1126,11 +1131,6 @@ export default function Dashboard() {
           onRefresh={refreshFees}
           fetchedAt={fetchedAt}
         />
-      </div>
-
-      {/* 8. BTC Price Graph — informational, lowest priority */}
-      <div style={{ marginTop: 24 }}>
-        <BitcoinPriceGraph />
       </div>
     </div>
   );
