@@ -579,7 +579,7 @@ function RecommendedPeersPanel() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedSize, setSelectedSize] = useState<Record<string, number>>({});
 
-  const PRESETS = [500_000, 1_000_000, 2_000_000];
+  const PRESETS = [1_000_000, 5_000_000, 10_000_000];
 
   useEffect(() => {
     api.getRecommendedPeers()
@@ -628,7 +628,7 @@ function RecommendedPeersPanel() {
   if (peers.length === 0) return null;
 
   return (
-    <div className="panel fade-in" style={{ marginTop: 16 }}>
+    <div id="recommended-peers-panel" className="panel fade-in" style={{ marginTop: 16 }}>
       <div className="panel-header">
         <span className="panel-title"><span className="icon">⟐</span>Treasury-Approved External Peers</span>
         <span className="badge badge-muted">optional</span>
@@ -685,8 +685,21 @@ function RecommendedPeersPanel() {
               {/* Existing channels */}
               {hasChannel && peer.channels.map((ch) => {
                 const localPct = ch.capacity_sat > 0 ? (ch.local_balance_sat / ch.capacity_sat) * 100 : 0;
+                const chUndersized = classifyCapacity(ch.capacity_sat, false) === "undersized";
+                const chUpgradeSize = peer.recommended_channel_size_sat > ch.capacity_sat
+                  ? peer.recommended_channel_size_sat
+                  : recommendedUpgradeSize(ch.capacity_sat, false);
                 return (
                   <div key={ch.channel_id} style={{ marginBottom: 8 }}>
+                    {chUndersized && (
+                      <div style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        fontSize: "0.6875rem", color: "var(--yellow)", fontFamily: "var(--mono)",
+                        marginBottom: 4, padding: "4px 8px", background: "var(--yellow-glow)", borderRadius: 4,
+                      }}>
+                        <span>⚠ Current channel undersized ({ch.capacity_sat.toLocaleString()} sats) — open a {chUpgradeSize.toLocaleString()} sat channel</span>
+                      </div>
+                    )}
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-3)", marginBottom: 4 }}>
                       <span>Local {localPct.toFixed(0)}%</span>
                       <span>{ch.capacity_sat.toLocaleString()} sats</span>
@@ -697,6 +710,53 @@ function RecommendedPeersPanel() {
                   </div>
                 );
               })}
+
+              {/* Show open form for undersized existing channels too */}
+              {hasChannel && peer.channels.some((ch) => classifyCapacity(ch.capacity_sat, false) === "undersized") && !justOpened && (() => {
+                const chUpgradeSize = peer.recommended_channel_size_sat > (peer.channels[0]?.capacity_sat ?? 0)
+                  ? peer.recommended_channel_size_sat
+                  : recommendedUpgradeSize(peer.channels[0]?.capacity_sat ?? 0, false);
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Open upgraded channel (sats)</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {PRESETS.map((preset) => (
+                        <button
+                          key={preset}
+                          className={`btn ${(selectedSize[peer.id] ?? chUpgradeSize) === preset ? "btn-primary" : "btn-outline"}`}
+                          style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto" }}
+                          onClick={() => setSelectedSize((s) => ({ ...s, [peer.id]: preset }))}
+                        >
+                          {preset >= 1_000_000
+                            ? `${(preset / 1_000_000).toFixed(preset % 1_000_000 === 0 ? 0 : 1)}M`
+                            : `${(preset / 1_000).toFixed(0)}k`}
+                          {preset === chUpgradeSize ? " ★" : ""}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="number"
+                      className="form-input"
+                      style={{ fontSize: "0.8125rem" }}
+                      min={100000}
+                      step={100000}
+                      value={selectedSize[peer.id] ?? chUpgradeSize}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val)) setSelectedSize((s) => ({ ...s, [peer.id]: val }));
+                      }}
+                    />
+                    <button
+                      className="btn btn-primary"
+                      style={{ width: "100%" }}
+                      onClick={() => handleOpen(peer)}
+                      disabled={isOpening || (selectedSize[peer.id] ?? 0) < 100_000}
+                    >
+                      {isOpening ? "Opening channel…" : `Open ${(selectedSize[peer.id] ?? chUpgradeSize).toLocaleString()} sat channel`}
+                    </button>
+                  </div>
+                );
+              })()}
 
               {justOpened ? (
                 <div className="alert healthy" style={{ marginBottom: 0, padding: "6px 10px" }}>
@@ -766,7 +826,36 @@ function RecommendedPeersPanel() {
   );
 }
 
+// ─── Capacity classification ──────────────────────────────────────────────
+// Treasury channels carry all member traffic (forced routing), need more capacity.
+// External peers are supplementary routing — lower thresholds.
+
+const TREASURY_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
+
+type CapacityStatus = "undersized" | "adequate" | "large";
+
+function classifyCapacity(capacitySat: number, isTreasury: boolean): CapacityStatus {
+  if (isTreasury) {
+    if (capacitySat < 2_000_000) return "undersized";
+    if (capacitySat < 10_000_000) return "adequate";
+    return "large";
+  }
+  if (capacitySat < 1_000_000) return "undersized";
+  if (capacitySat < 5_000_000) return "adequate";
+  return "large";
+}
+
+function recommendedUpgradeSize(capacitySat: number, isTreasury: boolean): number {
+  if (isTreasury) {
+    if (capacitySat < 2_000_000) return 5_000_000;
+    return 10_000_000;
+  }
+  if (capacitySat < 1_000_000) return 1_000_000;
+  return 5_000_000;
+}
+
 function ChannelsPage() {
+  const navigate = useNavigate();
   const [channels, setChannels] = useState<
     Array<{
       channel_id: string;
@@ -780,6 +869,7 @@ function ChannelsPage() {
   const [loading, setLoading] = useState(true);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [health, setHealth] = useState<ChannelLiquidityHealth[]>([]);
+  const [expandedHint, setExpandedHint] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
@@ -841,6 +931,10 @@ function ChannelsPage() {
               const localPct = c.capacity_sat > 0 ? (c.local_balance_sat / c.capacity_sat) * 100 : 0;
               const remotePct = c.capacity_sat > 0 ? (c.remote_balance_sat / c.capacity_sat) * 100 : 0;
               const h = health.find((x) => x.channel_id === c.channel_id);
+              const isTreasury = c.peer_pubkey === TREASURY_PUBKEY;
+              const capStatus = classifyCapacity(c.capacity_sat, isTreasury);
+              const upgradeSize = recommendedUpgradeSize(c.capacity_sat, isTreasury);
+              const isExpanded = expandedHint === c.channel_id;
               return (
                 <div key={c.channel_id} className="channel-card">
                   <div className="channel-card-top">
@@ -857,6 +951,9 @@ function ChannelsPage() {
                       >
                         {h.health_classification.replace(/_/g, " ")}
                       </span>
+                    )}
+                    {capStatus === "undersized" && (
+                      <span className="badge badge-red">undersized</span>
                     )}
                     {c.active ? (
                       <span className="badge badge-green">active</span>
@@ -885,6 +982,72 @@ function ChannelsPage() {
                       <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
                     </span>
                   </div>
+                  {capStatus === "undersized" && (
+                    <div style={{ marginTop: 6 }}>
+                      <div
+                        onClick={() => setExpandedHint(isExpanded ? null : c.channel_id)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          cursor: "pointer",
+                          fontSize: "0.75rem",
+                          color: "var(--yellow)",
+                          fontFamily: "var(--mono)",
+                        }}
+                      >
+                        <span>⚠</span>
+                        <span>Upgrade recommended → {upgradeSize.toLocaleString()} sats</span>
+                        <span style={{ fontSize: "0.625rem", color: "var(--text-3)", marginLeft: 4 }}>
+                          {isExpanded ? "▲" : "▼"}
+                        </span>
+                      </div>
+                      {isExpanded && (
+                        <div
+                          style={{
+                            marginTop: 6,
+                            padding: "8px 12px",
+                            background: "var(--bg-3)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 6,
+                            fontSize: "0.75rem",
+                            color: "var(--text-2)",
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: 4,
+                          }}
+                        >
+                          <div>
+                            <span style={{ color: "var(--text-3)" }}>Current capacity: </span>
+                            <span style={{ fontFamily: "var(--mono)" }}>{c.capacity_sat.toLocaleString()} sats</span>
+                          </div>
+                          <div>
+                            <span style={{ color: "var(--text-3)" }}>Recommended: </span>
+                            <span style={{ fontFamily: "var(--mono)", color: "var(--amber)" }}>{upgradeSize.toLocaleString()} sats</span>
+                          </div>
+                          <div style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
+                            {isTreasury
+                              ? "Treasury channels carry all routed payments. Open a larger channel to increase routing capacity."
+                              : "Open a larger channel alongside this one to improve routing diversity."}
+                          </div>
+                          <button
+                            className="btn btn-outline btn-sm"
+                            style={{ alignSelf: "flex-start", marginTop: 4 }}
+                            onClick={() => {
+                              if (isTreasury) {
+                                navigate(`/dashboard?upgrade_capacity=${upgradeSize}`);
+                              } else {
+                                const el = document.getElementById("recommended-peers-panel");
+                                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+                              }
+                            }}
+                          >
+                            {isTreasury ? "Upgrade Treasury Channel →" : "View Recommended Peers →"}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   api,
   type MemberStats,
@@ -13,9 +14,9 @@ import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
 
 const CAPACITY_PRESETS = [
-  { label: "500k", value: 500_000 },
   { label: "1M", value: 1_000_000 },
-  { label: "2M", value: 2_000_000 },
+  { label: "5M", value: 5_000_000 },
+  { label: "10M", value: 10_000_000 },
 ];
 
 function statusBadge(s: string) {
@@ -33,8 +34,8 @@ function statusBadge(s: string) {
   }
 }
 
-function ConnectToHub({ isPeered }: { isPeered: boolean }) {
-  const [capacity, setCapacity] = useState(1_000_000);
+function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initialCapacity?: number }) {
+  const [capacity, setCapacity] = useState(initialCapacity ?? 1_000_000);
   const [socket, setSocket] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
@@ -194,7 +195,7 @@ function ConnectToHub({ isPeered }: { isPeered: boolean }) {
             onChange={(e) => setCapacity(Math.max(100_000, Number(e.target.value)))}
           />
           <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 4 }}>
-            Recommended: 500k–2M sats. Minimum: 100,000 sats.
+            Recommended: 1M–10M sats. Minimum: 100,000 sats.
           </div>
         </div>
 
@@ -312,6 +313,8 @@ function ConnectToHub({ isPeered }: { isPeered: boolean }) {
 }
 
 export default function MemberDashboard() {
+  const [searchParams] = useSearchParams();
+  const upgradeCapacity = parseInt(searchParams.get("upgrade_capacity") ?? "", 10) || undefined;
   const [stats, setStats] = useState<MemberStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
@@ -409,9 +412,23 @@ export default function MemberDashboard() {
               ))}
             </div>
           ) : noChannel ? (
-            <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} />
+            <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} initialCapacity={upgradeCapacity} />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+              {/* Upgrade banner when navigated from Channels page */}
+              {upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
+                <div className="alert info" style={{ marginBottom: 0 }}>
+                  <span className="alert-icon">⚠</span>
+                  <div className="alert-body">
+                    <div className="alert-type">Channel Upgrade Recommended</div>
+                    <div className="alert-msg">
+                      Your current treasury channel is {ch.capacity_sats.toLocaleString()} sats.
+                      Open a larger replacement channel ({upgradeCapacity.toLocaleString()} sats) to increase routing capacity.
+                    </div>
+                    <ConnectToHub isPeered={true} initialCapacity={upgradeCapacity} />
+                  </div>
+                </div>
+              )}
               {/* Advisor recommendation (if non-healthy) */}
               {advisor?.recommendation && advisor.recommendation.action !== "none" && (() => {
                 const rec = advisor.recommendation;
