@@ -154,17 +154,31 @@ effective_max = min(
 )
 ```
 
-**Member-side check:** Queries `lnd_channels WHERE peer_pubkey = TREASURY_PUBKEY AND active = 1`.
-Uses the member's local balance on that specific channel minus `SWAP_MEMBER_ROUTING_BUFFER_SAT` (default 50k).
+**Member-side check:** Queries `lnd_channels WHERE peer_pubkey = TREASURY_PUBKEY AND active = 1
+ORDER BY capacity_sat DESC LIMIT 1`. Uses the **single largest** active Treasury channel's
+local balance minus `SWAP_MEMBER_ROUTING_BUFFER_SAT` (default 50k). In the hub-and-spoke
+model, members have one canonical Treasury channel; if multiple exist, the largest is used.
 
 **Treasury egress check:** Queries `swap_egress_peers` (enabled peers), then checks
-`lnd_channels WHERE peer_pubkey IN (egress_peers) AND active = 1`. Sums local balance
-minus `SWAP_TREASURY_EGRESS_RESERVE_SAT` (default 100k).
+`lnd_channels WHERE peer_pubkey IN (egress_peers) AND active = 1`. v1 uses
+SUM(local_balance_sat) across all approved peers minus `SWAP_TREASURY_EGRESS_RESERVE_SAT`
+(default 100k). This is acceptable when few egress peers have large channels. **TODO:**
+If egress peer count grows or channels are small, consider largest-single-channel or
+route-aware usable outbound calculation instead of sum.
 
 **Approved egress peers** are stored in `swap_egress_peers` table (migration 031).
 Seeded with ACINQ by default. Treasury operator manages this list.
 
 The limiting factor is logged and surfaced in API error messages.
+
+**Validation order (7 checks):**
+1. Amount minimum (config)
+2. Provider terms + effective max initialization (Loop terms)
+3. Member Treasury channel capacity (single largest active channel, not summed)
+4. Treasury external egress capacity (sum of approved peers, v1)
+5. Effective max enforcement (min of all four caps, with limiting factor logged)
+6. Fee cap (user-specified or default 0.5%)
+7. Daily withdrawal limit (rolling 24h window)
 
 ## 5. API Endpoints
 

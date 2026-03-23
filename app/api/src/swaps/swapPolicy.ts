@@ -47,9 +47,10 @@ export async function checkMemberLoopOutPolicy(params: {
   }
 
   // ── 2. Member Treasury channel capacity ───────────────────────────────
-  // On member nodes, the treasury channel is identified by peer_pubkey = TREASURY_PUBKEY.
-  // On treasury nodes running this check (e.g., for testing), we look for channels
-  // to the requesting member instead.
+  // Uses the single largest active Treasury channel only (not summed).
+  // In the Bitcorn hub-and-spoke model, members are leaf nodes with one
+  // canonical Treasury channel. If multiple exist, the largest is used
+  // as the most likely routing path.
   const treasuryPubkey = ENV.treasuryPubkey;
   const memberChannelRow = treasuryPubkey
     ? db.prepare(`
@@ -87,6 +88,11 @@ export async function checkMemberLoopOutPolicy(params: {
   // ── 3. Treasury external egress capacity ──────────────────────────────
   // Query approved egress peers from swap_egress_peers table, then check
   // treasury's outbound (local balance) on channels to those peers.
+  // NOTE: v1 uses SUM(local_balance_sat) across all approved egress peers.
+  // This is acceptable when there are few egress peers with large channels,
+  // but overstates usable capacity if the swap must route through a single
+  // channel. TODO: consider largest-single-channel or route-aware calculation
+  // if egress peer count grows or channels are small.
   const egressPeers = db.prepare(`
     SELECT pubkey FROM swap_egress_peers WHERE enabled = 1
   `).all() as { pubkey: string }[];
