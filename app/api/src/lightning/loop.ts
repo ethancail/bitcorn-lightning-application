@@ -271,3 +271,104 @@ export async function listLoopSwaps(): Promise<SwapInfo[]> {
     last_update_time: Number(s.last_update_time || 0),
   }));
 }
+
+// ─── Loop In ────────────────────────────────────────────────────────────────
+
+export type LoopInTerms = {
+  min_swap_amount: number;
+  max_swap_amount: number;
+};
+
+/** Get the minimum and maximum swap amounts for Loop In. */
+export async function getLoopInTerms(): Promise<LoopInTerms> {
+  const res = await rpcCall<{
+    min_swap_amount: number;
+    max_swap_amount: number;
+  }>("GetLoopInTerms", {});
+  return {
+    min_swap_amount: Number(res.min_swap_amount),
+    max_swap_amount: Number(res.max_swap_amount),
+  };
+}
+
+export type LoopInQuote = {
+  swap_fee_sat: number;
+  htlc_publish_fee_sat: number;
+  cltv_delta: number;
+  conf_target: number;
+  total_cost_sats: number;
+};
+
+/** Get a cost quote for a Loop In swap of a given amount. */
+export async function getLoopInQuote(
+  amountSats: number,
+  confTarget?: number
+): Promise<LoopInQuote> {
+  const target = confTarget ?? ENV.loopConfTarget;
+  const res = await rpcCall<{
+    swap_fee_sat: number;
+    htlc_publish_fee_sat: number;
+    cltv_delta: number;
+    conf_target: number;
+  }>("GetLoopInQuote", { amt: amountSats, conf_target: target });
+
+  const swapFee = Number(res.swap_fee_sat);
+  const htlcFee = Number(res.htlc_publish_fee_sat);
+
+  return {
+    swap_fee_sat: swapFee,
+    htlc_publish_fee_sat: Math.max(0, htlcFee), // -1 means estimation failed
+    cltv_delta: Number(res.cltv_delta),
+    conf_target: Number(res.conf_target) || target,
+    total_cost_sats: swapFee + Math.max(0, htlcFee),
+  };
+}
+
+export type LoopInSwapResult = {
+  swap_hash: string;
+  id: string;
+  server_message: string;
+  htlc_address: string;
+};
+
+/** Initiate a Loop In swap. Sends on-chain, receives Lightning inbound. */
+export async function executeLoopInSwap(params: {
+  amt: number;
+  max_swap_fee: number;
+  max_miner_fee: number;
+  htlc_conf_target: number;
+  last_hop?: string;
+  label?: string;
+}): Promise<LoopInSwapResult> {
+  const res = await rpcCall<{
+    id_bytes: Buffer | string;
+    server_message: string;
+    htlc_address: string;
+    htlc_address_p2wsh: string;
+    htlc_address_p2tr: string;
+  }>(
+    "LoopIn",
+    {
+      amt: params.amt,
+      max_swap_fee: params.max_swap_fee,
+      max_miner_fee: params.max_miner_fee,
+      htlc_conf_target: params.htlc_conf_target,
+      last_hop: params.last_hop ? Buffer.from(params.last_hop, "hex") : undefined,
+      label: params.label || `bitcorn-loop-in-${Date.now()}`,
+      initiator: "bitcorn",
+    },
+    60_000
+  );
+
+  const hashHex =
+    typeof res.id_bytes === "string"
+      ? res.id_bytes
+      : Buffer.from(res.id_bytes).toString("hex");
+
+  return {
+    swap_hash: hashHex,
+    id: hashHex,
+    server_message: res.server_message || "",
+    htlc_address: res.htlc_address_p2tr || res.htlc_address_p2wsh || res.htlc_address || "",
+  };
+}
