@@ -77,6 +77,19 @@ import {
   getLiquidityHistory as getMemberLiquidityHistory,
 } from "./memberAdvisor/liquidityAdvisorRoutes";
 import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
+import {
+  handleMemberLoopOutQuote,
+  handleMemberLoopOut,
+  handleGetSwap,
+  handleSwapHistory,
+  handleAdminLoopOutQuote,
+  handleAdminLoopOut,
+  handleAdminLoopInQuote,
+  handleAdminLoopIn,
+  handleAdminSwapList,
+  handleAdminGetSwap,
+} from "./swaps/swapRoutes";
+import { startSwapPoller } from "./swaps/swapPoller";
 
 initDb();
 runMigrations();
@@ -2102,6 +2115,98 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // SWAP ENDPOINTS
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // Member swap endpoints
+  if (req.method === "POST" && req.url === "/api/swaps/loop-out/quote") {
+    try { await handleMemberLoopOutQuote(req, res); } catch (e: any) {
+      res.writeHead(e.message?.includes("privileges") || e.message?.includes("authorized") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/swaps/loop-out") {
+    try { await handleMemberLoopOut(req, res); } catch (e: any) {
+      res.writeHead(e.message?.includes("privileges") || e.message?.includes("authorized") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/swaps/history") {
+    try { await handleSwapHistory(req, res); } catch (e: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/swaps/") && !req.url.includes("/admin/")) {
+    const swapId = req.url.split("/api/swaps/")[1]?.split("?")[0];
+    if (swapId && swapId !== "history") {
+      try { await handleGetSwap(req, res, swapId); } catch (e: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+  }
+
+  // Admin swap endpoints
+  if (req.method === "POST" && req.url === "/api/admin/swaps/loop-out/quote") {
+    try { await handleAdminLoopOutQuote(req, res); } catch (e: any) {
+      res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/admin/swaps/loop-out") {
+    try { await handleAdminLoopOut(req, res); } catch (e: any) {
+      res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/admin/swaps/loop-in/quote") {
+    try { await handleAdminLoopInQuote(req, res); } catch (e: any) {
+      res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/admin/swaps/loop-in") {
+    try { await handleAdminLoopIn(req, res); } catch (e: any) {
+      res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/admin/swaps") {
+    try { await handleAdminSwapList(req, res); } catch (e: any) {
+      res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/admin/swaps/")) {
+    const swapId = req.url.split("/api/admin/swaps/")[1]?.split("?")[0];
+    if (swapId) {
+      try { await handleAdminGetSwap(req, res, swapId); } catch (e: any) {
+        res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+  }
+
   // ✅ 404 MUST BE LAST
   res.writeHead(404);
   res.end();
@@ -2119,4 +2224,6 @@ server.listen(PORTS.userApi, () => {
   // Member liquidity advisor — classifies treasury channel health on member nodes.
   // Runs on all nodes but only acts on non-treasury nodes.
   startMemberAdvisorScheduler();
+  // Swap poller — monitors in-flight Loop swaps and updates status every 15s.
+  startSwapPoller();
 });
