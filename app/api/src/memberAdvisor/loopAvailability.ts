@@ -53,15 +53,20 @@ export async function checkLoopAvailability(): Promise<LoopAvailability> {
     // Loop Out not available — leave as false
   }
 
-  // Step 3: Loop In — not yet implemented in our loop.ts client.
-  // loopd supports LoopInTerms RPC but we haven't wrapped it.
-  // Leave loopInAvailable = false for v1.
-  // When Loop In is added to loop.ts, uncomment:
-  // try {
-  //   const terms = await getLoopInTerms();
-  //   result.loopInAvailable = true;
-  //   result.loopInTerms = { minSats: terms.min_swap_amount, maxSats: terms.max_swap_amount };
-  // } catch {}
+  // Loop In availability — real gRPC check
+  let loopInAvailable = false;
+  let loopInTerms: { minSats: number; maxSats: number } | null = null;
+  try {
+    const { getLoopInTerms } = await import("../lightning/loop");
+    const terms = await getLoopInTerms();
+    loopInAvailable = true;
+    loopInTerms = { minSats: terms.min_swap_amount, maxSats: terms.max_swap_amount };
+  } catch {
+    // Loop In not available
+  }
+
+  result.loopInAvailable = loopInAvailable;
+  result.loopInTerms = loopInTerms;
 
   return result;
 }
