@@ -114,17 +114,27 @@ persistNodeInfo().catch(err => {
 })();
 
 const server = http.createServer(async (req, res) => {
-  // CORS — restrict to same-origin (Umbrel app proxy) and local dev
+  // CORS — allow private/local network origins (Umbrel, Tailscale, LAN, localhost)
+  // Umbrel apps are only reachable on local/private networks, not the public internet.
   const origin = req.headers.origin;
-  const allowedOrigins = [
-    "http://localhost:3200",
-    "http://localhost:5173",  // Vite dev server
-  ];
-  // Umbrel proxies requests from the same host — allow if origin matches or is absent (same-origin)
-  if (!origin || allowedOrigins.includes(origin) || origin.startsWith("http://umbrel.local") || origin.startsWith("http://10.") || origin.startsWith("http://192.168.")) {
-    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  if (!origin) {
+    // No Origin header = same-origin or non-browser client — always allow
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  } else {
+    // Allow: localhost, private RFC1918, CGNAT/Tailscale (100.64-127.*), .local mDNS
+    const host = origin.replace(/^https?:\/\//, "").split(":")[0];
+    const isLocal = host === "localhost" || host === "127.0.0.1" || host.endsWith(".local");
+    const isPrivate = host.startsWith("10.") || host.startsWith("192.168.") ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+    const isTailscale = host.startsWith("100.") && (() => {
+      const second = parseInt(host.split(".")[1], 10);
+      return second >= 64 && second <= 127; // CGNAT range used by Tailscale
+    })();
+    if (isLocal || isPrivate || isTailscale) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+    // Public origins get no Access-Control-Allow-Origin → browser blocks them
   }
-  // If origin doesn't match, omit the header — browser will block cross-origin
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
