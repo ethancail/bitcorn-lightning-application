@@ -139,6 +139,33 @@ Add to existing `src/lightning/loop.ts`:
 
 Same gRPC client, TLS, macaroon, and deadline patterns as existing Loop Out methods.
 
+## 4b. Member Loop Out Policy (Treasury-Path Constrained)
+
+Member Loop Out is NOT validated against aggregate channel balance. It validates
+the actual swap path: member → Treasury channel → Treasury node → approved external egress peer.
+
+**Effective max formula:**
+```
+effective_max = min(
+  config_max,                            // MEMBER_MAX_WITHDRAWAL_SAT (env)
+  provider_terms_max,                    // Loop server max swap amount
+  member_treasury_channel_runtime_max,   // member's Treasury channel local - routing buffer
+  treasury_external_runtime_max          // approved egress peers' local - reserve buffer
+)
+```
+
+**Member-side check:** Queries `lnd_channels WHERE peer_pubkey = TREASURY_PUBKEY AND active = 1`.
+Uses the member's local balance on that specific channel minus `SWAP_MEMBER_ROUTING_BUFFER_SAT` (default 50k).
+
+**Treasury egress check:** Queries `swap_egress_peers` (enabled peers), then checks
+`lnd_channels WHERE peer_pubkey IN (egress_peers) AND active = 1`. Sums local balance
+minus `SWAP_TREASURY_EGRESS_RESERVE_SAT` (default 100k).
+
+**Approved egress peers** are stored in `swap_egress_peers` table (migration 031).
+Seeded with ACINQ by default. Treasury operator manages this list.
+
+The limiting factor is logged and surfaced in API error messages.
+
 ## 5. API Endpoints
 
 ### Member-facing (assertActiveMember)
