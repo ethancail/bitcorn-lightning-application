@@ -93,4 +93,20 @@ export const ENV = {
     // Cloudflare Worker URL that generates Coinbase Onramp session tokens.
     // If unset, GET /api/coinbase/onramp-url returns coinbase_not_configured.
     coinbaseWorkerUrl: process.env.COINBASE_WORKER_URL || "",
+
+    // --- Member swap / withdrawal limits ---
+    // Minimum sats a member can withdraw via Loop Out (default: Loop minimum = 250,000)
+    memberMinWithdrawalSat: Number(process.env.MEMBER_MIN_WITHDRAWAL_SAT ?? "250000"),
+    // Maximum sats a member can withdraw in a single Loop Out (default: 2,000,000)
+    memberMaxWithdrawalSat: Number(process.env.MEMBER_MAX_WITHDRAWAL_SAT ?? "2000000"),
+    // Maximum total daily withdrawal for a member (default: 5,000,000)
+    memberMaxDailyWithdrawalSat: Number(process.env.MEMBER_MAX_DAILY_WITHDRAWAL_SAT ?? "5000000"),
+    // Quote expiry in seconds (default: 5 minutes)
+    swapQuoteExpirySec: Number(process.env.SWAP_QUOTE_EXPIRY_SEC ?? "300"),
+    // Safety buffer subtracted from member's treasury-channel local balance (default: 50,000)
+    // Prevents routing failures from razor-thin margins
+    swapMemberRoutingBufferSat: Number(process.env.SWAP_MEMBER_ROUTING_BUFFER_SAT ?? "50000"),
+    // Reserve buffer subtracted from treasury external egress capacity (default: 100,000)
+    // Ensures treasury retains minimum outbound on egress channels
+    swapTreasuryEgressReserveSat: Number(process.env.SWAP_TREASURY_EGRESS_RESERVE_SAT ?? "100000"),
 };

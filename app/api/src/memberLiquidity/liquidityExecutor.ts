@@ -1,3 +1,9 @@
+// ⚠️ DEPRECATED: Keysend push execution path.
+// As of v1.7.0, the active liquidity execution path uses the swap subsystem
+// (src/swaps/swapService.ts) instead of direct keysend push.
+// This file is retained for reference but is no longer called from liquidityRoutes.ts.
+// The approve handler now creates a liquidity_action + swap_request instead.
+
 /**
  * Liquidity executor — executes an approved treasury push via keysend.
  *

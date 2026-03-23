@@ -132,6 +132,30 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ peer_id: peerId, local_funding_amount_sat: localFundingAmountSat }),
     }),
+  // Swaps — member
+  getSwapLoopOutQuote: (body: { amount_sat: number; destination_address?: string; max_fee_sat?: number }) =>
+    apiFetch<SwapQuoteResponse>("/api/swaps/loop-out/quote", { method: "POST", body: JSON.stringify(body) }),
+  initiateSwapLoopOut: (body: { swap_request_id: string; destination_address: string }) =>
+    apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/swaps/loop-out", { method: "POST", body: JSON.stringify(body) }),
+  getSwap: (id: string) => apiFetch<SwapDetailResponse>(`/api/swaps/${id}`),
+  getSwapHistory: (limit?: number) => {
+    const q = limit ? `?limit=${limit}` : "";
+    return apiFetch<{ swaps: SwapRequest[] }>(`/api/swaps/history${q}`);
+  },
+  // Swaps — admin
+  adminLoopOutQuote: (body: { amount_sat: number; channel_id?: string }) =>
+    apiFetch<SwapQuoteResponse>("/api/admin/swaps/loop-out/quote", { method: "POST", body: JSON.stringify(body) }),
+  adminLoopOut: (body: { swap_request_id: string; destination_address?: string }) =>
+    apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/admin/swaps/loop-out", { method: "POST", body: JSON.stringify(body) }),
+  adminLoopInQuote: (body: { amount_sat: number }) =>
+    apiFetch<SwapQuoteResponse>("/api/admin/swaps/loop-in/quote", { method: "POST", body: JSON.stringify(body) }),
+  adminLoopIn: (body: { swap_request_id: string }) =>
+    apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/admin/swaps/loop-in", { method: "POST", body: JSON.stringify(body) }),
+  adminSwapList: (limit?: number) => {
+    const q = limit ? `?limit=${limit}` : "";
+    return apiFetch<{ swaps: SwapRequest[] }>(`/api/admin/swaps${q}`);
+  },
+  adminGetSwap: (id: string) => apiFetch<SwapDetailResponse>(`/api/admin/swaps/${id}`),
 };
 
 // ─── Shared helpers ───────────────────────────────────────────────────────
@@ -621,6 +645,68 @@ export type OpenRecommendedChannelResult = {
   peer_id: string;
   peer_label: string;
   funding_txid: string | null;
+};
+
+// ─── Swap types ───────────────────────────────────────────────────────────
+
+export type SwapRequest = {
+  id: string;
+  created_at: number;
+  updated_at: number;
+  node_pubkey: string;
+  role: string;
+  swap_type: string;
+  direction: string;
+  status: string;
+  amount_sat: number;
+  max_fee_sat: number | null;
+  quoted_fee_sat: number | null;
+  actual_fee_sat: number | null;
+  destination_address: string | null;
+  channel_id: string | null;
+  quote_expires_at: number | null;
+  failure_reason: string | null;
+  notes: string | null;
+};
+
+export type SwapExecution = {
+  id: string;
+  swap_request_id: string;
+  provider: string;
+  provider_swap_id: string | null;
+  status: string;
+  raw_provider_status: string | null;
+  onchain_txid: string | null;
+  sweep_txid: string | null;
+  started_at: number;
+  completed_at: number | null;
+};
+
+export type SwapEvent = {
+  id: string;
+  event_type: string;
+  event_json: string;
+  created_at: number;
+};
+
+export type SwapQuoteResponse = {
+  swap_request: SwapRequest;
+  quote: {
+    amount_sat: number;
+    swap_fee_sat: number;
+    total_fee_sat: number;
+    conf_target: number;
+    prepay_sat?: number;
+    miner_fee_sat?: number;
+    htlc_publish_fee_sat?: number;
+  };
+  policy_check: { ok: true } | { ok: false; reason: string; code: string };
+};
+
+export type SwapDetailResponse = {
+  swap_request: SwapRequest;
+  execution: SwapExecution | null;
+  events: SwapEvent[];
 };
 
 /** Resolve a pubkey to a contact name, or fall back to truncated pubkey. */
