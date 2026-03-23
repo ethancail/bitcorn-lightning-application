@@ -13,6 +13,7 @@ import Payments from "./pages/Payments";
 import MemberLiquidity from "./pages/MemberLiquidity";
 import DepositBitcoin from "./pages/DepositBitcoin";
 import WithdrawBitcoin from "./pages/WithdrawBitcoin";
+import SwapOperations from "./pages/SwapOperations";
 
 // ─── Theme initialization ─────────────────────────────────────────────────
 // Runs once on load — checks localStorage, falls back to OS preference.
@@ -191,6 +192,7 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
     { to: "/channels", icon: "◈", label: "Channels" },
     { to: "/payments", icon: "↗", label: "Payments" },
     { to: "/liquidity", icon: "≋", label: "Liquidity" },
+    { to: "/swaps", icon: "⟲", label: "Swaps" },
   ];
 
   return (
@@ -284,6 +286,7 @@ function AppShell() {
           <Route path="/liquidity" element={<LiquidityPage />} />
           <Route path="/deposit" element={<DepositBitcoin />} />
           <Route path="/withdraw" element={<WithdrawBitcoin />} />
+          <Route path="/swaps" element={<SwapOperations />} />
           <Route path="/settings" element={<SettingsPage isTreasury />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
