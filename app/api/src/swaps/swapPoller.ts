@@ -6,10 +6,31 @@ import { listLoopSwaps, type SwapInfo } from "../lightning/loop";
 import { normalizeLoopState, recordSwapEvent } from "./loopProvider";
 
 /**
+ * Mark expired quotes as expired. Called alongside status polling.
+ * Prevents stale quote_created records from accumulating.
+ */
+function cleanupExpiredQuotes(): void {
+  const now = Date.now();
+  const expired = db.prepare(`
+    UPDATE swap_requests
+    SET status = 'expired', updated_at = ?, failure_reason = 'Quote expired'
+    WHERE status = 'quote_created'
+      AND quote_expires_at IS NOT NULL
+      AND quote_expires_at < ?
+  `).run(now, now);
+
+  if (expired.changes > 0) {
+    console.log(`[swap-poller] expired ${expired.changes} stale quote(s)`);
+  }
+}
+
+/**
  * Poll Loop for status updates on in-flight swaps.
  * Called every 15s from index.ts alongside the LND sync loop.
  */
 export async function pollSwapStatuses(): Promise<void> {
+  cleanupExpiredQuotes();
+
   // Find non-terminal executions
   const inflight = db.prepare(`
     SELECT se.*, sr.status AS request_status, sr.id AS req_id

@@ -18,25 +18,24 @@ export async function checkMemberLoopOutPolicy(params: {
 }): Promise<PolicyResult> {
   const { amountSat, maxFeeSat, quotedFeeSat, nodePubkey } = params;
 
-  // Amount bounds
+  // Amount bounds — effective max is the minimum of config, provider terms, and runtime caps
   if (amountSat < ENV.memberMinWithdrawalSat) {
     return { ok: false, reason: `Minimum withdrawal: ${ENV.memberMinWithdrawalSat.toLocaleString()} sats`, code: "below_minimum" };
   }
-  if (amountSat > ENV.memberMaxWithdrawalSat) {
-    return { ok: false, reason: `Maximum withdrawal: ${ENV.memberMaxWithdrawalSat.toLocaleString()} sats`, code: "above_maximum" };
-  }
 
-  // Loop terms
+  let effectiveMax = ENV.memberMaxWithdrawalSat;
   try {
     const terms = await getLoopOutTerms();
     if (amountSat < terms.min_swap_amount) {
       return { ok: false, reason: `Below Loop minimum: ${terms.min_swap_amount.toLocaleString()} sats`, code: "below_loop_minimum" };
     }
-    if (amountSat > terms.max_swap_amount) {
-      return { ok: false, reason: `Above Loop maximum: ${terms.max_swap_amount.toLocaleString()} sats`, code: "above_loop_maximum" };
-    }
+    effectiveMax = Math.min(effectiveMax, terms.max_swap_amount);
   } catch {
     return { ok: false, reason: "Loop service unavailable", code: "loop_unavailable" };
+  }
+
+  if (amountSat > effectiveMax) {
+    return { ok: false, reason: `Maximum withdrawal: ${effectiveMax.toLocaleString()} sats`, code: "above_maximum" };
   }
 
   // Fee cap
@@ -60,6 +59,23 @@ export async function checkMemberLoopOutPolicy(params: {
       ok: false,
       reason: `Daily withdrawal limit exceeded (${ENV.memberMaxDailyWithdrawalSat.toLocaleString()} sats/day)`,
       code: "daily_limit_exceeded",
+    };
+  }
+
+  // Spendable Lightning balance — sum of local balance in active channels.
+  // This is more conservative than LND's aggregate; it reflects what can actually route.
+  const balRow = db.prepare(`
+    SELECT COALESCE(SUM(local_balance_sat), 0) AS spendable
+    FROM lnd_channels WHERE active = 1
+  `).get() as { spendable: number };
+
+  // Need amount + estimated fee to be covered by spendable balance
+  const totalNeeded = amountSat + quotedFeeSat;
+  if (balRow.spendable < totalNeeded) {
+    return {
+      ok: false,
+      reason: `Insufficient Lightning balance (${balRow.spendable.toLocaleString()} spendable, need ${totalNeeded.toLocaleString()})`,
+      code: "insufficient_balance",
     };
   }
 

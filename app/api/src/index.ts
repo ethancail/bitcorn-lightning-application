@@ -114,8 +114,17 @@ persistNodeInfo().catch(err => {
 })();
 
 const server = http.createServer(async (req, res) => {
-  // ✅ CORS HEADERS
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // CORS — restrict to same-origin (Umbrel app proxy) and local dev
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    "http://localhost:3200",
+    "http://localhost:5173",  // Vite dev server
+  ];
+  // Umbrel proxies requests from the same host — allow if origin matches or is absent (same-origin)
+  if (!origin || allowedOrigins.includes(origin) || origin.startsWith("http://umbrel.local") || origin.startsWith("http://10.") || origin.startsWith("http://192.168.")) {
+    res.setHeader("Access-Control-Allow-Origin", origin || "*");
+  }
+  // If origin doesn't match, omit the header — browser will block cross-origin
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
