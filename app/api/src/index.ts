@@ -84,8 +84,6 @@ import {
   handleSwapHistory,
   handleAdminLoopOutQuote,
   handleAdminLoopOut,
-  handleAdminLoopInQuote,
-  handleAdminLoopIn,
   handleAdminSwapList,
   handleAdminGetSwap,
 } from "./swaps/swapRoutes";
@@ -2191,19 +2189,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "POST" && req.url === "/api/admin/swaps/loop-in/quote") {
-    try { await handleAdminLoopInQuote(req, res); } catch (e: any) {
-      res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e.message }));
-    }
-    return;
-  }
-
-  if (req.method === "POST" && req.url === "/api/admin/swaps/loop-in") {
-    try { await handleAdminLoopIn(req, res); } catch (e: any) {
-      res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e.message }));
-    }
+  // Treasury Loop In — removed from active architecture (v1.7.1).
+  // Merchant-side liquidity uses channel lifecycle management, not Loop In.
+  if (req.method === "POST" && (req.url === "/api/admin/swaps/loop-in/quote" || req.url === "/api/admin/swaps/loop-in")) {
+    res.writeHead(410, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      error: "treasury_loop_in_deprecated",
+      message: "Treasury Loop In is not part of the active architecture. Merchant-side liquidity uses channel lifecycle management.",
+    }));
     return;
   }
 

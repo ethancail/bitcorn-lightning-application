@@ -7,7 +7,6 @@ import { assertTreasury } from "../utils/role";
 import { assertActiveMember } from "../utils/membership";
 import {
   createLoopOutQuote,
-  createLoopInQuote,
   initiateSwap,
   getSwapRequest,
   getSwapExecution,
@@ -17,7 +16,6 @@ import {
 import {
   checkMemberLoopOutPolicy,
   checkTreasuryLoopOutPolicy,
-  checkTreasuryLoopInPolicy,
 } from "./swapPolicy";
 import { isLoopAvailable } from "./loopProvider";
 
@@ -177,44 +175,9 @@ export async function handleAdminLoopOut(req: IncomingMessage, res: Res): Promis
   json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
 }
 
-export async function handleAdminLoopInQuote(req: IncomingMessage, res: Res): Promise<void> {
-  const node = getNodeInfo();
-  assertTreasury(node?.node_role);
-
-  const body = JSON.parse(await parseBody(req));
-  const amountSat = Number(body.amount_sat);
-  if (!amountSat || amountSat <= 0) return json(res, 400, { error: "invalid_amount" });
-
-  const { swapRequest, quote } = await createLoopInQuote({
-    nodePubkey: node!.pubkey,
-    role: "treasury",
-    amountSat,
-  });
-
-  const policy = await checkTreasuryLoopInPolicy({ amountSat, quotedFeeSat: quote.total_fee_sat });
-  json(res, 200, { swap_request: swapRequest, quote, policy_check: policy });
-}
-
-export async function handleAdminLoopIn(req: IncomingMessage, res: Res): Promise<void> {
-  const node = getNodeInfo();
-  assertTreasury(node?.node_role);
-
-  const body = JSON.parse(await parseBody(req));
-  const swapRequestId = body.swap_request_id as string;
-  if (!swapRequestId) return json(res, 400, { error: "swap_request_id_required" });
-
-  const existing = getSwapRequest(swapRequestId);
-  if (!existing) return json(res, 404, { error: "swap_request_not_found" });
-
-  const policy = await checkTreasuryLoopInPolicy({
-    amountSat: existing.amount_sat,
-    quotedFeeSat: existing.quoted_fee_sat ?? 0,
-  });
-  if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
-
-  const result = await initiateSwap(swapRequestId);
-  json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
-}
+// Treasury Loop In handlers removed from active architecture (v1.7.1).
+// Merchant-side liquidity uses channel lifecycle management, not Loop In.
+// Low-level gRPC support retained in loop.ts / loopProvider.ts for potential future use.
 
 export async function handleAdminSwapList(req: IncomingMessage, res: Res): Promise<void> {
   const node = getNodeInfo();

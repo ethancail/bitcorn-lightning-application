@@ -194,6 +194,9 @@ export async function checkTreasuryLoopOutPolicy(params: {
 
 // ─── Treasury Loop In ────────────────────────────────────────────────────
 
+// INACTIVE: Treasury Loop In removed from active architecture (v1.7.1).
+// Merchant-side liquidity uses channel lifecycle management, not Loop In.
+// Function retained for potential future use but not called from any active route.
 export async function checkTreasuryLoopInPolicy(params: {
   amountSat: number;
   quotedFeeSat: number;
