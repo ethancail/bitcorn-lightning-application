@@ -5,7 +5,9 @@ import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
 type Phase = "form" | "quoting" | "quoted" | "initiating" | "tracking";
-type Tab = "loop_out" | "loop_in";
+// Treasury Loop In removed from active architecture (v1.7.1).
+// Merchant-side liquidity uses channel lifecycle management, not Loop In.
+type Tab = "loop_out";
 
 function statusBadge(status: string): { label: string; cls: string } {
   switch (status) {
@@ -796,26 +798,11 @@ export default function SwapOperations() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Swap Operations</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Treasury Loop In and Loop Out swap management
+          Treasury Loop Out swap management
         </p>
       </div>
 
-      <div className="payment-tabs">
-        <button
-          className={`payment-tab ${tab === "loop_out" ? "active" : ""}`}
-          onClick={() => setTab("loop_out")}
-        >
-          Loop Out
-        </button>
-        <button
-          className={`payment-tab ${tab === "loop_in" ? "active" : ""}`}
-          onClick={() => setTab("loop_in")}
-        >
-          Loop In
-        </button>
-      </div>
-
-      {tab === "loop_out" ? <LoopOutTab /> : <LoopInTab />}
+      <LoopOutTab />
 
       <SwapHistory />
     </div>

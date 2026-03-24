@@ -95,6 +95,8 @@ export async function createLoopOutQuote(params: {
   };
 }
 
+// INACTIVE: Treasury Loop In quote creation — not called from active routes.
+// Retained for potential future use. See merchant channel lifecycle doc.
 export async function createLoopInQuote(params: {
   nodePubkey: string;
   role: "treasury";

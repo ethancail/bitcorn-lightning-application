@@ -482,7 +482,7 @@ export default function MemberDashboard() {
                           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                             <span style={{ color: "var(--text-2)" }}>Recommended</span>
                             <span className="td-mono" style={{ fontWeight: 600 }}>
-                              {rec.action === "loop_out" ? "Loop Out" : "Loop In"}{" "}
+                              {rec.action === "loop_out" ? "Loop Out" : "Contact hub operator"}{" "}
                               {rec.suggestedAmountSats.toLocaleString()} sats
                             </span>
                           </div>

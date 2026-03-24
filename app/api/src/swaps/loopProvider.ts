@@ -118,7 +118,10 @@ export async function initiateLoopOut(params: {
   }));
 }
 
-// ─── Loop In provider ────────────────────────────────────────────────────
+// ─── Loop In provider (inactive — retained as low-level support) ─────────
+// Treasury Loop In removed from active product architecture (v1.7.1).
+// Merchant channels use lifecycle management instead. These functions are
+// retained for potential future use but are not called from active routes.
 
 export type LoopInQuoteResult = {
   amount_sat: number;
