@@ -147,10 +147,8 @@ export const api = {
     apiFetch<SwapQuoteResponse>("/api/admin/swaps/loop-out/quote", { method: "POST", body: JSON.stringify(body) }),
   adminLoopOut: (body: { swap_request_id: string; destination_address?: string }) =>
     apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/admin/swaps/loop-out", { method: "POST", body: JSON.stringify(body) }),
-  adminLoopInQuote: (body: { amount_sat: number }) =>
-    apiFetch<SwapQuoteResponse>("/api/admin/swaps/loop-in/quote", { method: "POST", body: JSON.stringify(body) }),
-  adminLoopIn: (body: { swap_request_id: string }) =>
-    apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/admin/swaps/loop-in", { method: "POST", body: JSON.stringify(body) }),
+  // adminLoopInQuote / adminLoopIn — removed from active architecture (v1.7.1).
+  // Treasury Loop In endpoints return 410. Merchant liquidity uses channel lifecycle.
   adminSwapList: (limit?: number) => {
     const q = limit ? `?limit=${limit}` : "";
     return apiFetch<{ swaps: SwapRequest[] }>(`/api/admin/swaps${q}`);
