@@ -229,16 +229,6 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
                   Deposit Bitcoin
                 </NavLink>
               </div>
-              <div className="sidebar-section">
-                <NavLink
-                  to="/withdraw"
-                  className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
-                  onClick={onClose}
-                >
-                  <span className="icon">↗</span>
-                  Withdraw Bitcoin
-                </NavLink>
-              </div>
             </>
           )}
         </React.Fragment>
@@ -285,7 +275,6 @@ function AppShell() {
           <Route path="/payments" element={<Payments title="Payments" />} />
           <Route path="/liquidity" element={<LiquidityPage />} />
           <Route path="/deposit" element={<DepositBitcoin />} />
-          <Route path="/withdraw" element={<WithdrawBitcoin />} />
           <Route path="/swaps" element={<SwapOperations />} />
           <Route path="/settings" element={<SettingsPage isTreasury />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
