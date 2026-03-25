@@ -95,6 +95,8 @@ export const api = {
     apiFetch<PaymentResult>("/api/network/pay", { method: "POST", body: JSON.stringify({ payment_request }) }),
   syncSettlements: () =>
     apiFetch<{ ok: boolean; updated: number }>("/api/network/sync-settlements", { method: "POST" }),
+  deletePayment: (id: number) =>
+    apiFetch<{ ok: boolean; deleted_id: number }>(`/api/network/payments/${id}`, { method: "DELETE" }),
   // Member Liquidity Advisor (member node)
   getMemberLiquidityStatus: () => apiFetch<MemberLiquidityStatusResponse>("/api/liquidity/status"),
   getMemberLiquidityHistory: (channelId: string, limit?: number) => {
