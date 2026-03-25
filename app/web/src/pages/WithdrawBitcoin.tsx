@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import QRCode from "qrcode";
 import { api, fmtSats } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 
@@ -19,8 +20,6 @@ function statusBadge(status: string): { label: string; cls: string } {
       return { label: "Complete", cls: "badge-green" };
     case "failed":
       return { label: "Failed", cls: "badge-red" };
-    case "quoted":
-      return { label: "Quoted", cls: "badge-muted" };
     case "expired":
       return { label: "Expired", cls: "badge-muted" };
     default:
@@ -63,34 +62,89 @@ function formatDate(epoch: number): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function copyToClipboard(text: string) {
+  try {
+    navigator.clipboard.writeText(text).catch(fallback);
+  } catch {
+    fallback();
+  }
+  function fallback() {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    document.body.removeChild(ta);
+  }
+}
+
 export default function WithdrawBitcoin() {
-  // ─── Form state ─────────────────────────────────────────────────────────
+  // ─── Address state (generated on load, like Deposit Bitcoin) ───────────
+  const [address, setAddress] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [addressLoading, setAddressLoading] = useState(true);
+  const [addressError, setAddressError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // ─── Form state ───────────────────────────────────────────────────────
   const [stage, setStage] = useState<Stage>("form");
   const [amount, setAmount] = useState(250_000);
-  const [address, setAddress] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [maxFee, setMaxFee] = useState<number | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
-  // ─── Quote state ────────────────────────────────────────────────────────
+  // ─── Quote state ──────────────────────────────────────────────────────
   const [quoteResp, setQuoteResp] = useState<SwapQuoteResponse | null>(null);
   const [countdown, setCountdown] = useState("");
 
-  // ─── Tracking state ─────────────────────────────────────────────────────
+  // ─── Tracking state ───────────────────────────────────────────────────
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [trackingSwap, setTrackingSwap] = useState<SwapRequest | null>(null);
 
-  // ─── History state ──────────────────────────────────────────────────────
+  // ─── History state ────────────────────────────────────────────────────
   const [history, setHistory] = useState<SwapRequest[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // ─── Load history on mount ──────────────────────────────────────────────
+  // ─── Generate address on mount ────────────────────────────────────────
   useEffect(() => {
+    generateAddress();
     loadHistory();
   }, []);
+
+  async function generateAddress() {
+    setAddressLoading(true);
+    setAddressError(null);
+    try {
+      const { address: addr } = await api.getNodeAddress();
+      setAddress(addr);
+      const url = await QRCode.toDataURL(`bitcoin:${addr}`, {
+        width: 220,
+        margin: 2,
+        color: { dark: "#000000", light: "#ffffff" },
+      });
+      setQrDataUrl(url);
+    } catch {
+      setAddressError("Failed to generate address");
+    } finally {
+      setAddressLoading(false);
+    }
+  }
+
+  function handleCopy() {
+    if (!address) return;
+    copyToClipboard(address);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleNewAddress() {
+    setCopied(false);
+    setQrDataUrl(null);
+    generateAddress();
+  }
 
   function loadHistory() {
     setHistoryLoading(true);
@@ -101,7 +155,7 @@ export default function WithdrawBitcoin() {
       .finally(() => setHistoryLoading(false));
   }
 
-  // ─── Countdown timer for quote expiry ───────────────────────────────────
+  // ─── Countdown timer for quote expiry ─────────────────────────────────
   useEffect(() => {
     if (stage === "quoted" && quoteResp?.swap_request.quote_expires_at) {
       const expiresMs =
@@ -121,18 +175,15 @@ export default function WithdrawBitcoin() {
       };
       tick();
       countdownRef.current = setInterval(tick, 1000);
-      return () => {
-        if (countdownRef.current) clearInterval(countdownRef.current);
-      };
+      return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
     }
   }, [stage, quoteResp]);
 
-  // ─── Poll tracking status ──────────────────────────────────────────────
+  // ─── Poll tracking status ─────────────────────────────────────────────
   useEffect(() => {
     if (stage === "tracking" && trackingId) {
       const poll = () => {
-        api
-          .getSwap(trackingId)
+        api.getSwap(trackingId)
           .then((detail) => {
             setTrackingSwap(detail.swap_request);
             if (isTerminal(detail.swap_request.status)) {
@@ -144,31 +195,21 @@ export default function WithdrawBitcoin() {
       };
       poll();
       pollRef.current = setInterval(poll, 15_000);
-      return () => {
-        if (pollRef.current) clearInterval(pollRef.current);
-      };
+      return () => { if (pollRef.current) clearInterval(pollRef.current); };
     }
   }, [stage, trackingId]);
 
-  // ─── Get Quote ─────────────────────────────────────────────────────────
+  // ─── Get Quote ────────────────────────────────────────────────────────
   async function handleGetQuote() {
     setError(null);
-    if (amount < 250_000) {
-      setError("Minimum withdrawal is 250,000 sats");
-      return;
-    }
-    if (!address.trim()) {
-      setError("Bitcoin address is required");
-      return;
-    }
+    if (amount < 250_000) { setError("Minimum withdrawal is 250,000 sats"); return; }
+    if (!address) { setError("No destination address — try generating a new one"); return; }
     setStage("quoting");
     try {
-      const body: { amount_sat: number; destination_address?: string; max_fee_sat?: number } = {
+      const resp = await api.getSwapLoopOutQuote({
         amount_sat: amount,
-        destination_address: address.trim(),
-      };
-      if (maxFee !== undefined && maxFee > 0) body.max_fee_sat = maxFee;
-      const resp = await api.getSwapLoopOutQuote(body);
+        destination_address: address,
+      });
       setQuoteResp(resp);
       setStage("quoted");
     } catch (e: any) {
@@ -177,15 +218,15 @@ export default function WithdrawBitcoin() {
     }
   }
 
-  // ─── Confirm withdrawal ────────────────────────────────────────────────
+  // ─── Confirm withdrawal ───────────────────────────────────────────────
   async function handleConfirm() {
-    if (!quoteResp) return;
+    if (!quoteResp || !address) return;
     setError(null);
     setStage("initiating");
     try {
       const resp = await api.initiateSwapLoopOut({
         swap_request_id: quoteResp.swap_request.id,
-        destination_address: address.trim(),
+        destination_address: address,
       });
       setTrackingId(resp.swap_request.id);
       setTrackingSwap(resp.swap_request);
@@ -196,7 +237,7 @@ export default function WithdrawBitcoin() {
     }
   }
 
-  // ─── Reset to form ─────────────────────────────────────────────────────
+  // ─── Reset to form ────────────────────────────────────────────────────
   function handleReset() {
     setStage("form");
     setQuoteResp(null);
@@ -206,6 +247,7 @@ export default function WithdrawBitcoin() {
     setCountdown("");
     if (pollRef.current) clearInterval(pollRef.current);
     if (countdownRef.current) clearInterval(countdownRef.current);
+    generateAddress();
     loadHistory();
   }
 
@@ -218,16 +260,69 @@ export default function WithdrawBitcoin() {
         </p>
       </div>
 
-      {/* ─── Withdrawal Form ─────────────────────────────────────────── */}
+      {/* ─── Destination Address (pre-generated, like Deposit Bitcoin) ── */}
+      {(stage === "form" || stage === "quoting") && (
+        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <span className="panel-title">
+              <span className="icon">↗</span>Withdrawal Address
+            </span>
+            <span className="badge badge-muted">on-chain destination</span>
+          </div>
+          <div className="panel-body" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "24px" }}>
+            {addressLoading ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                <div className="loading-shimmer" style={{ width: 220, height: 220, borderRadius: 8 }} />
+                <div className="loading-shimmer" style={{ width: 280, height: 16, borderRadius: 4 }} />
+              </div>
+            ) : addressError ? (
+              <div className="empty-state">{addressError}</div>
+            ) : (
+              <>
+                {qrDataUrl && (
+                  <div style={{ background: "#ffffff", padding: 12, borderRadius: 10 }}>
+                    <img src={qrDataUrl} alt="Withdrawal address QR" style={{ display: "block", width: 220, height: 220 }} />
+                  </div>
+                )}
+                <div
+                  style={{
+                    fontFamily: "var(--mono)",
+                    fontSize: "0.75rem",
+                    color: "var(--text-2)",
+                    wordBreak: "break-all",
+                    textAlign: "center",
+                    maxWidth: 360,
+                    lineHeight: 1.6,
+                  }}
+                >
+                  {address}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn btn-outline btn-sm" onClick={handleCopy}>
+                    {copied ? "Copied" : "Copy Address"}
+                  </button>
+                  <button className="btn btn-outline btn-sm" onClick={handleNewAddress}>
+                    New Address
+                  </button>
+                </div>
+                <p className="text-dim" style={{ fontSize: "0.6875rem", textAlign: "center", maxWidth: 320, lineHeight: 1.5 }}>
+                  Your withdrawn bitcoin will be sent to this address. Generate a new address if you prefer a fresh one for privacy.
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Amount + Get Quote ────────────────────────────────────────── */}
       {(stage === "form" || stage === "quoting") && (
         <div className="panel fade-in">
           <div className="panel-header">
             <span className="panel-title">
-              <span className="icon">↗</span>Withdrawal Details
+              <span className="icon">≡</span>Withdrawal Amount
             </span>
           </div>
-          <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Amount */}
+          <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <div>
               <label className="form-label">Amount (sats)</label>
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
@@ -250,67 +345,21 @@ export default function WithdrawBitcoin() {
                 min={250000}
                 step={10000}
                 value={amount}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (!isNaN(val)) setAmount(val);
-                }}
+                onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setAmount(v); }}
                 placeholder="250000"
               />
+              <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
+                Minimum: 250,000 sats. Maximum: 2,000,000 sats.
+              </p>
             </div>
 
-            {/* Destination address */}
-            <div>
-              <label className="form-label">Bitcoin Address</label>
-              <input
-                type="text"
-                className="form-input"
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="bc1q..."
-                style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
-              />
-            </div>
-
-            {/* Advanced toggle */}
-            <div>
-              <button
-                className="btn btn-ghost"
-                style={{ fontSize: "0.75rem", padding: "2px 0" }}
-                onClick={() => setShowAdvanced(!showAdvanced)}
-              >
-                {showAdvanced ? "Hide advanced options" : "Advanced options"}
-              </button>
-              {showAdvanced && (
-                <div style={{ marginTop: 8 }}>
-                  <label className="form-label">Max Fee (sats, optional)</label>
-                  <input
-                    type="number"
-                    className="form-input"
-                    min={0}
-                    step={100}
-                    value={maxFee ?? ""}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      setMaxFee(isNaN(val) ? undefined : val);
-                    }}
-                    placeholder="Auto"
-                  />
-                  <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
-                    Leave empty to use the default fee policy. Set a cap to reject quotes above this fee.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {error && (
-              <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>
-            )}
+            {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
 
             <button
               className="btn btn-primary"
               style={{ width: "100%" }}
               onClick={handleGetQuote}
-              disabled={stage === "quoting"}
+              disabled={stage === "quoting" || addressLoading || !address}
             >
               {stage === "quoting" ? "Getting quote..." : "Get Quote"}
             </button>
@@ -318,7 +367,7 @@ export default function WithdrawBitcoin() {
         </div>
       )}
 
-      {/* ─── Quote Panel ─────────────────────────────────────────────── */}
+      {/* ─── Quote Panel ──────────────────────────────────────────────── */}
       {(stage === "quoted" || stage === "initiating") && quoteResp && (
         <div className="panel fade-in">
           <div className="panel-header">
@@ -353,14 +402,7 @@ export default function WithdrawBitcoin() {
               </div>
             </div>
 
-            <div
-              style={{
-                fontFamily: "var(--mono)",
-                fontSize: "0.75rem",
-                color: "var(--text-3)",
-                wordBreak: "break-all",
-              }}
-            >
+            <div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-3)", wordBreak: "break-all" }}>
               To: {address}
             </div>
 
@@ -368,16 +410,12 @@ export default function WithdrawBitcoin() {
               <div className="alert warning" style={{ marginBottom: 0 }}>
                 <span className="alert-icon">⚠</span>
                 <div className="alert-body">
-                  <div className="alert-msg">
-                    {(quoteResp.policy_check as { reason: string }).reason}
-                  </div>
+                  <div className="alert-msg">{(quoteResp.policy_check as { reason: string }).reason}</div>
                 </div>
               </div>
             )}
 
-            {error && (
-              <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>
-            )}
+            {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
 
             <div style={{ display: "flex", gap: 8 }}>
               <button
@@ -388,11 +426,7 @@ export default function WithdrawBitcoin() {
               >
                 {stage === "initiating" ? "Processing..." : "Confirm Withdrawal"}
               </button>
-              <button
-                className="btn btn-outline"
-                onClick={handleReset}
-                disabled={stage === "initiating"}
-              >
+              <button className="btn btn-outline" onClick={handleReset} disabled={stage === "initiating"}>
                 Cancel
               </button>
             </div>
@@ -400,7 +434,7 @@ export default function WithdrawBitcoin() {
         </div>
       )}
 
-      {/* ─── Status Tracking Panel ───────────────────────────────────── */}
+      {/* ─── Status Tracking Panel ────────────────────────────────────── */}
       {stage === "tracking" && trackingSwap && (
         <div className="panel fade-in">
           <div className="panel-header">
@@ -415,29 +449,18 @@ export default function WithdrawBitcoin() {
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
               <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
                 <div className="stat-label">Amount</div>
-                <div className="stat-value" style={{ fontSize: "1.125rem" }}>
-                  {fmtSats(trackingSwap.amount_sat)}
-                </div>
+                <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(trackingSwap.amount_sat)}</div>
               </div>
               {trackingSwap.actual_fee_sat != null && (
                 <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
                   <div className="stat-label">Actual Fee</div>
-                  <div className="stat-value" style={{ fontSize: "1.125rem" }}>
-                    {fmtSats(trackingSwap.actual_fee_sat)}
-                  </div>
+                  <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(trackingSwap.actual_fee_sat)}</div>
                 </div>
               )}
             </div>
 
             {trackingSwap.destination_address && (
-              <div
-                style={{
-                  fontFamily: "var(--mono)",
-                  fontSize: "0.75rem",
-                  color: "var(--text-3)",
-                  wordBreak: "break-all",
-                }}
-              >
+              <div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-3)", wordBreak: "break-all" }}>
                 To: {trackingSwap.destination_address}
               </div>
             )}
@@ -456,14 +479,7 @@ export default function WithdrawBitcoin() {
               {!isTerminal(trackingSwap.status) && (
                 <span
                   className="loading-shimmer"
-                  style={{
-                    display: "inline-block",
-                    width: 12,
-                    height: 12,
-                    borderRadius: "50%",
-                    marginLeft: 8,
-                    verticalAlign: "middle",
-                  }}
+                  style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", marginLeft: 8, verticalAlign: "middle" }}
                 />
               )}
             </div>
@@ -477,7 +493,7 @@ export default function WithdrawBitcoin() {
         </div>
       )}
 
-      {/* ─── Recent Withdrawals ──────────────────────────────────────── */}
+      {/* ─── Recent Withdrawals ───────────────────────────────────────── */}
       <div className="panel fade-in" style={{ marginTop: 20 }}>
         <div className="panel-header">
           <span className="panel-title">
@@ -514,9 +530,7 @@ export default function WithdrawBitcoin() {
                       <tr key={s.id}>
                         <td>{formatDate(s.created_at)}</td>
                         <td className="td-num td-mono">{s.amount_sat.toLocaleString()}</td>
-                        <td>
-                          <span className={`badge ${badge.cls}`}>{badge.label}</span>
-                        </td>
+                        <td><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
                         <td className="td-num td-mono">
                           {s.actual_fee_sat != null
                             ? s.actual_fee_sat.toLocaleString()
