@@ -81,6 +81,7 @@ export default function Payments({ title }: { title: string }) {
               contacts={contacts}
               rate={rate}
               onClose={() => setSelectedPayment(null)}
+              onDeleted={() => { setSelectedPayment(null); loadPayments(); }}
             />
           </div>
         </div>
@@ -481,23 +482,17 @@ function PaymentDetail({
   contacts,
   rate,
   onClose,
+  onDeleted,
 }: {
   payment: NetworkPayment;
   contacts: Contact[];
   rate: number | null;
   onClose: () => void;
+  onDeleted: () => void;
 }) {
-  // const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [copied, setCopied] = useState(false);
-
-  // QR code disabled — payments should route through the BitCorn app
-  // useEffect(() => {
-  //   if (p.payment_request && p.direction === "receive") {
-  //     QRCode.toDataURL(p.payment_request.toUpperCase(), {
-  //       width: 280, margin: 2, color: { dark: "#000000", light: "#ffffff" },
-  //     }).then(setQrDataUrl).catch(() => {});
-  //   }
-  // }, [p.payment_request, p.direction]);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleCopy = () => {
     if (!p.payment_request) return;
@@ -505,6 +500,21 @@ function PaymentDetail({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deletePayment(p.id);
+      onDeleted();
+    } catch (e: any) {
+      setDeleteError(e.message ?? "Failed to delete");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const canDelete = p.status !== "succeeded";
 
   const dirLabel = p.direction === "send" ? "Sent" : "Received";
   const statusBadge: Record<string, { label: string; cls: string }> = {
@@ -516,14 +526,26 @@ function PaymentDetail({
   const sBadge = statusBadge[p.status] || { label: p.status, cls: "badge-muted" };
 
   return (
-    <div className="invoice-display">
-      {/* QR code disabled — payments should route through the BitCorn app
-      {p.direction === "receive" && qrDataUrl && (
-        <div style={{ textAlign: "center" }}>
-          <img src={qrDataUrl} alt="Invoice QR code" className="invoice-qr" />
-        </div>
-      )}
-      */}
+    <div className="invoice-display" style={{ position: "relative" }}>
+      {/* X close button — top right */}
+      <button
+        onClick={onClose}
+        style={{
+          position: "absolute",
+          top: 8,
+          right: 8,
+          background: "none",
+          border: "none",
+          color: "var(--text-3)",
+          fontSize: "1.25rem",
+          cursor: "pointer",
+          padding: "4px 8px",
+          lineHeight: 1,
+        }}
+        title="Close"
+      >
+        ✕
+      </button>
 
       <div style={{ textAlign: "center", margin: "16px 0 8px", fontSize: "1.25rem", fontWeight: 600 }}>
         {fmtSats(p.amount_sats)}
@@ -587,18 +609,24 @@ function PaymentDetail({
             <button className="btn btn-primary" onClick={handleCopy} style={{ flex: 1 }}>
               {copied ? "Copied!" : "Copy Invoice"}
             </button>
-            <button className="btn btn-outline" onClick={onClose}>
-              Close
-            </button>
+            {canDelete && (
+              <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
+                {deleting ? "Deleting..." : "Delete"}
+              </button>
+            )}
           </div>
         </>
       )}
 
-      {/* Close button for sent payments */}
-      {p.direction === "send" && (
-        <button className="btn btn-outline" onClick={onClose} style={{ marginTop: 4 }}>
-          Close
+      {/* Delete button for failed/pending sent payments */}
+      {p.direction === "send" && canDelete && (
+        <button className="btn btn-danger" onClick={handleDelete} disabled={deleting} style={{ marginTop: 4 }}>
+          {deleting ? "Deleting..." : "Delete"}
         </button>
+      )}
+
+      {deleteError && (
+        <div style={{ color: "var(--red)", fontSize: "0.8125rem", marginTop: 8 }}>{deleteError}</div>
       )}
     </div>
   );

@@ -1810,6 +1810,36 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Delete a pending/failed/expired payment record (not succeeded — those are audit records)
+  if (req.method === "DELETE" && req.url?.startsWith("/api/network/payments/")) {
+    const paymentId = req.url.split("/api/network/payments/")[1]?.split("?")[0];
+    if (!paymentId) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "payment_id_required" }));
+      return;
+    }
+    try {
+      const row = db.prepare("SELECT id, status FROM network_payments WHERE id = ?").get(Number(paymentId)) as { id: number; status: string } | undefined;
+      if (!row) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "payment_not_found" }));
+        return;
+      }
+      if (row.status === "succeeded") {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "cannot_delete_succeeded_payment" }));
+        return;
+      }
+      db.prepare("DELETE FROM network_payments WHERE id = ?").run(row.id);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, deleted_id: row.id }));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "delete_failed" }));
+    }
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/network/decode") {
     let body = "";
     req.on("data", (chunk) => (body += chunk));
