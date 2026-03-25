@@ -4,6 +4,7 @@ import { createLndInvoice, getLndClient } from "./lnd";
 import { payInvoice } from "./pay";
 import { insertOutboundPayment } from "./persist-payments";
 import { assertRateLimit } from "../utils/rate-limit";
+import { ENV } from "../config/env";
 
 // ─── Exchange rate ───────────────────────────────────────────────────────────
 
@@ -248,13 +249,20 @@ export function getNetworkPayments(options?: {
 export function syncNetworkInvoiceSettlements(): { updated: number } {
   // Find pending receive payments whose payment_hash now appears in payments_inbound
   const pending = db.prepare(`
-    SELECT np.id, np.payment_hash
+    SELECT np.id, np.payment_hash, np.counterparty_pubkey
     FROM network_payments np
     WHERE np.direction = 'receive' AND np.status = 'pending'
-  `).all() as Array<{ id: number; payment_hash: string }>;
+  `).all() as Array<{ id: number; payment_hash: string; counterparty_pubkey: string | null }>;
 
   let updated = 0;
   const now = Date.now();
+
+  // Infer counterparty for received payments:
+  // On member nodes, all payments arrive through the treasury channel → counterparty is treasury.
+  // On treasury nodes, try to resolve from forwarding records (incoming_channel → peer).
+  const nodeInfo = db.prepare("SELECT node_role, pubkey FROM lnd_node_info WHERE id = 1").get() as
+    { node_role: string; pubkey: string } | undefined;
+  const isTreasury = nodeInfo?.node_role === "treasury";
 
   for (const p of pending) {
     const settled = db.prepare(`
@@ -262,10 +270,37 @@ export function syncNetworkInvoiceSettlements(): { updated: number } {
     `).get(p.payment_hash) as { settled_at: number } | undefined;
 
     if (settled) {
+      // Resolve counterparty if not already set
+      let counterparty = p.counterparty_pubkey;
+      if (!counterparty) {
+        if (!isTreasury && ENV.treasuryPubkey) {
+          // Member node: all received payments come through the treasury
+          counterparty = ENV.treasuryPubkey;
+        }
+        // Treasury: could try to match from payments_forwarded, but the
+        // payment_hash won't match forwarded records directly (forwarded
+        // payments use different hashes). Leave null for treasury receives.
+      }
+
       db.prepare(`
-        UPDATE network_payments SET status = 'succeeded', settled_at = ? WHERE id = ?
-      `).run(settled.settled_at || now, p.id);
+        UPDATE network_payments
+        SET status = 'succeeded', settled_at = ?, counterparty_pubkey = COALESCE(?, counterparty_pubkey)
+        WHERE id = ?
+      `).run(settled.settled_at || now, counterparty, p.id);
       updated++;
+    }
+  }
+
+  // Backfill: on member nodes, set counterparty for any succeeded receives missing it
+  if (!isTreasury && ENV.treasuryPubkey) {
+    const backfilled = db.prepare(`
+      UPDATE network_payments
+      SET counterparty_pubkey = ?
+      WHERE direction = 'receive' AND status = 'succeeded'
+        AND (counterparty_pubkey IS NULL OR counterparty_pubkey = '')
+    `).run(ENV.treasuryPubkey);
+    if (backfilled.changes > 0) {
+      console.log(`[network-payments] backfilled counterparty on ${backfilled.changes} received payment(s)`);
     }
   }
 
