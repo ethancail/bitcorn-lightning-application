@@ -133,6 +133,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  treasuryCloseChannel: (body: { channel_id: string; is_force_close?: boolean }) =>
+    apiFetch<{ ok: boolean; closing_txid: string | null }>("/api/treasury/rotation/execute", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   // Recommended peers
   getRecommendedPeers: () => apiFetch<RecommendedPeer[]>("/api/network/recommended-peers"),
   openRecommendedChannel: (peerId: string, localFundingAmountSat: number) =>
