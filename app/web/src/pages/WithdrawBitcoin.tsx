@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import QRCode from "qrcode";
 import { api, fmtSats } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 
@@ -81,11 +80,9 @@ function copyToClipboard(text: string) {
 }
 
 export default function WithdrawBitcoin() {
-  // ─── Address state (generated on load, like Deposit Bitcoin) ───────────
+  // ─── Address state (generated on load) ──────────────────────────────────
   const [address, setAddress] = useState<string | null>(null);
-  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [addressLoading, setAddressLoading] = useState(true);
-  const [addressError, setAddressError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   // ─── Form state ───────────────────────────────────────────────────────
@@ -116,18 +113,11 @@ export default function WithdrawBitcoin() {
 
   async function generateAddress() {
     setAddressLoading(true);
-    setAddressError(null);
     try {
       const { address: addr } = await api.getNodeAddress();
       setAddress(addr);
-      const url = await QRCode.toDataURL(`bitcoin:${addr}`, {
-        width: 220,
-        margin: 2,
-        color: { dark: "#000000", light: "#ffffff" },
-      });
-      setQrDataUrl(url);
     } catch {
-      setAddressError("Failed to generate address");
+      setAddress(null);
     } finally {
       setAddressLoading(false);
     }
@@ -142,7 +132,6 @@ export default function WithdrawBitcoin() {
 
   function handleNewAddress() {
     setCopied(false);
-    setQrDataUrl(null);
     generateAddress();
   }
 
@@ -260,69 +249,16 @@ export default function WithdrawBitcoin() {
         </p>
       </div>
 
-      {/* ─── Destination Address (pre-generated, like Deposit Bitcoin) ── */}
-      {(stage === "form" || stage === "quoting") && (
-        <div className="panel fade-in" style={{ marginBottom: 16 }}>
-          <div className="panel-header">
-            <span className="panel-title">
-              <span className="icon">↗</span>Withdrawal Address
-            </span>
-            <span className="badge badge-muted">on-chain destination</span>
-          </div>
-          <div className="panel-body" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16, padding: "24px" }}>
-            {addressLoading ? (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-                <div className="loading-shimmer" style={{ width: 220, height: 220, borderRadius: 8 }} />
-                <div className="loading-shimmer" style={{ width: 280, height: 16, borderRadius: 4 }} />
-              </div>
-            ) : addressError ? (
-              <div className="empty-state">{addressError}</div>
-            ) : (
-              <>
-                {qrDataUrl && (
-                  <div style={{ background: "#ffffff", padding: 12, borderRadius: 10 }}>
-                    <img src={qrDataUrl} alt="Withdrawal address QR" style={{ display: "block", width: 220, height: 220 }} />
-                  </div>
-                )}
-                <div
-                  style={{
-                    fontFamily: "var(--mono)",
-                    fontSize: "0.75rem",
-                    color: "var(--text-2)",
-                    wordBreak: "break-all",
-                    textAlign: "center",
-                    maxWidth: 360,
-                    lineHeight: 1.6,
-                  }}
-                >
-                  {address}
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn btn-outline btn-sm" onClick={handleCopy}>
-                    {copied ? "Copied" : "Copy Address"}
-                  </button>
-                  <button className="btn btn-outline btn-sm" onClick={handleNewAddress}>
-                    New Address
-                  </button>
-                </div>
-                <p className="text-dim" style={{ fontSize: "0.6875rem", textAlign: "center", maxWidth: 320, lineHeight: 1.5 }}>
-                  Your withdrawn bitcoin will be sent to this address. Generate a new address if you prefer a fresh one for privacy.
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ─── Amount + Get Quote ────────────────────────────────────────── */}
+      {/* ─── Withdrawal Amount + Destination Address ──────────────────── */}
       {(stage === "form" || stage === "quoting") && (
         <div className="panel fade-in">
           <div className="panel-header">
             <span className="panel-title">
-              <span className="icon">≡</span>Withdrawal Amount
+              <span className="icon">↗</span>Withdrawal Amount
             </span>
           </div>
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {/* Amount */}
             <div>
               <label className="form-label">Amount (sats)</label>
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
@@ -350,6 +286,55 @@ export default function WithdrawBitcoin() {
               />
               <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
                 Minimum: 250,000 sats. Maximum: 2,000,000 sats.
+              </p>
+            </div>
+
+            {/* Destination address */}
+            <div>
+              <label className="form-label">Destination Address</label>
+              {addressLoading ? (
+                <div className="loading-shimmer" style={{ height: 40, borderRadius: 6 }} />
+              ) : address ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "10px 14px",
+                    background: "var(--bg-3)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                  }}
+                >
+                  <div
+                    style={{
+                      flex: 1,
+                      fontFamily: "var(--mono)",
+                      fontSize: "0.75rem",
+                      color: "var(--text-2)",
+                      wordBreak: "break-all",
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {address}
+                  </div>
+                  <button className="btn btn-outline btn-sm" style={{ flexShrink: 0 }} onClick={handleCopy}>
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                  <button className="btn btn-outline btn-sm" style={{ flexShrink: 0 }} onClick={handleNewAddress}>
+                    New
+                  </button>
+                </div>
+              ) : (
+                <div style={{ color: "var(--text-3)", fontSize: "0.8125rem" }}>
+                  Failed to generate address —{" "}
+                  <button className="btn btn-ghost" style={{ fontSize: "0.8125rem", padding: 0 }} onClick={generateAddress}>
+                    retry
+                  </button>
+                </div>
+              )}
+              <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
+                Your withdrawn bitcoin will be sent to this on-chain address.
               </p>
             </div>
 
