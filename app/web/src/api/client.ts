@@ -125,6 +125,8 @@ export const api = {
     const q = qs.toString();
     return apiFetch<LiquidityOutcomesResponse>(`/api/member-liquidity/outcomes${q ? `?${q}` : ""}`);
   },
+  // Pending channels
+  getPendingChannels: () => apiFetch<PendingChannel[]>("/api/channels/pending"),
   // Treasury channel operations
   treasuryOpenChannel: (body: { peer_pubkey: string; capacity_sats: number; is_private?: boolean }) =>
     apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/treasury/expansion/execute", {
@@ -619,6 +621,14 @@ export type MemberLiquidityStatusResponse = {
 
 export type MemberLiquidityHistoryResponse = {
   history: MemberChannelClassification[];
+};
+
+// ─── Pending channels ─────────────────────────────────────────────────
+
+export type PendingChannel = {
+  peer_pubkey: string;
+  capacity_sat: number;
+  status: string;
 };
 
 // ─── Recommended peers ────────────────────────────────────────────────

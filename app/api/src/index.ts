@@ -53,7 +53,7 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled } from "./lightning/lnd";
+import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled } from "./lightning/lnd";
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury } from "./utils/role";
@@ -389,6 +389,25 @@ const server = http.createServer(async (req, res) => {
     } catch {
       res.writeHead(500);
       res.end(JSON.stringify({ error: "failed_to_fetch_channels" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/channels/pending") {
+    try {
+      const { pending_channels } = await getLndPendingChannels();
+      const opening = (pending_channels ?? [])
+        .filter((ch) => ch.is_opening)
+        .map((ch) => ({
+          peer_pubkey: ch.partner_public_key,
+          capacity_sat: ch.capacity,
+          status: "opening",
+        }));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(opening));
+    } catch {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "failed_to_fetch_pending" }));
     }
     return;
   }

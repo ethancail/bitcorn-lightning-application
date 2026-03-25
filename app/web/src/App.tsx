@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type RecommendedPeer, resolveContactName, truncPubkey } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type RecommendedPeer, type PendingChannel, resolveContactName, truncPubkey } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -1220,9 +1220,18 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
   const [result, setResult] = useState<{ ok: boolean; txid: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [pending, setPending] = useState<PendingChannel[]>([]);
 
   const activePubkey = useManual ? manualPubkey.trim() : selectedPubkey;
   const selectedContact = contacts.find((c) => c.pubkey === selectedPubkey);
+
+  // Poll pending channels every 15s
+  useEffect(() => {
+    const load = () => api.getPendingChannels().then(setPending).catch(() => {});
+    load();
+    const id = setInterval(load, 15_000);
+    return () => clearInterval(id);
+  }, []);
 
   async function handleOpen() {
     if (!activePubkey) { setError(useManual ? "Peer pubkey is required" : "Select a contact"); return; }
@@ -1236,6 +1245,8 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
         capacity_sats: capacity,
       });
       setResult({ ok: true, txid: res.funding_txid });
+      // Refresh pending list immediately
+      api.getPendingChannels().then(setPending).catch(() => {});
       onChannelOpened();
     } catch (e: any) {
       setError(e.message ?? "Failed to open channel");
@@ -1267,10 +1278,46 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
       </div>
 
       {!showForm && !result && (
-        <div className="panel-body">
-          <div className="empty-state" style={{ padding: "16px 20px" }}>
-            Open a new channel to a peer to expand routing capacity.
-          </div>
+        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {pending.length === 0 && (
+            <div className="empty-state" style={{ padding: "16px 20px" }}>
+              Open a new channel to a peer to expand routing capacity.
+            </div>
+          )}
+          {pending.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontFamily: "var(--mono)", fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 2 }}>
+                Pending ({pending.length})
+              </div>
+              {pending.map((p, i) => (
+                <div
+                  key={`${p.peer_pubkey}-${i}`}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "8px 12px",
+                    background: "var(--bg-3)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: "0.875rem", fontWeight: 500 }}>
+                      {resolveContactName(p.peer_pubkey, contacts)}
+                    </div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+                      {p.capacity_sat.toLocaleString()} sats
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span className="loading-shimmer" style={{ width: 10, height: 10, borderRadius: "50%" }} />
+                    <span className="badge badge-amber">opening</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
