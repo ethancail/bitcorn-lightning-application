@@ -17,14 +17,16 @@ export const ENV = {
     treasuryPubkey: process.env.TREASURY_PUBKEY || "",
 
     // --- Rate limits (member payment API) ---
+    // Grain transactions can exceed $20k (~30M sats at current prices).
+    // Defaults sized for agricultural commerce, not micro-payments.
     // Max payments per member per minute
-    rateLimitTxPerMinute: parseInt(process.env.RATE_LIMIT_TX_PER_MINUTE || "5", 10),
+    rateLimitTxPerMinute: parseInt(process.env.RATE_LIMIT_TX_PER_MINUTE || "10", 10),
     // Max sats per member per minute
-    rateLimitSatsPerMinute: parseInt(process.env.RATE_LIMIT_SATS_PER_MINUTE || "100000", 10),
+    rateLimitSatsPerMinute: parseInt(process.env.RATE_LIMIT_SATS_PER_MINUTE || "50000000", 10),
     // Max sats per member per hour
-    rateLimitSatsPerHour: parseInt(process.env.RATE_LIMIT_SATS_PER_HOUR || "1000000", 10),
+    rateLimitSatsPerHour: parseInt(process.env.RATE_LIMIT_SATS_PER_HOUR || "200000000", 10),
     // Max sats in a single payment
-    rateLimitMaxSinglePayment: parseInt(process.env.RATE_LIMIT_MAX_SINGLE_PAYMENT || "250000", 10),
+    rateLimitMaxSinglePayment: parseInt(process.env.RATE_LIMIT_MAX_SINGLE_PAYMENT || "50000000", 10),
 
     // --- Rebalance viability thresholds ---
     // Minimum remote/capacity ratio (ppm) on the incoming channel to attempt rebalance
