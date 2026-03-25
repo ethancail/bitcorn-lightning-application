@@ -885,8 +885,10 @@ function ChannelsPage() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [health, setHealth] = useState<ChannelLiquidityHealth[]>([]);
   const [expandedHint, setExpandedHint] = useState<string | null>(null);
+  const [nodeRole, setNodeRole] = useState<string | null>(null);
 
   useEffect(() => {
+    api.getNode().then((n) => setNodeRole(n.node_role)).catch(() => {});
     Promise.all([
       fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
       api.getContacts().catch(() => [] as Contact[]),
@@ -1070,7 +1072,8 @@ function ChannelsPage() {
         )}
       </div>
 
-      <RecommendedPeersPanel />
+      {/* Treasury-approved external peers — only shown for member nodes */}
+      {nodeRole !== "treasury" && <RecommendedPeersPanel />}
     </div>
   );
 }
