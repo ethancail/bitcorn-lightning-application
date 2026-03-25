@@ -125,6 +125,12 @@ export const api = {
     const q = qs.toString();
     return apiFetch<LiquidityOutcomesResponse>(`/api/member-liquidity/outcomes${q ? `?${q}` : ""}`);
   },
+  // Treasury channel operations
+  treasuryOpenChannel: (body: { peer_pubkey: string; capacity_sats: number; is_private?: boolean }) =>
+    apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/treasury/expansion/execute", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   // Recommended peers
   getRecommendedPeers: () => apiFetch<RecommendedPeer[]>("/api/network/recommended-peers"),
   openRecommendedChannel: (peerId: string, localFundingAmountSat: number) =>

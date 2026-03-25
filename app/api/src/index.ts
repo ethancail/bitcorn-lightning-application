@@ -685,9 +685,9 @@ const server = http.createServer(async (req, res) => {
             return;
           }
 
-          if (!Number.isFinite(capacitySats) || capacitySats < 100000 || capacitySats > 2000000) {
+          if (!Number.isFinite(capacitySats) || capacitySats < 100000 || capacitySats > 16_777_215) {
             res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "Invalid capacity_sats (must be 100k-2M)" }));
+            res.end(JSON.stringify({ error: "Invalid capacity_sats (must be 100k–16.7M)" }));
             return;
           }
 
