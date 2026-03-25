@@ -170,14 +170,16 @@ export async function assertCanExpand(
     );
   }
 
-  // A. Max deploy ratio: (deployed + pending + new) <= confirmed * max_deploy_ratio
+  // A. Max deploy ratio: (deployed + pending + new) <= total_capital * max_deploy_ratio
+  // Total capital = on-chain + already deployed (sats in channels came from this wallet)
+  const totalCapital = confirmedBalance + deployedSats;
   const maxDeploySats = Math.floor(
-    (confirmedBalance * policy.max_deploy_ratio_ppm) / 1_000_000
+    (totalCapital * policy.max_deploy_ratio_ppm) / 1_000_000
   );
   const totalDeployedAfter = deployedSats + pendingSats + capacitySats;
   if (totalDeployedAfter > maxDeploySats) {
     throw new CapitalGuardrailError(
-      `Policy violation: max deploy ratio would be exceeded (deployed+pending+new=${totalDeployedAfter}, max=${maxDeploySats})`
+      `Policy violation: max deploy ratio would be exceeded (deployed+pending+new=${totalDeployedAfter}, max=${maxDeploySats} of ${totalCapital} total capital)`
     );
   }
 
