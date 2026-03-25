@@ -1073,7 +1073,7 @@ function ChannelsPage() {
       </div>
 
       {/* Treasury: Open Channel panel */}
-      {nodeRole === "treasury" && <TreasuryOpenChannelPanel onChannelOpened={() => {
+      {nodeRole === "treasury" && <TreasuryOpenChannelPanel contacts={contacts} onChannelOpened={() => {
         // Refresh channel list after opening
         Promise.all([
           fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
@@ -1091,32 +1091,28 @@ function ChannelsPage() {
 
 const TREASURY_CHANNEL_PRESETS = [1_000_000, 5_000_000, 10_000_000];
 
-function TreasuryOpenChannelPanel({ onChannelOpened }: { onChannelOpened: () => void }) {
-  const [pubkey, setPubkey] = useState("");
-  const [socket, setSocket] = useState("");
+function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Contact[]; onChannelOpened: () => void }) {
+  const [selectedPubkey, setSelectedPubkey] = useState("");
+  const [manualPubkey, setManualPubkey] = useState("");
+  const [useManual, setUseManual] = useState(false);
   const [capacity, setCapacity] = useState(5_000_000);
   const [opening, setOpening] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; txid: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
 
+  const activePubkey = useManual ? manualPubkey.trim() : selectedPubkey;
+  const selectedContact = contacts.find((c) => c.pubkey === selectedPubkey);
+
   async function handleOpen() {
-    if (!pubkey.trim()) { setError("Peer pubkey is required"); return; }
+    if (!activePubkey) { setError(useManual ? "Peer pubkey is required" : "Select a contact"); return; }
     if (capacity < 100_000) { setError("Minimum 100,000 sats"); return; }
     setOpening(true);
     setError(null);
     setResult(null);
     try {
-      // Connect to peer first if socket provided
-      if (socket.trim()) {
-        await fetch(`${API_BASE}/api/peers`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pubkey: pubkey.trim(), socket: socket.trim() }),
-        });
-      }
       const res = await api.treasuryOpenChannel({
-        peer_pubkey: pubkey.trim(),
+        peer_pubkey: activePubkey,
         capacity_sats: capacity,
       });
       setResult({ ok: true, txid: res.funding_txid });
@@ -1129,8 +1125,9 @@ function TreasuryOpenChannelPanel({ onChannelOpened }: { onChannelOpened: () => 
   }
 
   function handleReset() {
-    setPubkey("");
-    setSocket("");
+    setSelectedPubkey("");
+    setManualPubkey("");
+    setUseManual(false);
     setCapacity(5_000_000);
     setResult(null);
     setError(null);
@@ -1192,30 +1189,80 @@ function TreasuryOpenChannelPanel({ onChannelOpened }: { onChannelOpened: () => 
 
       {showForm && !result && (
         <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Peer pubkey */}
+          {/* Peer selection */}
           <div>
-            <label className="form-label">Peer Pubkey</label>
-            <input
-              type="text"
-              className="form-input"
-              value={pubkey}
-              onChange={(e) => setPubkey(e.target.value)}
-              placeholder="03..."
-              style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
-            />
-          </div>
-
-          {/* Socket (optional) */}
-          <div>
-            <label className="form-label">Socket Address (optional)</label>
-            <input
-              type="text"
-              className="form-input"
-              value={socket}
-              onChange={(e) => setSocket(e.target.value)}
-              placeholder="host:port — leave empty if already connected"
-              style={{ fontSize: "0.8125rem" }}
-            />
+            <label className="form-label">Peer</label>
+            {!useManual ? (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {contacts.length > 0 ? (
+                    contacts.map((c) => (
+                      <button
+                        key={c.pubkey}
+                        onClick={() => setSelectedPubkey(c.pubkey)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 8,
+                          padding: "8px 12px",
+                          background: selectedPubkey === c.pubkey ? "var(--amber-glow)" : "var(--bg-3)",
+                          border: `1px solid ${selectedPubkey === c.pubkey ? "var(--amber-dim)" : "var(--border)"}`,
+                          borderRadius: 6,
+                          cursor: "pointer",
+                          textAlign: "left",
+                          width: "100%",
+                          color: "var(--text)",
+                          fontFamily: "inherit",
+                          fontSize: "inherit",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{c.name}</div>
+                          <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+                            {c.pubkey.slice(0, 16)}…{c.pubkey.slice(-8)}
+                          </div>
+                        </div>
+                        {selectedPubkey === c.pubkey && (
+                          <span style={{ color: "var(--amber)", fontSize: "0.875rem" }}>✓</span>
+                        )}
+                      </button>
+                    ))
+                  ) : (
+                    <div style={{ color: "var(--text-3)", fontSize: "0.8125rem", padding: "8px 0" }}>
+                      No contacts yet — add peers in the Contacts page, or enter a pubkey manually.
+                    </div>
+                  )}
+                </div>
+                <button
+                  className="btn btn-ghost"
+                  style={{ fontSize: "0.75rem", padding: "4px 0", marginTop: 6 }}
+                  onClick={() => setUseManual(true)}
+                >
+                  Enter pubkey manually
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={manualPubkey}
+                  onChange={(e) => setManualPubkey(e.target.value)}
+                  placeholder="03..."
+                  style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
+                />
+                {contacts.length > 0 && (
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: "0.75rem", padding: "4px 0", marginTop: 6 }}
+                    onClick={() => { setUseManual(false); setManualPubkey(""); }}
+                  >
+                    Select from contacts
+                  </button>
+                )}
+              </>
+            )}
           </div>
 
           {/* Capacity */}
@@ -1255,9 +1302,11 @@ function TreasuryOpenChannelPanel({ onChannelOpened }: { onChannelOpened: () => 
               className="btn btn-primary"
               style={{ flex: 1 }}
               onClick={handleOpen}
-              disabled={opening}
+              disabled={opening || !activePubkey}
             >
-              {opening ? "Opening..." : `Open ${capacity.toLocaleString()} sat channel`}
+              {opening
+                ? "Opening..."
+                : `Open ${capacity.toLocaleString()} sat channel${selectedContact ? ` to ${selectedContact.name}` : ""}`}
             </button>
             <button className="btn btn-outline" onClick={() => { handleReset(); setShowForm(false); }}>
               Cancel
