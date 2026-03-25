@@ -558,6 +558,8 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
         </div>
       </div>
 
+      {isTreasury && <CapitalPolicyPanel />}
+
       {isTreasury && (
         <div className="panel" style={{ marginTop: 20 }}>
           <div className="panel-header">
@@ -579,6 +581,124 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Capital Policy Panel (treasury settings) ─────────────────────────────
+
+type PolicyField = {
+  key: string;
+  label: string;
+  unit: string;
+  help: string;
+  min?: number;
+  step?: number;
+};
+
+const POLICY_FIELDS: PolicyField[] = [
+  { key: "min_onchain_reserve_sats", label: "Min On-Chain Reserve", unit: "sats", help: "Minimum sats kept on-chain after channel opens", min: 0, step: 10000 },
+  { key: "max_deploy_ratio_ppm", label: "Max Deploy Ratio", unit: "ppm (parts per million)", help: "Max fraction of on-chain balance deployable into channels. 600000 = 60%, 900000 = 90%", min: 0, step: 50000 },
+  { key: "max_peer_capacity_sats", label: "Max Per-Peer Capacity", unit: "sats", help: "Maximum total channel capacity to a single peer", min: 100000, step: 100000 },
+  { key: "max_pending_opens", label: "Max Pending Opens", unit: "channels", help: "Maximum simultaneous channel opens in flight", min: 1, step: 1 },
+  { key: "peer_cooldown_minutes", label: "Peer Cooldown", unit: "minutes", help: "Minimum wait between channel opens to the same peer", min: 0, step: 10 },
+  { key: "max_expansions_per_day", label: "Max Opens Per Day", unit: "channels", help: "Maximum channel opens in a 24h window", min: 1, step: 1 },
+  { key: "max_daily_deploy_sats", label: "Max Daily Deploy", unit: "sats", help: "Maximum sats deployed into channels per day", min: 100000, step: 100000 },
+  { key: "max_daily_loss_sats", label: "Max Daily Loss", unit: "sats", help: "Maximum sats in rebalance costs per day before automation pauses", min: 0, step: 1000 },
+];
+
+function CapitalPolicyPanel() {
+  const [policy, setPolicy] = useState<Record<string, number> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    api.getCapitalPolicy()
+      .then((p) => { setPolicy(p as unknown as Record<string, number>); setLoading(false); })
+      .catch((e: Error) => { setError(e.message); setLoading(false); });
+  }, []);
+
+  function handleChange(key: string, value: number) {
+    if (!policy) return;
+    setPolicy({ ...policy, [key]: value });
+    setDirty(true);
+    setSaved(false);
+  }
+
+  async function handleSave() {
+    if (!policy) return;
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      const updated = await api.setCapitalPolicy(policy as any);
+      setPolicy(updated as unknown as Record<string, number>);
+      setDirty(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e: any) {
+      setError(e.message ?? "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="panel" style={{ marginTop: 20 }}>
+      <div className="panel-header">
+        <span className="panel-title"><span className="icon">⊞</span>Capital Guardrails</span>
+        {saved && <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--green)" }}>✓ Saved</span>}
+      </div>
+      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {loading ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="loading-shimmer" style={{ height: 48, borderRadius: 6 }} />
+            ))}
+          </div>
+        ) : error && !policy ? (
+          <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>
+        ) : policy ? (
+          <>
+            <p className="text-dim" style={{ fontSize: "0.75rem", lineHeight: 1.5 }}>
+              These limits are enforced before every channel open. Adjust to match your node's capital and risk tolerance.
+            </p>
+            {POLICY_FIELDS.map((f) => (
+              <div key={f.key}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
+                  <label className="form-label" style={{ marginBottom: 0 }}>{f.label}</label>
+                  <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{f.unit}</span>
+                </div>
+                <input
+                  type="number"
+                  className="form-input"
+                  min={f.min}
+                  step={f.step}
+                  value={policy[f.key] ?? 0}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    if (!isNaN(v)) handleChange(f.key, v);
+                  }}
+                  style={{ fontSize: "0.8125rem" }}
+                />
+                <p className="text-dim" style={{ fontSize: "0.625rem", marginTop: 2 }}>{f.help}</p>
+              </div>
+            ))}
+            {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
+            <button
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              style={{ alignSelf: "flex-start" }}
+            >
+              {saving ? "Saving..." : dirty ? "Save Changes" : "No Changes"}
+            </button>
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }
