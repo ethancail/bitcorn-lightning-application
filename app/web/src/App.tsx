@@ -1006,6 +1006,10 @@ function ChannelsPage() {
   const [health, setHealth] = useState<ChannelLiquidityHealth[]>([]);
   const [expandedHint, setExpandedHint] = useState<string | null>(null);
   const [nodeRole, setNodeRole] = useState<string | null>(null);
+  const [closingChannel, setClosingChannel] = useState<string | null>(null);
+  const [closeConfirm, setCloseConfirm] = useState<{ channelId: string; peerName: string; capacity: number } | null>(null);
+  const [closeError, setCloseError] = useState<string | null>(null);
+  const [closeResult, setCloseResult] = useState<{ channelId: string; txid: string | null } | null>(null);
 
   useEffect(() => {
     api.getNode().then((n) => setNodeRole(n.node_role)).catch(() => {});
@@ -1021,6 +1025,30 @@ function ChannelsPage() {
     }).catch(() => setLoading(false));
   }, []);
 
+  function refreshChannels() {
+    Promise.all([
+      fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
+      api.getContacts().catch(() => [] as Contact[]),
+      api.getLiquidityHealth().catch(() => [] as ChannelLiquidityHealth[]),
+    ]).then(([ch, ct, lh]) => { setChannels(ch); setContacts(ct); setHealth(lh); });
+  }
+
+  async function handleCloseChannel() {
+    if (!closeConfirm) return;
+    setClosingChannel(closeConfirm.channelId);
+    setCloseError(null);
+    setCloseConfirm(null);
+    try {
+      const res = await api.treasuryCloseChannel({ channel_id: closeConfirm.channelId });
+      setCloseResult({ channelId: closeConfirm.channelId, txid: res.closing_txid });
+      setTimeout(refreshChannels, 3000);
+    } catch (e: any) {
+      setCloseError(e.message ?? "Failed to close channel");
+    } finally {
+      setClosingChannel(null);
+    }
+  }
+
   const healthColor: Record<string, string> = {
     outbound_starved: "var(--red)",
     weak: "var(--yellow)",
@@ -1031,12 +1059,38 @@ function ChannelsPage() {
 
   return (
     <div>
+      {/* Close channel confirmation dialog */}
+      {closeConfirm && (
+        <div className="dialog-overlay">
+          <div className="dialog-card">
+            <div className="dialog-title">Close Channel?</div>
+            <div className="dialog-body">
+              This will cooperatively close the channel to <strong>{closeConfirm.peerName}</strong> ({closeConfirm.capacity.toLocaleString()} sats).
+              Funds will return to your on-chain wallet after confirmation. This cannot be undone.
+            </div>
+            <div className="dialog-actions">
+              <button className="btn btn-ghost" onClick={() => setCloseConfirm(null)}>Cancel</button>
+              <button className="btn btn-danger" onClick={handleCloseChannel}>Close Channel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Channels</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
           Active LND channel list
         </p>
       </div>
+
+      {closeError && (
+        <div className="alert warning" style={{ marginBottom: 16 }}>
+          <span className="alert-icon">⚠</span>
+          <div className="alert-body">
+            <div className="alert-msg">{closeError}</div>
+          </div>
+        </div>
+      )}
 
       <div className="panel fade-in">
         <div className="panel-header">
@@ -1119,6 +1173,33 @@ function ChannelsPage() {
                       <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
                     </span>
                   </div>
+                  {/* Close result banner */}
+                  {closeResult?.channelId === c.channel_id && (
+                    <div style={{ marginTop: 6, fontSize: "0.75rem", color: "var(--green)", fontFamily: "var(--mono)" }}>
+                      ✓ Channel closing{closeResult.txid ? ` — ${closeResult.txid.slice(0, 20)}…` : ""}
+                    </div>
+                  )}
+                  {/* Treasury: close channel button */}
+                  {nodeRole === "treasury" && !isTreasury && c.active === 1 && closingChannel !== c.channel_id && !closeResult?.channelId && (
+                    <div style={{ marginTop: 6 }}>
+                      <button
+                        className="btn btn-ghost"
+                        style={{ fontSize: "0.6875rem", padding: "2px 0", color: "var(--text-3)" }}
+                        onClick={() => setCloseConfirm({
+                          channelId: c.channel_id,
+                          peerName: resolveContactName(c.peer_pubkey, contacts),
+                          capacity: c.capacity_sat,
+                        })}
+                      >
+                        Close Channel
+                      </button>
+                    </div>
+                  )}
+                  {closingChannel === c.channel_id && (
+                    <div style={{ marginTop: 6, fontSize: "0.75rem", color: "var(--amber)", fontFamily: "var(--mono)" }}>
+                      Closing…
+                    </div>
+                  )}
                   {capStatus === "undersized" && (
                     <div style={{ marginTop: 6 }}>
                       <div
