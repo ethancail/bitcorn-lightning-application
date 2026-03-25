@@ -3,7 +3,7 @@ import { getCapitalPolicy } from "../api/treasury-capital-policy";
 import { getLndChainBalance, getLndPendingChannels } from "../lightning/lnd";
 
 const MIN_CHANNEL_SATS = 100_000;
-const MAX_CHANNEL_SATS = 2_000_000;
+const MAX_CHANNEL_SATS = 16_777_215; // LND max channel size
 
 /** Thrown when a capital guardrail policy is violated. */
 export class CapitalGuardrailError extends Error {
