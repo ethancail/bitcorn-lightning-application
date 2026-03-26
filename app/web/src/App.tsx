@@ -1367,49 +1367,71 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
         )}
       </div>
 
-      {!showForm && !result && (
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {pending.length === 0 && (
-            <div className="empty-state" style={{ padding: "16px 20px" }}>
-              Open a new channel to a peer to expand routing capacity.
-            </div>
-          )}
-          {pending.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <div style={{ fontFamily: "var(--mono)", fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 2 }}>
-                Pending ({pending.length})
+      {!showForm && !result && (() => {
+        const openingChannels = pending.filter((p) => p.status === "opening");
+        const closingChannels = pending.filter((p) => p.status === "closing");
+        const hasPending = openingChannels.length > 0 || closingChannels.length > 0;
+
+        return (
+          <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {!hasPending && (
+              <div className="empty-state" style={{ padding: "16px 20px" }}>
+                Open a new channel to a peer to expand routing capacity.
               </div>
-              {pending.map((p, i) => (
-                <div
-                  key={`${p.peer_pubkey}-${i}`}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "8px 12px",
-                    background: "var(--bg-3)",
-                    border: "1px solid var(--border)",
-                    borderRadius: 6,
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: "0.875rem", fontWeight: 500 }}>
-                      {resolveContactName(p.peer_pubkey, contacts)}
-                    </div>
-                    <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
-                      {p.capacity_sat.toLocaleString()} sats
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span className="loading-shimmer" style={{ width: 10, height: 10, borderRadius: "50%" }} />
-                    <span className="badge badge-amber">opening</span>
-                  </div>
+            )}
+            {openingChannels.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontFamily: "var(--mono)", fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 2 }}>
+                  Opening ({openingChannels.length})
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                {openingChannels.map((p, i) => (
+                  <div
+                    key={`open-${p.peer_pubkey}-${i}`}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "8px 12px", background: "var(--bg-3)", border: "1px solid var(--border)", borderRadius: 6,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: "0.875rem", fontWeight: 500 }}>{resolveContactName(p.peer_pubkey, contacts)}</div>
+                      <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{p.capacity_sat.toLocaleString()} sats</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="loading-shimmer" style={{ width: 10, height: 10, borderRadius: "50%" }} />
+                      <span className="badge badge-amber">opening</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {closingChannels.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontFamily: "var(--mono)", fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 2 }}>
+                  Closing ({closingChannels.length})
+                </div>
+                {closingChannels.map((p, i) => (
+                  <div
+                    key={`close-${p.peer_pubkey}-${i}`}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "8px 12px", background: "var(--bg-3)", border: "1px solid var(--border)", borderRadius: 6,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: "0.875rem", fontWeight: 500 }}>{resolveContactName(p.peer_pubkey, contacts)}</div>
+                      <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{p.capacity_sat.toLocaleString()} sats</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span className="loading-shimmer" style={{ width: 10, height: 10, borderRadius: "50%" }} />
+                      <span className="badge badge-red">closing</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {result && (
         <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
