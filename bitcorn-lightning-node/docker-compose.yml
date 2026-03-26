@@ -11,7 +11,7 @@ services:
       - ${APP_DATA_DIR}/loop/.loop:/loop-data/.loop:ro
     environment:
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
-      LND_GRPC_HOST: 10.21.21.9:10009
+      LND_GRPC_HOST: lightning_lnd_1:10009
       TREASURY_PUBKEY: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
       COINBASE_APP_ID: 1cebd598-0a9d-4567-8603-8ef051fd1101
       COINBASE_WORKER_URL: "https://bitcorn-onramp.ethancail.workers.dev"
@@ -33,7 +33,7 @@ services:
     command:
       - loopd
       - --network=${BITCOIN_NETWORK:-mainnet}
-      - --lnd.host=10.21.21.9:10009
+      - --lnd.host=lightning_lnd_1:10009
       - --lnd.macaroonpath=/lnd/data/chain/bitcoin/${BITCOIN_NETWORK:-mainnet}/admin.macaroon
       - --lnd.tlspath=/lnd/tls.cert
       - --tlsautorefresh
@@ -42,10 +42,8 @@ services:
       - --rpclisten=0.0.0.0:11010
       # REST: bind to localhost only — unused, not reachable from other containers.
       - --restlisten=127.0.0.1:8081
+      # loopdir owns all derived paths: tls.cert, tls.key, macaroon, data.
       - --loopdir=/loop-data/.loop
-      - --tlscertpath=/loop-data/.loop/tls.cert
-      - --tlskeypath=/loop-data/.loop/tls.key
-      - --macaroonpath=/loop-data/.loop/${BITCOIN_NETWORK:-mainnet}/loop.macaroon
     networks:
       - umbrel
 
