@@ -7,7 +7,8 @@ services:
     volumes:
       - ${APP_DATA_DIR}/data:/data
       - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
-      - ${APP_DATA_DIR}/loop:/loop-data:ro
+      # Mount only the .loop subdirectory (TLS cert + macaroon) — not the full loop data dir
+      - ${APP_DATA_DIR}/loop/.loop:/loop-data/.loop:ro
     environment:
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
       LND_GRPC_HOST: 10.21.21.9:10009
@@ -36,8 +37,11 @@ services:
       - --lnd.macaroonpath=/lnd/data/chain/bitcoin/${BITCOIN_NETWORK:-mainnet}/admin.macaroon
       - --lnd.tlspath=/lnd/tls.cert
       - --tlsautorefresh
-      - --restlisten=0.0.0.0:8081
+      # gRPC: bind to all interfaces so the API container can connect via Docker DNS.
+      # Only reachable within the Docker network — not exposed to host.
       - --rpclisten=0.0.0.0:11010
+      # REST: bind to localhost only — unused, not reachable from other containers.
+      - --restlisten=127.0.0.1:8081
       - --loopdir=/loop-data/.loop
       - --tlscertpath=/loop-data/.loop/tls.cert
       - --tlskeypath=/loop-data/.loop/tls.key
