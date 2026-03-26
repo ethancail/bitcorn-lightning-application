@@ -396,15 +396,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && req.url === "/api/channels/pending") {
     try {
       const { pending_channels } = await getLndPendingChannels();
-      const opening = (pending_channels ?? [])
-        .filter((ch) => ch.is_opening)
-        .map((ch) => ({
-          peer_pubkey: ch.partner_public_key,
-          capacity_sat: ch.capacity,
-          status: "opening",
-        }));
+      const all = (pending_channels ?? []).map((ch) => ({
+        peer_pubkey: ch.partner_public_key,
+        capacity_sat: ch.capacity,
+        status: ch.is_opening ? "opening" : ch.is_closing ? "closing" : "pending",
+      }));
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(opening));
+      res.end(JSON.stringify(all));
     } catch {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "failed_to_fetch_pending" }));
