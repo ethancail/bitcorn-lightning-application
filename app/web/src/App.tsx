@@ -15,6 +15,15 @@ import DepositBitcoin from "./pages/DepositBitcoin";
 import WithdrawBitcoin from "./pages/WithdrawBitcoin";
 import SwapOperations from "./pages/SwapOperations";
 
+// ─── Prevent scroll-to-change on number inputs ──────────────────────────
+// Browsers change number input values on scroll wheel — confusing for sats fields.
+document.addEventListener("wheel", (e) => {
+  const el = document.activeElement;
+  if (el instanceof HTMLInputElement && el.type === "number") {
+    el.blur();
+  }
+}, { passive: true });
+
 // ─── Theme initialization ─────────────────────────────────────────────────
 // Runs once on load — checks localStorage, falls back to OS preference.
 
