@@ -6,6 +6,12 @@ import { insertOutboundPayment } from "./persist-payments";
 import { assertRateLimit } from "../utils/rate-limit";
 import { ENV } from "../config/env";
 
+/** Resolve a pubkey to a contact name for error messages. */
+function resolveContact(pubkey: string): string {
+  const row = db.prepare("SELECT name FROM contacts WHERE pubkey = ?").get(pubkey) as { name: string } | undefined;
+  return row?.name ?? `${pubkey.slice(0, 12)}…`;
+}
+
 // ─── Exchange rate ───────────────────────────────────────────────────────────
 
 export async function getBtcExchangeRate(): Promise<{ usd: number; source: string }> {
@@ -116,6 +122,42 @@ export async function payNetworkInvoice(
 
   assertRateLimit(tokens);
 
+  // Pre-flight: check if we have enough channel capacity to send this payment.
+  // Look at channels to the destination (direct peer) and total spendable across all channels.
+  const directChannels = db.prepare(`
+    SELECT channel_id, local_balance_sat, capacity_sat, active
+    FROM lnd_channels WHERE peer_pubkey = ? AND active = 1
+  `).all(destination) as Array<{ channel_id: string; local_balance_sat: number; capacity_sat: number; active: number }>;
+
+  const allActiveChannels = db.prepare(`
+    SELECT COALESCE(SUM(local_balance_sat), 0) AS total_local
+    FROM lnd_channels WHERE active = 1
+  `).get() as { total_local: number };
+
+  if (directChannels.length > 0) {
+    // Direct peer — payment goes through one of these channels
+    const bestChannel = directChannels.reduce((best, ch) =>
+      ch.local_balance_sat > best.local_balance_sat ? ch : best, directChannels[0]);
+    const reserve = Math.ceil(bestChannel.capacity_sat * 0.01); // ~1% channel reserve
+    const spendable = Math.max(0, bestChannel.local_balance_sat - reserve);
+
+    if (spendable < tokens) {
+      const totalDirectLocal = directChannels.reduce((sum, ch) => sum + ch.local_balance_sat, 0);
+      let reason = `Insufficient channel capacity to ${resolveContact(destination)}. `;
+      reason += `You need ${tokens.toLocaleString()} sats but your best channel has ${spendable.toLocaleString()} spendable`;
+      if (directChannels.length > 1) {
+        reason += ` (${totalDirectLocal.toLocaleString()} total across ${directChannels.length} channels, but Lightning cannot combine them for direct peer payments)`;
+      }
+      reason += ". Open a larger channel to this peer.";
+      throw new Error(reason);
+    }
+  } else if (allActiveChannels.total_local < tokens) {
+    // Routed payment — check total spendable
+    throw new Error(
+      `Insufficient Lightning balance. You have ${allActiveChannels.total_local.toLocaleString()} spendable sats but need ${tokens.toLocaleString()}.`
+    );
+  }
+
   const rate = await fetchRateSafe();
   const exchangeRate = rate?.usd ?? null;
   const amountUsd = exchangeRate ? satsToUsd(tokens, exchangeRate) : null;
@@ -183,6 +225,18 @@ export async function payNetworkInvoice(
       status: "failed",
     });
 
+    // Translate LND errors into human-readable messages
+    let errorMsg = err.message || String(err);
+    if (errorMsg.includes("PaymentPathfindingFailedToFindPossibleRoute")) {
+      errorMsg = `No route found to ${resolveContact(destination)}. Check that you have a channel with enough outbound capacity.`;
+    } else if (errorMsg.includes("PaymentRejectedByDestination")) {
+      errorMsg = `Payment rejected by ${resolveContact(destination)}. The invoice may have expired or already been paid.`;
+    } else if (errorMsg.includes("PaymentAttemptTimedOut")) {
+      errorMsg = `Payment to ${resolveContact(destination)} timed out. The route may be congested — try again later.`;
+    } else if (errorMsg.includes("InsufficientBalance")) {
+      errorMsg = `Insufficient Lightning balance to send ${tokens.toLocaleString()} sats.`;
+    }
+
     return {
       ok: false,
       payment_hash: paymentHash,
@@ -191,7 +245,7 @@ export async function payNetworkInvoice(
       amount_usd: amountUsd,
       destination,
       memo: description ?? null,
-      error: err.message || String(err),
+      error: errorMsg,
     };
   }
 }
