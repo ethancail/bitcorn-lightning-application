@@ -1,5 +1,6 @@
-// loopd gRPC client — communicates with Lightning Terminal (litd) subserver
-// Analogous to lnd.ts but for Loop submarine swap operations.
+// loopd gRPC client — communicates with Bitcorn's standalone loopd sidecar.
+// loopd runs as a dedicated service in the Bitcorn Docker stack, connected
+// directly to LND. No dependency on Lightning Terminal (litd).
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import fs from "fs";
@@ -58,8 +59,8 @@ function getSwapClient(): any {
   );
 
   const host = `${ENV.loopGrpcHost}:${ENV.loopGrpcPort}`;
-  // litd's TLS cert may not include the Docker DNS name as a SAN.
-  // Override the target name to match a SAN in the cert (localhost).
+  // loopd's auto-generated TLS cert uses "localhost" as SAN.
+  // Override the target name so gRPC accepts the cert when connecting via Docker DNS.
   swapClient = new proto.looprpc.SwapClient(host, combinedCreds, {
     "grpc.ssl_target_name_override": "localhost",
   });

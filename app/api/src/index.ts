@@ -2275,7 +2275,7 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORTS.userApi, () => {
   console.log(`[api] listening on port ${PORTS.userApi}`);
   // Loop Out rebalance scheduler — requires REBALANCE_SCHEDULER_ENABLED=true
-  // and Lightning Terminal (loopd) to be installed on the Umbrel node.
+  // and the loopd sidecar to be running (included in the Bitcorn app stack).
   startRebalanceScheduler();
   // Cluster-based rebalance engine — requires CLUSTER_REBALANCE_ENABLED=true.
   // Fee steering + circular rebalance + topology monitoring on a 15-min interval.

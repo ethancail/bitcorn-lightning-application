@@ -171,7 +171,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
       alerts.push({
         type: "LOOP_NOT_INSTALLED",
         severity: "warning",
-        message: `${criticalCount} critical channel(s) need rebalancing but Lightning Terminal (Loop) is not available`,
+        message: `${criticalCount} critical channel(s) need rebalancing but Loop is not available. Check that loopd is running.`,
         data: { critical_channels: criticalCount, error: loop.error },
         at: now,
       });
