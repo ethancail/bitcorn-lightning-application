@@ -2200,7 +2200,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && req.url === "/api/swaps/history") {
+  if (req.method === "GET" && (req.url === "/api/swaps/history" || req.url?.startsWith("/api/swaps/history?"))) {
     try { await handleSwapHistory(req, res); } catch (e: any) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));
@@ -2247,7 +2247,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && req.url === "/api/admin/swaps") {
+  if (req.method === "GET" && (req.url === "/api/admin/swaps" || req.url?.startsWith("/api/admin/swaps?"))) {
     try { await handleAdminSwapList(req, res); } catch (e: any) {
       res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));
