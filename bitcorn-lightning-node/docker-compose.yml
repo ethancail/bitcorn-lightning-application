@@ -1,14 +1,14 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.8.3
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.8.4
     restart: unless-stopped
     ports:
       - "3101:3101"
     volumes:
       - ${APP_DATA_DIR}/data:/data
       - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
-      # Mount only the .loop subdirectory (TLS cert + macaroon) — not the full loop data dir
-      - ${APP_DATA_DIR}/loop/.loop:/loop-data/.loop:ro
+      # litd data: TLS cert at .lit/tls.cert, Loop macaroon at .loop/<network>/
+      - ${APP_DATA_DIR}/litd:/loop-data:ro
     environment:
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
       # LND TLS cert SANs include 10.21.21.9 but NOT Docker DNS names.
@@ -17,40 +17,44 @@ services:
       COINBASE_APP_ID: 1cebd598-0a9d-4567-8603-8ef051fd1101
       COINBASE_WORKER_URL: "https://bitcorn-onramp.ethancail.workers.dev"
       LOOP_GRPC_HOST: bitcorn-lightning-node_loopd_1
-      LOOP_GRPC_PORT: "11010"
+      LOOP_GRPC_PORT: "8443"
+      LOOP_TLS_CERT_PATH: "/loop-data/.lit/tls.cert"
+      LOOP_MACAROON_PATH: "/loop-data/.loop/mainnet/loop.macaroon"
     depends_on:
       - loopd
     networks:
       - umbrel
 
   loopd:
-    image: lightninglabs/loop:v0.31.0-beta
+    image: lightninglabs/lightning-terminal:v0.16.1-alpha
     restart: unless-stopped
     volumes:
       - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
-      - ${APP_DATA_DIR}/loop:/loop-data
+      - ${APP_DATA_DIR}/litd:/litd-data
     environment:
-      HOME: /loop-data
+      HOME: /litd-data
+      # litd requires a UI password even when we don't use the UI
+      LIT_PASSWORD: bitcorn-internal-unused
     command:
-      - loopd
-      - --network=${BITCOIN_NETWORK:-mainnet}
-      # LND TLS cert SANs include 10.21.21.9 but NOT Docker DNS names.
-      - --lnd.host=10.21.21.9:10009
-      - --lnd.macaroonpath=/lnd/data/chain/bitcoin/${BITCOIN_NETWORK:-mainnet}/admin.macaroon
-      - --lnd.tlspath=/lnd/tls.cert
-      - --tlsautorefresh
-      # gRPC: bind to all interfaces so the API container can connect via Docker DNS.
+      - litd
+      - --lnd-mode=remote
+      - --remote.lnd.rpcserver=10.21.21.9:10009
+      - --remote.lnd.macaroonpath=/lnd/data/chain/bitcoin/${BITCOIN_NETWORK:-mainnet}/admin.macaroon
+      - --remote.lnd.tlscertpath=/lnd/tls.cert
+      - --loop-mode=integrated
+      - --faraday-mode=disable
+      - --pool-mode=disable
+      - --uipassword_env=LIT_PASSWORD
+      # gRPC/HTTPS: bind to all interfaces so the API container can connect.
       # Only reachable within the Docker network — not exposed to host.
-      - --rpclisten=0.0.0.0:11010
-      # REST: bind to localhost only — unused, not reachable from other containers.
-      - --restlisten=127.0.0.1:8081
-      # loopdir owns all derived paths: tls.cert, tls.key, macaroon, data.
-      - --loopdir=/loop-data/.loop
+      - --httpslisten=0.0.0.0:8443
+      - --lit-dir=/litd-data/.lit
+      - --loop.loopdir=/litd-data/.loop
     networks:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.8.3
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.8.4
     restart: unless-stopped
     ports:
       - "3200:3200"

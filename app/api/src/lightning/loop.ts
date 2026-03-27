@@ -1,6 +1,7 @@
-// loopd gRPC client — communicates with Bitcorn's standalone loopd sidecar.
-// loopd runs as a dedicated service in the Bitcorn Docker stack, connected
-// directly to LND. No dependency on Lightning Terminal (litd).
+// Loop gRPC client — communicates with Bitcorn's litd sidecar running Loop
+// as an integrated subserver. litd connects to LND in remote mode and provides
+// the Loop RPC on its unified gRPC endpoint (port 8443). Uses the litd TLS cert
+// for authentication and the Loop macaroon for authorization.
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import fs from "fs";
