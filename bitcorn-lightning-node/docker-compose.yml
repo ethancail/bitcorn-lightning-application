@@ -11,7 +11,9 @@ services:
       - ${APP_DATA_DIR}/loop/.loop:/loop-data/.loop:ro
     environment:
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
-      LND_GRPC_HOST: lightning_lnd_1:10009
+      # LND TLS cert SANs include 10.21.21.9 but NOT the Docker DNS name.
+      # Must use the IP to pass TLS hostname verification.
+      LND_GRPC_HOST: 10.21.21.9:10009
       TREASURY_PUBKEY: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
       COINBASE_APP_ID: 1cebd598-0a9d-4567-8603-8ef051fd1101
       COINBASE_WORKER_URL: "https://bitcorn-onramp.ethancail.workers.dev"
@@ -33,7 +35,8 @@ services:
     command:
       - loopd
       - --network=${BITCOIN_NETWORK:-mainnet}
-      - --lnd.host=lightning_lnd_1:10009
+      # LND TLS cert SANs include 10.21.21.9 but NOT Docker DNS names.
+      - --lnd.host=10.21.21.9:10009
       - --lnd.macaroonpath=/lnd/data/chain/bitcoin/${BITCOIN_NETWORK:-mainnet}/admin.macaroon
       - --lnd.tlspath=/lnd/tls.cert
       - --tlsautorefresh
