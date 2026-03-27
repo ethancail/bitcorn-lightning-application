@@ -80,8 +80,10 @@ export const ENV = {
     loopTlsCertPath: process.env.LOOP_TLS_CERT_PATH || "/loop-data/.lit/tls.cert",
     // Loop macaroon for authentication
     loopMacaroonPath: process.env.LOOP_MACAROON_PATH || "/loop-data/.loop/mainnet/loop.macaroon",
-    // Max swap fee as a percentage of the swap amount (default: 0.5%)
-    loopMaxSwapFeePct: Number(process.env.LOOP_MAX_SWAP_FEE_PCT ?? "0.5"),
+    // Max swap fee as a percentage of the swap amount.
+    // Loop has a ~30k sat fixed prepay component, so small swaps (250k) have ~12% effective fee.
+    // Default 15% accommodates the fixed cost; larger swaps have much lower effective rates.
+    loopMaxSwapFeePct: Number(process.env.LOOP_MAX_SWAP_FEE_PCT ?? "15"),
     // Max miner fee in sats for the on-chain sweep (default: 20,000)
     loopMaxMinerFeeSats: Number(process.env.LOOP_MAX_MINER_FEE_SATS ?? "20000"),
     // Minimum sats to rebalance via Loop Out (default: 50,000)
