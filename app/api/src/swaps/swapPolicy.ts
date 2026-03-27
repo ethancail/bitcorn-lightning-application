@@ -86,16 +86,16 @@ export async function checkMemberLoopOutPolicy(params: {
   }
 
   // ── 3. Treasury external egress capacity ──────────────────────────────
-  // Query approved egress peers from swap_egress_peers table, then check
-  // treasury's outbound (local balance) on channels to those peers.
-  // NOTE: v1 uses SUM(local_balance_sat) across all approved egress peers.
-  // This is acceptable when there are few egress peers with large channels,
-  // but overstates usable capacity if the swap must route through a single
-  // channel. TODO: consider largest-single-channel or route-aware calculation
-  // if egress peer count grows or channels are small.
-  const egressPeers = db.prepare(`
-    SELECT pubkey FROM swap_egress_peers WHERE enabled = 1
-  `).all() as { pubkey: string }[];
+  // Only checked on the treasury node. Member nodes don't have direct channels
+  // to egress peers — the treasury handles egress routing. Members only need
+  // sufficient balance on their treasury channel (checked above).
+  const nodeInfo = db.prepare("SELECT node_role FROM lnd_node_info WHERE id = 1").get() as
+    { node_role: string } | undefined;
+  const isTreasuryNode = nodeInfo?.node_role === "treasury";
+
+  const egressPeers = isTreasuryNode
+    ? db.prepare(`SELECT pubkey FROM swap_egress_peers WHERE enabled = 1`).all() as { pubkey: string }[]
+    : [];
 
   if (egressPeers.length > 0) {
     const placeholders = egressPeers.map(() => "?").join(",");
