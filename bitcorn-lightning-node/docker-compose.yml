@@ -1,26 +1,54 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.7.16
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.8.0
     restart: unless-stopped
     ports:
       - "3101:3101"
     volumes:
       - ${APP_DATA_DIR}/data:/data
       - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
-      - /home/umbrel/umbrel/app-data/lightning-terminal/data:/loop-data:ro
+      # Mount only the .loop subdirectory (TLS cert + macaroon) — not the full loop data dir
+      - ${APP_DATA_DIR}/loop/.loop:/loop-data/.loop:ro
     environment:
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
-      LND_GRPC_HOST: 10.21.21.9:10009
+      LND_GRPC_HOST: lightning_lnd_1:10009
       TREASURY_PUBKEY: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
       COINBASE_APP_ID: 1cebd598-0a9d-4567-8603-8ef051fd1101
       COINBASE_WORKER_URL: "https://bitcorn-onramp.ethancail.workers.dev"
-      LOOP_GRPC_HOST: lightning-terminal_web_1
-      LOOP_GRPC_PORT: "8443"
+      LOOP_GRPC_HOST: bitcorn-lightning-node_loopd_1
+      LOOP_GRPC_PORT: "11010"
+    depends_on:
+      - loopd
+    networks:
+      - umbrel
+
+  loopd:
+    image: lightninglabs/loop:v0.31.0-beta
+    restart: unless-stopped
+    volumes:
+      - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
+      - ${APP_DATA_DIR}/loop:/loop-data
+    environment:
+      HOME: /loop-data
+    command:
+      - loopd
+      - --network=${BITCOIN_NETWORK:-mainnet}
+      - --lnd.host=lightning_lnd_1:10009
+      - --lnd.macaroonpath=/lnd/data/chain/bitcoin/${BITCOIN_NETWORK:-mainnet}/admin.macaroon
+      - --lnd.tlspath=/lnd/tls.cert
+      - --tlsautorefresh
+      # gRPC: bind to all interfaces so the API container can connect via Docker DNS.
+      # Only reachable within the Docker network — not exposed to host.
+      - --rpclisten=0.0.0.0:11010
+      # REST: bind to localhost only — unused, not reachable from other containers.
+      - --restlisten=127.0.0.1:8081
+      # loopdir owns all derived paths: tls.cert, tls.key, macaroon, data.
+      - --loopdir=/loop-data/.loop
     networks:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.7.16
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.8.0
     restart: unless-stopped
     ports:
       - "3200:3200"
