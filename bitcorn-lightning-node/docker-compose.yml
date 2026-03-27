@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.8.5
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.8.6
     restart: unless-stopped
     ports:
       - "3101:3101"
@@ -44,6 +44,7 @@ services:
       - --loop-mode=integrated
       - --faraday-mode=disable
       - --pool-mode=disable
+      - --taproot-assets-mode=disable
       - --uipassword_env=LIT_PASSWORD
       # gRPC/HTTPS: bind to all interfaces so the API container can connect.
       # Only reachable within the Docker network — not exposed to host.
@@ -54,7 +55,7 @@ services:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.8.5
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.8.6
     restart: unless-stopped
     ports:
       - "3200:3200"
