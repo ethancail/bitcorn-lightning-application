@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   api,
   type MemberStats,
@@ -313,11 +313,13 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
 }
 
 export default function MemberDashboard() {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const upgradeCapacity = parseInt(searchParams.get("upgrade_capacity") ?? "", 10) || undefined;
   const [stats, setStats] = useState<MemberStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
+  const [usdRate, setUsdRate] = useState<number | null>(null);
 
   useEffect(() => {
     api
@@ -343,9 +345,21 @@ export default function MemberDashboard() {
     return () => clearInterval(id);
   }, []);
 
+  // Exchange rate for USD display
+  useEffect(() => {
+    api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
+  }, []);
+
   const ch = stats?.treasury_channel;
   const fees = stats?.forwarded_fees;
   const badge = statusBadge(stats?.membership_status ?? "");
+
+  // USD conversion helper
+  const toUsd = (sats: number) =>
+    usdRate ? `$${((sats / 100_000_000) * usdRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null;
+
+  // Estimated withdrawal fee (~1-2% based on observed Loop Out costs)
+  const estWithdrawalFee = ch ? Math.max(1500, Math.round(ch.local_sats * 0.008)) : 0;
 
   const localPct = ch ? Math.round((ch.local_sats / ch.capacity_sats) * 100) : 0;
   const remotePct = ch ? Math.round((ch.remote_sats / ch.capacity_sats) * 100) : 0;
@@ -392,249 +406,176 @@ export default function MemberDashboard() {
         </div>
       </div>
 
-      {/* Hub channel — or connect CTA */}
-      <div className="panel fade-in" style={{ marginBottom: 16 }}>
-        <div className="panel-header">
-          <span className="panel-title">
-            <span className="icon">◈</span>Hub Channel
-          </span>
-          {hasChannel && (
-            <span className={`badge ${ch!.is_active ? "badge-green" : "badge-muted"}`}>
-              {ch!.is_active ? "active" : "inactive"}
-            </span>
-          )}
+      {/* Channel — connect CTA or earnings panel */}
+      {noChannel && (
+        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
+          </div>
+          <div className="panel-body">
+            <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} initialCapacity={upgradeCapacity} />
+          </div>
         </div>
-        <div className="panel-body">
-          {loading ? (
+      )}
+
+      {loading && (
+        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <span className="panel-title"><span className="icon">◈</span>Your Earnings</span>
+          </div>
+          <div className="panel-body">
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {[100, 80, 90].map((w, i) => (
                 <div key={i} className="loading-shimmer" style={{ height: 16, width: `${w}%` }} />
               ))}
             </div>
-          ) : noChannel ? (
-            <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} initialCapacity={upgradeCapacity} />
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              {/* Upgrade banner when navigated from Channels page */}
-              {upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
+          </div>
+        </div>
+      )}
+
+      {hasChannel && (
+        <>
+          {/* ─── Earnings Panel ─────────────────────────────────────────── */}
+          <div className="panel fade-in" style={{ marginBottom: 16 }}>
+            <div className="panel-header">
+              <span className="panel-title">
+                <span className="icon">◈</span>Your Earnings
+              </span>
+              <span className={`badge ${ch!.is_active ? "badge-green" : "badge-muted"}`}>
+                {ch!.is_active ? "active" : "inactive"}
+              </span>
+            </div>
+            <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Accumulated balance — the main number */}
+              <div style={{ textAlign: "center", padding: "8px 0" }}>
+                <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
+                  Available to withdraw
+                </div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: "2rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
+                  {ch!.local_sats.toLocaleString()} <span style={{ fontSize: "0.875rem", color: "var(--text-3)", fontWeight: 400 }}>sats</span>
+                </div>
+                {toUsd(ch!.local_sats) && (
+                  <div style={{ fontFamily: "var(--mono)", fontSize: "1rem", color: "var(--text-2)", marginTop: 2 }}>
+                    {toUsd(ch!.local_sats)}
+                  </div>
+                )}
+              </div>
+
+              {/* Receiving capacity gauge */}
+              <div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: "0.75rem", color: "var(--text-3)" }}>
+                  <span>Receiving capacity</span>
+                  <span>{remotePct}% — {ch!.remote_sats.toLocaleString()} sats remaining</span>
+                </div>
+                <div style={{ height: 8, borderRadius: 4, background: "var(--bg-3)", overflow: "hidden" }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${remotePct}%`,
+                      background: remotePct < 15 ? "var(--red)" : remotePct < 30 ? "var(--amber)" : "var(--green)",
+                      borderRadius: 4,
+                      transition: "width 0.3s ease",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Smart withdrawal nudges */}
+              {localPct >= 95 && (
+                <div className="alert critical" style={{ marginBottom: 0 }}>
+                  <span className="alert-icon">✕</span>
+                  <div className="alert-body">
+                    <div className="alert-type">Channel Full</div>
+                    <div className="alert-msg">
+                      You must withdraw before you can receive more payments. Your receiving capacity is nearly exhausted.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {localPct >= 85 && localPct < 95 && (
+                <div className="alert warning" style={{ marginBottom: 0 }}>
+                  <span className="alert-icon">⚠</span>
+                  <div className="alert-body">
+                    <div className="alert-type">Receiving Capacity Low</div>
+                    <div className="alert-msg">
+                      Withdraw to continue accepting payments. Only {remotePct}% capacity remaining.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {localPct >= 70 && localPct < 85 && (
+                <div className="alert info" style={{ marginBottom: 0 }}>
+                  <span className="alert-icon">ℹ</span>
+                  <div className="alert-body">
+                    <div className="alert-msg">
+                      Your channel is {localPct}% full. Consider withdrawing some earnings to free up space for more payments.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Withdraw action */}
+              {ch!.local_sats >= 250_000 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <button
+                    className="btn btn-primary"
+                    style={{ width: "100%" }}
+                    onClick={() => navigate("/withdraw")}
+                  >
+                    Withdraw to Bitcoin Wallet →
+                  </button>
+                  <div style={{ textAlign: "center", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+                    Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
+                    {toUsd(estWithdrawalFee) && ` (${toUsd(estWithdrawalFee)})`}
+                  </div>
+                </div>
+              ) : ch!.local_sats > 0 ? (
+                <div style={{ textAlign: "center", fontSize: "0.75rem", color: "var(--text-3)" }}>
+                  Minimum withdrawal: 250,000 sats. You have {ch!.local_sats.toLocaleString()} sats.
+                </div>
+              ) : null}
+
+              {/* Channel details (collapsible) */}
+              <details style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+                <summary style={{ cursor: "pointer", userSelect: "none" }}>Channel details</summary>
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Channel capacity</span>
+                    <span style={{ fontFamily: "var(--mono)" }}>{ch!.capacity_sats.toLocaleString()} sats</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Your balance (outbound)</span>
+                    <span style={{ fontFamily: "var(--mono)" }}>{ch!.local_sats.toLocaleString()} sats</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Receiving capacity (inbound)</span>
+                    <span style={{ fontFamily: "var(--mono)" }}>{ch!.remote_sats.toLocaleString()} sats</span>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          {/* Upgrade banner when navigated from Channels page */}
+          {upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
+            <div className="panel fade-in" style={{ marginBottom: 16 }}>
+              <div className="panel-body">
                 <div className="alert info" style={{ marginBottom: 0 }}>
                   <span className="alert-icon">⚠</span>
                   <div className="alert-body">
                     <div className="alert-type">Channel Upgrade Recommended</div>
                     <div className="alert-msg">
-                      Your current treasury channel is {ch.capacity_sats.toLocaleString()} sats.
-                      Open a larger replacement channel ({upgradeCapacity.toLocaleString()} sats) to increase routing capacity.
+                      Your current channel is {ch.capacity_sats.toLocaleString()} sats.
+                      Open a larger replacement channel ({upgradeCapacity.toLocaleString()} sats) to increase capacity.
                     </div>
                     <ConnectToHub isPeered={true} initialCapacity={upgradeCapacity} />
                   </div>
                 </div>
-              )}
-              {/* Advisor recommendation (if non-healthy) */}
-              {advisor?.recommendation && advisor.recommendation.action !== "none" && (() => {
-                const rec = advisor.recommendation;
-                const isResize = rec.action === "channel_resize_required";
-                const isManual = rec.action === "manual_recovery";
-                const isLoop = rec.action === "loop_out" || rec.action === "loop_in";
-
-                const alertTitle = isResize
-                  ? "Channel Resize Recommended"
-                  : isManual
-                    ? "Manual Top-Up Required"
-                    : rec.action === "loop_out"
-                      ? "Receiving Capacity Low"
-                      : "Spending Capacity Low";
-
-                return (
-                  <div
-                    className={`alert ${
-                      rec.urgency === "high" ? "critical" :
-                      rec.urgency === "medium" ? "warning" : "info"
-                    }`}
-                    style={{ marginBottom: 0 }}
-                  >
-                    <span className="alert-icon">
-                      {rec.urgency === "high" ? "✕" : "⚠"}
-                    </span>
-                    <div className="alert-body">
-                      <div className="alert-type" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {alertTitle}
-                        <span className={`badge ${
-                          advisor.classification?.state === "send_saturated" || advisor.classification?.state === "receive_exhausted"
-                            ? "badge-red" : "badge-amber"
-                        }`} style={{ fontSize: "0.6875rem" }}>
-                          {advisor.classification?.state?.replace(/_/g, " ")}
-                        </span>
-                      </div>
-                      <div className="alert-msg" style={{ marginBottom: 8 }}>
-                        {rec.reason}
-                      </div>
-                      {/* Loop recommendation details */}
-                      {isLoop && rec.suggestedAmountSats && (
-                        <div
-                          style={{
-                            background: "var(--bg-3)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 6,
-                            padding: "8px 12px",
-                            fontSize: "0.8125rem",
-                          }}
-                        >
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                            <span style={{ color: "var(--text-2)" }}>Recommended</span>
-                            <span className="td-mono" style={{ fontWeight: 600 }}>
-                              {rec.action === "loop_out" ? "Loop Out" : "Contact hub operator"}{" "}
-                              {rec.suggestedAmountSats.toLocaleString()} sats
-                            </span>
-                          </div>
-                          {rec.projectedMemberLocalPct != null && (
-                            <div style={{ display: "flex", justifyContent: "space-between" }}>
-                              <span style={{ color: "var(--text-2)" }}>After rebalance</span>
-                              <span className="td-mono">~{rec.projectedMemberLocalPct}% outbound</span>
-                            </div>
-                          )}
-                          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: "0.75rem" }}>
-                            <span style={{ color: "var(--text-3)" }}>Loop</span>
-                            <span className="td-mono" style={{ color: "var(--green)" }}>Available</span>
-                          </div>
-                        </div>
-                      )}
-                      {/* Manual / resize recovery details */}
-                      {(isManual || isResize) && (
-                        <div
-                          style={{
-                            background: "var(--bg-3)",
-                            border: "1px solid var(--border)",
-                            borderRadius: 6,
-                            padding: "8px 12px",
-                            fontSize: "0.8125rem",
-                          }}
-                        >
-                          <div style={{ display: "flex", justifyContent: "space-between" }}>
-                            <span style={{ color: "var(--text-3)" }}>Method</span>
-                            <span className="td-mono" style={{ color: "var(--text-2)" }}>
-                              {isResize ? "Channel resize" : "Manual recovery"}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                      {/* Bottom guidance */}
-                      {isResize && (
-                        <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>
-                          Contact your hub operator if this channel is undersized for your expected usage.
-                        </div>
-                      )}
-                      {isManual && (
-                        <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>
-                          Install Lightning Terminal for self-service Loop recovery, or open a larger channel.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Fallback static alerts when advisor hasn't loaded yet */}
-              {!advisor && localPct < 15 && (
-                <div className="alert critical" style={{ marginBottom: 0 }}>
-                  <span className="alert-icon">✕</span>
-                  <div className="alert-body">
-                    <div className="alert-type">Spending Capacity Critical</div>
-                    <div className="alert-msg">
-                      Your local balance is only {localPct}% — you have very little capacity to send payments.
-                    </div>
-                  </div>
-                </div>
-              )}
-              {!advisor && localPct >= 15 && localPct < 30 && (
-                <div className="alert warning" style={{ marginBottom: 0 }}>
-                  <span className="alert-icon">⚠</span>
-                  <div className="alert-body">
-                    <div className="alert-type">Spending Capacity Low</div>
-                    <div className="alert-msg">
-                      Your local balance is {localPct}% — sending capacity is getting low.
-                    </div>
-                  </div>
-                </div>
-              )}
-              {!advisor && localPct > 85 && (
-                <div className="alert warning" style={{ marginBottom: 0 }}>
-                  <span className="alert-icon">⚠</span>
-                  <div className="alert-body">
-                    <div className="alert-type">Receive Capacity Low</div>
-                    <div className="alert-msg">
-                      Your local balance is {localPct}% — you have little capacity to receive payments.
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
-                <div className="stat-card">
-                  <div className="stat-label">Outbound (Spend)</div>
-                  <div className="stat-value">{ch!.local_sats.toLocaleString()}</div>
-                  <div className="stat-sub">sats</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Inbound (Receive)</div>
-                  <div className="stat-value">{ch!.remote_sats.toLocaleString()}</div>
-                  <div className="stat-sub">sats</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Capacity</div>
-                  <div className="stat-value">{ch!.capacity_sats.toLocaleString()}</div>
-                  <div className="stat-sub">sats</div>
-                </div>
-              </div>
-
-              <div>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    marginBottom: 6,
-                    fontSize: "0.75rem",
-                    color: "var(--text-3)",
-                  }}
-                >
-                  <span>Outbound {localPct}%</span>
-                  <span>Inbound {remotePct}%</span>
-                </div>
-                <div
-                  style={{
-                    height: 8,
-                    borderRadius: 4,
-                    background: "var(--bg-3)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${localPct}%`,
-                      background: localPct < 15 ? "var(--red)" : localPct < 30 ? "var(--amber)" : localPct > 85 ? "var(--amber)" : "var(--green)",
-                      borderRadius: 4,
-                    }}
-                  />
-                </div>
-                {/* Channel health status badge */}
-                {advisor?.classification && (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: "0.75rem" }}>
-                    <span style={{ color: "var(--text-3)" }}>Status:</span>
-                    <span className={`badge ${
-                      advisor.classification.state === "healthy" ? "badge-green" :
-                      advisor.classification.state === "send_saturated" || advisor.classification.state === "receive_exhausted" ? "badge-red" :
-                      "badge-amber"
-                    }`}>
-                      {advisor.classification.state === "healthy" ? "Healthy" :
-                       advisor.classification.state.replace(/_/g, " ")}
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
           )}
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Forwarded fees — only show once they have / had a channel */}
       {(hasChannel || (fees && fees.total_sats > 0)) && (
