@@ -1213,8 +1213,7 @@ function ChannelsPage() {
                             <td>
                               {c.active === 1 && closingChannel !== c.channel_id && !closeResult?.channelId && (
                                 <button
-                                  className={`btn ${c.lanePct > 80 ? "btn-outline" : "btn-ghost"} btn-sm`}
-                                  style={c.lanePct <= 80 ? { color: "var(--text-3)" } : {}}
+                                  className="btn btn-outline btn-sm"
                                   onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}
                                 >
                                   {c.lanePct > 90 ? "Renew Now" : c.lanePct > 80 ? "Renew Soon" : "Close"}
