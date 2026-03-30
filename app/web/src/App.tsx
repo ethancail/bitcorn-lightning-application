@@ -1211,14 +1211,17 @@ function ChannelsPage() {
                               </span>
                             </td>
                             <td>
-                              {c.lanePct > 80 && c.active === 1 && (
+                              {c.active === 1 && closingChannel !== c.channel_id && !closeResult?.channelId && (
                                 <button
-                                  className="btn btn-outline btn-sm"
+                                  className={`btn ${c.lanePct > 80 ? "btn-outline" : "btn-ghost"} btn-sm`}
+                                  style={c.lanePct <= 80 ? { color: "var(--text-3)" } : {}}
                                   onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}
-                                  disabled={closingChannel === c.channel_id}
                                 >
-                                  {c.lanePct > 90 ? "Renew Now" : "Renew Soon"}
+                                  {c.lanePct > 90 ? "Renew Now" : c.lanePct > 80 ? "Renew Soon" : "Close"}
                                 </button>
+                              )}
+                              {closingChannel === c.channel_id && (
+                                <span style={{ fontSize: "0.75rem", color: "var(--amber)" }}>Closing…</span>
                               )}
                               {closeResult?.channelId === c.channel_id && (
                                 <span style={{ fontSize: "0.75rem", color: "var(--green)" }}>✓ Closing</span>
@@ -1251,6 +1254,7 @@ function ChannelsPage() {
                         <th style={{ textAlign: "right" }}>Accumulated</th>
                         <th>Receive Capacity</th>
                         <th>Status</th>
+                        <th>Action</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1280,6 +1284,23 @@ function ChannelsPage() {
                               <span className={`badge ${recvPct < 10 ? "badge-red" : recvPct < 30 ? "badge-amber" : "badge-green"}`}>
                                 {statusLabel}
                               </span>
+                            </td>
+                            <td>
+                              {c.active === 1 && closingChannel !== c.channel_id && closeResult?.channelId !== c.channel_id && (
+                                <button
+                                  className="btn btn-ghost btn-sm"
+                                  style={{ color: "var(--text-3)" }}
+                                  onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}
+                                >
+                                  Close
+                                </button>
+                              )}
+                              {closingChannel === c.channel_id && (
+                                <span style={{ fontSize: "0.75rem", color: "var(--amber)" }}>Closing…</span>
+                              )}
+                              {closeResult?.channelId === c.channel_id && (
+                                <span style={{ fontSize: "0.75rem", color: "var(--green)" }}>✓ Closing</span>
+                              )}
                             </td>
                           </tr>
                         );
