@@ -1088,7 +1088,7 @@ function ChannelsPage() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Channels</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Active LND channel list
+          {nodeRole === "treasury" ? "Channel lifecycle management" : "Active LND channel list"}
         </p>
       </div>
 
@@ -1101,6 +1101,248 @@ function ChannelsPage() {
         </div>
       )}
 
+      {/* ─── Treasury: Role-aware lane view ──────────────────────────────── */}
+      {nodeRole === "treasury" && !loading && channels.length > 0 && (() => {
+        // Classify channels by contact tags or heuristic.
+        // "merchant" tag → merchant lane. "farmer" tag → farmer lane.
+        // No tag + external peer (ACINQ etc) → external (shown separately).
+        // No tag + member peer → heuristic: treasury local >60% = merchant pattern, <40% = farmer pattern.
+        const externalPubkeys = new Set([
+          "03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f", // ACINQ
+        ]);
+
+        type LaneChannel = typeof channels[0] & { lanePct: number; peerName: string; laneRole: string };
+
+        const merchantLanes: LaneChannel[] = [];
+        const farmerLanes: LaneChannel[] = [];
+        const externalLanes: LaneChannel[] = [];
+
+        for (const c of channels) {
+          const contact = contacts.find((ct) => ct.pubkey === c.peer_pubkey);
+          const tags = (contact?.tags ?? []).map((t) => t.toLowerCase());
+          const localPct = c.capacity_sat > 0 ? Math.round((c.local_balance_sat / c.capacity_sat) * 100) : 0;
+          const peerName = resolveContactName(c.peer_pubkey, contacts);
+          const entry: LaneChannel = { ...c, lanePct: localPct, peerName, laneRole: "unclassified" };
+
+          if (externalPubkeys.has(c.peer_pubkey)) {
+            entry.laneRole = "external";
+            externalLanes.push(entry);
+          } else if (tags.includes("merchant")) {
+            entry.laneRole = "merchant";
+            merchantLanes.push(entry);
+          } else if (tags.includes("farmer")) {
+            entry.laneRole = "farmer";
+            farmerLanes.push(entry);
+          } else {
+            // Heuristic: treasury local >60% = merchant (they've been sending TO us),
+            // <40% = farmer (we've been forwarding TO them)
+            if (localPct > 60) {
+              entry.laneRole = "merchant";
+              merchantLanes.push(entry);
+            } else {
+              entry.laneRole = "farmer";
+              farmerLanes.push(entry);
+            }
+          }
+        }
+
+        // Projected capital: sum of merchant channels with <20% forwarding capacity
+        const renewalSoon = merchantLanes.filter((c) => c.lanePct > 80);
+        const projectedCapitalNeeded = renewalSoon.reduce((sum, c) => sum + c.capacity_sat, 0);
+
+        return (
+          <>
+            {/* Projected Capital Needs */}
+            {renewalSoon.length > 0 && (
+              <div className="alert warning" style={{ marginBottom: 16 }}>
+                <span className="alert-icon">⚠</span>
+                <div className="alert-body">
+                  <div className="alert-type">Merchant Channel Renewals Needed</div>
+                  <div className="alert-msg">
+                    {renewalSoon.length} merchant channel{renewalSoon.length > 1 ? "s" : ""} approaching exhaustion.
+                    Estimated on-chain capital needed: {projectedCapitalNeeded.toLocaleString()} sats.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Merchant Lanes */}
+            <div className="panel fade-in" style={{ marginBottom: 16 }}>
+              <div className="panel-header">
+                <span className="panel-title"><span className="icon">↗</span>Merchant Lanes</span>
+                <span className="badge badge-muted">{merchantLanes.length}</span>
+              </div>
+              {merchantLanes.length === 0 ? (
+                <div className="empty-state">No merchant channels. Tag contacts as "merchant" to classify.</div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Merchant</th>
+                        <th>Capacity</th>
+                        <th style={{ textAlign: "right" }}>Forwarding Left</th>
+                        <th>Status</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {merchantLanes.map((c) => {
+                        // For merchants: treasury local = forwarding capacity remaining
+                        // (treasury needs local balance to forward merchant payments to farmers)
+                        const fwdLeft = 100 - c.lanePct; // remote % = how much merchant has sent
+                        const fwdColor = c.lanePct > 80 ? "var(--red)" : c.lanePct > 60 ? "var(--amber)" : "var(--green)";
+                        const statusLabel = c.lanePct > 90 ? "Exhausted" : c.lanePct > 80 ? "Renew Soon" : c.lanePct > 60 ? "Getting Low" : "Active";
+                        return (
+                          <tr key={c.channel_id}>
+                            <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td className="td-mono">{(c.capacity_sat / 1_000_000).toFixed(c.capacity_sat % 1_000_000 === 0 ? 0 : 1)}M</td>
+                            <td className="td-num">
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
+                                <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${100 - c.lanePct}%`, background: fwdColor, borderRadius: 3 }} />
+                                </div>
+                                <span style={{ fontFamily: "var(--mono)", color: fwdColor }}>{100 - c.lanePct}%</span>
+                              </div>
+                            </td>
+                            <td>
+                              <span className={`badge ${c.lanePct > 90 ? "badge-red" : c.lanePct > 80 ? "badge-amber" : "badge-green"}`}>
+                                {statusLabel}
+                              </span>
+                            </td>
+                            <td>
+                              {c.lanePct > 80 && c.active === 1 && (
+                                <button
+                                  className="btn btn-outline btn-sm"
+                                  onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}
+                                  disabled={closingChannel === c.channel_id}
+                                >
+                                  {c.lanePct > 90 ? "Renew Now" : "Renew Soon"}
+                                </button>
+                              )}
+                              {closeResult?.channelId === c.channel_id && (
+                                <span style={{ fontSize: "0.75rem", color: "var(--green)" }}>✓ Closing</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Farmer Lanes */}
+            <div className="panel fade-in" style={{ marginBottom: 16 }}>
+              <div className="panel-header">
+                <span className="panel-title"><span className="icon">↙</span>Farmer Lanes</span>
+                <span className="badge badge-muted">{farmerLanes.length}</span>
+              </div>
+              {farmerLanes.length === 0 ? (
+                <div className="empty-state">No farmer channels. Tag contacts as "farmer" to classify.</div>
+              ) : (
+                <div style={{ overflowX: "auto" }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Farmer</th>
+                        <th>Capacity</th>
+                        <th style={{ textAlign: "right" }}>Accumulated</th>
+                        <th>Receive Capacity</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {farmerLanes.map((c) => {
+                        // For farmers: remote balance = farmer's accumulated earnings
+                        // treasury local = remaining receive capacity for the farmer
+                        const accumulated = c.remote_balance_sat;
+                        const recvPct = c.lanePct; // treasury local = farmer's receive capacity
+                        const statusLabel = recvPct < 10 ? "Full — needs withdrawal" : recvPct < 30 ? "Getting full" : "Earning";
+                        const recvColor = recvPct < 10 ? "var(--red)" : recvPct < 30 ? "var(--amber)" : "var(--green)";
+                        return (
+                          <tr key={c.channel_id}>
+                            <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td className="td-mono">{(c.capacity_sat / 1_000_000).toFixed(c.capacity_sat % 1_000_000 === 0 ? 0 : 1)}M</td>
+                            <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                              {accumulated.toLocaleString()} sats
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${recvPct}%`, background: recvColor, borderRadius: 3 }} />
+                                </div>
+                                <span style={{ fontFamily: "var(--mono)", color: recvColor }}>{recvPct}%</span>
+                              </div>
+                            </td>
+                            <td>
+                              <span className={`badge ${recvPct < 10 ? "badge-red" : recvPct < 30 ? "badge-amber" : "badge-green"}`}>
+                                {statusLabel}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* External Channels */}
+            {externalLanes.length > 0 && (
+              <div className="panel fade-in" style={{ marginBottom: 16 }}>
+                <div className="panel-header">
+                  <span className="panel-title"><span className="icon">⟐</span>External Routing Peers</span>
+                  <span className="badge badge-muted">{externalLanes.length}</span>
+                </div>
+                <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {externalLanes.map((c) => {
+                    const localPct = c.lanePct;
+                    return (
+                      <div key={c.channel_id} className="channel-card">
+                        <div className="channel-card-top">
+                          <span className="channel-peer mono">{c.peerName}</span>
+                          <span className="badge badge-blue">external</span>
+                          {c.active ? <span className="badge badge-green">active</span> : <span className="badge badge-muted">inactive</span>}
+                        </div>
+                        <div className="channel-capacity mono">{c.capacity_sat.toLocaleString()} sats</div>
+                        <div className="channel-balance-bar">
+                          <div className="channel-balance-local" style={{ width: `${localPct}%` }} />
+                        </div>
+                        <div className="channel-balance-labels">
+                          <span className="channel-label-local">
+                            <span className="channel-dot" style={{ background: "var(--green)" }} />
+                            Local: {c.local_balance_sat.toLocaleString()}
+                            <span className="channel-pct">({localPct}%)</span>
+                          </span>
+                          <span className="channel-label-remote">
+                            <span className="channel-dot" style={{ background: "var(--red)" }} />
+                            Remote: {c.remote_balance_sat.toLocaleString()}
+                            <span className="channel-pct">({100 - localPct}%)</span>
+                          </span>
+                        </div>
+                        {nodeRole === "treasury" && c.active === 1 && (
+                          <div style={{ marginTop: 6 }}>
+                            <button className="btn btn-ghost" style={{ fontSize: "0.6875rem", padding: "2px 0", color: "var(--text-3)" }}
+                              onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}>
+                              Close Channel
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
+
+      {/* ─── Member / loading / empty: original channel list ─────────────── */}
+      {(nodeRole !== "treasury" || loading || channels.length === 0) && (
       <div className="panel fade-in">
         <div className="panel-header">
           <span className="panel-title">
@@ -1141,17 +1383,6 @@ function ChannelsPage() {
                     <span className="channel-peer mono">
                       {resolveContactName(c.peer_pubkey, contacts)}
                     </span>
-                    {h && (
-                      <span
-                        className="badge"
-                        style={{
-                          background: `${healthColor[h.health_classification] ?? "var(--text-3)"}22`,
-                          color: healthColor[h.health_classification] ?? "var(--text-3)",
-                        }}
-                      >
-                        {h.health_classification.replace(/_/g, " ")}
-                      </span>
-                    )}
                     {capStatus === "undersized" && (
                       <span className="badge badge-red">undersized</span>
                     )}
@@ -1182,33 +1413,6 @@ function ChannelsPage() {
                       <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
                     </span>
                   </div>
-                  {/* Close result banner */}
-                  {closeResult?.channelId === c.channel_id && (
-                    <div style={{ marginTop: 6, fontSize: "0.75rem", color: "var(--green)", fontFamily: "var(--mono)" }}>
-                      ✓ Channel closing{closeResult.txid ? ` — ${closeResult.txid.slice(0, 20)}…` : ""}
-                    </div>
-                  )}
-                  {/* Treasury: close channel button */}
-                  {nodeRole === "treasury" && !isTreasury && c.active === 1 && closingChannel !== c.channel_id && !closeResult?.channelId && (
-                    <div style={{ marginTop: 6 }}>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ fontSize: "0.6875rem", padding: "2px 0", color: "var(--text-3)" }}
-                        onClick={() => setCloseConfirm({
-                          channelId: c.channel_id,
-                          peerName: resolveContactName(c.peer_pubkey, contacts),
-                          capacity: c.capacity_sat,
-                        })}
-                      >
-                        Close Channel
-                      </button>
-                    </div>
-                  )}
-                  {closingChannel === c.channel_id && (
-                    <div style={{ marginTop: 6, fontSize: "0.75rem", color: "var(--amber)", fontFamily: "var(--mono)" }}>
-                      Closing…
-                    </div>
-                  )}
                   {capStatus === "undersized" && (
                     <div style={{ marginTop: 6 }}>
                       <div
@@ -1281,6 +1485,7 @@ function ChannelsPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Treasury: Open Channel panel */}
       {nodeRole === "treasury" && <TreasuryOpenChannelPanel contacts={contacts} onChannelOpened={() => {
