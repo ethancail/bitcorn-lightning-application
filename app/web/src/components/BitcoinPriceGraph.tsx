@@ -253,7 +253,7 @@ export default function BitcoinPriceGraph() {
                   fontFamily: getMono(),
                   fontSize: "2rem",
                   fontWeight: 600,
-                  color: TEXT,
+                  color: "var(--text)",
                   lineHeight: 1.2,
                 }}
               >
