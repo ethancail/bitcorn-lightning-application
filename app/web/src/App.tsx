@@ -1516,8 +1516,8 @@ function ChannelsPage() {
         ]).then(([ch, ct]) => { setChannels(ch); setContacts(ct); });
       }} />}
 
-      {/* Treasury-approved external peers — only shown for member nodes */}
-      {nodeRole !== "treasury" && <RecommendedPeersPanel />}
+      {/* RecommendedPeersPanel removed — hub-and-spoke model uses intentionally
+         unbalanced merchant/farmer lanes; members don't need external peers */}
     </div>
   );
 }

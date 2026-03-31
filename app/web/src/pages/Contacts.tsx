@@ -1,6 +1,131 @@
 import { useEffect, useState } from "react";
 import { api, type Contact, truncPubkey, fmtSats } from "../api/client";
 
+// ─── Tag Editor ──────────────────────────────────────────────────────────────
+
+const LANE_TAGS = ["merchant", "farmer"] as const;
+
+function TagEditor({
+  tags,
+  onChange,
+  isTreasury,
+}: {
+  tags: string[];
+  onChange: (tags: string[]) => void;
+  isTreasury: boolean;
+}) {
+  const [input, setInput] = useState("");
+
+  function addTag(tag: string) {
+    const t = tag.trim().toLowerCase();
+    if (!t || tags.includes(t)) return;
+    // Lane tags are mutually exclusive — adding one removes the other
+    if (t === "merchant") onChange([...tags.filter((x) => x !== "farmer"), t]);
+    else if (t === "farmer") onChange([...tags.filter((x) => x !== "merchant"), t]);
+    else onChange([...tags, t]);
+  }
+
+  function removeTag(tag: string) {
+    onChange(tags.filter((t) => t !== tag));
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(input);
+      setInput("");
+    }
+  }
+
+  const activeLane = tags.find((t) => LANE_TAGS.includes(t as typeof LANE_TAGS[number]));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      {/* Lane toggles — treasury only */}
+      {isTreasury && (
+        <div>
+          <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", marginBottom: 4, fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            Channel role
+          </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {LANE_TAGS.map((lane) => {
+              const isActive = activeLane === lane;
+              return (
+                <button
+                  key={lane}
+                  type="button"
+                  className={`btn ${isActive ? "btn-primary" : "btn-outline"}`}
+                  style={{ fontSize: "0.75rem", padding: "4px 14px", textTransform: "capitalize" }}
+                  onClick={() => {
+                    if (isActive) removeTag(lane);
+                    else addTag(lane);
+                  }}
+                >
+                  {lane === "merchant" ? "↗ Merchant" : "↙ Farmer"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Current tags as pills */}
+      {tags.length > 0 && (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+          {tags.map((t) => (
+            <span
+              key={t}
+              className="tag-pill"
+              style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            >
+              {t}
+              <button
+                type="button"
+                onClick={() => removeTag(t)}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "inherit",
+                  cursor: "pointer",
+                  padding: 0,
+                  fontSize: "0.75rem",
+                  lineHeight: 1,
+                  opacity: 0.7,
+                }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Custom tag input */}
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          className="form-input"
+          placeholder="Add tag…"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          style={{ flex: 1, fontSize: "0.8125rem" }}
+        />
+        <button
+          type="button"
+          className="btn btn-outline"
+          style={{ fontSize: "0.75rem", padding: "4px 12px", flexShrink: 0 }}
+          onClick={() => { addTag(input); setInput(""); }}
+          disabled={!input.trim()}
+        >
+          Add
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Contacts Page ───────────────────────────────────────────────────────────
+
 export default function Contacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -10,19 +135,20 @@ export default function Contacts() {
   const [deletingPubkey, setDeletingPubkey] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<{ added: number; skipped: number } | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [isTreasury, setIsTreasury] = useState(false);
 
   // Add form state
   const [addPubkey, setAddPubkey] = useState("");
   const [addName, setAddName] = useState("");
   const [addNotes, setAddNotes] = useState("");
-  const [addTags, setAddTags] = useState("");
+  const [addTags, setAddTags] = useState<string[]>([]);
   const [addError, setAddError] = useState("");
   const [addSaving, setAddSaving] = useState(false);
 
   // Edit form state
   const [editName, setEditName] = useState("");
   const [editNotes, setEditNotes] = useState("");
-  const [editTags, setEditTags] = useState("");
+  const [editTags, setEditTags] = useState<string[]>([]);
   const [editSaving, setEditSaving] = useState(false);
 
   const loadContacts = () => {
@@ -37,6 +163,7 @@ export default function Contacts() {
 
   useEffect(() => {
     loadContacts();
+    api.getNode().then((n) => setIsTreasury(n.node_role === "treasury")).catch(() => {});
   }, []);
 
   const handleSync = () => {
@@ -56,23 +183,19 @@ export default function Contacts() {
     if (!addPubkey.trim() || !addName.trim()) return;
     setAddSaving(true);
     setAddError("");
-    const tags = addTags
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
     api
       .createContact({
         pubkey: addPubkey.trim(),
         name: addName.trim(),
         notes: addNotes.trim() || undefined,
-        tags: tags.length > 0 ? tags : undefined,
+        tags: addTags.length > 0 ? addTags : undefined,
       })
       .then(() => {
         setShowAddForm(false);
         setAddPubkey("");
         setAddName("");
         setAddNotes("");
-        setAddTags("");
+        setAddTags([]);
         loadContacts();
       })
       .catch((err: { status?: number }) => {
@@ -89,20 +212,16 @@ export default function Contacts() {
     setEditingPubkey(c.pubkey);
     setEditName(c.name);
     setEditNotes(c.notes || "");
-    setEditTags(c.tags.join(", "));
+    setEditTags([...c.tags]);
   };
 
   const handleEdit = (pubkey: string) => {
     setEditSaving(true);
-    const tags = editTags
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
     api
       .updateContact(pubkey, {
         name: editName.trim(),
         notes: editNotes.trim() || undefined,
-        tags,
+        tags: editTags,
       })
       .then(() => {
         setEditingPubkey(null);
@@ -202,12 +321,7 @@ export default function Contacts() {
               rows={2}
               style={{ resize: "vertical" }}
             />
-            <input
-              className="form-input"
-              placeholder="Tags (comma-separated, e.g. routing, friend)"
-              value={addTags}
-              onChange={(e) => setAddTags(e.target.value)}
-            />
+            <TagEditor tags={addTags} onChange={setAddTags} isTreasury={isTreasury} />
             {addError && (
               <div style={{ color: "var(--red)", fontSize: "0.8125rem", fontFamily: "var(--mono)" }}>
                 {addError}
@@ -255,6 +369,7 @@ export default function Contacts() {
             <ContactCard
               key={c.pubkey}
               contact={c}
+              isTreasury={isTreasury}
               isEditing={editingPubkey === c.pubkey}
               isDeleting={deletingPubkey === c.pubkey}
               editName={editName}
@@ -282,6 +397,7 @@ export default function Contacts() {
 
 function ContactCard({
   contact: c,
+  isTreasury,
   isEditing,
   isDeleting,
   editName,
@@ -299,15 +415,16 @@ function ContactCard({
   onCancelDelete,
 }: {
   contact: Contact;
+  isTreasury: boolean;
   isEditing: boolean;
   isDeleting: boolean;
   editName: string;
   editNotes: string;
-  editTags: string;
+  editTags: string[];
   editSaving: boolean;
   onEditNameChange: (v: string) => void;
   onEditNotesChange: (v: string) => void;
-  onEditTagsChange: (v: string) => void;
+  onEditTagsChange: (v: string[]) => void;
   onStartEdit: () => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
@@ -338,12 +455,7 @@ function ContactCard({
             rows={2}
             style={{ resize: "vertical" }}
           />
-          <input
-            className="form-input"
-            placeholder="Tags (comma-separated)"
-            value={editTags}
-            onChange={(e) => onEditTagsChange(e.target.value)}
-          />
+          <TagEditor tags={editTags} onChange={onEditTagsChange} isTreasury={isTreasury} />
           <div style={{ display: "flex", gap: 8 }}>
             <button className="btn btn-primary" onClick={onSaveEdit} disabled={editSaving}>
               {editSaving ? "Saving…" : "Save"}
@@ -394,9 +506,22 @@ function ContactCard({
         {/* Tags */}
         {c.tags.length > 0 && (
           <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 8 }}>
-            {c.tags.map((t) => (
-              <span key={t} className="tag-pill">{t}</span>
-            ))}
+            {c.tags.map((t) => {
+              const isLane = t === "merchant" || t === "farmer";
+              return (
+                <span
+                  key={t}
+                  className="tag-pill"
+                  style={isLane ? {
+                    background: t === "merchant" ? "rgba(251, 191, 36, 0.15)" : "rgba(34, 197, 94, 0.15)",
+                    color: t === "merchant" ? "var(--amber)" : "var(--green)",
+                    fontWeight: 600,
+                  } : undefined}
+                >
+                  {isLane ? (t === "merchant" ? "↗ " : "↙ ") : ""}{t}
+                </span>
+              );
+            })}
           </div>
         )}
 
