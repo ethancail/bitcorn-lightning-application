@@ -6,6 +6,7 @@ import {
   type PreflightResult,
   type TreasuryInfo,
   type MemberLiquidityStatusResponse,
+  type PendingChannel,
 } from "../api/client";
 import NodeBalancePanel from "../components/NodeBalancePanel";
 import FundNodePanel from "../components/FundNodePanel";
@@ -320,6 +321,7 @@ export default function MemberDashboard() {
   const [loading, setLoading] = useState(true);
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
   const [usdRate, setUsdRate] = useState<number | null>(null);
+  const [pendingTreasuryChannel, setPendingTreasuryChannel] = useState(false);
 
   useEffect(() => {
     api
@@ -333,6 +335,18 @@ export default function MemberDashboard() {
     const id = setInterval(() => {
       api.getMemberStats().then(setStats).catch(() => {});
     }, 15_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Check for pending treasury channel (survives page reload)
+  useEffect(() => {
+    const hubPk = HUB_PUBKEY;
+    const check = () =>
+      api.getPendingChannels()
+        .then((pend) => setPendingTreasuryChannel(pend.some((p) => p.peer_pubkey === hubPk && p.status === "opening")))
+        .catch(() => {});
+    check();
+    const id = setInterval(check, 15_000);
     return () => clearInterval(id);
   }, []);
 
@@ -406,8 +420,26 @@ export default function MemberDashboard() {
         </div>
       </div>
 
-      {/* Channel — connect CTA or earnings panel */}
-      {noChannel && (
+      {/* Channel — pending opening, connect CTA, or earnings panel */}
+      {noChannel && pendingTreasuryChannel && (
+        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
+          </div>
+          <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="alert healthy" style={{ marginBottom: 0 }}>
+              <span className="alert-icon">✓</span>
+              <div className="alert-body">
+                <div className="alert-type">Channel Opening Submitted</div>
+                <div className="alert-msg">
+                  Your channel to the hub is being broadcast. It will become active after 1–3 on-chain confirmations. This page will update automatically.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {noChannel && !pendingTreasuryChannel && (
         <div className="panel fade-in" style={{ marginBottom: 16 }}>
           <div className="panel-header">
             <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
