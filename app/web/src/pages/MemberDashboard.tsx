@@ -3,7 +3,6 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   api,
   type MemberStats,
-  type PreflightResult,
   type TreasuryInfo,
   type MemberLiquidityStatusResponse,
   type PendingChannel,
@@ -41,17 +40,8 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [preflight, setPreflight] = useState<PreflightResult | null>(null);
-  const [preflightLoading, setPreflightLoading] = useState(true);
   const [treasuryInfo, setTreasuryInfo] = useState<TreasuryInfo | null>(null);
   const [treasuryInfoLoading, setTreasuryInfoLoading] = useState(true);
-
-  useEffect(() => {
-    api.getNodePreflight()
-      .then(setPreflight)
-      .catch(() => setPreflight(null))
-      .finally(() => setPreflightLoading(false));
-  }, []);
 
   useEffect(() => {
     api.getTreasuryInfo()
@@ -59,14 +49,6 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
       .catch(() => setTreasuryInfo(null))
       .finally(() => setTreasuryInfoLoading(false));
   }, []);
-
-  function retryPreflight() {
-    setPreflightLoading(true);
-    api.getNodePreflight()
-      .then(setPreflight)
-      .catch(() => setPreflight(null))
-      .finally(() => setPreflightLoading(false));
-  }
 
   const hubPubkey = treasuryInfo?.pubkey || HUB_PUBKEY;
   const hubSocket = treasuryInfo?.socket || null;
@@ -148,29 +130,6 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
           </div>
         </div>
       </div>
-
-      {/* Preflight warning */}
-      {!preflightLoading && preflight && !preflight.all_passed && (
-        <div className="alert warning" style={{ marginBottom: 0 }}>
-          <span className="alert-icon">⚠</span>
-          <div className="alert-body">
-            <div className="alert-type">Configuration Required</div>
-            {preflight.checks
-              .filter((c) => !c.passed)
-              .map((c) => (
-                <div key={c.check} className="alert-msg">{c.message}</div>
-              ))}
-            <button
-              className="btn btn-outline"
-              style={{ marginTop: 8 }}
-              onClick={retryPreflight}
-              disabled={preflightLoading}
-            >
-              {preflightLoading ? "Checking…" : "Retry Check"}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Open channel form */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -268,7 +227,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
         <button
           className="btn btn-primary"
           onClick={handleOpen}
-          disabled={submitting || capacity < 100_000 || preflightLoading || (preflight != null && !preflight.all_passed)}
+          disabled={submitting || capacity < 100_000}
         >
           {submitting ? "Connecting…" : "Open Channel →"}
         </button>
@@ -394,19 +353,7 @@ export default function MemberDashboard() {
       <FundNodePanel />
       <BitcoinPriceGraph />
 
-      {/* Keysend disabled warning */}
-      {!loading && stats && stats.keysend_enabled === false && (
-        <div className="alert warning" style={{ marginBottom: 16 }}>
-          <span className="alert-icon">⚠</span>
-          <div className="alert-body">
-            <div className="alert-type">Keysend Payments Disabled</div>
-            <div className="alert-msg">
-              Your node cannot receive rebalancing payments from the treasury.
-              Enable "Receive Keysend Payments" in Umbrel → Lightning → Settings, then restart LND.
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Membership status */}
       <div className="panel fade-in" style={{ marginBottom: 16 }}>
