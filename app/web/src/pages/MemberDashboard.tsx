@@ -199,7 +199,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
           </div>
         </div>
 
-        {/* Peering section */}
+        {/* Peering section — 3 states based on actual LND peer connection + Worker socket */}
         {isPeered ? (
           <div
             style={{
@@ -215,7 +215,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
             }}
           >
             <span>✓</span>
-            <span>Already connected to hub via gossip — no address needed</span>
+            <span>Connected to hub — ready to open a channel</span>
           </div>
         ) : hasAutoSocket ? (
           <div
@@ -232,7 +232,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
             }}
           >
             <span>◈</span>
-            <span>Treasury address found — will connect automatically</span>
+            <span>Hub address available — will connect automatically when you open a channel</span>
           </div>
         ) : treasuryInfoLoading ? (
           <div className="loading-shimmer" style={{ height: 40, borderRadius: 6 }} />
@@ -245,12 +245,12 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
             <input
               className="form-input"
               type="text"
-              placeholder="host:port — only needed if not already peered"
+              placeholder="host:port — needed if not already connected to the hub"
               value={socket}
               onChange={(e) => setSocket(e.target.value)}
             />
             <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 4 }}>
-              Leave blank if your node is already connected to the hub via gossip.
+              Enter the hub's address to connect, or leave blank if already peered.
             </div>
           </div>
         )}
