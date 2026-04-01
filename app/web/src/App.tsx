@@ -1019,6 +1019,7 @@ function ChannelsPage() {
   const [closeConfirm, setCloseConfirm] = useState<{ channelId: string; peerName: string; capacity: number } | null>(null);
   const [closeError, setCloseError] = useState<string | null>(null);
   const [closeResult, setCloseResult] = useState<{ channelId: string; txid: string | null } | null>(null);
+  const [closingPubkeys, setClosingPubkeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     api.getNode().then((n) => setNodeRole(n.node_role)).catch(() => {});
@@ -1026,10 +1027,12 @@ function ChannelsPage() {
       fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
       api.getContacts().catch(() => [] as Contact[]),
       api.getLiquidityHealth().catch(() => [] as ChannelLiquidityHealth[]),
-    ]).then(([ch, ct, lh]) => {
+      api.getPendingChannels().catch(() => [] as PendingChannel[]),
+    ]).then(([ch, ct, lh, pend]) => {
       setChannels(ch);
       setContacts(ct);
       setHealth(lh);
+      setClosingPubkeys(new Set(pend.filter((p: PendingChannel) => p.status === "closing").map((p: PendingChannel) => p.peer_pubkey)));
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -1039,7 +1042,11 @@ function ChannelsPage() {
       fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
       api.getContacts().catch(() => [] as Contact[]),
       api.getLiquidityHealth().catch(() => [] as ChannelLiquidityHealth[]),
-    ]).then(([ch, ct, lh]) => { setChannels(ch); setContacts(ct); setHealth(lh); });
+      api.getPendingChannels().catch(() => [] as PendingChannel[]),
+    ]).then(([ch, ct, lh, pend]) => {
+      setChannels(ch); setContacts(ct); setHealth(lh);
+      setClosingPubkeys(new Set(pend.filter((p: PendingChannel) => p.status === "closing").map((p: PendingChannel) => p.peer_pubkey)));
+    });
   }
 
   async function handleCloseChannel() {
@@ -1181,6 +1188,9 @@ function ChannelsPage() {
         const unclassifiedLanes: LaneChannel[] = [];
 
         for (const c of channels) {
+          // Skip channels that are in the process of closing — they appear in the CLOSING section
+          if (closingPubkeys.has(c.peer_pubkey)) continue;
+
           const contact = contacts.find((ct) => ct.pubkey === c.peer_pubkey);
           const tags = (contact?.tags ?? []).map((t) => t.toLowerCase());
           const localPct = c.capacity_sat > 0 ? Math.round((c.local_balance_sat / c.capacity_sat) * 100) : 0;
