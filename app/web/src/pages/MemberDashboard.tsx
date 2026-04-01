@@ -147,13 +147,26 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
               </button>
             ))}
           </div>
-          <input
-            className="form-input"
-            type="number"
-            value={capacity}
-            min={100_000}
-            onChange={(e) => setCapacity(Math.max(100_000, Number(e.target.value)))}
-          />
+          <div style={{ position: "relative" }}>
+            <input
+              className="form-input"
+              type="text"
+              inputMode="numeric"
+              value={capacity.toLocaleString()}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/[^0-9]/g, "");
+                if (raw === "") return;
+                setCapacity(Math.max(100_000, Number(raw)));
+              }}
+              style={{ paddingRight: 42 }}
+            />
+            <span style={{
+              position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+              fontSize: "0.75rem", color: "var(--text-3)", fontFamily: "var(--mono)", pointerEvents: "none",
+            }}>
+              sats
+            </span>
+          </div>
           <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 4 }}>
             Recommended: 1M–10M sats. Minimum: 100,000 sats.
           </div>
