@@ -1101,72 +1101,175 @@ function ChannelsPage() {
         </div>
       )}
 
-      {/* ─── Treasury: Role-aware lane view ──────────────────────────────── */}
+      {/* ─── Treasury: Purpose / State lane view ─────────────────────────── */}
       {nodeRole === "treasury" && !loading && channels.length > 0 && (() => {
-        // Classify channels by contact tags or heuristic.
-        // "merchant" tag → merchant lane. "farmer" tag → farmer lane.
-        // No tag + external peer (ACINQ etc) → external (shown separately).
-        // No tag + member peer → heuristic: treasury local >60% = merchant pattern, <40% = farmer pattern.
+        // ── Lane purpose (stable) ──────────────────────────────────────
+        // Determined by explicit contact tags or known pubkeys. NEVER by balance.
+        // Purpose reflects WHY the channel exists in the Bitcorn topology.
+        type LanePurpose = "merchant_lane" | "farmer_lane" | "external_peer" | "unclassified";
+
+        // ── Lane state (dynamic) ───────────────────────────────────────
+        // Computed from balance. Interpretation depends on purpose.
+        type MerchantState = "fresh" | "active" | "degrading" | "renew_soon" | "exhausted";
+        type FarmerState = "open_for_receiving" | "earning" | "getting_full" | "full_needs_withdrawal";
+        type ExternalState = "healthy" | "constrained" | "critical";
+        type LaneState = MerchantState | FarmerState | ExternalState | "unknown";
+
+        function merchantState(treasuryLocalPct: number): MerchantState {
+          // As merchant spends → treasury local rises → channel depletes
+          if (treasuryLocalPct < 30) return "fresh";
+          if (treasuryLocalPct < 50) return "active";
+          if (treasuryLocalPct < 70) return "degrading";
+          if (treasuryLocalPct < 85) return "renew_soon";
+          return "exhausted";
+        }
+
+        function farmerState(treasuryLocalPct: number): FarmerState {
+          // As farmer earns → treasury local falls → farmer side fills
+          if (treasuryLocalPct >= 70) return "open_for_receiving";
+          if (treasuryLocalPct >= 30) return "earning";
+          if (treasuryLocalPct >= 15) return "getting_full";
+          return "full_needs_withdrawal";
+        }
+
+        function externalState(treasuryLocalPct: number): ExternalState {
+          if (treasuryLocalPct >= 25 && treasuryLocalPct <= 75) return "healthy";
+          if (treasuryLocalPct >= 15 && treasuryLocalPct <= 85) return "constrained";
+          return "critical";
+        }
+
+        function stateLabel(state: LaneState): string {
+          const labels: Record<string, string> = {
+            fresh: "Fresh", active: "Active", degrading: "Degrading",
+            renew_soon: "Renew Soon", exhausted: "Exhausted",
+            open_for_receiving: "Receiving", earning: "Earning",
+            getting_full: "Getting Full", full_needs_withdrawal: "Needs Withdrawal",
+            healthy: "Healthy", constrained: "Constrained", critical: "Critical",
+          };
+          return labels[state] ?? state;
+        }
+
+        function stateBadge(state: LaneState): string {
+          const green: LaneState[] = ["fresh", "active", "open_for_receiving", "earning", "healthy"];
+          const amber: LaneState[] = ["degrading", "renew_soon", "getting_full", "constrained"];
+          if (green.includes(state)) return "badge-green";
+          if (amber.includes(state)) return "badge-amber";
+          return "badge-red"; // exhausted, full_needs_withdrawal, critical
+        }
+
+        function stateColor(state: LaneState): string {
+          const cls = stateBadge(state);
+          if (cls === "badge-green") return "var(--green)";
+          if (cls === "badge-amber") return "var(--amber)";
+          return "var(--red)";
+        }
+
+        // ── Known external pubkeys ─────────────────────────────────────
         const externalPubkeys = new Set([
           "03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f", // ACINQ
         ]);
 
-        type LaneChannel = typeof channels[0] & { lanePct: number; peerName: string; laneRole: string };
+        // ── Classify channels ──────────────────────────────────────────
+        type LaneChannel = typeof channels[0] & {
+          localPct: number; peerName: string;
+          purpose: LanePurpose; state: LaneState;
+        };
 
         const merchantLanes: LaneChannel[] = [];
         const farmerLanes: LaneChannel[] = [];
         const externalLanes: LaneChannel[] = [];
+        const unclassifiedLanes: LaneChannel[] = [];
 
         for (const c of channels) {
           const contact = contacts.find((ct) => ct.pubkey === c.peer_pubkey);
           const tags = (contact?.tags ?? []).map((t) => t.toLowerCase());
           const localPct = c.capacity_sat > 0 ? Math.round((c.local_balance_sat / c.capacity_sat) * 100) : 0;
           const peerName = resolveContactName(c.peer_pubkey, contacts);
-          const entry: LaneChannel = { ...c, lanePct: localPct, peerName, laneRole: "unclassified" };
 
-          if (externalPubkeys.has(c.peer_pubkey)) {
-            entry.laneRole = "external";
-            externalLanes.push(entry);
+          // Purpose: explicit tags or known pubkeys — never balance
+          let purpose: LanePurpose = "unclassified";
+          let state: LaneState = "unknown";
+
+          if (externalPubkeys.has(c.peer_pubkey) || tags.includes("external")) {
+            purpose = "external_peer";
+            state = externalState(localPct);
           } else if (tags.includes("merchant")) {
-            entry.laneRole = "merchant";
-            merchantLanes.push(entry);
+            purpose = "merchant_lane";
+            state = merchantState(localPct);
           } else if (tags.includes("farmer")) {
-            entry.laneRole = "farmer";
-            farmerLanes.push(entry);
-          } else {
-            // Heuristic: treasury local >60% = merchant (they've been sending TO us),
-            // <40% = farmer (we've been forwarding TO them)
-            if (localPct > 60) {
-              entry.laneRole = "merchant";
-              merchantLanes.push(entry);
-            } else {
-              entry.laneRole = "farmer";
-              farmerLanes.push(entry);
-            }
+            purpose = "farmer_lane";
+            state = farmerState(localPct);
           }
+
+          const entry: LaneChannel = { ...c, localPct, peerName, purpose, state };
+
+          if (purpose === "merchant_lane") merchantLanes.push(entry);
+          else if (purpose === "farmer_lane") farmerLanes.push(entry);
+          else if (purpose === "external_peer") externalLanes.push(entry);
+          else unclassifiedLanes.push(entry);
         }
 
-        // Projected capital: sum of merchant channels with <20% forwarding capacity
-        const renewalSoon = merchantLanes.filter((c) => c.lanePct > 80);
-        const projectedCapitalNeeded = renewalSoon.reduce((sum, c) => sum + c.capacity_sat, 0);
+        // Renewal alert: merchant lanes in renew_soon or exhausted
+        const needsRenewal = merchantLanes.filter((c) => c.state === "renew_soon" || c.state === "exhausted");
+        const projectedCapitalNeeded = needsRenewal.reduce((sum, c) => sum + c.capacity_sat, 0);
+
+        // Shared close button renderer
+        const closeBtn = (c: LaneChannel, label?: string) => (
+          <>
+            {c.active === 1 && closingChannel !== c.channel_id && closeResult?.channelId !== c.channel_id && (
+              <button
+                className="btn btn-outline btn-sm"
+                onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}
+              >
+                {label ?? "Close"}
+              </button>
+            )}
+            {closingChannel === c.channel_id && (
+              <span style={{ fontSize: "0.75rem", color: "var(--amber)" }}>Closing…</span>
+            )}
+            {closeResult?.channelId === c.channel_id && (
+              <span style={{ fontSize: "0.75rem", color: "var(--green)" }}>✓ Closing</span>
+            )}
+          </>
+        );
+
+        // Shared capacity formatter
+        const fmtCap = (sats: number) =>
+          sats >= 1_000_000
+            ? `${(sats / 1_000_000).toFixed(sats % 1_000_000 === 0 ? 0 : 1)}M`
+            : `${(sats / 1_000).toFixed(0)}k`;
 
         return (
           <>
-            {/* Projected Capital Needs */}
-            {renewalSoon.length > 0 && (
+            {/* ── Unclassified channels — prompt to tag ───────────────── */}
+            {unclassifiedLanes.length > 0 && (
+              <div className="alert info" style={{ marginBottom: 16 }}>
+                <span className="alert-icon">◈</span>
+                <div className="alert-body">
+                  <div className="alert-type">{unclassifiedLanes.length} Unclassified Channel{unclassifiedLanes.length > 1 ? "s" : ""}</div>
+                  <div className="alert-msg">
+                    {unclassifiedLanes.map((c) => c.peerName).join(", ")} — tag as
+                    <strong> merchant</strong> or <strong>farmer</strong> in Contacts to classify.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Projected Capital Needs ─────────────────────────────── */}
+            {needsRenewal.length > 0 && (
               <div className="alert warning" style={{ marginBottom: 16 }}>
                 <span className="alert-icon">⚠</span>
                 <div className="alert-body">
                   <div className="alert-type">Merchant Channel Renewals Needed</div>
                   <div className="alert-msg">
-                    {renewalSoon.length} merchant channel{renewalSoon.length > 1 ? "s" : ""} approaching exhaustion.
+                    {needsRenewal.length} merchant channel{needsRenewal.length > 1 ? "s" : ""} approaching exhaustion.
                     Estimated on-chain capital needed: {projectedCapitalNeeded.toLocaleString()} sats.
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Merchant Lanes */}
+            {/* ── Merchant Lanes ──────────────────────────────────────── */}
             <div className="panel fade-in" style={{ marginBottom: 16 }}>
               <div className="panel-header">
                 <span className="panel-title"><span className="icon">↗</span>Merchant Lanes</span>
@@ -1182,50 +1285,31 @@ function ChannelsPage() {
                         <th>Merchant</th>
                         <th>Capacity</th>
                         <th style={{ textAlign: "right" }}>Forwarding Left</th>
-                        <th>Status</th>
+                        <th>State</th>
                         <th>Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {merchantLanes.map((c) => {
-                        // For merchants: treasury local = forwarding capacity remaining
-                        // (treasury needs local balance to forward merchant payments to farmers)
-                        const fwdLeft = 100 - c.lanePct; // remote % = how much merchant has sent
-                        const fwdColor = c.lanePct > 80 ? "var(--red)" : c.lanePct > 60 ? "var(--amber)" : "var(--green)";
-                        const statusLabel = c.lanePct > 90 ? "Exhausted" : c.lanePct > 80 ? "Renew Soon" : c.lanePct > 60 ? "Getting Low" : "Active";
+                        const fwdLeftPct = 100 - c.localPct;
+                        const color = stateColor(c.state);
+                        const actionLabel = c.state === "exhausted" ? "Renew Now" : c.state === "renew_soon" ? "Renew Soon" : "Close";
                         return (
                           <tr key={c.channel_id}>
                             <td style={{ fontWeight: 500 }}>{c.peerName}</td>
-                            <td className="td-mono">{(c.capacity_sat / 1_000_000).toFixed(c.capacity_sat % 1_000_000 === 0 ? 0 : 1)}M</td>
+                            <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                             <td className="td-num">
                               <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden" }}>
-                                  <div style={{ height: "100%", width: `${100 - c.lanePct}%`, background: fwdColor, borderRadius: 3 }} />
+                                  <div style={{ height: "100%", width: `${fwdLeftPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
-                                <span style={{ fontFamily: "var(--mono)", color: fwdColor }}>{100 - c.lanePct}%</span>
+                                <span style={{ fontFamily: "var(--mono)", color }}>{fwdLeftPct}%</span>
                               </div>
                             </td>
                             <td>
-                              <span className={`badge ${c.lanePct > 90 ? "badge-red" : c.lanePct > 80 ? "badge-amber" : "badge-green"}`}>
-                                {statusLabel}
-                              </span>
+                              <span className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
-                            <td>
-                              {c.active === 1 && closingChannel !== c.channel_id && !closeResult?.channelId && (
-                                <button
-                                  className="btn btn-outline btn-sm"
-                                  onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}
-                                >
-                                  {c.lanePct > 90 ? "Renew Now" : c.lanePct > 80 ? "Renew Soon" : "Close"}
-                                </button>
-                              )}
-                              {closingChannel === c.channel_id && (
-                                <span style={{ fontSize: "0.75rem", color: "var(--amber)" }}>Closing…</span>
-                              )}
-                              {closeResult?.channelId === c.channel_id && (
-                                <span style={{ fontSize: "0.75rem", color: "var(--green)" }}>✓ Closing</span>
-                              )}
-                            </td>
+                            <td>{closeBtn(c, actionLabel)}</td>
                           </tr>
                         );
                       })}
@@ -1235,7 +1319,7 @@ function ChannelsPage() {
               )}
             </div>
 
-            {/* Farmer Lanes */}
+            {/* ── Farmer Lanes ────────────────────────────────────────── */}
             <div className="panel fade-in" style={{ marginBottom: 16 }}>
               <div className="panel-header">
                 <span className="panel-title"><span className="icon">↙</span>Farmer Lanes</span>
@@ -1252,55 +1336,34 @@ function ChannelsPage() {
                         <th>Capacity</th>
                         <th style={{ textAlign: "right" }}>Accumulated</th>
                         <th>Receive Capacity</th>
-                        <th>Status</th>
+                        <th>State</th>
                         <th>Action</th>
                       </tr>
                     </thead>
                     <tbody>
                       {farmerLanes.map((c) => {
-                        // For farmers: remote balance = farmer's accumulated earnings
-                        // treasury local = remaining receive capacity for the farmer
                         const accumulated = c.remote_balance_sat;
-                        const recvPct = c.lanePct; // treasury local = farmer's receive capacity
-                        const statusLabel = recvPct < 10 ? "Full — needs withdrawal" : recvPct < 30 ? "Getting full" : "Earning";
-                        const recvColor = recvPct < 10 ? "var(--red)" : recvPct < 30 ? "var(--amber)" : "var(--green)";
+                        const recvPct = c.localPct; // treasury local = farmer's remaining receive capacity
+                        const color = stateColor(c.state);
                         return (
                           <tr key={c.channel_id}>
                             <td style={{ fontWeight: 500 }}>{c.peerName}</td>
-                            <td className="td-mono">{(c.capacity_sat / 1_000_000).toFixed(c.capacity_sat % 1_000_000 === 0 ? 0 : 1)}M</td>
+                            <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                             <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {accumulated.toLocaleString()} sats
                             </td>
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden" }}>
-                                  <div style={{ height: "100%", width: `${recvPct}%`, background: recvColor, borderRadius: 3 }} />
+                                  <div style={{ height: "100%", width: `${recvPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
-                                <span style={{ fontFamily: "var(--mono)", color: recvColor }}>{recvPct}%</span>
+                                <span style={{ fontFamily: "var(--mono)", color }}>{recvPct}%</span>
                               </div>
                             </td>
                             <td>
-                              <span className={`badge ${recvPct < 10 ? "badge-red" : recvPct < 30 ? "badge-amber" : "badge-green"}`}>
-                                {statusLabel}
-                              </span>
+                              <span className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
-                            <td>
-                              {c.active === 1 && closingChannel !== c.channel_id && closeResult?.channelId !== c.channel_id && (
-                                <button
-                                  className="btn btn-ghost btn-sm"
-                                  style={{ color: "var(--text-3)" }}
-                                  onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}
-                                >
-                                  Close
-                                </button>
-                              )}
-                              {closingChannel === c.channel_id && (
-                                <span style={{ fontSize: "0.75rem", color: "var(--amber)" }}>Closing…</span>
-                              )}
-                              {closeResult?.channelId === c.channel_id && (
-                                <span style={{ fontSize: "0.75rem", color: "var(--green)" }}>✓ Closing</span>
-                              )}
-                            </td>
+                            <td>{closeBtn(c)}</td>
                           </tr>
                         );
                       })}
@@ -1310,50 +1373,93 @@ function ChannelsPage() {
               )}
             </div>
 
-            {/* External Channels */}
+            {/* ── External Routing Peers ──────────────────────────────── */}
             {externalLanes.length > 0 && (
               <div className="panel fade-in" style={{ marginBottom: 16 }}>
                 <div className="panel-header">
                   <span className="panel-title"><span className="icon">⟐</span>External Routing Peers</span>
                   <span className="badge badge-muted">{externalLanes.length}</span>
                 </div>
-                <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {externalLanes.map((c) => {
-                    const localPct = c.lanePct;
-                    return (
-                      <div key={c.channel_id} className="channel-card">
-                        <div className="channel-card-top">
-                          <span className="channel-peer mono">{c.peerName}</span>
-                          <span className="badge badge-blue">external</span>
-                          {c.active ? <span className="badge badge-green">active</span> : <span className="badge badge-muted">inactive</span>}
-                        </div>
-                        <div className="channel-capacity mono">{c.capacity_sat.toLocaleString()} sats</div>
-                        <div className="channel-balance-bar">
-                          <div className="channel-balance-local" style={{ width: `${localPct}%` }} />
-                        </div>
-                        <div className="channel-balance-labels">
-                          <span className="channel-label-local">
-                            <span className="channel-dot" style={{ background: "var(--green)" }} />
-                            Local: {c.local_balance_sat.toLocaleString()}
-                            <span className="channel-pct">({localPct}%)</span>
-                          </span>
-                          <span className="channel-label-remote">
-                            <span className="channel-dot" style={{ background: "var(--red)" }} />
-                            Remote: {c.remote_balance_sat.toLocaleString()}
-                            <span className="channel-pct">({100 - localPct}%)</span>
-                          </span>
-                        </div>
-                        {nodeRole === "treasury" && c.active === 1 && (
-                          <div style={{ marginTop: 6 }}>
-                            <button className="btn btn-ghost" style={{ fontSize: "0.6875rem", padding: "2px 0", color: "var(--text-3)" }}
-                              onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}>
-                              Close Channel
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                <div style={{ overflowX: "auto" }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Peer</th>
+                        <th>Capacity</th>
+                        <th style={{ textAlign: "right" }}>Local</th>
+                        <th>Balance</th>
+                        <th>State</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {externalLanes.map((c) => {
+                        const color = stateColor(c.state);
+                        return (
+                          <tr key={c.channel_id}>
+                            <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
+                            <td className="td-num">
+                              <span style={{ fontFamily: "var(--mono)" }}>{c.localPct}%</span>
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden" }}>
+                                  <div style={{ height: "100%", width: `${c.localPct}%`, background: color, borderRadius: 3 }} />
+                                </div>
+                              </div>
+                            </td>
+                            <td>
+                              <span className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
+                            </td>
+                            <td>{closeBtn(c)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ── Unclassified Channels table ────────────────────────── */}
+            {unclassifiedLanes.length > 0 && (
+              <div className="panel fade-in" style={{ marginBottom: 16 }}>
+                <div className="panel-header">
+                  <span className="panel-title"><span className="icon">?</span>Unclassified</span>
+                  <span className="badge badge-muted">{unclassifiedLanes.length}</span>
+                </div>
+                <div style={{ overflowX: "auto" }}>
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Peer</th>
+                        <th>Capacity</th>
+                        <th style={{ textAlign: "right" }}>Local</th>
+                        <th>Balance</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {unclassifiedLanes.map((c) => (
+                        <tr key={c.channel_id}>
+                          <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                          <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
+                          <td className="td-num">
+                            <span style={{ fontFamily: "var(--mono)" }}>{c.localPct}%</span>
+                          </td>
+                          <td>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden" }}>
+                                <div style={{ height: "100%", width: `${c.localPct}%`, background: "var(--text-3)", borderRadius: 3 }} />
+                              </div>
+                            </div>
+                          </td>
+                          <td>{closeBtn(c)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
