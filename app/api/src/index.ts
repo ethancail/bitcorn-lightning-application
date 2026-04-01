@@ -1515,7 +1515,7 @@ const server = http.createServer(async (req, res) => {
           const { peers } = await getLndPeers();
           isPeeredToHub = peers.some((p: any) => p.public_key === hubPubkey);
         } catch {
-          // non-fatal — gossip check best-effort
+          // non-fatal — direct peer check best-effort
         }
       }
 
