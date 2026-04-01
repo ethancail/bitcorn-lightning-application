@@ -155,8 +155,8 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
               value={capacity.toLocaleString()}
               onChange={(e) => {
                 const raw = e.target.value.replace(/[^0-9]/g, "");
-                if (raw === "") return;
-                setCapacity(Math.max(100_000, Number(raw)));
+                if (raw === "") { setCapacity(0); return; }
+                setCapacity(Number(raw));
               }}
               style={{ paddingRight: 42 }}
             />
@@ -170,6 +170,11 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
           <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 4 }}>
             Recommended: 1M–10M sats. Minimum: 100,000 sats.
           </div>
+          {capacity > 0 && capacity < 100_000 && (
+            <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
+              Channel capacity must be at least 100,000 sats.
+            </div>
+          )}
         </div>
 
         {/* Peering section — 3 states based on actual LND peer connection + Worker socket */}
