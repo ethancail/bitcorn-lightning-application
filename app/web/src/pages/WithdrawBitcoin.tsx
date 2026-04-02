@@ -403,7 +403,7 @@ export default function WithdrawBitcoin() {
                   </div>
                   {prepay > 0 && (
                     <div style={{ fontSize: "0.75rem", color: "var(--text-3)", padding: "8px 12px", background: "var(--bg-3)", borderRadius: 6 }}>
-                      A temporary prepay hold of <strong style={{ color: "var(--text-2)" }}>{fmtSats(prepay)} sats</strong> is
+                      A temporary prepay hold of <strong style={{ color: "var(--text-2)" }}>{fmtSats(prepay)}</strong> is
                       sent during the swap and returned as part of your on-chain payment. It is not an additional fee.
                     </div>
                   )}
