@@ -19,6 +19,8 @@ export type ChannelState =
 
 export type Urgency = "none" | "low" | "medium" | "high";
 
+export type ChannelRole = "unknown" | "merchant" | "farmer";
+
 export interface ChannelClassification {
   channelId: string;
   capacitySat: number;
@@ -29,6 +31,7 @@ export interface ChannelClassification {
   urgency: Urgency;
   consecutiveNonHealthyRuns: number;
   classifiedAt: number;
+  channelRole: ChannelRole;
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -38,6 +41,10 @@ interface AdvisorConfig {
   sendSaturatedThresholdPct: number;
   receiveHeavyThresholdPct: number;
   receiveExhaustedThresholdPct: number;
+  channelRole: ChannelRole;
+  merchantRecommendedCapacitySat: number;
+  farmerRecommendedCapacitySat: number;
+  minChannelCapacitySat: number;
 }
 
 export function getAdvisorConfig(): AdvisorConfig {
@@ -45,11 +52,16 @@ export function getAdvisorConfig(): AdvisorConfig {
     .prepare("SELECT * FROM member_liquidity_advisor_config WHERE id = 1")
     .get() as any;
 
+  const role = row?.channel_role ?? "unknown";
   return {
     sendHeavyThresholdPct: row?.send_heavy_threshold_pct ?? 0.70,
     sendSaturatedThresholdPct: row?.send_saturated_threshold_pct ?? 0.85,
     receiveHeavyThresholdPct: row?.receive_heavy_threshold_pct ?? 0.30,
     receiveExhaustedThresholdPct: row?.receive_exhausted_threshold_pct ?? 0.15,
+    channelRole: (role === "merchant" || role === "farmer") ? role : "unknown",
+    merchantRecommendedCapacitySat: row?.merchant_recommended_capacity_sat ?? 2_000_000,
+    farmerRecommendedCapacitySat: row?.farmer_recommended_capacity_sat ?? 1_000_000,
+    minChannelCapacitySat: row?.min_channel_capacity_sat ?? 500_000,
   };
 }
 
@@ -135,6 +147,7 @@ export function classifyTreasuryChannel(): ChannelClassification | null {
     urgency,
     consecutiveNonHealthyRuns,
     classifiedAt: Date.now(),
+    channelRole: cfg.channelRole,
   };
 }
 
@@ -170,6 +183,7 @@ export function getClassificationHistory(channelId: string, limit = 20): Channel
     )
     .all(channelId, limit) as any[];
 
+  const cfg = getAdvisorConfig();
   return rows.map((r) => ({
     channelId: r.channel_id,
     capacitySat: r.capacity_sat,
@@ -180,5 +194,6 @@ export function getClassificationHistory(channelId: string, limit = 20): Channel
     urgency: r.urgency as Urgency,
     consecutiveNonHealthyRuns: r.consecutive_non_healthy_runs,
     classifiedAt: r.classified_at,
+    channelRole: cfg.channelRole,
   }));
 }

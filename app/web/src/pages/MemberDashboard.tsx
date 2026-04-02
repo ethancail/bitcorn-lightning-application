@@ -430,149 +430,177 @@ export default function MemberDashboard() {
         </div>
       )}
 
-      {hasChannel && (
-        <>
-          {/* ─── Earnings Panel ─────────────────────────────────────────── */}
-          <div className="panel fade-in" style={{ marginBottom: 16 }}>
-            <div className="panel-header">
-              <span className="panel-title">
-                <span className="icon">◈</span>Your Earnings
-              </span>
-              <span className={`badge ${ch!.is_active ? "badge-green" : "badge-muted"}`}>
-                {ch!.is_active ? "active" : "inactive"}
-              </span>
-            </div>
-            <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* Accumulated balance — the main number */}
-              <div style={{ textAlign: "center", padding: "8px 0" }}>
-                <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
-                  Available to withdraw
+      {hasChannel && (() => {
+        const role = advisor?.classification?.channelRole ?? "unknown";
+        const rec = advisor?.recommendation;
+        const isMerchant = role === "merchant";
+        const isFarmer = role === "farmer";
+
+        // Role-aware gauge: merchants care about outbound (local), farmers about receiving (remote)
+        const gaugeLabel = isMerchant ? "Outbound capacity" : isFarmer ? "Receiving capacity" : "Channel balance";
+        const gaugePct = isMerchant ? localPct : isFarmer ? remotePct : localPct;
+        const gaugeRemaining = isMerchant
+          ? `${localPct}% — ${ch!.local_sats.toLocaleString()} sats available to send`
+          : isFarmer
+            ? `${remotePct}% — ${ch!.remote_sats.toLocaleString()} sats remaining`
+            : `${localPct}% local — ${remotePct}% remote`;
+        const gaugeColor = gaugePct < 15 ? "var(--red)" : gaugePct < 30 ? "var(--amber)" : "var(--green)";
+
+        // Hero number
+        const heroLabel = isMerchant ? "Available to send" : isFarmer ? "Available to withdraw" : "Your balance";
+        const heroSats = ch!.local_sats;
+
+        // Panel title
+        const panelTitle = isMerchant ? "Merchant Channel" : isFarmer ? "Your Earnings" : "Your Channel";
+
+        // Advisor alert
+        const alertClass = rec?.urgency === "high" ? "critical" : rec?.urgency === "medium" ? "warning" : "info";
+        const alertIcon = rec?.urgency === "high" ? "✕" : rec?.urgency === "medium" ? "⚠" : "ℹ";
+        const showAlert = rec && rec.action !== "none";
+
+        return (
+          <>
+            <div className="panel fade-in" style={{ marginBottom: 16 }}>
+              <div className="panel-header">
+                <span className="panel-title">
+                  <span className="icon">◈</span>{panelTitle}
+                </span>
+                <span className={`badge ${ch!.is_active ? "badge-green" : "badge-muted"}`}>
+                  {ch!.is_active ? "active" : "inactive"}
+                </span>
+              </div>
+              <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {/* Hero number */}
+                <div style={{ textAlign: "center", padding: "8px 0" }}>
+                  <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
+                    {heroLabel}
+                  </div>
+                  <div style={{ fontFamily: "var(--mono)", fontSize: "2rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
+                    {heroSats.toLocaleString()} <span style={{ fontSize: "0.875rem", color: "var(--text-3)", fontWeight: 400 }}>sats</span>
+                  </div>
+                  {toUsd(heroSats) && (
+                    <div style={{ fontFamily: "var(--mono)", fontSize: "1rem", color: "var(--text-2)", marginTop: 2 }}>
+                      {toUsd(heroSats)}
+                    </div>
+                  )}
                 </div>
-                <div style={{ fontFamily: "var(--mono)", fontSize: "2rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
-                  {ch!.local_sats.toLocaleString()} <span style={{ fontSize: "0.875rem", color: "var(--text-3)", fontWeight: 400 }}>sats</span>
+
+                {/* Capacity gauge */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: "0.75rem", color: "var(--text-3)" }}>
+                    <span>{gaugeLabel}</span>
+                    <span>{gaugeRemaining}</span>
+                  </div>
+                  <div style={{ height: 8, borderRadius: 4, background: "var(--bg-3)", overflow: "hidden" }}>
+                    <div
+                      style={{
+                        height: "100%",
+                        width: `${gaugePct}%`,
+                        background: gaugeColor,
+                        borderRadius: 4,
+                        transition: "width 0.3s ease",
+                      }}
+                    />
+                  </div>
                 </div>
-                {toUsd(ch!.local_sats) && (
-                  <div style={{ fontFamily: "var(--mono)", fontSize: "1rem", color: "var(--text-2)", marginTop: 2 }}>
-                    {toUsd(ch!.local_sats)}
+
+                {/* Advisor-driven alert */}
+                {showAlert && (
+                  <div className={`alert ${alertClass}`} style={{ marginBottom: 0 }}>
+                    <span className="alert-icon">{alertIcon}</span>
+                    <div className="alert-body">
+                      <div className="alert-msg">{rec!.reason}</div>
+                    </div>
                   </div>
                 )}
-              </div>
 
-              {/* Receiving capacity gauge */}
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: "0.75rem", color: "var(--text-3)" }}>
-                  <span>Receiving capacity</span>
-                  <span>{remotePct}% — {ch!.remote_sats.toLocaleString()} sats remaining</span>
-                </div>
-                <div style={{ height: 8, borderRadius: 4, background: "var(--bg-3)", overflow: "hidden" }}>
-                  <div
-                    style={{
-                      height: "100%",
-                      width: `${remotePct}%`,
-                      background: remotePct < 15 ? "var(--red)" : remotePct < 30 ? "var(--amber)" : "var(--green)",
-                      borderRadius: 4,
-                      transition: "width 0.3s ease",
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Smart withdrawal nudges */}
-              {localPct >= 95 && (
-                <div className="alert critical" style={{ marginBottom: 0 }}>
-                  <span className="alert-icon">✕</span>
-                  <div className="alert-body">
-                    <div className="alert-type">Channel Full</div>
-                    <div className="alert-msg">
-                      You must withdraw before you can receive more payments. Your receiving capacity is nearly exhausted.
+                {/* Role not set — prompt */}
+                {role === "unknown" && (
+                  <div className="alert info" style={{ marginBottom: 0 }}>
+                    <span className="alert-icon">◈</span>
+                    <div className="alert-body">
+                      <div className="alert-msg">
+                        Set your channel role to get tailored capacity recommendations.
+                      </div>
+                      <button
+                        className="btn btn-outline"
+                        style={{ marginTop: 8, fontSize: "0.75rem" }}
+                        onClick={() => navigate("/settings")}
+                      >
+                        Set Role in Settings →
+                      </button>
                     </div>
                   </div>
-                </div>
-              )}
-              {localPct >= 85 && localPct < 95 && (
-                <div className="alert warning" style={{ marginBottom: 0 }}>
-                  <span className="alert-icon">⚠</span>
-                  <div className="alert-body">
-                    <div className="alert-type">Receiving Capacity Low</div>
-                    <div className="alert-msg">
-                      Withdraw to continue accepting payments. Only {remotePct}% capacity remaining.
+                )}
+
+                {/* Farmer: withdraw action */}
+                {isFarmer && ch!.local_sats >= 250_000 && (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ width: "100%" }}
+                      onClick={() => navigate("/withdraw")}
+                    >
+                      Withdraw to Bitcoin Wallet →
+                    </button>
+                    <div style={{ textAlign: "center", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+                      Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
+                      {toUsd(estWithdrawalFee) && ` (${toUsd(estWithdrawalFee)})`}
                     </div>
                   </div>
-                </div>
-              )}
-              {localPct >= 70 && localPct < 85 && (
-                <div className="alert info" style={{ marginBottom: 0 }}>
-                  <span className="alert-icon">ℹ</span>
-                  <div className="alert-body">
-                    <div className="alert-msg">
-                      Your channel is {localPct}% full. Consider withdrawing some earnings to free up space for more payments.
+                )}
+                {isFarmer && ch!.local_sats > 0 && ch!.local_sats < 250_000 && (
+                  <div style={{ textAlign: "center", fontSize: "0.75rem", color: "var(--text-3)" }}>
+                    Minimum withdrawal: 250,000 sats. You have {ch!.local_sats.toLocaleString()} sats.
+                  </div>
+                )}
+
+                {/* Channel details (collapsible) */}
+                <details style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+                  <summary style={{ cursor: "pointer", userSelect: "none" }}>Channel details</summary>
+                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Channel capacity</span>
+                      <span style={{ fontFamily: "var(--mono)" }}>{ch!.capacity_sats.toLocaleString()} sats</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Your balance (outbound)</span>
+                      <span style={{ fontFamily: "var(--mono)" }}>{ch!.local_sats.toLocaleString()} sats</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Receiving capacity (inbound)</span>
+                      <span style={{ fontFamily: "var(--mono)" }}>{ch!.remote_sats.toLocaleString()} sats</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Channel role</span>
+                      <span style={{ fontFamily: "var(--mono)", textTransform: "capitalize" }}>{role}</span>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {/* Withdraw action */}
-              {ch!.local_sats >= 250_000 ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <button
-                    className="btn btn-primary"
-                    style={{ width: "100%" }}
-                    onClick={() => navigate("/withdraw")}
-                  >
-                    Withdraw to Bitcoin Wallet →
-                  </button>
-                  <div style={{ textAlign: "center", fontSize: "0.6875rem", color: "var(--text-3)" }}>
-                    Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
-                    {toUsd(estWithdrawalFee) && ` (${toUsd(estWithdrawalFee)})`}
-                  </div>
-                </div>
-              ) : ch!.local_sats > 0 ? (
-                <div style={{ textAlign: "center", fontSize: "0.75rem", color: "var(--text-3)" }}>
-                  Minimum withdrawal: 250,000 sats. You have {ch!.local_sats.toLocaleString()} sats.
-                </div>
-              ) : null}
-
-              {/* Channel details (collapsible) */}
-              <details style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
-                <summary style={{ cursor: "pointer", userSelect: "none" }}>Channel details</summary>
-                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Channel capacity</span>
-                    <span style={{ fontFamily: "var(--mono)" }}>{ch!.capacity_sats.toLocaleString()} sats</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Your balance (outbound)</span>
-                    <span style={{ fontFamily: "var(--mono)" }}>{ch!.local_sats.toLocaleString()} sats</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Receiving capacity (inbound)</span>
-                    <span style={{ fontFamily: "var(--mono)" }}>{ch!.remote_sats.toLocaleString()} sats</span>
-                  </div>
-                </div>
-              </details>
-            </div>
-          </div>
-
-          {/* Upgrade banner when navigated from Channels page */}
-          {upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
-            <div className="panel fade-in" style={{ marginBottom: 16 }}>
-              <div className="panel-body">
-                <div className="alert info" style={{ marginBottom: 0 }}>
-                  <span className="alert-icon">⚠</span>
-                  <div className="alert-body">
-                    <div className="alert-type">Channel Upgrade Recommended</div>
-                    <div className="alert-msg">
-                      Your current channel is {ch.capacity_sats.toLocaleString()} sats.
-                      Open a larger replacement channel ({upgradeCapacity.toLocaleString()} sats) to increase capacity.
-                    </div>
-                    <ConnectToHub isPeered={true} initialCapacity={upgradeCapacity} />
-                  </div>
-                </div>
+                </details>
               </div>
             </div>
-          )}
-        </>
-      )}
+
+            {/* Upgrade banner when navigated from Channels page */}
+            {upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
+              <div className="panel fade-in" style={{ marginBottom: 16 }}>
+                <div className="panel-body">
+                  <div className="alert info" style={{ marginBottom: 0 }}>
+                    <span className="alert-icon">⚠</span>
+                    <div className="alert-body">
+                      <div className="alert-type">Channel Upgrade Recommended</div>
+                      <div className="alert-msg">
+                        Your current channel is {ch.capacity_sats.toLocaleString()} sats.
+                        Open a larger replacement channel ({upgradeCapacity.toLocaleString()} sats) to increase capacity.
+                      </div>
+                      <ConnectToHub isPeered={true} initialCapacity={upgradeCapacity} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* Forwarded fees — only show once they have / had a channel */}
       {(hasChannel || (fees && fees.total_sats > 0)) && (
