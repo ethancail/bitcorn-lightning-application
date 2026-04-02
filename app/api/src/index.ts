@@ -1246,6 +1246,30 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "PATCH" && req.url === "/api/liquidity/config") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const { channel_role } = parsed;
+        if (!channel_role || !["merchant", "farmer", "unknown"].includes(channel_role)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "channel_role must be 'merchant', 'farmer', or 'unknown'" }));
+          return;
+        }
+        db.prepare("UPDATE member_liquidity_advisor_config SET channel_role = ?, updated_at = ? WHERE id = 1")
+          .run(channel_role, Date.now());
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, channel_role }));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err?.message }));
+      }
+    });
+    return;
+  }
+
   // ─── Member liquidity endpoints (treasury-only) ────────────────────────────
 
   if (req.method === "GET" && req.url === "/api/member-liquidity/clusters") {

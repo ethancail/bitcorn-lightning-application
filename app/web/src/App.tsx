@@ -413,6 +413,86 @@ const TEXT_SCALE_PRESETS = [
   { value: "1.3", label: "Extra Large" },
 ];
 
+function ChannelRolePanel() {
+  const [role, setRole] = useState<"unknown" | "merchant" | "farmer">("unknown");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    api.getMemberLiquidityStatus()
+      .then((d) => {
+        const r = d.classification?.channelRole;
+        if (r === "merchant" || r === "farmer") setRole(r);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSetRole(newRole: "merchant" | "farmer" | "unknown") {
+    setSaving(true);
+    try {
+      await api.setChannelRole(newRole);
+      setRole(newRole);
+    } catch {}
+    setSaving(false);
+  }
+
+  const roles: { value: "merchant" | "farmer"; icon: string; label: string; desc: string }[] = [
+    { value: "merchant", icon: "↗", label: "Merchant", desc: "You send payments through the hub — outbound capacity matters most" },
+    { value: "farmer", icon: "↙", label: "Farmer", desc: "You receive earnings through the hub — receiving capacity matters most" },
+  ];
+
+  return (
+    <div className="panel" style={{ marginTop: 20 }}>
+      <div className="panel-header">
+        <span className="panel-title"><span className="icon">◈</span>Channel Role</span>
+        {role !== "unknown" && (
+          <span className={`badge ${role === "merchant" ? "badge-amber" : "badge-green"}`} style={{ textTransform: "capitalize" }}>
+            {role}
+          </span>
+        )}
+      </div>
+      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: "0.8125rem", color: "var(--text-3)", marginBottom: 4 }}>
+          Your channel role determines how liquidity recommendations are calculated.
+        </div>
+        {loading ? (
+          <div className="loading-shimmer" style={{ height: 80, borderRadius: 6 }} />
+        ) : (
+          <>
+            {roles.map((opt) => (
+              <button
+                key={opt.value}
+                className={`theme-option ${role === opt.value ? "selected" : ""}`}
+                onClick={() => handleSetRole(opt.value)}
+                disabled={saving}
+              >
+                <span style={{ fontSize: "1.25rem" }}>{opt.icon}</span>
+                <div>
+                  <div style={{ fontWeight: 600 }}>{opt.label}</div>
+                  <div style={{ fontSize: "0.75rem", color: role === opt.value ? "var(--amber-dim)" : "var(--text-3)" }}>
+                    {opt.desc}
+                  </div>
+                </div>
+              </button>
+            ))}
+            {role !== "unknown" && (
+              <button
+                className="btn btn-ghost"
+                style={{ fontSize: "0.75rem", color: "var(--text-3)", alignSelf: "flex-start" }}
+                onClick={() => handleSetRole("unknown")}
+                disabled={saving}
+              >
+                Clear role selection
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
   const navigate = useNavigate();
   const [theme, setTheme] = useState<ThemeChoice>(() => {
@@ -566,6 +646,8 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           ))}
         </div>
       </div>
+
+      {!isTreasury && <ChannelRolePanel />}
 
       {isTreasury && <CapitalPolicyPanel />}
 
