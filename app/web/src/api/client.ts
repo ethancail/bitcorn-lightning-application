@@ -590,6 +590,8 @@ export type MemberChannelState =
   | "receive_heavy"
   | "receive_exhausted";
 
+export type MemberChannelRole = "unknown" | "merchant" | "farmer";
+
 export type MemberChannelClassification = {
   channelId: string;
   capacitySat: number;
@@ -600,10 +602,11 @@ export type MemberChannelClassification = {
   urgency: "none" | "low" | "medium" | "high";
   consecutiveNonHealthyRuns: number;
   classifiedAt: number;
+  channelRole: MemberChannelRole;
 };
 
 export type MemberLiquidityRecommendation = {
-  action: "none" | "loop_out" | "loop_in" | "channel_resize_required" | "manual_recovery";
+  action: "none" | "loop_out" | "loop_in" | "channel_upgrade" | "manual_recovery" | "set_role";
   suggestedAmountSats: number | null;
   projectedMemberLocalPct: number | null;
   reason: string;
