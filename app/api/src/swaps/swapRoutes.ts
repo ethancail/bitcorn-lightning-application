@@ -60,11 +60,14 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
   });
 
   // Pre-check policy (non-blocking — quote still created)
+  // Use net fee (swap + miner) for policy check — prepay is a temporary hold
+  // that's returned as part of the on-chain payment, not an additional cost.
+  const netFeeSat = (quote.swap_fee_sat ?? 0) + (quote.miner_fee_sat ?? 0);
   const policy = await checkMemberLoopOutPolicy({
     nodePubkey: node.pubkey,
     amountSat,
     maxFeeSat,
-    quotedFeeSat: quote.total_fee_sat,
+    quotedFeeSat: netFeeSat,
   });
 
   json(res, 200, { swap_request: swapRequest, quote, policy_check: policy });
@@ -148,7 +151,8 @@ export async function handleAdminLoopOutQuote(req: IncomingMessage, res: Res): P
     channelId,
   });
 
-  const policy = await checkTreasuryLoopOutPolicy({ amountSat, quotedFeeSat: quote.total_fee_sat });
+  const treasuryNetFee = (quote.swap_fee_sat ?? 0) + (quote.miner_fee_sat ?? 0);
+  const policy = await checkTreasuryLoopOutPolicy({ amountSat, quotedFeeSat: treasuryNetFee });
   json(res, 200, { swap_request: swapRequest, quote, policy_check: policy });
 }
 
