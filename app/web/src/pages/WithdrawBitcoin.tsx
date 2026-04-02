@@ -366,26 +366,50 @@ export default function WithdrawBitcoin() {
             )}
           </div>
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-              <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
-                <div className="stat-label">Amount</div>
-                <div className="stat-value" style={{ fontSize: "1.125rem" }}>
-                  {fmtSats(quoteResp.quote.amount_sat)}
+            {(() => {
+              const q = quoteResp.quote;
+              const swapFee = q.swap_fee_sat ?? 0;
+              const minerFee = q.miner_fee_sat ?? 0;
+              const netFee = swapFee + minerFee;
+              const prepay = q.prepay_sat ?? 0;
+              return (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
+                      <div className="stat-label">Amount</div>
+                      <div className="stat-value" style={{ fontSize: "1.125rem" }}>
+                        {fmtSats(q.amount_sat)}
+                      </div>
+                    </div>
+                    <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
+                      <div className="stat-label">Estimated Fee</div>
+                      <div className="stat-value" style={{ fontSize: "1.125rem" }}>
+                        ~{fmtSats(netFee)}
+                      </div>
+                      {(swapFee > 0 || minerFee > 0) && (
+                        <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", marginTop: 4 }}>
+                          {swapFee > 0 && <span>Swap: {fmtSats(swapFee)}</span>}
+                          {swapFee > 0 && minerFee > 0 && <span> + </span>}
+                          {minerFee > 0 && <span>Miner: {fmtSats(minerFee)}</span>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
+                      <div className="stat-label">You Will Receive</div>
+                      <div className="stat-value" style={{ fontSize: "1.125rem", color: "var(--green)" }}>
+                        ~{fmtSats(q.amount_sat - netFee)}
+                      </div>
+                    </div>
+                  </div>
+                  {prepay > 0 && (
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-3)", padding: "8px 12px", background: "var(--bg-3)", borderRadius: 6 }}>
+                      A temporary prepay hold of <strong style={{ color: "var(--text-2)" }}>{fmtSats(prepay)} sats</strong> is
+                      sent during the swap and returned as part of your on-chain payment. It is not an additional fee.
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
-                <div className="stat-label">Estimated Fee</div>
-                <div className="stat-value" style={{ fontSize: "1.125rem" }}>
-                  {fmtSats(quoteResp.quote.total_fee_sat)}
-                </div>
-              </div>
-              <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
-                <div className="stat-label">You Will Receive</div>
-                <div className="stat-value" style={{ fontSize: "1.125rem", color: "var(--green)" }}>
-                  ~{fmtSats(quoteResp.quote.amount_sat - quoteResp.quote.total_fee_sat)}
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             <div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-3)", wordBreak: "break-all" }}>
               To: {address}
