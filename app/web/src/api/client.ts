@@ -99,6 +99,11 @@ export const api = {
     apiFetch<{ ok: boolean; deleted_id: number }>(`/api/network/payments/${id}`, { method: "DELETE" }),
   // Member Liquidity Advisor (member node)
   getMemberLiquidityStatus: () => apiFetch<MemberLiquidityStatusResponse>("/api/liquidity/status"),
+  setChannelRole: (channel_role: "merchant" | "farmer" | "unknown") =>
+    apiFetch<{ ok: boolean; channel_role: string }>("/api/liquidity/config", {
+      method: "PATCH",
+      body: JSON.stringify({ channel_role }),
+    }),
   getMemberLiquidityHistory: (channelId: string, limit?: number) => {
     const qs = new URLSearchParams({ channelId });
     if (limit) qs.set("limit", String(limit));
