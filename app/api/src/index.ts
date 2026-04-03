@@ -101,12 +101,12 @@ persistNodeInfo().catch(err => {
     await syncLndState();
     console.log("[lnd] initial sync complete");
   } catch (err: any) {
-    console.warn("[lnd] initial sync failed:", err.message);
+    console.warn("[lnd] initial sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "");
   }
 
   setInterval(() => {
     syncLndState().catch(err =>
-      console.warn("[lnd] periodic sync failed:", err.message)
+      console.warn("[lnd] periodic sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "")
     );
   }, 15000);
 })();
