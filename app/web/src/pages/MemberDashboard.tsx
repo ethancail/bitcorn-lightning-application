@@ -436,15 +436,22 @@ export default function MemberDashboard() {
         const isMerchant = role === "merchant";
         const isFarmer = role === "farmer";
 
-        // Role-aware gauge: merchants care about outbound (local), farmers about receiving (remote)
-        const gaugeLabel = isMerchant ? "Outbound capacity" : isFarmer ? "Receiving capacity" : "Channel balance";
-        const gaugePct = isMerchant ? localPct : isFarmer ? remotePct : localPct;
+        // Role-aware gauge
+        // Merchant: outbound capacity (local%) — depletes as they spend, green when high
+        // Farmer: earnings accumulated (local%) — fills up like a grain bin, amber→green→amber→red as it fills
+        // Unknown: raw local/remote split
+        const gaugeLabel = isMerchant ? "Outbound capacity" : isFarmer ? "Earnings accumulated" : "Channel balance";
+        const gaugePct = isMerchant ? localPct : isFarmer ? localPct : localPct;
         const gaugeRemaining = isMerchant
           ? `${localPct}% — ${ch!.local_sats.toLocaleString()} sats available to send`
           : isFarmer
-            ? `${remotePct}% — ${ch!.remote_sats.toLocaleString()} sats remaining`
+            ? `${localPct}% full — ${ch!.local_sats.toLocaleString()} of ${ch!.capacity_sats.toLocaleString()} sats`
             : `${localPct}% local — ${remotePct}% remote`;
-        const gaugeColor = gaugePct < 15 ? "var(--red)" : gaugePct < 30 ? "var(--amber)" : "var(--green)";
+        // Merchant: green=healthy(high local), amber/red=depleting
+        // Farmer: green=room to earn(low fill), amber=getting full, red=needs withdrawal
+        const gaugeColor = isFarmer
+          ? (localPct >= 85 ? "var(--red)" : localPct >= 70 ? "var(--amber)" : "var(--green)")
+          : (gaugePct < 15 ? "var(--red)" : gaugePct < 30 ? "var(--amber)" : "var(--green)");
 
         // Hero number
         const heroLabel = isMerchant ? "Available to send" : isFarmer ? "Available to withdraw" : "Your balance";
