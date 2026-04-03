@@ -102,8 +102,24 @@ export default function WithdrawBitcoin() {
   const [history, setHistory] = useState<SwapRequest[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
 
+  // ─── Max withdrawable from treasury channel ─────────────────────────
+  const [maxWithdrawable, setMaxWithdrawable] = useState<number | null>(null);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ─── Fetch max withdrawable from treasury channel ──────────────────────
+  useEffect(() => {
+    api.getMemberStats()
+      .then((s) => {
+        if (s.treasury_channel) {
+          const buffer = 50_000;
+          const max = Math.min(s.treasury_channel.local_sats - buffer, 2_000_000);
+          setMaxWithdrawable(max > 250_000 ? max : null);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // ─── Generate address on mount ────────────────────────────────────────
   useEffect(() => {
@@ -274,6 +290,15 @@ export default function WithdrawBitcoin() {
                       : `${(preset / 1_000).toFixed(0)}k`}
                   </button>
                 ))}
+                {maxWithdrawable && !AMOUNT_PRESETS.includes(maxWithdrawable) && (
+                  <button
+                    className={`btn ${amount === maxWithdrawable ? "btn-primary" : "btn-outline"}`}
+                    style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto", fontWeight: 600 }}
+                    onClick={() => setAmount(maxWithdrawable)}
+                  >
+                    Max
+                  </button>
+                )}
               </div>
               <input
                 type="number"
