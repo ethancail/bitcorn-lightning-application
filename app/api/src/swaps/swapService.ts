@@ -79,7 +79,8 @@ export async function createLoopOutQuote(params: {
             'quote_created', ?, ?, ?, ?, ?, ?)
   `).run(
     id, now, now, params.nodePubkey, params.role,
-    params.amountSat, params.maxFeeSat ?? null, quote.total_fee_sat,
+    params.amountSat, params.maxFeeSat ?? null,
+    (quote.swap_fee_sat ?? 0) + (quote.miner_fee_sat ?? 0), // net fee (excludes prepay hold)
     destAddr, params.channelId ?? null, expiresAt
   );
 
