@@ -10,10 +10,10 @@ export async function syncForwardingHistory(): Promise<void> {
   if (!isLndAvailable()) return;
 
   let token: string | undefined;
-  const limit = 100;
 
   do {
-    const page = await getLndForwards({ limit, token });
+    // LND 0.20.0: limit cannot be passed alongside a pagination token
+    const page = await getLndForwards(token ? { token } : { limit: 100 });
     for (const f of page.forwards) {
       const createdAt = f.created_at
         ? new Date(f.created_at).getTime()
