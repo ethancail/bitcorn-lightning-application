@@ -1984,17 +1984,34 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                 </button>
               ))}
             </div>
-            <input
-              type="number"
-              className="form-input"
-              min={100000}
-              step={100000}
-              value={capacity}
-              onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setCapacity(v); }}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type="text"
+                inputMode="numeric"
+                className="form-input"
+                value={capacity > 0 ? capacity.toLocaleString() : ""}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/[^0-9]/g, "");
+                  if (raw === "") { setCapacity(0); return; }
+                  setCapacity(Number(raw));
+                }}
+                style={{ paddingRight: 42 }}
+              />
+              <span style={{
+                position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                fontSize: "0.75rem", color: "var(--text-3)", fontFamily: "var(--mono)", pointerEvents: "none",
+              }}>
+                sats
+              </span>
+            </div>
             <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
               Minimum: 100,000 sats. Subject to capital guardrails and on-chain balance.
             </p>
+            {capacity > 0 && capacity < 100_000 && (
+              <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
+                Channel capacity must be at least 100,000 sats.
+              </div>
+            )}
           </div>
 
           {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
