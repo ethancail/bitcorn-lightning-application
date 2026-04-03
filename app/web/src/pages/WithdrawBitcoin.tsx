@@ -114,8 +114,9 @@ export default function WithdrawBitcoin() {
       .then((s) => {
         if (s.treasury_channel) {
           const buffer = 50_000;
-          const max = Math.min(s.treasury_channel.local_sats - buffer, 2_000_000);
-          setMaxWithdrawable(max > 250_000 ? max : null);
+          const feeCushion = 2_000; // conservative estimate for swap + miner fees
+          const max = Math.min(s.treasury_channel.local_sats - buffer - feeCushion, 2_000_000);
+          setMaxWithdrawable(max >= 250_000 ? max : null);
         }
       })
       .catch(() => {});
