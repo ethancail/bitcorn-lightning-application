@@ -4,6 +4,7 @@ import { persistPeers, persistChannels } from "./persist-channels";
 import { syncInboundPayments } from "./persist-inbound";
 import { syncForwardingHistory } from "./persist-forwarded";
 import { ENV } from "../config/env";
+import { db } from "../db";
 import type { NodeRole } from "../types/node";
 
 export function deriveNodeRole(
@@ -57,6 +58,15 @@ export async function syncLndState() {
   await persistNodeInfo(hasTreasuryChannel, membershipStatus, nodeRole);
   await syncInboundPayments();
   await syncForwardingHistory();
+
+  // Clean up stale expansion executions stuck in requested/submitted for >1 hour.
+  // These block capital guardrails by inflating pending sats.
+  const oneHourAgo = Date.now() - 60 * 60 * 1000;
+  db.prepare(
+    `UPDATE treasury_expansion_executions
+     SET status = 'failed', error = 'stale — auto-cleaned by sync loop'
+     WHERE status IN ('requested', 'submitted') AND created_at < ?`
+  ).run(oneHourAgo);
 
   return { ok: true };
 }
