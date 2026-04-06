@@ -455,6 +455,78 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && req.url === "/api/treasury/peers/live") {
+    try {
+      const node = getNodeInfo();
+      assertTreasury(node?.node_role);
+      const { peers } = await getLndPeers();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(peers.map((p: any) => ({
+        pubkey: p.public_key,
+        address: p.socket,
+        bytes_sent: p.bytes_sent,
+        bytes_received: p.bytes_received,
+        is_inbound: p.is_inbound,
+        ping_time: p.ping_time,
+      }))));
+    } catch (err: any) {
+      const statusCode = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
+      res.writeHead(statusCode, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "failed" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/treasury/peers/connect") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        let { pubkey, address } = parsed;
+
+        // Support URI format: pubkey@host:port
+        if (!pubkey && parsed.uri) {
+          const parts = parsed.uri.split("@");
+          if (parts.length === 2) {
+            pubkey = parts[0];
+            address = parts[1];
+          }
+        }
+
+        if (!pubkey || pubkey.length !== 66) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Valid 66-character pubkey required" }));
+          return;
+        }
+        if (!address) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Node address (host:port) required" }));
+          return;
+        }
+
+        await connectToPeer(pubkey, address);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, pubkey, address }));
+      } catch (err: any) {
+        const msg = err?.message ?? "Failed to connect";
+        const status = /already.*connected/i.test(msg) ? 200 : 500;
+        res.writeHead(status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(status === 200
+          ? { ok: true, pubkey: "already_connected", address: "" }
+          : { error: msg }
+        ));
+      }
+    });
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/treasury/fee-policy") {
     try {
       const node = getNodeInfo();
