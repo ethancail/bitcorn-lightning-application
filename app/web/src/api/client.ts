@@ -42,6 +42,12 @@ export const api = {
   getAlerts: () => apiFetch<TreasuryAlert[]>("/api/treasury/alerts"),
   getChannelMetrics: () => apiFetch<ChannelMetric[]>("/api/treasury/channel-metrics"),
   getPeerScores: () => apiFetch<PeerScore[]>("/api/treasury/peers/performance"),
+  getLivePeers: () => apiFetch<LivePeer[]>("/api/treasury/peers/live"),
+  connectPeer: (body: { pubkey?: string; address?: string; uri?: string }) =>
+    apiFetch<{ ok: boolean; pubkey: string; address: string }>("/api/treasury/peers/connect", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   getRotationCandidates: () => apiFetch<RotationCandidate[]>("/api/treasury/rotation/candidates"),
   getDynamicFeePreview: () => apiFetch<ChannelFeeAdjustment[]>("/api/treasury/fees/dynamic-preview"),
   getLiquidityHealth: () => apiFetch<ChannelLiquidityHealth[]>("/api/treasury/liquidity-health"),
@@ -270,6 +276,15 @@ export type ChannelMetric = {
   rebalance_costs_sats: number;
   net_fees_sats: number;
   roi_ppm: number;
+};
+
+export type LivePeer = {
+  pubkey: string;
+  address: string;
+  bytes_sent: number;
+  bytes_received: number;
+  is_inbound: boolean;
+  ping_time: number;
 };
 
 export type PeerScore = {

@@ -14,6 +14,7 @@ import MemberLiquidity from "./pages/MemberLiquidity";
 import DepositBitcoin from "./pages/DepositBitcoin";
 import WithdrawBitcoin from "./pages/WithdrawBitcoin";
 import SwapOperations from "./pages/SwapOperations";
+import Peers from "./pages/Peers";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
 // Browsers change number input values on scroll wheel — confusing for sats fields.
@@ -198,6 +199,7 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
     { to: "/dashboard", icon: "▤", label: "Dashboard" },
     { to: "/charts", icon: "⟠", label: "Charts" },
     { to: "/contacts", icon: "☰", label: "Contacts" },
+    { to: "/peers", icon: "⟐", label: "Peers" },
     { to: "/channels", icon: "◈", label: "Channels" },
     { to: "/payments", icon: "↗", label: "Payments" },
     { to: "/liquidity", icon: "≋", label: "Liquidity" },
@@ -280,6 +282,7 @@ function AppShell() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/charts" element={<Charts />} />
           <Route path="/contacts" element={<Contacts />} />
+          <Route path="/peers" element={<Peers />} />
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/payments" element={<Payments title="Payments" />} />
           <Route path="/liquidity" element={<LiquidityPage />} />
