@@ -2094,9 +2094,21 @@ const server = http.createServer(async (req, res) => {
   // POST /api/contacts/sync-peers  (must be before POST /api/contacts)
   if (req.method === "POST" && req.url === "/api/contacts/sync-peers") {
     try {
-      const peerPubkeys = db
+      // Collect pubkeys from both channels AND live connected peers
+      const channelPubkeys = db
         .prepare("SELECT DISTINCT peer_pubkey FROM lnd_channels")
         .all() as Array<{ peer_pubkey: string }>;
+
+      let livePeerPubkeys: string[] = [];
+      try {
+        const { peers } = await getLndPeers();
+        livePeerPubkeys = (peers ?? []).map((p: any) => p.public_key as string);
+      } catch {}
+
+      const allPubkeys = new Set([
+        ...channelPubkeys.map((r) => r.peer_pubkey),
+        ...livePeerPubkeys,
+      ]);
 
       const existing = new Set(
         (
@@ -2108,7 +2120,7 @@ const server = http.createServer(async (req, res) => {
       let skipped = 0;
       const now = Date.now();
 
-      for (const { peer_pubkey } of peerPubkeys) {
+      for (const peer_pubkey of allPubkeys) {
         if (existing.has(peer_pubkey)) {
           skipped++;
           continue;
