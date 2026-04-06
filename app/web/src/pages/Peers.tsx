@@ -6,6 +6,7 @@ export default function Peers() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [nodeUri, setNodeUri] = useState<string | null>(null);
+  const [nodeUriLoading, setNodeUriLoading] = useState(true);
 
   // Connect form
   const [uri, setUri] = useState("");
@@ -27,12 +28,10 @@ export default function Peers() {
   useEffect(() => {
     loadPeers();
     // Get treasury node URI for sharing
-    api.getNode().then((n) => {
-      if (n.public_key) {
-        // We don't have the socket from this endpoint, but we can show the pubkey
-        setNodeUri(n.public_key);
-      }
-    }).catch(() => {});
+    api.getNode()
+      .then((n) => { if (n.pubkey) setNodeUri(n.pubkey); })
+      .catch(() => {})
+      .finally(() => setNodeUriLoading(false));
 
     const id = setInterval(loadPeers, 30_000);
     return () => clearInterval(id);
@@ -97,8 +96,12 @@ export default function Peers() {
             }}>
               {nodeUri}
             </div>
-          ) : (
+          ) : nodeUriLoading ? (
             <div className="loading-shimmer" style={{ height: 40, borderRadius: 6 }} />
+          ) : (
+            <div style={{ fontSize: "0.8125rem", color: "var(--text-3)" }}>
+              Unable to load node info. Check that LND is running.
+            </div>
           )}
         </div>
       </div>
