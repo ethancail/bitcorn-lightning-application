@@ -760,27 +760,34 @@ function CapitalPolicyPanel() {
             <p className="text-dim" style={{ fontSize: "0.75rem", lineHeight: 1.5 }}>
               These limits are enforced before every channel open. Adjust to match your node's capital and risk tolerance.
             </p>
-            {POLICY_FIELDS.map((f) => (
-              <div key={f.key}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4 }}>
-                  <label className="form-label" style={{ marginBottom: 0 }}>{f.label}</label>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{f.unit}</span>
+            {POLICY_FIELDS.map((f) => {
+              const val = policy[f.key] ?? 0;
+              return (
+                <div key={f.key}>
+                  <label className="form-label" style={{ marginBottom: 4 }}>{f.label}</label>
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      className="form-input"
+                      value={val > 0 ? val.toLocaleString() : "0"}
+                      onChange={(e) => {
+                        const raw = e.target.value.replace(/[^0-9]/g, "");
+                        handleChange(f.key, raw === "" ? 0 : Number(raw));
+                      }}
+                      style={{ fontSize: "0.8125rem", paddingRight: f.unit.length > 10 ? 160 : 50 }}
+                    />
+                    <span style={{
+                      position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                      fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", pointerEvents: "none",
+                    }}>
+                      {f.unit}
+                    </span>
+                  </div>
+                  <p className="text-dim" style={{ fontSize: "0.625rem", marginTop: 2 }}>{f.help}</p>
                 </div>
-                <input
-                  type="number"
-                  className="form-input"
-                  min={f.min}
-                  step={f.step}
-                  value={policy[f.key] ?? 0}
-                  onChange={(e) => {
-                    const v = parseInt(e.target.value, 10);
-                    if (!isNaN(v)) handleChange(f.key, v);
-                  }}
-                  style={{ fontSize: "0.8125rem" }}
-                />
-                <p className="text-dim" style={{ fontSize: "0.625rem", marginTop: 2 }}>{f.help}</p>
-              </div>
-            ))}
+              );
+            })}
             {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
             <button
               className="btn btn-primary"
