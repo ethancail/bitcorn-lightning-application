@@ -827,10 +827,10 @@ const server = http.createServer(async (req, res) => {
               partnerSocket: peer.socket,
             });
 
-            // Update execution as submitted
+            // Mark execution as succeeded — funding tx is broadcast
             updateExpansionExecution(
               execId,
-              "submitted",
+              "succeeded",
               result.transaction_id,
               null
             );
