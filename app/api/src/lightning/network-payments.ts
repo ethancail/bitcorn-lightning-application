@@ -151,11 +151,31 @@ export async function payNetworkInvoice(
       reason += ". Open a larger channel to this peer.";
       throw new Error(reason);
     }
-  } else if (allActiveChannels.total_local < tokens) {
-    // Routed payment — check total spendable
-    throw new Error(
-      `Insufficient Lightning balance. You have ${allActiveChannels.total_local.toLocaleString()} spendable sats but need ${tokens.toLocaleString()}.`
-    );
+  } else {
+    // Routed payment — member payments are forced through the treasury channel.
+    // Check treasury channel balance specifically, not total across all channels.
+    const treasuryPubkey = ENV.treasuryPubkey;
+    const treasuryChannel = treasuryPubkey
+      ? db.prepare(
+          "SELECT local_balance_sat, capacity_sat FROM lnd_channels WHERE peer_pubkey = ? AND active = 1 LIMIT 1"
+        ).get(treasuryPubkey) as { local_balance_sat: number; capacity_sat: number } | undefined
+      : undefined;
+
+    if (treasuryChannel) {
+      const reserve = Math.ceil(treasuryChannel.capacity_sat * 0.01);
+      const spendable = Math.max(0, treasuryChannel.local_balance_sat - reserve);
+      if (spendable < tokens) {
+        throw new Error(
+          `Insufficient outbound on treasury channel to send ${tokens.toLocaleString()} sats. ` +
+          `You have ${spendable.toLocaleString()} sats available on the hub channel.`
+        );
+      }
+    } else if (allActiveChannels.total_local < tokens) {
+      throw new Error(
+        `Insufficient Lightning balance to send ${tokens.toLocaleString()} sats. ` +
+        `You have ${allActiveChannels.total_local.toLocaleString()} sats available.`
+      );
+    }
   }
 
   const rate = await fetchRateSafe();
@@ -234,7 +254,7 @@ export async function payNetworkInvoice(
     } else if (errorMsg.includes("PaymentAttemptTimedOut")) {
       errorMsg = `Payment to ${resolveContact(destination)} timed out. The route may be congested — try again later.`;
     } else if (errorMsg.includes("InsufficientBalance")) {
-      errorMsg = `Insufficient Lightning balance to send ${tokens.toLocaleString()} sats.`;
+      errorMsg = `Insufficient outbound capacity to send ${tokens.toLocaleString()} sats. Your hub channel may not have enough balance.`;
     }
 
     return {
