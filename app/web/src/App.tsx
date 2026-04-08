@@ -1386,12 +1386,12 @@ function ChannelsPage() {
                 <div style={{ overflowX: "auto" }}>
                   <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
-                      <col />
-                      <col style={{ width: 90 }} />
-                      <col style={{ width: 120 }} />
-                      <col style={{ width: 140 }} />
-                      <col style={{ width: 110 }} />
-                      <col style={{ width: 80 }} />
+                      <col style={{ width: "25%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "13%" }} />
                     </colgroup>
                     <thead>
                       <tr>
@@ -1448,12 +1448,12 @@ function ChannelsPage() {
                 <div style={{ overflowX: "auto" }}>
                   <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
-                      <col />
-                      <col style={{ width: 90 }} />
-                      <col style={{ width: 120 }} />
-                      <col style={{ width: 140 }} />
-                      <col style={{ width: 110 }} />
-                      <col style={{ width: 80 }} />
+                      <col style={{ width: "25%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "13%" }} />
                     </colgroup>
                     <thead>
                       <tr>
@@ -1508,12 +1508,12 @@ function ChannelsPage() {
                 <div style={{ overflowX: "auto" }}>
                   <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
-                      <col />
-                      <col style={{ width: 90 }} />
-                      <col style={{ width: 120 }} />
-                      <col style={{ width: 140 }} />
-                      <col style={{ width: 110 }} />
-                      <col style={{ width: 80 }} />
+                      <col style={{ width: "25%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "13%" }} />
                     </colgroup>
                     <thead>
                       <tr>
@@ -1566,12 +1566,12 @@ function ChannelsPage() {
                 <div style={{ overflowX: "auto" }}>
                   <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
-                      <col />
-                      <col style={{ width: 90 }} />
-                      <col style={{ width: 120 }} />
-                      <col style={{ width: 140 }} />
-                      <col style={{ width: 110 }} />
-                      <col style={{ width: 80 }} />
+                      <col style={{ width: "25%" }} />
+                      <col style={{ width: "12%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "13%" }} />
                     </colgroup>
                     <thead>
                       <tr>
