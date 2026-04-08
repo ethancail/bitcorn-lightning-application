@@ -1371,6 +1371,9 @@ function ChannelsPage() {
               </div>
             )}
 
+            {/* ── Shared column widths for consistent alignment ────── */}
+            {/* All lane tables use: Name(auto) | Capacity(90px) | Detail(120px) | Gauge(140px) | State(110px) | Action(80px) */}
+
             {/* ── Merchant Lanes ──────────────────────────────────────── */}
             <div className="panel fade-in" style={{ marginBottom: 16 }}>
               <div className="panel-header">
@@ -1381,12 +1384,21 @@ function ChannelsPage() {
                 <div className="empty-state">No merchant channels. Tag contacts as "merchant" to classify.</div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table">
+                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                    <colgroup>
+                      <col />
+                      <col style={{ width: 90 }} />
+                      <col style={{ width: 120 }} />
+                      <col style={{ width: 140 }} />
+                      <col style={{ width: 110 }} />
+                      <col style={{ width: 80 }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>Merchant</th>
                         <th>Capacity</th>
-                        <th style={{ textAlign: "right" }}>Forwarding Left</th>
+                        <th style={{ textAlign: "right" }}>Forwarded</th>
+                        <th>Forwarding Left</th>
                         <th>State</th>
                         <th>Action</th>
                       </tr>
@@ -1400,12 +1412,15 @@ function ChannelsPage() {
                           <tr key={c.channel_id}>
                             <td style={{ fontWeight: 500 }}>{c.peerName}</td>
                             <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                            <td className="td-num">
-                              <div style={{ display: "flex", alignItems: "center", gap: 8, justifyContent: "flex-end" }}>
-                                <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden" }}>
+                            <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                              {c.remote_balance_sat.toLocaleString()}
+                            </td>
+                            <td>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                   <div style={{ height: "100%", width: `${fwdLeftPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
-                                <span style={{ fontFamily: "var(--mono)", color }}>{fwdLeftPct}%</span>
+                                <span style={{ fontFamily: "var(--mono)", color, fontSize: "0.75rem" }}>{fwdLeftPct}%</span>
                               </div>
                             </td>
                             <td>
@@ -1431,7 +1446,15 @@ function ChannelsPage() {
                 <div className="empty-state">No farmer channels. Tag contacts as "farmer" to classify.</div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table">
+                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                    <colgroup>
+                      <col />
+                      <col style={{ width: 90 }} />
+                      <col style={{ width: 120 }} />
+                      <col style={{ width: 140 }} />
+                      <col style={{ width: 110 }} />
+                      <col style={{ width: 80 }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>Farmer</th>
@@ -1445,21 +1468,21 @@ function ChannelsPage() {
                     <tbody>
                       {farmerLanes.map((c) => {
                         const accumulated = c.remote_balance_sat;
-                        const recvPct = c.localPct; // treasury local = farmer's remaining receive capacity
+                        const recvPct = c.localPct;
                         const color = stateColor(c.state);
                         return (
                           <tr key={c.channel_id}>
                             <td style={{ fontWeight: 500 }}>{c.peerName}</td>
                             <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                             <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
-                              {accumulated.toLocaleString()} sats
+                              {accumulated.toLocaleString()}
                             </td>
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden" }}>
+                                <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                   <div style={{ height: "100%", width: `${recvPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
-                                <span style={{ fontFamily: "var(--mono)", color }}>{recvPct}%</span>
+                                <span style={{ fontFamily: "var(--mono)", color, fontSize: "0.75rem" }}>{recvPct}%</span>
                               </div>
                             </td>
                             <td>
@@ -1483,7 +1506,15 @@ function ChannelsPage() {
                   <span className="badge badge-muted">{externalLanes.length}</span>
                 </div>
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table">
+                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                    <colgroup>
+                      <col />
+                      <col style={{ width: 90 }} />
+                      <col style={{ width: 120 }} />
+                      <col style={{ width: 140 }} />
+                      <col style={{ width: 110 }} />
+                      <col style={{ width: 80 }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>Peer</th>
@@ -1501,14 +1532,15 @@ function ChannelsPage() {
                           <tr key={c.channel_id}>
                             <td style={{ fontWeight: 500 }}>{c.peerName}</td>
                             <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                            <td className="td-num">
-                              <span style={{ fontFamily: "var(--mono)" }}>{c.localPct}%</span>
+                            <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                              {c.local_balance_sat.toLocaleString()}
                             </td>
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden" }}>
+                                <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                   <div style={{ height: "100%", width: `${c.localPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
+                                <span style={{ fontFamily: "var(--mono)", color, fontSize: "0.75rem" }}>{c.localPct}%</span>
                               </div>
                             </td>
                             <td>
@@ -1532,13 +1564,22 @@ function ChannelsPage() {
                   <span className="badge badge-muted">{unclassifiedLanes.length}</span>
                 </div>
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table">
+                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                    <colgroup>
+                      <col />
+                      <col style={{ width: 90 }} />
+                      <col style={{ width: 120 }} />
+                      <col style={{ width: 140 }} />
+                      <col style={{ width: 110 }} />
+                      <col style={{ width: 80 }} />
+                    </colgroup>
                     <thead>
                       <tr>
                         <th>Peer</th>
                         <th>Capacity</th>
                         <th style={{ textAlign: "right" }}>Local</th>
                         <th>Balance</th>
+                        <th></th>
                         <th>Action</th>
                       </tr>
                     </thead>
@@ -1547,16 +1588,18 @@ function ChannelsPage() {
                         <tr key={c.channel_id}>
                           <td style={{ fontWeight: 500 }}>{c.peerName}</td>
                           <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                          <td className="td-num">
-                            <span style={{ fontFamily: "var(--mono)" }}>{c.localPct}%</span>
+                          <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                            {c.local_balance_sat.toLocaleString()}
                           </td>
                           <td>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden" }}>
+                              <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                 <div style={{ height: "100%", width: `${c.localPct}%`, background: "var(--text-3)", borderRadius: 3 }} />
                               </div>
+                              <span style={{ fontFamily: "var(--mono)", color: "var(--text-3)", fontSize: "0.75rem" }}>{c.localPct}%</span>
                             </div>
                           </td>
+                          <td></td>
                           <td>{closeBtn(c)}</td>
                         </tr>
                       ))}
