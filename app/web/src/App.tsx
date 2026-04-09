@@ -2092,12 +2092,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
 }
 
 function LiquidityPage() {
-  return (
-    <div>
-      <NetworkGraph />
-      <MemberLiquidity />
-    </div>
-  );
+  return <NetworkGraph />;
 }
 
 
