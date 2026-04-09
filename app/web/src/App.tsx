@@ -15,6 +15,7 @@ import DepositBitcoin from "./pages/DepositBitcoin";
 import WithdrawBitcoin from "./pages/WithdrawBitcoin";
 import SwapOperations from "./pages/SwapOperations";
 import Peers from "./pages/Peers";
+import NetworkGraph from "./components/NetworkGraph";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
 // Browsers change number input values on scroll wheel — confusing for sats fields.
@@ -2091,7 +2092,12 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
 }
 
 function LiquidityPage() {
-  return <MemberLiquidity />;
+  return (
+    <div>
+      <NetworkGraph />
+      <MemberLiquidity />
+    </div>
+  );
 }
 
 
