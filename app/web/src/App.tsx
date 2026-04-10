@@ -556,98 +556,64 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
         <div className="panel-header">
           <span className="panel-title"><span className="icon">◐</span>Appearance</span>
         </div>
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {options.map((opt) => (
-            <button
-              key={opt.value}
-              className={`theme-option ${theme === opt.value ? "selected" : ""}`}
-              onClick={() => changeTheme(opt.value)}
-            >
-              <span style={{ fontSize: "1.25rem" }}>{opt.icon}</span>
-              <div>
-                <div style={{ fontWeight: 600 }}>{opt.label}</div>
-                <div style={{ fontSize: "0.75rem", color: theme === opt.value ? "var(--amber-dim)" : "var(--text-3)" }}>
-                  {opt.desc}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="panel" style={{ marginTop: 20 }}>
-        <div className="panel-header">
-          <span className="panel-title"><span className="icon">A</span>Text Size</span>
-          <span className="badge badge-muted">{Math.round(parseFloat(textScale) * 100)}%</span>
-        </div>
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* Theme: horizontal chips */}
           <div style={{ display: "flex", gap: 6 }}>
-            {TEXT_SCALE_PRESETS.map((preset) => (
+            {options.map((opt) => (
               <button
-                key={preset.value}
-                className={`btn ${textScale === preset.value ? "btn-primary" : "btn-outline"}`}
-                style={{ flex: 1, fontSize: "0.75rem", padding: "6px 8px" }}
-                onClick={() => changeTextScale(preset.value)}
+                key={opt.value}
+                onClick={() => changeTheme(opt.value)}
+                style={{
+                  flex: 1, padding: "8px 12px", borderRadius: 8, cursor: "pointer",
+                  border: `2px solid ${theme === opt.value ? "var(--amber)" : "var(--border)"}`,
+                  background: theme === opt.value ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
+                  color: theme === opt.value ? "var(--amber)" : "var(--text-3)",
+                  textAlign: "center", fontSize: "0.8125rem", fontWeight: 600, fontFamily: "var(--mono)",
+                }}
               >
-                {preset.label}
+                {opt.label}
               </button>
             ))}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontFamily: "var(--mono)", whiteSpace: "nowrap" }}>A</span>
-            <input
-              type="range"
-              min="0.75"
-              max="1.5"
-              step="0.05"
-              value={textScale}
-              onChange={(e) => changeTextScale(e.target.value)}
-              style={{ flex: 1, accentColor: "var(--amber)" }}
-            />
-            <span style={{ fontSize: "1.125rem", color: "var(--text-3)", fontFamily: "var(--mono)", whiteSpace: "nowrap" }}>A</span>
-          </div>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
-            Scales all text from the default 14px base. Preview changes in real time.
-          </div>
-        </div>
-      </div>
 
-      <div className="panel" style={{ marginTop: 20 }}>
-        <div className="panel-header">
-          <span className="panel-title"><span className="icon">F</span>Font</span>
-        </div>
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {FONT_PRESETS.map((preset) => (
-            <button
-              key={preset.id}
-              className={`theme-option ${fontId === preset.id ? "selected" : ""}`}
-              onClick={() => changeFont(preset.id)}
-            >
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600 }}>{preset.label}</div>
-                <div
+          {/* Text size: slider only, no presets */}
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+              <span style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Text Size</span>
+              <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{Math.round(parseFloat(textScale) * 100)}%</span>
+            </div>
+            <input
+              type="range" min="0.75" max="1.5" step="0.05" value={textScale}
+              onChange={(e) => changeTextScale(e.target.value)}
+              style={{ width: "100%", accentColor: "var(--amber)" }}
+            />
+          </div>
+
+          {/* Font: compact 2x2 grid */}
+          <div>
+            <span style={{ fontSize: "0.8125rem", fontWeight: 500, marginBottom: 4, display: "block" }}>Font</span>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+              {FONT_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  onClick={() => changeFont(preset.id)}
                   style={{
-                    fontSize: "0.8125rem",
-                    fontFamily: preset.sans,
-                    color: fontId === preset.id ? "var(--amber-dim)" : "var(--text-3)",
-                    marginTop: 2,
+                    padding: "8px 10px", borderRadius: 8, cursor: "pointer",
+                    border: `2px solid ${fontId === preset.id ? "var(--amber)" : "var(--border)"}`,
+                    background: fontId === preset.id ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
+                    textAlign: "center",
                   }}
                 >
-                  {preset.preview}
-                </div>
-                <div
-                  style={{
-                    fontSize: "0.75rem",
-                    fontFamily: preset.mono,
-                    color: fontId === preset.id ? "var(--amber-dim)" : "var(--text-3)",
-                    marginTop: 2,
-                  }}
-                >
-                  0123456789 sats
-                </div>
-              </div>
-            </button>
-          ))}
+                  <div style={{ fontWeight: 600, fontSize: "0.8125rem", color: fontId === preset.id ? "var(--amber)" : "var(--text)", fontFamily: preset.sans }}>
+                    {preset.label}
+                  </div>
+                  <div style={{ fontSize: "0.6875rem", fontFamily: preset.mono, color: "var(--text-3)", marginTop: 2 }}>
+                    0123456789
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
