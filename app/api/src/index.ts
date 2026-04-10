@@ -767,6 +767,7 @@ const server = http.createServer(async (req, res) => {
           const capacitySats = Number(parsed.capacity_sats);
           const isPrivate = parsed.is_private ?? false;
           const isDryRun = parsed.dry_run === true;
+          const feeRate = parsed.fee_rate ? Number(parsed.fee_rate) : undefined; // sat/vB
 
           if (!peerPubkey || typeof peerPubkey !== "string") {
             res.writeHead(400, { "Content-Type": "application/json" });
@@ -825,6 +826,7 @@ const server = http.createServer(async (req, res) => {
             const result = await openTreasuryChannel(peerPubkey, capacitySats, {
               isPrivate: isPrivate,
               partnerSocket: peer.socket,
+              chainFeeTokensPerVbyte: feeRate,
             });
 
             // Mark execution as succeeded — funding tx is broadcast
@@ -1694,6 +1696,7 @@ const server = http.createServer(async (req, res) => {
       try {
         const parsed = JSON.parse(body || "{}");
         const capacitySats = Number(parsed.capacity_sats);
+        const feeRate = parsed.fee_rate ? Number(parsed.fee_rate) : undefined;
         const partnerSocket: string | undefined =
           parsed.partner_socket && typeof parsed.partner_socket === "string"
             ? parsed.partner_socket.trim() || undefined
@@ -1720,6 +1723,7 @@ const server = http.createServer(async (req, res) => {
         const result = await openTreasuryChannel(hubPubkey, capacitySats, {
           isPrivate: false,
           partnerSocket,
+          chainFeeTokensPerVbyte: feeRate,
         });
 
         res.writeHead(200, { "Content-Type": "application/json" });

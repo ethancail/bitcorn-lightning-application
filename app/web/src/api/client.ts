@@ -33,7 +33,7 @@ export const api = {
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   getNodePreflight: () => apiFetch<PreflightResult>("/api/node/preflight"),
-  openMemberChannel: (body: { capacity_sats: number; partner_socket?: string }) =>
+  openMemberChannel: (body: { capacity_sats: number; partner_socket?: string; fee_rate?: number }) =>
     apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/member/open-channel", {
       method: "POST",
       body: JSON.stringify(body),
@@ -141,7 +141,7 @@ export const api = {
   // Pending channels
   getPendingChannels: () => apiFetch<PendingChannel[]>("/api/channels/pending"),
   // Treasury channel operations
-  treasuryOpenChannel: (body: { peer_pubkey: string; capacity_sats: number; is_private?: boolean }) =>
+  treasuryOpenChannel: (body: { peer_pubkey: string; capacity_sats: number; is_private?: boolean; fee_rate?: number }) =>
     apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/treasury/expansion/execute", {
       method: "POST",
       body: JSON.stringify(body),

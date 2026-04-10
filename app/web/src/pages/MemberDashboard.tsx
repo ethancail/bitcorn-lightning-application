@@ -36,6 +36,7 @@ function statusBadge(s: string) {
 
 function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initialCapacity?: number }) {
   const [capacity, setCapacity] = useState(initialCapacity ?? 1_000_000);
+  const [feeRate, setFeeRate] = useState<number | undefined>(undefined);
   const [socket, setSocket] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
@@ -62,6 +63,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
       const res = await api.openMemberChannel({
         capacity_sats: capacity,
         partner_socket: partnerSocket || undefined,
+        ...(feeRate ? { fee_rate: feeRate } : {}),
       });
       setSuccess(res.funding_txid ?? "submitted");
     } catch (e: any) {
@@ -241,6 +243,37 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
             </div>
           </div>
         )}
+
+        {/* Fee rate selector */}
+        <div>
+          <label className="form-label">Confirmation Speed</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            {([
+              { label: "Economy", rate: undefined, desc: "~1 sat/vB" },
+              { label: "Normal", rate: 5, desc: "~5 sat/vB" },
+              { label: "Priority", rate: 15, desc: "~15 sat/vB" },
+            ] as const).map((opt) => (
+              <button
+                key={opt.label}
+                type="button"
+                onClick={() => setFeeRate(opt.rate)}
+                style={{
+                  flex: 1, padding: "8px 6px", borderRadius: 8, cursor: "pointer",
+                  border: `2px solid ${feeRate === opt.rate ? "var(--amber)" : "var(--border)"}`,
+                  background: feeRate === opt.rate ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: feeRate === opt.rate ? "var(--amber)" : "var(--text)" }}>
+                  {opt.label}
+                </div>
+                <div style={{ fontSize: "0.625rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
+                  {opt.desc}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
 
         <button
           className="btn btn-primary"

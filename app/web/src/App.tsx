@@ -1750,6 +1750,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
   const [manualPubkey, setManualPubkey] = useState("");
   const [useManual, setUseManual] = useState(false);
   const [capacity, setCapacity] = useState(5_000_000);
+  const [feeRate, setFeeRate] = useState<number | undefined>(undefined); // undefined = LND default
   const [opening, setOpening] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; txid: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1777,6 +1778,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
       const res = await api.treasuryOpenChannel({
         peer_pubkey: activePubkey,
         capacity_sats: capacity,
+        ...(feeRate ? { fee_rate: feeRate } : {}),
       });
       setResult({ ok: true, txid: res.funding_txid });
       // Refresh pending list immediately
@@ -2033,6 +2035,36 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                 Channel capacity must be at least 100,000 sats.
               </div>
             )}
+          </div>
+
+          {/* Fee rate selector */}
+          <div>
+            <label className="form-label">Confirmation Speed</label>
+            <div style={{ display: "flex", gap: 6 }}>
+              {([
+                { label: "Economy", rate: undefined, desc: "~1 sat/vB" },
+                { label: "Normal", rate: 5, desc: "~5 sat/vB" },
+                { label: "Priority", rate: 15, desc: "~15 sat/vB" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.label}
+                  onClick={() => setFeeRate(opt.rate)}
+                  style={{
+                    flex: 1, padding: "8px 6px", borderRadius: 8, cursor: "pointer",
+                    border: `2px solid ${feeRate === opt.rate ? "var(--amber)" : "var(--border)"}`,
+                    background: feeRate === opt.rate ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: feeRate === opt.rate ? "var(--amber)" : "var(--text)" }}>
+                    {opt.label}
+                  </div>
+                  <div style={{ fontSize: "0.625rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
+                    {opt.desc}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
 
           {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
