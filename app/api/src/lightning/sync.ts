@@ -3,6 +3,7 @@ import { persistNodeInfo } from "./persist";
 import { persistPeers, persistChannels } from "./persist-channels";
 import { syncInboundPayments } from "./persist-inbound";
 import { syncForwardingHistory } from "./persist-forwarded";
+import { syncNetworkInvoiceSettlements } from "./network-payments";
 import { ENV } from "../config/env";
 import { db } from "../db";
 import type { NodeRole } from "../types/node";
@@ -58,6 +59,7 @@ export async function syncLndState() {
   await persistNodeInfo(hasTreasuryChannel, membershipStatus, nodeRole);
   await syncInboundPayments();
   await syncForwardingHistory();
+  syncNetworkInvoiceSettlements(); // match pending receives against confirmed inbound payments
 
   // Clean up stale expansion executions stuck in requested/submitted for >1 hour.
   // These block capital guardrails by inflating pending sats.
