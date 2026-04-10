@@ -619,6 +619,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
 
       {!isTreasury && <ChannelRolePanel />}
 
+      {isTreasury && <FeePolicyPanel />}
       {isTreasury && <CapitalPolicyPanel />}
 
       {isTreasury && (
@@ -667,6 +668,108 @@ const POLICY_FIELDS: PolicyField[] = [
   { key: "max_daily_deploy_sats", label: "Max Daily Deploy", unit: "sats", help: "Maximum sats deployed into channels per day", min: 100000, step: 100000 },
   { key: "max_daily_loss_sats", label: "Max Daily Loss", unit: "sats", help: "Maximum sats in rebalance costs per day before automation pauses", min: 0, step: 1000 },
 ];
+
+function FeePolicyPanel() {
+  const [baseFee, setBaseFee] = useState(1000); // msat
+  const [feeRate, setFeeRate] = useState(500); // ppm
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  useEffect(() => {
+    api.getFeePolicy()
+      .then((p) => { setBaseFee(p.base_fee_msat); setFeeRate(p.fee_rate_ppm); })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    setSaving(true); setError(null); setSaved(false);
+    try {
+      const updated = await api.setFeePolicy(baseFee, feeRate);
+      setBaseFee(updated.base_fee_msat);
+      setFeeRate(updated.fee_rate_ppm);
+      setDirty(false); setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (e: any) { setError(e.message ?? "Failed to save"); }
+    finally { setSaving(false); }
+  }
+
+  // Example fee for 100k payment
+  const examplePayment = 100_000;
+  const exampleFee = Math.round(baseFee / 1000) + Math.round(examplePayment * feeRate / 1_000_000);
+  const pctDisplay = (feeRate / 10_000).toFixed(2);
+
+  return (
+    <div className="panel" style={{ marginTop: 12 }}>
+      <div className="panel-header">
+        <span className="panel-title"><span className="icon">↗</span>Routing Fee Policy</span>
+        {saved && <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--green)" }}>✓ Applied</span>}
+      </div>
+      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {loading ? (
+          <div className="loading-shimmer" style={{ height: 60, borderRadius: 6 }} />
+        ) : (
+          <>
+            <p className="text-dim" style={{ fontSize: "0.75rem", margin: 0 }}>
+              Fee charged on every payment routed through your channels. Applied to all channels.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ flex: "1 1 50%" }}>
+                  <div style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Base Fee</div>
+                  <div style={{ fontSize: "0.625rem", color: "var(--text-3)" }}>Flat fee per routed payment</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <input
+                    type="text" inputMode="numeric" className="form-input"
+                    value={baseFee.toLocaleString()}
+                    onChange={(e) => { const v = Number(e.target.value.replace(/[^0-9]/g, "")); setBaseFee(v); setDirty(true); setSaved(false); }}
+                    style={{ fontSize: "0.8125rem", textAlign: "right", width: 100 }}
+                  />
+                  <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", minWidth: 36 }}>msat</span>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ flex: "1 1 50%" }}>
+                  <div style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Fee Rate</div>
+                  <div style={{ fontSize: "0.625rem", color: "var(--text-3)" }}>Proportional fee per routed sat ({pctDisplay}%)</div>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                  <input
+                    type="text" inputMode="numeric" className="form-input"
+                    value={feeRate.toLocaleString()}
+                    onChange={(e) => { const v = Number(e.target.value.replace(/[^0-9]/g, "")); setFeeRate(v); setDirty(true); setSaved(false); }}
+                    style={{ fontSize: "0.8125rem", textAlign: "right", width: 100 }}
+                  />
+                  <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", minWidth: 36 }}>ppm</span>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: "8px 12px", background: "var(--bg-3)", borderRadius: 6, fontSize: "0.75rem", color: "var(--text-2)" }}>
+              Example: a {examplePayment.toLocaleString()} sat payment would cost the sender <strong>{exampleFee.toLocaleString()} sats</strong> in routing fees ({pctDisplay}% + {Math.round(baseFee / 1000)} sat base).
+            </div>
+
+            {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
+            <button
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={saving || !dirty}
+              style={{ alignSelf: "flex-start" }}
+            >
+              {saving ? "Applying..." : dirty ? "Apply Fee Policy" : "No Changes"}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function CapitalPolicyPanel() {
   const [policy, setPolicy] = useState<Record<string, number> | null>(null);
