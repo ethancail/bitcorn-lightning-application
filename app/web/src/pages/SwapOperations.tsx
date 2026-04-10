@@ -73,64 +73,62 @@ function ChannelPicker({
   channels,
   selected,
   onSelect,
-  direction,
 }: {
   channels: ChannelInfo[];
   selected: string;
   onSelect: (id: string) => void;
-  direction: "out" | "in";
 }) {
   if (channels.length === 0) {
     return <div className="text-dim" style={{ fontSize: "0.8125rem" }}>No active channels available</div>;
   }
 
+  const fmtCap = (s: number) => s >= 1_000_000 ? `${(s / 1_000_000).toFixed(1)}M` : `${(s / 1_000).toFixed(0)}k`;
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      {/* Auto option */}
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {/* Auto chip */}
       <button
-        className={`theme-option ${selected === "" ? "selected" : ""}`}
         onClick={() => onSelect("")}
-        style={{ padding: "8px 12px" }}
+        style={{
+          padding: "10px 16px", borderRadius: 8, cursor: "pointer", border: "2px solid",
+          borderColor: selected === "" ? "var(--amber)" : "var(--border)",
+          background: selected === "" ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
+          color: selected === "" ? "var(--amber)" : "var(--text-3)",
+          fontFamily: "var(--mono)", fontSize: "0.8125rem", fontWeight: 600, minWidth: 100,
+        }}
       >
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 600, fontSize: "0.8125rem" }}>Auto-select</div>
-          <div style={{ fontSize: "0.6875rem", color: selected === "" ? "var(--amber-dim)" : "var(--text-3)" }}>
-            Let the system choose the best channel
-          </div>
-        </div>
+        Auto
       </button>
 
-      {/* Channel options */}
+      {/* Channel chips */}
       {channels.map((ch) => {
         const isSelected = selected === ch.channel_id;
-        const barColor = direction === "out"
-          ? (ch.localPct > 70 ? "var(--amber)" : ch.localPct > 40 ? "var(--green)" : "var(--text-3)")
-          : (ch.localPct < 30 ? "var(--amber)" : ch.localPct < 60 ? "var(--green)" : "var(--text-3)");
-
         return (
           <button
             key={ch.channel_id}
-            className={`theme-option ${isSelected ? "selected" : ""}`}
             onClick={() => onSelect(ch.channel_id)}
-            style={{ padding: "8px 12px" }}
+            style={{
+              padding: "8px 14px", borderRadius: 8, cursor: "pointer", border: "2px solid",
+              borderColor: isSelected ? "var(--amber)" : "var(--border)",
+              background: isSelected ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
+              display: "flex", flexDirection: "column", gap: 4, minWidth: 140, flex: "1 1 140px",
+            }}
           >
-            <div style={{ flex: 1 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                <span style={{ fontWeight: 600, fontSize: "0.8125rem" }}>{ch.peerName}</span>
-                <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: isSelected ? "var(--amber-dim)" : "var(--text-3)" }}>
-                  {ch.capacity_sat >= 1_000_000
-                    ? `${(ch.capacity_sat / 1_000_000).toFixed(1)}M`
-                    : `${(ch.capacity_sat / 1_000).toFixed(0)}k`}
-                </span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontWeight: 600, fontSize: "0.8125rem", color: isSelected ? "var(--amber)" : "var(--text)" }}>
+                {ch.peerName}
+              </span>
+              <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+                {fmtCap(ch.capacity_sat)}
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ flex: 1, height: 4, borderRadius: 2, background: "var(--bg-3)", overflow: "hidden" }}>
+                <div style={{ width: `${ch.localPct}%`, height: "100%", background: isSelected ? "var(--amber)" : "var(--green)", borderRadius: 2 }} />
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ flex: 1, height: 4, borderRadius: 2, background: "var(--bg-3)", overflow: "hidden" }}>
-                  <div style={{ width: `${ch.localPct}%`, height: "100%", background: barColor, borderRadius: 2 }} />
-                </div>
-                <span style={{ fontFamily: "var(--mono)", fontSize: "0.625rem", color: isSelected ? "var(--amber-dim)" : "var(--text-3)", minWidth: 70, textAlign: "right" }}>
-                  {ch.local_balance_sat.toLocaleString()} local
-                </span>
-              </div>
+              <span style={{ fontFamily: "var(--mono)", fontSize: "0.625rem", color: "var(--text-3)" }}>
+                {ch.localPct}%
+              </span>
             </div>
           </button>
         );
@@ -279,27 +277,23 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
           <span className="badge badge-muted">restore inbound capacity</span>
         </div>
         <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <p className="text-dim" style={{ fontSize: "0.8125rem", margin: 0 }}>
-            Sends Lightning sats off-chain through a channel, receives them on-chain. Restores receive capacity on the selected channel.
-          </p>
-
           {/* Channel picker */}
           <div>
-            <label className="form-label">Select Channel</label>
-            <ChannelPicker channels={channels} selected={channelId} onSelect={setChannelId} direction="out" />
+            <label className="form-label">Channel</label>
+            <ChannelPicker channels={channels} selected={channelId} onSelect={setChannelId} />
           </div>
 
           <AmountInput value={amount} onChange={setAmount} />
 
-          <div>
-            <label className="form-label">Destination Address <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(optional)</span></label>
+          <details style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+            <summary style={{ cursor: "pointer", userSelect: "none", marginBottom: 8 }}>Advanced: custom destination address</summary>
             <input
               type="text" className="form-input" value={destinationAddress}
               onChange={(e) => setDestinationAddress(e.target.value)}
               placeholder="bc1q... (leave empty for auto-generated)"
               style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
             />
-          </div>
+          </details>
 
           {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
 
@@ -487,10 +481,6 @@ function LoopInTab() {
           <span className="badge badge-muted">restore outbound capacity</span>
         </div>
         <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <p className="text-dim" style={{ fontSize: "0.8125rem", margin: 0 }}>
-            Sends on-chain sats to the Loop server, receives them as Lightning balance.
-            Restores outbound (sending) capacity across your channels.
-          </p>
           <AmountInput value={amount} onChange={setAmount} />
           {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
           <button className="btn btn-primary" style={{ width: "100%" }} onClick={handleGetQuote}
