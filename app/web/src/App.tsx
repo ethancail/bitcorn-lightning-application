@@ -736,7 +736,7 @@ function CapitalPolicyPanel() {
                       <div style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--text)" }}>{f.label}</div>
                       <div style={{ fontSize: "0.625rem", color: "var(--text-3)", lineHeight: 1.3 }}>{f.help}</div>
                     </div>
-                    <div style={{ position: "relative", flex: "0 0 180px" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                       <input
                         type="text"
                         inputMode="numeric"
@@ -746,12 +746,9 @@ function CapitalPolicyPanel() {
                           const raw = e.target.value.replace(/[^0-9]/g, "");
                           handleChange(f.key, raw === "" ? 0 : Number(raw));
                         }}
-                        style={{ fontSize: "0.8125rem", paddingRight: 42, textAlign: "right" }}
+                        style={{ fontSize: "0.8125rem", textAlign: "right", width: 130 }}
                       />
-                      <span style={{
-                        position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
-                        fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", pointerEvents: "none",
-                      }}>
+                      <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", minWidth: 52 }}>
                         {f.unit === "ppm (parts per million)" ? "ppm" : f.unit}
                       </span>
                     </div>
