@@ -299,7 +299,12 @@ function AppShell() {
 
 // ─── Member AppShell ───────────────────────────────────────────────────────
 
-function MemberSidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose: () => void; channelRole: string }) {
+  const isMerchant = channelRole === "merchant";
+  const liquidityLabel = isMerchant ? "Refill Channel" : "Cash Out";
+  const liquidityIcon = isMerchant ? "↙" : "↗";
+  const liquidityRoute = isMerchant ? "/refill" : "/cashout";
+
   const navItems = [
     { to: "/dashboard", icon: "▤", label: "My Dashboard" },
     { to: "/charts", icon: "⟠", label: "Charts" },
@@ -344,12 +349,12 @@ function MemberSidebar({ open, onClose }: { open: boolean; onClose: () => void }
               </div>
               <div className="sidebar-section">
                 <NavLink
-                  to="/withdraw"
+                  to={liquidityRoute}
                   className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
                   onClick={onClose}
                 >
-                  <span className="icon">↗</span>
-                  Withdraw Bitcoin
+                  <span className="icon">{liquidityIcon}</span>
+                  {liquidityLabel}
                 </NavLink>
               </div>
             </>
@@ -376,6 +381,7 @@ function MemberSidebar({ open, onClose }: { open: boolean; onClose: () => void }
 function MemberShell() {
   const [node, setNode] = useState<NodeInfo | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [channelRole, setChannelRole] = useState("unknown");
 
   useEffect(() => {
     const load = () => api.getNode().then(setNode).catch(() => {});
@@ -384,11 +390,17 @@ function MemberShell() {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    api.getMemberLiquidityStatus()
+      .then((s) => { if (s.classification?.channelRole) setChannelRole(s.classification.channelRole); })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="app-shell">
       <Topbar node={node} role="MEMBER" onMenuToggle={() => setMenuOpen((v) => !v)} />
       <div className={`sidebar-overlay ${menuOpen ? "visible" : ""}`} onClick={() => setMenuOpen(false)} />
-      <MemberSidebar open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <MemberSidebar open={menuOpen} onClose={() => setMenuOpen(false)} channelRole={channelRole} />
       <main className="main-content">
         <Routes>
           <Route path="/dashboard" element={<MemberDashboard />} />
@@ -397,6 +409,8 @@ function MemberShell() {
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/payments" element={<Payments title="My Payments" />} />
           <Route path="/deposit" element={<DepositBitcoin />} />
+          <Route path="/cashout" element={<WithdrawBitcoin />} />
+          <Route path="/refill" element={<WithdrawBitcoin />} />
           <Route path="/withdraw" element={<WithdrawBitcoin />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
