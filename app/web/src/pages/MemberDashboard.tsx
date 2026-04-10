@@ -582,9 +582,9 @@ export default function MemberDashboard() {
                     <button
                       className="btn btn-primary"
                       style={{ width: "100%" }}
-                      onClick={() => navigate("/withdraw")}
+                      onClick={() => navigate(isFarmer ? "/cashout" : "/refill")}
                     >
-                      Withdraw to Bitcoin Wallet →
+                      {isFarmer ? "Cash Out Earnings →" : "Refill Channel →"}
                     </button>
                     <div style={{ textAlign: "center", fontSize: "0.6875rem", color: "var(--text-3)" }}>
                       Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
