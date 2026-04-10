@@ -447,7 +447,7 @@ function ChannelRolePanel() {
   ];
 
   return (
-    <div className="panel" style={{ marginTop: 20 }}>
+    <div className="panel" style={{ marginTop: 12 }}>
       <div className="panel-header">
         <span className="panel-title"><span className="icon">◈</span>Channel Role</span>
         {role !== "unknown" && (
@@ -546,9 +546,9 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
   ];
 
   return (
-    <div className="fade-in">
+    <div className="fade-in" style={{ maxWidth: 720, margin: "0 auto" }}>
       <h1 style={{ marginBottom: 4 }}>Settings</h1>
-      <p style={{ color: "var(--text-3)", fontSize: "0.875rem", marginBottom: 28 }}>
+      <p style={{ color: "var(--text-3)", fontSize: "0.875rem", marginBottom: 16 }}>
         Preferences for your BitCorn node
       </p>
 
@@ -622,7 +622,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
       {isTreasury && <CapitalPolicyPanel />}
 
       {isTreasury && (
-        <div className="panel" style={{ marginTop: 20 }}>
+        <div className="panel" style={{ marginTop: 12 }}>
           <div className="panel-header">
             <span className="panel-title"><span className="icon">⚙</span>Treasury</span>
           </div>
@@ -708,7 +708,7 @@ function CapitalPolicyPanel() {
   }
 
   return (
-    <div className="panel" style={{ marginTop: 20 }}>
+    <div className="panel" style={{ marginTop: 12 }}>
       <div className="panel-header">
         <span className="panel-title"><span className="icon">⊞</span>Capital Guardrails</span>
         {saved && <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--green)" }}>✓ Saved</span>}
