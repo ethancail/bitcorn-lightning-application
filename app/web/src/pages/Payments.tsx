@@ -258,22 +258,28 @@ function RequestPaymentForm({
 
   return (
     <div>
-      <label className="form-label">Amount (sats)</label>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+      <label className="form-label">Amount</label>
+      <div style={{ position: "relative", marginBottom: 12 }}>
         <input
-          type="number"
+          type="text"
+          inputMode="numeric"
           className="form-input"
-          placeholder="e.g. 10000"
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          min={1}
-          style={{ flex: 1 }}
+          placeholder="e.g. 10,000"
+          value={sats > 0 ? sats.toLocaleString() : amount}
+          onChange={(e) => {
+            const raw = e.target.value.replace(/[^0-9]/g, "");
+            setAmount(raw);
+          }}
+          style={{ paddingRight: usdPreview ? 90 : 42 }}
         />
-        {usdPreview && (
-          <span className="text-dim" style={{ fontSize: "0.875rem", whiteSpace: "nowrap" }}>
-            {usdPreview}
-          </span>
-        )}
+        <span style={{
+          position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+          fontSize: "0.75rem", color: "var(--text-3)", fontFamily: "var(--mono)", pointerEvents: "none",
+          display: "flex", gap: 6, alignItems: "center",
+        }}>
+          {usdPreview && <span>{usdPreview}</span>}
+          <span>sats</span>
+        </span>
       </div>
 
       <label className="form-label">Memo (optional)</label>
