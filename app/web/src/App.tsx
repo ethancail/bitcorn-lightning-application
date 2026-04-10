@@ -758,37 +758,41 @@ function CapitalPolicyPanel() {
           <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>
         ) : policy ? (
           <>
-            <p className="text-dim" style={{ fontSize: "0.75rem", lineHeight: 1.5 }}>
-              These limits are enforced before every channel open. Adjust to match your node's capital and risk tolerance.
+            <p className="text-dim" style={{ fontSize: "0.75rem", lineHeight: 1.5, marginBottom: 4 }}>
+              Enforced before every channel open.
             </p>
-            {POLICY_FIELDS.map((f) => {
-              const val = policy[f.key] ?? 0;
-              return (
-                <div key={f.key}>
-                  <label className="form-label" style={{ marginBottom: 4 }}>{f.label}</label>
-                  <div style={{ position: "relative" }}>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      className="form-input"
-                      value={val > 0 ? val.toLocaleString() : "0"}
-                      onChange={(e) => {
-                        const raw = e.target.value.replace(/[^0-9]/g, "");
-                        handleChange(f.key, raw === "" ? 0 : Number(raw));
-                      }}
-                      style={{ fontSize: "0.8125rem", paddingRight: f.unit.length > 10 ? 160 : 50 }}
-                    />
-                    <span style={{
-                      position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-                      fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", pointerEvents: "none",
-                    }}>
-                      {f.unit}
-                    </span>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {POLICY_FIELDS.map((f) => {
+                const val = policy[f.key] ?? 0;
+                return (
+                  <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ flex: "1 1 50%", minWidth: 0 }}>
+                      <div style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--text)" }}>{f.label}</div>
+                      <div style={{ fontSize: "0.625rem", color: "var(--text-3)", lineHeight: 1.3 }}>{f.help}</div>
+                    </div>
+                    <div style={{ position: "relative", flex: "0 0 180px" }}>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        className="form-input"
+                        value={val > 0 ? val.toLocaleString() : "0"}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9]/g, "");
+                          handleChange(f.key, raw === "" ? 0 : Number(raw));
+                        }}
+                        style={{ fontSize: "0.8125rem", paddingRight: 42, textAlign: "right" }}
+                      />
+                      <span style={{
+                        position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+                        fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", pointerEvents: "none",
+                      }}>
+                        {f.unit === "ppm (parts per million)" ? "ppm" : f.unit}
+                      </span>
+                    </div>
                   </div>
-                  <p className="text-dim" style={{ fontSize: "0.625rem", marginTop: 2 }}>{f.help}</p>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
             {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
             <button
               className="btn btn-primary"
