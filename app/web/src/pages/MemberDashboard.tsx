@@ -249,9 +249,9 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
           <label className="form-label">Confirmation Speed</label>
           <div style={{ display: "flex", gap: 6 }}>
             {([
-              { label: "Economy", rate: undefined, desc: "~1 sat/vB" },
-              { label: "Normal", rate: 5, desc: "~5 sat/vB" },
-              { label: "Priority", rate: 15, desc: "~15 sat/vB" },
+              { label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~155 sats" },
+              { label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~770 sats" },
+              { label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,300 sats" },
             ] as const).map((opt) => (
               <button
                 key={opt.label}
@@ -267,8 +267,11 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
                 <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: feeRate === opt.rate ? "var(--amber)" : "var(--text)" }}>
                   {opt.label}
                 </div>
+                <div style={{ fontSize: "0.6875rem", color: feeRate === opt.rate ? "var(--amber)" : "var(--text-2)" }}>
+                  {opt.time}
+                </div>
                 <div style={{ fontSize: "0.625rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
-                  {opt.desc}
+                  {opt.cost}
                 </div>
               </button>
             ))}
