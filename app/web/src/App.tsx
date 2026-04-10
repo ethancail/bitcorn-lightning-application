@@ -688,9 +688,10 @@ function FeePolicyPanel() {
   async function handleSave() {
     setSaving(true); setError(null); setSaved(false);
     try {
-      const updated = await api.setFeePolicy(baseFee, feeRate);
-      setBaseFee(updated.base_fee_msat);
-      setFeeRate(updated.fee_rate_ppm);
+      const resp = await api.setFeePolicy(baseFee, feeRate) as any;
+      const updated = resp?.policy ?? resp;
+      if (updated?.base_fee_msat != null) setBaseFee(updated.base_fee_msat);
+      if (updated?.fee_rate_ppm != null) setFeeRate(updated.fee_rate_ppm);
       setDirty(false); setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e: any) { setError(e.message ?? "Failed to save"); }
