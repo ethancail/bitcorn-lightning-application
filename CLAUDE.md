@@ -64,8 +64,95 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 - Automation must be auditable and deterministic
 - Safety > growth
 
-### Current Capabilities
-Channel expansion engine, capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits — auto-cleans stale expansion executions after 1 hour), Loop Out submarine swap rebalancing (via Lightning Terminal / loopd — restores receive capacity while preserving total balance), **cluster-based rebalance engine v1** (three-lever: fee steering + circular rebalance + topology monitoring — per-cluster target bands, route probing, benefit/cost scoring, automated execution on 15-min interval), auto channel selection, rebalance scheduler (Loop Out), rebalance cost ledger, treasury metrics API, dual-role web UI (treasury dashboard + member dashboard with in-app channel creation), **merchant/farmer lane model** (channels classified by stable purpose from contact tags — never by runtime balance heuristics — with dynamic state computed from balance; treasury Channels page shows Merchant Lanes, Farmer Lanes, External Routing Peers, and Unclassified sections), **role-aware liquidity advisor** (merchant: low outbound → Loop In, undersized → channel upgrade; farmer: high local → Loop Out, undersized → channel upgrade; unknown: prompts to set role in Settings; close/reopen never recommended), **treasury Peers page** (connect to new nodes by URI, onboarding instructions, live connected peers table), node balance panel (total/on-chain/lightning displayed at the top of both dashboards), Coinbase Onramp integration (sessionToken via Cloudflare Worker — fresh on-chain address per session, audit log in SQLite), Bitcoin price graph (recharts AreaChart, Coinbase public API, 24h/7d/30d/1y/5y selector, 60s auto-refresh, displayed on both dashboards), mobile-responsive navigation (hamburger menu under 768px, slide-in sidebar drawer with backdrop overlay), Charts page with Bitcoin Power Law Trend chart (log-scale, percentile bands, 2042 projection, shared across both shells), price ticker strip below Power Law chart (BTC from Coinbase, gold from goldapi.io, corn/soybeans/wheat from USDA NASS — all cached 24h in Cloudflare KV), BTC Moving Averages chart (50/100/200-day MAs, linear scale, 1M/1Y/5Y/10Y periods, computed client-side from power-law-data.json), Corn-Bitcoin ratio chart (bushels of corn per 1 BTC, historical corn prices from USDA NASS via Worker endpoint `GET /prices/corn-history`, monthly data interpolated to daily, 1M/1Y/5Y/10Y periods), Corn Price Moving Averages chart (50/100/200-day MAs over interpolated daily corn prices, reuses `computeMA` and `interpolateCornPrices` from sibling components, 1M/1Y/5Y/10Y periods), Contacts page (full CRUD address book for Lightning peers — search, inline edit/delete, channel balance bars, **tag editor with merchant/farmer lane toggles** + custom tags as removable pills, sync-from-peers imports both channel peers and connected peers; available to both treasury and member shells), network payments (invoice-based request and pay — create invoices with QR code + BOLT11, paste and pay invoices, payment history with clickable rows showing detail view, USD conversion, counterparty resolution from contacts), forced treasury channel routing (member payments always route through hub via `outgoing_channel` — ensures treasury earns forwarding fees even when members have direct channels to each other), **treasury-side member liquidity management** (detects member channel imbalances, estimates keysend push cost, treasury operator approves/rejects top-ups via Member Liquidity page — `src/memberLiquidity/`), **member-side liquidity advisor** (role-aware: merchant/farmer/unknown — classifies treasury channel state every 15min, checks Loop availability, computes role-appropriate recommendations — `src/memberAdvisor/`), **member withdrawal page** (Loop Out with Max button, accurate fee display separating net fee from prepay hold, pending channel detection survives page reload), **formatted capacity inputs** (commas + sats label on both member and treasury channel creation forms, free-form entry with validation).
+### Current Capabilities (through v1.9.53)
+
+**Core treasury engine:**
+- Channel expansion engine with capital guardrails (reserve, deploy ratio, per-peer caps, cooldowns, daily limits)
+- Auto-cleans stale `requested`/`submitted` expansion executions after 1 hour via sync loop
+- Loop Out submarine swap rebalancing via Lightning Terminal / loopd
+- **Cluster-based rebalance engine v1** — 3 levers (fee steering, circular rebalance, topology monitor), 15-min interval
+- Treasury metrics API, rebalance cost ledger, forwarding fee tracking
+
+**Merchant/farmer lane model** (stable purpose + dynamic state):
+- **Purpose** (stable): `merchant_lane` / `farmer_lane` / `external_peer` / `unclassified` — determined only by contact tags, never by balance heuristics
+- **State** (dynamic): computed from balance, interpreted through purpose lens
+- Treasury Channels page: Merchant Lanes / Farmer Lanes / External Routing Peers / Unclassified, consistent 6-column layout with % widths
+- Closing channels filtered out of lane tables (shown only in the CLOSING section)
+
+**Role-aware member liquidity advisor** (v1.9.12+):
+- `channel_role` stored in `member_liquidity_advisor_config` (migration 032), defaults to `'unknown'` — never silently auto-classified
+- Merchant path: low outbound → Loop In; undersized (< 2M) or 3+ exhaustion runs → channel upgrade
+- Farmer path: high local → Loop Out; undersized (< 1M) or 3+ filling runs → channel upgrade
+- Unknown: prompts user to set role via Settings page
+- **Close/reopen never recommended** — Loop In/Out are the normal maintenance path
+
+**Role-aware member UI** (v1.9.50+):
+- `MemberShell` fetches role from advisor status and passes to sidebar
+- Farmer sidebar: "Cash Out" ↗ → `/cashout` (Loop Out); button: "Cash Out Earnings →"
+- Merchant sidebar: "Refill Channel" ↙ → `/refill` (Loop In placeholder; currently shares Withdraw page); button: "Refill Channel →"
+- Unknown: defaults to "Cash Out" with dashboard prompt to set role
+- Farmer dashboard gauge fills up like a grain bin (green→amber→red as earnings accumulate)
+- Merchant dashboard shows outbound capacity remaining
+
+**Treasury Peers page** (v1.9.25):
+- Connect to new nodes by pasting a URI (`pubkey@host:port`)
+- Shows treasury's own pubkey for sharing with new members
+- Onboarding guide: what to ask for, what to tell new members
+- Live connected peers table with contact name resolution, direction, ping
+
+**Treasury Settings page** (v1.9.47):
+- **Routing Fee Policy** panel: base_fee_msat + fee_rate_ppm with live % display and example calc, applies to all channels via `lncli updatechanpolicy` equivalent
+- **Capital Guardrails** panel: compact side-by-side rows (label+help left, input right) with unit labels outside the field
+- **Appearance** consolidated panel: theme chips, text-size slider, 2x2 font grid
+- Entire page constrained to 720px max-width, centered
+
+**Channel open UX** (v1.9.10+):
+- Formatted capacity inputs: commas + "sats" suffix, free-form entry, 100k minimum validation
+- **Confirmation Speed selector**: Economy (~1 sat/vB, 1–3h, ~155 sats) / Normal (~5 sat/vB, ~30min, ~770 sats) / Priority (~15 sat/vB, ~10min, ~2,300 sats)
+- Both member ConnectToHub and treasury Open Channel panels
+- Pending channel detection on member dashboard — polls `/api/channels/pending` every 15s, shows "Channel Opening Submitted" across page reloads
+
+**Member withdrawal page** (v1.9.18+):
+- Prominent **Available Balance** card (amber-tinted) showing treasury channel local + max withdraw
+- Max button with fee cushion calculation (local − 50k buffer − 2k fee cushion, capped at 2M)
+- Accurate fee display: net fee (swap + miner, ~1-2k) separated from prepay hold (~30k, returned in on-chain payment)
+- Formatted amount input with commas, sats label, preset buttons (250k/500k/1M/2M/Max)
+- Connect to Hub three-state peering: connected / hub address available / manual input
+
+**Treasury Dashboard** (v1.9.46 — simplified):
+- Node Balances → Fund Node → Bitcoin Price → Alerts (if any) → Treasury Revenue
+- Revenue panel: forwarding fees / rebalance costs / net revenue (24h + all-time) + capital deployed / active channels / revenue yield
+- Removed: KPI strip, Peer Scores, Channel ROI, Rotation Candidates, Dynamic Fees (accessible from dedicated pages)
+
+**Network Topology graph** (v1.9.34+):
+- Liquidity page shows SVG hub-and-spoke visualization
+- Treasury at center, peers arranged radially, color-coded by role (amber merchant, green farmer, blue external, gray unknown)
+- Scroll to zoom (40–300%), click-drag to pan, zoom controls + percentage, Reset button
+- Channel line width proportional to capacity; colored fill shows treasury local %
+- Hover a node for detailed capacity/local/remote breakdown
+
+**Swap Operations page** (v1.9.37+, treasury):
+- Loop Out / Loop In tabs
+- **Visual channel picker**: compact chips showing peer name, capacity, balance bar (Auto-select + one chip per channel)
+- Formatted amount inputs with presets
+- Accurate fee display (swap + miner, with prepay explained as temporary hold)
+- Swap history table
+
+**Charts and commodity prices:**
+- Bitcoin Power Law Trend (log-scale, percentile bands, 2042 projection) — fills gap days with live Coinbase price
+- Price ticker strip: BTC (Coinbase) + gold (goldapi.io) + corn/soybeans/wheat (USDA NASS) — cached 24h in Cloudflare KV
+- BTC Moving Averages (50/100/200-day MAs, 1M/1Y/5Y/10Y periods)
+- Corn-Bitcoin ratio (bushels per BTC from USDA monthly data, interpolated to daily)
+- Corn Moving Averages (reuses `computeMA` + `interpolateCornPrices` helpers)
+
+**Other:**
+- Coinbase Onramp integration (sessionToken via Cloudflare Worker)
+- Mobile-responsive navigation (hamburger menu + slide-in sidebar under 768px)
+- Contacts page: CRUD address book with **tag editor** (merchant/farmer lane toggles + custom tag pills), sync-from-peers imports both channel peers AND live connected peers
+- Network payments (invoice-based request/pay, auto-settlement sync in 15s loop — v1.9.49)
+- Forced treasury channel routing (member payments route through hub via `outgoing_channel`)
+- Treasury-side member liquidity management (detects imbalances, operator approves/rejects top-ups via Member Liquidity page)
+- Treasury Peers API: `GET /api/treasury/peers/live`, `POST /api/treasury/peers/connect`
 
 ### Future Direction
 Channel-level ROI scoring, peer profitability ranking, yield-driven capital reallocation, fully autonomous LSP behavior.
@@ -237,7 +324,10 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/data/power-law-data.json` | Power law dataset — ~10,000 daily entries from 2015-01-01 to 2042-05-31, includes btc price + trend + percentile bands; bundled by Vite; BTC prices go stale — chart fills nulls up to today with live Coinbase price |
 | `app/web/src/pages/Charts.tsx` | Charts page — PowerLawChart (1Y/5Y/All/2042), PriceTickerStrip, MovingAveragesChart (1M/1Y/5Y/10Y), CornBitcoinChart (1M/1Y/5Y/10Y), CornMovingAveragesChart (1M/1Y/5Y/10Y); fetches Coinbase spot price and passes to charts; available to both treasury and member shells |
 | `app/web/src/pages/Contacts.tsx` | Contacts page — full CRUD address book, search, inline edit/delete, channel balance bars, tag pills, sync-from-peers; `resolveContactName()` in `client.ts` maps pubkeys to contact names |
-| `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (monolithic: NodeBalancePanel, FundNodePanel, BitcoinPriceGraph, AlertsBar, NetYield, ChannelROI, PeerScores, Rotation, DynamicFees) |
+| `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (simplified v1.9.46): Node Balances → Fund Node → Bitcoin Price → Alerts (if any) → Treasury Revenue (forwarding fees / rebalance costs / net revenue 24h + all-time + capital stats). Other data moved to dedicated pages. |
+| `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal page. Prominent Available Balance card (amber-tinted), amount input with commas + sats + Max button, destination address with auto-generate, fee breakdown showing net fee separated from prepay hold, recent withdrawals table. Routes: `/withdraw` + `/cashout` (farmer) + `/refill` (merchant — currently shares page) |
+| `app/web/src/pages/SwapOperations.tsx` | Treasury Loop Out / Loop In tabs, visual channel picker (compact chips), formatted amount inputs, swap history |
+| `app/web/src/components/NetworkGraph.tsx` | SVG hub-and-spoke network topology with zoom/pan (40–300%). Treasury at center, peers radial with color-coded roles. Rendered on Liquidity page (v1.9.34+) |
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
 | `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form (no channel, with pending channel detection), or role-aware earnings panel (merchant: outbound capacity gauge; farmer: grain-bin fill gauge; unknown: set-role prompt) + advisor-driven alerts + forwarded fees |
 | `app/web/src/pages/Peers.tsx` | Treasury view: connect to new nodes by URI, onboarding guide, live connected peers table with contact name resolution |
@@ -289,6 +379,41 @@ Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbou
 Keysend enforcement: backend `member_keysend_status` table tracks peers that reject keysend; auto-rebalancer skips disabled peers for 24h then retries. `MEMBER_KEYSEND_DISABLED` alert (warning severity) shows on treasury dashboard. **Keysend preflight UI removed from member dashboard** (v1.9.9) — the preflight check, "Configuration Required" block, and keysend warning banner are no longer shown to members.
 
 **LND 0.20.0 compatibility** (v1.9.24): `getForwards` pagination changed — `limit` cannot be passed alongside a pagination `token`. The sync loop's `syncForwardingHistory` now only passes `limit` on the first page.
+
+## v1.9 Changelog Summary
+
+The v1.9 series was a comprehensive UX and architecture pass. Key landmarks:
+
+| Version | Area | Change |
+|---------|------|--------|
+| 1.9.0 | Member dashboard | Earnings-focused redesign |
+| 1.9.1 | Treasury Channels | Merchant/Farmer/External lanes |
+| 1.9.4 | Contacts | Tag editor with merchant/farmer toggle buttons |
+| 1.9.5 | **Architecture** | Separate lane purpose (stable) from lane state (dynamic) |
+| 1.9.7 | Member Connect | Accurate "Connected to hub" copy (peer check, not gossip) |
+| 1.9.8 | Member Connect | Pending channel survives page reload |
+| 1.9.9 | Member | Removed keysend UI warnings |
+| 1.9.10–11 | Inputs | Formatted capacity inputs (commas, sats label, validation) |
+| 1.9.12 | **Architecture** | Role-aware liquidity advisor (merchant/farmer/unknown) |
+| 1.9.13 | Member Settings | Channel Role picker |
+| 1.9.15–21 | Withdrawal | Prepay is a hold not a fee — propagated through quote/policy/stored-fee/loopd |
+| 1.9.17 | Farmer UX | Grain bin gauge fills up |
+| 1.9.22 | Treasury | Formatted channel open inputs |
+| 1.9.23–24 | LND 0.20 | Sync error logging + `getForwards` pagination fix |
+| 1.9.25 | **New page** | Treasury Peers (connect + onboarding guide) |
+| 1.9.26 | Treasury | Auto-clean stale expansion executions |
+| 1.9.28 | Contacts | Sync-peers includes connected peers without channels |
+| 1.9.30 | Treasury Settings | Formatted capital guardrails inputs |
+| 1.9.33 | Member payment | Pre-flight checks treasury channel, not total balance |
+| 1.9.34–36 | **New feature** | Network Topology graph with zoom/pan |
+| 1.9.37–38 | Treasury Swaps | Channel picker + clean layout |
+| 1.9.40–43 | Treasury Settings | Compact layout, consolidated Appearance, max-width |
+| 1.9.44–45 | Channel open | Fee rate selector (Economy/Normal/Priority) with cost/time estimates |
+| 1.9.46 | **Architecture** | Dashboard revamp — 1100 → 170 lines, revenue-focused |
+| 1.9.47 | Treasury Settings | Routing Fee Policy panel (no more `lncli` commands) |
+| 1.9.49 | Sync | Auto-settle invoice receives every 15s |
+| 1.9.50 | **Architecture** | Role-aware sidebar — Cash Out (farmer) vs Refill Channel (merchant) |
+| 1.9.53 | Withdrawal | Prominent Available Balance card |
 
 ## Coinbase Onramp
 
