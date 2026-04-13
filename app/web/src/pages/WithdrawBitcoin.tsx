@@ -280,14 +280,35 @@ export default function WithdrawBitcoin() {
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {/* Amount */}
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-                <label className="form-label" style={{ marginBottom: 0 }}>Amount</label>
-                {channelLocal != null && (
-                  <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
-                    Available: {channelLocal.toLocaleString()} sats
-                  </span>
-                )}
-              </div>
+              <label className="form-label">Amount</label>
+              {channelLocal != null && (
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                  padding: "10px 14px", marginBottom: 10, borderRadius: 8,
+                  background: "color-mix(in srgb, var(--amber) 8%, var(--bg-2))",
+                  border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
+                }}>
+                  <div>
+                    <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+                      Available Balance
+                    </div>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--amber)", lineHeight: 1.2 }}>
+                      {channelLocal.toLocaleString()}
+                      <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>sats</span>
+                    </div>
+                  </div>
+                  {maxWithdrawable != null && maxWithdrawable >= 250_000 && (
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+                        Max Withdraw
+                      </div>
+                      <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
+                        {maxWithdrawable.toLocaleString()} sats
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 {AMOUNT_PRESETS.map((preset) => (
                   <button
