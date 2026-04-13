@@ -277,7 +277,7 @@ export default function WithdrawBitcoin() {
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {/* Amount */}
             <div>
-              <label className="form-label">Amount (sats)</label>
+              <label className="form-label">Amount</label>
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 {AMOUNT_PRESETS.map((preset) => (
                   <button
@@ -291,7 +291,7 @@ export default function WithdrawBitcoin() {
                       : `${(preset / 1_000).toFixed(0)}k`}
                   </button>
                 ))}
-                {maxWithdrawable && !AMOUNT_PRESETS.includes(maxWithdrawable) && (
+                {maxWithdrawable && (
                   <button
                     className={`btn ${amount === maxWithdrawable ? "btn-primary" : "btn-outline"}`}
                     style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto", fontWeight: 600 }}
@@ -301,18 +301,35 @@ export default function WithdrawBitcoin() {
                   </button>
                 )}
               </div>
-              <input
-                type="number"
-                className="form-input"
-                min={250000}
-                step={10000}
-                value={amount}
-                onChange={(e) => { const v = parseInt(e.target.value, 10); if (!isNaN(v)) setAmount(v); }}
-                placeholder="250000"
-              />
+              <div style={{ position: "relative" }}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  className="form-input"
+                  value={amount > 0 ? amount.toLocaleString() : ""}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(/[^0-9]/g, "");
+                    if (raw === "") { setAmount(0); return; }
+                    setAmount(Number(raw));
+                  }}
+                  placeholder="250,000"
+                  style={{ paddingRight: 42 }}
+                />
+                <span style={{
+                  position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                  fontSize: "0.75rem", color: "var(--text-3)", fontFamily: "var(--mono)", pointerEvents: "none",
+                }}>
+                  sats
+                </span>
+              </div>
               <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
                 Minimum: 250,000 sats. Maximum: 2,000,000 sats.
               </p>
+              {amount > 0 && amount < 250_000 && (
+                <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
+                  Withdrawal must be at least 250,000 sats.
+                </div>
+              )}
             </div>
 
             {/* Destination address */}
