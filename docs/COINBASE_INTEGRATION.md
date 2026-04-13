@@ -1,62 +1,102 @@
-# Coinbase Integration — Future Feature
+# Coinbase Onramp Integration
 
-**Status: NOT IMPLEMENTED — parked for future development**
+The "Fund Node via Coinbase" feature lets operators buy bitcoin directly into their node's on-chain wallet.
 
-This document captures the intended design for connecting a Coinbase account so operators can purchase bitcoin and fund their treasury node's on-chain wallet without leaving the app.
+**Historical note:** An earlier design for this doc described an OAuth2 flow with buy + send. That approach was abandoned. The shipped integration uses Coinbase Onramp with a server-signed session token.
 
----
+## Why a Cloudflare Worker?
 
-## Intended Flow
+Coinbase Onramp requires a **server-side session token** (Secure Initialization is enabled on the CDP project). CDP credentials (private key) cannot live in the public repo or on user nodes — a **Cloudflare Worker** holds them securely and mints session tokens on demand. All member installs share the same Worker.
 
-1. **Operator initiates connection** — clicks "Connect Coinbase" in the treasury UI settings.
+## Flow
 
-2. **OAuth2 authorization** — the app redirects the operator to Coinbase's OAuth2 authorization endpoint. Scopes required:
-   - `wallet:accounts:read` — list BTC accounts
-   - `wallet:transactions:send` — send BTC to an external address
-   - `wallet:buys:create` — initiate a purchase
+```
+FundNodePanel (browser)
+  → GET /api/coinbase/onramp-url (API container)
+    → src/api/coinbase-onramp.ts
+      → POST https://bitcorn-onramp.ethancail.workers.dev  (Cloudflare Worker)
+        → signs ES256 JWT with CDP private key
+        → POST https://api.developer.coinbase.com/onramp/v1/token
+        → returns { sessionToken }
+    → builds https://pay.coinbase.com/buy/select-asset?appId=...&sessionToken=...
+  → window.open(url, '_blank', 'noopener,noreferrer')
+```
 
-3. **Token storage** — after the operator grants access, Coinbase redirects back with an authorization code. The API exchanges this for an access token + refresh token. Both are stored in `/data/secrets/coinbase_tokens.json` (never committed, never logged).
+## Cloudflare Worker
 
-4. **On-chain funding flow**:
-   a. App fetches the treasury node's on-chain deposit address via LND (`newAddress`).
-   b. Operator selects an amount to buy/send.
-   c. App places a market buy on Coinbase (if the operator's account balance is insufficient).
-   d. App sends the purchased BTC to the node's deposit address.
-   e. Transaction ID is stored and shown in the UI.
+- Source: `cloudflare-worker/src/index.ts`
+- Deployed at: `https://bitcorn-onramp.ethancail.workers.dev`
 
-5. **Token refresh** — access tokens expire; the app must refresh using the stored refresh token before each API call.
+### Endpoints
 
----
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/` | Coinbase Onramp — accepts `{ address }` → returns `{ sessionToken }` |
+| GET | `/prices` | Commodity prices (gold, corn, soybeans, wheat), cached 24h in KV |
+| GET | `/prices/corn-history` | Historical monthly corn PRICE RECEIVED from USDA NASS (2014+), cached 24h in KV |
 
-## API Endpoints (to be designed)
+### Secrets (stored in Cloudflare, never in git)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/treasury/coinbase/status` | OAuth connection status |
-| `GET` | `/api/treasury/coinbase/auth-url` | Returns OAuth2 redirect URL |
-| `POST` | `/api/treasury/coinbase/callback` | Exchange auth code for tokens |
-| `DELETE` | `/api/treasury/coinbase/disconnect` | Revoke tokens |
-| `GET` | `/api/treasury/coinbase/accounts` | List BTC account balances |
-| `POST` | `/api/treasury/coinbase/fund` | Buy + send to node wallet |
+- `CDP_KEY_NAME`
+- `CDP_PRIVATE_KEY` — SEC1 format (`-----BEGIN EC PRIVATE KEY-----`); Worker converts to PKCS#8 for the Web Crypto API via `sec1ToPkcs8Pem()`
+- `USDA_NASS_KEY`
+- `GOLD_API_KEY`
 
----
+### Price Sources
 
-## Implementation Notes
+| Commodity | API | Key | Free Tier |
+|-----------|-----|-----|-----------|
+| Bitcoin | Coinbase Spot | No | Unlimited |
+| Gold | goldapi.io | `GOLD_API_KEY` | 100 req/month |
+| Corn, Soybeans, Wheat | USDA NASS QuickStats | `USDA_NASS_KEY` | Unlimited |
 
-- Use Coinbase Advanced Trade API (v3) — the legacy v2 API is deprecated.
-- OAuth2 client credentials should be stored as env vars: `COINBASE_CLIENT_ID`, `COINBASE_CLIENT_SECRET`, `COINBASE_REDIRECT_URI`.
-- The `/api/treasury/coinbase/*` endpoints must require treasury-role JWT auth.
-- Never log access tokens or refresh tokens.
-- All buy/send amounts must pass through the capital guardrail checks before execution.
-- This feature touches both the API (`src/api/treasury-coinbase.ts`) and a new UI flow in the web app.
+KV namespace `PRICES_CACHE` caches the combined JSON for 24 hours to minimize upstream API calls.
 
----
+## Environment Variables
 
-## Dependencies
+Required in the API container (`docker-compose.yml`):
 
-- Coinbase Advanced Trade API docs: https://docs.cdp.coinbase.com/advanced-trade/docs/welcome
-- OAuth2 flow: https://docs.cdp.coinbase.com/coinbase-app/docs/coinbase-app-integration
+- `COINBASE_APP_ID` — Coinbase Developer Platform Project ID. **Not a secret** — embedded in the Onramp URL visible to users. If unset, `GET /api/coinbase/onramp-url` returns 503.
+- `COINBASE_WORKER_URL` — URL of the Cloudflare Worker (e.g. `https://bitcorn-onramp.ethancail.workers.dev`). If unset, returns 503.
 
----
+## Redeploying the Worker
 
-*Do not implement until the core treasury engine is production-stable and the operator onboarding UX is designed.*
+```bash
+cd cloudflare-worker
+npm install
+npx wrangler deploy          # redeploy code changes
+
+# Update secrets (paste value, then Ctrl-D):
+npx wrangler secret put CDP_KEY_NAME
+npx wrangler secret put CDP_PRIVATE_KEY
+npx wrangler secret put USDA_NASS_KEY
+npx wrangler secret put GOLD_API_KEY
+
+# Live Worker logs:
+npx wrangler tail
+```
+
+**Secret format:** paste the raw key name / raw PEM from the CDP JSON file — do **not** wrap in quotes.
+
+## Clearing the Price Cache
+
+After changing API keys or forcing a refresh:
+
+```bash
+npx wrangler kv key delete commodity_prices --namespace-id=62c68c41830141cc8b0b6e7cdb193461
+```
+
+## UI Integration
+
+`app/web/src/components/FundNodePanel.tsx` is rendered below `NodeBalancePanel` on both dashboards. One-shot fetch (no poll) on mount; falls back to `0 sats` on fetch error (no infinite shimmer). Maps the machine-readable `coinbase_not_configured` API error to an operator-readable message.
+
+## Price Ticker (Worker `/prices`)
+
+`PriceTickerStrip` in `app/web/src/components/CommodityPricesPanel.tsx` renders a 5-ticker strip (BTC, Gold, Corn, Soy, Wheat) below the Power Law chart on the Charts page. BTC comes from Coinbase Spot (client-side); commodities come from `api.getCommodityPrices()` with 60-minute refresh. `/api/commodity-prices` (in `app/api/src/index.ts`) proxies `GET` requests to the Worker's `/prices` endpoint. Returns 503 if `COINBASE_WORKER_URL` is unset, 502 if the Worker is down.
+
+## Known Upstream Quirks
+
+- **TradingView free widgets** restrict futures symbols; ETF symbols show fund share prices, not spot prices (e.g. GLD ~$475 vs gold spot ~$5,165)
+- **Frankfurter API** does NOT support XAU — only fiat
+- **metals.dev** has 25 req/month free — too tight even with 24h caching
+- **PAXG on Coinbase** trades at premium over gold spot — not a substitute

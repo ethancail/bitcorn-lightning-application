@@ -108,3 +108,40 @@ monitors in-flight swaps, and initiates new Loop Outs for critical channels.
 - Auto mode skips channels with in-flight swaps
 - Fee thresholds reject swaps that are too expensive
 - Graceful degradation: app works normally without Lightning Terminal
+
+## Prepay Model (Important)
+
+The ~30,000 sat prepay is a **temporary hold** sent during the swap and returned as part of the on-chain payment — it is **NOT an additional fee**.
+
+- Actual **net fee** = `swap_fee + miner_fee` (~1–2k sats typical)
+- Withdrawal quote UI shows net fee separately from the prepay explanation
+- Policy checks and stored `quoted_fee_sat` use **net fee**, not total
+- `maxPrepay` sent to loopd is a constant 50,000 (safe ceiling)
+
+## Minimum Channel Capacity
+
+Routing peers like ACINQ cap `max_value_in_flight_msat` at ~45% of channel capacity. A 500k channel only allows 225k HTLCs — below Loop's 250k minimum.
+
+**You need ≥556k capacity to the routing peer** for a 250k swap to clear.
+
+## Production Gotchas
+
+**gRPC target name override:** litd's TLS cert SANs don't include Docker DNS names. The gRPC client uses `grpc.ssl_target_name_override: "localhost"` to work around this.
+
+**litd HTTPS listen:** litd must be configured with `--httpslisten=0.0.0.0:8443` (the default binds localhost only, not reachable from other containers).
+
+**`max_prepay_amt` must be explicit:** The default is too low for the ~30k prepay. Pass `quote.prepay_amt_sat` or a safe ceiling (50,000).
+
+**`htlc_sweep_fee_sat` proto field:** `OutQuoteResponse` uses `htlc_sweep_fee_sat` (not `miner_fee_sat`) for the miner fee.
+
+**Channel ID conversion:** ln-service short format (`NxNxN`) must be converted to uint64 for loopd proto via `(block << 40) | (tx << 16) | output` **using BigInt**. proto-loader needs `longs: String` to preserve precision across the JS number boundary.
+
+**LND `chan_id` field changed:** Newer LND versions show `chan_id` as hex (funding txid) in `lncli listchannels`, with `scid` (uint64 string) and `scid_str` (short format) as separate fields.
+
+**Restart cascade:** After restarting LND, **litd must also be restarted** or its Loop subserver will show "not ready":
+
+```bash
+sudo umbreld client apps.restart.mutate --appId lightning-terminal
+```
+
+**Mainnet verification (2026-03-11):** 250k swap through ACINQ succeeded end-to-end. Total cost 31,437 sats (1.26%) — confirmed SUCCESS.
