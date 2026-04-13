@@ -1,5 +1,15 @@
 # Bitcorn Lightning — Member Swap Actions v1 Spec
 
+> **Historical — superseded by v1.8.4 per-node loopd architecture (2026-04-13 note)**
+>
+> This spec was written when each member node did NOT have its own loopd. The design here has the treasury orchestrate swaps on the member's behalf: "Cash Out = Loop In with `last_hop = member pubkey`" means treasury runs Loop In to pull Lightning sats through the member's channel, then presumably forwards the on-chain receipt to the member.
+>
+> Since v1.8.4 (see `bitcorn-lightning-node/umbrel-app.yml` release notes), every node ships its own loopd as a litd sidecar. The current model is:
+> - **Farmer Cash Out** = member runs its OWN Loop Out locally (no treasury orchestration, no trust required)
+> - **Merchant Refill** = member runs its OWN Loop In locally (same pattern, inverse direction)
+>
+> Retain this doc for historical context on the treasury-orchestrated design, but do NOT use it as a current-architecture reference. The swap subsystem `src/swaps/*` reflects the current per-node model.
+
 ## Overview
 
 Two member-facing liquidity actions, automatically triggered by channel state detection:

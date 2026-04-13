@@ -2348,13 +2348,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Treasury Loop In — removed from active architecture (v1.7.1).
-  // Merchant-side liquidity uses channel lifecycle management, not Loop In.
+  // Treasury-initiated Loop In — removed from active architecture (v1.7.1).
+  // Treasury maintains its own inbound via Loop OUT on external channels (e.g. ACINQ),
+  // not Loop In. Member-side Loop In (a merchant refilling their own channel via their
+  // own local loopd) is a DIFFERENT flow, handled separately under /api/swaps/loop-in.
   if (req.method === "POST" && (req.url === "/api/admin/swaps/loop-in/quote" || req.url === "/api/admin/swaps/loop-in")) {
     res.writeHead(410, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
       error: "treasury_loop_in_deprecated",
-      message: "Treasury Loop In is not part of the active architecture. Merchant-side liquidity uses channel lifecycle management.",
+      message: "Treasury-initiated Loop In is not part of the active architecture. Treasury uses Loop Out on external channels for inbound capacity. For merchant refill, use member-side Loop In via /api/swaps/loop-in.",
     }));
     return;
   }

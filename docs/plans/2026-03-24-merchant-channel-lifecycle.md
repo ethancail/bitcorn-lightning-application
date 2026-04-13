@@ -1,12 +1,26 @@
 # Merchant Channel Lifecycle Architecture
 
-**Status:** Active design — defines how merchant-side liquidity is managed in Bitcorn Lightning.
+**Status:** CORRECTED SCOPE — channel lifecycle is the FALLBACK for exhausted/rotten merchant channels, not the primary refill path.
 
-**Supersedes:** Treasury Loop In as a merchant-side liquidity mechanism (removed in v1.7.1).
+**Correction note (2026-04-13):** The original version of this doc argued that merchant-side liquidity should be managed exclusively via channel rotation/replacement, dismissing Loop In. That conclusion was based on two errors:
+
+1. **Direction confusion in Section A below** — described "merchant sends → merchant local increases" which is the wrong way around. Merchant sends → merchant local decreases. This flipped the entire flow model.
+2. **Conflation of Treasury Loop In with merchant-side Loop In** — v1.7.1 removed *Treasury* Loop In (treasury running Loop In for its own inbound capacity — correctly removed, since treasury uses Loop Out on external channels for that purpose). It did NOT remove merchant-side Loop In, which is an unrelated flow: the merchant's own loopd (shipped in every node since v1.8.4) converts the merchant's on-chain BTC into local Lightning balance on the merchant↔treasury channel.
+
+**The corrected scope of this document:** channel lifecycle actions (rotate, close+replace, open parallel) are the **fallback** for channels that are:
+- Structurally broken (ROI < threshold, never going to recover)
+- Fully exhausted with no on-chain funds to Loop In
+- Requiring capital reconfiguration (merchant's usage pattern has fundamentally changed)
+
+**The normal merchant refill path is merchant-side Loop In**, which depends on:
+- Treasury having inbound liquidity on its external channels (to receive the Loop server's invoice payment)
+- Treasury having local balance on the merchant↔treasury channel (automatic after merchant has been spending)
+
+**Supersedes:** Treasury-side Loop In as a *treasury* liquidity mechanism (removed in v1.7.1). Does NOT supersede merchant-side Loop In.
 
 ---
 
-## A. Architecture
+## A. Architecture (ORIGINAL — contains the direction confusion)
 
 ### Roles
 
@@ -43,8 +57,10 @@ Treasury is strictly a **Lightning routing hop** during payment execution. It do
 
 ### What is NOT used for merchant-side liquidity
 
-- **Treasury Loop In** — removed from active architecture. Loop In converts on-chain BTC to inbound capacity, but merchant channels don't need the Treasury to Loop In; they need fresh Treasury-funded channels.
+- **Treasury Loop In** — removed from active architecture. Treasury running Loop In for its own inbound doesn't make sense; treasury uses Loop Out on external channels for that.
 - **Keysend push** — deprecated. One-way payments, not true rebalancing.
+
+**NOTE (2026-04-13):** This section used to imply Loop In is not part of merchant liquidity at all. That's wrong. *Merchant-side* Loop In — the merchant running Loop In on their own local loopd — IS the primary refill path. See the correction note at the top of this doc. The items above remain true for *treasury-initiated* swap types only.
 
 ---
 
@@ -119,15 +135,17 @@ Before opening new channels or rotating:
 
 ---
 
-## D. Explicit Architecture Statements
+## D. Explicit Architecture Statements (CORRECTED 2026-04-13)
 
-1. **Merchant-side liquidity management is NOT modeled as Treasury Loop In.** Treasury Loop In converts on-chain sats to inbound capacity, which doesn't solve merchant channel exhaustion. The correct approach is channel lifecycle management: open fresh channels with Treasury funding.
+1. **Merchant-side Loop In is the primary refill path**, run by the merchant's own loopd (shipped in every node per v1.8.4). The payment path necessarily traverses treasury (leaf topology), so merchant Loop In success depends on treasury having inbound liquidity on its external channels.
 
-2. **Treasury Loop In is not part of the active merchant-lane strategy.** The Loop In gRPC functions are retained as inactive low-level support but are not exposed via API routes, UI, or policy recommendations.
+2. **Treasury-initiated Loop In** (as distinct from merchant Loop In) is not part of the active architecture — treasury uses Loop Out on external channels to maintain its own inbound. The `/api/admin/swaps/loop-in` endpoints correctly return 410.
 
-3. **Member Loop Out remains part of the farmer-lane strategy.** Farmers use "Withdraw to Bitcoin Wallet" to move accumulated Lightning balance to on-chain BTC, which also restores their receive capacity on the farmer↔Treasury channel.
+3. **Member Loop Out remains the farmer-lane cash-out path.** Farmers use "Withdraw to Bitcoin Wallet" to move accumulated Lightning balance to on-chain BTC, which also restores their receive capacity.
 
-4. **Treasury Loop Out remains active** for treasury-side liquidity management (restoring inbound capacity on external routing channels like ACINQ).
+4. **Channel lifecycle actions are the FALLBACK** for structurally broken channels (low ROI, fully exhausted with no on-chain funds, capital reconfiguration), not the primary refill path.
+
+5. **Treasury Loop Out remains active** for treasury-side liquidity management (restoring inbound capacity on external routing channels like ACINQ). This is a prerequisite for merchant Loop In to succeed.
 
 ---
 

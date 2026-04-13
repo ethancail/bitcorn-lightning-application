@@ -92,7 +92,7 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
 | `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (revenue-focused) |
 | `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form or role-aware earnings panel |
-| `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal — routes `/withdraw`, `/cashout` (farmer), `/refill` (merchant) |
+| `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal — routes `/withdraw`, `/cashout` (farmer). **Note:** `/refill` (merchant) currently also points here by accident and needs to route to a Loop In page once built. |
 | `app/web/src/pages/SwapOperations.tsx` | Treasury Loop Out / Loop In tabs, visual channel picker |
 | `app/web/src/pages/Peers.tsx` | Treasury: connect by URI, onboarding guide, live peers table |
 | `app/web/src/pages/MemberLiquidity.tsx` | Treasury: cluster overview, top-up approvals, member channel health table |
