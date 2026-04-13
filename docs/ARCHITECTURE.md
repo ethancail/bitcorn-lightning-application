@@ -114,6 +114,33 @@ Complementary strategy for restoring inbound capacity. Sats go off-chain through
 
 See `docs/LOOP_SETUP.md` for setup, configuration, and gotchas.
 
+### Merchant Loop In (member-side refill)
+
+Since v1.8.4 every node — treasury, merchant, farmer — ships its own loopd as a litd sidecar (see `bitcorn-lightning-node/docker-compose.yml`). This enables *member-side* Loop In: a merchant uses their own on-chain BTC to restore local Lightning balance on the merchant↔treasury channel.
+
+**Physical flow in the leaf topology:**
+
+```
+1. Merchant loopd → Loop server: "swap X sats in"
+2. Loop server → returns on-chain HTLC address
+3. Merchant on-chain wallet → HTLC address (on-chain tx)
+4. Loop server → generates Lightning invoice for merchant
+5. Loop server pays invoice via public Lightning routes:
+     Loop server → [routes] → TREASURY (external channel)
+                                → treasury↔merchant channel
+                                  → MERCHANT (local balance ↑)
+```
+
+**Dependencies for success:**
+- **Treasury inbound on external channels** — the Loop server's invoice payment must reach treasury. If treasury has no remote liquidity on ACINQ/etc., Loop In fails. Treasury-side Loop Out maintains this inbound.
+- **Treasury-local on merchant channel** — treasury must have sats to push across treasury↔merchant. Automatic after merchant has been spending (every merchant payment moves sats to treasury's side of that channel).
+
+**Feedback loop:** Merchant spending naturally accumulates treasury-local on the merchant channel. That's exactly the pool a later Loop In draws from to restore merchant-local. The only external dependency is treasury's inbound on public channels.
+
+**Distinction from treasury-initiated Loop In:** Treasury running Loop In for its own inbound is a DIFFERENT flow that was removed in v1.7.1 (treasury uses Loop Out on external channels instead). `/api/admin/swaps/loop-in` correctly returns 410. Member-side Loop In is a separate flow with its own endpoints.
+
+**When channel lifecycle is the fallback:** If a merchant channel is structurally broken (low ROI, operational issues) or the merchant lacks on-chain BTC entirely, channel rotation/replacement is the backstop. See `docs/plans/2026-03-24-merchant-channel-lifecycle.md`.
+
 ### Treasury-Side Member Liquidity
 
 `src/memberLiquidity/` — treasury detects member channel imbalances from cluster data (Step 9 in rebalance scheduler, 2-consecutive-run debounce) and proposes keysend top-ups.
