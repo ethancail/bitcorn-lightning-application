@@ -104,6 +104,7 @@ export default function WithdrawBitcoin() {
 
   // ─── Max withdrawable from treasury channel ─────────────────────────
   const [maxWithdrawable, setMaxWithdrawable] = useState<number | null>(null);
+  const [channelLocal, setChannelLocal] = useState<number | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -113,10 +114,12 @@ export default function WithdrawBitcoin() {
     api.getMemberStats()
       .then((s) => {
         if (s.treasury_channel) {
+          setChannelLocal(s.treasury_channel.local_sats);
           const buffer = 50_000;
           const feeCushion = 2_000; // conservative estimate for swap + miner fees
           const max = Math.min(s.treasury_channel.local_sats - buffer - feeCushion, 2_000_000);
-          setMaxWithdrawable(max >= 250_000 ? max : null);
+          // Always set so Max button is visible; button disabled state handled by amount validation
+          setMaxWithdrawable(Math.max(max, 0));
         }
       })
       .catch(() => {});
@@ -277,7 +280,14 @@ export default function WithdrawBitcoin() {
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {/* Amount */}
             <div>
-              <label className="form-label">Amount</label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+                <label className="form-label" style={{ marginBottom: 0 }}>Amount</label>
+                {channelLocal != null && (
+                  <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
+                    Available: {channelLocal.toLocaleString()} sats
+                  </span>
+                )}
+              </div>
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 {AMOUNT_PRESETS.map((preset) => (
                   <button
@@ -291,11 +301,12 @@ export default function WithdrawBitcoin() {
                       : `${(preset / 1_000).toFixed(0)}k`}
                   </button>
                 ))}
-                {maxWithdrawable && (
+                {maxWithdrawable != null && maxWithdrawable > 0 && (
                   <button
                     className={`btn ${amount === maxWithdrawable ? "btn-primary" : "btn-outline"}`}
                     style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto", fontWeight: 600 }}
                     onClick={() => setAmount(maxWithdrawable)}
+                    title={`${maxWithdrawable.toLocaleString()} sats`}
                   >
                     Max
                   </button>
