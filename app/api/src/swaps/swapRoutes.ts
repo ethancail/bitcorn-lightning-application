@@ -7,6 +7,7 @@ import { assertTreasury } from "../utils/role";
 import { assertActiveMember } from "../utils/membership";
 import {
   createLoopOutQuote,
+  createLoopInQuote,
   initiateSwap,
   getSwapRequest,
   getSwapExecution,
@@ -16,6 +17,7 @@ import {
 import {
   checkMemberLoopOutPolicy,
   checkTreasuryLoopOutPolicy,
+  checkMemberLoopInPolicy,
 } from "./swapPolicy";
 import { isLoopAvailable } from "./loopProvider";
 
@@ -101,6 +103,72 @@ export async function handleMemberLoopOut(req: IncomingMessage, res: Res): Promi
   json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
 }
 
+// ─── Member Loop In (refill) ────────────────────────────────────────────
+
+export async function handleMemberLoopInQuote(req: IncomingMessage, res: Res): Promise<void> {
+  const node = getNodeInfo();
+  if (!node) return json(res, 503, { error: "node_info_unavailable" });
+  if (node.node_role !== "treasury") assertActiveMember(node.membership_status);
+
+  const body = JSON.parse(await parseBody(req));
+  const amountSat = Number(body.amount_sat);
+  if (!amountSat || amountSat <= 0) return json(res, 400, { error: "invalid_amount" });
+
+  const loopStatus = await isLoopAvailable();
+  if (!loopStatus.available) return json(res, 503, { error: "loop_unavailable", detail: loopStatus.error });
+
+  // Phase 1: pre-quote policy check (includes route probe)
+  const preCheck = await checkMemberLoopInPolicy({
+    nodePubkey: node.pubkey,
+    amountSat,
+  });
+  if (!preCheck.ok) {
+    const status = preCheck.code === "route_unavailable" || preCheck.code === "loop_unavailable" ? 503 : 429;
+    return json(res, status, { error: "policy_violation", detail: preCheck.reason, code: preCheck.code });
+  }
+
+  // Create quote (calls loopd GetLoopInQuote)
+  const { swapRequest, quote } = await createLoopInQuote({
+    nodePubkey: node.pubkey,
+    role: node.node_role === "treasury" ? "treasury" : "member",
+    amountSat,
+  });
+
+  // Phase 2: post-quote policy check (fee cap — advisory)
+  const postCheck = await checkMemberLoopInPolicy({
+    nodePubkey: node.pubkey,
+    amountSat,
+    quotedFeeSat: quote.total_fee_sat,
+  });
+
+  json(res, 200, { swap_request: swapRequest, quote, policy_check: postCheck });
+}
+
+export async function handleMemberLoopIn(req: IncomingMessage, res: Res): Promise<void> {
+  const node = getNodeInfo();
+  if (!node) return json(res, 503, { error: "node_info_unavailable" });
+  if (node.node_role !== "treasury") assertActiveMember(node.membership_status);
+
+  const body = JSON.parse(await parseBody(req));
+  const swapRequestId = body.swap_request_id as string;
+  if (!swapRequestId) return json(res, 400, { error: "swap_request_id_required" });
+
+  const existing = getSwapRequest(swapRequestId);
+  if (!existing) return json(res, 404, { error: "swap_request_not_found" });
+  if (existing.node_pubkey !== node.pubkey) return json(res, 403, { error: "not_your_swap" });
+
+  // Full policy enforcement (with stored fee)
+  const policy = await checkMemberLoopInPolicy({
+    nodePubkey: node.pubkey,
+    amountSat: existing.amount_sat,
+    quotedFeeSat: existing.quoted_fee_sat ?? 0,
+  });
+  if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
+
+  const result = await initiateSwap(swapRequestId);
+  json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
+}
+
 export async function handleGetSwap(req: IncomingMessage, res: Res, swapId: string): Promise<void> {
   const node = getNodeInfo();
   if (!node) return json(res, 503, { error: "node_info_unavailable" });
@@ -179,9 +247,9 @@ export async function handleAdminLoopOut(req: IncomingMessage, res: Res): Promis
   json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
 }
 
-// Treasury Loop In handlers removed from active architecture (v1.7.1).
-// Merchant-side liquidity uses channel lifecycle management, not Loop In.
-// Low-level gRPC support retained in loop.ts / loopProvider.ts for potential future use.
+// Treasury-initiated Loop In handlers removed from active architecture (v1.7.1).
+// Treasury maintains inbound via Loop OUT. Member-side Loop In (merchant refill)
+// is handled above by handleMemberLoopInQuote / handleMemberLoopIn.
 
 export async function handleAdminSwapList(req: IncomingMessage, res: Res): Promise<void> {
   const node = getNodeInfo();

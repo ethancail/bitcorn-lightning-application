@@ -96,11 +96,10 @@ export async function createLoopOutQuote(params: {
   };
 }
 
-// INACTIVE: Treasury Loop In quote creation — not called from active routes.
-// Retained for potential future use. See merchant channel lifecycle doc.
+// Loop In quote creation — used by both member refill and (future) treasury operations.
 export async function createLoopInQuote(params: {
   nodePubkey: string;
-  role: "treasury";
+  role: "member" | "treasury";
   amountSat: number;
   maxFeeSat?: number;
 }): Promise<{ swapRequest: SwapRequest; quote: LoopInQuoteResult }> {
@@ -113,9 +112,9 @@ export async function createLoopInQuote(params: {
     INSERT INTO swap_requests
       (id, created_at, updated_at, node_pubkey, role, swap_type, direction,
        status, amount_sat, max_fee_sat, quoted_fee_sat, quote_expires_at)
-    VALUES (?, ?, ?, ?, 'treasury', 'loop_in', 'chain_to_lightning',
+    VALUES (?, ?, ?, ?, ?, 'loop_in', 'chain_to_lightning',
             'quote_created', ?, ?, ?, ?)
-  `).run(id, now, now, params.nodePubkey, params.amountSat,
+  `).run(id, now, now, params.nodePubkey, params.role, params.amountSat,
     params.maxFeeSat ?? null, quote.total_fee_sat, expiresAt);
 
   recordSwapEvent(id, "quote_created", { amount_sat: params.amountSat, quote, expires_at: expiresAt });
