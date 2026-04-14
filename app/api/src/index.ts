@@ -80,6 +80,8 @@ import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
 import {
   handleMemberLoopOutQuote,
   handleMemberLoopOut,
+  handleMemberLoopInQuote,
+  handleMemberLoopIn,
   handleGetSwap,
   handleSwapHistory,
   handleAdminLoopOutQuote,
@@ -2307,6 +2309,23 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && req.url === "/api/swaps/loop-out") {
     try { await handleMemberLoopOut(req, res); } catch (e: any) {
       res.writeHead(e.message?.includes("privileges") || e.message?.includes("authorized") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // ─── Member Loop In (refill) ──────────────────────────────────────────
+  if (req.method === "POST" && req.url === "/api/swaps/loop-in/quote") {
+    try { await handleMemberLoopInQuote(req, res); } catch (e: any) {
+      res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/swaps/loop-in") {
+    try { await handleMemberLoopIn(req, res); } catch (e: any) {
+      res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));
     }
     return;
