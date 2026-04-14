@@ -163,6 +163,11 @@ export const api = {
     apiFetch<SwapQuoteResponse>("/api/swaps/loop-out/quote", { method: "POST", body: JSON.stringify(body) }),
   initiateSwapLoopOut: (body: { swap_request_id: string; destination_address: string }) =>
     apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/swaps/loop-out", { method: "POST", body: JSON.stringify(body) }),
+  // Loop In (member refill)
+  getSwapLoopInQuote: (body: { amount_sat: number }) =>
+    apiFetch<SwapQuoteResponse>("/api/swaps/loop-in/quote", { method: "POST", body: JSON.stringify(body) }),
+  initiateSwapLoopIn: (body: { swap_request_id: string }) =>
+    apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/swaps/loop-in", { method: "POST", body: JSON.stringify(body) }),
   getSwap: (id: string) => apiFetch<SwapDetailResponse>(`/api/swaps/${id}`),
   getSwapHistory: (limit?: number) => {
     const q = limit ? `?limit=${limit}` : "";
