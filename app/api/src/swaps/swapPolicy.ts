@@ -194,9 +194,10 @@ export async function checkTreasuryLoopOutPolicy(params: {
 
 // ─── Treasury Loop In ────────────────────────────────────────────────────
 
-// INACTIVE: Treasury Loop In removed from active architecture (v1.7.1).
-// Merchant-side liquidity uses channel lifecycle management, not Loop In.
-// Function retained for potential future use but not called from any active route.
+// Treasury-initiated Loop In — removed from active architecture (v1.7.1).
+// Treasury maintains inbound via Loop OUT on external channels.
+// This function is retained for reference; member-side Loop In uses
+// checkMemberLoopInPolicy() below.
 export async function checkTreasuryLoopInPolicy(params: {
   amountSat: number;
   quotedFeeSat: number;
@@ -226,6 +227,99 @@ export async function checkTreasuryLoopInPolicy(params: {
   if (quotedFeeSat > feeLimit) {
     return { ok: false, reason: `Quoted fee exceeds policy cap`, code: "fee_exceeds_cap" };
   }
+
+  return { ok: true };
+}
+
+// ─── Member Loop In (refill) ────────────────────────────────────────────
+// Path: Loop server → [public network] → treasury (external channel) → merchant
+// Preflight probes this route before allowing the on-chain HTLC commit.
+
+export async function checkMemberLoopInPolicy(params: {
+  nodePubkey: string;
+  amountSat: number;
+  quotedFeeSat?: number; // omit for pre-quote (phase 1); provide for post-quote (phase 2)
+}): Promise<PolicyResult> {
+  const { amountSat, quotedFeeSat, nodePubkey } = params;
+
+  // ── 1. Amount bounds ──────────────────────────────────────────────────
+  if (amountSat < ENV.memberMinRefillSat) {
+    return { ok: false, reason: `Minimum refill: ${ENV.memberMinRefillSat.toLocaleString()} sats`, code: "below_minimum" };
+  }
+  if (amountSat > ENV.memberMaxRefillSat) {
+    return { ok: false, reason: `Maximum refill: ${ENV.memberMaxRefillSat.toLocaleString()} sats`, code: "above_maximum" };
+  }
+
+  // ── 2. Provider terms ─────────────────────────────────────────────────
+  try {
+    const terms = await getLoopInTerms();
+    if (amountSat < terms.min_swap_amount) {
+      return { ok: false, reason: `Below Loop In minimum: ${terms.min_swap_amount.toLocaleString()} sats`, code: "below_loop_minimum" };
+    }
+    if (amountSat > terms.max_swap_amount) {
+      return { ok: false, reason: `Above Loop In maximum: ${terms.max_swap_amount.toLocaleString()} sats`, code: "above_loop_maximum" };
+    }
+  } catch {
+    return { ok: false, reason: "Loop service unavailable", code: "loop_unavailable" };
+  }
+
+  // ── 3. On-chain balance ───────────────────────────────────────────────
+  try {
+    const { chain_balance } = await getLndChainBalance();
+    const reserve = ENV.memberOnchainReserveSat;
+    const needed = amountSat + reserve;
+    if (chain_balance < needed) {
+      return {
+        ok: false,
+        reason: `Insufficient on-chain balance (${chain_balance.toLocaleString()} available, need ${needed.toLocaleString()} including ${reserve.toLocaleString()} reserve)`,
+        code: "insufficient_onchain",
+      };
+    }
+  } catch {
+    return { ok: false, reason: "Unable to check on-chain balance", code: "balance_check_failed" };
+  }
+
+  // ── 4. Route probe (preflight) ────────────────────────────────────────
+  const { probeRouteToLoopServer } = await import("../lightning/lnd");
+  const probe = await probeRouteToLoopServer(nodePubkey, amountSat);
+  if (!probe.routable) {
+    return {
+      ok: false,
+      reason: "No route available from Loop server to your node. Treasury may lack inbound capacity on external channels. Try a smaller amount or check back shortly.",
+      code: "route_unavailable",
+    };
+  }
+
+  // ── 5. Daily refill cap ───────────────────────────────────────────────
+  const dayAgo = Date.now() - 86_400_000;
+  const dailyRow = db.prepare(`
+    SELECT COALESCE(SUM(amount_sat), 0) AS total
+    FROM swap_requests
+    WHERE node_pubkey = ? AND role = 'member' AND swap_type = 'loop_in'
+      AND status NOT IN ('failed', 'expired', 'blocked_policy')
+      AND created_at > ?
+  `).get(nodePubkey, dayAgo) as { total: number };
+
+  if (dailyRow.total + amountSat > ENV.memberMaxDailyRefillSat) {
+    return {
+      ok: false,
+      reason: `Daily refill limit exceeded (${ENV.memberMaxDailyRefillSat.toLocaleString()} sats/day)`,
+      code: "daily_limit_exceeded",
+    };
+  }
+
+  // ── 6. Fee cap (phase 2 only — requires quoted fee) ───────────────────
+  if (quotedFeeSat !== undefined) {
+    const feeLimit = Math.ceil(amountSat * ENV.loopMaxSwapFeePct / 100);
+    if (quotedFeeSat > feeLimit) {
+      return { ok: false, reason: `Quoted fee (${quotedFeeSat.toLocaleString()}) exceeds cap (${feeLimit.toLocaleString()})`, code: "fee_exceeds_cap" };
+    }
+  }
+
+  console.log(
+    `[swap-policy] member loop-in approved: ${amountSat} sats, ` +
+    `daily_total=${dailyRow.total}, route_via=${probe.serverPubkey?.slice(0, 12)}`
+  );
 
   return { ok: true };
 }
