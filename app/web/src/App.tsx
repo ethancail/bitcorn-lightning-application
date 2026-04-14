@@ -14,6 +14,7 @@ import MemberLiquidity from "./pages/MemberLiquidity";
 import DepositBitcoin from "./pages/DepositBitcoin";
 import WithdrawBitcoin from "./pages/WithdrawBitcoin";
 import SwapOperations from "./pages/SwapOperations";
+import RefillChannel from "./pages/RefillChannel";
 import Peers from "./pages/Peers";
 import NetworkGraph from "./components/NetworkGraph";
 
@@ -410,7 +411,7 @@ function MemberShell() {
           <Route path="/payments" element={<Payments title="My Payments" />} />
           <Route path="/deposit" element={<DepositBitcoin />} />
           <Route path="/cashout" element={<WithdrawBitcoin />} />
-          <Route path="/refill" element={<WithdrawBitcoin />} />
+          <Route path="/refill" element={<RefillChannel />} />
           <Route path="/withdraw" element={<WithdrawBitcoin />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
