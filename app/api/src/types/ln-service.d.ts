@@ -242,6 +242,7 @@ declare module "ln-service" {
     max_fee?: number;
     payment?: string;
     total_mtokens?: string;
+    start?: string; // source pubkey — probe route FROM this node (uses gossip graph)
   }): Promise<{ route: Route }>;
 
   export function payViaRoutes(options: {
