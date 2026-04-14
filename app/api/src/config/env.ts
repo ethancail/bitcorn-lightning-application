@@ -114,4 +114,18 @@ export const ENV = {
     // Reserve buffer subtracted from treasury external egress capacity (default: 100,000)
     // Ensures treasury retains minimum outbound on egress channels
     swapTreasuryEgressReserveSat: Number(process.env.SWAP_TREASURY_EGRESS_RESERVE_SAT ?? "100000"),
+
+    // --- Member refill (Loop In) limits ---
+    // Comma-separated list of Loop swap server pubkeys for route-probe preflight.
+    // Default: Lightning Labs mainnet Loop server.
+    loopServerPubkeys: (process.env.LOOP_SERVER_PUBKEYS || "021c97a90a411ff2b10dc2a8e32de2f29d2fa49d41bfbb52bd416e460db0747d0d")
+        .split(",").map(s => s.trim()).filter(Boolean),
+    // Minimum sats a member can refill via Loop In (default: 100,000)
+    memberMinRefillSat: Number(process.env.MEMBER_MIN_REFILL_SAT ?? "100000"),
+    // Maximum sats a member can refill in a single Loop In (default: 3,000,000)
+    memberMaxRefillSat: Number(process.env.MEMBER_MAX_REFILL_SAT ?? "3000000"),
+    // Maximum total daily refill for a member (default: 5,000,000)
+    memberMaxDailyRefillSat: Number(process.env.MEMBER_MAX_DAILY_REFILL_SAT ?? "5000000"),
+    // On-chain reserve buffer — subtracted from available balance to prevent draining to zero
+    memberOnchainReserveSat: Number(process.env.MEMBER_ONCHAIN_RESERVE_SAT ?? "50000"),
 };
