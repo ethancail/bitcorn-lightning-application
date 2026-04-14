@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, fmtSats } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 
 // ─── State machine ──────────────────────────────────────────────────────────
-type Stage = "form" | "quoting" | "quoted" | "initiating" | "tracking";
+type Stage = "loading" | "form" | "quoting" | "quoted" | "initiating" | "tracking";
 
 const AMOUNT_PRESETS = [250_000, 500_000, 1_000_000, 2_000_000];
 
@@ -32,18 +33,12 @@ function isTerminal(status: string): boolean {
 
 function statusText(status: string, failureReason: string | null): string {
   switch (status) {
-    case "initiated":
-      return "Processing withdrawal...";
-    case "executing":
-      return "Swap in progress...";
-    case "confirming":
-      return "Confirming on-chain...";
-    case "completed":
-      return "Withdrawal complete";
-    case "failed":
-      return `Withdrawal failed${failureReason ? `: ${failureReason}` : ""}`;
-    default:
-      return status;
+    case "initiated": return "Paying Lightning invoice to Loop server...";
+    case "executing": return "Loop server publishing on-chain HTLC...";
+    case "confirming": return "Waiting for on-chain confirmation...";
+    case "completed": return "Withdrawal complete";
+    case "failed": return `Withdrawal failed${failureReason ? `: ${failureReason}` : ""}`;
+    default: return status;
   }
 }
 
@@ -80,14 +75,17 @@ function copyToClipboard(text: string) {
 }
 
 export default function WithdrawBitcoin() {
+  const [searchParams] = useSearchParams();
+  const advisorAmount = Number(searchParams.get("amount")) || 0;
+
   // ─── Address state (generated on load) ──────────────────────────────────
   const [address, setAddress] = useState<string | null>(null);
   const [addressLoading, setAddressLoading] = useState(true);
   const [copied, setCopied] = useState(false);
 
   // ─── Form state ───────────────────────────────────────────────────────
-  const [stage, setStage] = useState<Stage>("form");
-  const [amount, setAmount] = useState(250_000);
+  const [stage, setStage] = useState<Stage>("loading");
+  const [amount, setAmount] = useState(advisorAmount || 250_000);
   const [error, setError] = useState<string | null>(null);
 
   // ─── Quote state ──────────────────────────────────────────────────────
@@ -105,6 +103,8 @@ export default function WithdrawBitcoin() {
   // ─── Max withdrawable from treasury channel ─────────────────────────
   const [maxWithdrawable, setMaxWithdrawable] = useState<number | null>(null);
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
+  const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
+  const [channelLocalPct, setChannelLocalPct] = useState<number | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -115,6 +115,12 @@ export default function WithdrawBitcoin() {
       .then((s) => {
         if (s.treasury_channel) {
           setChannelLocal(s.treasury_channel.local_sats);
+          setChannelCapacity(s.treasury_channel.capacity_sats);
+          setChannelLocalPct(
+            s.treasury_channel.capacity_sats > 0
+              ? Math.round((s.treasury_channel.local_sats / s.treasury_channel.capacity_sats) * 100)
+              : 0
+          );
           const buffer = 50_000;
           const feeCushion = 2_000; // conservative estimate for swap + miner fees
           const max = Math.min(s.treasury_channel.local_sats - buffer - feeCushion, 2_000_000);
@@ -123,6 +129,22 @@ export default function WithdrawBitcoin() {
         }
       })
       .catch(() => {});
+  }, []);
+
+  // ─── Pending swap detection ───────────────────────────────────────────
+  useEffect(() => {
+    api.getSwapHistory(5).then((r) => {
+      const inflight = r.swaps.find(
+        (s) => s.swap_type === "loop_out" && !["completed", "failed", "expired"].includes(s.status)
+      );
+      if (inflight) {
+        setTrackingId(inflight.id);
+        setTrackingSwap(inflight);
+        setStage("tracking");
+      } else {
+        setStage("form");
+      }
+    }).catch(() => setStage("form"));
   }, []);
 
   // ─── Generate address on mount ────────────────────────────────────────
@@ -260,6 +282,20 @@ export default function WithdrawBitcoin() {
     loadHistory();
   }
 
+  if (stage === "loading") {
+    return (
+      <div>
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ marginBottom: 4 }}>Withdraw Bitcoin</h1>
+          <p className="text-dim" style={{ fontSize: "0.875rem" }}>
+            Send bitcoin from your Lightning balance to a Bitcoin wallet
+          </p>
+        </div>
+        <div className="loading-shimmer" style={{ height: 200, borderRadius: 8 }} />
+      </div>
+    );
+  }
+
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -281,6 +317,24 @@ export default function WithdrawBitcoin() {
             {/* Amount */}
             <div>
               <label className="form-label">Amount</label>
+              {channelLocalPct != null && (
+                <div style={{
+                  background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
+                  padding: "10px 14px", marginBottom: 10,
+                }}>
+                  <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
+                    Current channel
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
+                      <div style={{ width: `${Math.min(channelLocalPct, 100)}%`, height: "100%", background: channelLocalPct > 60 ? "var(--green)" : channelLocalPct > 30 ? "var(--amber)" : "var(--red)" }} />
+                    </div>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: channelLocalPct > 60 ? "var(--green)" : channelLocalPct > 30 ? "var(--amber)" : "var(--red)" }}>
+                      {channelLocalPct}% local
+                    </span>
+                  </div>
+                </div>
+              )}
               {channelLocal != null && (
                 <div style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
@@ -354,6 +408,13 @@ export default function WithdrawBitcoin() {
                   sats
                 </span>
               </div>
+              {channelLocal != null && channelCapacity != null && channelCapacity > 0 && (
+                <div style={{ background: "var(--bg-2)", borderLeft: "2px solid var(--amber)", padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 10 }}>
+                  After withdrawal: <strong style={{ color: "var(--amber)" }}>
+                    {channelLocalPct}% → {Math.max(0, Math.round(((channelLocal - amount) / channelCapacity) * 100))}% local
+                  </strong>
+                </div>
+              )}
               <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
                 Minimum: 250,000 sats. Maximum: 2,000,000 sats.
               </p>
