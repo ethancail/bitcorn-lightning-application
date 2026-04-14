@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.9.54"
+version: "1.10.0"
 port: 3200
 
 description: >
@@ -27,7 +27,9 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  v1.8.4: Built-in Loop via litd sidecar — Bitcorn ships its own Loop daemon
-  using litd in remote-LND mode. Works on both AMD64 and ARM64 (Raspberry Pi).
-  Member withdrawals and treasury Loop Out work out of the box on every node.
-  No separate Lightning Terminal installation required.
+  v1.10.0: Merchant Refill Channel — merchants can now refill their Lightning
+  outbound capacity via Loop In directly from the app. Context-forward UI with
+  channel state visualization, advisor-recommended amounts, and preflight route
+  probing that prevents expensive failures. WithdrawBitcoin (Cash Out) gains
+  pending swap detection across page reloads, channel state bar, and
+  direction-specific status messages.
