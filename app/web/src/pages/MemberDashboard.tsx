@@ -496,6 +496,12 @@ export default function MemberDashboard() {
         // Panel title
         const panelTitle = isMerchant ? "Merchant Channel" : isFarmer ? "Your Earnings" : "Your Channel";
 
+        // Advisor-aware navigation URLs
+        const cashOutUrl = rec?.action === "loop_out" && rec?.suggestedAmountSats
+          ? `/cashout?amount=${rec.suggestedAmountSats}` : "/cashout";
+        const refillUrl = rec?.action === "loop_in" && rec?.suggestedAmountSats
+          ? `/refill?amount=${rec.suggestedAmountSats}` : "/refill";
+
         // Advisor alert
         const alertClass = rec?.urgency === "high" ? "critical" : rec?.urgency === "medium" ? "warning" : "info";
         const alertIcon = rec?.urgency === "high" ? "✕" : rec?.urgency === "medium" ? "⚠" : "ℹ";
@@ -582,7 +588,7 @@ export default function MemberDashboard() {
                     <button
                       className="btn btn-primary"
                       style={{ width: "100%" }}
-                      onClick={() => navigate(isFarmer ? "/cashout" : "/refill")}
+                      onClick={() => navigate(isFarmer ? cashOutUrl : refillUrl)}
                     >
                       {isFarmer ? "Cash Out Earnings →" : "Refill Channel →"}
                     </button>

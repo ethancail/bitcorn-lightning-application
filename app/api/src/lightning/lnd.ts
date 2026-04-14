@@ -307,6 +307,54 @@ export async function createLndChainAddress(): Promise<{ address: string }> {
 }
 
 /**
+ * Preflight probe: checks whether a Lightning payment can route from
+ * any known Loop swap server to the local node for a given amount.
+ *
+ * Uses queryRoutes with source_pub_key (via ln-service's `start` param)
+ * to simulate the route FROM the server TO us, using the local gossip graph.
+ * The route necessarily passes through treasury's external channels.
+ *
+ * Never throws — returns a result object.
+ */
+export async function probeRouteToLoopServer(
+  merchantPubkey: string,
+  amountSat: number,
+): Promise<{ routable: boolean; serverPubkey?: string; error?: string }> {
+  let lnd: any;
+  try {
+    ({ lnd } = getLndClient());
+  } catch (err) {
+    return {
+      routable: false,
+      error: `LND unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  const servers = ENV.loopServerPubkeys;
+
+  for (const serverPubkey of servers) {
+    try {
+      const result = await getRouteToDestination({
+        lnd,
+        destination: merchantPubkey,
+        tokens: amountSat,
+        start: serverPubkey,
+      });
+      if (result?.route) {
+        return { routable: true, serverPubkey };
+      }
+    } catch {
+      // No route from this server — try next
+      continue;
+    }
+  }
+
+  return {
+    routable: false,
+    error: `No route found from any Loop server (${servers.length} checked) to ${merchantPubkey.slice(0, 12)}... for ${amountSat} sats`,
+  };
+}
+
+/**
  * Keysend push: sends sats directly to a peer via their pubkey using
  * payViaPaymentDetails. No invoice needed — the payment preimage is
  * generated locally and included via the keysend TLV (type 5482373484).
