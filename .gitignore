@@ -44,3 +44,6 @@ screenshots/
 # Local dev overrides (contain local pubkeys and paths)
 docker-compose.override.yml
 dev/lnd/
+
+# Brainstorming session artifacts
+.superpowers/
