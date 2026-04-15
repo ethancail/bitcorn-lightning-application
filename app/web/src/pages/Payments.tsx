@@ -446,6 +446,21 @@ function PayInvoiceForm({
   const [error, setError] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
+  // Send capacity from treasury channel (= member's local balance)
+  const [channelLocal, setChannelLocal] = useState<number | null>(null);
+  const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.getMemberStats()
+      .then((s) => {
+        if (s.treasury_channel) {
+          setChannelLocal(s.treasury_channel.local_sats);
+          setChannelCapacity(s.treasury_channel.capacity_sats);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     const trimmed = bolt11.trim();
     if (!trimmed || trimmed.length < 20) {
@@ -537,8 +552,85 @@ function PayInvoiceForm({
       ? `$${((decoded.tokens / 100_000_000) * rate).toFixed(2)}`
       : null;
 
+  // Channel state percentages
+  const currentLocalPct =
+    channelLocal != null && channelCapacity != null && channelCapacity > 0
+      ? Math.round((channelLocal / channelCapacity) * 100)
+      : null;
+  const decodedAmount = decoded?.tokens ?? 0;
+  const projectedLocalPct =
+    channelLocal != null && channelCapacity != null && channelCapacity > 0 && decodedAmount > 0
+      ? Math.max(0, Math.round(((channelLocal - decodedAmount) / channelCapacity) * 100))
+      : null;
+
+  // Two-tier send capacity thresholds (mirrors Request Payment's receive check)
+  // Soft cap (85% of local): routing fees + HTLC constraints may cause failures
+  // Hard cap (100% of local): physically impossible, payment will fail
+  const softCap = channelLocal != null ? Math.floor(channelLocal * 0.85) : null;
+  const hardCap = channelLocal;
+  const maxSendable = softCap;
+  const isOverSoft = softCap != null && decodedAmount > softCap;
+  const isOverHard = hardCap != null && decodedAmount > hardCap;
+
   return (
     <div>
+      {/* Channel state bar */}
+      {currentLocalPct != null && (
+        <div style={{
+          background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
+          padding: "10px 14px", marginBottom: 10,
+        }}>
+          <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
+            Current channel
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
+              <div style={{ width: `${Math.min(currentLocalPct, 100)}%`, height: "100%", background: "var(--amber)" }} />
+            </div>
+            <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)" }}>
+              {currentLocalPct}% local
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Send capacity card (amber-tinted) */}
+      {channelLocal != null && (
+        <div style={{
+          border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
+          background: "color-mix(in srgb, var(--amber) 8%, var(--bg-2))",
+          borderRadius: 8, padding: 10, marginBottom: 12,
+          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+        }}>
+          <div>
+            <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+              Send capacity
+            </div>
+            <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--amber)", lineHeight: 1.2 }}>
+              {channelLocal.toLocaleString()}
+              <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>sats</span>
+            </div>
+          </div>
+          {maxSendable != null && maxSendable > 0 && (
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+                Max send
+              </div>
+              <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
+                {maxSendable.toLocaleString()} sats
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Zero send capacity — empty state */}
+      {channelLocal != null && channelLocal === 0 && (
+        <div className="alert critical" style={{ marginBottom: 12 }}>
+          No send capacity. Your channel is fully on the treasury's side — Refill your channel to restore outbound.
+        </div>
+      )}
+
       <label className="form-label">Paste BOLT11 Invoice</label>
       <textarea
         className="form-input"
@@ -581,6 +673,30 @@ function PayInvoiceForm({
         </div>
       )}
 
+      {/* Two-tier capacity warnings (after decode) */}
+      {decoded && isOverHard && (
+        <div className="alert critical" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
+          Amount exceeds send capacity ({hardCap?.toLocaleString()} sats). Payment cannot succeed — Refill your channel first.
+        </div>
+      )}
+      {decoded && !isOverHard && isOverSoft && (
+        <div className="alert warning" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
+          Amount is near send capacity limit. Payment may fail due to routing fees or HTLC constraints.
+        </div>
+      )}
+
+      {/* Projected channel state (after decode) */}
+      {decoded && projectedLocalPct != null && !isOverHard && (
+        <div style={{
+          background: "var(--bg-2)", borderLeft: "2px solid var(--amber)",
+          padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 12,
+        }}>
+          After send: <strong style={{ color: "var(--amber)" }}>
+            {currentLocalPct}% → {projectedLocalPct}% local
+          </strong>
+        </div>
+      )}
+
       {error && (
         <div className="alert warning" style={{ marginBottom: 12 }}>
           {error}
@@ -590,7 +706,7 @@ function PayInvoiceForm({
       <button
         className="btn btn-primary"
         onClick={handlePay}
-        disabled={!decoded || paying}
+        disabled={!decoded || paying || isOverHard}
       >
         {paying ? "Paying..." : "Confirm & Pay"}
       </button>
