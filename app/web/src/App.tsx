@@ -1196,6 +1196,7 @@ function ChannelsPage() {
   const [nodeRole, setNodeRole] = useState<string | null>(null);
   const [closingChannel, setClosingChannel] = useState<string | null>(null);
   const [closeConfirm, setCloseConfirm] = useState<{ channelId: string; peerName: string; capacity: number } | null>(null);
+  const [closeFeeRate, setCloseFeeRate] = useState<number | undefined>(undefined); // Economy default (LND estimator)
   const [closeError, setCloseError] = useState<string | null>(null);
   const [closeResult, setCloseResult] = useState<{ channelId: string; txid: string | null } | null>(null);
   const [closingPubkeys, setClosingPubkeys] = useState<Set<string>>(new Set());
@@ -1232,10 +1233,13 @@ function ChannelsPage() {
     if (!closeConfirm) return;
     setClosingChannel(closeConfirm.channelId);
     setCloseError(null);
+    const channelId = closeConfirm.channelId;
+    const feeRate = closeFeeRate;
     setCloseConfirm(null);
+    setCloseFeeRate(undefined); // reset to Economy for next open
     try {
-      const res = await api.treasuryCloseChannel({ channel_id: closeConfirm.channelId });
-      setCloseResult({ channelId: closeConfirm.channelId, txid: res.closing_txid });
+      const res = await api.treasuryCloseChannel({ channel_id: channelId, fee_rate: feeRate });
+      setCloseResult({ channelId, txid: res.closing_txid });
       setTimeout(refreshChannels, 3000);
     } catch (e: any) {
       setCloseError(e.message ?? "Failed to close channel");
@@ -1263,8 +1267,34 @@ function ChannelsPage() {
               This will cooperatively close the channel to <strong>{closeConfirm.peerName}</strong> ({closeConfirm.capacity.toLocaleString()} sats).
               Funds will return to your on-chain wallet after confirmation. This cannot be undone.
             </div>
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
+                On-chain fee rate
+              </div>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {[
+                  { label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~192 sats" },
+                  { label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~960 sats" },
+                  { label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,885 sats" },
+                ].map((opt) => {
+                  const selected = closeFeeRate === opt.rate;
+                  return (
+                    <button
+                      key={opt.label}
+                      className={`btn ${selected ? "btn-primary" : "btn-outline"}`}
+                      onClick={() => setCloseFeeRate(opt.rate)}
+                      style={{ flex: "1 1 auto", fontSize: "0.7rem", padding: "6px 10px", textAlign: "left", lineHeight: 1.3 }}
+                    >
+                      <div style={{ fontWeight: 600 }}>{opt.label}</div>
+                      <div style={{ fontSize: "0.65rem", opacity: 0.8 }}>{opt.desc}</div>
+                      <div style={{ fontSize: "0.6rem", opacity: 0.7 }}>{opt.time} · {opt.cost}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             <div className="dialog-actions">
-              <button className="btn btn-ghost" onClick={() => setCloseConfirm(null)}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setCloseConfirm(null); setCloseFeeRate(undefined); }}>Cancel</button>
               <button className="btn btn-danger" onClick={handleCloseChannel}>Close Channel</button>
             </div>
           </div>

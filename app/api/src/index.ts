@@ -925,6 +925,7 @@ const server = http.createServer(async (req, res) => {
           const channelId = parsed.channel_id;
           const isForceClose = parsed.is_force_close === true;
           const isDryRun = parsed.dry_run === true;
+          const feeRate = parsed.fee_rate ? Number(parsed.fee_rate) : undefined; // sat/vB — optional override for LND's fee estimator
 
           if (!channelId || typeof channelId !== "string") {
             res.writeHead(400, { "Content-Type": "application/json" });
@@ -1015,7 +1016,7 @@ const server = http.createServer(async (req, res) => {
             const result = await closeTreasuryChannel(
               lndChannel.transaction_id,
               lndChannel.transaction_vout,
-              { isForce: isForceClose }
+              { isForce: isForceClose, chainFeeTokensPerVbyte: feeRate }
             );
 
             updateRotationExecution(execId, "submitted", result.transaction_id ?? null, null);

@@ -146,7 +146,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  treasuryCloseChannel: (body: { channel_id: string; is_force_close?: boolean }) =>
+  treasuryCloseChannel: (body: { channel_id: string; is_force_close?: boolean; fee_rate?: number }) =>
     apiFetch<{ ok: boolean; closing_txid: string | null }>("/api/treasury/rotation/execute", {
       method: "POST",
       body: JSON.stringify(body),
