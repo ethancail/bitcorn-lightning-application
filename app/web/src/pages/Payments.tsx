@@ -176,11 +176,47 @@ function RequestPaymentForm({
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
+  // Receive capacity from treasury channel
+  const [channelLocal, setChannelLocal] = useState<number | null>(null);
+  const [channelRemote, setChannelRemote] = useState<number | null>(null);
+  const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.getMemberStats()
+      .then((s) => {
+        if (s.treasury_channel) {
+          setChannelLocal(s.treasury_channel.local_sats);
+          setChannelRemote(s.treasury_channel.remote_sats);
+          setChannelCapacity(s.treasury_channel.capacity_sats);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const sats = Number(amount) || 0;
   const usdPreview =
     rate && sats > 0
       ? `$${((sats / 100_000_000) * rate).toFixed(2)}`
       : null;
+
+  // Channel state percentages
+  const currentLocalPct =
+    channelLocal != null && channelCapacity != null && channelCapacity > 0
+      ? Math.round((channelLocal / channelCapacity) * 100)
+      : null;
+  const projectedLocalPct =
+    channelLocal != null && channelCapacity != null && channelCapacity > 0 && sats > 0
+      ? Math.min(100, Math.round(((channelLocal + sats) / channelCapacity) * 100))
+      : null;
+
+  // Two-tier capacity thresholds
+  // Soft cap (85% of remote): routing fees + HTLC constraints may cause failures
+  // Hard cap (100% of remote): physically impossible, payment will fail
+  const softCap = channelRemote != null ? Math.floor(channelRemote * 0.85) : null;
+  const hardCap = channelRemote;
+  const maxInvoice = softCap; // display value for the "Max Invoice" card
+  const isOverSoft = softCap != null && sats > softCap;
+  const isOverHard = hardCap != null && sats > hardCap;
 
   const handleCreate = async () => {
     if (sats <= 0) return;
@@ -258,8 +294,65 @@ function RequestPaymentForm({
 
   return (
     <div>
+      {/* Channel state bar */}
+      {currentLocalPct != null && (
+        <div style={{
+          background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
+          padding: "10px 14px", marginBottom: 10,
+        }}>
+          <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
+            Current channel
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
+              <div style={{ width: `${Math.min(currentLocalPct, 100)}%`, height: "100%", background: "var(--amber)" }} />
+            </div>
+            <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)" }}>
+              {currentLocalPct}% local
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Receive capacity card (green-tinted) */}
+      {channelRemote != null && (
+        <div style={{
+          border: "1px solid color-mix(in srgb, var(--green) 30%, transparent)",
+          background: "color-mix(in srgb, var(--green) 8%, var(--bg-2))",
+          borderRadius: 8, padding: 10, marginBottom: 12,
+          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
+        }}>
+          <div>
+            <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+              Receive capacity
+            </div>
+            <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--green)", lineHeight: 1.2 }}>
+              {channelRemote.toLocaleString()}
+              <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>sats</span>
+            </div>
+          </div>
+          {maxInvoice != null && maxInvoice > 0 && (
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+                Max invoice
+              </div>
+              <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
+                {maxInvoice.toLocaleString()} sats
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Zero receive capacity — empty state */}
+      {channelRemote != null && channelRemote === 0 && (
+        <div className="alert critical" style={{ marginBottom: 12 }}>
+          No receive capacity. Your channel is fully on your side — Cash Out some Lightning balance to on-chain to restore inbound.
+        </div>
+      )}
+
       <label className="form-label">Amount</label>
-      <div style={{ position: "relative", marginBottom: 12 }}>
+      <div style={{ position: "relative", marginBottom: 6 }}>
         <input
           type="text"
           inputMode="numeric"
@@ -282,6 +375,30 @@ function RequestPaymentForm({
         </span>
       </div>
 
+      {/* Two-tier capacity warnings */}
+      {isOverHard && (
+        <div className="alert critical" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
+          Amount exceeds receive capacity ({hardCap?.toLocaleString()} sats). Payment cannot succeed.
+        </div>
+      )}
+      {!isOverHard && isOverSoft && (
+        <div className="alert warning" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
+          Amount is near receive capacity limit. Payment may fail due to routing fees or HTLC constraints. Consider requesting a smaller amount.
+        </div>
+      )}
+
+      {/* Projected channel state */}
+      {projectedLocalPct != null && !isOverHard && (
+        <div style={{
+          background: "var(--bg-2)", borderLeft: "2px solid var(--green)",
+          padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 12,
+        }}>
+          After receive: <strong style={{ color: "var(--green)" }}>
+            {currentLocalPct}% → {projectedLocalPct}% local
+          </strong>
+        </div>
+      )}
+
       <label className="form-label">Memo (optional)</label>
       <input
         type="text"
@@ -302,7 +419,7 @@ function RequestPaymentForm({
       <button
         className="btn btn-primary"
         onClick={handleCreate}
-        disabled={sats <= 0 || creating}
+        disabled={sats <= 0 || creating || isOverHard}
       >
         {creating ? "Creating..." : "Create Invoice"}
       </button>
