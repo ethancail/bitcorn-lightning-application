@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.10.2"
+version: "1.10.3"
 port: 3200
 
 description: >
@@ -27,6 +27,16 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.10.3: Receive capacity visualization on Request Payment — invoice
+  creation now shows channel state, receive capacity, max invoice amount,
+  and projected channel state. Two-tier warnings prevent invoices that
+  exceed routable capacity.
+
+  v1.10.2: Channel close fee selector — operators can pick
+  Economy/Normal/Priority fee rates when closing channels instead of
+  relying on LND's default estimator (which can pick rates too low to
+  confirm).
+
   v1.10.0: Merchant Refill Channel — merchants can now refill their Lightning
   outbound capacity via Loop In directly from the app. Context-forward UI with
   channel state visualization, advisor-recommended amounts, and preflight route
