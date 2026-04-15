@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.10.4"
+version: "1.10.5"
 port: 3200
 
 description: >
@@ -27,6 +27,11 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.10.5: Fix — member sidebar now reflects channel role changes saved
+  in Settings immediately. Previously the sidebar showed stale labels
+  ("Cash Out" after switching to Merchant role) until page reload because
+  MemberShell fetched role only on mount.
+
   v1.10.4: Send capacity visualization on Pay Invoice — pasting a BOLT11
   now checks the decoded amount against the member's send capacity. Same
   two-tier warning pattern as Request Payment (soft warn at 85% of local
