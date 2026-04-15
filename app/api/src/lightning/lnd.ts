@@ -235,7 +235,7 @@ export async function getLndPendingChannels() {
 export async function closeTreasuryChannel(
   transactionId: string,
   transactionVout: number,
-  options?: { isForce?: boolean }
+  options?: { isForce?: boolean; chainFeeTokensPerVbyte?: number }
 ): Promise<{ transaction_id?: string }> {
   const { lnd } = getLndClient();
   return closeChannel({
@@ -243,6 +243,7 @@ export async function closeTreasuryChannel(
     transaction_id: transactionId,
     transaction_vout: transactionVout,
     is_force_close: options?.isForce ?? false,
+    tokens_per_vbyte: options?.chainFeeTokensPerVbyte,
   });
 }
 

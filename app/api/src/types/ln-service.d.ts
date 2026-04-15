@@ -134,6 +134,7 @@ declare module "ln-service" {
     transaction_id: string;
     transaction_vout: number;
     is_force_close?: boolean;
+    tokens_per_vbyte?: number; // chain fee rate for cooperative close
   }): Promise<{ transaction_id?: string }>;
 
   export function updateRoutingFees(args: {
