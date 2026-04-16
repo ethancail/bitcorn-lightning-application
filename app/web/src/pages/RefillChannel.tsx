@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { api, fmtSats } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
@@ -106,6 +106,8 @@ export default function RefillChannel() {
   // ─── History state ────────────────────────────────────────────────────
   const [history, setHistory] = useState<SwapRequest[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [expandedSwapId, setExpandedSwapId] = useState<string | null>(null);
+  const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[] } | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -234,6 +236,23 @@ export default function RefillChannel() {
     !isTerminal(trackingSwap.status) &&
     trackingSwap.updated_at &&
     Date.now() - (trackingSwap.updated_at < 1e12 ? trackingSwap.updated_at * 1000 : trackingSwap.updated_at) > 30 * 60_000;
+
+  // ─── Expand history row ───────────────────────────────────────────────
+  async function handleExpandSwap(swapId: string) {
+    if (expandedSwapId === swapId) {
+      setExpandedSwapId(null);
+      setExpandedDetail(null);
+      return;
+    }
+    setExpandedSwapId(swapId);
+    setExpandedDetail(null);
+    try {
+      const detail = await api.getSwap(swapId);
+      setExpandedDetail(detail);
+    } catch {
+      setExpandedDetail(null);
+    }
+  }
 
   // ─── Get Quote ────────────────────────────────────────────────────────
   async function handleGetQuote() {
@@ -765,19 +784,105 @@ export default function RefillChannel() {
                 <tbody>
                   {history.map((s) => {
                     const badge = statusBadge(s.status);
+                    const isExpanded = expandedSwapId === s.id;
                     return (
-                      <tr key={s.id}>
-                        <td>{formatDate(s.created_at)}</td>
-                        <td className="td-num td-mono">{s.amount_sat.toLocaleString()}</td>
-                        <td><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
-                        <td className="td-num td-mono">
-                          {s.actual_fee_sat != null
-                            ? s.actual_fee_sat.toLocaleString()
-                            : s.quoted_fee_sat != null
-                              ? `~${s.quoted_fee_sat.toLocaleString()}`
-                              : "—"}
-                        </td>
-                      </tr>
+                      <React.Fragment key={s.id}>
+                        <tr
+                          onClick={() => handleExpandSwap(s.id)}
+                          style={{ cursor: "pointer", background: isExpanded ? "color-mix(in srgb, var(--amber) 6%, transparent)" : undefined }}
+                        >
+                          <td>{formatDate(s.created_at)}</td>
+                          <td className="td-num td-mono">{s.amount_sat.toLocaleString()}</td>
+                          <td><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
+                          <td className="td-num td-mono">
+                            {s.actual_fee_sat != null
+                              ? s.actual_fee_sat.toLocaleString()
+                              : s.quoted_fee_sat != null
+                                ? `~${s.quoted_fee_sat.toLocaleString()}`
+                                : "—"}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={4} style={{ padding: 0, border: "none" }}>
+                              <div style={{
+                                padding: "12px 16px", background: "var(--bg-2)",
+                                borderTop: "1px solid var(--border)", borderBottom: "1px solid var(--border)",
+                                fontSize: "0.75rem", display: "flex", flexDirection: "column", gap: 8,
+                              }}>
+                                {!expandedDetail ? (
+                                  <div className="loading-shimmer" style={{ height: 60, borderRadius: 6 }} />
+                                ) : (
+                                  <>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px" }}>
+                                      <div>
+                                        <span style={{ color: "var(--text-3)" }}>Amount:</span>{" "}
+                                        <strong>{expandedDetail.swap_request.amount_sat.toLocaleString()} sats</strong>
+                                      </div>
+                                      <div>
+                                        <span style={{ color: "var(--text-3)" }}>Status:</span>{" "}
+                                        <span className={`badge ${statusBadge(expandedDetail.swap_request.status).cls}`}>
+                                          {statusBadge(expandedDetail.swap_request.status).label}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span style={{ color: "var(--text-3)" }}>Quoted Fee:</span>{" "}
+                                        {expandedDetail.swap_request.quoted_fee_sat != null
+                                          ? `${expandedDetail.swap_request.quoted_fee_sat.toLocaleString()} sats`
+                                          : "—"}
+                                      </div>
+                                      <div>
+                                        <span style={{ color: "var(--text-3)" }}>Actual Fee:</span>{" "}
+                                        {expandedDetail.swap_request.actual_fee_sat != null
+                                          ? `${expandedDetail.swap_request.actual_fee_sat.toLocaleString()} sats`
+                                          : "—"}
+                                      </div>
+                                      <div>
+                                        <span style={{ color: "var(--text-3)" }}>Created:</span>{" "}
+                                        {formatDate(expandedDetail.swap_request.created_at)}
+                                      </div>
+                                      <div>
+                                        <span style={{ color: "var(--text-3)" }}>Updated:</span>{" "}
+                                        {formatDate(expandedDetail.swap_request.updated_at)}
+                                      </div>
+                                    </div>
+                                    {expandedDetail.swap_request.failure_reason && (
+                                      <div style={{ color: "var(--red)", fontFamily: "var(--mono)", fontSize: "0.7rem" }}>
+                                        Failure: {expandedDetail.swap_request.failure_reason}
+                                      </div>
+                                    )}
+                                    {expandedDetail.execution?.provider_swap_id && (
+                                      <div style={{ fontFamily: "var(--mono)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
+                                        Swap hash: {expandedDetail.execution.provider_swap_id}
+                                      </div>
+                                    )}
+                                    {expandedDetail.execution?.onchain_txid && (
+                                      <div style={{ fontFamily: "var(--mono)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
+                                        On-chain TX: {expandedDetail.execution.onchain_txid}
+                                      </div>
+                                    )}
+                                    {!isTerminal(expandedDetail.swap_request.status) && (
+                                      <button
+                                        className="btn btn-outline"
+                                        style={{ alignSelf: "flex-start", fontSize: "0.7rem", padding: "4px 12px" }}
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setTrackingId(expandedDetail.swap_request.id);
+                                          setTrackingSwap(expandedDetail.swap_request);
+                                          setStage("tracking");
+                                          setExpandedSwapId(null);
+                                        }}
+                                      >
+                                        View Live Status →
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
                 </tbody>
