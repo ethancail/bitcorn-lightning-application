@@ -176,6 +176,7 @@ export async function initiateSwap(swapRequestId: string, destinationAddress?: s
         maxSwapFee: updatedReq.quoted_fee_sat ?? Math.ceil(updatedReq.amount_sat * ENV.loopMaxSwapFeePct / 100),
         maxMinerFee: ENV.loopMaxMinerFeeSats,
         confTarget: ENV.loopConfTarget,
+        lastHop: ENV.treasuryPubkey || undefined, // hub-and-spoke: tell Loop server to route through treasury
       });
 
       db.prepare(`
