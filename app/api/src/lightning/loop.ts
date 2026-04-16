@@ -358,6 +358,7 @@ export async function executeLoopInSwap(params: {
       last_hop: params.last_hop ? Buffer.from(params.last_hop, "hex") : undefined,
       label: params.label || `bitcorn-loop-in-${Date.now()}`,
       initiator: "bitcorn",
+      private: true, // hub-and-spoke: loopd auto-generates route hints from local channels
     },
     60_000
   );
