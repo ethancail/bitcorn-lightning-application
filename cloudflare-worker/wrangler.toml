@@ -2,6 +2,27 @@ name = "bitcorn-onramp"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
 
+# Required by @cloudflare/vitest-pool-workers 0.5.x. Enables Node.js standard
+# library compatibility (needed because vitest imports node modules internally).
+# The vitest.config.ts override added in Task 1 becomes redundant once this is
+# here, but leaving both is harmless.
+compatibility_flags = ["nodejs_compat"]
+
+# Daily cron at 00:15 UTC — triggers valuation engine refresh.
+# (5-field form: minute hour day-of-month month day-of-week)
+[triggers]
+crons = ["15 0 * * *"]
+
 [[kv_namespaces]]
 binding = "PRICES_CACHE"
 id = "62c68c41830141cc8b0b6e7cdb193461"
+
+# Secrets required (set via `wrangler secret put <NAME>`; never checked in):
+#   CDP_KEY_NAME            — existing (Coinbase Onramp)
+#   CDP_PRIVATE_KEY         — existing (Coinbase Onramp)
+#   USDA_NASS_KEY           — existing (commodity prices)
+#   GLASSNODE_API_KEY       — new (valuation: 8 inputs)
+#   CRYPTOQUANT_API_KEY     — new (valuation: miner_outflows)
+#   LOOKINTOBITCOIN_API_KEY — new (valuation: ma_200w, pi_cycle)
+#   PLANB_API_KEY           — new (valuation: stock_to_flow; optional — adapter
+#                              falls through to unauthenticated endpoint if unset)
