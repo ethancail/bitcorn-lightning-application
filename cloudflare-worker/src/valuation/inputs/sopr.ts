@@ -2,10 +2,11 @@ import type { Env } from "../../lib/types";
 import type { InputAdapter, InputReading } from "./types";
 import { fetchGlassnodeMetric } from "./glassnode";
 
-// Glassnode exposes an adjusted SOPR metric; we consume the 30-day moving
-// average by downloading the raw series and averaging over the trailing 30d
-// at consumption time in the engine. Keeping the adapter simple: return the
-// raw daily adjusted SOPR series; engine.ts computes the 30d MA.
+// Glassnode exposes raw adjusted SOPR; the composite model expects the 30-day
+// moving average. This adapter applies the rolling MA itself:
+//   - fetchLatest: trailing-30 average of the most recent 30 points
+//   - fetchHistory: sliding 30-day MA starting at index 29
+// engine.ts consumes these pre-smoothed values directly.
 const METRIC_PATH = "indicators/sopr_adjusted";
 
 export const sopr: InputAdapter = {
