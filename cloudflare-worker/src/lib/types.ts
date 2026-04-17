@@ -5,11 +5,11 @@ export interface Env {
   PRICES_CACHE: KVNamespace;
   TREASURY_PUBKEY?: string;
   TREASURY_SOCKET?: string;
-  // Valuation upstreams (added in later tasks; optional here so tests can stub)
-  GLASSNODE_API_KEY?: string;
+  // Valuation upstreams (only the auto-fetch adapters need keys now)
   CRYPTOQUANT_API_KEY?: string;
-  LOOKINTOBITCOIN_API_KEY?: string;
   PLANB_API_KEY?: string;
+  // Manual-input HMAC (validated by POST /valuation/manual)
+  VALUATION_SUBMIT_HMAC?: string;
 }
 
 export type CommodityPrice = {
