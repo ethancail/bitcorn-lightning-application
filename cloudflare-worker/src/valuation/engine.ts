@@ -35,10 +35,17 @@ export async function fetchSpotPrice(): Promise<number> {
 }
 
 export async function runEngine(env: Env, ctx: EngineContext): Promise<void> {
-  // 1. Fetch every adapter's full history in parallel.
-  const results = await Promise.all(
+  // 1. Fetch every adapter's full history in parallel. allSettled so a throwing
+  //    adapter cannot take the entire engine down — the contract says adapters
+  //    return [] on failure, but defense-in-depth matters for the cron path.
+  const settled = await Promise.allSettled(
     ADAPTERS.map(async (a) => ({ adapter: a, history: await a.fetchHistory(env) })),
   );
+  const results = settled.flatMap((r, i) => {
+    if (r.status === "fulfilled") return [r.value];
+    console.error(`[engine] adapter ${ADAPTERS[i].key} threw:`, r.reason);
+    return [];
+  });
 
   // 2. For each adapter with usable history, compute per-day Z-scores over
   //    the full series and capture (a) the latest Z (for composite), (b) the
