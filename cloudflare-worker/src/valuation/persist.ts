@@ -35,7 +35,8 @@ export async function loadCurrent(kv: KVNamespace): Promise<CurrentValuation | n
   if (!raw) return null;
   try {
     return JSON.parse(raw) as CurrentValuation;
-  } catch {
+  } catch (err) {
+    console.error("[persist] loadCurrent parse failed:", err instanceof Error ? err.message : err);
     return null;
   }
 }
@@ -50,7 +51,8 @@ export async function loadHistory(kv: KVNamespace): Promise<HistoryRow[]> {
   try {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? (parsed as HistoryRow[]) : [];
-  } catch {
+  } catch (err) {
+    console.error("[persist] loadHistory parse failed:", err instanceof Error ? err.message : err);
     return [];
   }
 }
@@ -67,7 +69,8 @@ export async function loadInputs(kv: KVNamespace): Promise<Record<string, InputS
   if (!raw) return {};
   try {
     return JSON.parse(raw) as Record<string, InputSnapshot>;
-  } catch {
+  } catch (err) {
+    console.error("[persist] loadInputs parse failed:", err instanceof Error ? err.message : err);
     return {};
   }
 }
