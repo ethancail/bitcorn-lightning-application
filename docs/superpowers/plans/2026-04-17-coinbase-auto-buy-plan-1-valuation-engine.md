@@ -113,7 +113,7 @@ Run:
 
 ```bash
 cd cloudflare-worker
-npm install --save-dev vitest@^1.6.0 @cloudflare/vitest-pool-workers@^0.5.0
+npm install --save-dev vitest@^2.1.0 @cloudflare/vitest-pool-workers@^0.5.0
 ```
 
 Edit `cloudflare-worker/package.json` — add a `test` script under `"scripts"`:
@@ -136,7 +136,7 @@ Edit `cloudflare-worker/package.json` — add a `test` script under `"scripts"`:
     "@cloudflare/workers-types": "^4.0.0",
     "@cloudflare/vitest-pool-workers": "^0.5.0",
     "typescript": "^5.0.0",
-    "vitest": "^1.6.0",
+    "vitest": "^2.1.0",
     "wrangler": "^3.0.0"
   }
 }
@@ -3331,7 +3331,7 @@ Add a `backfill` npm script:
     "@cloudflare/workers-types": "^4.0.0",
     "@cloudflare/vitest-pool-workers": "^0.5.0",
     "typescript": "^5.0.0",
-    "vitest": "^1.6.0",
+    "vitest": "^2.1.0",
     "wrangler": "^3.0.0"
   }
 }
