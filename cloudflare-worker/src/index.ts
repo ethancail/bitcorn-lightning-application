@@ -1,3 +1,15 @@
+// Bitcorn Lightning — Cloudflare Worker (thin router).
+//
+// Endpoints:
+//   POST /                    — Coinbase Onramp session token (handlers/onramp.ts)
+//   GET  /prices              — Commodity futures prices (handlers/prices.ts)
+//   GET  /prices/corn-history — Historical monthly corn prices (handlers/prices.ts)
+//   GET  /recommended-peers   — Curated external peer list (handlers/recommendedPeers.ts)
+//   GET  /treasury-info       — Treasury node connection info (handlers/treasuryInfo.ts)
+//
+// Deploy runbook, secret management, and architecture: docs/COINBASE_INTEGRATION.md.
+// Valuation endpoints (/valuation/*) are added in Plan 1 Task 23.
+
 import { handleOnramp } from "./handlers/onramp";
 import { handlePrices, handleCornHistory } from "./handlers/prices";
 import { handleRecommendedPeers } from "./handlers/recommendedPeers";
