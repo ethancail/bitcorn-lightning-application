@@ -152,6 +152,13 @@ export default defineWorkersConfig({
     poolOptions: {
       workers: {
         wrangler: { configPath: "./wrangler.toml" },
+        miniflare: {
+          // pool-workers 0.5.x hard-asserts one of nodejs_compat / nodejs_compat_v2
+          // is present at startup. Setting it here keeps production wrangler.toml
+          // untouched until Task 25, which adds the same flag to wrangler.toml
+          // proper (this override becomes redundant at that point but harmless).
+          compatibilityFlags: ["nodejs_compat"],
+        },
       },
     },
   },
@@ -167,7 +174,9 @@ Expected: `1 test passed` (the smoke test).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add cloudflare-worker/package.json cloudflare-worker/package-lock.json cloudflare-worker/vitest.config.ts cloudflare-worker/tests/smoke.test.ts
+# Note: the repo's root .gitignore excludes package-lock.json globally.
+# Only stage the 3 source files; npm will re-resolve from package.json range pins.
+git add cloudflare-worker/package.json cloudflare-worker/vitest.config.ts cloudflare-worker/tests/smoke.test.ts
 git commit -m "chore(worker): add vitest test runner"
 ```
 
@@ -3259,6 +3268,12 @@ Replace the contents of `cloudflare-worker/wrangler.toml` with:
 name = "bitcorn-onramp"
 main = "src/index.ts"
 compatibility_date = "2024-01-01"
+
+# Required by @cloudflare/vitest-pool-workers 0.5.x. Enables Node.js standard
+# library compatibility (needed because vitest imports node modules internally).
+# The vitest.config.ts override added in Task 1 becomes redundant once this is
+# here, but leaving both is harmless.
+compatibility_flags = ["nodejs_compat"]
 
 # Daily cron at 00:15 UTC — triggers valuation engine refresh.
 # (5-field form: minute hour day-of-month month day-of-week)
