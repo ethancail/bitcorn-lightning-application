@@ -103,23 +103,25 @@ The existing **Coinbase Onramp** integration (v1.0+) is a one-shot, user-initiat
 
 ### 4.1 Inputs (12 total, weights sum to 1.00)
 
-| Category | Input | Weight | Source | Plan |
-|----------|-------|--------|--------|------|
-| On-chain | MVRV Z-Score | 0.18 | Glassnode | Paid |
-| On-chain | Puell Multiple | 0.10 | Glassnode | Paid |
-| On-chain | SOPR (30d MA) | 0.08 | Glassnode | Paid |
-| On-chain | Reserve Risk | 0.07 | Glassnode | Paid |
-| Market | Stock-to-Flow Deviation | 0.12 | PlanB API | Free |
-| Market | 200-Week MA Heatmap | 0.10 | LookIntoBitcoin | Paid |
-| Market | PI Cycle Top Indicator | 0.07 | LookIntoBitcoin | Paid |
-| Market | NVT Signal | 0.08 | Glassnode | Paid |
-| Mining | Hash Ribbons | 0.06 | Glassnode | Paid |
-| Mining | Difficulty Ribbon | 0.05 | Glassnode | Paid |
-| Mining | Miner Outflows | 0.04 | CryptoQuant | Paid |
-| Sentiment | Realized Cap HODL Waves | 0.06 | Glassnode | Paid |
-| **Total** | | **1.01** | | (mockup rounding; will be normalised to exactly 1.00 in code) |
+| Category | Input | Weight | Source | Ingestion |
+|----------|-------|--------|--------|-----------|
+| On-chain | MVRV Z-Score | 0.18 | Glassnode | **Manual daily entry** |
+| On-chain | Puell Multiple | 0.10 | Glassnode | **Manual daily entry** |
+| On-chain | SOPR (30d MA) | 0.08 | Glassnode | **Manual daily entry** |
+| On-chain | Reserve Risk | 0.07 | Glassnode | **Manual daily entry** |
+| Market | Stock-to-Flow Deviation | 0.12 | PlanB API | Automatic (unauthenticated) |
+| Market | 200-Week MA Heatmap | 0.10 | Coinbase price → local compute | Automatic (free) |
+| Market | PI Cycle Top Indicator | 0.07 | Coinbase price → local compute | Automatic (free) |
+| Market | NVT Signal | 0.08 | Glassnode | **Manual daily entry** |
+| Mining | Hash Ribbons | 0.06 | Glassnode | **Manual daily entry** |
+| Mining | Difficulty Ribbon | 0.05 | Glassnode | **Manual daily entry** |
+| Mining | Miner Outflows | 0.04 | CryptoQuant | Automatic (free API tier) |
+| Sentiment | Realized Cap HODL Waves | 0.06 | Glassnode | **Manual daily entry** |
+| **Total** | | **1.01** | | 8 manual, 4 automatic |
 
 The original boss-mockup weights total ~1.01 due to display rounding. Implementation renormalises to exactly 1.0 at load time so math is exact regardless of what weights the config table holds.
+
+**Ingestion pivot (2026-04-17)**: to avoid Glassnode's $999/yr subscription cost, the 8 Glassnode metrics are entered manually once per day by the treasury operator via a new treasury-node UI. Values flow treasury → Worker via HMAC-signed POST. The remaining 4 metrics stay fully automatic: CryptoQuant Miner Outflows (free tier, ~10 req/min limit is sufficient for daily cron), PlanB Stock-to-Flow (unauthenticated community mirror), and the two LookIntoBitcoin metrics (200W MA + PI Cycle) which are computable locally from BTC daily price history — LookIntoBitcoin does not sell API access, so local computation was the only viable path. Spec §4.6 (below) details the manual-entry workflow.
 
 ### 4.2 Z-score math
 
@@ -191,14 +193,79 @@ GET /valuation/inputs
 
 All three cached in KV with 24h TTL after the daily cron writes them. Fallback behaviour mirrors existing `/prices`: serve last successful blob under an `X-Price-Source: fallback` header if the cron failed.
 
-### 4.5 Worker Secrets (new)
+### 4.5 Worker Secrets (revised after 2026-04-17 pivot)
 
 Added via `wrangler secret put`:
-- `GLASSNODE_API_KEY`
-- `CRYPTOQUANT_API_KEY`
-- `LOOKINTOBITCOIN_API_KEY`
+- `CRYPTOQUANT_API_KEY` — free-tier key for the Miner Outflows adapter
+- `VALUATION_SUBMIT_HMAC` — shared secret between treasury node and Worker for authenticating manual-input POST
+
+Removed from original design (not needed after manual-input pivot):
+- ~~`GLASSNODE_API_KEY`~~ — Glassnode subscription avoided; 8 metrics go through manual entry
+- ~~`LOOKINTOBITCOIN_API_KEY`~~ — no public API exists; metrics computed locally from price
 
 Existing secrets (`CDP_KEY_NAME`, `CDP_PRIVATE_KEY`, `USDA_NASS_KEY`, `GOLD_API_KEY`) remain unchanged.
+
+### 4.6 Manual-input workflow (added 2026-04-17)
+
+The 8 Glassnode metrics are entered by the treasury operator once per day. The flow:
+
+```
+Treasury operator (web UI, admin-only)
+  → /valuation-input page on the treasury node
+  → types 8 numeric values (reading from each metric's free public chart)
+  → clicks "Save All"
+  → POST /api/valuation/manual  (treasury API, JWT-authed)
+    → persists to treasury SQLite (audit + "last entered" display)
+    → HMAC-signs the payload
+    → POST <worker>/valuation/manual  (Worker endpoint, HMAC-authed)
+      → appends one {timestamp, value} row per metric to KV key valuation_manual_v1
+  → next cron run (or immediate if operator triggers)
+    → engine reads the 8 manual series from KV (via manualInput adapters)
+    → combines with 4 automatic adapters
+    → composite persists as usual
+```
+
+**KV shape** (`valuation_manual_v1`):
+
+```json
+{
+  "mvrv":              [{ "timestamp": 1744934400, "value": 2.10 }, ...],
+  "puell":             [...],
+  "sopr":              [...],
+  "reserve_risk":      [...],
+  "nvt":               [...],
+  "hash_ribbons":      [...],
+  "difficulty_ribbon": [...],
+  "hodl_waves":        [...]
+}
+```
+
+Each daily submission appends one row per metric. History grows organically; Z-score fidelity improves as the series lengthens (day 1: stdev=0 → contribution=0; day 30: usable; day 200: equivalent to paid-API fidelity).
+
+**HMAC signing** (request body canonicalisation):
+- Canonical string: `<ISO timestamp>\n<SHA-256 of JSON body (hex)>`
+- Signature: HMAC-SHA256 of canonical string with `VALUATION_SUBMIT_HMAC` key, hex-encoded
+- Sent as `X-Valuation-Signature` header alongside `X-Valuation-Timestamp`
+- Worker rejects if timestamp skew > 5 minutes (replay protection) or signature mismatch
+
+**Worker endpoint**: `POST /valuation/manual`
+- Body: `{ submitted_at: ISO, values: { mvrv, puell, sopr, reserve_risk, nvt, hash_ribbons, difficulty_ribbon, hodl_waves } }`
+- Response: 204 on success; 401 on bad/missing signature; 400 on shape mismatch; 503 on KV failure
+- Rate limit: 1 req/min per IP (replay already blocked by timestamp check; this is abuse prevention)
+
+**Staleness handling**:
+- Manual adapter's `fetchHistory()` returns the stored array verbatim
+- Engine runs unchanged — it just sees 8 "adapters" whose data happens to come from KV instead of a live upstream
+- If the treasury operator misses a day (no row appended for that date), the adapter's latest value is yesterday's. As staleness grows, the treasury alert fires but the engine still uses the stale value (same as any other adapter's cached reading). Past 48h stale, the engine drops the metric entirely (same `AUTOBUY_STALE_DATA_MAX_HOURS` logic from §5.3 applied to each per-metric series).
+
+**Treasury-side components** (new in Plan 1b):
+- Migration `028_valuation_manual_inputs.sql` — local cache of the latest submission (NOT the full history — that lives in Worker KV)
+- API `POST /api/valuation/manual` — JWT-gated, treasury-role only; writes to SQLite + forwards to Worker with HMAC signature
+- API `GET /api/valuation/manual/status` — returns per-metric last-entered timestamp + value, for the UI
+- Alert generator — produces `VALUATION_MANUAL_STALE` when any metric is > 24h old; consumed by existing `treasury_alerts` system
+- Web page `/valuation-input` (AppShell, admin-gated) — 8 numeric inputs + last-entered display per metric + external chart link per metric
+- Dashboard banner when staleness alert active, linking to `/valuation-input`
+- Sidebar link in AppShell
 
 ---
 
