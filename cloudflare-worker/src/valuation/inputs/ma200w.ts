@@ -1,53 +1,52 @@
 import type { Env } from "../../lib/types";
 import type { InputAdapter, InputReading } from "./types";
+import { fetchBtcPriceHistory } from "./priceHistory";
 
-// 200-Week Moving Average Heatmap: percentage deviation of price from the
-// 200-week MA. Used by LookIntoBitcoin to flag macro cycle extremes.
-// Upstream is served from LookIntoBitcoin via community-mirrored endpoints —
-// no formal SLA. Adapter returns null/[] on any failure and the composite()
-// function drops the input for that tick.
-const ENDPOINT = "https://api.lookintobitcoin.com/v1/200w-ma-heatmap";
+const WINDOW_DAYS = 200 * 7; // 1400
 
+// 200-Week Moving Average Heatmap metric: percentage deviation of the daily
+// BTC close price from its 200-week (1400-day) simple moving average.
+// Value formula per day: (price - MA) / MA. Positive = price above 200W MA.
 export const ma200w: InputAdapter = {
   key: "ma_200w",
   label: "200-Week MA Heatmap",
   category: "market",
-  source: "LookIntoBitcoin",
+  source: "derived",
 
   async fetchLatest(env: Env): Promise<InputReading | null> {
-    const history = await fetchAll(env);
+    const history = await computeSeries(env);
     if (history.length === 0) return null;
     return history[history.length - 1];
   },
 
   async fetchHistory(env: Env): Promise<InputReading[]> {
-    return fetchAll(env);
+    return computeSeries(env);
   },
 };
 
-async function fetchAll(env: Env): Promise<InputReading[]> {
-  try {
-    const headers: Record<string, string> = {};
-    if (env.LOOKINTOBITCOIN_API_KEY) {
-      headers["X-API-KEY"] = env.LOOKINTOBITCOIN_API_KEY;
-    }
-    const res = await fetch(ENDPOINT, { headers });
-    if (!res.ok) {
-      console.error(`[ma200w] HTTP ${res.status}`);
-      return [];
-    }
-    const body = (await res.json()) as { data?: Array<{ timestamp?: number; pct_deviation?: number }> };
-    if (!body.data || !Array.isArray(body.data)) return [];
-    const readings: InputReading[] = [];
-    for (const row of body.data) {
-      if (typeof row.timestamp !== "number" || typeof row.pct_deviation !== "number") continue;
-      if (!Number.isFinite(row.pct_deviation)) continue;
-      readings.push({ timestamp: row.timestamp, value: row.pct_deviation });
-    }
-    readings.sort((a, b) => a.timestamp - b.timestamp);
-    return readings;
-  } catch (err) {
-    console.error("[ma200w] fetch error:", err instanceof Error ? err.message : err);
-    return [];
+async function computeSeries(env: Env): Promise<InputReading[]> {
+  const prices = await fetchBtcPriceHistory(env);
+  if (prices.length < WINDOW_DAYS) return [];
+
+  const out: InputReading[] = [];
+  let runningSum = 0;
+  for (let i = 0; i < WINDOW_DAYS; i++) runningSum += prices[i].value;
+
+  // First output point is at index WINDOW_DAYS - 1
+  const firstMa = runningSum / WINDOW_DAYS;
+  out.push({
+    timestamp: prices[WINDOW_DAYS - 1].timestamp,
+    value: (prices[WINDOW_DAYS - 1].value - firstMa) / firstMa,
+  });
+
+  for (let i = WINDOW_DAYS; i < prices.length; i++) {
+    runningSum += prices[i].value - prices[i - WINDOW_DAYS].value;
+    const ma = runningSum / WINDOW_DAYS;
+    out.push({
+      timestamp: prices[i].timestamp,
+      value: (prices[i].value - ma) / ma,
+    });
   }
+
+  return out;
 }
