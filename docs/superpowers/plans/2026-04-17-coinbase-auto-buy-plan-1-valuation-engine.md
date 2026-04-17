@@ -1122,8 +1122,12 @@ import type { Env } from "../../src/lib/types";
 const env = { LOOKINTOBITCOIN_API_KEY: "test-key" } as unknown as Env;
 
 describe("ma200w adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'ma_200w'", () => {
     expect(ma200w.key).toBe("ma_200w");
@@ -1246,8 +1250,12 @@ import type { Env } from "../../src/lib/types";
 const env = { LOOKINTOBITCOIN_API_KEY: "test-key" } as unknown as Env;
 
 describe("piCycle adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'pi_cycle'", () => {
     expect(piCycle.key).toBe("pi_cycle");
@@ -1372,8 +1380,12 @@ import type { Env } from "../../src/lib/types";
 const env = { GLASSNODE_API_KEY: "glass-key" } as unknown as Env;
 
 describe("fetchGlassnodeMetric", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("builds an URL using the given metric path and passes the API key header", async () => {
     (globalThis.fetch as any).mockResolvedValueOnce(
@@ -1411,8 +1423,12 @@ import type { Env } from "../../src/lib/types";
 const env = { GLASSNODE_API_KEY: "glass-key" } as unknown as Env;
 
 describe("mvrv adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'mvrv'", () => {
     expect(mvrv.key).toBe("mvrv");
@@ -1549,8 +1565,12 @@ import type { Env } from "../../src/lib/types";
 const env = { GLASSNODE_API_KEY: "glass-key" } as unknown as Env;
 
 describe("puell adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'puell'", () => {
     expect(puell.key).toBe("puell");
@@ -1644,8 +1664,12 @@ import type { Env } from "../../src/lib/types";
 const env = { GLASSNODE_API_KEY: "glass-key" } as unknown as Env;
 
 describe("sopr adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'sopr'", () => {
     expect(sopr.key).toBe("sopr");
@@ -1744,8 +1768,12 @@ import type { Env } from "../../src/lib/types";
 const env = { GLASSNODE_API_KEY: "glass-key" } as unknown as Env;
 
 describe("reserveRisk adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'reserve_risk'", () => {
     expect(reserveRisk.key).toBe("reserve_risk");
@@ -1829,8 +1857,12 @@ import type { Env } from "../../src/lib/types";
 const env = { GLASSNODE_API_KEY: "glass-key" } as unknown as Env;
 
 describe("nvt adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'nvt'", () => {
     expect(nvt.key).toBe("nvt");
@@ -1917,8 +1949,12 @@ import type { Env } from "../../src/lib/types";
 const env = { GLASSNODE_API_KEY: "glass-key" } as unknown as Env;
 
 describe("hashRibbons adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'hash_ribbons'", () => {
     expect(hashRibbons.key).toBe("hash_ribbons");
@@ -2004,8 +2040,12 @@ import type { Env } from "../../src/lib/types";
 const env = { GLASSNODE_API_KEY: "glass-key" } as unknown as Env;
 
 describe("difficultyRibbon adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'difficulty_ribbon'", () => {
     expect(difficultyRibbon.key).toBe("difficulty_ribbon");
@@ -2091,8 +2131,12 @@ import type { Env } from "../../src/lib/types";
 const env = { GLASSNODE_API_KEY: "glass-key" } as unknown as Env;
 
 describe("hodlWaves adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'hodl_waves'", () => {
     expect(hodlWaves.key).toBe("hodl_waves");
@@ -2180,8 +2224,12 @@ import type { Env } from "../../src/lib/types";
 const env = { CRYPTOQUANT_API_KEY: "cq-key" } as unknown as Env;
 
 describe("minerOutflows adapter", () => {
-  beforeEach(() => vi.spyOn(globalThis, "fetch"));
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.spyOn(globalThis, "fetch");
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   it("uses key 'miner_outflows'", () => {
     expect(minerOutflows.key).toBe("miner_outflows");
