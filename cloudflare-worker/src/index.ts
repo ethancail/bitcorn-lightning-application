@@ -25,6 +25,8 @@
 // COINBASE_WORKER_URL in the app's docker-compose.yml.
 
 import { SignJWT, importPKCS8 } from "jose";
+import { CORS_HEADERS } from "./lib/cors";
+import type { Env, CommodityPrice, CommodityPrices } from "./lib/types";
 
 // Cloudflare Workers use the Web Crypto API which only accepts PKCS#8 format
 // ("-----BEGIN PRIVATE KEY-----"). CDP keys come in SEC1 format
@@ -66,40 +68,6 @@ function sec1ToPkcs8Pem(sec1Pem: string): string {
   const lines = (b64out.match(/.{1,64}/g) ?? []).join("\n");
   return `-----BEGIN PRIVATE KEY-----\n${lines}\n-----END PRIVATE KEY-----`;
 }
-
-interface Env {
-  CDP_KEY_NAME: string;
-  CDP_PRIVATE_KEY: string;
-  USDA_NASS_KEY: string;     // still needed for /prices/corn-history (USDA NASS monthly data)
-  PRICES_CACHE: KVNamespace;
-  TREASURY_PUBKEY?: string;
-  TREASURY_SOCKET?: string;
-}
-
-// ─── CORS headers ────────────────────────────────────────────────────────
-
-const CORS_HEADERS = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-  "Access-Control-Expose-Headers": "X-Price-Source",
-};
-
-// ─── Commodity price types ───────────────────────────────────────────────
-
-type CommodityPrice = {
-  price: number;
-  unit: string;
-  label: string;
-  updated_at: string;
-} | null;
-
-type CommodityPrices = {
-  gold: CommodityPrice;
-  corn: CommodityPrice;
-  soybeans: CommodityPrice;
-  wheat: CommodityPrice;
-};
 
 // ─── Price fetchers ──────────────────────────────────────────────────────
 
