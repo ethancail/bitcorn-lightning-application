@@ -6,7 +6,8 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "backfill": "wrangler dev --test-scheduled --port 8787"
   },
   "dependencies": {
     "jose": "^5.0.0"
