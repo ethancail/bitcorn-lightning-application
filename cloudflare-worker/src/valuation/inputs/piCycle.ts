@@ -1,48 +1,59 @@
 import type { Env } from "../../lib/types";
 import type { InputAdapter, InputReading } from "./types";
+import { fetchBtcPriceHistory } from "./priceHistory";
 
-const ENDPOINT = "https://api.lookintobitcoin.com/v1/pi-cycle-top";
+const SMA_FAST = 111;
+const SMA_SLOW = 350;
 
+// PI Cycle Top Indicator: ratio of (111-day SMA × 2) / (350-day SMA).
+// Historically, values approaching 1.0 from above have marked cycle tops.
+// A raw ratio rather than a boolean flag so the Z-score composite can
+// express the distance-to-top as a continuous signal.
 export const piCycle: InputAdapter = {
   key: "pi_cycle",
   label: "PI Cycle Top Indicator",
   category: "market",
-  source: "LookIntoBitcoin",
+  source: "derived",
 
   async fetchLatest(env: Env): Promise<InputReading | null> {
-    const history = await fetchAll(env);
+    const history = await computeSeries(env);
     if (history.length === 0) return null;
     return history[history.length - 1];
   },
 
   async fetchHistory(env: Env): Promise<InputReading[]> {
-    return fetchAll(env);
+    return computeSeries(env);
   },
 };
 
-async function fetchAll(env: Env): Promise<InputReading[]> {
-  try {
-    const headers: Record<string, string> = {};
-    if (env.LOOKINTOBITCOIN_API_KEY) {
-      headers["X-API-KEY"] = env.LOOKINTOBITCOIN_API_KEY;
-    }
-    const res = await fetch(ENDPOINT, { headers });
-    if (!res.ok) {
-      console.error(`[piCycle] HTTP ${res.status}`);
-      return [];
-    }
-    const body = (await res.json()) as { data?: Array<{ timestamp?: number; ratio?: number }> };
-    if (!body.data || !Array.isArray(body.data)) return [];
-    const readings: InputReading[] = [];
-    for (const row of body.data) {
-      if (typeof row.timestamp !== "number" || typeof row.ratio !== "number") continue;
-      if (!Number.isFinite(row.ratio)) continue;
-      readings.push({ timestamp: row.timestamp, value: row.ratio });
-    }
-    readings.sort((a, b) => a.timestamp - b.timestamp);
-    return readings;
-  } catch (err) {
-    console.error("[piCycle] fetch error:", err instanceof Error ? err.message : err);
-    return [];
+async function computeSeries(env: Env): Promise<InputReading[]> {
+  const prices = await fetchBtcPriceHistory(env);
+  if (prices.length < SMA_SLOW) return [];
+
+  const out: InputReading[] = [];
+  let fastSum = 0;
+  let slowSum = 0;
+
+  // Seed both sums
+  for (let i = 0; i < SMA_SLOW; i++) {
+    slowSum += prices[i].value;
+    if (i >= SMA_SLOW - SMA_FAST) fastSum += prices[i].value;
   }
+
+  // First output at index SMA_SLOW - 1
+  out.push({
+    timestamp: prices[SMA_SLOW - 1].timestamp,
+    value: ((fastSum / SMA_FAST) * 2) / (slowSum / SMA_SLOW),
+  });
+
+  for (let i = SMA_SLOW; i < prices.length; i++) {
+    fastSum += prices[i].value - prices[i - SMA_FAST].value;
+    slowSum += prices[i].value - prices[i - SMA_SLOW].value;
+    out.push({
+      timestamp: prices[i].timestamp,
+      value: ((fastSum / SMA_FAST) * 2) / (slowSum / SMA_SLOW),
+    });
+  }
+
+  return out;
 }
