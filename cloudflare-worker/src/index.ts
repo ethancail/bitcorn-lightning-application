@@ -6,14 +6,23 @@
 //   GET  /prices/corn-history — Historical monthly corn prices (handlers/prices.ts)
 //   GET  /recommended-peers   — Curated external peer list (handlers/recommendedPeers.ts)
 //   GET  /treasury-info       — Treasury node connection info (handlers/treasuryInfo.ts)
+//   GET  /valuation/current   — Latest composite Z-score + zone (handlers/valuation.ts)
+//   GET  /valuation/history   — Daily composite history series (handlers/valuation.ts)
+//   GET  /valuation/inputs    — Per-input snapshot map (handlers/valuation.ts)
 //
 // Deploy runbook, secret management, and architecture: docs/COINBASE_INTEGRATION.md.
-// Valuation endpoints (/valuation/*) are added in Plan 1 Task 23.
+// Valuation engine runs on cron (wrangler.toml [triggers]); see valuation/cron.ts.
 
 import { handleOnramp } from "./handlers/onramp";
 import { handlePrices, handleCornHistory } from "./handlers/prices";
 import { handleRecommendedPeers } from "./handlers/recommendedPeers";
 import { handleTreasuryInfo } from "./handlers/treasuryInfo";
+import {
+  handleValuationCurrent,
+  handleValuationHistory,
+  handleValuationInputs,
+} from "./handlers/valuation";
+import { handleScheduled } from "./valuation/cron";
 import { CORS_HEADERS } from "./lib/cors";
 import type { Env } from "./lib/types";
 
@@ -37,10 +46,23 @@ export default {
     if (request.method === "GET" && url.pathname === "/prices") {
       return handlePrices(env);
     }
+    if (request.method === "GET" && url.pathname === "/valuation/current") {
+      return handleValuationCurrent(env);
+    }
+    if (request.method === "GET" && url.pathname === "/valuation/history") {
+      return handleValuationHistory(env, url);
+    }
+    if (request.method === "GET" && url.pathname === "/valuation/inputs") {
+      return handleValuationInputs(env);
+    }
     if (request.method === "POST" && (url.pathname === "/" || url.pathname === "")) {
       return handleOnramp(request, env);
     }
 
     return new Response("Not found", { status: 404 });
+  },
+
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(handleScheduled(env));
   },
 };
