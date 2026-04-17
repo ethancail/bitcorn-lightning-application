@@ -13,7 +13,10 @@ export async function fetchGlassnodeMetric(
 ): Promise<InputReading[]> {
   const key = env.GLASSNODE_API_KEY;
   if (!key) {
-    console.error(`[glassnode] ${metricPath}: GLASSNODE_API_KEY not set`);
+    // Warn (not error): missing secret is a benign "feature disabled" state
+    // in dev and initial deploys; reserve error level for actionable failures
+    // (HTTP errors, network throws) that may page via logs-based alerting.
+    console.warn(`[glassnode] ${metricPath}: GLASSNODE_API_KEY not set`);
     return [];
   }
 
