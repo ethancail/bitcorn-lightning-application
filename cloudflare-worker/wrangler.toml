@@ -21,8 +21,13 @@ id = "62c68c41830141cc8b0b6e7cdb193461"
 #   CDP_KEY_NAME            — existing (Coinbase Onramp)
 #   CDP_PRIVATE_KEY         — existing (Coinbase Onramp)
 #   USDA_NASS_KEY           — existing (commodity prices)
-#   GLASSNODE_API_KEY       — new (valuation: 8 inputs)
-#   CRYPTOQUANT_API_KEY     — new (valuation: miner_outflows)
-#   LOOKINTOBITCOIN_API_KEY — new (valuation: ma_200w, pi_cycle)
-#   PLANB_API_KEY           — new (valuation: stock_to_flow; optional — adapter
-#                              falls through to unauthenticated endpoint if unset)
+#   CRYPTOQUANT_API_KEY     — valuation: miner_outflows (CryptoQuant free tier)
+#   PLANB_API_KEY           — valuation: stock_to_flow (OPTIONAL — falls through
+#                              to unauthenticated endpoint if unset)
+#   VALUATION_SUBMIT_HMAC   — shared secret between treasury node and Worker
+#                              for authenticating POST /valuation/manual
+# Removed after 2026-04-17 manual-input pivot:
+#   GLASSNODE_API_KEY       — 8 Glassnode metrics now manually entered via the
+#                              treasury node; Worker no longer calls Glassnode.
+#   LOOKINTOBITCOIN_API_KEY — 200W MA + PI Cycle now computed locally from
+#                              CoinGecko price history (no API key needed).
