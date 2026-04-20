@@ -1,15 +1,15 @@
 # Coinbase Auto-Buy — Design Spec
 
-**Date**: 2026-04-17
-**Status**: Draft — brainstorming complete, pending implementation plan
+**Date**: 2026-04-17 (original) · 2026-04-20 (Plan 2 amendments in §5, §6, §8)
+**Status**: Plans 1/1-rev/1b shipped on `feature/coinbase-auto-buy` (PR #106). Plan 2 design amendments ready for implementation; Plan 2a backend + Plan 2b UI pending; Plan 2c (backtest) deferred.
 **Author**: Design session between Ethan + Claude
-**Scope**: v1 — member-only, 11-input Valuation DCA, Coinbase Advanced Trade v3
+**Scope**: v1 — 12-input Valuation DCA, Coinbase Advanced Trade v3, runs on both treasury and member nodes
 
 ---
 
 ## 1. Purpose
 
-Add a **Valuation-Modulated Dollar Cost Averaging** feature that lets a member node automatically purchase Bitcoin from Coinbase on a recurring schedule, with the buy amount modulated by a composite market-valuation Z-score. Replaces the manual "Fund Node via Coinbase" click-through flow for users who want hands-off capital inflow.
+Add a **Valuation-Modulated Dollar Cost Averaging** feature that lets any node (treasury or member) automatically purchase Bitcoin from Coinbase on a recurring schedule, with the buy amount modulated by a composite market-valuation Z-score. Replaces the manual "Fund Node via Coinbase" click-through flow for operators who want hands-off capital inflow.
 
 The feature exists as **two interacting systems**:
 
@@ -271,7 +271,13 @@ Each daily submission appends one row per metric. History grows organically; Z-s
 
 ## 5. Auto-Buy Executor (Node)
 
-### 5.1 Database schema — migration `028_coinbase_autobuy.sql`
+**Amendment (2026-04-20)** — after Plans 1/1-rev/1b shipped, the following small adjustments were made to §5/§6/§8 during Plan 2 brainstorming; see the amended sections below for details:
+- Migration number 028 → 034 (028–033 are now taken by unrelated migrations on main/develop).
+- Role gating: both treasury AND member nodes can run Auto-Buy (originally member-only). Treasury Auto-Buy removed from the §8 non-goals list.
+- Backtest endpoint + UI deferred from Plan 2 to Plan 2c.
+- Plan 2 split into 2a (backend, curl-testable) + 2b (web UI consumption).
+
+### 5.1 Database schema — migration `034_coinbase_autobuy.sql`
 
 ```sql
 CREATE TABLE coinbase_credentials (
@@ -418,7 +424,7 @@ Per-request JWT claims (per Coinbase docs):
 
 ### 5.6 Node-side API routes (`src/index.ts` additions)
 
-All MEMBER-role-gated. Auto-buy disabled entirely on nodes with `node_role = treasury` in v1.
+Gated to any node with a known `node_role` (treasury or member — both allowed). Use `assertNonEmpty(node?.node_role)` rather than `assertMember()` / `assertTreasury()`.
 
 ```
 GET    /api/autobuy/status
@@ -430,12 +436,13 @@ PATCH  /api/autobuy/config               { base_unit_usd?, frequency?, zone_mult
 POST   /api/autobuy/enable               → 400 if no credentials or address not whitelisted
 POST   /api/autobuy/pause
 POST   /api/autobuy/execute-now          → creates a one-off run outside cadence
-GET    /api/autobuy/backtest?start=&end=&base=&frequency=
 
 GET    /api/valuation/current
 GET    /api/valuation/history?since=&until=
 GET    /api/valuation/inputs
 ```
+
+The `GET /api/autobuy/backtest` endpoint originally listed here is **deferred to Plan 2c** along with its UI simulator card (see §6.2 amendment and §8).
 
 `/api/valuation/*` endpoints are thin Worker proxies that cache for 60 min in node memory (matches existing `/api/commodity-prices` pattern).
 
@@ -443,7 +450,7 @@ GET    /api/valuation/inputs
 
 ## 6. UI (`app/web/src/pages/AutoBuy.tsx`)
 
-New top-level member page at `/auto-buy`. Sidebar link added to `MemberShell.tsx` between "Refill Channel" and "Payments". Not linked from `AppShell.tsx` (treasury) in v1.
+New top-level `/auto-buy` page. Sidebar link added to **both** `MemberShell.tsx` (between Refill Channel and Payments) AND `AppShell.tsx` (after Swaps, before Valuation Inputs). Per the §5 amendment, Auto-Buy runs on both treasury and member nodes.
 
 Page structure (matches boss's mockup):
 
@@ -458,7 +465,7 @@ Page structure (matches boss's mockup):
 
 - Summary banner: "At current Z-score, if base = $X the next buy is $Y"
 - **Zone Buy Multipliers** card: editable inputs, saves to `zone_multipliers` JSON
-- **Historical Backtest Simulator** card: start/end date, base, frequency, RUN button → calls `/api/autobuy/backtest`
+- **Historical Backtest Simulator** card — **deferred to Plan 2c** (not in 2b's initial UI ship). When 2c lands, card appears here with start/end date + base + frequency + RUN button calling `/api/autobuy/backtest`.
 - **Upcoming & Recent Purchases** table (status badges: NEXT, SCHEDULED, PLACED, FILLED, AWAITING-WITHDRAW, WITHDRAWN, SKIPPED, FAILED)
 - **Coinbase Integration** card:
   - **Disconnected state**: textarea "Paste Coinbase Cloud Key JSON" + Save & Connect button (parses JSON, sends to `POST /api/autobuy/credentials`). Helper link "How to create a Coinbase Cloud Key →".
@@ -481,11 +488,13 @@ Page structure (matches boss's mockup):
 
 ### 6.4 Routing
 
-- Add `<Route path="auto-buy" element={<AutoBuy />} />` in `App.tsx` under the member shell
-- Sidebar entry in `MemberShell.tsx`:
+- Add `<Route path="auto-buy" element={<AutoBuy />} />` in `App.tsx` under **both** the AppShell (treasury) AND MemberShell routes blocks.
+- Sidebar entry in **both** shells:
   ```tsx
   { to: "/auto-buy", label: "Auto-Buy", icon: "📈" }
   ```
+  Treasury sidebar placement: after "Swaps", before "Valuation Inputs".
+  Member sidebar placement: between "Refill Channel" and "Payments".
 
 ---
 
@@ -507,13 +516,16 @@ Page structure (matches boss's mockup):
 
 ## 8. Non-goals / out of scope for v1
 
-- **Treasury auto-buy** — interacts with `capital-guardrails.ts` and deploy-ratio policy; separate design round.
 - **Coinbase USD auto-replenishment** — users handle their own ACH/debit-card deposit setup inside Coinbase; we only warn on low balance.
 - **Weight tuning UI** — Model Inputs tab is read-only in v1; weight edits come in v2.
 - **Zone boundary editing** — zones are fixed at the boss-mockup values; only multipliers are user-configurable.
 - **Non-Coinbase exchanges** — no Kraken / Strike / river integration in v1.
 - **Multi-asset DCA** — BTC only; no stablecoin stacking or asset-rotation.
 - **Scheduled withdrawals to multiple addresses** — single stable address only.
+- **Backtest simulator (endpoint + UI)** — deferred to Plan 2c. Plan 2a/2b ship a working auto-buy without historical simulation; backtest is a nice-to-have that requires Worker's `/valuation/history` but doesn't affect real-money flow. Add after real buys are validated in production.
+
+*Previously listed as out-of-scope but now IN scope after Plan 2 brainstorming (see §5 amendment):*
+- ~~Treasury auto-buy~~ — auto-buy is capital inflow; existing treasury guardrails govern outflow, so no conflict. Treasury nodes can now run auto-buy alongside member nodes.
 
 ---
 
