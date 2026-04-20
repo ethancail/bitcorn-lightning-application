@@ -70,6 +70,7 @@ import { startScheduler, runTick, ensureWithdrawAddress } from "./autoBuy/schedu
 import { listAccounts } from "./autoBuy/coinbaseClient";
 import { encrypt, decrypt } from "./autoBuy/credentials";
 import * as caps from "./autoBuy/caps";
+import { getCurrent, getHistory, getInputs } from "./autoBuy/valuationClient";
 import {
   getBtcExchangeRate,
   createPaymentInvoice,
@@ -2936,6 +2937,81 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: "internal_error" }));
       }
     });
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/valuation/current") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const data = await getCurrent();
+      if (!data) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "valuation_unavailable" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      console.error("[valuation-current]", err);
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "valuation_unavailable" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/valuation/history")) {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const url = new URL(req.url, "http://localhost");
+      const since = url.searchParams.get("since") ?? undefined;
+      const until = url.searchParams.get("until") ?? undefined;
+      const data = await getHistory(since, until);
+      if (!data) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "valuation_unavailable" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      console.error("[valuation-history]", err);
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "valuation_unavailable" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/valuation/inputs") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const data = await getInputs();
+      if (!data) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "valuation_unavailable" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(data));
+    } catch (err: any) {
+      console.error("[valuation-inputs]", err);
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "valuation_unavailable" }));
+    }
     return;
   }
 
