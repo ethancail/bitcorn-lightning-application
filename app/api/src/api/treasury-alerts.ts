@@ -6,6 +6,7 @@ import { getDailyLossSats } from "../utils/loss-cap";
 import { getLndChainBalance } from "../lightning/lnd";
 import { isLoopAvailable } from "../lightning/loop";
 import { ENV } from "../config/env";
+import { MANUAL_METRIC_KEYS, listLatestPerMetric } from "../valuation/manualInputStore";
 
 export type AlertSeverity = "info" | "warning" | "critical";
 
@@ -196,6 +197,50 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
           peer_pubkey: p.peer_pubkey,
           last_failure_at: p.last_failure_at,
         })),
+      },
+      at: now,
+    });
+  }
+
+  // --- Valuation manual-input staleness ---
+  // The 8 Glassnode-sourced valuation metrics are entered manually daily via
+  // /valuation-input. If any metric is > 24h old OR never entered, surface a
+  // warning so the operator sees it on the dashboard banner.
+  const STALE_THRESHOLD_SECONDS = 24 * 60 * 60;
+  const nowSeconds = Math.floor(now / 1000);
+  const latestPerMetric = listLatestPerMetric(db);
+  const byKey = new Map(latestPerMetric.map((r) => [r.metric_key, r]));
+
+  const staleMetrics: string[] = [];
+  const neverEnteredMetrics: string[] = [];
+  for (const key of MANUAL_METRIC_KEYS) {
+    const row = byKey.get(key);
+    if (!row) {
+      neverEnteredMetrics.push(key);
+    } else if (nowSeconds - row.submitted_at > STALE_THRESHOLD_SECONDS) {
+      staleMetrics.push(key);
+    }
+  }
+
+  if (staleMetrics.length > 0 || neverEnteredMetrics.length > 0) {
+    const parts: string[] = [];
+    if (neverEnteredMetrics.length > 0) {
+      parts.push(`never entered: ${neverEnteredMetrics.join(", ")}`);
+    }
+    if (staleMetrics.length > 0) {
+      parts.push(`> 24h old: ${staleMetrics.join(", ")}`);
+    }
+    const allUnentered = neverEnteredMetrics.length === MANUAL_METRIC_KEYS.length;
+    alerts.push({
+      type: "VALUATION_MANUAL_STALE",
+      severity: "warning",
+      message: allUnentered
+        ? "Valuation inputs not yet entered — open the Valuation Inputs page to enter today's values"
+        : `Valuation inputs need attention (${parts.join("; ")})`,
+      data: {
+        stale: staleMetrics,
+        never_entered: neverEnteredMetrics,
+        total_unresolved: staleMetrics.length + neverEnteredMetrics.length,
       },
       at: now,
     });

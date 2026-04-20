@@ -16,6 +16,7 @@ import WithdrawBitcoin from "./pages/WithdrawBitcoin";
 import SwapOperations from "./pages/SwapOperations";
 import RefillChannel from "./pages/RefillChannel";
 import Peers from "./pages/Peers";
+import ValuationInput from "./pages/ValuationInput";
 import NetworkGraph from "./components/NetworkGraph";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
@@ -206,6 +207,7 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
     { to: "/payments", icon: "↗", label: "Payments" },
     { to: "/liquidity", icon: "≋", label: "Liquidity" },
     { to: "/swaps", icon: "⟲", label: "Swaps" },
+    { to: "/valuation-input", icon: "◐", label: "Valuation Inputs" },
   ];
 
   return (
@@ -290,6 +292,7 @@ function AppShell() {
           <Route path="/liquidity" element={<LiquidityPage />} />
           <Route path="/deposit" element={<DepositBitcoin />} />
           <Route path="/swaps" element={<SwapOperations />} />
+          <Route path="/valuation-input" element={<ValuationInput />} />
           <Route path="/settings" element={<SettingsPage isTreasury />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

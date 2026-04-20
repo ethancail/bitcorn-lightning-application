@@ -60,6 +60,8 @@ import { assertTreasury } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
+import { MANUAL_METRIC_KEYS, recordSubmission, updateSyncStatus, listLatestPerMetric } from "./valuation/manualInputStore";
+import { postManualInputToWorker } from "./valuation/workerClient";
 import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
@@ -289,6 +291,120 @@ const server = http.createServer(async (req, res) => {
       console.error("[coinbase onramp]", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "failed_to_generate_onramp_url" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/valuation/manual") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    if (!ENV.valuationWorkerUrl || !ENV.valuationSubmitHmac) {
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "valuation_worker_not_configured" }));
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const values = parsed?.values;
+        if (!values || typeof values !== "object") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "values_required" }));
+          return;
+        }
+        for (const key of MANUAL_METRIC_KEYS) {
+          const v = values[key];
+          if (typeof v !== "number" || !Number.isFinite(v)) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: `invalid_value_for_${key}` }));
+            return;
+          }
+        }
+
+        const submittedAtISO = new Date().toISOString();
+        const submittedAtUnix = Math.floor(Date.parse(submittedAtISO) / 1000);
+
+        // 1. Record locally (8 rows, pending)
+        const record = recordSubmission(db, values, submittedAtUnix);
+
+        // 2. Forward to Worker (HMAC-signed)
+        const workerResult = await postManualInputToWorker(
+          ENV.valuationWorkerUrl,
+          ENV.valuationSubmitHmac,
+          { submitted_at: submittedAtISO, values },
+        );
+
+        // 3. Update sync status
+        updateSyncStatus(
+          db,
+          record.insertedIds,
+          workerResult.ok ? "confirmed" : "failed",
+          workerResult.ok ? undefined : `status=${workerResult.status} error=${workerResult.error ?? ""}`,
+        );
+
+        // 4. Respond
+        if (workerResult.ok) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, submitted_at: submittedAtISO }));
+        } else {
+          res.writeHead(207, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            ok: false,
+            submitted_at: submittedAtISO,
+            local_saved: true,
+            worker_error: workerResult.error ?? null,
+            worker_status: workerResult.status,
+          }));
+        }
+      } catch (err: any) {
+        console.error("[valuation-manual]", err);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "internal_error" }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/valuation/manual/status") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const rows = listLatestPerMetric(db);
+      const byKey = new Map(rows.map((r) => [r.metric_key, r]));
+      const response = MANUAL_METRIC_KEYS.map((key) => {
+        const row = byKey.get(key);
+        return row ? {
+          metric_key: key,
+          value: row.value,
+          submitted_at: row.submitted_at,
+          worker_sync_status: row.worker_sync_status,
+          worker_sync_error: row.worker_sync_error,
+          worker_sync_at: row.worker_sync_at,
+        } : {
+          metric_key: key,
+          value: null,
+          submitted_at: null,
+          worker_sync_status: null,
+          worker_sync_error: null,
+          worker_sync_at: null,
+        };
+      });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ metrics: response }));
+    } catch (err: any) {
+      console.error("[valuation-manual-status]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
     }
     return;
   }

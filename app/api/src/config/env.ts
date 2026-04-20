@@ -99,6 +99,17 @@ export const ENV = {
     // If unset, GET /api/coinbase/onramp-url returns coinbase_not_configured.
     coinbaseWorkerUrl: process.env.COINBASE_WORKER_URL || "",
 
+    // --- Valuation manual input (treasury → Worker HMAC-signed submissions) ---
+    // Base URL of the Cloudflare Worker that accepts POST /valuation/manual.
+    // Defaults to COINBASE_WORKER_URL since both endpoints live on the same
+    // Worker; override if they ever split. If unset, POST /api/valuation/manual
+    // returns 503 valuation_worker_not_configured.
+    valuationWorkerUrl: process.env.VALUATION_WORKER_URL || process.env.COINBASE_WORKER_URL || "",
+    // Shared HMAC secret between this treasury API and the Worker. Must match
+    // the VALUATION_SUBMIT_HMAC set on the Worker via `wrangler secret put`.
+    // If unset, POST /api/valuation/manual returns 503.
+    valuationSubmitHmac: process.env.VALUATION_SUBMIT_HMAC || "",
+
     // --- Member swap / withdrawal limits ---
     // Minimum sats a member can withdraw via Loop Out (default: Loop minimum = 250,000)
     memberMinWithdrawalSat: Number(process.env.MEMBER_MIN_WITHDRAWAL_SAT ?? "250000"),
