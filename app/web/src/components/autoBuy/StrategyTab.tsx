@@ -1,6 +1,7 @@
 // app/web/src/components/autoBuy/StrategyTab.tsx
 import { useEffect, useState } from "react";
 import { api, type AutoBuyStatus, type AutoBuyZoneMultipliers, type ValuationCurrent, type ValuationZone } from "../../api/client";
+import HistoryTable from "./HistoryTable";
 
 interface Props {
   status: AutoBuyStatus | null;
@@ -50,7 +51,7 @@ export default function StrategyTab({ status, valuation, onRefresh }: Props) {
       {/* Multipliers editor */}
       <MultipliersEditor config={cfg} onSaved={onRefresh} />
 
-      {/* TODO task 6: HistoryTable */}
+      <HistoryTable />
       {/* TODO task 7: CoinbaseCard */}
       {/* TODO task 8: Pause/Resume controls */}
     </div>
