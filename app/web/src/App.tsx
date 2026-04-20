@@ -399,9 +399,23 @@ function MemberShell() {
   }, []);
 
   useEffect(() => {
-    api.getMemberLiquidityStatus()
-      .then((s) => { if (s.classification?.channelRole) setChannelRole(s.classification.channelRole); })
-      .catch(() => {});
+    // channelRole is polled every 15s AND refetched on a "bitcorn:role-changed" event
+    // (dispatched by Settings after a role save). Without the poll, the sidebar would
+    // show stale labels after role changes; without the event, it'd take up to 15s
+    // to update after save.
+    const loadRole = () => {
+      api.getMemberLiquidityStatus()
+        .then((s) => { if (s.classification?.channelRole) setChannelRole(s.classification.channelRole); })
+        .catch(() => {});
+    };
+    loadRole();
+    const id = setInterval(loadRole, 15_000);
+    const onRoleChanged = () => loadRole();
+    window.addEventListener("bitcorn:role-changed", onRoleChanged);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("bitcorn:role-changed", onRoleChanged);
+    };
   }, []);
 
   return (
@@ -460,6 +474,9 @@ function ChannelRolePanel() {
     try {
       await api.setChannelRole(newRole);
       setRole(newRole);
+      // Notify MemberShell so the sidebar refetches and updates labels immediately
+      // (rather than waiting up to 15s for the next poll).
+      window.dispatchEvent(new CustomEvent("bitcorn:role-changed"));
     } catch {}
     setSaving(false);
   }
