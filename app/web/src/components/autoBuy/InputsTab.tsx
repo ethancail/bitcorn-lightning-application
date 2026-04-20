@@ -3,18 +3,18 @@ import { useEffect, useState } from "react";
 import { api, type ValuationInputsResponse } from "../../api/client";
 
 const DISPLAY_ORDER: Array<{ key: string; label: string; category: string; source: string }> = [
-  { key: "mvrv",             label: "MVRV Z-Score",          category: "On-chain",      source: "Manual entry" },
-  { key: "nvt",              label: "NVT",                    category: "On-chain",      source: "Manual entry" },
-  { key: "reserveRisk",      label: "Reserve Risk",           category: "On-chain",      source: "Manual entry" },
-  { key: "sopr",             label: "SOPR (30d MA)",          category: "On-chain",      source: "Manual entry" },
-  { key: "minerOutflows",    label: "Miner Outflows",         category: "Miner",         source: "Manual entry" },
-  { key: "puell",            label: "Puell Multiple",         category: "Miner",         source: "Manual entry" },
-  { key: "hashRibbons",      label: "Hash Ribbons",           category: "Miner",         source: "Manual entry" },
-  { key: "difficultyRibbon", label: "Difficulty Ribbon",      category: "Miner",         source: "Manual entry" },
-  { key: "hodlWaves",        label: "HODL Waves",             category: "Behavior",      source: "Manual entry" },
-  { key: "stockToFlow",      label: "Stock-to-Flow",          category: "Market Model",  source: "Computed locally" },
-  { key: "ma200w",           label: "200W Moving Average",    category: "Price Model",   source: "Computed locally" },
-  { key: "piCycle",          label: "Pi Cycle Top",           category: "Price Model",   source: "Computed locally" },
+  { key: "mvrv",              label: "MVRV Z-Score",          category: "On-chain",      source: "Manual entry" },
+  { key: "nvt",               label: "NVT",                    category: "On-chain",      source: "Manual entry" },
+  { key: "reserve_risk",      label: "Reserve Risk",           category: "On-chain",      source: "Manual entry" },
+  { key: "sopr",              label: "SOPR (30d MA)",          category: "On-chain",      source: "Manual entry" },
+  { key: "miner_outflows",    label: "Miner Outflows",         category: "Miner",         source: "Manual entry" },
+  { key: "puell",             label: "Puell Multiple",         category: "Miner",         source: "Manual entry" },
+  { key: "hash_ribbons",      label: "Hash Ribbons",           category: "Miner",         source: "Manual entry" },
+  { key: "difficulty_ribbon", label: "Difficulty Ribbon",      category: "Miner",         source: "Manual entry" },
+  { key: "hodl_waves",        label: "HODL Waves",             category: "Behavior",      source: "Manual entry" },
+  { key: "stock_to_flow",     label: "Stock-to-Flow",          category: "Market Model",  source: "Computed locally" },
+  { key: "ma_200w",           label: "200W Moving Average",    category: "Price Model",   source: "Computed locally" },
+  { key: "pi_cycle",           label: "Pi Cycle Top",           category: "Price Model",   source: "Computed locally" },
 ];
 
 export default function InputsTab() {
