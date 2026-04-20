@@ -41,6 +41,11 @@ export async function loadManualHistory(kv: KVNamespace): Promise<ManualHistory>
   }
 }
 
+// Read-modify-write on one KV key. NOT safe for concurrent callers — the
+// treasury node is expected to submit sequentially (one daily-entry form).
+// Two overlapping calls across Cloudflare colos would last-writer-win and
+// silently drop one submission. Workers KV has no CAS primitive; if a second
+// writer ever exists, migrate to a Durable Object.
 export async function appendManualSubmission(
   kv: KVNamespace,
   submittedAtISO: string,
