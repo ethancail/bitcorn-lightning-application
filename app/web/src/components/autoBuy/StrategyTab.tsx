@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { api, type AutoBuyStatus, type AutoBuyZoneMultipliers, type ValuationCurrent, type ValuationZone } from "../../api/client";
 import HistoryTable from "./HistoryTable";
+import CoinbaseCard from "./CoinbaseCard";
 
 interface Props {
   status: AutoBuyStatus | null;
@@ -52,7 +53,8 @@ export default function StrategyTab({ status, valuation, onRefresh }: Props) {
       <MultipliersEditor config={cfg} onSaved={onRefresh} />
 
       <HistoryTable />
-      {/* TODO task 7: CoinbaseCard */}
+      <CoinbaseCard status={status} onRefresh={onRefresh} />
+
       {/* TODO task 8: Pause/Resume controls */}
     </div>
   );
