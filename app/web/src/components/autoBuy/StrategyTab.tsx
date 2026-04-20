@@ -1,5 +1,5 @@
 // app/web/src/components/autoBuy/StrategyTab.tsx
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type AutoBuyStatus, type AutoBuyZoneMultipliers, type ValuationCurrent, type ValuationZone } from "../../api/client";
 import HistoryTable from "./HistoryTable";
 import CoinbaseCard from "./CoinbaseCard";
@@ -35,6 +35,8 @@ export default function StrategyTab({ status, valuation, onRefresh }: Props) {
 
   return (
     <div>
+      <MasterControl status={status} onRefresh={onRefresh} />
+
       {/* Summary banner */}
       <div className="panel" style={{ marginBottom: 16, background: "var(--panel)", borderLeft: `4px solid ${nextBuyUsd > 0 ? "var(--green)" : "var(--text-dim)"}` }}>
         <div className="panel-body">
@@ -54,8 +56,6 @@ export default function StrategyTab({ status, valuation, onRefresh }: Props) {
 
       <HistoryTable />
       <CoinbaseCard status={status} onRefresh={onRefresh} />
-
-      {/* TODO task 8: Pause/Resume controls */}
     </div>
   );
 }
@@ -67,12 +67,27 @@ function MultipliersEditor({ config, onSaved }: { config: NonNullable<AutoBuySta
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
-  // Sync when parent config changes (e.g., after a save refreshes).
+  // Only sync from server when the user has NO unsaved edits. A background
+  // 30s poll tick can re-render with a fresh `config` object reference; without
+  // this guard, it would clobber in-progress edits. Detect "clean" state by
+  // comparing current local form state to the last-applied server config.
+  const lastAppliedRef = useRef<typeof config | null>(null);
   useEffect(() => {
-    setBaseUnit(String(config.base_unit_usd));
-    setFrequency(config.frequency);
-    setMult(config.zone_multipliers);
-  }, [config]);
+    const applied = lastAppliedRef.current;
+    const localMatchesApplied = applied
+      ? String(applied.base_unit_usd) === baseUnit
+        && applied.frequency === frequency
+        && JSON.stringify(applied.zone_multipliers) === JSON.stringify(mult)
+      : true; // first mount: no local edits yet
+
+    if (localMatchesApplied) {
+      setBaseUnit(String(config.base_unit_usd));
+      setFrequency(config.frequency);
+      setMult(config.zone_multipliers);
+      lastAppliedRef.current = config;
+    }
+    // else: preserve the user's unsaved edits, ignore this server update
+  }, [config, baseUnit, frequency, mult]);
 
   const handleSave = async () => {
     setSaving(true); setToast(null);
@@ -145,3 +160,101 @@ function MultipliersEditor({ config, onSaved }: { config: NonNullable<AutoBuySta
     </div>
   );
 }
+
+function MasterControl({ status, onRefresh }: { status: AutoBuyStatus; onRefresh: () => Promise<unknown> }) {
+  const cfg = status.config;
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+
+  if (!cfg) return null;
+  const enabled = cfg.enabled;
+  const pausedReason = cfg.paused_reason;
+  const canEnable = !!status.credentials && !!cfg.withdraw_address_whitelisted_at && cfg.consecutive_failures < 3;
+
+  const doEnable = async () => {
+    setBusy(true); setToast(null);
+    try { await api.enableAutoBuy(); setToast({ kind: "success", message: "Auto-Buy enabled." }); await onRefresh(); }
+    catch (err) { setToast({ kind: "error", message: err instanceof Error ? err.message : "Enable failed." }); }
+    finally { setBusy(false); }
+  };
+  const doPause = async () => {
+    setBusy(true); setToast(null);
+    try { await api.pauseAutoBuy(); setToast({ kind: "success", message: "Auto-Buy paused." }); await onRefresh(); }
+    catch (err) { setToast({ kind: "error", message: err instanceof Error ? err.message : "Pause failed." }); }
+    finally { setBusy(false); }
+  };
+  const doExecuteNow = async () => {
+    if (!confirm("Run a buy tick now? This respects all caps and will only place a buy if the schedule is due.")) return;
+    setBusy(true); setToast(null);
+    try { await api.executeAutoBuyNow(); setToast({ kind: "success", message: "Tick executed. Check history." }); await onRefresh(); }
+    catch (err) { setToast({ kind: "error", message: err instanceof Error ? err.message : "Execute failed." }); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      {pausedReason && <PausedBanner reason={pausedReason} />}
+
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel-body" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{ fontSize: "1rem", fontWeight: 600, marginBottom: 2 }}>
+              {enabled ? <span style={{ color: "var(--green)" }}>● Enabled</span> : <span className="text-dim">○ Paused</span>}
+            </div>
+            <div className="text-dim" style={{ fontSize: "0.75rem" }}>
+              {enabled
+                ? cfg.next_run_at
+                  ? `Next scheduled tick: ${new Date(cfg.next_run_at * 1000).toLocaleString()}`
+                  : "No scheduled tick yet"
+                : pausedReason ? `Paused: ${pausedReason}` : "Master switch is off"}
+            </div>
+            {cfg.consecutive_failures > 0 && (
+              <div style={{ fontSize: "0.75rem", color: "var(--amber)", marginTop: 2 }}>
+                {cfg.consecutive_failures} consecutive failure{cfg.consecutive_failures === 1 ? "" : "s"} (auto-pause at 3)
+              </div>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {enabled ? (
+              <>
+                <button onClick={doExecuteNow} disabled={busy}>{busy ? "…" : "Execute Now"}</button>
+                <button onClick={doPause} disabled={busy}>{busy ? "…" : "Pause"}</button>
+              </>
+            ) : (
+              <button onClick={doEnable} disabled={busy || !canEnable} title={!canEnable ? "Connect + whitelist credentials first" : ""}>
+                {busy ? "…" : "Enable"}
+              </button>
+            )}
+          </div>
+        </div>
+        {toast && (
+          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "white", margin: "0 16px 16px" }}>
+            <div className="alert-body">{toast.message}</div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function PausedBanner({ reason }: { reason: string }) {
+  const { title, body } = PAUSED_MESSAGES[reason] ?? { title: "Auto-Buy paused", body: `paused_reason=${reason}` };
+  return (
+    <div className="alert warning" style={{ marginBottom: 16 }}>
+      <span className="alert-icon">⚠</span>
+      <div className="alert-body">
+        <div className="alert-type">{title}</div>
+        <div className="alert-msg">{body}</div>
+      </div>
+    </div>
+  );
+}
+
+const PAUSED_MESSAGES: Record<string, { title: string; body: string }> = {
+  user_paused:             { title: "Paused by operator",          body: "You can resume Auto-Buy from the master control." },
+  no_credentials:          { title: "No Coinbase credentials",     body: "Connect a Coinbase Cloud Key in the integration panel below." },
+  credentials_invalid:     { title: "Coinbase credentials invalid", body: "Coinbase rejected the API key. Rotate the key and re-connect." },
+  credentials_corrupted:   { title: "Credentials corrupted",       body: "The encrypted key could not be decrypted. Reconnect to repair." },
+  address_not_whitelisted: { title: "Withdrawal address not whitelisted", body: "Add the displayed address to Coinbase's allowlist and confirm via the integration panel below." },
+  consecutive_failures:    { title: "Auto-paused after 3 failures", body: "Review the purchase history for error messages, then re-enable." },
+};
