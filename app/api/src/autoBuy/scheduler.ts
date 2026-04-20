@@ -38,6 +38,8 @@ export function stopScheduler(): void {
   }
 }
 
+let tickInFlight = false;
+
 async function runTickSafe(db: Database.Database): Promise<void> {
   try {
     await runTick(db);
@@ -47,12 +49,25 @@ async function runTickSafe(db: Database.Database): Promise<void> {
 }
 
 // Exposed for POST /api/autobuy/execute-now to trigger an out-of-band tick.
+// In-process guard prevents overlapping ticks — two concurrent buys with
+// distinct client_order_ids would both fill on Coinbase, doubling spend.
+// Single-process guard only; multi-instance deployments would need a DB-level
+// lock, but v1 runs the API as a single container so in-process is sufficient.
 export async function runTick(db: Database.Database): Promise<void> {
-  await stepEnqueueAndPlaceBuy(db);
-  await stepPollBuyPlaced(db);
-  await stepAssignToSweep(db);
-  await stepRunSweep(db);
-  await stepPollWithdraws(db);
+  if (tickInFlight) {
+    console.warn("[autobuy-scheduler] prior tick still running, skipping");
+    return;
+  }
+  tickInFlight = true;
+  try {
+    await stepEnqueueAndPlaceBuy(db);
+    await stepPollBuyPlaced(db);
+    await stepAssignToSweep(db);
+    await stepRunSweep(db);
+    await stepPollWithdraws(db);
+  } finally {
+    tickInFlight = false;
+  }
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -192,7 +207,8 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   }
 
   const usdAcct = accounts.data.accounts.find((a) => a.currency === "USD");
-  const usdBalance = usdAcct ? Number(usdAcct.available_balance.value) : 0;
+  const parsed = usdAcct ? Number(usdAcct.available_balance.value) : 0;
+  const usdBalance = Number.isFinite(parsed) ? parsed : 0;
   if (usdBalance < intendedUsd) {
     insertSkippedRow(db, "skipped_insufficient_usd", `usd_balance=${usdBalance}`, mult, val, intendedUsd);
     scheduleNext(db, cfg);
@@ -308,9 +324,20 @@ async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
     const order = res.order;
     const now = nowSec();
     if (order.status === "FILLED") {
+      const parsedMs = order.filled_at ? Date.parse(order.filled_at) : NaN;
+      const filledAt = Number.isFinite(parsedMs) ? Math.floor(parsedMs / 1000) : now;
       const filledBtc = Number(order.filled_size);
       const filledUsd = Number(order.filled_value);
-      const filledAt = order.filled_at ? Math.floor(Date.parse(order.filled_at) / 1000) : now;
+      if (!Number.isFinite(filledBtc) || !Number.isFinite(filledUsd)) {
+        db.prepare(
+          `UPDATE autobuy_runs
+           SET status = 'failed_buy', error_code = 'unparseable_fill_amount', updated_at = ?
+           WHERE id = ?`,
+        ).run(now, row.id);
+        caps.recordFailure(db);
+        console.warn(`[autobuy-scheduler] unparseable fill amounts order=${row.coinbase_order_id} size=${order.filled_size} value=${order.filled_value}`);
+        continue;
+      }
       db.prepare(
         `UPDATE autobuy_runs
          SET status = 'buy_filled', filled_btc = ?, filled_usd = ?, filled_at = ?, updated_at = ?
@@ -337,21 +364,24 @@ async function stepAssignToSweep(db: Database.Database): Promise<void> {
   const now = nowSec();
   const cutoff = now - WITHDRAW_HOLD_SECONDS;
 
-  // First: move buy_filled rows into awaiting_withdraw_hold tracking (just a
-  // status rename to make the state machine explicit).
-  db.prepare(
-    `UPDATE autobuy_runs
-     SET status = 'awaiting_withdraw_hold', updated_at = ?
-     WHERE status = 'buy_filled'`,
-  ).run(now);
-
-  // Second: find rows whose hold has elapsed and mark them sweep_assigned.
-  // Don't create a sweep row yet — that happens in step 4 when we actually
-  // issue the withdraw.
+  // Rows whose hold has elapsed → sweep_assigned. Covers both buy_filled
+  // and awaiting_withdraw_hold states, so a row can skip the intermediate
+  // rename if it was filled long enough ago.
   db.prepare(
     `UPDATE autobuy_runs
      SET status = 'sweep_assigned', updated_at = ?
-     WHERE status = 'awaiting_withdraw_hold' AND filled_at IS NOT NULL AND filled_at <= ?`,
+     WHERE status IN ('buy_filled', 'awaiting_withdraw_hold')
+       AND filled_at IS NOT NULL
+       AND filled_at <= ?`,
+  ).run(now, cutoff);
+
+  // Remaining buy_filled rows are genuinely still in their hold → rename for
+  // operator visibility. Skip rows without filled_at (shouldn't happen, but
+  // don't strand them in awaiting_withdraw_hold if it does).
+  db.prepare(
+    `UPDATE autobuy_runs
+     SET status = 'awaiting_withdraw_hold', updated_at = ?
+     WHERE status = 'buy_filled' AND filled_at IS NOT NULL AND filled_at > ?`,
   ).run(now, cutoff);
 }
 
@@ -494,6 +524,12 @@ export async function ensureWithdrawAddress(db: Database.Database): Promise<stri
   const cfg = readConfig(db);
   if (cfg.withdraw_address) return cfg.withdraw_address;
   const { address } = await createLndChainAddress();
-  db.prepare(`UPDATE autobuy_config SET withdraw_address = ? WHERE id = 1`).run(address);
-  return address;
+  // Conditional write — if another caller beat us to it, keep theirs.
+  db.prepare(
+    `UPDATE autobuy_config
+     SET withdraw_address = ?
+     WHERE id = 1 AND (withdraw_address IS NULL OR withdraw_address = '')`,
+  ).run(address);
+  const after = db.prepare(`SELECT withdraw_address FROM autobuy_config WHERE id = 1`).get() as { withdraw_address: string };
+  return after.withdraw_address;
 }
