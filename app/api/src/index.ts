@@ -66,9 +66,10 @@ import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/l
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
 import { startClusterRebalanceScheduler } from "./rebalance/rebalanceScheduler";
-import { startScheduler, runTick } from "./autoBuy/scheduler";
+import { startScheduler, runTick, ensureWithdrawAddress } from "./autoBuy/scheduler";
 import { listAccounts } from "./autoBuy/coinbaseClient";
 import { encrypt, decrypt } from "./autoBuy/credentials";
+import * as caps from "./autoBuy/caps";
 import {
   getBtcExchangeRate,
   createPaymentInvoice,
@@ -2742,6 +2743,199 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "internal_error" }));
     }
+    return;
+  }
+
+  if (req.method === "GET" && req.url === "/api/autobuy/status") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const cfg = db.prepare(`SELECT * FROM autobuy_config WHERE id = 1`).get() as any;
+      const creds = db.prepare(
+        `SELECT key_name, connected_at, last_verified_at FROM coinbase_credentials WHERE id = 1`,
+      ).get() as { key_name: string; connected_at: number; last_verified_at: number | null } | undefined;
+      // Generate withdraw_address on first call if absent (per spec §7 edge case)
+      if (cfg && !cfg.withdraw_address) {
+        try {
+          const addr = await ensureWithdrawAddress(db);
+          cfg.withdraw_address = addr;
+        } catch (err) {
+          console.warn("[autobuy-status] ensureWithdrawAddress failed:", err);
+        }
+      }
+      const next = db.prepare(
+        `SELECT id, scheduled_for, z_score, zone, multiplier, intended_buy_usd, status
+         FROM autobuy_runs WHERE status IN ('scheduled','buy_placed','awaiting_withdraw_hold','sweep_assigned','withdraw_placed')
+         ORDER BY scheduled_for ASC LIMIT 10`,
+      ).all();
+      const recent = db.prepare(
+        `SELECT id, scheduled_for, z_score, zone, multiplier, intended_buy_usd, filled_btc, filled_usd,
+                status, filled_at, withdraw_txid, error_code, error_message
+         FROM autobuy_runs ORDER BY id DESC LIMIT 20`,
+      ).all();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        config: cfg ? {
+          enabled: cfg.enabled === 1,
+          base_unit_usd: cfg.base_unit_usd,
+          frequency: cfg.frequency,
+          zone_multipliers: JSON.parse(cfg.zone_multipliers),
+          withdraw_address: cfg.withdraw_address,
+          withdraw_address_whitelisted_at: cfg.withdraw_address_whitelisted_at,
+          sweep_day_of_week: cfg.sweep_day_of_week,
+          consecutive_failures: cfg.consecutive_failures,
+          paused_reason: cfg.paused_reason,
+          last_run_at: cfg.last_run_at,
+          next_run_at: cfg.next_run_at,
+        } : null,
+        credentials: creds ? {
+          key_name: creds.key_name,
+          connected_at: creds.connected_at,
+          last_verified_at: creds.last_verified_at,
+        } : null,
+        in_flight: next,
+        recent,
+      }));
+    } catch (err: any) {
+      console.error("[autobuy-status]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/autobuy/history")) {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const url = new URL(req.url, "http://localhost");
+      const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get("limit") ?? "50", 10)));
+      const offset = Math.max(0, parseInt(url.searchParams.get("offset") ?? "0", 10));
+      const statusFilter = url.searchParams.get("status");
+      const params: Array<string | number> = [];
+      let where = "";
+      if (statusFilter) {
+        where = "WHERE status = ?";
+        params.push(statusFilter);
+      }
+      params.push(limit, offset);
+      const rows = db.prepare(
+        `SELECT id, scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
+                status, coinbase_order_id, filled_btc, filled_usd, filled_at,
+                withdraw_txid, error_code, error_message, created_at, updated_at
+         FROM autobuy_runs ${where} ORDER BY id DESC LIMIT ? OFFSET ?`,
+      ).all(...params);
+      const total = db.prepare(
+        `SELECT COUNT(*) AS c FROM autobuy_runs ${where}`,
+      ).get(...(statusFilter ? [statusFilter] : [])) as { c: number };
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ rows, total: total.c, limit, offset }));
+    } catch (err: any) {
+      console.error("[autobuy-history]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "PATCH" && req.url === "/api/autobuy/config") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const updates: string[] = [];
+        const params: Array<string | number> = [];
+
+        if (parsed.base_unit_usd !== undefined) {
+          const n = Number(parsed.base_unit_usd);
+          if (!Number.isFinite(n) || n <= 0) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "invalid_base_unit_usd" }));
+            return;
+          }
+          const cap = caps.checkBaseUnitCap(n);
+          if (!cap.ok) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "base_unit_exceeds_cap", detail: cap.reason }));
+            return;
+          }
+          updates.push("base_unit_usd = ?");
+          params.push(n);
+        }
+        if (parsed.frequency !== undefined) {
+          if (!["daily", "weekly", "biweekly", "monthly"].includes(parsed.frequency)) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "invalid_frequency" }));
+            return;
+          }
+          updates.push("frequency = ?");
+          params.push(parsed.frequency);
+        }
+        if (parsed.zone_multipliers !== undefined) {
+          const zm = parsed.zone_multipliers;
+          if (!zm || typeof zm !== "object") {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "invalid_zone_multipliers" }));
+            return;
+          }
+          const required = ["extreme_buy", "undervalued", "fair_value", "elevated", "overvalued", "extreme_sell"];
+          for (const k of required) {
+            if (typeof zm[k] !== "number" || !Number.isFinite(zm[k]) || zm[k] < 0) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: `invalid_zone_multiplier:${k}` }));
+              return;
+            }
+          }
+          updates.push("zone_multipliers = ?");
+          params.push(JSON.stringify(zm));
+        }
+        if (parsed.sweep_day_of_week !== undefined) {
+          const d = Number(parsed.sweep_day_of_week);
+          if (!Number.isInteger(d) || d < 0 || d > 6) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "invalid_sweep_day_of_week" }));
+            return;
+          }
+          updates.push("sweep_day_of_week = ?");
+          params.push(d);
+        }
+        if (parsed.whitelist_confirmed === true) {
+          updates.push("withdraw_address_whitelisted_at = ?");
+          params.push(Math.floor(Date.now() / 1000));
+        }
+
+        if (updates.length === 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "no_fields_to_update" }));
+          return;
+        }
+
+        params.push(1);
+        db.prepare(`UPDATE autobuy_config SET ${updates.join(", ")} WHERE id = ?`).run(...params);
+        const cfg = db.prepare(`SELECT * FROM autobuy_config WHERE id = 1`).get();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, config: cfg }));
+      } catch (err: any) {
+        console.error("[autobuy-config-patch]", err);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "internal_error" }));
+      }
+    });
     return;
   }
 
