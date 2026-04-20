@@ -196,6 +196,75 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  // ─── Coinbase Auto-Buy ───────────────────────────────────────────────
+  getAutoBuyStatus: () =>
+    apiFetch<AutoBuyStatus>("/api/autobuy/status"),
+
+  getAutoBuyHistory: (opts?: { limit?: number; offset?: number; status?: string }) => {
+    const qs = new URLSearchParams();
+    if (opts?.limit != null) qs.set("limit", String(opts.limit));
+    if (opts?.offset != null) qs.set("offset", String(opts.offset));
+    if (opts?.status) qs.set("status", opts.status);
+    const q = qs.toString();
+    return apiFetch<{ rows: AutoBuyRun[]; total: number; limit: number; offset: number }>(
+      `/api/autobuy/history${q ? `?${q}` : ""}`,
+    );
+  },
+
+  patchAutoBuyConfig: (body: {
+    base_unit_usd?: number;
+    frequency?: AutoBuyConfig["frequency"];
+    zone_multipliers?: AutoBuyZoneMultipliers;
+    sweep_day_of_week?: number;
+    whitelist_confirmed?: boolean;
+  }) =>
+    apiFetch<{ ok: true; config: unknown }>("/api/autobuy/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  enableAutoBuy: () =>
+    apiFetch<{ ok: true; enabled: true }>("/api/autobuy/enable", { method: "POST" }),
+
+  pauseAutoBuy: () =>
+    apiFetch<{ ok: true; enabled: false }>("/api/autobuy/pause", { method: "POST" }),
+
+  executeAutoBuyNow: () =>
+    apiFetch<{ ok: true }>("/api/autobuy/execute-now", { method: "POST" }),
+
+  postAutoBuyCredentials: (body: { json_blob: string } | { key_name: string; private_key: string }) =>
+    apiFetch<{ ok: true; key_name: string; connected_at: number }>("/api/autobuy/credentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+
+  deleteAutoBuyCredentials: () =>
+    apiFetch<{ ok: true }>("/api/autobuy/credentials", { method: "DELETE" }),
+
+  verifyAutoBuyCredentials: () =>
+    apiFetch<{ ok: true; last_verified_at: number; accounts: Array<{ currency: string; available: number }> }>(
+      "/api/autobuy/credentials/verify",
+      { method: "POST" },
+    ),
+
+  getValuationCurrent: () =>
+    apiFetch<ValuationCurrent>("/api/valuation/current"),
+
+  getValuationHistory: (opts?: { since?: string; until?: string }) => {
+    const qs = new URLSearchParams();
+    if (opts?.since) qs.set("since", opts.since);
+    if (opts?.until) qs.set("until", opts.until);
+    const q = qs.toString();
+    return apiFetch<{ series: Array<{ date: string; z_score: number; zone: string; price_usd?: number }> }>(
+      `/api/valuation/history${q ? `?${q}` : ""}`,
+    );
+  },
+
+  getValuationInputs: () =>
+    apiFetch<ValuationInputsResponse>("/api/valuation/inputs"),
 };
 
 // ─── Shared helpers ───────────────────────────────────────────────────────
@@ -891,3 +960,81 @@ export type SubmitValuationInputsResponse =
       worker_error: string | null;
       worker_status: number;
     };
+
+// ─── Coinbase Auto-Buy ─────────────────────────────────────────────────
+
+export type AutoBuyZoneMultipliers = {
+  extreme_buy: number;
+  undervalued: number;
+  fair_value: number;
+  elevated: number;
+  overvalued: number;
+  extreme_sell: number;
+};
+
+export type AutoBuyConfig = {
+  enabled: boolean;
+  base_unit_usd: number;
+  frequency: "daily" | "weekly" | "biweekly" | "monthly";
+  zone_multipliers: AutoBuyZoneMultipliers;
+  withdraw_address: string;
+  withdraw_address_whitelisted_at: number | null;
+  sweep_day_of_week: number;
+  consecutive_failures: number;
+  paused_reason: string | null;
+  last_run_at: number | null;
+  next_run_at: number | null;
+};
+
+export type AutoBuyCredentialsInfo = {
+  key_name: string;
+  connected_at: number;
+  last_verified_at: number | null;
+};
+
+export type AutoBuyRun = {
+  id: number;
+  scheduled_for: number;
+  z_score: number | null;
+  zone: string | null;
+  multiplier: number | null;
+  base_unit_usd: number | null;
+  intended_buy_usd: number | null;
+  status: string;
+  coinbase_order_id?: string | null;
+  filled_btc?: number | null;
+  filled_usd?: number | null;
+  filled_at?: number | null;
+  withdraw_txid?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+  created_at?: number;
+  updated_at?: number;
+};
+
+export type AutoBuyStatus = {
+  config: AutoBuyConfig | null;
+  credentials: AutoBuyCredentialsInfo | null;
+  in_flight: AutoBuyRun[];
+  recent: AutoBuyRun[];
+};
+
+export type ValuationZone = "extreme_buy" | "undervalued" | "fair_value" | "elevated" | "overvalued" | "extreme_sell";
+
+export type ValuationCurrent = {
+  z_score: number;
+  zone: ValuationZone;
+  updated_at: string;
+  price_usd?: number;
+};
+
+export type ValuationInput = {
+  value: number | null;
+  z: number | null;
+  weight: number;
+  updated_at: string | null;
+  category?: string;
+  source?: string;
+};
+
+export type ValuationInputsResponse = Record<string, ValuationInput>;
