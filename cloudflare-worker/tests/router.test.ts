@@ -54,4 +54,23 @@ describe("router", () => {
     const res = await worker.fetch(new Request("https://w/nope"), env, {} as any);
     expect(res.status).toBe(404);
   });
+
+  it("dispatches POST /valuation/manual (rejects unsigned request)", async () => {
+    const env = { PRICES_CACHE: mockKV() } as unknown as Env;
+    const res = await worker.fetch(
+      new Request("https://w/valuation/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }),
+      env, {} as any,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 404 on GET /valuation/manual (only POST is supported)", async () => {
+    const env = { PRICES_CACHE: mockKV() } as unknown as Env;
+    const res = await worker.fetch(new Request("https://w/valuation/manual"), env, {} as any);
+    expect(res.status).toBe(404);
+  });
 });

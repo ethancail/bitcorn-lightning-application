@@ -9,6 +9,7 @@
 //   GET  /valuation/current   — Latest composite Z-score + zone (handlers/valuation.ts)
 //   GET  /valuation/history   — Daily composite history series (handlers/valuation.ts)
 //   GET  /valuation/inputs    — Per-input snapshot map (handlers/valuation.ts)
+//   POST /valuation/manual    — Treasury-signed manual metric entries (HMAC; handlers/manualInput.ts)
 //
 // Deploy runbook, secret management, and architecture: docs/COINBASE_INTEGRATION.md.
 // Valuation engine runs on cron (wrangler.toml [triggers]); see valuation/cron.ts.
@@ -22,6 +23,7 @@ import {
   handleValuationHistory,
   handleValuationInputs,
 } from "./handlers/valuation";
+import { handleManualInput } from "./handlers/manualInput";
 import { handleScheduled } from "./valuation/cron";
 import { CORS_HEADERS } from "./lib/cors";
 import type { Env } from "./lib/types";
@@ -54,6 +56,9 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/valuation/inputs") {
       return handleValuationInputs(env);
+    }
+    if (request.method === "POST" && url.pathname === "/valuation/manual") {
+      return handleManualInput(request, env);
     }
     if (request.method === "POST" && (url.pathname === "/" || url.pathname === "")) {
       return handleOnramp(request, env);
