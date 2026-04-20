@@ -58,6 +58,33 @@ Required in the API container (`docker-compose.yml`):
 
 - `COINBASE_APP_ID` — Coinbase Developer Platform Project ID. **Not a secret** — embedded in the Onramp URL visible to users. If unset, `GET /api/coinbase/onramp-url` returns 503.
 - `COINBASE_WORKER_URL` — URL of the Cloudflare Worker (e.g. `https://bitcorn-onramp.ethancail.workers.dev`). If unset, returns 503.
+- `VALUATION_SUBMIT_HMAC` — shared HMAC secret between the treasury API and the Worker for the `POST /valuation/manual` endpoint. **Sensitive** — never commit. Set via `bitcorn-lightning-node/.env` (see `.env.example` in that directory). If unset, `POST /api/valuation/manual` returns 503.
+- `VALUATION_WORKER_URL` — optional override; defaults to `COINBASE_WORKER_URL` (both endpoints live on the same Worker today).
+
+### Setting the operator secret (Umbrel install)
+
+On Umbrel, the deployed docker-compose.yml lives at `~/umbrel/app-data/bitcorn-lightning-node/docker-compose.yml`. Put operator secrets in a sibling `.env` file — Docker Compose auto-reads it, and `.env` is gitignored:
+
+```bash
+# 1. Generate the secret
+openssl rand -hex 32   # copy the output
+
+# 2. Put it on the Umbrel node
+sudo nano /home/umbrel/umbrel/app-data/bitcorn-lightning-node/.env
+# Add a line:  VALUATION_SUBMIT_HMAC=<hex from step 1>
+# Save and exit.
+
+# 3. Put the SAME value on the Worker
+cd cloudflare-worker
+npx wrangler secret put VALUATION_SUBMIT_HMAC
+# paste the hex, Ctrl-D
+npx wrangler deploy
+
+# 4. Restart the app so the api container picks up the new env
+sudo umbreld client apps.restart.mutate --appId bitcorn-lightning-node
+```
+
+After restart, the treasury-only `/valuation-input` page (sidebar link) works end-to-end: values save locally, HMAC-sign, POST to the Worker, land in KV key `valuation_manual_v1`, and feed the composite Z-score used by Auto-Buy.
 
 ## Redeploying the Worker
 

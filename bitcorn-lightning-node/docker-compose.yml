@@ -20,6 +20,18 @@ services:
       LOOP_GRPC_PORT: "8443"
       LOOP_TLS_CERT_PATH: "/loop-data/.lit/tls.cert"
       LOOP_MACAROON_PATH: "/loop-data/.loop/mainnet/loop.macaroon"
+      # Valuation manual-input submission — shared HMAC with the Cloudflare Worker.
+      # Set this in a `.env` file next to docker-compose.yml (auto-read by Docker
+      # Compose; gitignored repo-wide). Generate a fresh secret per install with:
+      #   openssl rand -hex 32
+      # Put the SAME value on the Worker via:
+      #   cd cloudflare-worker && npx wrangler secret put VALUATION_SUBMIT_HMAC
+      # If unset, POST /api/valuation/manual returns 503 valuation_worker_not_configured.
+      # See .env.example in this directory for the template.
+      VALUATION_SUBMIT_HMAC: "${VALUATION_SUBMIT_HMAC:-}"
+      # Optional — defaults to COINBASE_WORKER_URL above. Only override if the
+      # valuation endpoint ever lives on a different Worker than the Onramp one.
+      VALUATION_WORKER_URL: "${VALUATION_WORKER_URL:-}"
     depends_on:
       - loopd
     networks:
