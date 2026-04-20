@@ -56,7 +56,7 @@ import {
 import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled } from "./lightning/lnd";
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
-import { assertTreasury } from "./utils/role";
+import { assertTreasury, assertNonEmpty } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
@@ -66,6 +66,7 @@ import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/l
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
 import { startClusterRebalanceScheduler } from "./rebalance/rebalanceScheduler";
+import { startScheduler, runTick } from "./autoBuy/scheduler";
 import {
   getBtcExchangeRate,
   createPaymentInvoice,
@@ -2516,6 +2517,89 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === "POST" && req.url === "/api/autobuy/enable") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const cfg = db.prepare(`SELECT * FROM autobuy_config WHERE id = 1`).get() as any;
+      if (!cfg) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "config_missing" }));
+        return;
+      }
+      const creds = db.prepare(`SELECT id FROM coinbase_credentials WHERE id = 1`).get();
+      if (!creds) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "no_credentials" }));
+        return;
+      }
+      if (!cfg.withdraw_address_whitelisted_at) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "address_not_whitelisted" }));
+        return;
+      }
+      db.prepare(
+        `UPDATE autobuy_config SET enabled = 1, paused_reason = NULL, consecutive_failures = 0 WHERE id = 1`,
+      ).run();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, enabled: true }));
+    } catch (err: any) {
+      console.error("[autobuy-enable]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/autobuy/pause") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      db.prepare(
+        `UPDATE autobuy_config SET enabled = 0, paused_reason = 'user_paused' WHERE id = 1`,
+      ).run();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, enabled: false }));
+    } catch (err: any) {
+      console.error("[autobuy-pause]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/autobuy/execute-now") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    // Force next_run_at to now so the next-tick check passes; then run a tick
+    // immediately. Still respects caps + credential gates. The scheduler's
+    // in-process re-entrancy guard (runTick's tickInFlight flag) prevents
+    // overlap with the 15-min interval tick.
+    try {
+      db.prepare(`UPDATE autobuy_config SET next_run_at = ? WHERE id = 1`).run(Math.floor(Date.now() / 1000));
+      await runTick(db);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (err: any) {
+      console.error("[autobuy-execute-now]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
   // ✅ 404 MUST BE LAST
   res.writeHead(404);
   res.end();
@@ -2535,4 +2619,7 @@ server.listen(PORTS.userApi, () => {
   startMemberAdvisorScheduler();
   // Swap poller — monitors in-flight Loop swaps and updates status every 15s.
   startSwapPoller();
+  // Coinbase Auto-Buy scheduler — 15-min tick that runs the 5-step state
+  // machine. Gated by autobuy_config.enabled and ENV.autoBuyEnabled.
+  startScheduler(db);
 });
