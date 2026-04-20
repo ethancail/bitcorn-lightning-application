@@ -187,6 +187,15 @@ export const api = {
     return apiFetch<{ swaps: SwapRequest[] }>(`/api/admin/swaps${q}`);
   },
   adminGetSwap: (id: string) => apiFetch<SwapDetailResponse>(`/api/admin/swaps/${id}`),
+
+  // Valuation manual inputs (treasury-only)
+  getValuationInputStatus: () =>
+    apiFetch<ManualMetricStatusResponse>("/api/valuation/manual/status"),
+  submitValuationInputs: (body: SubmitValuationInputsRequest) =>
+    apiFetch<SubmitValuationInputsResponse>("/api/valuation/manual", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
 };
 
 // ─── Shared helpers ───────────────────────────────────────────────────────
@@ -841,3 +850,44 @@ export async function applyDynamicFees(): Promise<unknown> {
     body: JSON.stringify({}),
   });
 }
+
+// ─── Valuation manual input types (treasury-only) ─────────────────────────
+
+export type ManualMetricKey =
+  | "mvrv"
+  | "puell"
+  | "sopr"
+  | "reserve_risk"
+  | "nvt"
+  | "hash_ribbons"
+  | "difficulty_ribbon"
+  | "hodl_waves";
+
+export type ManualMetricStatus = {
+  metric_key: ManualMetricKey;
+  value: number | null;
+  submitted_at: number | null;        // unix seconds
+  worker_sync_status: "pending" | "confirmed" | "failed" | null;
+  worker_sync_error: string | null;
+  worker_sync_at: number | null;
+};
+
+export type ManualMetricStatusResponse = {
+  metrics: ManualMetricStatus[];
+};
+
+export type SubmitValuationInputsRequest = {
+  values: Record<ManualMetricKey, number>;
+};
+
+// 200 on full success, 207 on local-saved-but-worker-failed (apiFetch treats
+// both as success). Distinguish via `ok`.
+export type SubmitValuationInputsResponse =
+  | { ok: true; submitted_at: string }
+  | {
+      ok: false;
+      submitted_at: string;
+      local_saved: true;
+      worker_error: string | null;
+      worker_status: number;
+    };
