@@ -3,6 +3,7 @@ import { api, type TreasuryMetrics, type TreasuryAlert } from "../api/client";
 import NodeBalancePanel from "../components/NodeBalancePanel";
 import FundNodePanel from "../components/FundNodePanel";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
+import ValuationInputAlertBanner from "../components/ValuationInputAlertBanner";
 
 function fmt(n: number) {
   return n.toLocaleString();
@@ -45,7 +46,13 @@ export default function Dashboard() {
   const cap = metrics?.capital_efficiency;
   const liq = metrics?.liquidity.channels_total;
 
-  const activeAlerts = alerts.filter((a) => a.severity === "critical" || a.severity === "warning");
+  // Filter out VALUATION_MANUAL_STALE — it has its own dedicated banner with a
+  // "Enter now →" link, so skipping it from the generic list avoids double-render.
+  const activeAlerts = alerts.filter(
+    (a) =>
+      (a.severity === "critical" || a.severity === "warning") &&
+      a.type !== "VALUATION_MANUAL_STALE",
+  );
 
   return (
     <div>
@@ -59,6 +66,9 @@ export default function Dashboard() {
       <NodeBalancePanel />
       <FundNodePanel />
       <BitcoinPriceGraph />
+
+      {/* ── Valuation input staleness banner (dedicated, links to /valuation-input) ── */}
+      <ValuationInputAlertBanner alerts={alerts} />
 
       {/* ── Alerts (only if present) ──────────────────────────────── */}
       {activeAlerts.length > 0 && (
