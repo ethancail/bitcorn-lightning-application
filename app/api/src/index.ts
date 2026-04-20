@@ -67,6 +67,8 @@ import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
 import { startClusterRebalanceScheduler } from "./rebalance/rebalanceScheduler";
 import { startScheduler, runTick } from "./autoBuy/scheduler";
+import { listAccounts } from "./autoBuy/coinbaseClient";
+import { encrypt, decrypt } from "./autoBuy/credentials";
 import {
   getBtcExchangeRate,
   createPaymentInvoice,
@@ -2594,6 +2596,149 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ ok: true }));
     } catch (err: any) {
       console.error("[autobuy-execute-now]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/autobuy/credentials") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        let keyName: string | undefined;
+        let privateKeyPem: string | undefined;
+        if (typeof parsed?.json_blob === "string") {
+          try {
+            const inner = JSON.parse(parsed.json_blob);
+            keyName = inner?.name;
+            privateKeyPem = inner?.privateKey;
+          } catch {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "invalid_json_blob" }));
+            return;
+          }
+        } else {
+          keyName = parsed?.key_name;
+          privateKeyPem = parsed?.private_key;
+        }
+        if (!keyName || !privateKeyPem) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "key_name_and_private_key_required" }));
+          return;
+        }
+        if (!privateKeyPem.includes("-----BEGIN ") || !privateKeyPem.includes("PRIVATE KEY-----")) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_private_key_format" }));
+          return;
+        }
+        const verifyResult = await listAccounts({ keyName, privateKeyPem });
+        if (!verifyResult.ok) {
+          const status = verifyResult.status === 401 || verifyResult.status === 403 ? 401 : 502;
+          res.writeHead(status, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "verification_failed", detail: verifyResult.error }));
+          return;
+        }
+        const { ciphertext, nonce } = encrypt(privateKeyPem);
+        const now = Math.floor(Date.now() / 1000);
+        db.prepare(
+          `INSERT INTO coinbase_credentials (id, key_name, encrypted_private_key, nonce, connected_at, last_verified_at)
+           VALUES (1, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             key_name = excluded.key_name,
+             encrypted_private_key = excluded.encrypted_private_key,
+             nonce = excluded.nonce,
+             connected_at = excluded.connected_at,
+             last_verified_at = excluded.last_verified_at`,
+        ).run(keyName, ciphertext, nonce, now, now);
+        db.prepare(
+          `UPDATE autobuy_config SET paused_reason = CASE
+             WHEN paused_reason IN ('no_credentials','credentials_invalid','credentials_corrupted') THEN NULL
+             ELSE paused_reason END
+           WHERE id = 1`,
+        ).run();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, key_name: keyName, connected_at: now }));
+      } catch (err: any) {
+        console.error("[autobuy-credentials-post]", err);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "internal_error" }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === "DELETE" && req.url === "/api/autobuy/credentials") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      db.prepare(`DELETE FROM coinbase_credentials WHERE id = 1`).run();
+      db.prepare(
+        `UPDATE autobuy_config SET enabled = 0, paused_reason = 'no_credentials' WHERE id = 1`,
+      ).run();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (err: any) {
+      console.error("[autobuy-credentials-delete]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/autobuy/credentials/verify") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const row = db.prepare(
+        `SELECT key_name, encrypted_private_key, nonce FROM coinbase_credentials WHERE id = 1`,
+      ).get() as { key_name: string; encrypted_private_key: Buffer; nonce: Buffer } | undefined;
+      if (!row) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "no_credentials" }));
+        return;
+      }
+      let privateKeyPem: string;
+      try {
+        privateKeyPem = decrypt({ ciphertext: row.encrypted_private_key, nonce: row.nonce });
+      } catch {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "credentials_corrupted" }));
+        return;
+      }
+      const result = await listAccounts({ keyName: row.key_name, privateKeyPem });
+      if (!result.ok) {
+        const status = result.status === 401 || result.status === 403 ? 401 : 502;
+        res.writeHead(status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, status: result.status, error: result.error }));
+        return;
+      }
+      const now = Math.floor(Date.now() / 1000);
+      db.prepare(`UPDATE coinbase_credentials SET last_verified_at = ? WHERE id = 1`).run(now);
+      const accounts = (result.data?.accounts ?? []).map((a) => ({
+        currency: a.currency,
+        available: Number(a.available_balance.value),
+      }));
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, last_verified_at: now, accounts }));
+    } catch (err: any) {
+      console.error("[autobuy-credentials-verify]", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "internal_error" }));
     }
