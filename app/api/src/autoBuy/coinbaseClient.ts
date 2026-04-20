@@ -64,6 +64,12 @@ async function signJwt(creds: CoinbaseCredentials, method: string, path: string)
 // HTTP helper
 // ───────────────────────────────────────────────────────────────────────
 
+// Fetch timeout in ms. 30s is comfortably longer than Coinbase's typical
+// response (tens of ms) but well under the JWT's 120s validity window, so a
+// timed-out request won't live to arrive at Coinbase after its JWT expired.
+// Guards against hung connections pinning scheduler ticks indefinitely.
+const REQUEST_TIMEOUT_MS = 30_000;
+
 async function coinbaseRequest<T>(
   creds: CoinbaseCredentials,
   method: "GET" | "POST",
@@ -76,11 +82,14 @@ async function coinbaseRequest<T>(
   };
   if (body !== undefined) headers["Content-Type"] = "application/json";
 
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const res = await fetch(`${BASE_URL}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
     });
     const text = await res.text();
     if (!res.ok) {
@@ -95,7 +104,14 @@ async function coinbaseRequest<T>(
       return { ok: false, status: res.status, error: `non_json_response: ${text.slice(0, 200)}` };
     }
   } catch (err) {
-    return { ok: false, status: 0, error: err instanceof Error ? err.message : String(err) };
+    const isAbort = err instanceof Error && (err.name === "AbortError" || err.message.includes("abort"));
+    return {
+      ok: false,
+      status: 0,
+      error: isAbort ? `timeout_after_${REQUEST_TIMEOUT_MS}ms` : err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 }
 
