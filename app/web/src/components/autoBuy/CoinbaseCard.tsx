@@ -65,7 +65,7 @@ function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> })
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <button onClick={connect} disabled={busy || !blob.trim()}>{busy ? "Connecting…" : "Save & Connect"}</button>
           <a
-            href="https://docs.cloud.coinbase.com/advanced-trade-api/docs/rest-api-auth"
+            href="https://docs.cdp.coinbase.com/get-started/authentication/cdp-api-keys"
             target="_blank"
             rel="noopener noreferrer"
             style={{ fontSize: "0.8125rem" }}
