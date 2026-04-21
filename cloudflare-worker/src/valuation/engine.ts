@@ -80,15 +80,25 @@ export async function runEngine(env: Env, ctx: EngineContext): Promise<void> {
   }
 
   // 3. Current composite + zone.
+  // If no adapter returned usable data, composite() throws (weightSum=0).
+  // In that case we leave KV untouched — returning early preserves the
+  // previous valid valuation and avoids publishing a misleading state.
+  // A previous version caught the throw, coerced z_score to 0, and let
+  // classifyZone(NaN) pick extreme_sell as the default — producing the
+  // infamous "Z=0, zone=extreme_sell" display that looks like a crash.
   let currentZ: number;
   try {
     currentZ = composite(latestZByKey);
-  } catch {
-    currentZ = Number.NaN;
+  } catch (err) {
+    console.warn(
+      "[engine] composite() failed (no usable inputs); leaving KV unchanged:",
+      err instanceof Error ? err.message : err,
+    );
+    return;
   }
   const zone = classifyZone(currentZ);
   const current: CurrentValuation = {
-    z_score: Number.isFinite(currentZ) ? currentZ : 0,
+    z_score: currentZ,
     zone: zone.zone,
     multiplier: zone.multiplier,
     updated_at: ctx.nowISO,

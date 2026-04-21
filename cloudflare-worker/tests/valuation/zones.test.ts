@@ -25,9 +25,15 @@ describe("classifyZone", () => {
     expect(result.multiplier).toBeCloseTo(expectedMult, 10);
   });
 
-  it("returns extreme_sell for NaN (safe default)", () => {
-    const result = classifyZone(Number.NaN);
-    expect(result.zone).toBe("extreme_sell");
-    expect(result.multiplier).toBe(0);
+  it("returns fair_value with multiplier 0 for non-finite input (neutral no-buy)", () => {
+    // Previously defaulted to extreme_sell on NaN, which combined with
+    // engine.ts's NaN→0 coercion produced a misleading "Z=0, Extreme Sell"
+    // display. fair_value + multiplier 0 is the honest default: we don't
+    // know what the zone is, so don't buy, don't sell, don't mislead.
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const result = classifyZone(bad);
+      expect(result.zone).toBe("fair_value");
+      expect(result.multiplier).toBe(0);
+    }
   });
 });

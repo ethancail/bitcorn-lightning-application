@@ -5,6 +5,7 @@ import {
   type ManualMetricStatus,
   type SubmitValuationInputsRequest,
 } from "../api/client";
+import InputsTab from "../components/autoBuy/InputsTab";
 
 interface MetricConfig {
   key: ManualMetricKey;
@@ -221,6 +222,15 @@ export default function ValuationInput() {
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
           {saving ? "Saving…" : "Save All"}
         </button>
+      </div>
+
+      {/* Composite Model Inputs — read-only view of all 12 inputs (8 manual
+          above + 3 locally-computed + 1 CryptoQuant). Treasury-only; was
+          previously on the Auto-Buy page but that page is visible to member
+          nodes, which leaked which metrics the treasury tracks. */}
+      <div style={{ marginTop: 48 }}>
+        <h2 style={{ marginBottom: 16 }}>Composite Model Inputs</h2>
+        <InputsTab />
       </div>
     </div>
   );
