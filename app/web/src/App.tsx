@@ -16,6 +16,8 @@ import WithdrawBitcoin from "./pages/WithdrawBitcoin";
 import SwapOperations from "./pages/SwapOperations";
 import RefillChannel from "./pages/RefillChannel";
 import Peers from "./pages/Peers";
+import ValuationInput from "./pages/ValuationInput";
+import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
@@ -206,6 +208,8 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
     { to: "/payments", icon: "↗", label: "Payments" },
     { to: "/liquidity", icon: "≋", label: "Liquidity" },
     { to: "/swaps", icon: "⟲", label: "Swaps" },
+    { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
+    { to: "/valuation-input", icon: "◐", label: "Valuation Inputs" },
   ];
 
   return (
@@ -290,6 +294,8 @@ function AppShell() {
           <Route path="/liquidity" element={<LiquidityPage />} />
           <Route path="/deposit" element={<DepositBitcoin />} />
           <Route path="/swaps" element={<SwapOperations />} />
+          <Route path="/auto-buy" element={<AutoBuy />} />
+          <Route path="/valuation-input" element={<ValuationInput />} />
           <Route path="/settings" element={<SettingsPage isTreasury />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
@@ -311,6 +317,7 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
     { to: "/charts", icon: "⟠", label: "Charts" },
     { to: "/contacts", icon: "☰", label: "Contacts" },
     { to: "/channels", icon: "◈", label: "My Channels" },
+    { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
     { to: "/payments", icon: "↗", label: "My Payments" },
   ];
 
@@ -423,6 +430,7 @@ function MemberShell() {
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/payments" element={<Payments title="My Payments" />} />
+          <Route path="/auto-buy" element={<AutoBuy />} />
           <Route path="/deposit" element={<DepositBitcoin />} />
           <Route path="/cashout" element={<WithdrawBitcoin />} />
           <Route path="/refill" element={<RefillChannel />} />

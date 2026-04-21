@@ -99,6 +99,39 @@ export const ENV = {
     // If unset, GET /api/coinbase/onramp-url returns coinbase_not_configured.
     coinbaseWorkerUrl: process.env.COINBASE_WORKER_URL || "",
 
+    // --- Valuation manual input (treasury → Worker HMAC-signed submissions) ---
+    // Base URL of the Cloudflare Worker that accepts POST /valuation/manual.
+    // Defaults to COINBASE_WORKER_URL since both endpoints live on the same
+    // Worker; override if they ever split. If unset, POST /api/valuation/manual
+    // returns 503 valuation_worker_not_configured.
+    valuationWorkerUrl: process.env.VALUATION_WORKER_URL || process.env.COINBASE_WORKER_URL || "",
+    // Shared HMAC secret between this treasury API and the Worker. Must match
+    // the VALUATION_SUBMIT_HMAC set on the Worker via `wrangler secret put`.
+    // If unset, POST /api/valuation/manual returns 503.
+    valuationSubmitHmac: process.env.VALUATION_SUBMIT_HMAC || "",
+
+    // --- Coinbase Auto-Buy Executor ---
+    // Global kill switch. When false, the scheduler refuses to create any
+    // scheduled rows. Default false so a fresh install doesn't start buying
+    // until the operator explicitly enables via POST /api/autobuy/enable.
+    autoBuyEnabled: process.env.AUTOBUY_ENABLED === "true",
+    // Max USD per single scheduled buy. Caps the result of
+    // base_unit × multiplier. Row transitions to skipped_cap_hit on breach.
+    autoBuyMaxSingleBuyUsd: Number(process.env.AUTOBUY_MAX_SINGLE_BUY_USD ?? "1000"),
+    // Rolling 7-day cap on filled_usd across all completed runs.
+    autoBuyMax7dUsd: Number(process.env.AUTOBUY_MAX_7D_USD ?? "2000"),
+    // Rolling 30-day cap.
+    autoBuyMax30dUsd: Number(process.env.AUTOBUY_MAX_30D_USD ?? "5000"),
+    // Max base_unit the user can set via PATCH /api/autobuy/config.
+    // Prevents a UI typo from setting $1,000,000 as the base.
+    autoBuyBaseUnitMaxUsd: Number(process.env.AUTOBUY_BASE_UNIT_MAX_USD ?? "500"),
+    // If the Worker's /valuation/current.updated_at is older than this many
+    // hours, the scheduler refuses to buy (row → skipped_stale_data).
+    autoBuyStaleDataMaxHours: Number(process.env.AUTOBUY_STALE_DATA_MAX_HOURS ?? "48"),
+    // Auto-pause after N consecutive failed_buy or failed_withdraw transitions.
+    // Operator must click Resume to re-enable. Reset on any successful sweep.
+    autoBuyFailurePauseThreshold: Number(process.env.AUTOBUY_FAILURE_PAUSE_THRESHOLD ?? "3"),
+
     // --- Member swap / withdrawal limits ---
     // Minimum sats a member can withdraw via Loop Out (default: Loop minimum = 250,000)
     memberMinWithdrawalSat: Number(process.env.MEMBER_MIN_WITHDRAWAL_SAT ?? "250000"),

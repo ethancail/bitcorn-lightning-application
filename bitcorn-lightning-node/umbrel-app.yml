@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.10.8"
+version: "1.11.0"
 port: 3200
 
 description: >
@@ -27,6 +27,29 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.11.0: Coinbase Auto-Buy — valuation-modulated dollar-cost averaging
+  on Coinbase. A 12-input composite Z-score sizes each scheduled buy by
+  zone multiplier; Coinbase holds for the 72h withdrawal window, then
+  sweeps BTC on-chain to your node's wallet. Full operator onboarding:
+  paste Coinbase Cloud Key, confirm allowlisted deposit address, flip
+  Enable. Dormant by default with per-buy and rolling 7d/30d caps. New
+  treasury-only Valuation Inputs page for weekly metric entry; three
+  metrics (Stock-to-Flow, 200W MA, Pi Cycle) computed locally from BTC
+  price history. Auto-Buy available on both treasury and member nodes.
+
+  v1.10.8: Clickable swap history rows with an expandable detail view
+  for Refill Channel and Cash Out — full state timeline, fee breakdown,
+  and on-chain txid surface in-place.
+
+  v1.10.7: Loop In private=true — the refill RPC now sets the invoice
+  as private so leaf nodes auto-generate route hints, eliminating the
+  "no_route" failures that hit merchants connected to the treasury via a
+  private channel.
+
+  v1.10.6: Loop In last_hop=treasury — forces the Loop server to route
+  the refill payment back through the treasury channel, matching the
+  hub-and-spoke topology.
+
   v1.10.5: Fix — member sidebar now reflects channel role changes saved
   in Settings immediately. Previously the sidebar showed stale labels
   ("Cash Out" after switching to Merchant role) until page reload because
