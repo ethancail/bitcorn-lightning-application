@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.11.1
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.11.2
     restart: unless-stopped
     ports:
       - "3101:3101"
@@ -9,6 +9,13 @@ services:
       - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
       # litd data: TLS cert at .lit/tls.cert, Loop macaroon at .loop/<network>/
       - ${APP_DATA_DIR}/litd:/loop-data:ro
+    # Load operator secrets from .env next to this file. Required because
+    # Umbrel's app runner doesn't cd into the app dir when invoking compose,
+    # so compose-time `${VAR:-}` interpolation can't auto-source .env.
+    # `env_file` attaches the file at container runtime, which works
+    # regardless of compose's cwd.
+    env_file:
+      - .env
     environment:
       BITCOIN_NETWORK: ${BITCOIN_NETWORK:-mainnet}
       # LND TLS cert SANs include 10.21.21.9 but NOT Docker DNS names.
@@ -67,7 +74,7 @@ services:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.11.1
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.11.2
     restart: unless-stopped
     ports:
       - "3200:3200"
