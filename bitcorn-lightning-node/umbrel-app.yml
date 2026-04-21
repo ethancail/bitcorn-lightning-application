@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.11.2"
+version: "1.11.3"
 port: 3200
 
 description: >
@@ -27,6 +27,15 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.11.3: Fix — operator `.env` is now loaded via an `exports.sh` hook
+  instead of docker compose's `env_file` directive. v1.11.2's env_file
+  approach broke the Umbrel app lifecycle: when umbreld invokes compose
+  with its own fragment file listed first, the relative `.env` path
+  resolves against the fragment directory (not ours), so compose errors
+  out with "env file not found" and app-script exits non-zero. Symptom:
+  app tile stuck at "Restarting..." after any restart/update on Umbrel.
+  Scaling requires this fix on every member install.
+
   v1.11.2: Fix — VALUATION_SUBMIT_HMAC now reaches the api container on
   Umbrel installs. The docker-compose.yml now declares the operator's
   .env as a runtime env_file on the api service; previously, compose-time
