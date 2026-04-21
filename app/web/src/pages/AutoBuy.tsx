@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type AutoBuyStatus, type ValuationCurrent } from "../api/client";
 import ValuationTab from "../components/autoBuy/ValuationTab";
 import StrategyTab from "../components/autoBuy/StrategyTab";
-import InputsTab from "../components/autoBuy/InputsTab";
 
-type TabId = "valuation" | "strategy" | "inputs";
+// Model Inputs tab removed in v1.11.4 — the full input table leaks which
+// metrics the treasury tracks, and this page is visible to member nodes.
+// The table now lives on the treasury-only /valuation-input page instead.
+type TabId = "valuation" | "strategy";
 
 export default function AutoBuy() {
   const [tab, setTab] = useState<TabId>("valuation");
@@ -56,7 +58,7 @@ export default function AutoBuy() {
       )}
 
       <div className="tab-bar" style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid var(--border)" }}>
-        {(["valuation", "strategy", "inputs"] as TabId[]).map((t) => (
+        {(["valuation", "strategy"] as TabId[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -72,7 +74,7 @@ export default function AutoBuy() {
               marginBottom: -1,
             }}
           >
-            {t === "valuation" ? "Valuation Chart" : t === "strategy" ? "DCA Strategy" : "Model Inputs"}
+            {t === "valuation" ? "Valuation Chart" : "DCA Strategy"}
           </button>
         ))}
       </div>
@@ -83,7 +85,6 @@ export default function AutoBuy() {
         <>
           {tab === "valuation" && <ValuationTab valuation={valuation} />}
           {tab === "strategy" && <StrategyTab status={status} valuation={valuation} onRefresh={refresh} />}
-          {tab === "inputs" && <InputsTab />}
         </>
       )}
     </div>
