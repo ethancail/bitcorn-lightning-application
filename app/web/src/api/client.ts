@@ -1021,11 +1021,24 @@ export type AutoBuyStatus = {
 
 export type ValuationZone = "extreme_buy" | "undervalued" | "fair_value" | "elevated" | "overvalued" | "extreme_sell";
 
+export type ValuationDistributionStats = {
+  mean: number;
+  std_dev: number;
+  min_z: number;
+  max_z: number;
+  min_z_date: string; // ISO yyyy-mm-dd
+  max_z_date: string;
+  n: number;
+};
+
 export type ValuationCurrent = {
   z_score: number;
   zone: ValuationZone;
   updated_at: string;
   price_usd?: number;
+  // Populated after the first cron run with ≥1 historical datapoint. Drives
+  // the Distribution Statistics panel + historical percentile hero card.
+  stats?: ValuationDistributionStats;
 };
 
 export type ValuationInput = {

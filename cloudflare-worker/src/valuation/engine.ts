@@ -6,6 +6,7 @@ import {
   saveHistory,
   saveInputs,
   type CurrentValuation,
+  type DistributionStats,
   type HistoryRow,
   type InputSnapshot,
 } from "./persist";
@@ -96,15 +97,6 @@ export async function runEngine(env: Env, ctx: EngineContext): Promise<void> {
     );
     return;
   }
-  const zone = classifyZone(currentZ);
-  const current: CurrentValuation = {
-    z_score: currentZ,
-    zone: zone.zone,
-    multiplier: zone.multiplier,
-    updated_at: ctx.nowISO,
-    price_usd: ctx.priceUsd,
-  };
-
   // 4. Per-day composite history (uses whatever adapters had a reading that day).
   const history: HistoryRow[] = [];
   const sortedDates = [...byDate.keys()].sort();
@@ -124,10 +116,51 @@ export async function runEngine(env: Env, ctx: EngineContext): Promise<void> {
     });
   }
 
-  // 5. Persist.
+  // 5. Distribution stats over the composite history — fuels the UI's
+  //    distribution-statistics panel (min/max/mean/stddev across all readings)
+  //    and is the authoritative source for the historical-percentile hero card.
+  const stats = computeDistributionStats(history);
+
+  const zone = classifyZone(currentZ);
+  const current: CurrentValuation = {
+    z_score: currentZ,
+    zone: zone.zone,
+    multiplier: zone.multiplier,
+    updated_at: ctx.nowISO,
+    price_usd: ctx.priceUsd,
+    stats,
+  };
+
+  // 6. Persist.
   await saveCurrent(env.PRICES_CACHE, current);
   await saveHistory(env.PRICES_CACHE, history);
   await saveInputs(env.PRICES_CACHE, snapshots);
+}
+
+function computeDistributionStats(history: HistoryRow[]): DistributionStats | undefined {
+  if (history.length === 0) return undefined;
+  const zs = history.map((r) => r.z_score);
+  const n = zs.length;
+  const mean = zs.reduce((a, b) => a + b, 0) / n;
+  const variance = zs.reduce((a, b) => a + (b - mean) ** 2, 0) / n;
+  const stdDev = Math.sqrt(variance);
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  let minDate = history[0].date;
+  let maxDate = history[0].date;
+  for (const row of history) {
+    if (row.z_score < minZ) { minZ = row.z_score; minDate = row.date; }
+    if (row.z_score > maxZ) { maxZ = row.z_score; maxDate = row.date; }
+  }
+  return {
+    mean,
+    std_dev: stdDev,
+    min_z: minZ,
+    max_z: maxZ,
+    min_z_date: minDate,
+    max_z_date: maxDate,
+    n,
+  };
 }
 
 function isoDate(unixSeconds: number): string {
