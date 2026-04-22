@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.11.4"
+version: "1.12.0"
 port: 3200
 
 description: >
@@ -27,6 +27,17 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.12.0: Valuation Chart visual upgrade. Replaces the horizontal zone
+  bar with a proper semicircle gauge — needle swings from Z = −3 (green,
+  Extreme Buy) through Z = 0 (neutral) to Z = +3 (red, Extreme Sell) with
+  the current value rendered in the gauge center. Adds a Zone Definitions
+  side-panel listing all six zones with their Z-ranges and DCA
+  multipliers, highlighting the current zone. Adds a Distribution
+  Statistics panel showing composite Z mean, standard deviation, min/max
+  (with dates), current Z, current multiplier, and sample size from the
+  historical series — the Worker now publishes these stats alongside
+  /valuation/current.
+
   v1.11.4: Three fixes. (1) The valuation Worker no longer publishes a
   bogus "Z=0 / Extreme Sell" state when it has no inputs to composite —
   it now leaves the previous KV value in place on a failed composite run,

@@ -4,12 +4,26 @@ export const CURRENT_KV_KEY = "valuation_current_v1";
 export const HISTORY_KV_KEY = "valuation_history_v1";
 export const INPUTS_KV_KEY = "valuation_inputs_v1";
 
+export interface DistributionStats {
+  mean: number;
+  std_dev: number;
+  min_z: number;
+  max_z: number;
+  min_z_date: string;   // ISO yyyy-mm-dd
+  max_z_date: string;
+  n: number;            // number of historical datapoints the stats span
+}
+
 export interface CurrentValuation {
   z_score: number;
   zone: Zone;
   multiplier: number;
   updated_at: string;
   price_usd: number;
+  // Optional — populated once history has ≥1 datapoint. Computed over the
+  // full composite z_score series, used by the UI's Distribution Statistics
+  // panel and the historical-percentile hero card.
+  stats?: DistributionStats;
 }
 
 export interface HistoryRow {
