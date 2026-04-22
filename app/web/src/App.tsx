@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
@@ -709,6 +709,83 @@ const POLICY_FIELDS: PolicyField[] = [
   { key: "max_daily_deploy_sats", label: "Max Daily Deploy", unit: "sats", help: "Maximum sats deployed into channels per day", min: 100000, step: 100000 },
   { key: "max_daily_loss_sats", label: "Max Daily Loss", unit: "sats", help: "Maximum sats in rebalance costs per day before automation pauses", min: 0, step: 1000 },
 ];
+
+// ─── PolicyCard ─────────────────────────────────────────────────
+// Dual-mode card used in FeePolicyPanel + CapitalPolicyPanel.
+// Read mode: large mono value with unit + interactive caret.
+// Edit mode: text input with inline-numeric comma formatting, matches
+// the existing pattern in CapitalPolicyPanel.
+
+type PolicyCardProps = {
+  id: string;
+  label: string;
+  meta: string;
+  value: number;
+  unit: string;
+  inputWidth?: number;
+  isEditing: boolean;
+  isFocused: boolean;
+  onEditRequest: (id: string) => void;
+  onValueChange: (id: string, next: number) => void;
+};
+
+function PolicyCard({
+  id, label, meta, value, unit, inputWidth = 150,
+  isEditing, isFocused, onEditRequest, onValueChange,
+}: PolicyCardProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && isFocused && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing, isFocused]);
+
+  if (isEditing) {
+    return (
+      <div className={`policy-card editing${isFocused ? " focus" : ""}`}>
+        <div>
+          <div className="policy-card-label">{label}</div>
+          <div className="policy-card-meta">{meta}</div>
+        </div>
+        <div className="policy-card-edit">
+          <input
+            ref={inputRef}
+            type="text"
+            inputMode="numeric"
+            value={value > 0 ? value.toLocaleString() : "0"}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^0-9]/g, "");
+              onValueChange(id, raw === "" ? 0 : Number(raw));
+            }}
+            style={{ width: inputWidth }}
+          />
+          <span className="unit">{unit}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="policy-card"
+      onClick={() => onEditRequest(id)}
+      aria-label={`Edit ${label}`}
+    >
+      <div>
+        <div className="policy-card-label">{label}</div>
+        <div className="policy-card-meta">{meta}</div>
+      </div>
+      <div className="policy-card-value">
+        {value.toLocaleString()}
+        <span className="unit">{unit}</span>
+        <span className="policy-card-caret">›</span>
+      </div>
+    </button>
+  );
+}
 
 function FeePolicyPanel() {
   const [baseFee, setBaseFee] = useState(1000); // msat
