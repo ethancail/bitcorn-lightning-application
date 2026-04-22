@@ -790,31 +790,70 @@ function PolicyCard({
 function FeePolicyPanel() {
   const [baseFee, setBaseFee] = useState(1000); // msat
   const [feeRate, setFeeRate] = useState(500); // ppm
+  const [loadedBaseFee, setLoadedBaseFee] = useState(1000);
+  const [loadedFeeRate, setLoadedFeeRate] = useState(500);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.getFeePolicy()
-      .then((p) => { setBaseFee(p.base_fee_msat); setFeeRate(p.fee_rate_ppm); })
+      .then((p) => {
+        setBaseFee(p.base_fee_msat); setFeeRate(p.fee_rate_ppm);
+        setLoadedBaseFee(p.base_fee_msat); setLoadedFeeRate(p.fee_rate_ppm);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  const dirtyCount =
+    (baseFee !== loadedBaseFee ? 1 : 0) + (feeRate !== loadedFeeRate ? 1 : 0);
+
+  function startEdit(fieldId: string) {
+    setFocusedField(fieldId);
+    setIsEditing(true);
+    setSaved(false);
+  }
+
+  function cancelEdit() {
+    setBaseFee(loadedBaseFee);
+    setFeeRate(loadedFeeRate);
+    setIsEditing(false);
+    setFocusedField(null);
+    setError(null);
+  }
 
   async function handleSave() {
     setSaving(true); setError(null); setSaved(false);
     try {
       const resp = await api.setFeePolicy(baseFee, feeRate) as any;
       const updated = resp?.policy ?? resp;
-      if (updated?.base_fee_msat != null) setBaseFee(updated.base_fee_msat);
-      if (updated?.fee_rate_ppm != null) setFeeRate(updated.fee_rate_ppm);
-      setDirty(false); setSaved(true);
+      const newBase = updated?.base_fee_msat ?? baseFee;
+      const newRate = updated?.fee_rate_ppm ?? feeRate;
+      setBaseFee(newBase); setFeeRate(newRate);
+      setLoadedBaseFee(newBase); setLoadedFeeRate(newRate);
+      setIsEditing(false); setFocusedField(null); setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e: any) { setError(e.message ?? "Failed to save"); }
     finally { setSaving(false); }
   }
+
+  // Esc-to-cancel while editing
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = panelRef.current;
+    if (!el) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+    };
+    el.addEventListener("keydown", handler);
+    return () => el.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing]);
 
   // Example fee for 100k payment
   const examplePayment = 100_000;
@@ -822,12 +861,33 @@ function FeePolicyPanel() {
   const pctDisplay = (feeRate / 10_000).toFixed(2);
 
   return (
-    <div className="panel ops" style={{ marginTop: 12 }}>
+    <div ref={panelRef} className="panel ops" style={{ marginTop: 12 }}>
       <div className="panel-header">
-        <span className="panel-title"><span className="icon">↗</span>Routing Fee Policy</span>
+        <span className="panel-title">
+          <span className="icon">↗</span>Routing Fee Policy
+          {isEditing && (
+            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber)", letterSpacing: "0.04em", textTransform: "none" }}>
+              · editing
+            </span>
+          )}
+        </span>
         {saved && <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--green)" }}>✓ Applied</span>}
+        {!saved && isEditing && dirtyCount > 0 && (
+          <span aria-live="polite" style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+            {dirtyCount} unsaved
+          </span>
+        )}
+        {!saved && !isEditing && !loading && (
+          <button
+            className="btn btn-sm btn-outline"
+            aria-pressed={isEditing}
+            onClick={() => startEdit("base_fee_msat")}
+          >
+            Edit
+          </button>
+        )}
       </div>
-      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {loading ? (
           <div className="loading-shimmer" style={{ height: 60, borderRadius: 6 }} />
         ) : (
@@ -836,53 +896,45 @@ function FeePolicyPanel() {
               Fee charged on every payment routed through your channels. Applied to all channels.
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: "1 1 50%" }}>
-                  <div style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Base Fee</div>
-                  <div style={{ fontSize: "0.625rem", color: "var(--text-3)" }}>Flat fee per routed payment</div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  <input
-                    type="text" inputMode="numeric" className="form-input"
-                    value={baseFee.toLocaleString()}
-                    onChange={(e) => { const v = Number(e.target.value.replace(/[^0-9]/g, "")); setBaseFee(v); setDirty(true); setSaved(false); }}
-                    style={{ fontSize: "0.8125rem", textAlign: "right", width: 100 }}
-                  />
-                  <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", minWidth: 36 }}>msat</span>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: "1 1 50%" }}>
-                  <div style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Fee Rate</div>
-                  <div style={{ fontSize: "0.625rem", color: "var(--text-3)" }}>Proportional fee per routed sat ({pctDisplay}%)</div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  <input
-                    type="text" inputMode="numeric" className="form-input"
-                    value={feeRate.toLocaleString()}
-                    onChange={(e) => { const v = Number(e.target.value.replace(/[^0-9]/g, "")); setFeeRate(v); setDirty(true); setSaved(false); }}
-                    style={{ fontSize: "0.8125rem", textAlign: "right", width: 100 }}
-                  />
-                  <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", minWidth: 36 }}>ppm</span>
-                </div>
-              </div>
-            </div>
+            <PolicyCard
+              id="base_fee_msat"
+              label="Base Fee"
+              meta="Flat fee per routed payment"
+              value={baseFee}
+              unit="msat"
+              inputWidth={120}
+              isEditing={isEditing}
+              isFocused={focusedField === "base_fee_msat"}
+              onEditRequest={startEdit}
+              onValueChange={(_id, v) => setBaseFee(v)}
+            />
+            <PolicyCard
+              id="fee_rate_ppm"
+              label="Fee Rate"
+              meta={`Proportional fee per routed sat (${pctDisplay}%)`}
+              value={feeRate}
+              unit="ppm"
+              inputWidth={120}
+              isEditing={isEditing}
+              isFocused={focusedField === "fee_rate_ppm"}
+              onEditRequest={startEdit}
+              onValueChange={(_id, v) => setFeeRate(v)}
+            />
 
             <div style={{ padding: "8px 12px", background: "var(--bg-3)", borderRadius: 6, fontSize: "0.75rem", color: "var(--text-2)" }}>
               Example: a {examplePayment.toLocaleString()} sat payment would cost the sender <strong>{exampleFee.toLocaleString()} sats</strong> in routing fees ({pctDisplay}% + {Math.round(baseFee / 1000)} sat base).
             </div>
 
             {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
-            <button
-              className="btn btn-primary"
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              style={{ alignSelf: "flex-start" }}
-            >
-              {saving ? "Applying..." : dirty ? "Apply Fee Policy" : "No Changes"}
-            </button>
+
+            {isEditing && (
+              <div className="policy-action-row">
+                <button className="btn btn-ghost btn-sm" onClick={cancelEdit} disabled={saving}>Cancel</button>
+                <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving || dirtyCount === 0}>
+                  {saving ? "Applying..." : "Save Changes"}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
