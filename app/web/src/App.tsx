@@ -830,10 +830,9 @@ function FeePolicyPanel() {
   async function handleSave() {
     setSaving(true); setError(null); setSaved(false);
     try {
-      const resp = await api.setFeePolicy(baseFee, feeRate) as any;
-      const updated = resp?.policy ?? resp;
-      const newBase = updated?.base_fee_msat ?? baseFee;
-      const newRate = updated?.fee_rate_ppm ?? feeRate;
+      const resp = await api.setFeePolicy(baseFee, feeRate);
+      const newBase = resp.base_fee_msat ?? baseFee;
+      const newRate = resp.fee_rate_ppm ?? feeRate;
       setBaseFee(newBase); setFeeRate(newRate);
       setLoadedBaseFee(newBase); setLoadedFeeRate(newRate);
       setIsEditing(false); setFocusedField(null); setSaved(true);
@@ -842,16 +841,26 @@ function FeePolicyPanel() {
     finally { setSaving(false); }
   }
 
-  // Esc-to-cancel while editing
+  // Keep a ref in sync with `saving` so the Esc handler sees the current value
+  // across its lifetime without re-binding the listener on every save state change.
+  const savingRef = useRef(saving);
+  useEffect(() => { savingRef.current = saving; }, [saving]);
+
+  // Esc-to-cancel while editing (skipped during an in-flight save)
   useEffect(() => {
     if (!isEditing) return;
     const el = panelRef.current;
     if (!el) return;
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+      if (e.key === "Escape" && !savingRef.current) {
+        e.preventDefault();
+        cancelEdit();
+      }
     };
     el.addEventListener("keydown", handler);
     return () => el.removeEventListener("keydown", handler);
+    // cancelEdit is intentionally omitted — loadedBaseFee/loadedFeeRate don't
+    // mutate during edit mode, so the captured closure is safe.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditing]);
 
@@ -880,7 +889,6 @@ function FeePolicyPanel() {
         {!saved && !isEditing && !loading && (
           <button
             className="btn btn-sm btn-outline"
-            aria-pressed={isEditing}
             onClick={() => startEdit("base_fee_msat")}
           >
             Edit
