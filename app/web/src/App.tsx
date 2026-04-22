@@ -487,7 +487,7 @@ function ChannelRolePanel() {
   ];
 
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
+    <div className="panel ops" style={{ marginTop: 12 }}>
       <div className="panel-header">
         <span className="panel-title"><span className="icon">◈</span>Channel Role</span>
         {role !== "unknown" && (
@@ -745,7 +745,7 @@ function FeePolicyPanel() {
   const pctDisplay = (feeRate / 10_000).toFixed(2);
 
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
+    <div className="panel ops" style={{ marginTop: 12 }}>
       <div className="panel-header">
         <span className="panel-title"><span className="icon">↗</span>Routing Fee Policy</span>
         {saved && <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--green)" }}>✓ Applied</span>}
@@ -853,7 +853,7 @@ function CapitalPolicyPanel() {
   }
 
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
+    <div className="panel ops" style={{ marginTop: 12 }}>
       <div className="panel-header">
         <span className="panel-title"><span className="icon">⊞</span>Capital Guardrails</span>
         {saved && <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--green)" }}>✓ Saved</span>}
