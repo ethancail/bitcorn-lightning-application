@@ -255,6 +255,113 @@ p + .settings-section-label { margin-top: 8px; }
   color: var(--amber);
 }
 
+/* ─── Settings page: policy cards (read + edit states) ───────── */
+.policy-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
+.policy-card:hover:not(.editing) {
+  border-color: var(--amber);
+  background: var(--amber-glow2);
+}
+.policy-card:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+.policy-card .policy-card-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.policy-card .policy-card-meta {
+  margin-top: 1px;
+  font-size: 0.625rem;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+.policy-card .policy-card-value {
+  font-family: var(--mono);
+  font-size: 1.0625rem;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+}
+.policy-card .policy-card-value .unit {
+  margin-left: 4px;
+  font-size: 0.625rem;
+  font-weight: 400;
+  color: var(--text-3);
+  letter-spacing: 0.04em;
+}
+.policy-card .policy-card-caret {
+  margin-left: 6px;
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+}
+
+.policy-card.editing {
+  background: var(--bg-1);
+  border-color: var(--amber);
+  cursor: default;
+}
+.policy-card.editing:hover { background: var(--bg-1); }
+.policy-card.editing.focus {
+  box-shadow: 0 0 0 2px var(--amber-glow);
+}
+.policy-card .policy-card-edit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.policy-card .policy-card-edit input {
+  font-family: var(--mono);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: var(--text);
+}
+.policy-card .policy-card-edit input:focus {
+  outline: none;
+  border-color: var(--amber-dim);
+}
+.policy-card .policy-card-edit .unit {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  color: var(--text-3);
+  min-width: 32px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.policy-action-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
 /* ─── Stat / KPI cards ─────────────────────────────────────────── */
 .stat-grid {
   display: grid;
