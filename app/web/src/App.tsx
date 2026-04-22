@@ -669,14 +669,13 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
       {isTreasury && <CapitalPolicyPanel />}
 
       {isTreasury && (
-        <div style={{ marginTop: 24, paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+        <div className="settings-footer-row">
           <button
-            className="btn btn-ghost"
+            className="btn btn-ghost btn-sm"
             onClick={() => {
               localStorage.removeItem("bitcorn_setup_done");
               navigate("/setup");
             }}
-            style={{ fontSize: "0.75rem" }}
           >
             Re-run Setup Wizard
           </button>
