@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.12.0"
+version: "1.12.1"
 port: 3200
 
 description: >
@@ -27,6 +27,17 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.12.1: Settings page polish. Splits the page into "Personal" and
+  "[ Operations ]" sections so critical operational controls visually
+  weigh more than personal preferences. Routing Fee Policy and Capital
+  Guardrails (treasury) now render as read-only instrument cards by
+  default — click Edit or any card to enter edit mode, with Cancel /
+  Save / Esc support and an "N unsaved" counter. Channel Role (member),
+  Fee Policy and Capital Guardrails gain a subtle amber border-top to
+  distinguish them from personal settings. Theme chips switch from IBM
+  Plex Mono to Sans so "Dark / Light / System" no longer reads like
+  code. No backend changes.
+
   v1.12.0: Valuation Chart visual upgrade. Replaces the horizontal zone
   bar with a proper semicircle gauge — needle swings from Z = −3 (green,
   Extreme Buy) through Z = 0 (neutral) to Z = +3 (red, Extreme Sell) with
