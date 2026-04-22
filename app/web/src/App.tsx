@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
@@ -487,7 +487,7 @@ function ChannelRolePanel() {
   ];
 
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
+    <div className="panel ops" style={{ marginTop: 12 }}>
       <div className="panel-header">
         <span className="panel-title"><span className="icon">◈</span>Channel Role</span>
         {role !== "unknown" && (
@@ -592,6 +592,8 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
         Preferences for your BitCorn node
       </p>
 
+      <div className="settings-section-label">Personal</div>
+
       <div className="panel">
         <div className="panel-header">
           <span className="panel-title"><span className="icon">◐</span>Appearance</span>
@@ -608,7 +610,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
                   border: `2px solid ${theme === opt.value ? "var(--amber)" : "var(--border)"}`,
                   background: theme === opt.value ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
                   color: theme === opt.value ? "var(--amber)" : "var(--text-3)",
-                  textAlign: "center", fontSize: "0.8125rem", fontWeight: 600, fontFamily: "var(--mono)",
+                  textAlign: "center", fontSize: "0.8125rem", fontWeight: 600, fontFamily: "var(--sans)",
                 }}
               >
                 {opt.label}
@@ -657,30 +659,29 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
         </div>
       </div>
 
+      {/* Operations section — both roles have at least one operational panel,
+          so the label is unconditional (member: Channel Role; treasury: Fee Policy + Capital Guardrails). */}
+      <div className="settings-section-label ops">[ Operations ]</div>
+
       {!isTreasury && <ChannelRolePanel />}
 
       {isTreasury && <FeePolicyPanel />}
       {isTreasury && <CapitalPolicyPanel />}
 
       {isTreasury && (
-        <div className="panel" style={{ marginTop: 12 }}>
-          <div className="panel-header">
-            <span className="panel-title"><span className="icon">⚙</span>Treasury</span>
-          </div>
-          <div className="panel-body">
-            <button
-              className="btn btn-outline"
-              onClick={() => {
-                localStorage.removeItem("bitcorn_setup_done");
-                navigate("/setup");
-              }}
-            >
-              Re-run Setup Wizard
-            </button>
-            <p style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 8 }}>
-              Resets the setup flag and walks through initial configuration again.
-            </p>
-          </div>
+        <div className="settings-footer-row">
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              localStorage.removeItem("bitcorn_setup_done");
+              navigate("/setup");
+            }}
+          >
+            Re-run Setup Wizard
+          </button>
+          <p style={{ fontSize: "0.6875rem", color: "var(--text-3)", margin: 0 }}>
+            Resets the setup flag and walks through initial configuration again.
+          </p>
         </div>
       )}
     </div>
@@ -709,34 +710,159 @@ const POLICY_FIELDS: PolicyField[] = [
   { key: "max_daily_loss_sats", label: "Max Daily Loss", unit: "sats", help: "Maximum sats in rebalance costs per day before automation pauses", min: 0, step: 1000 },
 ];
 
+// ─── PolicyCard ─────────────────────────────────────────────────
+// Dual-mode card used in FeePolicyPanel + CapitalPolicyPanel.
+// Read mode: large mono value with unit + interactive caret.
+// Edit mode: text input with inline-numeric comma formatting, matches
+// the existing pattern in CapitalPolicyPanel.
+
+type PolicyCardProps = {
+  id: string;
+  label: string;
+  meta: string;
+  value: number;
+  unit: string;
+  inputWidth?: number;
+  isEditing: boolean;
+  isFocused: boolean;
+  onEditRequest: (id: string) => void;
+  onValueChange: (id: string, next: number) => void;
+};
+
+function PolicyCard({
+  id, label, meta, value, unit, inputWidth = 150,
+  isEditing, isFocused, onEditRequest, onValueChange,
+}: PolicyCardProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && isFocused && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing, isFocused]);
+
+  if (isEditing) {
+    return (
+      <div className={`policy-card editing${isFocused ? " focus" : ""}`}>
+        <div>
+          <div className="policy-card-label">{label}</div>
+          <div className="policy-card-meta">{meta}</div>
+        </div>
+        <div className="policy-card-edit">
+          <input
+            ref={inputRef}
+            type="text"
+            inputMode="numeric"
+            value={value > 0 ? value.toLocaleString() : "0"}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/[^0-9]/g, "");
+              onValueChange(id, raw === "" ? 0 : Number(raw));
+            }}
+            style={{ width: inputWidth }}
+          />
+          <span className="unit">{unit}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      className="policy-card"
+      onClick={() => onEditRequest(id)}
+      aria-label={`Edit ${label}`}
+    >
+      <div>
+        <div className="policy-card-label">{label}</div>
+        <div className="policy-card-meta">{meta}</div>
+      </div>
+      <div className="policy-card-value">
+        {value.toLocaleString()}
+        <span className="unit">{unit}</span>
+        <span className="policy-card-caret">›</span>
+      </div>
+    </button>
+  );
+}
+
 function FeePolicyPanel() {
   const [baseFee, setBaseFee] = useState(1000); // msat
   const [feeRate, setFeeRate] = useState(500); // ppm
+  const [loadedBaseFee, setLoadedBaseFee] = useState(1000);
+  const [loadedFeeRate, setLoadedFeeRate] = useState(500);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.getFeePolicy()
-      .then((p) => { setBaseFee(p.base_fee_msat); setFeeRate(p.fee_rate_ppm); })
+      .then((p) => {
+        setBaseFee(p.base_fee_msat); setFeeRate(p.fee_rate_ppm);
+        setLoadedBaseFee(p.base_fee_msat); setLoadedFeeRate(p.fee_rate_ppm);
+      })
       .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
+  const dirtyCount =
+    (baseFee !== loadedBaseFee ? 1 : 0) + (feeRate !== loadedFeeRate ? 1 : 0);
+
+  function startEdit(fieldId: string) {
+    setFocusedField(fieldId);
+    setIsEditing(true);
+    setSaved(false);
+  }
+
+  function cancelEdit() {
+    setBaseFee(loadedBaseFee);
+    setFeeRate(loadedFeeRate);
+    setIsEditing(false);
+    setFocusedField(null);
+    setError(null);
+  }
+
   async function handleSave() {
     setSaving(true); setError(null); setSaved(false);
     try {
-      const resp = await api.setFeePolicy(baseFee, feeRate) as any;
-      const updated = resp?.policy ?? resp;
-      if (updated?.base_fee_msat != null) setBaseFee(updated.base_fee_msat);
-      if (updated?.fee_rate_ppm != null) setFeeRate(updated.fee_rate_ppm);
-      setDirty(false); setSaved(true);
+      const resp = await api.setFeePolicy(baseFee, feeRate);
+      const newBase = resp.base_fee_msat ?? baseFee;
+      const newRate = resp.fee_rate_ppm ?? feeRate;
+      setBaseFee(newBase); setFeeRate(newRate);
+      setLoadedBaseFee(newBase); setLoadedFeeRate(newRate);
+      setIsEditing(false); setFocusedField(null); setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e: any) { setError(e.message ?? "Failed to save"); }
     finally { setSaving(false); }
   }
+
+  // Keep a ref in sync with `saving` so the Esc handler sees the current value
+  // across its lifetime without re-binding the listener on every save state change.
+  const savingRef = useRef(saving);
+  useEffect(() => { savingRef.current = saving; }, [saving]);
+
+  // Esc-to-cancel while editing (skipped during an in-flight save)
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = panelRef.current;
+    if (!el) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !savingRef.current) {
+        e.preventDefault();
+        cancelEdit();
+      }
+    };
+    el.addEventListener("keydown", handler);
+    return () => el.removeEventListener("keydown", handler);
+    // cancelEdit is intentionally omitted — loadedBaseFee/loadedFeeRate don't
+    // mutate during edit mode, so the captured closure is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing]);
 
   // Example fee for 100k payment
   const examplePayment = 100_000;
@@ -744,12 +870,32 @@ function FeePolicyPanel() {
   const pctDisplay = (feeRate / 10_000).toFixed(2);
 
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
+    <div ref={panelRef} className="panel ops" style={{ marginTop: 12 }}>
       <div className="panel-header">
-        <span className="panel-title"><span className="icon">↗</span>Routing Fee Policy</span>
+        <span className="panel-title">
+          <span className="icon">↗</span>Routing Fee Policy
+          {isEditing && (
+            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber)", letterSpacing: "0.04em", textTransform: "none" }}>
+              · editing
+            </span>
+          )}
+        </span>
         {saved && <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--green)" }}>✓ Applied</span>}
+        {!saved && isEditing && dirtyCount > 0 && (
+          <span aria-live="polite" style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+            {dirtyCount} unsaved
+          </span>
+        )}
+        {!saved && !isEditing && !loading && (
+          <button
+            className="btn btn-sm btn-outline"
+            onClick={() => startEdit("base_fee_msat")}
+          >
+            Edit
+          </button>
+        )}
       </div>
-      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {loading ? (
           <div className="loading-shimmer" style={{ height: 60, borderRadius: 6 }} />
         ) : (
@@ -758,53 +904,45 @@ function FeePolicyPanel() {
               Fee charged on every payment routed through your channels. Applied to all channels.
             </p>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: "1 1 50%" }}>
-                  <div style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Base Fee</div>
-                  <div style={{ fontSize: "0.625rem", color: "var(--text-3)" }}>Flat fee per routed payment</div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  <input
-                    type="text" inputMode="numeric" className="form-input"
-                    value={baseFee.toLocaleString()}
-                    onChange={(e) => { const v = Number(e.target.value.replace(/[^0-9]/g, "")); setBaseFee(v); setDirty(true); setSaved(false); }}
-                    style={{ fontSize: "0.8125rem", textAlign: "right", width: 100 }}
-                  />
-                  <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", minWidth: 36 }}>msat</span>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: "1 1 50%" }}>
-                  <div style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Fee Rate</div>
-                  <div style={{ fontSize: "0.625rem", color: "var(--text-3)" }}>Proportional fee per routed sat ({pctDisplay}%)</div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                  <input
-                    type="text" inputMode="numeric" className="form-input"
-                    value={feeRate.toLocaleString()}
-                    onChange={(e) => { const v = Number(e.target.value.replace(/[^0-9]/g, "")); setFeeRate(v); setDirty(true); setSaved(false); }}
-                    style={{ fontSize: "0.8125rem", textAlign: "right", width: 100 }}
-                  />
-                  <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", minWidth: 36 }}>ppm</span>
-                </div>
-              </div>
-            </div>
+            <PolicyCard
+              id="base_fee_msat"
+              label="Base Fee"
+              meta="Flat fee per routed payment"
+              value={baseFee}
+              unit="msat"
+              inputWidth={120}
+              isEditing={isEditing}
+              isFocused={focusedField === "base_fee_msat"}
+              onEditRequest={startEdit}
+              onValueChange={(_id, v) => setBaseFee(v)}
+            />
+            <PolicyCard
+              id="fee_rate_ppm"
+              label="Fee Rate"
+              meta={`Proportional fee per routed sat (${pctDisplay}%)`}
+              value={feeRate}
+              unit="ppm"
+              inputWidth={120}
+              isEditing={isEditing}
+              isFocused={focusedField === "fee_rate_ppm"}
+              onEditRequest={startEdit}
+              onValueChange={(_id, v) => setFeeRate(v)}
+            />
 
             <div style={{ padding: "8px 12px", background: "var(--bg-3)", borderRadius: 6, fontSize: "0.75rem", color: "var(--text-2)" }}>
               Example: a {examplePayment.toLocaleString()} sat payment would cost the sender <strong>{exampleFee.toLocaleString()} sats</strong> in routing fees ({pctDisplay}% + {Math.round(baseFee / 1000)} sat base).
             </div>
 
             {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
-            <button
-              className="btn btn-primary"
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              style={{ alignSelf: "flex-start" }}
-            >
-              {saving ? "Applying..." : dirty ? "Apply Fee Policy" : "No Changes"}
-            </button>
+
+            {isEditing && (
+              <div className="policy-action-row">
+                <button className="btn btn-ghost btn-sm" onClick={cancelEdit} disabled={saving}>Cancel</button>
+                <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving || dirtyCount === 0}>
+                  {saving ? "Applying..." : "Save Changes"}
+                </button>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -814,35 +952,54 @@ function FeePolicyPanel() {
 
 function CapitalPolicyPanel() {
   const [policy, setPolicy] = useState<Record<string, number> | null>(null);
+  const [loadedPolicy, setLoadedPolicy] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.getCapitalPolicy()
-      .then((p) => { setPolicy(p as unknown as Record<string, number>); setLoading(false); })
+      .then((p) => {
+        const rec = p as unknown as Record<string, number>;
+        setPolicy(rec); setLoadedPolicy(rec);
+        setLoading(false);
+      })
       .catch((e: Error) => { setError(e.message); setLoading(false); });
   }, []);
+
+  const dirtyCount = policy && loadedPolicy
+    ? POLICY_FIELDS.reduce((n, f) => n + ((policy[f.key] ?? 0) !== (loadedPolicy[f.key] ?? 0) ? 1 : 0), 0)
+    : 0;
+
+  function startEdit(fieldId: string) {
+    setFocusedField(fieldId);
+    setIsEditing(true);
+    setSaved(false);
+  }
+
+  function cancelEdit() {
+    if (loadedPolicy) setPolicy(loadedPolicy);
+    setIsEditing(false); setFocusedField(null); setError(null);
+  }
 
   function handleChange(key: string, value: number) {
     if (!policy) return;
     setPolicy({ ...policy, [key]: value });
-    setDirty(true);
     setSaved(false);
   }
 
   async function handleSave() {
     if (!policy) return;
-    setSaving(true);
-    setError(null);
-    setSaved(false);
+    setSaving(true); setError(null); setSaved(false);
     try {
       const updated = await api.setCapitalPolicy(policy as any);
-      setPolicy(updated as unknown as Record<string, number>);
-      setDirty(false);
-      setSaved(true);
+      const rec = updated as unknown as Record<string, number>;
+      setPolicy(rec); setLoadedPolicy(rec);
+      setIsEditing(false); setFocusedField(null); setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e: any) {
       setError(e.message ?? "Failed to save");
@@ -851,15 +1008,58 @@ function CapitalPolicyPanel() {
     }
   }
 
+  // Keep a ref in sync with `saving` so the Esc handler sees the current value
+  // without re-binding the listener on every save state change.
+  const savingRef = useRef(saving);
+  useEffect(() => { savingRef.current = saving; }, [saving]);
+
+  // Esc-to-cancel while editing (skipped during an in-flight save)
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = panelRef.current;
+    if (!el) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !savingRef.current) {
+        e.preventDefault();
+        cancelEdit();
+      }
+    };
+    el.addEventListener("keydown", handler);
+    return () => el.removeEventListener("keydown", handler);
+    // cancelEdit is intentionally omitted — loadedPolicy doesn't mutate
+    // during edit mode, so the captured closure is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing]);
+
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
+    <div ref={panelRef} className="panel ops" style={{ marginTop: 12 }}>
       <div className="panel-header">
-        <span className="panel-title"><span className="icon">⊞</span>Capital Guardrails</span>
+        <span className="panel-title">
+          <span className="icon">⊞</span>Capital Guardrails
+          {isEditing && (
+            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber)", letterSpacing: "0.04em", textTransform: "none" }}>
+              · editing
+            </span>
+          )}
+        </span>
         {saved && <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--green)" }}>✓ Saved</span>}
+        {!saved && isEditing && dirtyCount > 0 && (
+          <span aria-live="polite" style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+            {dirtyCount} unsaved
+          </span>
+        )}
+        {!saved && !isEditing && !loading && policy && (
+          <button
+            className="btn btn-sm btn-outline"
+            onClick={() => startEdit(POLICY_FIELDS[0].key)}
+          >
+            Edit
+          </button>
+        )}
       </div>
-      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {loading ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="loading-shimmer" style={{ height: 48, borderRadius: 6 }} />
             ))}
@@ -868,47 +1068,36 @@ function CapitalPolicyPanel() {
           <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>
         ) : policy ? (
           <>
-            <p className="text-dim" style={{ fontSize: "0.75rem", lineHeight: 1.5, marginBottom: 4 }}>
+            <p className="text-dim" style={{ fontSize: "0.75rem", lineHeight: 1.5, margin: 0, marginBottom: 2 }}>
               Enforced before every channel open.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {POLICY_FIELDS.map((f) => {
-                const val = policy[f.key] ?? 0;
-                return (
-                  <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ flex: "1 1 50%", minWidth: 0 }}>
-                      <div style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--text)" }}>{f.label}</div>
-                      <div style={{ fontSize: "0.625rem", color: "var(--text-3)", lineHeight: 1.3 }}>{f.help}</div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="form-input"
-                        value={val > 0 ? val.toLocaleString() : "0"}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/[^0-9]/g, "");
-                          handleChange(f.key, raw === "" ? 0 : Number(raw));
-                        }}
-                        style={{ fontSize: "0.8125rem", textAlign: "right", width: 130 }}
-                      />
-                      <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", minWidth: 52 }}>
-                        {f.unit === "ppm (parts per million)" ? "ppm" : f.unit}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+
+            {POLICY_FIELDS.map((f) => (
+              <PolicyCard
+                key={f.key}
+                id={f.key}
+                label={f.label}
+                meta={f.help}
+                value={policy[f.key] ?? 0}
+                unit={f.unit === "ppm (parts per million)" ? "ppm" : f.unit}
+                inputWidth={150}
+                isEditing={isEditing}
+                isFocused={focusedField === f.key}
+                onEditRequest={startEdit}
+                onValueChange={handleChange}
+              />
+            ))}
+
             {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
-            <button
-              className="btn btn-primary"
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              style={{ alignSelf: "flex-start" }}
-            >
-              {saving ? "Saving..." : dirty ? "Save Changes" : "No Changes"}
-            </button>
+
+            {isEditing && (
+              <div className="policy-action-row">
+                <button className="btn btn-ghost btn-sm" onClick={cancelEdit} disabled={saving}>Cancel</button>
+                <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving || dirtyCount === 0}>
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            )}
           </>
         ) : null}
       </div>
