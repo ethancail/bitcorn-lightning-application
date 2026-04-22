@@ -238,8 +238,8 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
   background: linear-gradient(to right, var(--amber) 0%, var(--border) 100%);
   opacity: 0.6;
 }
-/* First label in the stack has less top margin */
-.settings-section-label:first-child { margin-top: 8px; }
+/* First label in the stack has less top margin (subtitle paragraph precedes it) */
+p + .settings-section-label { margin-top: 8px; }
 
 /* ─── Stat / KPI cards ─────────────────────────────────────────── */
 .stat-grid {
