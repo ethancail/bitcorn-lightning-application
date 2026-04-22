@@ -241,6 +241,20 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
 /* First label in the stack has less top margin (subtitle paragraph precedes it) */
 p + .settings-section-label { margin-top: 8px; }
 
+/* ─── Settings page: operational panel variant ────────────────── */
+.panel.ops {
+  border-top: 2px solid var(--amber);
+}
+.panel.ops .panel-header {
+  background: color-mix(in srgb, var(--amber) 6%, var(--bg-2));
+}
+.panel.ops .panel-title {
+  color: var(--amber-dim);
+}
+.panel.ops .panel-title .icon {
+  color: var(--amber);
+}
+
 /* ─── Stat / KPI cards ─────────────────────────────────────────── */
 .stat-grid {
   display: grid;
