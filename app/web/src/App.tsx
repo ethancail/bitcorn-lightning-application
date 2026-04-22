@@ -952,35 +952,54 @@ function FeePolicyPanel() {
 
 function CapitalPolicyPanel() {
   const [policy, setPolicy] = useState<Record<string, number> | null>(null);
+  const [loadedPolicy, setLoadedPolicy] = useState<Record<string, number> | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     api.getCapitalPolicy()
-      .then((p) => { setPolicy(p as unknown as Record<string, number>); setLoading(false); })
+      .then((p) => {
+        const rec = p as unknown as Record<string, number>;
+        setPolicy(rec); setLoadedPolicy(rec);
+        setLoading(false);
+      })
       .catch((e: Error) => { setError(e.message); setLoading(false); });
   }, []);
+
+  const dirtyCount = policy && loadedPolicy
+    ? POLICY_FIELDS.reduce((n, f) => n + ((policy[f.key] ?? 0) !== (loadedPolicy[f.key] ?? 0) ? 1 : 0), 0)
+    : 0;
+
+  function startEdit(fieldId: string) {
+    setFocusedField(fieldId);
+    setIsEditing(true);
+    setSaved(false);
+  }
+
+  function cancelEdit() {
+    if (loadedPolicy) setPolicy(loadedPolicy);
+    setIsEditing(false); setFocusedField(null); setError(null);
+  }
 
   function handleChange(key: string, value: number) {
     if (!policy) return;
     setPolicy({ ...policy, [key]: value });
-    setDirty(true);
     setSaved(false);
   }
 
   async function handleSave() {
     if (!policy) return;
-    setSaving(true);
-    setError(null);
-    setSaved(false);
+    setSaving(true); setError(null); setSaved(false);
     try {
       const updated = await api.setCapitalPolicy(policy as any);
-      setPolicy(updated as unknown as Record<string, number>);
-      setDirty(false);
-      setSaved(true);
+      const rec = updated as unknown as Record<string, number>;
+      setPolicy(rec); setLoadedPolicy(rec);
+      setIsEditing(false); setFocusedField(null); setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (e: any) {
       setError(e.message ?? "Failed to save");
@@ -989,15 +1008,58 @@ function CapitalPolicyPanel() {
     }
   }
 
+  // Keep a ref in sync with `saving` so the Esc handler sees the current value
+  // without re-binding the listener on every save state change.
+  const savingRef = useRef(saving);
+  useEffect(() => { savingRef.current = saving; }, [saving]);
+
+  // Esc-to-cancel while editing (skipped during an in-flight save)
+  useEffect(() => {
+    if (!isEditing) return;
+    const el = panelRef.current;
+    if (!el) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !savingRef.current) {
+        e.preventDefault();
+        cancelEdit();
+      }
+    };
+    el.addEventListener("keydown", handler);
+    return () => el.removeEventListener("keydown", handler);
+    // cancelEdit is intentionally omitted — loadedPolicy doesn't mutate
+    // during edit mode, so the captured closure is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditing]);
+
   return (
-    <div className="panel ops" style={{ marginTop: 12 }}>
+    <div ref={panelRef} className="panel ops" style={{ marginTop: 12 }}>
       <div className="panel-header">
-        <span className="panel-title"><span className="icon">⊞</span>Capital Guardrails</span>
+        <span className="panel-title">
+          <span className="icon">⊞</span>Capital Guardrails
+          {isEditing && (
+            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber)", letterSpacing: "0.04em", textTransform: "none" }}>
+              · editing
+            </span>
+          )}
+        </span>
         {saved && <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--green)" }}>✓ Saved</span>}
+        {!saved && isEditing && dirtyCount > 0 && (
+          <span aria-live="polite" style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+            {dirtyCount} unsaved
+          </span>
+        )}
+        {!saved && !isEditing && !loading && policy && (
+          <button
+            className="btn btn-sm btn-outline"
+            onClick={() => startEdit(POLICY_FIELDS[0].key)}
+          >
+            Edit
+          </button>
+        )}
       </div>
-      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {loading ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className="loading-shimmer" style={{ height: 48, borderRadius: 6 }} />
             ))}
@@ -1006,47 +1068,36 @@ function CapitalPolicyPanel() {
           <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>
         ) : policy ? (
           <>
-            <p className="text-dim" style={{ fontSize: "0.75rem", lineHeight: 1.5, marginBottom: 4 }}>
+            <p className="text-dim" style={{ fontSize: "0.75rem", lineHeight: 1.5, margin: 0, marginBottom: 2 }}>
               Enforced before every channel open.
             </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {POLICY_FIELDS.map((f) => {
-                const val = policy[f.key] ?? 0;
-                return (
-                  <div key={f.key} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ flex: "1 1 50%", minWidth: 0 }}>
-                      <div style={{ fontSize: "0.8125rem", fontWeight: 500, color: "var(--text)" }}>{f.label}</div>
-                      <div style={{ fontSize: "0.625rem", color: "var(--text-3)", lineHeight: 1.3 }}>{f.help}</div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        className="form-input"
-                        value={val > 0 ? val.toLocaleString() : "0"}
-                        onChange={(e) => {
-                          const raw = e.target.value.replace(/[^0-9]/g, "");
-                          handleChange(f.key, raw === "" ? 0 : Number(raw));
-                        }}
-                        style={{ fontSize: "0.8125rem", textAlign: "right", width: 130 }}
-                      />
-                      <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", minWidth: 52 }}>
-                        {f.unit === "ppm (parts per million)" ? "ppm" : f.unit}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+
+            {POLICY_FIELDS.map((f) => (
+              <PolicyCard
+                key={f.key}
+                id={f.key}
+                label={f.label}
+                meta={f.help}
+                value={policy[f.key] ?? 0}
+                unit={f.unit === "ppm (parts per million)" ? "ppm" : f.unit}
+                inputWidth={150}
+                isEditing={isEditing}
+                isFocused={focusedField === f.key}
+                onEditRequest={startEdit}
+                onValueChange={handleChange}
+              />
+            ))}
+
             {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
-            <button
-              className="btn btn-primary"
-              onClick={handleSave}
-              disabled={saving || !dirty}
-              style={{ alignSelf: "flex-start" }}
-            >
-              {saving ? "Saving..." : dirty ? "Save Changes" : "No Changes"}
-            </button>
+
+            {isEditing && (
+              <div className="policy-action-row">
+                <button className="btn btn-ghost btn-sm" onClick={cancelEdit} disabled={saving}>Cancel</button>
+                <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving || dirtyCount === 0}>
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            )}
           </>
         ) : null}
       </div>
