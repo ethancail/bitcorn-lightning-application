@@ -209,7 +209,11 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
     { to: "/liquidity", icon: "≋", label: "Liquidity" },
     { to: "/swaps", icon: "⟲", label: "Swaps" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
-    { to: "/valuation-input", icon: "◐", label: "Valuation Inputs" },
+    // DCA_HIDE (v1.13.0): Valuation Inputs link hidden while the DCA/
+    // valuation UI is paused. The route still exists (see <Routes>
+    // block) so it's reachable via direct URL if needed. To restore:
+    // uncomment the next line.
+    // { to: "/valuation-input", icon: "◐", label: "Valuation Inputs" },
   ];
 
   return (
