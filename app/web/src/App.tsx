@@ -592,6 +592,8 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
         Preferences for your BitCorn node
       </p>
 
+      <div className="settings-section-label">Personal</div>
+
       <div className="panel">
         <div className="panel-header">
           <span className="panel-title"><span className="icon">◐</span>Appearance</span>
@@ -608,7 +610,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
                   border: `2px solid ${theme === opt.value ? "var(--amber)" : "var(--border)"}`,
                   background: theme === opt.value ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
                   color: theme === opt.value ? "var(--amber)" : "var(--text-3)",
-                  textAlign: "center", fontSize: "0.8125rem", fontWeight: 600, fontFamily: "var(--mono)",
+                  textAlign: "center", fontSize: "0.8125rem", fontWeight: 600, fontFamily: "var(--sans)",
                 }}
               >
                 {opt.label}
@@ -657,30 +659,30 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
         </div>
       </div>
 
+      {/* Operations section — both roles have at least one operational panel,
+          so the label is unconditional (member: Channel Role; treasury: Fee Policy + Capital Guardrails). */}
+      <div className="settings-section-label ops">[ Operations ]</div>
+
       {!isTreasury && <ChannelRolePanel />}
 
       {isTreasury && <FeePolicyPanel />}
       {isTreasury && <CapitalPolicyPanel />}
 
       {isTreasury && (
-        <div className="panel" style={{ marginTop: 12 }}>
-          <div className="panel-header">
-            <span className="panel-title"><span className="icon">⚙</span>Treasury</span>
-          </div>
-          <div className="panel-body">
-            <button
-              className="btn btn-outline"
-              onClick={() => {
-                localStorage.removeItem("bitcorn_setup_done");
-                navigate("/setup");
-              }}
-            >
-              Re-run Setup Wizard
-            </button>
-            <p style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 8 }}>
-              Resets the setup flag and walks through initial configuration again.
-            </p>
-          </div>
+        <div style={{ marginTop: 24, paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 4 }}>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              localStorage.removeItem("bitcorn_setup_done");
+              navigate("/setup");
+            }}
+            style={{ fontSize: "0.75rem" }}
+          >
+            Re-run Setup Wizard
+          </button>
+          <p style={{ fontSize: "0.6875rem", color: "var(--text-3)", margin: 0 }}>
+            Resets the setup flag and walks through initial configuration again.
+          </p>
         </div>
       )}
     </div>
