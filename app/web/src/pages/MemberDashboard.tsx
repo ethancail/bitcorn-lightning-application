@@ -432,8 +432,40 @@ export default function MemberDashboard() {
         </p>
       </div>
 
-      <NodeBalancePanel />
-      <FundNodePanel />
+      <div className="dashboard-top-strip fade-in">
+        <div className="bal-group">
+          <div className="bal-item">
+            <span className="bal-label">On-chain</span>
+            <span className="bal-value">
+              {balances ? balances.onchain_sats.toLocaleString() : "—"}
+              <span className="unit">sats</span>
+            </span>
+          </div>
+          <div className="bal-item">
+            <span className="bal-label">Channel</span>
+            <span className="bal-value">
+              {balances ? balances.lightning_sats.toLocaleString() : "—"}
+              <span className="unit">sats</span>
+            </span>
+          </div>
+          <div className="bal-item">
+            <span className="bal-label">Total</span>
+            <span className="bal-value">
+              {balances ? balances.total_sats.toLocaleString() : "—"}
+              <span className="unit">sats</span>
+            </span>
+          </div>
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={handleFund}
+          disabled={fundLoading}
+        >
+          {fundLoading ? "Opening…" : "Fund Node →"}
+        </button>
+        {fundError && <div className="fund-error">{fundError}</div>}
+      </div>
+
       <BitcoinPriceGraph />
 
 
