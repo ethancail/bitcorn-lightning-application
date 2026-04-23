@@ -419,6 +419,22 @@ p + .settings-section-label { margin-top: 8px; }
   margin-top: 4px;
 }
 
+/* ─── Member Dashboard: compressed status row ─────────── */
+.member-status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 0.8125rem;
+}
+.member-status-row .lbl {
+  color: var(--text-3);
+}
+
 /* ─── Stat / KPI cards ─────────────────────────────────────────── */
 .stat-grid {
   display: grid;
