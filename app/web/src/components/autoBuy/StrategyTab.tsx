@@ -1,6 +1,6 @@
 // app/web/src/components/autoBuy/StrategyTab.tsx
 import { useEffect, useRef, useState } from "react";
-import { api, type AutoBuyStatus, type AutoBuyZoneMultipliers, type ValuationCurrent, type ValuationZone } from "../../api/client";
+import { api, type AutoBuyStatus, type AutoBuyZoneMultipliers, type ValuationCurrent } from "../../api/client";
 import HistoryTable from "./HistoryTable";
 import CoinbaseCard from "./CoinbaseCard";
 
@@ -20,6 +20,11 @@ const ZONE_ORDER: Array<{ key: keyof AutoBuyZoneMultipliers; label: string }> = 
 ];
 
 export default function StrategyTab({ status, valuation, onRefresh }: Props) {
+  // DCA_HIDE (v1.13.0): `valuation` is still fetched by parent for the
+  // backend's zone-multiplier lookup, but no longer rendered. Retain the
+  // prop so un-hiding is a reversal of this patch without a type change.
+  void valuation;
+
   if (!status?.config) {
     return (
       <div className="panel"><div className="panel-body">
@@ -29,30 +34,28 @@ export default function StrategyTab({ status, valuation, onRefresh }: Props) {
   }
   const cfg = status.config;
 
-  // Next-buy banner
-  const currentMultiplier = valuation ? cfg.zone_multipliers[valuation.zone as ValuationZone] ?? 0 : 0;
-  const nextBuyUsd = Math.round(cfg.base_unit_usd * currentMultiplier * 100) / 100;
+  // Flat DCA preview: base_unit × 1.0 (zone multipliers default to Fair
+  // Value = 1x until un-hidden and tuned by operator). Accurate given the
+  // hidden UI — the backend uses whatever multipliers are stored.
+  const nextBuyUsd = cfg.base_unit_usd;
 
   return (
     <div>
       <MasterControl status={status} onRefresh={onRefresh} />
 
-      {/* Summary banner */}
-      <div className="panel" style={{ marginBottom: 16, background: "var(--panel)", borderLeft: `4px solid ${nextBuyUsd > 0 ? "var(--green)" : "var(--text-dim)"}` }}>
+      {/* Summary banner — simplified for v1.13.0 DCA_HIDE. Previously referenced
+          Z-score and zone multiplier; now just shows the configured base unit
+          and the cadence. Restore the old copy when un-hiding DCA. */}
+      <div className="panel" style={{ marginBottom: 16, background: "var(--panel)", borderLeft: "4px solid var(--green)" }}>
         <div className="panel-body">
-          <div style={{ fontSize: "0.875rem", color: "var(--text-dim)", marginBottom: 4 }}>At current Z-score</div>
+          <div style={{ fontSize: "0.875rem", color: "var(--text-dim)", marginBottom: 4 }}>Next scheduled buy</div>
           <div style={{ fontSize: "1.25rem" }}>
-            {valuation ? (
-              <>If base = <strong>${cfg.base_unit_usd.toFixed(2)}</strong> the next buy is <strong>${nextBuyUsd.toFixed(2)}</strong> (zone: {valuation.zone}, {currentMultiplier}×)</>
-            ) : (
-              <em className="text-dim">Valuation not loaded — next-buy calculation unavailable.</em>
-            )}
+            <strong>${nextBuyUsd.toFixed(2)}</strong> every {cfg.frequency}
           </div>
         </div>
       </div>
 
-      {/* Multipliers editor */}
-      <MultipliersEditor config={cfg} onSaved={onRefresh} />
+      <StrategyEditor config={cfg} onSaved={onRefresh} />
 
       <HistoryTable />
       <CoinbaseCard status={status} onRefresh={onRefresh} />
@@ -60,7 +63,12 @@ export default function StrategyTab({ status, valuation, onRefresh }: Props) {
   );
 }
 
-function MultipliersEditor({ config, onSaved }: { config: NonNullable<AutoBuyStatus["config"]>; onSaved: () => Promise<unknown> }) {
+// DCA_HIDE (v1.13.0): was `MultipliersEditor`. Renamed to `StrategyEditor`
+// and the zone multipliers grid is hidden in the render (state + save logic
+// retained so the backend's zone_multipliers row stays populated and the
+// scheduler continues to work). To un-hide: revert the JSX block around the
+// `DCA_HIDE: zone multipliers` marker below.
+function StrategyEditor({ config, onSaved }: { config: NonNullable<AutoBuyStatus["config"]>; onSaved: () => Promise<unknown> }) {
   const [baseUnit, setBaseUnit] = useState(String(config.base_unit_usd));
   const [frequency, setFrequency] = useState(config.frequency);
   const [mult, setMult] = useState<AutoBuyZoneMultipliers>(config.zone_multipliers);
@@ -139,21 +147,30 @@ function MultipliersEditor({ config, onSaved }: { config: NonNullable<AutoBuySta
           </label>
         </div>
 
-        <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Zone Buy Multipliers</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
-          {ZONE_ORDER.map(({ key, label }) => (
-            <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-              <span className="text-dim" style={{ fontSize: "0.75rem" }}>{label}</span>
-              <input
-                type="number"
-                step="0.25"
-                min="0"
-                value={mult[key]}
-                onChange={(e) => setMult({ ...mult, [key]: Number(e.target.value) })}
-              />
-            </label>
-          ))}
-        </div>
+        {/* DCA_HIDE (v1.13.0): zone multipliers grid — restore when DCA
+            valuation UI is re-enabled. State + save of `mult` is retained
+            above so the backend's zone_multipliers field stays populated
+            with whatever the database currently has (defaults to the
+            Fair-Value-centered curve, all buys effectively 1× base_unit
+            while hidden). To restore:
+            <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Zone Buy Multipliers</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 16 }}>
+              {ZONE_ORDER.map(({ key, label }) => (
+                <label key={key} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <span className="text-dim" style={{ fontSize: "0.75rem" }}>{label}</span>
+                  <input
+                    type="number"
+                    step="0.25"
+                    min="0"
+                    value={mult[key]}
+                    onChange={(e) => setMult({ ...mult, [key]: Number(e.target.value) })}
+                  />
+                </label>
+              ))}
+            </div>
+        */}
+        {/* Suppress unused-var warning while the multipliers editor UI is hidden. */}
+        {(() => { void mult; void setMult; void ZONE_ORDER; return null; })()}
 
         <button onClick={handleSave} disabled={saving}>{saving ? "Saving…" : "Save Strategy"}</button>
       </div>
