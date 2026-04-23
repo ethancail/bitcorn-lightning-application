@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { api, type TreasuryMetrics, type TreasuryAlert } from "../api/client";
-import NodeBalancePanel from "../components/NodeBalancePanel";
-import FundNodePanel from "../components/FundNodePanel";
+import { api, type TreasuryMetrics, type TreasuryAlert, type NodeBalances } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import ValuationInputAlertBanner from "../components/ValuationInputAlertBanner";
 
@@ -16,10 +14,19 @@ function sats(n: number) {
   return String(n);
 }
 
+function formatSigned(n: number): { text: string; cls: "positive" | "negative" | "neutral" } {
+  if (n > 0) return { text: `+${n.toLocaleString()}`, cls: "positive" };
+  if (n < 0) return { text: `−${Math.abs(n).toLocaleString()}`, cls: "negative" };
+  return { text: "0", cls: "neutral" };
+}
+
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<TreasuryMetrics | null>(null);
   const [alerts, setAlerts] = useState<TreasuryAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [balances, setBalances] = useState<NodeBalances | null>(null);
+  const [fundLoading, setFundLoading] = useState(false);
+  const [fundError, setFundError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.allSettled([
@@ -40,6 +47,33 @@ export default function Dashboard() {
     }, 60_000);
     return () => clearInterval(id);
   }, []);
+
+  // Balance polling (replaces <NodeBalancePanel />)
+  useEffect(() => {
+    api.getNodeBalances().then(setBalances).catch(() => {});
+    const id = setInterval(() => {
+      api.getNodeBalances().then(setBalances).catch(() => {});
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function handleFund() {
+    setFundLoading(true);
+    setFundError(null);
+    try {
+      const { url } = await api.getCoinbaseOnrampUrl();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      const msg = e?.message ?? "failed";
+      setFundError(
+        msg === "coinbase_not_configured"
+          ? "Coinbase Onramp is not configured on this node."
+          : msg,
+      );
+    } finally {
+      setFundLoading(false);
+    }
+  }
 
   const m24 = metrics?.last_24h;
   const mAll = metrics?.all_time;
