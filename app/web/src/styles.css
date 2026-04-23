@@ -885,6 +885,7 @@ input[type="number"] {
 .wizard-card {
   background: var(--bg-1);
   border: 1px solid var(--border);
+  border-top: 2px solid var(--amber);
   border-radius: 12px;
   width: 100%;
   max-width: 560px;
@@ -894,6 +895,7 @@ input[type="number"] {
 .wizard-header {
   padding: 28px 32px 24px;
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--amber) 6%, var(--bg-2));
 }
 
 .wizard-brand {
