@@ -151,14 +151,39 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Treasury Revenue ──────────────────────────────────────── */}
-      <div className="panel fade-in" style={{ marginBottom: 16 }}>
+      {/* ── Treasury Revenue (Briefing Room: panel.ops + hero + policy cards) ── */}
+      <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
         <div className="panel-header">
           <span className="panel-title"><span className="icon">◈</span>Treasury Revenue</span>
           {!loading && activeAlerts.length === 0 && (
             <span className="badge badge-green">All systems healthy</span>
           )}
         </div>
+        {!loading && metrics && (() => {
+          const net24 = formatSigned(m24?.net_sats ?? 0);
+          const netAll = formatSigned(mAll?.net_sats ?? 0);
+          return (
+            <div className="revenue-hero">
+              <span
+                className={`revenue-hero-num ${net24.cls}`}
+                aria-label={`24 hour net revenue: ${
+                  net24.cls === "positive" ? "plus " : net24.cls === "negative" ? "minus " : ""
+                }${Math.abs(m24?.net_sats ?? 0).toLocaleString()} sats`}
+              >
+                {net24.text}
+              </span>
+              <span className="revenue-hero-caption">sats · 24h net</span>
+              <span
+                className="revenue-hero-alltime"
+                aria-label={`all time net revenue: ${
+                  netAll.cls === "positive" ? "plus " : netAll.cls === "negative" ? "minus " : ""
+                }${Math.abs(mAll?.net_sats ?? 0).toLocaleString()} sats`}
+              >
+                ALL-TIME {netAll.text} sats
+              </span>
+            </div>
+          );
+        })()}
         <div className="panel-body">
           {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -167,57 +192,33 @@ export default function Dashboard() {
           ) : !metrics ? (
             <div className="empty-state">Unable to load treasury metrics.</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* Revenue table */}
-              <div style={{ overflowX: "auto" }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th></th>
-                      <th style={{ textAlign: "right" }}>Last 24h</th>
-                      <th style={{ textAlign: "right" }}>All Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style={{ fontWeight: 500 }}>Forwarding Fees</td>
-                      <td className="td-num td-mono" style={{ color: "var(--green)" }}>
-                        +{fmt(m24?.forwarded_fees_sats ?? 0)}
-                      </td>
-                      <td className="td-num td-mono" style={{ color: "var(--green)" }}>
-                        +{fmt(mAll?.forwarded_fees_sats ?? 0)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style={{ fontWeight: 500 }}>Rebalance Costs</td>
-                      <td className="td-num td-mono" style={{ color: "var(--red)" }}>
-                        -{fmt(Math.abs(m24?.rebalance_costs_sats ?? 0))}
-                      </td>
-                      <td className="td-num td-mono" style={{ color: "var(--red)" }}>
-                        -{fmt(Math.abs(mAll?.rebalance_costs_sats ?? 0))}
-                      </td>
-                    </tr>
-                    <tr style={{ borderTop: "2px solid var(--border)" }}>
-                      <td style={{ fontWeight: 600 }}>Net Revenue</td>
-                      <td className="td-num td-mono" style={{
-                        fontWeight: 600,
-                        color: (m24?.net_sats ?? 0) >= 0 ? "var(--green)" : "var(--red)",
-                      }}>
-                        {(m24?.net_sats ?? 0) >= 0 ? "+" : ""}{fmt(m24?.net_sats ?? 0)}
-                      </td>
-                      <td className="td-num td-mono" style={{
-                        fontWeight: 600,
-                        color: (mAll?.net_sats ?? 0) >= 0 ? "var(--green)" : "var(--red)",
-                      }}>
-                        {(mAll?.net_sats ?? 0) >= 0 ? "+" : ""}{fmt(mAll?.net_sats ?? 0)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="policy-card" style={{ cursor: "default" }}>
+                <div>
+                  <div className="policy-card-label">Forwarding fees</div>
+                  <div className="policy-card-meta">
+                    24h · earned on routed payments · all-time {formatSigned(mAll?.forwarded_fees_sats ?? 0).text}
+                  </div>
+                </div>
+                <div className="policy-card-value" style={{ color: "var(--green)" }}>
+                  {formatSigned(m24?.forwarded_fees_sats ?? 0).text}
+                  <span className="unit">sats</span>
+                </div>
+              </div>
+              <div className="policy-card" style={{ cursor: "default" }}>
+                <div>
+                  <div className="policy-card-label">Rebalance costs</div>
+                  <div className="policy-card-meta">
+                    24h · paid to Loop Out / circular rebalance · all-time {formatSigned(-Math.abs(mAll?.rebalance_costs_sats ?? 0)).text}
+                  </div>
+                </div>
+                <div className="policy-card-value" style={{ color: "var(--red)" }}>
+                  {formatSigned(-Math.abs(m24?.rebalance_costs_sats ?? 0)).text}
+                  <span className="unit">sats</span>
+                </div>
               </div>
 
-              {/* Capital stats */}
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
                 <div className="stat-card" style={{ flex: "1 1 140px" }}>
                   <div className="stat-label">Capital Deployed</div>
                   <div className="stat-value" style={{ fontSize: "1.125rem" }}>
