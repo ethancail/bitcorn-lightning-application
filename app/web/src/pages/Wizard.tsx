@@ -16,20 +16,26 @@ function truncPubkey(pk: string) {
 }
 
 function StepLine({ current, total }: { current: number; total: number }) {
-  const labels = ["Node", "Identity", "Base Fee", "Policy", "Confirm"];
+  const labels = ["Detect node", "Base fee rate", "Capital guardrails", "Review & launch"];
   return (
-    <div>
-      <div className="wizard-step-line">
-        {Array.from({ length: total }).map((_, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", flex: i < total - 1 ? 1 : 0 }}>
-            <div
-              className={`wizard-step-dot ${i < current ? "done" : i === current ? "active" : ""}`}
-            />
-            {i < total - 1 && <div className="wizard-step-connector" />}
+    <div className="wizard-step-rail" role="list">
+      {labels.slice(0, total).map((label, i) => {
+        const state = i < current ? "done" : i === current ? "active" : "future";
+        const num = String(i + 1).padStart(2, "0");
+        return (
+          <div
+            key={label}
+            className={`wizard-rail-item ${state}`}
+            role="listitem"
+            aria-current={state === "active" ? "step" : undefined}
+            aria-label={state === "done" ? `${label} — complete` : undefined}
+          >
+            <span className="num">{num}</span>
+            <span className="dot" />
+            <span className="lbl">{label}</span>
           </div>
-        ))}
-      </div>
-      <div className="wizard-step-label">{`Step ${current + 1} of ${total} — ${labels[current]}`}</div>
+        );
+      })}
     </div>
   );
 }
@@ -544,7 +550,7 @@ export default function Wizard() {
             <span className="wizard-brand-mark">BITCORN LIGHTNING</span>
             <span className="topbar-tag">SETUP</span>
           </div>
-          <StepLine current={step} total={5} />
+          <StepLine current={step} total={4} />
         </div>
 
         <div className="wizard-body">{screens[step]}</div>
