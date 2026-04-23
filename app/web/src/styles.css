@@ -389,6 +389,8 @@ p + .settings-section-label { margin-top: 8px; }
   gap: 24px;
   font-family: var(--mono);
   flex-wrap: wrap;
+  justify-content: space-between;
+  flex: 1;
 }
 .dashboard-top-strip .bal-item {
   display: flex;
