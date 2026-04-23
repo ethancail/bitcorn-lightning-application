@@ -6,9 +6,8 @@ import {
   type TreasuryInfo,
   type MemberLiquidityStatusResponse,
   type PendingChannel,
+  type NodeBalances,
 } from "../api/client";
-import NodeBalancePanel from "../components/NodeBalancePanel";
-import FundNodePanel from "../components/FundNodePanel";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 
 const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
@@ -335,6 +334,9 @@ export default function MemberDashboard() {
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
   const [usdRate, setUsdRate] = useState<number | null>(null);
   const [pendingTreasuryChannel, setPendingTreasuryChannel] = useState(false);
+  const [balances, setBalances] = useState<NodeBalances | null>(null);
+  const [fundLoading, setFundLoading] = useState(false);
+  const [fundError, setFundError] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -376,6 +378,33 @@ export default function MemberDashboard() {
   useEffect(() => {
     api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
   }, []);
+
+  // Balance polling (replaces <NodeBalancePanel />)
+  useEffect(() => {
+    api.getNodeBalances().then(setBalances).catch(() => {});
+    const id = setInterval(() => {
+      api.getNodeBalances().then(setBalances).catch(() => {});
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function handleFund() {
+    setFundLoading(true);
+    setFundError(null);
+    try {
+      const { url } = await api.getCoinbaseOnrampUrl();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      const msg = e?.message ?? "failed";
+      setFundError(
+        msg === "coinbase_not_configured"
+          ? "Coinbase Onramp is not configured on this node."
+          : msg,
+      );
+    } finally {
+      setFundLoading(false);
+    }
+  }
 
   const ch = stats?.treasury_channel;
   const fees = stats?.forwarded_fees;
