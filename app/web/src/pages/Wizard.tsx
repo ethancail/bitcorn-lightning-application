@@ -470,15 +470,14 @@ export default function Wizard() {
         patch_.feeRatePpm = fee.fee_rate_ppm;
       }
       if (capital) {
-        const c = capital as unknown as Record<string, number>;
-        if (c.min_onchain_reserve_sats > 0) {
-          patch_.minOnchainReserveSats = c.min_onchain_reserve_sats;
+        if (capital.min_onchain_reserve_sats > 0) {
+          patch_.minOnchainReserveSats = capital.min_onchain_reserve_sats;
         }
-        if (c.max_deploy_ratio_ppm > 0) {
-          patch_.maxDeployRatioPct = Math.round(c.max_deploy_ratio_ppm / 10000);
+        if (capital.max_deploy_ratio_ppm > 0) {
+          patch_.maxDeployRatioPct = Math.round(capital.max_deploy_ratio_ppm / 10000);
         }
-        if (c.max_daily_loss_sats > 0) {
-          patch_.maxDailyLossSats = c.max_daily_loss_sats;
+        if (capital.max_daily_loss_sats > 0) {
+          patch_.maxDailyLossSats = capital.max_daily_loss_sats;
         }
       }
       if (Object.keys(patch_).length > 0) {
