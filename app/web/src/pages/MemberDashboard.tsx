@@ -470,16 +470,14 @@ export default function MemberDashboard() {
 
 
 
-      {/* Membership status */}
-      <div className="panel fade-in" style={{ marginBottom: 16 }}>
-        <div className="panel-body" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ color: "var(--text-3)", fontSize: "0.875rem" }}>Membership status</span>
-          {loading ? (
-            <div className="loading-shimmer" style={{ height: 20, width: 120 }} />
-          ) : (
-            <span className={`badge ${badge.cls}`}>{badge.text}</span>
-          )}
-        </div>
+      {/* Membership status — compressed row */}
+      <div className="member-status-row">
+        <span className="lbl">Membership status</span>
+        {loading ? (
+          <div className="loading-shimmer" style={{ height: 20, width: 120 }} />
+        ) : (
+          <span className={`badge ${badge.cls}`}>{badge.text}</span>
+        )}
       </div>
 
       {/* Channel — pending opening, connect CTA, or earnings panel */}
