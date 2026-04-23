@@ -317,51 +317,69 @@ function Screen4({
   saving: boolean;
   error: string | null;
 }) {
-  const rows: Array<{ label: string; value: string }> = [
-    { label: "Hub Pubkey (reference)", value: truncPubkey(data.detectedPubkey) },
-    { label: "Base Fee Rate", value: `${data.feeRatePpm} ppm` },
-    { label: "Min On-Chain Reserve", value: `${data.minOnchainReserveSats.toLocaleString()} sats` },
-    { label: "Max Deploy Ratio", value: `${data.maxDeployRatioPct}%` },
-    { label: "Max Daily Loss Cap", value: `${data.maxDailyLossSats.toLocaleString()} sats` },
+  // Hub pubkey is displayed as a single smaller reference card above
+  // the policy cards (no unit, truncated mono value).
+  const policyCards: Array<{ label: string; meta: string; value: string; unit: string }> = [
+    {
+      label: "Base Fee Rate",
+      meta: "Routing fee (ppm)",
+      value: data.feeRatePpm.toLocaleString(),
+      unit: "ppm",
+    },
+    {
+      label: "Min On-Chain Reserve",
+      meta: "Floor for automated opens",
+      value: data.minOnchainReserveSats.toLocaleString(),
+      unit: "sats",
+    },
+    {
+      label: "Max Deploy Ratio",
+      meta: "Share of funds deployable",
+      value: String(data.maxDeployRatioPct),
+      unit: "%",
+    },
+    {
+      label: "Max Daily Loss Cap",
+      meta: "Pauses automation if exceeded",
+      value: data.maxDailyLossSats.toLocaleString(),
+      unit: "sats",
+    },
   ];
 
   return (
     <div className="wizard-screen fade-in">
-      <div className="wizard-title">Confirm & Launch</div>
-      <div className="wizard-subtitle">Review the configuration before writing it to the node.</div>
+      <div className="wizard-title">Review &amp; Launch</div>
+      <div className="wizard-subtitle">
+        Review the configuration before writing it to the node. All values are editable later under Settings.
+      </div>
 
-      <div
-        style={{
-          background: "var(--bg-2)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius)",
-          overflow: "hidden",
-        }}
-      >
-        {rows.map((row, i) => (
-          <div
-            key={row.label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "11px 16px",
-              borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none",
-            }}
-          >
-            <span className="form-label" style={{ marginBottom: 0 }}>{row.label}</span>
-            <span
-              className="mono"
-              style={{ color: "var(--amber)", fontSize: "0.875rem" }}
-            >
-              {row.value}
-            </span>
+      <div className="policy-card" style={{ cursor: "default", marginBottom: 8 }}>
+        <div>
+          <div className="policy-card-label">Hub Pubkey</div>
+          <div className="policy-card-meta">Reference — set via <code style={{ fontFamily: "var(--mono)" }}>TREASURY_PUBKEY</code> env var</div>
+        </div>
+        <div className="policy-card-value">
+          {truncPubkey(data.detectedPubkey)}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {policyCards.map((card) => (
+          <div key={card.label} className="policy-card" style={{ cursor: "default" }}>
+            <div>
+              <div className="policy-card-label">{card.label}</div>
+              <div className="policy-card-meta">{card.meta}</div>
+            </div>
+            <div className="policy-card-value">
+              {card.value}
+              <span className="unit">{card.unit}</span>
+            </div>
           </div>
         ))}
       </div>
 
       {error && (
-        <div className="alert critical">
+        <div className="alert critical" style={{ marginTop: 12 }}>
           <span className="alert-icon">✕</span>
           <div className="alert-body">
             <div className="alert-msg">{error}</div>
