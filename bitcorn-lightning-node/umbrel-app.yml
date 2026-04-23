@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.2"
+version: "1.13.3"
 port: 3200
 
 description: >
@@ -27,6 +27,14 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.3: Treasury Dashboard polish. Collapses the top-of-page
+  balances and Fund-Node CTA into a single compact row. Revenue
+  panel gains a big hero net-24h number with explicit +/- sign, and
+  the forwarding-fees / rebalance-costs rows use the Briefing Room
+  policy-card vocabulary from the Settings and Wizard pages. All-time
+  values surface inline in each card's meta line. Bitcoin price chart
+  shrunk from 220px to 120px (y-axis still shown). No backend changes.
+
   v1.13.2: Member Dashboard polish. Compact top strip (on-chain /
   channel / total balances + Fund Node CTA inline, matching treasury).
   Role-aware channel panel gains Briefing Room chrome (amber border-top
