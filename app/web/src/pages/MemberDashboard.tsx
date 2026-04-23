@@ -482,7 +482,7 @@ export default function MemberDashboard() {
 
       {/* Channel — pending opening, connect CTA, or earnings panel */}
       {noChannel && pendingTreasuryChannel && (
-        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
           <div className="panel-header">
             <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
           </div>
@@ -500,7 +500,7 @@ export default function MemberDashboard() {
         </div>
       )}
       {noChannel && !pendingTreasuryChannel && (
-        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
           <div className="panel-header">
             <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
           </div>
@@ -511,7 +511,7 @@ export default function MemberDashboard() {
       )}
 
       {loading && (
-        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
           <div className="panel-header">
             <span className="panel-title"><span className="icon">◈</span>Your Earnings</span>
           </div>
@@ -568,7 +568,7 @@ export default function MemberDashboard() {
 
         return (
           <>
-            <div className="panel fade-in" style={{ marginBottom: 16 }}>
+            <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
               <div className="panel-header">
                 <span className="panel-title">
                   <span className="icon">◈</span>{panelTitle}
@@ -690,7 +690,7 @@ export default function MemberDashboard() {
 
             {/* Upgrade banner when navigated from Channels page */}
             {upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
-              <div className="panel fade-in" style={{ marginBottom: 16 }}>
+              <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
                 <div className="panel-body">
                   <div className="alert info" style={{ marginBottom: 0 }}>
                     <span className="alert-icon">⚠</span>
@@ -712,7 +712,7 @@ export default function MemberDashboard() {
 
       {/* Forwarded fees — only show once they have / had a channel */}
       {(hasChannel || (fees && fees.total_sats > 0)) && (
-        <div className="panel fade-in">
+        <div className="panel ops fade-in">
           <div className="panel-header">
             <span className="panel-title">
               <span className="icon">↗</span>Forwarded Fees Earned
