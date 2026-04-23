@@ -158,82 +158,9 @@ function Screen1({
   );
 }
 
-// ─── Screen 2: Treasury Identity ─────────────────────────────────────────
+// ─── Screen 2: Base Fee Rate ──────────────────────────────────────────────
 
 function Screen2({
-  data,
-  onChange,
-  onNext,
-  onBack,
-}: {
-  data: WizardData;
-  onChange: (v: Partial<WizardData>) => void;
-  onNext: () => void;
-  onBack: () => void;
-}) {
-  return (
-    <div className="wizard-screen fade-in">
-      <div className="wizard-title">Treasury Identity</div>
-      <div className="wizard-subtitle">Set the pubkey that identifies this hub node.</div>
-
-      <div className="form-group">
-        <label className="form-label">Detected Node Pubkey</label>
-        <input
-          className="form-input"
-          readOnly
-          value={data.detectedPubkey}
-        />
-        <span className="form-helper">Auto-detected from your LND node.</span>
-      </div>
-
-      <div
-        style={{
-          background: "var(--bg-2)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius)",
-          padding: "14px 16px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
-      >
-        <div className="form-label">Treasury Hub Pubkey</div>
-        <div
-          className="mono"
-          style={{ color: "var(--amber)", fontSize: "0.8125rem", wordBreak: "break-all" }}
-        >
-          {data.detectedPubkey || "—"}
-        </div>
-        <div className="form-helper">
-          This is your node's pubkey. Set <code style={{ color: "var(--amber)", fontFamily: "var(--mono)" }}>TREASURY_PUBKEY</code> to
-          this value in your Umbrel app environment settings. Once set, all treasury
-          endpoints will be gated to this node.
-        </div>
-      </div>
-
-      <div className="alert info" style={{ marginTop: 4 }}>
-        <span className="alert-icon">ℹ</span>
-        <div className="alert-body">
-          <div className="alert-msg">
-            <code style={{ fontFamily: "var(--mono)" }}>TREASURY_PUBKEY</code> is an environment variable managed by Umbrel — it cannot be
-            changed from the UI. Configure it in the Umbrel app settings before proceeding.
-          </div>
-        </div>
-      </div>
-
-      <div className="wizard-footer" style={{ borderRadius: "0 0 12px 12px" }}>
-        <button className="btn btn-ghost" onClick={onBack}>← Back</button>
-        <button className="btn btn-primary" onClick={onNext}>
-          Next →
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Screen 3: Base Fee Rate ──────────────────────────────────────────────
-
-function Screen3({
   data,
   onChange,
   onNext,
@@ -310,9 +237,9 @@ function Screen3({
   );
 }
 
-// ─── Screen 4: Capital Policy ─────────────────────────────────────────────
+// ─── Screen 3: Capital Policy ─────────────────────────────────────────────
 
-function Screen4({
+function Screen3({
   data,
   onChange,
   onNext,
@@ -375,9 +302,9 @@ function Screen4({
   );
 }
 
-// ─── Screen 5: Confirmation ───────────────────────────────────────────────
+// ─── Screen 4: Confirmation ───────────────────────────────────────────────
 
-function Screen5({
+function Screen4({
   data,
   onBack,
   onConfirm,
@@ -542,10 +469,9 @@ export default function Wizard() {
     />,
     <Screen2 data={data} onChange={patch} onNext={() => setStep(2)} onBack={() => setStep(0)} />,
     <Screen3 data={data} onChange={patch} onNext={() => setStep(3)} onBack={() => setStep(1)} />,
-    <Screen4 data={data} onChange={patch} onNext={() => setStep(4)} onBack={() => setStep(2)} />,
-    <Screen5
+    <Screen4
       data={data}
-      onBack={() => setStep(3)}
+      onBack={() => setStep(2)}
       onConfirm={handleConfirm}
       saving={saving}
       error={saveError}
