@@ -372,6 +372,53 @@ p + .settings-section-label { margin-top: 8px; }
   gap: 4px;
 }
 
+/* ─── Treasury Dashboard: compact top strip ─────────────── */
+.dashboard-top-strip {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 12px;
+}
+.dashboard-top-strip .bal-group {
+  display: flex;
+  gap: 24px;
+  font-family: var(--mono);
+  flex-wrap: wrap;
+}
+.dashboard-top-strip .bal-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.dashboard-top-strip .bal-label {
+  font-size: 0.625rem;
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.dashboard-top-strip .bal-value {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.dashboard-top-strip .bal-value .unit {
+  font-size: 0.625rem;
+  color: var(--text-3);
+  font-weight: 400;
+  margin-left: 3px;
+}
+.dashboard-top-strip .fund-error {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--red);
+  margin-top: 4px;
+}
+
 /* ─── Stat / KPI cards ─────────────────────────────────────────── */
 .stat-grid {
   display: grid;
