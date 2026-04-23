@@ -534,7 +534,9 @@ export default function Wizard() {
           <div className="wizard-brand">
             <span style={{ fontSize: "1.25rem" }}>⚡</span>
             <span className="wizard-brand-mark">BITCORN LIGHTNING</span>
-            <span className="topbar-tag">SETUP</span>
+            <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber-dim)", letterSpacing: "0.04em" }}>
+              · first-run setup
+            </span>
           </div>
           <StepLine current={step} total={4} />
         </div>
