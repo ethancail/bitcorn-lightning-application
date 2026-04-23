@@ -4,7 +4,6 @@ import { api, type NodeInfo } from "../api/client";
 
 type WizardData = {
   detectedPubkey: string;
-  treasuryPubkey: string;
   feeRatePpm: number;
   minOnchainReserveSats: number;
   maxDeployRatioPct: number;
@@ -487,7 +486,6 @@ export default function Wizard() {
 
   const [data, setData] = useState<WizardData>({
     detectedPubkey: "",
-    treasuryPubkey: "",
     feeRatePpm: 500,
     minOnchainReserveSats: 100000,
     maxDeployRatioPct: 80,
@@ -523,7 +521,7 @@ export default function Wizard() {
   const screens = [
     <Screen1
       onNext={() => setStep(1)}
-      onNodeDetected={(pk) => patch({ detectedPubkey: pk, treasuryPubkey: pk })}
+      onNodeDetected={(pk) => patch({ detectedPubkey: pk })}
     />,
     <Screen2 data={data} onChange={patch} onNext={() => setStep(2)} onBack={() => setStep(0)} />,
     <Screen3 data={data} onChange={patch} onNext={() => setStep(3)} onBack={() => setStep(1)} />,
