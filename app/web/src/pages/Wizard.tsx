@@ -438,6 +438,37 @@ export default function Wizard() {
 
   const patch = (v: Partial<WizardData>) => setData((d) => ({ ...d, ...v }));
 
+  // On mount, if a prior policy exists (re-entry via Settings → Re-run
+  // Setup Wizard), pre-populate inputs from it. On first install the
+  // API may return zeros/defaults, in which case we fall back to the
+  // hardcoded defaults above.
+  useEffect(() => {
+    Promise.all([
+      api.getFeePolicy().catch(() => null),
+      api.getCapitalPolicy().catch(() => null),
+    ]).then(([fee, capital]) => {
+      const patch_: Partial<WizardData> = {};
+      if (fee && fee.fee_rate_ppm > 0) {
+        patch_.feeRatePpm = fee.fee_rate_ppm;
+      }
+      if (capital) {
+        const c = capital as unknown as Record<string, number>;
+        if (c.min_onchain_reserve_sats > 0) {
+          patch_.minOnchainReserveSats = c.min_onchain_reserve_sats;
+        }
+        if (c.max_deploy_ratio_ppm > 0) {
+          patch_.maxDeployRatioPct = Math.round(c.max_deploy_ratio_ppm / 10000);
+        }
+        if (c.max_daily_loss_sats > 0) {
+          patch_.maxDailyLossSats = c.max_daily_loss_sats;
+        }
+      }
+      if (Object.keys(patch_).length > 0) {
+        setData((d) => ({ ...d, ...patch_ }));
+      }
+    });
+  }, []);
+
   const handleConfirm = async () => {
     setSaving(true);
     setSaveError(null);
