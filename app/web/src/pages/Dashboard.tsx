@@ -79,6 +79,8 @@ export default function Dashboard() {
   const mAll = metrics?.all_time;
   const cap = metrics?.capital_efficiency;
   const liq = metrics?.liquidity.channels_total;
+  const net24 = metrics ? formatSigned(m24?.net_sats ?? 0) : null;
+  const netAll = metrics ? formatSigned(mAll?.net_sats ?? 0) : null;
 
   // Filter out VALUATION_MANUAL_STALE — it has its own dedicated banner with a
   // "Enter now →" link, so skipping it from the generic list avoids double-render.
@@ -159,31 +161,27 @@ export default function Dashboard() {
             <span className="badge badge-green">All systems healthy</span>
           )}
         </div>
-        {!loading && metrics && (() => {
-          const net24 = formatSigned(m24?.net_sats ?? 0);
-          const netAll = formatSigned(mAll?.net_sats ?? 0);
-          return (
-            <div className="revenue-hero">
-              <span
-                className={`revenue-hero-num ${net24.cls}`}
-                aria-label={`24 hour net revenue: ${
-                  net24.cls === "positive" ? "plus " : net24.cls === "negative" ? "minus " : ""
-                }${Math.abs(m24?.net_sats ?? 0).toLocaleString()} sats`}
-              >
-                {net24.text}
-              </span>
-              <span className="revenue-hero-caption">sats · 24h net</span>
-              <span
-                className="revenue-hero-alltime"
-                aria-label={`all time net revenue: ${
-                  netAll.cls === "positive" ? "plus " : netAll.cls === "negative" ? "minus " : ""
-                }${Math.abs(mAll?.net_sats ?? 0).toLocaleString()} sats`}
-              >
-                ALL-TIME {netAll.text} sats
-              </span>
-            </div>
-          );
-        })()}
+        {!loading && net24 && netAll && (
+          <div className="revenue-hero">
+            <span
+              className={`revenue-hero-num ${net24.cls}`}
+              aria-label={`24 hour net revenue: ${
+                net24.cls === "positive" ? "plus " : net24.cls === "negative" ? "minus " : ""
+              }${Math.abs(m24?.net_sats ?? 0).toLocaleString()} sats`}
+            >
+              {net24.text}
+            </span>
+            <span className="revenue-hero-caption">sats · 24h net</span>
+            <span
+              className="revenue-hero-alltime"
+              aria-label={`all time net revenue: ${
+                netAll.cls === "positive" ? "plus " : netAll.cls === "negative" ? "minus " : ""
+              }${Math.abs(mAll?.net_sats ?? 0).toLocaleString()} sats`}
+            >
+              ALL-TIME {netAll.text} sats
+            </span>
+          </div>
+        )}
         <div className="panel-body">
           {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
