@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.0"
+version: "1.13.1"
 port: 3200
 
 description: >
@@ -27,6 +27,14 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.1: Wizard polish. Trims first-run setup from 5 steps to 4 by
+  folding the TREASURY_PUBKEY env-var reminder inline into the Node
+  Detection step. New vertical step rail shows all step names at once.
+  Applies the same amber border-top chrome used on the Settings page's
+  operational panels, and renders the Review screen as read-state
+  policy cards. Re-running setup from Settings now pre-populates from
+  your current live policy instead of resetting to defaults.
+
   v1.13.0: Auto-Buy DCA surface hidden while the underlying data-feed
   question is resolved. Glassnode's institutional quote came in at $13k
   /year — too steep to justify for 8 metrics. The Auto-Buy page now shows
