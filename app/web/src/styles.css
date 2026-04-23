@@ -885,6 +885,7 @@ input[type="number"] {
 .wizard-card {
   background: var(--bg-1);
   border: 1px solid var(--border);
+  border-top: 2px solid var(--amber);
   border-radius: 12px;
   width: 100%;
   max-width: 560px;
@@ -894,6 +895,7 @@ input[type="number"] {
 .wizard-header {
   padding: 28px 32px 24px;
   border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--amber) 6%, var(--bg-2));
 }
 
 .wizard-brand {
@@ -911,37 +913,53 @@ input[type="number"] {
   letter-spacing: 0.03em;
 }
 
-.wizard-step-line {
+/* Vertical step rail (replaces horizontal dots in Guided Ledger polish) */
+.wizard-step-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wizard-rail-item {
   display: flex;
   align-items: center;
-  gap: 0;
+  gap: 10px;
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  padding: 5px 0;
 }
-
-.wizard-step-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--border-hi);
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.wizard-step-dot.done    { background: var(--amber-dim); }
-.wizard-step-dot.active  { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
-
-.wizard-step-connector {
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
-.wizard-step-label {
+.wizard-rail-item .num {
   font-family: var(--mono);
   font-size: 0.6875rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 700;
+  width: 18px;
+  text-align: right;
   color: var(--text-3);
-  margin-top: 8px;
+}
+.wizard-rail-item .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.wizard-rail-item .lbl {
+  color: var(--text-3);
+}
+.wizard-rail-item.done .num { color: var(--amber-dim); }
+.wizard-rail-item.done .dot { background: var(--amber-dim); }
+.wizard-rail-item.done .lbl {
+  color: var(--text-3);
+  text-decoration: line-through;
+  text-decoration-color: var(--text-3);
+}
+.wizard-rail-item.active .num { color: var(--amber); }
+.wizard-rail-item.active .dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px var(--amber-glow);
+}
+.wizard-rail-item.active .lbl {
+  color: var(--text);
+  font-weight: 600;
 }
 
 .wizard-body { padding: 28px 32px; }
