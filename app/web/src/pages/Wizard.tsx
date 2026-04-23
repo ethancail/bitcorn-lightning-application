@@ -133,6 +133,17 @@ function Screen1({
         </div>
       )}
 
+      {!loading && node && (
+        <div className="alert info" style={{ marginTop: 12 }}>
+          <span className="alert-icon">ℹ</span>
+          <div className="alert-body">
+            <div className="alert-msg">
+              <code style={{ fontFamily: "var(--mono)" }}>TREASURY_PUBKEY</code> is an environment variable managed by Umbrel — it cannot be changed from the UI. Set it to the pubkey above in your Umbrel app settings before proceeding.
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="wizard-footer" style={{ borderRadius: "0 0 12px 12px" }}>
         <span />
         <button
