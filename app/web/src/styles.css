@@ -913,39 +913,6 @@ input[type="number"] {
   letter-spacing: 0.03em;
 }
 
-.wizard-step-line {
-  display: flex;
-  align-items: center;
-  gap: 0;
-}
-
-.wizard-step-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--border-hi);
-  transition: all 0.2s;
-  flex-shrink: 0;
-}
-
-.wizard-step-dot.done    { background: var(--amber-dim); }
-.wizard-step-dot.active  { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-glow); }
-
-.wizard-step-connector {
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
-.wizard-step-label {
-  font-family: var(--mono);
-  font-size: 0.6875rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-top: 8px;
-}
-
 /* Vertical step rail (replaces horizontal dots in Guided Ledger polish) */
 .wizard-step-rail {
   display: flex;
