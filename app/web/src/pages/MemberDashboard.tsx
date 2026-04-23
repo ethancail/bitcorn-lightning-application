@@ -548,6 +548,10 @@ export default function MemberDashboard() {
           ? (localPct >= 85 ? "var(--red)" : localPct >= 70 ? "var(--amber)" : "var(--green)")
           : (gaugePct < 15 ? "var(--red)" : gaugePct < 30 ? "var(--amber)" : "var(--green)");
 
+        // Hero value color: role-aware, same urgency logic as the gauge.
+        // Unknown role stays neutral (no signal when we don't know the context).
+        const heroColor = role === "unknown" ? "var(--text)" : gaugeColor;
+
         // Hero number
         const heroLabel = isMerchant ? "Available to send" : isFarmer ? "Available to withdraw" : "Your balance";
         const heroSats = ch!.local_sats;
@@ -578,37 +582,34 @@ export default function MemberDashboard() {
                 </span>
               </div>
               <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Hero number */}
-                <div style={{ textAlign: "center", padding: "8px 0" }}>
-                  <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
-                    {heroLabel}
+                {/* Hero number — role-aware color */}
+                <div className="member-hero">
+                  <div className="lbl">{heroLabel}</div>
+                  <div
+                    className="val"
+                    style={{ color: heroColor }}
+                    aria-label={`${heroLabel}: ${heroSats.toLocaleString()} sats`}
+                  >
+                    {heroSats.toLocaleString()}<span className="unit">sats</span>
                   </div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: "2rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
-                    {heroSats.toLocaleString()} <span style={{ fontSize: "0.875rem", color: "var(--text-3)", fontWeight: 400 }}>sats</span>
-                  </div>
-                  {toUsd(heroSats) && (
-                    <div style={{ fontFamily: "var(--mono)", fontSize: "1rem", color: "var(--text-2)", marginTop: 2 }}>
-                      {toUsd(heroSats)}
-                    </div>
-                  )}
+                  {toUsd(heroSats) && <div className="usd">{toUsd(heroSats)}</div>}
                 </div>
 
-                {/* Capacity gauge */}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: "0.75rem", color: "var(--text-3)" }}>
+                {/* Capacity gauge — role-aware color, ARIA progressbar */}
+                <div
+                  className="member-gauge"
+                  role="progressbar"
+                  aria-valuenow={gaugePct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={gaugeLabel}
+                >
+                  <div className="labels">
                     <span>{gaugeLabel}</span>
                     <span>{gaugeRemaining}</span>
                   </div>
-                  <div style={{ height: 8, borderRadius: 4, background: "var(--bg-3)", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${gaugePct}%`,
-                        background: gaugeColor,
-                        borderRadius: 4,
-                        transition: "width 0.3s ease",
-                      }}
-                    />
+                  <div className="bar">
+                    <div className="fill" style={{ width: `${gaugePct}%`, background: gaugeColor }} />
                   </div>
                 </div>
 
@@ -643,15 +644,15 @@ export default function MemberDashboard() {
 
                 {/* Farmer: withdraw action */}
                 {isFarmer && ch!.local_sats >= 250_000 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div className="member-action">
                     <button
                       className="btn btn-primary"
                       style={{ width: "100%" }}
-                      onClick={() => navigate(isFarmer ? cashOutUrl : refillUrl)}
+                      onClick={() => navigate(cashOutUrl)}
                     >
-                      {isFarmer ? "Cash Out Earnings →" : "Refill Channel →"}
+                      Cash Out Earnings →
                     </button>
-                    <div style={{ textAlign: "center", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+                    <div className="caption">
                       Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
                       {toUsd(estWithdrawalFee) && ` (${toUsd(estWithdrawalFee)})`}
                     </div>
