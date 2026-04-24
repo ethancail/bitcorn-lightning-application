@@ -833,6 +833,15 @@ p + .settings-section-label { margin-top: 8px; }
 .data-table tr.negative-roi td { background: rgba(239,68,68,0.04); }
 .data-table tr.negative-roi:hover td { background: rgba(239,68,68,0.08); }
 
+/* ─── Channels page: lane table polish (scoped to .panel.ops) ─── */
+.panel.ops .data-table th {
+  padding: 6px 10px;
+  letter-spacing: 0.06em;
+}
+.panel.ops .data-table td {
+  padding: 7px 10px;
+}
+
 .td-mono {
   font-family: var(--mono);
   font-size: 0.75rem;
