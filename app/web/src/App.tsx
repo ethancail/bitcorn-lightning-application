@@ -1710,7 +1710,7 @@ function ChannelsPage() {
             {/* All lane tables use: Name(auto) | Capacity(90px) | Detail(120px) | Gauge(140px) | State(110px) | Action(80px) */}
 
             {/* ── Merchant Lanes ──────────────────────────────────────── */}
-            <div className="panel fade-in" style={{ marginBottom: 16 }}>
+            <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
               <div className="panel-header">
                 <span className="panel-title"><span className="icon">↗</span>Merchant Lanes</span>
                 <span className="badge badge-muted">{merchantLanes.length}</span>
@@ -1772,7 +1772,7 @@ function ChannelsPage() {
             </div>
 
             {/* ── Farmer Lanes ────────────────────────────────────────── */}
-            <div className="panel fade-in" style={{ marginBottom: 16 }}>
+            <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
               <div className="panel-header">
                 <span className="panel-title"><span className="icon">↙</span>Farmer Lanes</span>
                 <span className="badge badge-muted">{farmerLanes.length}</span>
@@ -1835,7 +1835,7 @@ function ChannelsPage() {
 
             {/* ── External Routing Peers ──────────────────────────────── */}
             {externalLanes.length > 0 && (
-              <div className="panel fade-in" style={{ marginBottom: 16 }}>
+              <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
                 <div className="panel-header">
                   <span className="panel-title"><span className="icon">⟐</span>External Routing Peers</span>
                   <span className="badge badge-muted">{externalLanes.length}</span>
@@ -1893,7 +1893,7 @@ function ChannelsPage() {
 
             {/* ── Unclassified Channels table ────────────────────────── */}
             {unclassifiedLanes.length > 0 && (
-              <div className="panel fade-in" style={{ marginBottom: 16 }}>
+              <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
                 <div className="panel-header">
                   <span className="panel-title"><span className="icon">?</span>Unclassified</span>
                   <span className="badge badge-muted">{unclassifiedLanes.length}</span>
@@ -2168,7 +2168,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
   }
 
   return (
-    <div className="panel fade-in" style={{ marginTop: 16 }}>
+    <div className="panel ops fade-in" style={{ marginTop: 16 }}>
       <div className="panel-header">
         <span className="panel-title">
           <span className="icon">+</span>Open Channel
