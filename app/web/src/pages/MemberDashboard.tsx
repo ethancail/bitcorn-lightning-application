@@ -6,9 +6,8 @@ import {
   type TreasuryInfo,
   type MemberLiquidityStatusResponse,
   type PendingChannel,
+  type NodeBalances,
 } from "../api/client";
-import NodeBalancePanel from "../components/NodeBalancePanel";
-import FundNodePanel from "../components/FundNodePanel";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 
 const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
@@ -335,6 +334,9 @@ export default function MemberDashboard() {
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
   const [usdRate, setUsdRate] = useState<number | null>(null);
   const [pendingTreasuryChannel, setPendingTreasuryChannel] = useState(false);
+  const [balances, setBalances] = useState<NodeBalances | null>(null);
+  const [fundLoading, setFundLoading] = useState(false);
+  const [fundError, setFundError] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -377,6 +379,33 @@ export default function MemberDashboard() {
     api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
   }, []);
 
+  // Balance polling (replaces <NodeBalancePanel />)
+  useEffect(() => {
+    api.getNodeBalances().then(setBalances).catch(() => {});
+    const id = setInterval(() => {
+      api.getNodeBalances().then(setBalances).catch(() => {});
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function handleFund() {
+    setFundLoading(true);
+    setFundError(null);
+    try {
+      const { url } = await api.getCoinbaseOnrampUrl();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      const msg = e?.message ?? "failed";
+      setFundError(
+        msg === "coinbase_not_configured"
+          ? "Coinbase Onramp is not configured on this node."
+          : msg,
+      );
+    } finally {
+      setFundLoading(false);
+    }
+  }
+
   const ch = stats?.treasury_channel;
   const fees = stats?.forwarded_fees;
   const badge = statusBadge(stats?.membership_status ?? "");
@@ -403,27 +432,57 @@ export default function MemberDashboard() {
         </p>
       </div>
 
-      <NodeBalancePanel />
-      <FundNodePanel />
+      <div className="dashboard-top-strip fade-in">
+        <div className="bal-group">
+          <div className="bal-item">
+            <span className="bal-label">On-chain</span>
+            <span className="bal-value">
+              {balances ? balances.onchain_sats.toLocaleString() : "—"}
+              <span className="unit">sats</span>
+            </span>
+          </div>
+          <div className="bal-item">
+            <span className="bal-label">Channel</span>
+            <span className="bal-value">
+              {balances ? balances.lightning_sats.toLocaleString() : "—"}
+              <span className="unit">sats</span>
+            </span>
+          </div>
+          <div className="bal-item">
+            <span className="bal-label">Total</span>
+            <span className="bal-value">
+              {balances ? balances.total_sats.toLocaleString() : "—"}
+              <span className="unit">sats</span>
+            </span>
+          </div>
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={handleFund}
+          disabled={fundLoading}
+        >
+          {fundLoading ? "Opening…" : "Fund Node →"}
+        </button>
+        {fundError && <div className="fund-error">{fundError}</div>}
+      </div>
+
       <BitcoinPriceGraph />
 
 
 
-      {/* Membership status */}
-      <div className="panel fade-in" style={{ marginBottom: 16 }}>
-        <div className="panel-body" style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ color: "var(--text-3)", fontSize: "0.875rem" }}>Membership status</span>
-          {loading ? (
-            <div className="loading-shimmer" style={{ height: 20, width: 120 }} />
-          ) : (
-            <span className={`badge ${badge.cls}`}>{badge.text}</span>
-          )}
-        </div>
+      {/* Membership status — compressed row */}
+      <div className="member-status-row">
+        <span className="lbl">Membership status</span>
+        {loading ? (
+          <div className="loading-shimmer" style={{ height: 20, width: 120 }} />
+        ) : (
+          <span className={`badge ${badge.cls}`}>{badge.text}</span>
+        )}
       </div>
 
       {/* Channel — pending opening, connect CTA, or earnings panel */}
       {noChannel && pendingTreasuryChannel && (
-        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
           <div className="panel-header">
             <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
           </div>
@@ -441,7 +500,7 @@ export default function MemberDashboard() {
         </div>
       )}
       {noChannel && !pendingTreasuryChannel && (
-        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
           <div className="panel-header">
             <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
           </div>
@@ -452,7 +511,7 @@ export default function MemberDashboard() {
       )}
 
       {loading && (
-        <div className="panel fade-in" style={{ marginBottom: 16 }}>
+        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
           <div className="panel-header">
             <span className="panel-title"><span className="icon">◈</span>Your Earnings</span>
           </div>
@@ -489,6 +548,10 @@ export default function MemberDashboard() {
           ? (localPct >= 85 ? "var(--red)" : localPct >= 70 ? "var(--amber)" : "var(--green)")
           : (gaugePct < 15 ? "var(--red)" : gaugePct < 30 ? "var(--amber)" : "var(--green)");
 
+        // Hero value color: role-aware, same urgency logic as the gauge.
+        // Unknown role stays neutral (no signal when we don't know the context).
+        const heroColor = role === "unknown" ? "var(--text)" : gaugeColor;
+
         // Hero number
         const heroLabel = isMerchant ? "Available to send" : isFarmer ? "Available to withdraw" : "Your balance";
         const heroSats = ch!.local_sats;
@@ -509,7 +572,7 @@ export default function MemberDashboard() {
 
         return (
           <>
-            <div className="panel fade-in" style={{ marginBottom: 16 }}>
+            <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
               <div className="panel-header">
                 <span className="panel-title">
                   <span className="icon">◈</span>{panelTitle}
@@ -519,37 +582,34 @@ export default function MemberDashboard() {
                 </span>
               </div>
               <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Hero number */}
-                <div style={{ textAlign: "center", padding: "8px 0" }}>
-                  <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
-                    {heroLabel}
+                {/* Hero number — role-aware color */}
+                <div className="member-hero">
+                  <div className="lbl">{heroLabel}</div>
+                  <div
+                    className="val"
+                    style={{ color: heroColor }}
+                    aria-label={`${heroLabel}: ${heroSats.toLocaleString()} sats`}
+                  >
+                    {heroSats.toLocaleString()}<span className="unit">sats</span>
                   </div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: "2rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
-                    {heroSats.toLocaleString()} <span style={{ fontSize: "0.875rem", color: "var(--text-3)", fontWeight: 400 }}>sats</span>
-                  </div>
-                  {toUsd(heroSats) && (
-                    <div style={{ fontFamily: "var(--mono)", fontSize: "1rem", color: "var(--text-2)", marginTop: 2 }}>
-                      {toUsd(heroSats)}
-                    </div>
-                  )}
+                  {toUsd(heroSats) && <div className="usd">{toUsd(heroSats)}</div>}
                 </div>
 
-                {/* Capacity gauge */}
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: "0.75rem", color: "var(--text-3)" }}>
+                {/* Capacity gauge — role-aware color, ARIA progressbar */}
+                <div
+                  className="member-gauge"
+                  role="progressbar"
+                  aria-valuenow={gaugePct}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={gaugeLabel}
+                >
+                  <div className="labels">
                     <span>{gaugeLabel}</span>
                     <span>{gaugeRemaining}</span>
                   </div>
-                  <div style={{ height: 8, borderRadius: 4, background: "var(--bg-3)", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${gaugePct}%`,
-                        background: gaugeColor,
-                        borderRadius: 4,
-                        transition: "width 0.3s ease",
-                      }}
-                    />
+                  <div className="bar">
+                    <div className="fill" style={{ width: `${gaugePct}%`, background: gaugeColor }} />
                   </div>
                 </div>
 
@@ -584,15 +644,15 @@ export default function MemberDashboard() {
 
                 {/* Farmer: withdraw action */}
                 {isFarmer && ch!.local_sats >= 250_000 && (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div className="member-action">
                     <button
                       className="btn btn-primary"
                       style={{ width: "100%" }}
-                      onClick={() => navigate(isFarmer ? cashOutUrl : refillUrl)}
+                      onClick={() => navigate(cashOutUrl)}
                     >
-                      {isFarmer ? "Cash Out Earnings →" : "Refill Channel →"}
+                      Cash Out Earnings →
                     </button>
-                    <div style={{ textAlign: "center", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+                    <div className="caption">
                       Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
                       {toUsd(estWithdrawalFee) && ` (${toUsd(estWithdrawalFee)})`}
                     </div>
@@ -631,7 +691,7 @@ export default function MemberDashboard() {
 
             {/* Upgrade banner when navigated from Channels page */}
             {upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
-              <div className="panel fade-in" style={{ marginBottom: 16 }}>
+              <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
                 <div className="panel-body">
                   <div className="alert info" style={{ marginBottom: 0 }}>
                     <span className="alert-icon">⚠</span>
@@ -653,7 +713,7 @@ export default function MemberDashboard() {
 
       {/* Forwarded fees — only show once they have / had a channel */}
       {(hasChannel || (fees && fees.total_sats > 0)) && (
-        <div className="panel fade-in">
+        <div className="panel ops fade-in">
           <div className="panel-header">
             <span className="panel-title">
               <span className="icon">↗</span>Forwarded Fees Earned

@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.1"
+version: "1.13.2"
 port: 3200
 
 description: >
@@ -27,6 +27,15 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.2: Member Dashboard polish. Compact top strip (on-chain /
+  channel / total balances + Fund Node CTA inline, matching treasury).
+  Role-aware channel panel gains Briefing Room chrome (amber border-top
+  + tinted header); hero number's color now follows role-aware urgency
+  (merchant: low = red, farmer: high = red, unknown: neutral). Status
+  row compressed to a single line. Forwarded Fees panel and pending /
+  no-channel / upgrade states inherit the same chrome. No backend
+  changes.
+
   v1.13.1: Wizard polish. Trims first-run setup from 5 steps to 4 by
   folding the TREASURY_PUBKEY env-var reminder inline into the Node
   Detection step. New vertical step rail shows all step names at once.
