@@ -2168,7 +2168,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
   }
 
   return (
-    <div className="panel fade-in" style={{ marginTop: 16 }}>
+    <div className="panel ops fade-in" style={{ marginTop: 16 }}>
       <div className="panel-header">
         <span className="panel-title">
           <span className="icon">+</span>Open Channel
