@@ -503,6 +503,45 @@ p + .settings-section-label { margin-top: 8px; }
   font-family: var(--mono);
 }
 
+/* ─── Treasury Dashboard: revenue hero ─────────────────── */
+.revenue-hero {
+  padding: 14px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.revenue-hero-num {
+  font-family: var(--mono);
+  font-size: 2.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.revenue-hero-num.positive { color: var(--green); }
+.revenue-hero-num.negative { color: var(--red); }
+.revenue-hero-num.neutral { color: var(--text); }
+.revenue-hero-caption {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  color: var(--text-3);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.revenue-hero-alltime {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: var(--amber-glow2);
+  color: var(--amber-dim);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 /* ─── Stat / KPI cards ─────────────────────────────────────────── */
 .stat-grid {
   display: grid;
