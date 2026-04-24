@@ -436,7 +436,10 @@ function ContactCard({
 
   if (isEditing) {
     return (
-      <div className="panel fade-in">
+      <div className="panel ops fade-in">
+        <div className="panel-header">
+          <span className="panel-title"><span className="icon">◈</span>Editing</span>
+        </div>
         <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-3)" }}>
             {c.pubkey}
