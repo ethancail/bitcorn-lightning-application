@@ -29,6 +29,9 @@
   --blue:        #60a5fa;
   --blue-glow:   rgba(96,165,250,0.10);
 
+  --purple:      #a78bfa;
+  --purple-glow: rgba(167,139,250,0.10);
+
   --text:        #e8e8f0;
   --text-2:      #9898b0;
   --text-3:      #5a5a70;
@@ -681,10 +684,11 @@ p + .settings-section-label { margin-top: 8px; }
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 10px 12px;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, background 0.2s;
 }
 .price-ticker:hover {
   border-color: var(--border-hi);
+  background: var(--bg-3);
 }
 
 .price-ticker-icon {
@@ -722,12 +726,12 @@ p + .settings-section-label { margin-top: 8px; }
 
 .price-ticker-dollar {
   font-weight: 400;
-  opacity: 0.5;
+  opacity: 0.65;
 }
 
 .price-ticker-unit {
   font-family: var(--mono);
-  font-size: 0.5625rem;
+  font-size: 0.625rem;
   color: var(--text-3);
   letter-spacing: 0.04em;
   line-height: 1;
@@ -1739,6 +1743,9 @@ input[type="number"] {
 
   --blue:        #2563eb;
   --blue-glow:   rgba(37,99,235,0.10);
+
+  --purple:      #7c3aed;
+  --purple-glow: rgba(124,58,237,0.10);
 
   --text:        #1c1408;
   --text-2:      #685a49;
