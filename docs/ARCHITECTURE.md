@@ -14,8 +14,8 @@ Economic truth > vanity metrics. Do not optimize for channel count, node size, o
 
 ### Architectural Roles
 
-- **Treasury node** — capital allocator, expansion authority, rebalance scheduler, profitability engine, guardrail enforcer. All intelligence lives here.
-- **Member nodes** — liquidity consumers only. Not capital allocators. Not strategy engines.
+- **Treasury node** — capital allocator, channel provisioner, expansion authority, profitability engine, guardrail enforcer. Operates the routing hub and earns forwarding fees. Does **not** orchestrate steady-state rebalancing — that lives on member nodes.
+- **Member nodes** — own their channel-side rebalancing decisions via the role-aware Member Liquidity Advisor (farmers run Loop Out, merchants run Loop In, both locally). Outbound payments are routed through forced treasury hops.
 
 ### Non-Negotiables
 
@@ -90,31 +90,33 @@ Returns 429 on violation. Policy stored in `treasury_capital_policy` (single row
 
 ## Liquidity Management
 
+Steady-state rebalancing in Bitcorn is **member-driven and role-aware**, not treasury-coordinated. Each member self-services their channel based on their declared role: farmers run Loop Out (clearing accumulated local balance), grain merchants run Loop In (refilling depleted local balance). The treasury reserves treasury-side rebalancing for provisioning, external-inbound maintenance, and edge cases — not steady-state operation.
+
+Channels are **provisioned asymmetrically** by role: merchants get high outbound capacity, farmers get high inbound capacity. Rebalancing operations restore this provisioned asymmetry rather than flattening the channel toward 50/50.
+
 Imbalance ratio: `local / (local + remote)`. Classifications: `healthy`, `outbound_starved`, `critical`.
 
-### Cluster Rebalance Engine v1
+### Member-Side Liquidity Advisor (steady-state)
 
-`src/rebalance/` — three-lever architecture operating on per-peer clusters. Runs every 15 min (configurable via `CLUSTER_REBALANCE_INTERVAL_MS`), gated by `CLUSTER_REBALANCE_ENABLED=true`.
+`src/memberAdvisor/` — runs locally on member nodes every 15 minutes; **skips treasury nodes**. This is the active rebalancing intelligence for steady-state operation; the treasury does not coordinate it.
 
-- **Lever 1 — Fee steering** (passive): adjusts routing fees based on balance deviation. `below_band` → raise; `above_band` → lower; hysteresis return to baseline.
-- **Lever 2 — Circular rebalance** (active): probes routes and executes self-paying invoices to move sats between clusters.
-- **Lever 3 — Topology monitor** (advisory): detects structural issues, emits recommendations, takes inventory snapshots.
+Classifies treasury channel into 5 states by member-local %:
+- `healthy` (30–70%)
+- `send_heavy` (>70%)
+- `send_saturated` (>85%)
+- `receive_heavy` (<30%)
+- `receive_exhausted` (<15%)
 
-Clusters are provisioned via `seeds/001_initial_clusters.sql` and define target bands (min/mid/max local balance percentages) per peer. Modules: `clusterState`, `feeSteering`, `pairSelector`, `cycleEnumerator`, `cycleScorer`, `rebalanceExecutor`, `topologyMonitor`, `rebalanceScheduler`.
+Urgency escalates on consecutive non-healthy runs.
 
-### Loop Out (Submarine Swap)
+**Role-aware recommendations**: `channel_role` stored in `member_liquidity_advisor_config` (migration 032), defaults to `'unknown'` — never silently auto-classified.
+- **Merchant**: low outbound → Loop In; undersized (< 2M) or 3+ exhaustion runs → channel upgrade
+- **Farmer**: high local → Loop Out; undersized (< 1M) or 3+ filling runs → channel upgrade
+- **Unknown**: prompts user to set role via Settings
 
-Complementary strategy for restoring inbound capacity. Sats go off-chain through a channel → Loop server returns them on-chain minus fees → balance preserved, receive capacity restored.
+**Close/reopen is never recommended** — Loop In/Out are the normal maintenance path. Each member node ships its own `loopd` (Lightning Terminal sidecar) since v1.8.4, so members can execute Loop In/Out locally without treasury involvement.
 
-- Only targets critical channels (>85% local)
-- Min swap: 250k sats; need ≥556k channel capacity (ACINQ caps `max_value_in_flight_msat` at 45% of channel capacity)
-- Verified mainnet via Loop v0.31.8-beta
-- Prepay (~30k) is a **temporary hold returned in the on-chain payment**, not a fee
-- Net fee = swap_fee + miner_fee (~1–2k typical)
-
-See `docs/LOOP_SETUP.md` for setup, configuration, and gotchas.
-
-### Merchant Loop In (member-side refill)
+### Member Loop In (merchant refill)
 
 Since v1.8.4 every node — treasury, merchant, farmer — ships its own loopd as a litd sidecar (see `bitcorn-lightning-node/docker-compose.yml`). This enables *member-side* Loop In: a merchant uses their own on-chain BTC to restore local Lightning balance on the merchant↔treasury channel.
 
@@ -132,7 +134,7 @@ Since v1.8.4 every node — treasury, merchant, farmer — ships its own loopd a
 ```
 
 **Dependencies for success:**
-- **Treasury inbound on external channels** — the Loop server's invoice payment must reach treasury. If treasury has no remote liquidity on ACINQ/etc., Loop In fails. Treasury-side Loop Out maintains this inbound.
+- **Treasury inbound on external channels** — the Loop server's invoice payment must reach treasury. If treasury has no remote liquidity on ACINQ/etc., Loop In fails. Treasury-side Loop Out (described below) maintains this inbound as a steady-state plumbing concern.
 - **Treasury-local on merchant channel** — treasury must have sats to push across treasury↔merchant. Automatic after merchant has been spending (every merchant payment moves sats to treasury's side of that channel).
 
 **Feedback loop:** Merchant spending naturally accumulates treasury-local on the merchant channel. That's exactly the pool a later Loop In draws from to restore merchant-local. The only external dependency is treasury's inbound on public channels.
@@ -141,40 +143,48 @@ Since v1.8.4 every node — treasury, merchant, farmer — ships its own loopd a
 
 **When channel lifecycle is the fallback:** If a merchant channel is structurally broken (low ROI, operational issues) or the merchant lacks on-chain BTC entirely, channel rotation/replacement is the backstop. See `docs/plans/2026-03-24-merchant-channel-lifecycle.md`.
 
-### Treasury-Side Member Liquidity
+### Member Loop Out (farmer cash-out)
 
-`src/memberLiquidity/` — treasury detects member channel imbalances from cluster data (Step 9 in rebalance scheduler, 2-consecutive-run debounce) and proposes keysend top-ups.
+Farmers accumulate sats on their local side as they receive payments for commodities. The Member Liquidity Advisor recommends Loop Out once member-local exceeds the threshold; the farmer's own loopd executes the swap, restoring the channel toward its provisioned inbound-heavy shape. Same per-node loopd architecture as merchant Loop In above; Loop Out's mechanics (250k min, ACINQ in-flight cap, prepay-is-not-a-fee) are documented in `docs/LOOP_SETUP.md` and apply identically here.
 
-- **Detection**: per-cluster config in `member_liquidity_config`; member-local < 30% → Top Up to 60%
-- **Estimate**: `liquidityAdvisor` computes keysend push estimate (60s TTL, ~0 routing fee)
-- **Execution**: `liquidityExecutor` calls `keysendPush()` to member
-- **Operator approval**: treasury operator approves/rejects via Member Liquidity page
-- **Single action type**: `treasury_push_topup`
-- **Migration 026**: 4 tables (recommendations, estimates, outcomes, config)
+### Treasury Push (provisioning + edge-case)
 
-### Member-Side Liquidity Advisor
+`src/memberLiquidity/` — operator-approved keysend push from treasury to member. Used for **initial channel provisioning** (before the member has accumulated transaction flow that would naturally fill their side) and **edge-case maintenance** (e.g., bootstrapping a merchant who can't yet run Loop In). It is **not** part of steady-state rebalancing.
 
-`src/memberAdvisor/` — runs locally on member nodes every 15 minutes; **skips treasury nodes**.
+- **Detection**: `liquidityDetector` reads cluster data (only when the cluster engine is enabled — see Cluster Rebalance Engine below); per-cluster config in `member_liquidity_config`; member-local < 30% → suggested Top Up to 60%.
+- **Estimate**: `liquidityAdvisor` computes the keysend push estimate (60s TTL, ~0 routing fee).
+- **Execution**: `liquidityExecutor.executePush()` calls `keysendPush()` to the member after **explicit operator approval** via the Member Liquidity page. No automatic execution.
+- **Single action type**: `treasury_push_topup`.
+- **Schema**: migration 026 (4 tables: recommendations, estimates, outcomes, config).
+- **Future direction**: invoice-based push is preferred per spec but requires N2N infrastructure (port 3109) that doesn't exist.
 
-Classifies treasury channel into 5 states by member-local %:
-- `healthy` (30–70%)
-- `send_heavy` (>70%)
-- `send_saturated` (>85%)
-- `receive_heavy` (<30%)
-- `receive_exhausted` (<15%)
+### Treasury Loop Out (external-inbound maintenance + edge cases)
 
-Urgency escalates on consecutive non-healthy runs.
+Treasury-side Loop Out is **not** the steady-state rebalancing tool for member channels. Two retained uses:
 
-**Role-aware recommendations**: `channel_role` stored in `member_liquidity_advisor_config` (migration 032), defaults to `'unknown'` — never silently auto-classified.
-- **Merchant**: low outbound → Loop In; undersized (< 2M) or 3+ exhaustion runs → channel upgrade
-- **Farmer**: high local → Loop Out; undersized (< 1M) or 3+ filling runs → channel upgrade
-- **Unknown**: prompts user to set role via Settings
+1. **Maintaining external inbound** — Loop server payments returning to treasury during member Loop In flows must arrive over external channels (ACINQ et al.). Treasury Loop Out on those external channels keeps the remote liquidity available so member Loop In can succeed.
+2. **Edge-case treasury rebalancing** — one-off operator-driven recovery if a treasury-side channel is misshapen.
 
-**Close/reopen is never recommended** — Loop In/Out are the normal maintenance path.
+Mechanical details (apply to both treasury-side and member-side Loop Out):
+
+- Min swap: 250k sats; need ≥556k channel capacity (ACINQ caps `max_value_in_flight_msat` at 45% of channel capacity)
+- Verified mainnet via Loop v0.31.8-beta
+- Prepay (~30k) is a **temporary hold returned in the on-chain payment**, not a fee
+- Net fee = swap_fee + miner_fee (~1–2k typical)
+
+See `docs/LOOP_SETUP.md` for setup, configuration, and gotchas. The optional automated scheduler (`REBALANCE_SCHEDULER_ENABLED=true`) targets critical treasury channels (>85% local) and is an operator opt-in for the external-inbound-maintenance case; off by default.
+
+### Cluster Rebalance Engine v1 (legacy — gated off by default)
+
+`src/rebalance/` was the original three-lever rebalancing architecture (fee steering + circular rebalance + topology monitor) operating on per-peer clusters every 15 min. It is **no longer the active rebalancing model** — steady-state rebalancing is member-driven and role-based via the Member Liquidity Advisor above. The cluster engine remains in the codebase, gated off by default (`CLUSTER_REBALANCE_ENABLED=false`), pending a removal pass.
+
+When enabled, the engine populates the cluster tables (migrations 023–025) and produces the recommendations consumed by the Treasury Push approve flow above. With it disabled, treasury push recommendations would need to come from a different source if used at all.
+
+Modules: `clusterState`, `feeSteering`, `pairSelector`, `cycleEnumerator`, `cycleScorer`, `rebalanceExecutor`, `topologyMonitor`, `rebalanceScheduler`. Provisioned via `seeds/001_initial_clusters.sql` (also legacy).
 
 ### Keysend Status
 
-Keysend push rebalance is **disabled** (sends sats as one-way payments, not true rebalancing). Keysend enforcement is retained: backend `member_keysend_status` table tracks peers that reject keysend; auto-rebalancer skips disabled peers for 24h, then retries. `MEMBER_KEYSEND_DISABLED` alert (warning severity) shows on treasury dashboard.
+Keysend push as a *rebalancing tool* is **disabled** — it permanently transfers sats rather than rebalancing the channel. Keysend remains the execution mechanism for treasury push (see above) and for the keysend-feature pre-flight check on member onboarding. The `member_keysend_status` table tracks peers that reject keysend so treasury push attempts can skip them with a 24h backoff. The `MEMBER_KEYSEND_DISABLED` alert (warning severity) surfaces this on the treasury dashboard.
 
 ## Lane Model
 
@@ -202,9 +212,9 @@ The full per-version changelog lives in `git log`. Snapshot of capabilities curr
 
 **Core treasury engine**
 - Channel expansion engine with capital guardrails
-- Loop Out submarine swap rebalancing
-- Cluster rebalance engine v1 (fee steering + circular + topology, 15-min interval)
-- Treasury metrics API, rebalance cost ledger, forwarding fee tracking
+- Loop Out (treasury-side, edge-case + external-inbound maintenance — see Liquidity Management above)
+- Treasury push (operator-approved provisioning + edge cases)
+- Treasury metrics API, rebalance cost ledger (records all rebalance costs regardless of source), forwarding fee tracking
 - Auto-cleans stale `requested`/`submitted` expansion executions after 1h
 
 **Merchant/farmer lane model** — purpose stable from tags, state dynamic from balance.
