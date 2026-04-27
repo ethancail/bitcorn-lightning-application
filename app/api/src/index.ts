@@ -3026,8 +3026,9 @@ server.listen(PORTS.userApi, () => {
   // Loop Out rebalance scheduler — requires REBALANCE_SCHEDULER_ENABLED=true
   // and the loopd sidecar to be running (included in the Bitcorn app stack).
   startRebalanceScheduler();
-  // Cluster-based rebalance engine — requires CLUSTER_REBALANCE_ENABLED=true.
-  // Fee steering + circular rebalance + topology monitoring on a 15-min interval.
+  // Cluster-based rebalance engine v1 (legacy) — fee steering + circular rebalance
+  // + topology monitoring. Gated off by default (CLUSTER_REBALANCE_ENABLED=false);
+  // not part of steady-state rebalancing. Retained pending a removal pass.
   startClusterRebalanceScheduler();
   // Member liquidity advisor — classifies treasury channel health on member nodes.
   // Runs on all nodes but only acts on non-treasury nodes.

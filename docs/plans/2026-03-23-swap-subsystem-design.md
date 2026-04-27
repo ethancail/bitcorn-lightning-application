@@ -1,5 +1,7 @@
 # Loop-Based Swap Subsystem Design
 
+> **Shipped — see `app/api/src/swaps/` for the current implementation, and `docs/ARCHITECTURE.md` § Liquidity Management for how it fits the role-based model.**
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace keysend-based treasury liquidity push with a Loop-based swap subsystem. Add member "Withdraw to Bitcoin Wallet" (Loop Out) and treasury Loop In/Out operations.

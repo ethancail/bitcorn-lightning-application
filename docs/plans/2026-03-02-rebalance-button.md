@@ -1,5 +1,7 @@
 # Rebalance Button Implementation Plan
 
+> **Historical — superseded.** This UI proposed a Rebalance button on critical channels backed by `POST /api/treasury/rebalance/keysend`, an endpoint that no longer exists. Keysend rebalancing was disabled in v1.3.5 in favor of the member-driven role-based model. This document is retained for historical context. See `docs/ARCHITECTURE.md` § Liquidity Management for the current model.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add a one-click "Rebalance" button for critical channels on both the Channels page and the Dynamic Fees Panel.

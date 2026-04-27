@@ -1,8 +1,10 @@
-# Loop Out Rebalancing Setup
+# Loop Out Setup (Treasury-Side)
 
 Loop Out submarine swaps restore receive capacity on channels by moving sats
 off-chain and returning them on-chain (minus swap + miner fees). Total treasury
 balance is preserved.
+
+This document covers **treasury-side** Loop Out: an edge-case + external-inbound-maintenance tool, not the steady-state rebalancing mechanism. Steady-state member channel rebalancing is owned by each member node via the Member Liquidity Advisor (farmer Loop Out, merchant Loop In, both executed locally on the member's own loopd). See `docs/ARCHITECTURE.md` § Liquidity Management for the full model. The Loop mechanics documented below (250k min, ACINQ in-flight cap, prepay-as-hold, restart cascade, etc.) apply to both treasury-side and member-side Loop Out.
 
 ## Prerequisites
 
@@ -74,9 +76,11 @@ All endpoints require treasury role.
 | POST | `/api/treasury/rebalance/loop-out` | Manual swap (body: `{ channel_id, amount_sats }`) |
 | POST | `/api/treasury/rebalance/loop-out/auto` | Auto-rebalance all critical channels |
 
-## Automated Scheduler
+## Automated Scheduler (operator opt-in for external-inbound maintenance)
 
-Enable the rebalance scheduler in `docker-compose.yml`:
+Off by default. Steady-state rebalancing is member-driven; this scheduler exists for the treasury operator who wants to automate the external-inbound-maintenance use case (keeping treasury reachable so member Loop In flows can succeed) or one-off treasury edge-case recovery. Not part of routine network operation.
+
+Enable in `docker-compose.yml`:
 
 ```yaml
 environment:
@@ -86,7 +90,7 @@ environment:
 ```
 
 The scheduler runs every 60 seconds (configurable via `REBALANCE_SCHEDULER_INTERVAL_MS`),
-monitors in-flight swaps, and initiates new Loop Outs for critical channels.
+monitors in-flight swaps, and initiates new Loop Outs for critical treasury channels.
 
 ## Environment Variables
 

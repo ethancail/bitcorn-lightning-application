@@ -1,6 +1,8 @@
 /**
- * Auto channel selection for circular rebalance: pick best outgoing (donor) and
- * incoming (receiver) by liquidity scores, with different peers and viability checks.
+ * Auto channel selection for circular rebalance (LEGACY — circular rebalance is
+ * retained as a one-off operator tool but is not part of steady-state operation;
+ * see `docs/IMPLEMENTATION.md`). Picks best outgoing (donor) and incoming
+ * (receiver) by liquidity scores, with different peers and viability checks.
  */
 
 import { getLndChannels } from "./lnd";

@@ -21,18 +21,27 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `013_treasury_capital_policy.sql` | Single-row capital guardrail policy |
 | `014_rebalance_costs.sql` | Rebalance cost ledger (circular, loop_out, loop_in, manual) |
 | `015_treasury_rebalance_executions.sql` | Audit log for rebalance runs |
+| `016_channel_fee_log.sql` | Per-channel fee adjustment history (target/applied rates, classification snapshot) |
+| `017_rotation_executions.sql` | Channel rotation audit log (capacity, ROI, reason, outcome) |
+| `018_add_loss_cap.sql` | Adds `max_daily_loss_sats` column to `treasury_capital_policy` |
+| `019_coinbase_onramp_sessions.sql` | Persisted Coinbase Onramp session tokens (per-node, per-wallet) |
 | `020_contacts.sql` | Contacts address book (pubkey UNIQUE, tags as comma-string) |
 | `021_member_keysend_status.sql` | Tracks peers that reject keysend (24h skip window) |
 | `022_network_payments.sql` | Invoice-based payment records (direction, status, USD, counterparty, memo) |
 | `023_rebalance_clusters.sql` | Cluster definitions + channel membership (rebalance engine v1) |
-| `024_rebalance_events.sql` | Fee policy, fee events, runs, candidates, outcomes, pair history |
-| `025_rebalance_topology.sql` | Topology recommendations + treasury inventory snapshots |
-| `026_member_swap_actions.sql` | Treasury-side member liquidity: recommendations, estimates, outcomes, config |
+| `024_rebalance_execution.sql` | Cluster engine execution tables: fee policy, events, runs, candidates, outcomes, pair history |
+| `025_rebalance_topology_inventory.sql` | Topology monitor recommendations + treasury inventory snapshots |
+| `026_member_liquidity_actions.sql` | Treasury-side member liquidity: recommendations, estimates, outcomes, config |
 | `027_member_liquidity_advisor.sql` | Member-side advisor: channel classifications + advisor config |
-| `028_member_advisor_config.sql` | Additional advisor defaults |
-| `032_member_channel_role.sql` | `channel_role` on `member_liquidity_advisor_config` (merchant/farmer/unknown) |
+| `028_advisor_min_channel_capacity.sql` | Adds `min_channel_capacity_sat` to advisor config (undersized-channel detection) |
+| `029_swap_subsystem.sql` | Loop-based swap subsystem: `swap_requests`, `swap_executions`, `swap_events`, `liquidity_actions` |
+| `030_swap_withdrawal_config.sql` | Adds `max_daily_withdrawal_sat`, `min_withdrawal_sat` to advisor config |
+| `031_swap_egress_peers.sql` | Approved external peers for swap egress routing (operator-managed allowlist) |
+| `032_channel_role.sql` | Adds `channel_role` to `member_liquidity_advisor_config` (merchant/farmer/unknown) |
+| `033_valuation_manual_inputs.sql` | Local audit cache for the 8 manually-entered valuation metrics |
+| `034_coinbase_autobuy.sql` | Coinbase Auto-Buy: credentials (encrypted), config, runs (state machine), sweeps |
 
-Gaps in numbering (016–019, 029–031) indicate migrations not present in the current tree — do not re-use those numbers.
+The migration set is contiguous from `001` through `034` with no gaps. Always allocate the next sequential number for new migrations.
 
 ## Key Tables
 
@@ -57,7 +66,10 @@ Gaps in numbering (016–019, 029–031) indicate migrations not present in the 
 - `contacts` — address book with tags
 - `member_keysend_status` — tracks peers that reject keysend (24h skip window)
 
-**Cluster rebalance engine**
+**Cluster rebalance engine v1 (legacy — gated off by default)**
+
+These tables are populated only when `CLUSTER_REBALANCE_ENABLED=true`, which is off in steady-state operation. The cluster engine is no longer the active rebalancing model; see `docs/ARCHITECTURE.md` § Liquidity Management for the member-driven role-based model.
+
 - `rebalance_clusters` — cluster definitions
 - `rebalance_cluster_channels` — channel → cluster membership
 - `rebalance_fee_policy` — per-cluster fee bands and current state

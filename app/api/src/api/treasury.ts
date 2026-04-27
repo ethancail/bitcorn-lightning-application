@@ -107,7 +107,7 @@ export function getTreasuryMetrics(): TreasuryMetrics {
     [since24h]
   );
 
-  // REBALANCE COSTS: circular rebalance, loop, manual — reduces true net
+  // REBALANCE COSTS: Loop Out (steady-state edge-case), treasury push, legacy circular, manual — reduces true net
   const rebalanceCostsAll = sumNumber(
     `SELECT COALESCE(SUM(fee_paid_sats), 0) AS v FROM treasury_rebalance_costs`
   );

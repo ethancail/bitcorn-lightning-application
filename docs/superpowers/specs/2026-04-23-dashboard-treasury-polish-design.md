@@ -44,7 +44,7 @@ Capital allocation engine
   HERO: +12,450  sats · 24h net      [ALL-TIME +485,280 sats]
   ───
   Forwarding fees       24h · earned on routed payments · all-time +520,450          +13,280 sats
-  Rebalance costs       24h · paid to Loop Out / circular rebalance · all-time −35,170  −830 sats
+  Rebalance costs       24h · paid to rebalance ops · all-time −35,170  −830 sats
   ───
   [Stat cards row: Capital Deployed | Active Channels | Revenue Yield]
 ```
@@ -229,7 +229,7 @@ Two `.policy-card` rows inside `.panel-body`:
 </div>
 ```
 
-Second card is identical structure for `rebalance_costs_sats`, except the value color is `var(--red)` and the meta line reads `"24h · paid to Loop Out / circular rebalance · all-time ${allTimeCost}"`.
+Second card is identical structure for `rebalance_costs_sats`, except the value color is `var(--red)` and the meta line reads `"24h · paid to rebalance ops · all-time ${allTimeCost}"`.
 
 Both cards use `cursor: "default"` inline override to cancel the `cursor: pointer` default set by `.policy-card` in Settings (cards here are read-only, not clickable).
 

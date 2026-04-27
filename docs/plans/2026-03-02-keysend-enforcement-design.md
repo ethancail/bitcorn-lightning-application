@@ -1,5 +1,7 @@
 # Keysend Enforcement for Member Nodes — Design
 
+> **Partial — keysend rebalance (the original motivating flow) was disabled in v1.3.5, but the keysend enforcement infrastructure described in this doc — `member_keysend_status` table, 24h backoff, `MEMBER_KEYSEND_DISABLED` alert, ConnectToHub preflight — is still in use for the treasury push (provisioning + edge cases) execution path. The mechanics described below remain accurate; only the original motivation is stale.
+
 **Date:** 2026-03-02
 **Branch:** `feature/keysend-member-enforcement` from `develop`
 **Version:** 1.3.2 → 1.3.3

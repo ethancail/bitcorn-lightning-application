@@ -1,5 +1,7 @@
 # Keysend Push Rebalance Design
 
+> **Historical — superseded.** Keysend push as a rebalancing tool was disabled in v1.3.5; under the current role-based model, rebalancing is member-driven (Loop Out for farmers, Loop In for merchants) and the treasury does not orchestrate keysend rebalancing. This document is retained for historical context. See `docs/ARCHITECTURE.md` § Liquidity Management for the current model.
+
 **Date:** 2026-02-27
 **Branch:** `feature/keysend-rebalance` off `develop`
 **Approach:** Standalone module (Approach A)

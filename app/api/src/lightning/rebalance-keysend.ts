@@ -1,9 +1,17 @@
 /**
- * Keysend push rebalance: treasury pushes sats directly to a member node
- * on the existing channel. No invoice, no routing through third parties.
+ * Keysend push rebalance (DISABLED as of v1.3.5).
  *
- * Only effective for "critical" channels (>85% local on treasury side).
- * Pushing to outbound_starved channels worsens the imbalance.
+ * Keysend permanently transfers sats — it is not a rebalancing operation.
+ * This file is no longer imported anywhere in `app/api/src/` and is a
+ * candidate for removal. The `keysendPush()` primitive in `lnd.ts` is
+ * still used by `src/memberLiquidity/liquidityExecutor.ts` for treasury
+ * push (provisioning + edge cases), but that uses the `lnd.ts` helper
+ * directly, not this module.
+ *
+ * Original semantics (kept for reference): treasury pushed sats directly
+ * to a member node on the existing channel. Only effective for "critical"
+ * channels (>85% local on treasury side); pushing to outbound_starved
+ * channels worsened the imbalance.
  */
 
 import { getLndChannels, keysendPush } from "./lnd";
