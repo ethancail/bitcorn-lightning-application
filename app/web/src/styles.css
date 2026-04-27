@@ -1813,3 +1813,51 @@ input[type="number"] {
   background: var(--amber-glow);
   color: var(--amber);
 }
+
+/* ─── Liquidity page overhaul ────────────────────────────────── */
+
+.liq-kpi-banner {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.liq-kpi-card {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.liq-kpi-label {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--amber-dim);
+  font-weight: 600;
+}
+
+.liq-kpi-value {
+  font-family: var(--mono);
+  font-size: 1.625rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.liq-kpi-divider {
+  color: var(--text-3);
+  margin: 0 2px;
+  font-weight: 400;
+}
+
+.liq-kpi-sub {
+  font-size: 0.75rem;
+  color: var(--text-3);
+}
+
+@media (max-width: 720px) {
+  .liq-kpi-banner { grid-template-columns: 1fr; }
+}
