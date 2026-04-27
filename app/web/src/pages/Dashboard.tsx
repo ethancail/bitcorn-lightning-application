@@ -1,11 +1,7 @@
 import { useState, useEffect } from "react";
 import { api, type TreasuryMetrics, type TreasuryAlert, type NodeBalances } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
-// DCA_HIDE (v1.13.x): banner nags the operator to submit valuation inputs,
-// but the DCA/Valuation surface is paused while we sort out a sustainable
-// data source (see AutoBuy.tsx + App.tsx for the rest of the DCA_HIDE set).
-// Component file stays on disk so un-hiding is a one-line import restore.
-// import ValuationInputAlertBanner from "../components/ValuationInputAlertBanner";
+import ValuationInputAlertBanner from "../components/ValuationInputAlertBanner";
 
 function fmt(n: number) {
   return n.toLocaleString();
@@ -139,11 +135,8 @@ export default function Dashboard() {
 
       <BitcoinPriceGraph />
 
-      {/* DCA_HIDE (v1.13.x): Valuation input staleness banner hidden while
-          the DCA/Valuation surface is paused. Restore by uncommenting the
-          import above and the <ValuationInputAlertBanner alerts={alerts} />
-          render that used to live here. See AutoBuy.tsx, StrategyTab.tsx,
-          and App.tsx for the rest of the DCA_HIDE set. */}
+      {/* ── Valuation input staleness banner (dedicated, links to /valuation-input) ── */}
+      <ValuationInputAlertBanner alerts={alerts} />
 
       {/* ── Alerts (only if present) ──────────────────────────────── */}
       {activeAlerts.length > 0 && (
