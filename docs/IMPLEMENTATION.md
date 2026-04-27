@@ -16,7 +16,8 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/lightning/rebalance-scheduler.ts` | Scheduled Loop Out rebalance loop |
 | `src/lightning/rebalance-circular.ts` | Circular rebalance execution (legacy, unused in hub-and-spoke) |
 | `src/lightning/network-payments.ts` | Network payment business logic (create invoice, pay, history, settlement sync) |
-| `src/rebalance/rebalanceScheduler.ts` | Cluster rebalance engine orchestrator (15-min interval) |
+| **Cluster engine v1 (legacy — gated off by default; retained for code reference, not the active rebalancing engine):** | |
+| `src/rebalance/rebalanceScheduler.ts` | Cluster rebalance engine orchestrator (15-min interval, off unless `CLUSTER_REBALANCE_ENABLED=true`) |
 | `src/rebalance/clusterState.ts` | Reads cluster definitions + live LND balances + forwarding volumes → `ClusterState[]` |
 | `src/rebalance/feeSteering.ts` | Per-cluster fee adjustment (below_band → raise, above_band → lower) |
 | `src/rebalance/cycleEnumerator.ts` | Candidate enumeration: amount bucketing, channel selection, route probing |
@@ -92,10 +93,10 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
 | `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (revenue-focused) |
 | `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form or role-aware earnings panel |
-| `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal — routes `/withdraw`, `/cashout` (farmer). **Note:** `/refill` (merchant) currently also points here by accident and needs to route to a Loop In page once built. |
+| `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal — routes `/withdraw`, `/cashout` (farmer). **Note:** `/refill` (merchant) currently also points here. The merchant Loop In page exists in `RefillChannel.tsx` per `docs/plans/2026-04-14-merchant-refill-channel-design.md`; the route swap is pending. |
 | `app/web/src/pages/SwapOperations.tsx` | Treasury Loop Out / Loop In tabs, visual channel picker |
 | `app/web/src/pages/Peers.tsx` | Treasury: connect by URI, onboarding guide, live peers table |
-| `app/web/src/pages/MemberLiquidity.tsx` | Treasury: cluster overview, top-up approvals, member channel health table |
+| `app/web/src/pages/MemberLiquidity.tsx` | (Orphaned — imported in `App.tsx` but not currently rendered; displaced by the Liquidity page overhaul shipped in v1.13.8. Retained on disk pending a future cleanup PR.) |
 | `app/web/src/pages/Payments.tsx` | Invoice-based payments (Request Payment + Pay Invoice) with QR |
 | `app/web/src/pages/Charts.tsx` | PowerLawChart + PriceTickerStrip + MovingAverages + CornBitcoin + CornMAs |
 | `app/web/src/pages/Contacts.tsx` | CRUD address book with tag editor and sync-from-peers |
@@ -132,7 +133,7 @@ Role is derived from identity + treasury channel state — **not** bearer tokens
 
 - **Public**: health, node info, channels, pending channels, member stats, channel open, contacts, sync-peers, exchange rate, network invoice/decode/payments/sync-settlements, liquidity status/history/config, coinbase onramp URL, commodity prices, peers
 - **Member** (active treasury channel): `POST /api/pay`, `POST /api/network/pay`
-- **Treasury only**: all `/api/treasury/*` endpoints (metrics, fee policy, liquidity health, expansion, capital policy, rebalance Loop Out, peers), all `/api/member-liquidity/*` endpoints
+- **Treasury only**: all `/api/treasury/*` endpoints (metrics, fee policy, liquidity health, expansion, capital policy, rebalance Loop Out, peers), plus the treasury-only `/api/member-liquidity/*` endpoints (operator-approved treasury push for provisioning + edge cases — not steady-state rebalancing; see `docs/ARCHITECTURE.md` § Liquidity Management)
 
 See `docs/API.md` for the complete endpoint list and request/response shapes.
 
