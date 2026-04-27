@@ -1952,3 +1952,40 @@ input[type="number"] {
 .liq-topology-svg circle, .liq-topology-svg line, .liq-topology-svg text {
   transition: stroke-opacity 0.2s, r 0.2s ease-out;
 }
+
+.liq-external-section { margin-bottom: 16px; }
+
+.liq-external-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--bg-2);
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  font-weight: 600;
+  text-align: left;
+  border-radius: var(--radius-lg);
+  transition: background 0.2s;
+}
+
+.liq-external-header:hover { background: var(--bg-3); }
+
+.liq-external-chevron {
+  display: inline-block;
+  width: 12px;
+  color: var(--text-3);
+  font-size: 0.875rem;
+}
+
+.liq-external-title { flex: 1; }
+
+.liq-external-section .panel-body {
+  border-top: 1px solid var(--border);
+}
