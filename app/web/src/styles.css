@@ -1932,3 +1932,23 @@ input[type="number"] {
 @media (max-width: 720px) {
   .liq-lanes { grid-template-columns: 1fr; }
 }
+
+.liq-topology { margin-bottom: 16px; }
+
+.liq-topology-svg {
+  width: 100%;
+  height: 200px;
+  display: block;
+  border-radius: 6px;
+  background: var(--bg-2);
+  outline: none;
+}
+
+.liq-topology-svg:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+}
+
+.liq-topology-svg circle, .liq-topology-svg line, .liq-topology-svg text {
+  transition: stroke-opacity 0.2s, r 0.2s ease-out;
+}
