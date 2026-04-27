@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.8"
+version: "1.13.9"
 port: 3200
 
 description: >
@@ -27,6 +27,17 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.9: Restores the DCA / Valuation surface that was hidden in
+  v1.13.0–v1.13.7. The Auto-Buy page gets its tabbed layout back
+  (Valuation Chart + DCA Strategy), the Zone Multipliers editor is
+  visible again, the Z-score-aware "next buy" banner returns, the
+  Valuation Inputs sidebar link is back, and the treasury Dashboard
+  shows the valuation-input staleness banner again. Operators populate
+  the 8 Glassnode-sourced metrics manually at /valuation-input
+  (MVRV, Puell, SOPR, Reserve Risk, NVT, Hash Ribbons, Difficulty
+  Ribbon, HODL Waves). The other 4 inputs (Stock-to-Flow, 200W MA,
+  Pi Cycle, Miner Outflows) auto-fetch. No backend changes.
+
   v1.13.8: Liquidity page overhaul. Replaces the radial NetworkGraph
   with a role-aware layout: KPI banner up top (total deployed,
   merchants send-ready, farmers receive-ready), slim interactive
