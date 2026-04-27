@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.7"
+version: "1.13.8"
 port: 3200
 
 description: >
@@ -27,6 +27,15 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.8: Liquidity page overhaul. Replaces the radial NetworkGraph
+  with a role-aware layout: KPI banner up top (total deployed,
+  merchants send-ready, farmers receive-ready), slim interactive
+  topology beneath, then two role lanes (merchants by send capacity,
+  farmers by receive capacity) sorted urgency-first. Hover or click a
+  topology peer to scroll-and-pulse its lane row. Smooth FLIP animation
+  when refresh changes the order. External / unclassified peers in a
+  collapsible section below. No backend changes.
+
   v1.13.7: Hides the "valuation inputs need attention" banner from the
   treasury Dashboard while the DCA/Valuation surface is paused (matches
   the v1.13.0 hide of the Auto-Buy Valuation tab, Zone Multipliers, and
