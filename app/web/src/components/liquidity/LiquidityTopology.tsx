@@ -67,6 +67,10 @@ export default function LiquidityTopology({ peers, treasuryAlias, selectedPubkey
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<SVGSVGElement>) => {
+      if (hoverTimeoutRef.current !== null) {
+        window.clearTimeout(hoverTimeoutRef.current);
+        hoverTimeoutRef.current = null;
+      }
       if (peers.length === 0) return;
       if (e.key === "ArrowRight" || e.key === "ArrowDown") {
         e.preventDefault();
