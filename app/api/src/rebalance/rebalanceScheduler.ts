@@ -1,7 +1,14 @@
 /**
- * Cluster-based rebalance engine scheduler (v1).
+ * Cluster-based rebalance engine scheduler (v1) — LEGACY.
  *
- * Runs every 15 minutes (configurable) on the treasury node.
+ * Gated off by default via `CLUSTER_REBALANCE_ENABLED=false`; not part of
+ * steady-state operation under the member-driven role-based rebalancing
+ * model. Retained for code reference and the per-cluster `liquidityDetector`
+ * Step 9 that is still imported by `src/memberLiquidity/`. Pending removal
+ * pass — see `docs/ARCHITECTURE.md` § Liquidity Management for the active
+ * rebalancing model.
+ *
+ * When enabled, runs every 15 minutes (configurable) on the treasury node.
  * Each tick:
  *   1. Read all cluster states (live balances, flow profiles, deviation)
  *   2. Apply fee steering adjustments (passive lever)

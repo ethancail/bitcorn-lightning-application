@@ -214,7 +214,7 @@ export default function Dashboard() {
                 <div>
                   <div className="policy-card-label">Rebalance costs</div>
                   <div className="policy-card-meta">
-                    24h · paid to Loop Out / circular rebalance · all-time {formatSigned(-Math.abs(mAll?.rebalance_costs_sats ?? 0)).text}
+                    24h · paid to rebalance ops · all-time {formatSigned(-Math.abs(mAll?.rebalance_costs_sats ?? 0)).text}
                   </div>
                 </div>
                 <div className="policy-card-value" style={{ color: "var(--red)" }}>

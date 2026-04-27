@@ -1,7 +1,15 @@
 /**
- * Automated Loop Out rebalance scheduler: on the treasury node, periodically
- * finds critical channels (>85% local) and initiates submarine swaps via
- * loopd to restore receive capacity. Monitors in-flight swaps each tick.
+ * Automated treasury-side Loop Out scheduler (operator opt-in, off by default).
+ *
+ * Reserved for the external-inbound-maintenance use case (keeping treasury
+ * reachable so member Loop In flows can succeed) and edge-case treasury
+ * recovery — not steady-state rebalancing. Steady-state member channel
+ * rebalancing is owned by the Member Liquidity Advisor on each member node;
+ * see `docs/ARCHITECTURE.md` § Liquidity Management.
+ *
+ * When enabled (`REBALANCE_SCHEDULER_ENABLED=true`), periodically finds
+ * critical treasury channels (>85% local) and initiates submarine swaps
+ * via loopd to restore receive capacity. Monitors in-flight swaps each tick.
  */
 
 import { ENV } from "../config/env";

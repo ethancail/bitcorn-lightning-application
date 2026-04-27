@@ -1,6 +1,10 @@
 /**
- * Circular rebalance: treasury pays itself via a forced path (outgoing_channel → … → incoming_channel)
- * to shift local/remote balances. Treasury-only; validates channels and liquidity before executing.
+ * Circular rebalance (LEGACY — see `docs/IMPLEMENTATION.md`): treasury pays itself
+ * via a forced path (outgoing_channel → … → incoming_channel) to shift local/remote
+ * balances. The endpoint `POST /api/treasury/rebalance/circular` is retained for
+ * one-off operator use, but circular rebalancing is no longer part of steady-state
+ * operation. See the Member Liquidity Advisor and Loop In/Out flows for the current
+ * member-driven rebalancing model.
  */
 
 import {
