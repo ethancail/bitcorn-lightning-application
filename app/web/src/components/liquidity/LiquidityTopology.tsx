@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { HEALTH_COLOR, ROLE_COLOR, type LiquidityPeer } from "./types";
 import { formatSatsShort } from "./transform";
 
@@ -17,6 +17,40 @@ const ORBIT_R = 75;
 
 export default function LiquidityTopology({ peers, treasuryAlias, selectedPubkey, onSelect }: Props) {
   const [focusedIdx, setFocusedIdx] = useState<number>(-1);
+
+  useEffect(() => {
+    if (focusedIdx >= peers.length) {
+      setFocusedIdx(peers.length === 0 ? -1 : 0);
+    }
+  }, [peers.length, focusedIdx]);
+
+  const hoverTimeoutRef = useRef<number | null>(null);
+
+  const handleHoverSelect = useCallback((pubkey: string) => {
+    if (hoverTimeoutRef.current !== null) {
+      window.clearTimeout(hoverTimeoutRef.current);
+    }
+    hoverTimeoutRef.current = window.setTimeout(() => {
+      onSelect(pubkey);
+      hoverTimeoutRef.current = null;
+    }, 80);
+  }, [onSelect]);
+
+  const handleClickSelect = useCallback((pubkey: string) => {
+    if (hoverTimeoutRef.current !== null) {
+      window.clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    onSelect(pubkey);
+  }, [onSelect]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current !== null) {
+        window.clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const positioned = useMemo(() => {
     const cx = W / 2;
@@ -114,8 +148,8 @@ export default function LiquidityTopology({ peers, treasuryAlias, selectedPubkey
             return (
               <g
                 key={`node-${peer.pubkey}`}
-                onMouseEnter={() => onSelect(peer.pubkey)}
-                onClick={() => onSelect(peer.pubkey)}
+                onMouseEnter={() => handleHoverSelect(peer.pubkey)}
+                onClick={() => handleClickSelect(peer.pubkey)}
                 style={{ cursor: "pointer" }}
                 aria-label={`${peer.name}, ${formatSatsShort(peer.capacity)} capacity, ${
                   peer.rolePct !== null ? `${Math.round(peer.rolePct * 100)}% ${peer.role === "merchant" ? "send" : "receive"} capacity` : "external"
