@@ -54,9 +54,7 @@ Do NOT:
 
 ### Auth
 - User/Admin API uses JWT
-- Node API uses HMAC + timestamp + nonce
-- Node API rejects replayed or stale requests
-- Treasury initiates all node-to-node calls
+- Node API (port 3109) uses HMAC + timestamp + nonce — currently unimplemented; reserved for any future authenticated, signed, replay-protected node-to-node coordination. Under the role-based rebalancing model, no steady-state flow uses 3109.
 
 ---
 
@@ -69,14 +67,11 @@ Do NOT:
 - All payments are auditable
 
 ### Liquidity
-- Liquidity seeding is admin-initiated only
-- Treasury pays invoices to move balance
-- Liquidity ≠ routing ≠ BoS
-
-### BoS
-- BoS is NOT used for bootstrapping
-- BoS only runs after real traffic exists
-- BoS must be visible and controllable by admin
+- Steady-state rebalancing is member-driven via the Member Liquidity Advisor: farmers run Loop Out locally; merchants run Loop In locally
+- Treasury push (keysend-based) is reserved for initial channel provisioning and operator-approved edge cases
+- Treasury-side Loop Out is reserved for maintaining external inbound (so member Loop In can succeed) and edge-case treasury maintenance
+- Channel provisioning is asymmetric by role (high outbound for merchants, high inbound for farmers); rebalancing restores this asymmetry, never targets 50/50
+- Cluster rebalance engine v1 (circular rebalance, fee steering, topology monitor) is legacy and gated off by default
 
 ---
 
