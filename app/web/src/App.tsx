@@ -19,6 +19,7 @@ import Peers from "./pages/Peers";
 import ValuationInput from "./pages/ValuationInput";
 import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
+import Liquidity from "./pages/Liquidity";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
 // Browsers change number input values on scroll wheel — confusing for sats fields.
@@ -2461,7 +2462,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
 }
 
 function LiquidityPage() {
-  return <NetworkGraph />;
+  return <Liquidity />;
 }
 
 
