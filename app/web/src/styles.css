@@ -1861,3 +1861,58 @@ input[type="number"] {
 @media (max-width: 720px) {
   .liq-kpi-banner { grid-template-columns: 1fr; }
 }
+
+.liq-lane-row {
+  display: grid;
+  grid-template-columns: 110px 60px 1fr 60px;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.liq-lane-row:last-child { border-bottom: 0; }
+
+.liq-lane-row.is-selected {
+  background: color-mix(in srgb, var(--amber) 6%, transparent);
+}
+
+.liq-lane-row-name {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.liq-lane-row-cap {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-3);
+  text-align: right;
+}
+
+.liq-health-bar {
+  height: 8px;
+  background: var(--bg-3);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.liq-health-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s;
+}
+
+.liq-health-chip {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
