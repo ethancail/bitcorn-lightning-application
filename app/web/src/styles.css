@@ -1989,3 +1989,22 @@ input[type="number"] {
 .liq-external-section .panel-body {
   border-top: 1px solid var(--border);
 }
+
+.liq-page { display: flex; flex-direction: column; }
+
+.liq-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.liq-page-title {
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--amber-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
