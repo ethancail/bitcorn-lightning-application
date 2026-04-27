@@ -1,6 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import LiquidityLaneRow from "./LiquidityLaneRow";
 import { comparePeers } from "./transform";
+import { useFlip } from "./useFlip";
 import type { LiquidityPeer } from "./types";
 
 type Props = {
@@ -13,6 +14,10 @@ type Props = {
 
 export default function LiquidityLane({ title, peers, selectedPubkey, pulseKey, rowRefs }: Props) {
   const sorted = useMemo(() => [...peers].sort(comparePeers), [peers]);
+  const localRefs = useRef<Map<string, HTMLElement | null>>(new Map());
+
+  // FLIP animation when urgency order changes (e.g. on refresh).
+  useFlip(sorted.map((p) => p.pubkey), localRefs.current);
 
   return (
     <div className="liq-lane panel ops fade-in">
@@ -30,7 +35,10 @@ export default function LiquidityLane({ title, peers, selectedPubkey, pulseKey, 
               peer={peer}
               isSelected={peer.pubkey === selectedPubkey}
               pulseKey={pulseKey}
-              ref={(el) => { rowRefs.set(peer.pubkey, el); }}
+              ref={(el) => {
+                rowRefs.set(peer.pubkey, el);
+                localRefs.current.set(peer.pubkey, el);
+              }}
             />
           ))
         )}
