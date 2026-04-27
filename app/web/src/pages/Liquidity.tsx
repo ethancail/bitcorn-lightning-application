@@ -18,6 +18,7 @@ export default function Liquidity() {
   const rowRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
 
   const fetchData = useCallback(async () => {
+    rowRefs.current.clear();
     const [channelsResp, contacts, nodeInfo] = await Promise.all([
       fetch(`${API_BASE}/api/channels`).then((r) => r.json()) as Promise<ChannelData[]>,
       api.getContacts().catch(() => [] as Contact[]),
