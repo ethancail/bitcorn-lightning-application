@@ -66,7 +66,10 @@ The migration set is contiguous from `001` through `034` with no gaps. Always al
 - `contacts` — address book with tags
 - `member_keysend_status` — tracks peers that reject keysend (24h skip window)
 
-**Cluster rebalance engine**
+**Cluster rebalance engine v1 (legacy — gated off by default)**
+
+These tables are populated only when `CLUSTER_REBALANCE_ENABLED=true`, which is off in steady-state operation. The cluster engine is no longer the active rebalancing model; see `docs/ARCHITECTURE.md` § Liquidity Management for the member-driven role-based model.
+
 - `rebalance_clusters` — cluster definitions
 - `rebalance_cluster_channels` — channel → cluster membership
 - `rebalance_fee_policy` — per-cluster fee bands and current state

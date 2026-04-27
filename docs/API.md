@@ -93,7 +93,9 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 | GET | `/api/treasury/peers/live` | Live connected peers (with contact resolution, ping) |
 | POST | `/api/treasury/peers/connect` | Connect by URI (`pubkey@host:port`) |
 
-**Member liquidity (treasury-side)**
+**Member liquidity (treasury-side, edge-case only)**
+
+Treasury-operator-approved push flow used for initial channel provisioning or edge-case maintenance; not part of steady-state rebalancing. Steady-state member rebalancing is driven by the Member Liquidity Advisor on the member node — see `/api/liquidity/*` above.
 
 | Method | Path | Purpose |
 |--------|------|---------|
