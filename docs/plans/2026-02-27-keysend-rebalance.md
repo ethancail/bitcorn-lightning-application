@@ -1,5 +1,7 @@
 # Keysend Push Rebalance Implementation Plan
 
+> **Historical — superseded.** Keysend push as a rebalancing tool was disabled in v1.3.5; under the current role-based model, rebalancing is member-driven (Loop Out for farmers, Loop In for merchants) and the treasury does not orchestrate keysend rebalancing. This document is retained for historical context. See `docs/ARCHITECTURE.md` § Liquidity Management for the current model.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace circular rebalancing with keysend push rebalancing for hub-and-spoke topology where circular routes are impossible.

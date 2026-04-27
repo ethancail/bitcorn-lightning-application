@@ -1,5 +1,7 @@
 # Loop-Based Swap Subsystem Implementation Plan
 
+> **Shipped — see `app/api/src/swaps/` for the current implementation.**
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add Loop-based swap subsystem with member "Withdraw to Bitcoin Wallet" and treasury Loop In/Out operations, replacing keysend as the primary liquidity mechanism.

@@ -1,5 +1,7 @@
 # Keysend Enforcement Implementation Plan
 
+> **Partial — keysend rebalance (the original motivating flow) was disabled in v1.3.5, but the keysend enforcement infrastructure described in this doc — `member_keysend_status` table, 24h backoff, `MEMBER_KEYSEND_DISABLED` alert, ConnectToHub preflight — is still in use for the treasury push (provisioning + edge cases) execution path. The mechanics described below remain accurate; only the original motivation is stale.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Enforce keysend support across member nodes — block setup if disabled, detect failures at runtime, alert both treasury and member dashboards.

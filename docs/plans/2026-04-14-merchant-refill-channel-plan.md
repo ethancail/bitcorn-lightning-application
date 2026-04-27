@@ -1,5 +1,7 @@
 # Merchant Refill Channel Implementation Plan
 
+> **Shipped — see `RefillChannel.tsx` for the current implementation. The route swap from `WithdrawBitcoin.tsx` to `RefillChannel.tsx` for `/refill` is still pending per `docs/IMPLEMENTATION.md`.**
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a merchant-side Loop In (Refill Channel) page with preflight route probing, policy enforcement, advisor integration, and Loop Out parity improvements.
