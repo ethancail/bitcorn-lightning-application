@@ -385,13 +385,17 @@ const server = http.createServer(async (req, res) => {
             { submitted_at: submittedAtISO, date: parsed.date, values: upserts, delete: deletes },
           );
 
-          // 3. Update sync status on the local rows we just inserted
-          updateSyncStatus(
-            db,
-            record.insertedIds,
-            workerResult.ok ? "confirmed" : "failed",
-            workerResult.ok ? undefined : `status=${workerResult.status} error=${workerResult.error ?? ""}`,
-          );
+          // 3. Update sync status only on value rows. Tombstone rows keep their
+          //    `worker_sync_error='deleted'` sentinel intact — that sentinel is what
+          //    listValuesForDay and summarizeDateRange use to skip them.
+          if (record.valueIds.length > 0) {
+            updateSyncStatus(
+              db,
+              record.valueIds,
+              workerResult.ok ? "confirmed" : "failed",
+              workerResult.ok ? undefined : `status=${workerResult.status} error=${workerResult.error ?? ""}`,
+            );
+          }
 
           if (workerResult.ok) {
             res.writeHead(200, { "Content-Type": "application/json" });

@@ -115,17 +115,21 @@ export function recordCalendarSubmission(
   values: Partial<Record<ManualMetricKey, number>>,
   deletes: ManualMetricKey[],
   submittedAtUnix: number,
-): { insertedIds: number[] } {
+): { valueIds: number[]; tombstoneIds: number[] } {
   const createdAt = Math.floor(Date.now() / 1000);
-  const insertedIds: number[] = [];
+  const valueIds: number[] = [];
+  const tombstoneIds: number[] = [];
   const insert = db.prepare(
     `INSERT INTO valuation_manual_inputs
        (metric_key, value, submitted_at, created_at, worker_sync_status, entry_date)
      VALUES (?, ?, ?, ?, 'pending', ?)`,
   );
-  // Tombstone rows for deletes — value=NaN encoded as -1 with a sentinel
-  // status. We keep them so audit can tell "operator deleted this on date X."
-  // For the value column we use 0 with worker_sync_error = "deleted".
+  // Tombstone rows for deletes — value=0 with worker_sync_error='deleted'
+  // serves as the sentinel that distinguishes deletes from real zero readings.
+  // Tombstones intentionally stay worker_sync_status='pending' forever; the
+  // sync-status update path is reserved for value rows so the sentinel
+  // survives. Calendar queries (listValuesForDay, summarizeDateRange) check
+  // the worker_sync_error sentinel, not worker_sync_status.
   const tombstone = db.prepare(
     `INSERT INTO valuation_manual_inputs
        (metric_key, value, submitted_at, created_at, worker_sync_status, entry_date, worker_sync_error)
@@ -136,15 +140,15 @@ export function recordCalendarSubmission(
       const v = values[key];
       if (typeof v === "number" && Number.isFinite(v)) {
         const info = insert.run(key, v, submittedAtUnix, createdAt, entryDate);
-        insertedIds.push(Number(info.lastInsertRowid));
+        valueIds.push(Number(info.lastInsertRowid));
       } else if (deletes.includes(key)) {
         const info = tombstone.run(key, submittedAtUnix, createdAt, entryDate);
-        insertedIds.push(Number(info.lastInsertRowid));
+        tombstoneIds.push(Number(info.lastInsertRowid));
       }
     }
   });
   txn();
-  return { insertedIds };
+  return { valueIds, tombstoneIds };
 }
 
 /**
