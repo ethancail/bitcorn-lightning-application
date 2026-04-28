@@ -14,20 +14,23 @@ interface MetricConfig {
   chartUrl: string;
   typicalRange: string;
   decimals: number;
+  // Best-guess Glassnode access required to read this value off the chart.
+  // ESTIMATES — verify by visiting the chart link. Glassnode shows a tier
+  // gate when a free user lands on a paid chart.
+  estimatedTier: "free" | "paid";
+  tierNote: string;
 }
 
-// Descriptions + public charts the operator reads values from. Free to view —
-// Glassnode Studio, LookIntoBitcoin, and similar all render current values
-// without gating the chart itself (only API access is paid).
+// Descriptions + public charts the operator reads values from.
 const METRICS: MetricConfig[] = [
-  { key: "mvrv",              label: "MVRV Z-Score",            description: "Market Value / Realised Value deviation",       chartUrl: "https://studio.glassnode.com/charts/market.MvrvZScore",                      typicalRange: "−0.5 to +10",  decimals: 3 },
-  { key: "puell",             label: "Puell Multiple",          description: "Miner revenue / 365-day MA",                    chartUrl: "https://studio.glassnode.com/charts/indicators.PuellMultiple",               typicalRange: "0.3 to 4",     decimals: 3 },
-  { key: "sopr",              label: "SOPR (30d MA)",           description: "Spent Output Profit Ratio, 30-day MA",          chartUrl: "https://studio.glassnode.com/charts/indicators.Sopr",                        typicalRange: "0.97 to 1.05", decimals: 4 },
-  { key: "reserve_risk",      label: "Reserve Risk",            description: "Confidence-weighted HODL score",                chartUrl: "https://studio.glassnode.com/charts/indicators.ReserveRisk",                 typicalRange: "0.002 to 0.02", decimals: 4 },
-  { key: "nvt",               label: "NVT Signal",              description: "Network Value / Transaction Volume (90d)",      chartUrl: "https://studio.glassnode.com/charts/indicators.Nvts",                        typicalRange: "30 to 200",    decimals: 2 },
-  { key: "hash_ribbons",      label: "Hash Ribbons",            description: "30d/60d hashrate crossover",                    chartUrl: "https://studio.glassnode.com/charts/indicators.HashRibbon",                  typicalRange: "0.9 to 1.1",   decimals: 3 },
-  { key: "difficulty_ribbon", label: "Difficulty Ribbon",       description: "Compression of 9 difficulty MAs",               chartUrl: "https://studio.glassnode.com/charts/indicators.DifficultyRibbonCompression", typicalRange: "0.005 to 0.08", decimals: 4 },
-  { key: "hodl_waves",        label: "Realized Cap HODL Waves", description: "1y-2y age-band realized cap share",             chartUrl: "https://studio.glassnode.com/charts/supply.RealizedHodlWaves",               typicalRange: "0.05 to 0.25", decimals: 3 },
+  { key: "mvrv",              label: "MVRV Z-Score",            description: "Market Value / Realised Value deviation",       chartUrl: "https://studio.glassnode.com/charts/market.MvrvZScore",                      typicalRange: "−0.5 to +10",  decimals: 3, estimatedTier: "free", tierNote: "Likely free chart view" },
+  { key: "puell",             label: "Puell Multiple",          description: "Miner revenue / 365-day MA",                    chartUrl: "https://studio.glassnode.com/charts/indicators.PuellMultiple",               typicalRange: "0.3 to 4",     decimals: 3, estimatedTier: "free", tierNote: "Likely free chart view" },
+  { key: "sopr",              label: "SOPR (30d MA)",           description: "Spent Output Profit Ratio, 30-day MA",          chartUrl: "https://studio.glassnode.com/charts/indicators.Sopr",                        typicalRange: "0.97 to 1.05", decimals: 4, estimatedTier: "free", tierNote: "Likely free chart view" },
+  { key: "reserve_risk",      label: "Reserve Risk",            description: "Confidence-weighted HODL score",                chartUrl: "https://studio.glassnode.com/charts/indicators.ReserveRisk",                 typicalRange: "0.002 to 0.02", decimals: 4, estimatedTier: "paid", tierNote: "Likely paid tier (advanced metric)" },
+  { key: "nvt",               label: "NVT Signal",              description: "Network Value / Transaction Volume (90d)",      chartUrl: "https://studio.glassnode.com/charts/indicators.Nvts",                        typicalRange: "30 to 200",    decimals: 2, estimatedTier: "free", tierNote: "Likely free chart view" },
+  { key: "hash_ribbons",      label: "Hash Ribbons",            description: "30d/60d hashrate crossover",                    chartUrl: "https://studio.glassnode.com/charts/indicators.HashRibbon",                  typicalRange: "0.9 to 1.1",   decimals: 3, estimatedTier: "free", tierNote: "Likely free chart view" },
+  { key: "difficulty_ribbon", label: "Difficulty Ribbon",       description: "Compression of 9 difficulty MAs",               chartUrl: "https://studio.glassnode.com/charts/indicators.DifficultyRibbonCompression", typicalRange: "0.005 to 0.08", decimals: 4, estimatedTier: "free", tierNote: "Likely free chart view" },
+  { key: "hodl_waves",        label: "Realized Cap HODL Waves", description: "1y-2y age-band realized cap share",             chartUrl: "https://studio.glassnode.com/charts/supply.RealizedHodlWaves",               typicalRange: "0.05 to 0.25", decimals: 3, estimatedTier: "paid", tierNote: "Likely paid tier (cohort breakdown)" },
 ];
 
 function formatRelative(unix: number | null): string {
@@ -104,6 +107,8 @@ export default function ValuationInput() {
         </p>
       </div>
 
+      <GlassnodeAccessSummary />
+
       {staleOrMissing.length > 0 && (
         <div
           style={{
@@ -148,6 +153,16 @@ export default function ValuationInput() {
                   <a href={m.chartUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
                     chart ↗
                   </a>
+                  {" · "}
+                  <span
+                    style={{
+                      color: m.estimatedTier === "free" ? "#22c55e" : "#fbbf24",
+                      fontWeight: 500,
+                    }}
+                    title="Estimated Glassnode access — verify by clicking the chart link"
+                  >
+                    {m.tierNote}
+                  </span>
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
@@ -231,6 +246,44 @@ export default function ValuationInput() {
       <div style={{ marginTop: 48 }}>
         <h2 style={{ marginBottom: 16 }}>Composite Model Inputs</h2>
         <InputsTab />
+      </div>
+    </div>
+  );
+}
+
+// Glassnode access summary — surfaces the estimated tier requirement for the
+// 8 manual inputs so the operator can decide whether free chart access is
+// enough or a paid subscription is needed. Estimates only; visiting each
+// chart link is the authoritative way to confirm.
+function GlassnodeAccessSummary() {
+  const freeCount = METRICS.filter((m) => m.estimatedTier === "free").length;
+  const paidCount = METRICS.length - freeCount;
+  const verdict =
+    paidCount === 0
+      ? "Free Glassnode chart access likely sufficient for all 8 metrics."
+      : `${freeCount} of 8 likely free chart view; ${paidCount} likely require a paid Glassnode tier (Reserve Risk + HODL Waves are the typical offenders).`;
+
+  return (
+    <div
+      className="panel"
+      style={{
+        marginBottom: 16,
+        padding: "12px 16px",
+        borderLeft: "3px solid var(--accent)",
+      }}
+    >
+      <div style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: 4 }}>
+        Glassnode access required
+      </div>
+      <div style={{ color: "var(--text-2)", fontSize: "0.8125rem", marginBottom: 8 }}>
+        {verdict} Per-metric estimates appear below each chart link.
+      </div>
+      <div style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>
+        These are estimates. Glassnode shows a tier gate when a free user lands
+        on a paid chart — open each link and note what you see. If 1 or more
+        metrics require a paid tier, the entry-level Glassnode subscription
+        (Hobbyist/Standard, ~$30–40/mo at last check) is typically enough; the
+        Pro / Enterprise tiers exist mainly for API access, not chart viewing.
       </div>
     </div>
   );
