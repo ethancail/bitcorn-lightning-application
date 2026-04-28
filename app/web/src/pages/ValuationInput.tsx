@@ -14,23 +14,24 @@ interface MetricConfig {
   chartUrl: string;
   typicalRange: string;
   decimals: number;
-  // Best-guess Glassnode access required to read this value off the chart.
-  // ESTIMATES — verify by visiting the chart link. Glassnode shows a tier
-  // gate when a free user lands on a paid chart.
-  estimatedTier: "free" | "paid";
+  // Confirmed Glassnode access required to read this value, verified by the
+  // operator on 2026-04-28. "missing" = the chart URL on Glassnode either
+  // 404s or the metric has been removed/renamed (Cael needs to investigate).
+  tier: "free" | "paid" | "missing";
   tierNote: string;
 }
 
 // Descriptions + public charts the operator reads values from.
+// Tier values verified by walking each chart link on 2026-04-28.
 const METRICS: MetricConfig[] = [
-  { key: "mvrv",              label: "MVRV Z-Score",            description: "Market Value / Realised Value deviation",       chartUrl: "https://studio.glassnode.com/charts/market.MvrvZScore",                      typicalRange: "−0.5 to +10",  decimals: 3, estimatedTier: "free", tierNote: "Likely free chart view" },
-  { key: "puell",             label: "Puell Multiple",          description: "Miner revenue / 365-day MA",                    chartUrl: "https://studio.glassnode.com/charts/indicators.PuellMultiple",               typicalRange: "0.3 to 4",     decimals: 3, estimatedTier: "free", tierNote: "Likely free chart view" },
-  { key: "sopr",              label: "SOPR (30d MA)",           description: "Spent Output Profit Ratio, 30-day MA",          chartUrl: "https://studio.glassnode.com/charts/indicators.Sopr",                        typicalRange: "0.97 to 1.05", decimals: 4, estimatedTier: "free", tierNote: "Likely free chart view" },
-  { key: "reserve_risk",      label: "Reserve Risk",            description: "Confidence-weighted HODL score",                chartUrl: "https://studio.glassnode.com/charts/indicators.ReserveRisk",                 typicalRange: "0.002 to 0.02", decimals: 4, estimatedTier: "paid", tierNote: "Likely paid tier (advanced metric)" },
-  { key: "nvt",               label: "NVT Signal",              description: "Network Value / Transaction Volume (90d)",      chartUrl: "https://studio.glassnode.com/charts/indicators.Nvts",                        typicalRange: "30 to 200",    decimals: 2, estimatedTier: "free", tierNote: "Likely free chart view" },
-  { key: "hash_ribbons",      label: "Hash Ribbons",            description: "30d/60d hashrate crossover",                    chartUrl: "https://studio.glassnode.com/charts/indicators.HashRibbon",                  typicalRange: "0.9 to 1.1",   decimals: 3, estimatedTier: "free", tierNote: "Likely free chart view" },
-  { key: "difficulty_ribbon", label: "Difficulty Ribbon",       description: "Compression of 9 difficulty MAs",               chartUrl: "https://studio.glassnode.com/charts/indicators.DifficultyRibbonCompression", typicalRange: "0.005 to 0.08", decimals: 4, estimatedTier: "free", tierNote: "Likely free chart view" },
-  { key: "hodl_waves",        label: "Realized Cap HODL Waves", description: "1y-2y age-band realized cap share",             chartUrl: "https://studio.glassnode.com/charts/supply.RealizedHodlWaves",               typicalRange: "0.05 to 0.25", decimals: 3, estimatedTier: "paid", tierNote: "Likely paid tier (cohort breakdown)" },
+  { key: "mvrv",              label: "MVRV Z-Score",            description: "Market Value / Realised Value deviation",       chartUrl: "https://studio.glassnode.com/charts/market.MvrvZScore",                      typicalRange: "−0.5 to +10",  decimals: 3, tier: "paid",    tierNote: "Paid tier required" },
+  { key: "puell",             label: "Puell Multiple",          description: "Miner revenue / 365-day MA",                    chartUrl: "https://studio.glassnode.com/charts/indicators.PuellMultiple",               typicalRange: "0.3 to 4",     decimals: 3, tier: "paid",    tierNote: "Paid tier required" },
+  { key: "sopr",              label: "SOPR (30d MA)",           description: "Spent Output Profit Ratio, 30-day MA",          chartUrl: "https://studio.glassnode.com/charts/indicators.Sopr",                        typicalRange: "0.97 to 1.05", decimals: 4, tier: "free",    tierNote: "Free chart view" },
+  { key: "reserve_risk",      label: "Reserve Risk",            description: "Confidence-weighted HODL score",                chartUrl: "https://studio.glassnode.com/charts/indicators.ReserveRisk",                 typicalRange: "0.002 to 0.02", decimals: 4, tier: "paid",    tierNote: "Paid tier required" },
+  { key: "nvt",               label: "NVT Signal",              description: "Network Value / Transaction Volume (90d)",      chartUrl: "https://studio.glassnode.com/charts/indicators.Nvts",                        typicalRange: "30 to 200",    decimals: 2, tier: "paid",    tierNote: "Paid tier required" },
+  { key: "hash_ribbons",      label: "Hash Ribbons",            description: "30d/60d hashrate crossover",                    chartUrl: "https://studio.glassnode.com/charts/indicators.HashRibbon",                  typicalRange: "0.9 to 1.1",   decimals: 3, tier: "paid",    tierNote: "Paid tier required" },
+  { key: "difficulty_ribbon", label: "Difficulty Ribbon",       description: "Compression of 9 difficulty MAs",               chartUrl: "https://studio.glassnode.com/charts/indicators.DifficultyRibbonCompression", typicalRange: "0.005 to 0.08", decimals: 4, tier: "paid",    tierNote: "Paid tier required" },
+  { key: "hodl_waves",        label: "Realized Cap HODL Waves", description: "1y-2y age-band realized cap share",             chartUrl: "https://studio.glassnode.com/charts/supply.RcapHodlWaves",                    typicalRange: "0.05 to 0.25", decimals: 3, tier: "paid",    tierNote: "Paid tier required (URL fixed: Rcap not Realized)" },
 ];
 
 function formatRelative(unix: number | null): string {
@@ -156,10 +157,13 @@ export default function ValuationInput() {
                   {" · "}
                   <span
                     style={{
-                      color: m.estimatedTier === "free" ? "#22c55e" : "#fbbf24",
+                      color:
+                        m.tier === "free" ? "#22c55e" :
+                        m.tier === "paid" ? "#fbbf24" :
+                        "#ef4444",
                       fontWeight: 500,
                     }}
-                    title="Estimated Glassnode access — verify by clicking the chart link"
+                    title="Glassnode access required (verified by operator 2026-04-28)"
                   >
                     {m.tierNote}
                   </span>
@@ -251,17 +255,13 @@ export default function ValuationInput() {
   );
 }
 
-// Glassnode access summary — surfaces the estimated tier requirement for the
-// 8 manual inputs so the operator can decide whether free chart access is
-// enough or a paid subscription is needed. Estimates only; visiting each
-// chart link is the authoritative way to confirm.
+// Glassnode access summary — surfaces the verified tier requirement for the
+// 8 manual inputs. Tier values were walked-and-checked by the operator on
+// 2026-04-28 (Kevin clicked each chart link and recorded the gating result).
 function GlassnodeAccessSummary() {
-  const freeCount = METRICS.filter((m) => m.estimatedTier === "free").length;
-  const paidCount = METRICS.length - freeCount;
-  const verdict =
-    paidCount === 0
-      ? "Free Glassnode chart access likely sufficient for all 8 metrics."
-      : `${freeCount} of 8 likely free chart view; ${paidCount} likely require a paid Glassnode tier (Reserve Risk + HODL Waves are the typical offenders).`;
+  const freeCount = METRICS.filter((m) => m.tier === "free").length;
+  const paidCount = METRICS.filter((m) => m.tier === "paid").length;
+  const missingCount = METRICS.filter((m) => m.tier === "missing").length;
 
   return (
     <div
@@ -269,21 +269,42 @@ function GlassnodeAccessSummary() {
       style={{
         marginBottom: 16,
         padding: "12px 16px",
-        borderLeft: "3px solid var(--accent)",
+        borderLeft: `3px solid ${missingCount > 0 ? "#ef4444" : "#fbbf24"}`,
       }}
     >
       <div style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: 4 }}>
-        Glassnode access required
+        Glassnode access required — paid subscription needed
       </div>
       <div style={{ color: "var(--text-2)", fontSize: "0.8125rem", marginBottom: 8 }}>
-        {verdict} Per-metric estimates appear below each chart link.
+        <strong style={{ color: "#22c55e" }}>{freeCount} free</strong> ·{" "}
+        <strong style={{ color: "#fbbf24" }}>{paidCount} paid tier</strong>
+        {missingCount > 0 && (
+          <>
+            {" · "}
+            <strong style={{ color: "#ef4444" }}>{missingCount} chart missing</strong>
+          </>
+        )}
+        . Verified by operator walking each chart link 2026-04-28.
       </div>
       <div style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>
-        These are estimates. Glassnode shows a tier gate when a free user lands
-        on a paid chart — open each link and note what you see. If 1 or more
-        metrics require a paid tier, the entry-level Glassnode subscription
-        (Hobbyist/Standard, ~$30–40/mo at last check) is typically enough; the
-        Pro / Enterprise tiers exist mainly for API access, not chart viewing.
+        With {paidCount} of 8 metrics behind Glassnode's paywall, a paid
+        subscription is required to run the SAGE composite as designed. The
+        entry-level Glassnode plan (Hobbyist or Standard, ~$30–40/mo at last
+        check) typically covers chart viewing for all paid metrics; Pro /
+        Enterprise tiers exist mainly for API access. Cael should pick the
+        cheapest plan that grants chart access to all {paidCount} paid
+        metrics — confirm by signing up for the trial and clicking each
+        link below.
+        {missingCount > 0 && (
+          <>
+            {" "}
+            <strong style={{ color: "#ef4444" }}>
+              ⚠ HODL Waves chart link is broken on Glassnode (2026-04-28).
+            </strong>{" "}
+            Cael needs to provide either the correct chart slug or a
+            substitute metric source before this input can be re-enabled.
+          </>
+        )}
       </div>
     </div>
   );
