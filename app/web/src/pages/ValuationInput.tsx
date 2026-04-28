@@ -21,8 +21,17 @@ export default function ValuationInput() {
   const [searchParams, setSearchParams] = useSearchParams();
   const today = todayUtcParts();
 
-  const initialDate = searchParams.get("date");
-  const initialView = (searchParams.get("view") as View) || "day";
+  // Validate the URL-provided date matches our YYYY-MM-DD shape and isn't a
+  // future date before we trust it for initial state. Bad input falls back to
+  // today (rather than writing NaN back to the URL on the next render).
+  const rawInitialDate = searchParams.get("date");
+  const initialDate =
+    rawInitialDate && /^\d{4}-\d{2}-\d{2}$/.test(rawInitialDate) && rawInitialDate <= today.date
+      ? rawInitialDate
+      : null;
+  const rawView = searchParams.get("view");
+  const initialView: View = rawView === "year" || rawView === "month" || rawView === "day" ? rawView : "day";
+
   const [view, setView] = useState<View>(initialView);
   const [year, setYear] = useState<number>(() => {
     if (initialDate) return Number(initialDate.split("-")[0]);

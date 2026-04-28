@@ -41,25 +41,46 @@ export default function DayForm({ date, onSaved }: Props) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: "success" | "error" | "partial"; msg: string } | null>(null);
 
-  const refresh = () => {
-    api.getValuationDay(date)
-      .then((d) => {
-        setDay(d);
-        const next: Record<ManualMetricKey, string> = {} as Record<ManualMetricKey, string>;
-        for (const m of METRICS) {
-          const v = d.metrics[m.key]?.value;
-          next[m.key] = v == null ? "" : String(v);
-        }
-        setInputs(next);
-      })
-      .catch((err) => console.error("[DayForm]", err));
+  // Apply a server day-payload to local form state. Used by the initial
+  // mount-effect (cancel-aware) and by post-submit refresh (fire-and-forget).
+  const applyDay = (d: DayValues) => {
+    setDay(d);
+    const next: Record<ManualMetricKey, string> = {} as Record<ManualMetricKey, string>;
+    for (const m of METRICS) {
+      const v = d.metrics[m.key]?.value;
+      next[m.key] = v == null ? "" : String(v);
+    }
+    setInputs(next);
   };
 
+  // Initial fetch + re-fetch on date change. Uses a cancellation flag so that
+  // a slow response for an old date can't clobber state after the user has
+  // already navigated to a new date.
   useEffect(() => {
-    refresh();
-    // refresh is stable per `date`; we want this to run only when date changes.
+    let cancelled = false;
+    api.getValuationDay(date)
+      .then((d) => {
+        if (cancelled) return;
+        applyDay(d);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        console.error("[DayForm]", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // applyDay is recreated every render but only consumes setters which are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date]);
+
+  // Post-submit refresh. Fire-and-forget; if the user has already navigated
+  // away the cancel-aware effect above will overwrite anyway when this resolves.
+  const refresh = () => {
+    api.getValuationDay(date)
+      .then(applyDay)
+      .catch((err) => console.error("[DayForm:refresh]", err));
+  };
 
   const submit = async (req: { values?: Partial<Record<ManualMetricKey, number>>; delete?: ManualMetricKey[] }) => {
     setBusy(true);
