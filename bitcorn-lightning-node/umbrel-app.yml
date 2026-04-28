@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.10"
+version: "1.13.11"
 port: 3200
 
 description: >
@@ -27,6 +27,15 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.11: Corrects the Glassnode tier estimates from v1.13.10 with
+  actual operator findings (2026-04-28). Reality is grimmer than the
+  estimates: 1 of 8 free (SOPR), 6 of 8 require paid Glassnode tier,
+  1 (Realized Cap HODL Waves) chart link is broken on Glassnode and
+  needs Cael to provide the correct slug or substitute metric. Summary
+  callout updated to red border and reflects "paid subscription
+  required" with confirmed counts. Per-row tier badges show red for
+  the missing-chart case. No backend changes.
+
   v1.13.10: Adds an estimated Glassnode-tier indicator next to each
   metric on the /valuation-input page, plus a summary callout at the
   top showing how many of the 8 metrics likely need a paid Glassnode
