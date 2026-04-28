@@ -29,12 +29,12 @@ gallery: []
 releaseNotes: >
   v1.13.11: Corrects the Glassnode tier estimates from v1.13.10 with
   actual operator findings (2026-04-28). Reality is grimmer than the
-  estimates: 1 of 8 free (SOPR), 6 of 8 require paid Glassnode tier,
-  1 (Realized Cap HODL Waves) chart link is broken on Glassnode and
-  needs Cael to provide the correct slug or substitute metric. Summary
-  callout updated to red border and reflects "paid subscription
-  required" with confirmed counts. Per-row tier badges show red for
-  the missing-chart case. No backend changes.
+  estimates: 1 of 8 free (SOPR), 7 of 8 require paid Glassnode tier.
+  Also fixes the broken HODL Waves chart URL — Glassnode uses the
+  abbreviated slug `supply.RcapHodlWaves` (Rcap = Realized Cap), not
+  the full word that v1.13.10 had. Summary callout shows confirmed
+  counts and "paid subscription required" verdict with amber border;
+  per-row tier badges color-coded green/amber. No backend changes.
 
   v1.13.10: Adds an estimated Glassnode-tier indicator next to each
   metric on the /valuation-input page, plus a summary callout at the

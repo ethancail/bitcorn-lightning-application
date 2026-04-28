@@ -31,7 +31,7 @@ const METRICS: MetricConfig[] = [
   { key: "nvt",               label: "NVT Signal",              description: "Network Value / Transaction Volume (90d)",      chartUrl: "https://studio.glassnode.com/charts/indicators.Nvts",                        typicalRange: "30 to 200",    decimals: 2, tier: "paid",    tierNote: "Paid tier required" },
   { key: "hash_ribbons",      label: "Hash Ribbons",            description: "30d/60d hashrate crossover",                    chartUrl: "https://studio.glassnode.com/charts/indicators.HashRibbon",                  typicalRange: "0.9 to 1.1",   decimals: 3, tier: "paid",    tierNote: "Paid tier required" },
   { key: "difficulty_ribbon", label: "Difficulty Ribbon",       description: "Compression of 9 difficulty MAs",               chartUrl: "https://studio.glassnode.com/charts/indicators.DifficultyRibbonCompression", typicalRange: "0.005 to 0.08", decimals: 4, tier: "paid",    tierNote: "Paid tier required" },
-  { key: "hodl_waves",        label: "Realized Cap HODL Waves", description: "1y-2y age-band realized cap share",             chartUrl: "https://studio.glassnode.com/charts/supply.RealizedHodlWaves",               typicalRange: "0.05 to 0.25", decimals: 3, tier: "missing", tierNote: "Chart URL broken on Glassnode — needs Cael to provide correct slug or substitute metric" },
+  { key: "hodl_waves",        label: "Realized Cap HODL Waves", description: "1y-2y age-band realized cap share",             chartUrl: "https://studio.glassnode.com/charts/supply.RcapHodlWaves",                    typicalRange: "0.05 to 0.25", decimals: 3, tier: "paid",    tierNote: "Paid tier required (URL fixed: Rcap not Realized)" },
 ];
 
 function formatRelative(unix: number | null): string {
@@ -269,7 +269,7 @@ function GlassnodeAccessSummary() {
       style={{
         marginBottom: 16,
         padding: "12px 16px",
-        borderLeft: "3px solid #ef4444",
+        borderLeft: `3px solid ${missingCount > 0 ? "#ef4444" : "#fbbf24"}`,
       }}
     >
       <div style={{ fontWeight: 600, fontSize: "0.9375rem", marginBottom: 4 }}>
