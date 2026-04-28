@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.11"
+version: "1.13.12"
 port: 3200
 
 description: >
@@ -27,6 +27,18 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.12: Calendar-based valuation input UI. Replaces the flat 8-metric
+  /valuation-input form with a year/month/day navigable calendar. Year
+  view shows a 12-row heatmap of completeness across the year; month
+  view shows a standard calendar grid with X/8 completeness badges per
+  day; day view is the existing 8-metric form scoped to a specific date,
+  with per-metric Save, Save All, and per-metric Delete. Operator can
+  now backdate entries (fix April 27 dummy values, fill in missed days)
+  and edit/delete prior entries by clicking any day. Future dates are
+  disabled. URL state (?view=...&date=YYYY-MM-DD) supports deep links.
+  No backend changes — wires the API endpoints shipped in v1.13.11
+  (PR #138).
+
   v1.13.11: Corrects the Glassnode tier estimates from v1.13.10 with
   actual operator findings (2026-04-28). Reality is grimmer than the
   estimates: 1 of 8 free (SOPR), 7 of 8 require paid Glassnode tier.
