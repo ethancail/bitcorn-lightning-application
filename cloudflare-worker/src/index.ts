@@ -10,6 +10,8 @@
 //   GET  /valuation/history   — Daily composite history series (handlers/valuation.ts)
 //   GET  /valuation/inputs    — Per-input snapshot map (handlers/valuation.ts)
 //   POST /valuation/manual    — Treasury-signed manual metric entries (HMAC; handlers/manualInput.ts)
+//   GET  /valuation/manual/day      — Read all 8 metric values for a date (handlers/manualInputQuery.ts)
+//   GET  /valuation/manual/calendar — Per-day completeness summary across a range (handlers/manualInputQuery.ts)
 //
 // Deploy runbook, secret management, and architecture: docs/COINBASE_INTEGRATION.md.
 // Valuation engine runs on cron (wrangler.toml [triggers]); see valuation/cron.ts.
@@ -24,6 +26,7 @@ import {
   handleValuationInputs,
 } from "./handlers/valuation";
 import { handleManualInput } from "./handlers/manualInput";
+import { handleManualInputCalendar, handleManualInputDay } from "./handlers/manualInputQuery";
 import { handleScheduled } from "./valuation/cron";
 import { CORS_HEADERS } from "./lib/cors";
 import type { Env } from "./lib/types";
@@ -56,6 +59,12 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/valuation/inputs") {
       return handleValuationInputs(env);
+    }
+    if (request.method === "GET" && url.pathname === "/valuation/manual/day") {
+      return handleManualInputDay(request, env);
+    }
+    if (request.method === "GET" && url.pathname === "/valuation/manual/calendar") {
+      return handleManualInputCalendar(request, env);
     }
     if (request.method === "POST" && url.pathname === "/valuation/manual") {
       return handleManualInput(request, env);

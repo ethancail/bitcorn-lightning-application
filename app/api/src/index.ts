@@ -60,7 +60,16 @@ import { assertTreasury, assertNonEmpty } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
-import { MANUAL_METRIC_KEYS, recordSubmission, updateSyncStatus, listLatestPerMetric } from "./valuation/manualInputStore";
+import {
+  MANUAL_METRIC_KEYS,
+  recordSubmission,
+  recordCalendarSubmission,
+  listValuesForDay,
+  summarizeDateRange,
+  updateSyncStatus,
+  listLatestPerMetric,
+  type ManualMetricKey,
+} from "./valuation/manualInputStore";
 import { postManualInputToWorker } from "./valuation/workerClient";
 import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
@@ -317,6 +326,95 @@ const server = http.createServer(async (req, res) => {
     req.on("end", async () => {
       try {
         const parsed = JSON.parse(body || "{}");
+
+        // ── Calendar mode: parsed.date present → upsert/delete for that date ──
+        if (parsed?.date && typeof parsed.date === "string") {
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(parsed.date)) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "invalid_date_format" }));
+            return;
+          }
+          // Reject future dates
+          const todayUtc = new Date().toISOString().slice(0, 10);
+          if (parsed.date > todayUtc) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "future_date_not_allowed" }));
+            return;
+          }
+
+          const upserts: Partial<Record<ManualMetricKey, number>> = {};
+          if (parsed.values && typeof parsed.values === "object") {
+            for (const k of MANUAL_METRIC_KEYS) {
+              const v = parsed.values[k];
+              if (v === undefined) continue;
+              if (typeof v !== "number" || !Number.isFinite(v)) {
+                res.writeHead(400, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: `invalid_value_for_${k}` }));
+                return;
+              }
+              upserts[k] = v;
+            }
+          }
+          const deletes: ManualMetricKey[] = [];
+          if (Array.isArray(parsed.delete)) {
+            for (const k of parsed.delete) {
+              if (!MANUAL_METRIC_KEYS.includes(k as ManualMetricKey)) {
+                res.writeHead(400, { "Content-Type": "application/json" });
+                res.end(JSON.stringify({ error: `invalid_delete_key_${k}` }));
+                return;
+              }
+              deletes.push(k as ManualMetricKey);
+            }
+          }
+          if (Object.keys(upserts).length === 0 && deletes.length === 0) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "values_or_delete_required" }));
+            return;
+          }
+
+          const submittedAtISO = new Date().toISOString();
+          const submittedAtUnix = Math.floor(Date.parse(submittedAtISO) / 1000);
+
+          // 1. Local audit row(s)
+          const record = recordCalendarSubmission(db, parsed.date, upserts, deletes, submittedAtUnix);
+
+          // 2. Forward to Worker (unified shape)
+          const workerResult = await postManualInputToWorker(
+            ENV.valuationWorkerUrl,
+            ENV.valuationSubmitHmac,
+            { submitted_at: submittedAtISO, date: parsed.date, values: upserts, delete: deletes },
+          );
+
+          // 3. Update sync status only on value rows. Tombstone rows keep their
+          //    `worker_sync_error='deleted'` sentinel intact — that sentinel is what
+          //    listValuesForDay and summarizeDateRange use to skip them.
+          if (record.valueIds.length > 0) {
+            updateSyncStatus(
+              db,
+              record.valueIds,
+              workerResult.ok ? "confirmed" : "failed",
+              workerResult.ok ? undefined : `status=${workerResult.status} error=${workerResult.error ?? ""}`,
+            );
+          }
+
+          if (workerResult.ok) {
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, date: parsed.date, submitted_at: submittedAtISO }));
+          } else {
+            res.writeHead(207, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({
+              ok: false,
+              date: parsed.date,
+              local_saved: true,
+              submitted_at: submittedAtISO,
+              worker_error: workerResult.error ?? null,
+              worker_status: workerResult.status,
+            }));
+          }
+          return;
+        }
+
+        // ── Legacy mode: no date field, all 8 values required, append-by-now ──
         const values = parsed?.values;
         if (!values || typeof values !== "object") {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -335,17 +433,12 @@ const server = http.createServer(async (req, res) => {
         const submittedAtISO = new Date().toISOString();
         const submittedAtUnix = Math.floor(Date.parse(submittedAtISO) / 1000);
 
-        // 1. Record locally (8 rows, pending)
         const record = recordSubmission(db, values, submittedAtUnix);
-
-        // 2. Forward to Worker (HMAC-signed)
         const workerResult = await postManualInputToWorker(
           ENV.valuationWorkerUrl,
           ENV.valuationSubmitHmac,
           { submitted_at: submittedAtISO, values },
         );
-
-        // 3. Update sync status
         updateSyncStatus(
           db,
           record.insertedIds,
@@ -353,7 +446,6 @@ const server = http.createServer(async (req, res) => {
           workerResult.ok ? undefined : `status=${workerResult.status} error=${workerResult.error ?? ""}`,
         );
 
-        // 4. Respond
         if (workerResult.ok) {
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true, submitted_at: submittedAtISO }));
@@ -408,6 +500,73 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ metrics: response }));
     } catch (err: any) {
       console.error("[valuation-manual-status]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/valuation/manual/day")) {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const u = new URL(req.url, "http://localhost");
+      const date = u.searchParams.get("date");
+      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid_or_missing_date" }));
+        return;
+      }
+      const rows = listValuesForDay(db, date);
+      const metrics: Record<string, unknown> = {};
+      for (const k of MANUAL_METRIC_KEYS) {
+        const r = rows[k];
+        metrics[k] = r ? {
+          value: r.value,
+          submitted_at: r.submitted_at,
+          worker_sync_status: r.worker_sync_status,
+        } : { value: null, submitted_at: null, worker_sync_status: null };
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ date, metrics }));
+    } catch (err: any) {
+      console.error("[valuation-manual:day]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/valuation/manual/calendar")) {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const u = new URL(req.url, "http://localhost");
+      const from = u.searchParams.get("from");
+      const to = u.searchParams.get("to");
+      if (!from || !/^\d{4}-\d{2}-\d{2}$/.test(from)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid_from" }));
+        return;
+      }
+      if (!to || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid_to" }));
+        return;
+      }
+      const days = summarizeDateRange(db, from, to);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ from, to, days }));
+    } catch (err: any) {
+      console.error("[valuation-manual:calendar]", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "internal_error" }));
     }
