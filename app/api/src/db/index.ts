@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 
-const DB_DIR = "/data/db";
+const DB_DIR = process.env.DB_DIR ?? "/data/db";
 const DB_PATH = path.join(DB_DIR, "bitcorn.sqlite");
 
 // Initialize eagerly at module load time so `db` is always defined

@@ -89,6 +89,7 @@ LND_DIR=/home/user/.polar/networks/1/volumes/lnd/treasury
 BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
 PORT=3101
+DB_DIR=/home/user/.bitcorn-dev/treasury/db
 ```
 
 `.env.dev.member-a`:
@@ -98,6 +99,7 @@ LND_DIR=/home/user/.polar/networks/1/volumes/lnd/farmer
 BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
 PORT=3102
+DB_DIR=/home/user/.bitcorn-dev/member-a/db
 ```
 
 `.env.dev.member-b`:
@@ -107,6 +109,7 @@ LND_DIR=/home/user/.polar/networks/1/volumes/lnd/merchant
 BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
 PORT=3103
+DB_DIR=/home/user/.bitcorn-dev/member-b/db
 ```
 
 A few notes:
@@ -116,6 +119,8 @@ A few notes:
 The Polar gRPC ports (`10001`, `10002`, `10003`) are Polar's defaults for the first three LND nodes in a network. Confirm in each node's Connect tab.
 
 The exact `LND_DIR` paths depend on your Polar install. Verify with `ls ~/.polar/networks/<id>/volumes/lnd/` after Polar has started the network — directories will be named after the LND nodes (treasury, farmer, merchant after renaming).
+
+`DB_DIR` is the per-instance SQLite directory. Production on Umbrel uses `/data/db` (provided by a volume mount); locally you need a writable path. Use a per-role subdirectory so the three instances don't collide on shared state — the example above uses `~/.bitcorn-dev/<role>/db`. The directory is auto-created on startup (mode 0o700), so you don't need to `mkdir` it yourself.
 
 `.env.dev.*` files contain only test data and pubkeys, but they belong in `.gitignore` anyway — both for hygiene and because the per-machine paths won't generalize.
 
@@ -172,6 +177,8 @@ To stop everything: `Ctrl+C` in the terminal running `dev:all`.
 **Channels stuck in "Pending" forever.** Polar's regtest doesn't auto-mine. Click the Bitcoin Core node → Actions → Mine 6 Blocks.
 
 **API can't read the macaroon — "ENOENT: no such file"**. The `LND_DIR` path in your .env file is wrong. Run `ls ~/.polar/networks/<id>/volumes/lnd/<node>/` and confirm `tls.cert` and `data/chain/bitcoin/regtest/admin.macaroon` exist. Make sure `BITCOIN_NETWORK=regtest` in the env file (otherwise the macaroon path looks for the wrong subdirectory).
+
+**EACCES on database init** — e.g. `Error: EACCES: permission denied, mkdir '/data/db'`. The API is falling back to the production `/data/db` path because `DB_DIR` isn't set in the env file (or wasn't loaded). Set `DB_DIR` in `.env.dev.<role>` to a writable path on your machine — e.g. `/home/<you>/.bitcorn-dev/<role>/db` — and re-run `npm run dev:all`. The directory will be auto-created with mode 0o700 on startup.
 
 **Polar won't launch on Ubuntu 24.04 — "SUID sandbox" error.** Disable the AppArmor unprivileged user namespace restriction. See Prerequisites.
 
