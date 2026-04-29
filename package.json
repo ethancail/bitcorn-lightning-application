@@ -1,0 +1,19 @@
+{
+  "name": "bitcorn-lightning-application",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Root-level dev orchestration for the Bitcorn Lightning app. The app itself lives in app/api, app/web, and cloudflare-worker — see docs/dev-setup.md for how to run all three locally against a Polar regtest network.",
+  "scripts": {
+    "dev:treasury": "cd app/api && dotenv -e ../../.env.dev.treasury -- npm run dev",
+    "dev:memberA": "cd app/api && dotenv -e ../../.env.dev.member-a  -- npm run dev",
+    "dev:memberB": "cd app/api && dotenv -e ../../.env.dev.member-b  -- npm run dev",
+    "dev:webT": "cd app/web && PORT=5173 npm run dev",
+    "dev:webA": "cd app/web && PORT=5174 npm run dev",
+    "dev:webB": "cd app/web && PORT=5175 npm run dev",
+    "dev:all": "concurrently -n T,A,B,wT,wA,wB \"npm:dev:treasury\" \"npm:dev:memberA\" \"npm:dev:memberB\" \"npm:dev:webT\" \"npm:dev:webA\" \"npm:dev:webB\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "dotenv-cli": "^11.0.0"
+  }
+}

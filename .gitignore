@@ -12,6 +12,11 @@ build/
 .env
 .env.local
 .env.*.local
+# Per-machine local-dev env files (see docs/dev-setup.md). The .example
+# template is tracked; the real .env.dev.treasury / .env.dev.member-a /
+# .env.dev.member-b live only on your machine.
+.env.dev.*
+!.env.dev.example
 
 # IDE
 .vscode/
