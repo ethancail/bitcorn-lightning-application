@@ -25,7 +25,7 @@ import fs from "fs";
 import path from "path";
 import { ENV } from "../config/env";
 
-const LND_DIR = "/lnd";
+const LND_DIR = process.env.LND_DIR ?? "/lnd";
 const TLS_CERT_PATH = path.join(LND_DIR, "tls.cert");
 const MACAROON_PATH = path.join(
   LND_DIR,
