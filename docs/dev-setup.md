@@ -90,6 +90,7 @@ BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
 PORT=3101
 DB_DIR=/home/user/.bitcorn-dev/treasury/db
+SECRETS_DIR=/home/user/.bitcorn-dev/treasury/secrets
 ```
 
 `.env.dev.member-a`:
@@ -100,6 +101,7 @@ BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
 PORT=3102
 DB_DIR=/home/user/.bitcorn-dev/member-a/db
+SECRETS_DIR=/home/user/.bitcorn-dev/member-a/secrets
 ```
 
 `.env.dev.member-b`:
@@ -110,6 +112,7 @@ BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
 PORT=3103
 DB_DIR=/home/user/.bitcorn-dev/member-b/db
+SECRETS_DIR=/home/user/.bitcorn-dev/member-b/secrets
 ```
 
 A few notes:
@@ -121,6 +124,8 @@ The Polar gRPC ports (`10001`, `10002`, `10003`) are Polar's defaults for the fi
 The exact `LND_DIR` paths depend on your Polar install. Verify with `ls ~/.polar/networks/<id>/volumes/lnd/` after Polar has started the network — directories will be named after the LND nodes (treasury, farmer, merchant after renaming).
 
 `DB_DIR` is the per-instance SQLite directory. Production on Umbrel uses `/data/db` (provided by a volume mount); locally you need a writable path. Use a per-role subdirectory so the three instances don't collide on shared state — the example above uses `~/.bitcorn-dev/<role>/db`. The directory is auto-created on startup (mode 0o700), so you don't need to `mkdir` it yourself.
+
+`SECRETS_DIR` is the per-instance directory for the master encryption key (used to encrypt the autobuy CDP credentials and to sign JWTs). Production on Umbrel uses `/data/secrets` via volume mount; locally use a per-role writable path so the three instances each get their own master key. The directory is created lazily on first encrypt/decrypt call (mode 0o700 dir, 0o600 file). If you only exercise routes that don't touch autobuy credentials, the secrets file may never get created — that's fine.
 
 `.env.dev.*` files contain only test data and pubkeys, but they belong in `.gitignore` anyway — both for hygiene and because the per-machine paths won't generalize.
 
@@ -179,6 +184,8 @@ To stop everything: `Ctrl+C` in the terminal running `dev:all`.
 **API can't read the macaroon — "ENOENT: no such file"**. The `LND_DIR` path in your .env file is wrong. Run `ls ~/.polar/networks/<id>/volumes/lnd/<node>/` and confirm `tls.cert` and `data/chain/bitcoin/regtest/admin.macaroon` exist. Make sure `BITCOIN_NETWORK=regtest` in the env file (otherwise the macaroon path looks for the wrong subdirectory).
 
 **EACCES on database init** — e.g. `Error: EACCES: permission denied, mkdir '/data/db'`. The API is falling back to the production `/data/db` path because `DB_DIR` isn't set in the env file (or wasn't loaded). Set `DB_DIR` in `.env.dev.<role>` to a writable path on your machine — e.g. `/home/<you>/.bitcorn-dev/<role>/db` — and re-run `npm run dev:all`. The directory will be auto-created with mode 0o700 on startup.
+
+**EACCES on master key init** — e.g. `Error: EACCES: permission denied, mkdir '/data/secrets'` triggered the first time you exercise an autobuy credential flow. Same shape as the DB_DIR case: `SECRETS_DIR` isn't set, so the API is falling back to the production `/data/secrets` path. Set `SECRETS_DIR` in `.env.dev.<role>` to a per-role writable path (e.g. `/home/<you>/.bitcorn-dev/<role>/secrets`) and restart the affected instance. The directory will be created lazily on the next encrypt/decrypt call.
 
 **Polar won't launch on Ubuntu 24.04 — "SUID sandbox" error.** Disable the AppArmor unprivileged user namespace restriction. See Prerequisites.
 

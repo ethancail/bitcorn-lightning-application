@@ -6,13 +6,19 @@ import {
   randomBytes,
 } from "crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { dirname } from "path";
+import { dirname, join } from "path";
 
 // The same master key used elsewhere in the app (e.g. JWT signing). Generated
 // on first API run with 32 random bytes and stored at this path. If it doesn't
 // exist (fresh install before any other module touched it), we create it here
 // rather than silently failing.
-const MASTER_KEY_PATH = "/data/secrets/master.key";
+//
+// SECRETS_DIR is env-configurable (default `/data/secrets`) so local-dev
+// instances can point at a writable directory outside the Umbrel volume mount.
+// Production behavior on Umbrel is unchanged — the fallback resolves to the
+// volume-mounted `/data/secrets` directory.
+const SECRETS_DIR = process.env.SECRETS_DIR ?? "/data/secrets";
+const MASTER_KEY_PATH = join(SECRETS_DIR, "master.key");
 
 // HKDF "info" context string — domain-separates the auto-buy credential key
 // from any other key derived from the same master secret. Changing this
