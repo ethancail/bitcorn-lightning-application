@@ -10,7 +10,8 @@
     "dev:webT": "cd app/web && npm run dev -- --port 5173 --strictPort",
     "dev:webA": "cd app/web && npm run dev -- --port 5174 --strictPort",
     "dev:webB": "cd app/web && npm run dev -- --port 5175 --strictPort",
-    "dev:all": "concurrently -n T,A,B,wT,wA,wB \"npm:dev:treasury\" \"npm:dev:memberA\" \"npm:dev:memberB\" \"npm:dev:webT\" \"npm:dev:webA\" \"npm:dev:webB\""
+    "dev:all": "concurrently -n T,A,B,wT,wA,wB \"npm:dev:treasury\" \"npm:dev:memberA\" \"npm:dev:memberB\" \"npm:dev:webT\" \"npm:dev:webA\" \"npm:dev:webB\"",
+    "dev:kill": "lsof -ti:3101,3102,3103,5173,5174,5175 | xargs -r kill -9 2>/dev/null; echo 'dev ports cleared'"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

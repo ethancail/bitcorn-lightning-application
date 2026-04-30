@@ -191,7 +191,7 @@ To stop everything: `Ctrl+C` in the terminal running `dev:all`.
 
 **Polar AppImage won't run — "AppImage requires FUSE".** `sudo apt install libfuse2t64` on Ubuntu 24.04.
 
-**Port already in use.** Either `dev:all` is already running in another terminal, or another process has grabbed 3101–3103 / 5173–5175. `lsof -i :3101` shows what owns the port.
+**Port already in use.** Either `dev:all` is already running in another terminal, or another process has grabbed 3101–3103 / 5173–5175. The most common cause is orphan API processes from a prior `dev:all` that didn't shut down cleanly when you `Ctrl+C`'d the parent — `concurrently → npm → tsx → node` is enough indirection that SIGINT sometimes doesn't reach the leaf `node` processes. Run `npm run dev:kill` to force-clear all six dev ports, then re-run `dev:all`. `lsof -i :3101` shows what specifically owns a single port if you want to investigate before killing.
 
 ## Resetting state
 
