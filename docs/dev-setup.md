@@ -314,7 +314,12 @@ npm run dev:loopd-B &
 
 What the scripts run:
 
-- **`dev:loopserver`** runs `docker run --rm -d --name bitcorn-loopserver --network host -v <External-Peer-1 LND dir>:/root/.lnd:ro lightninglabs/loopserver:latest daemon --maxamt=5000000 --lnd.host=127.0.0.1:10007 --lnd.macaroondir=/root/.lnd/data/chain/bitcoin/regtest --lnd.tlspath=/root/.lnd/tls.cert`. The `--network host` flag is necessary on Linux so the container can reach Polar's LND on `127.0.0.1`. The LND data dir is mounted read-only.
+- **`dev:loopserver`** runs the official `lightninglabs/loopserver:latest` Docker image with `--network host` so the container can reach Polar's LND + bitcoind on `127.0.0.1`. Flags wired in:
+  - `--lnd.host=127.0.0.1:10007 --lnd.macaroondir=/root/.lnd/data/chain/bitcoin/regtest --lnd.tlspath=/root/.lnd/tls.cert` — anchor to External-Peer-1's LND (read-only volume mount)
+  - `--bitcoin.host=127.0.0.1:18444 --bitcoin.user=polaruser --bitcoin.password=polarpass` — Polar's bitcoind RPC (default Polar credentials)
+  - `--bitcoin.zmqpubrawblock=tcp://127.0.0.1:28335 --bitcoin.zmqpubrawtx=tcp://127.0.0.1:29336` — Polar's bitcoind ZMQ ports for raw block/tx notifications. **Required** — loopserver crashes at startup with `invalid config: zmqpubrawblock must be set` if these aren't passed.
+  - `--maxamt=5000000` — caps any single swap at 5M sats (matches the channel capacity)
+  - `docker rm -f bitcorn-loopserver` runs first to wipe any prior container by name. The container is NOT auto-removed on crash (no `--rm`), so `docker logs bitcorn-loopserver` is available for post-mortem if it dies.
 - **`dev:loopd-{T,A,B}`** runs `loopd --network=regtest --loopdir=<per-role dir> --rpclisten=localhost:<role port> --lnd.host=127.0.0.1:<that role's LND gRPC> --lnd.macaroonpath=<...> --lnd.tlspath=<...> --server.host=localhost:11009 --server.notls`. The `--server.notls` flag is required because the regtest loopserver doesn't run TLS.
 
 Verify reachability:
