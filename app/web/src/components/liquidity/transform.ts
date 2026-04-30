@@ -19,9 +19,11 @@ export type ChannelData = {
 
 function classifyRole(pubkey: string, contact: Contact | undefined): LiquidityRole {
   const tags = (contact?.tags ?? []).map((t) => t.toLowerCase());
-  if (EXTERNAL_PUBKEYS.has(pubkey) || tags.includes("external")) return "external";
-  if (tags.includes("merchant")) return "merchant";
-  if (tags.includes("farmer")) return "farmer";
+  // Accept the short tag (`external`) and the lane-purpose name
+  // (`external-peer`) as equivalent. Same for merchant / farmer.
+  if (EXTERNAL_PUBKEYS.has(pubkey) || tags.includes("external") || tags.includes("external-peer")) return "external";
+  if (tags.includes("merchant") || tags.includes("merchant-lane")) return "merchant";
+  if (tags.includes("farmer") || tags.includes("farmer-lane")) return "farmer";
   return "unknown";
 }
 

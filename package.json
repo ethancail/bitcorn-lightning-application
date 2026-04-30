@@ -11,7 +11,12 @@
     "dev:webA": "cd app/web && VITE_API_BASE=http://localhost:3102 npm run dev -- --port 5174 --strictPort",
     "dev:webB": "cd app/web && VITE_API_BASE=http://localhost:3103 npm run dev -- --port 5175 --strictPort",
     "dev:all": "concurrently -n T,A,B,wT,wA,wB \"npm:dev:treasury\" \"npm:dev:memberA\" \"npm:dev:memberB\" \"npm:dev:webT\" \"npm:dev:webA\" \"npm:dev:webB\"",
-    "dev:kill": "lsof -ti:3101,3102,3103,5173,5174,5175 | xargs -r kill -9 2>/dev/null; echo 'dev ports cleared'"
+    "dev:kill": "lsof -ti:3101,3102,3103,5173,5174,5175,11009,11010,11020,11030 | xargs -r kill -9 2>/dev/null; echo 'dev ports cleared (incl loop layer)'",
+    "_comment_loop_layer": "Optional Loop fidelity layer scripts below. PLACEHOLDER bodies — exit 1 with a TODO until the loopserver/loopd binaries are built and their CLIs verified. See docs/dev-setup.md § Optional: Loop Fidelity Layer.",
+    "dev:loopserver": "echo 'TODO[loop-layer]: dev:loopserver invocation not yet wired. Build loopserver from lightninglabs/loop pinned tag, then fill in invocation per docs/dev-setup.md § Optional: Loop Fidelity Layer'; exit 1",
+    "dev:loopd-T": "echo 'TODO[loop-layer]: treasury loopd invocation not yet wired. Set EXTERNAL_PEER_*, LOOPD_DIR_TREASURY, LOOPD_RPC_TREASURY in .env.dev.treasury; then fill in command'; exit 1",
+    "dev:loopd-A": "echo 'TODO[loop-layer]: member-A loopd invocation not yet wired. Set LOOPD_DIR_MEMBER_A, LOOPD_RPC_MEMBER_A in .env.dev.member-a; then fill in command'; exit 1",
+    "dev:loopd-B": "echo 'TODO[loop-layer]: member-B loopd invocation not yet wired. Set LOOPD_DIR_MEMBER_B, LOOPD_RPC_MEMBER_B in .env.dev.member-b; then fill in command'; exit 1"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

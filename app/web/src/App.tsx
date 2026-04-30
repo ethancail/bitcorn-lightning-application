@@ -1624,13 +1624,17 @@ function ChannelsPage() {
           let purpose: LanePurpose = "unclassified";
           let state: LaneState = "unknown";
 
-          if (externalPubkeys.has(c.peer_pubkey) || tags.includes("external")) {
+          // Accept both the short tag (`external`) and the lane-purpose name
+          // (`external-peer`) so tagging matches the vocabulary used in
+          // dev-setup.md and the Bitcorn lane model. Same for merchant /
+          // farmer.
+          if (externalPubkeys.has(c.peer_pubkey) || tags.includes("external") || tags.includes("external-peer")) {
             purpose = "external_peer";
             state = externalState(localPct);
-          } else if (tags.includes("merchant")) {
+          } else if (tags.includes("merchant") || tags.includes("merchant-lane")) {
             purpose = "merchant_lane";
             state = merchantState(localPct);
-          } else if (tags.includes("farmer")) {
+          } else if (tags.includes("farmer") || tags.includes("farmer-lane")) {
             purpose = "farmer_lane";
             state = farmerState(localPct);
           }

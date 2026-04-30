@@ -203,6 +203,137 @@ To stop everything: `Ctrl+C` in the terminal running `dev:all`.
 
 If you want to script a reset, the network state lives at `~/.polar/networks/<id>/` — Polar reconstructs from this on next start.
 
+## Optional: Loop Fidelity Layer
+
+Skip this entire section unless your work touches the Loop subsystem (`src/swaps/`, the rebalance cost ledger, the autobuy Loop Out path, the Member Liquidity Advisor's Loop In/Out recommendation flow). The base setup above is sufficient for everything else — UI work, channel management, contacts, payments, dashboard polish, valuation entry, the calendar, etc. all exercise their main code paths without ever calling `loopd`.
+
+When you do need real swap fidelity in regtest, this layer adds:
+
+- **A fourth LND node in Polar** (`External-Peer-1`) — the routing peer + `loopserver` anchor. Mirrors the role ACINQ plays in production.
+- **A `loopserver` process** running outside Polar's container management, anchored to External-Peer-1's LND. Speaks the same gRPC interface that Lightning Labs' production Loop servers expose.
+- **Per-role `loopd` processes** (one each for treasury, member-A, member-B). Polar's pure-LND nodes don't have litd embedded, so loopd has to run as a separate host process per role — see `bitcorn-research/specs/2026-04-29-local-loop-fidelity-via-loopserver.md` §3 for the design rationale.
+
+After this layer is up, Member Liquidity Advisor recommendations on Farmer1 and Merchant1 trigger actual end-to-end Loop swaps against the local `loopserver`. Channel state transitions, the rebalance cost ledger, and every line of `src/swaps/` exercise their real code paths.
+
+> **⚠ DRAFT STATUS:** The `dev:loopserver` and `dev:loopd-{T,A,B}` npm scripts in this repo are PLACEHOLDERS (`exit 1` with TODO messages). The walkthrough below is the intended shape; specific command incantations marked `{TODO: …}` will be filled in once `loopserver --help` and `loopd --help` have been verified against the pinned `lightninglabs/loop` tag. See spec §5 Step 6 / Step 7 for the verification checklist.
+
+### Step A: Add External-Peer-1 to Polar
+
+In the Polar UI:
+
+1. Stop the `bitcorn-dev` network (orange Stop button).
+2. Click the **+** in the network sidebar to add a new node. Choose **LND** (NOT Terminal/litd — Polar's pure LND nodes are what we use; matches the production role's image).
+3. Name it `External-Peer-1`.
+4. Restart the network. Wait for green status on all five nodes (the existing four plus the new one).
+5. Click `External-Peer-1` → Connect tab. Capture:
+   - **Pubkey** (66-char hex) → goes into `EXTERNAL_PEER_PUBKEY`
+   - **gRPC** port (e.g. `127.0.0.1:10007`) → goes into `EXTERNAL_PEER_LND_GRPC`
+
+Polar appends a numeric suffix and creates the LND data directory at `~/.polar/networks/<id>/volumes/lnd/External-Peer-1/` — that path goes into `EXTERNAL_PEER_LND_DIR`.
+
+### Step B: Open and fund the Treasury↔External-Peer-1 channel
+
+In the Polar UI:
+
+1. Drag from the Treasury node onto External-Peer-1 to create a channel. Set capacity to **5,000,000 sats**, with most of the balance pushed to External-Peer-1's side (so `loopserver` has off-chain liquidity to fulfill Loop Out swaps).
+2. Click the Bitcoin Core node → Actions → **Mine 6 Blocks**.
+3. Click External-Peer-1 → Actions → **Deposit**. Deposit **500,000,000 sats (5 BTC)** so `loopserver` has on-chain liquidity for Loop In settlements.
+
+Treasury and External-Peer-1 now form the regtest stand-in for the production Treasury↔ACINQ channel.
+
+### Step C: Tag External-Peer-1 in contacts
+
+On the Treasury web tab (`http://localhost:5173`):
+
+1. Open the Contacts page.
+2. Add (or edit) a contact for External-Peer-1's pubkey.
+3. Set the tag to **`external-peer`** (or `external` — both work as of this PR; the lane-purpose alias was added so the doc's vocabulary matches the runtime classifier).
+
+Refresh the Channels page. The Treasury↔External-Peer-1 channel should now surface under the **External Peers** section, not Unclassified.
+
+### Step D: Build `loopserver` and `loopd`
+
+Lightning Labs publishes both binaries in the `lightninglabs/loop` repo. Pin to a verified release tag — `master` is volatile.
+
+```bash
+# {TODO: pin tag once verified — check https://github.com/lightninglabs/loop/releases}
+LOOP_TAG=v0.30.0-beta
+
+git clone --depth 1 --branch ${LOOP_TAG} https://github.com/lightninglabs/loop ~/.bitcorn-dev/loop-src
+cd ~/.bitcorn-dev/loop-src
+go build -o ~/.bitcorn-dev/loopserver/loopserver ./cmd/loopserver
+go build -o ~/.bitcorn-dev/loopserver/loopd ./cmd/loopd
+```
+
+Verify both: `~/.bitcorn-dev/loopserver/loopserver --help` and `~/.bitcorn-dev/loopserver/loopd --help` should exit 0 and print their flag listings.
+
+### Step E: Configure `.env.dev.*` with the Loop layer vars
+
+Add the new env vars to each of the three `.env.dev.*` files. Per-role values:
+
+```bash
+# In .env.dev.treasury / .env.dev.member-a / .env.dev.member-b — same in all three:
+LOOPSERVER_HOST=localhost:11009
+EXTERNAL_PEER_PUBKEY=<from-Step-A>
+EXTERNAL_PEER_LND_GRPC=127.0.0.1:<port-from-Step-A>
+EXTERNAL_PEER_LND_DIR=/home/<you>/.polar/networks/<id>/volumes/lnd/External-Peer-1
+
+# Per-role (different value in each .env.dev.*):
+LOOPD_DIR_TREASURY=/home/<you>/.bitcorn-dev/treasury/loopd
+LOOPD_DIR_MEMBER_A=/home/<you>/.bitcorn-dev/member-a/loopd
+LOOPD_DIR_MEMBER_B=/home/<you>/.bitcorn-dev/member-b/loopd
+
+LOOPD_RPC_TREASURY=11010
+LOOPD_RPC_MEMBER_A=11020
+LOOPD_RPC_MEMBER_B=11030
+```
+
+Create the three loopd data directories: `mkdir -p ~/.bitcorn-dev/{treasury,member-a,member-b}/loopd`.
+
+### Step F: Start the Loop layer
+
+In a separate terminal from the one running `npm run dev:all`:
+
+```bash
+# {TODO: fill in once the loopserver CLI flags are verified}
+npm run dev:loopserver
+
+# After loopserver is up and logs "listening on ..."
+# {TODO: fill in once loopd CLI flags are verified}
+npm run dev:loopd-T &
+npm run dev:loopd-A &
+npm run dev:loopd-B &
+```
+
+The expected shape (subject to verification against `loopserver --help`):
+
+```bash
+~/.bitcorn-dev/loopserver/loopserver \
+    --network=regtest \
+    --lnd.host=${EXTERNAL_PEER_LND_GRPC} \
+    --lnd.macaroonpath=${EXTERNAL_PEER_LND_DIR}/data/chain/bitcoin/regtest/admin.macaroon \
+    --lnd.tlspath=${EXTERNAL_PEER_LND_DIR}/tls.cert \
+    --listen=0.0.0.0:11009
+```
+
+Verify reachability: `nc -z localhost 11009 && echo OK`.
+
+### Step G: Smoke tests
+
+Per spec §6. Two scenarios — both should complete cleanly without manual intervention beyond the trigger:
+
+**Loop Out from Farmer1.** Pre-state: Farmer1's channel to Treasury has > 2,000,000 sats on Farmer1's side. Trigger from `localhost:5174` → Liquidity → Loop Out. Should route Farmer1 → Treasury → External-Peer-1, settle on-chain, and update Farmer1's UI + the rebalance cost ledger.
+
+**Loop In from Merchant1.** Pre-state: Merchant1's channel to Treasury has < 500,000 sats on Merchant1's side, plus 1,000,000+ sats on-chain. Trigger from `localhost:5175` → Liquidity → Loop In. Should pay on-chain to `loopserver`'s swap address, refill Merchant1's outbound capacity, and update the cost ledger.
+
+If either fails, the failure mode (which step, what error) is the input for a debug session before declaring the layer ready.
+
+### Resetting / cleanup
+
+`npm run dev:kill` clears all dev-stack ports, including the Loop layer's (11009, 11010, 11020, 11030). If you also want to wipe loopd state: `rm -rf ~/.bitcorn-dev/{treasury,member-a,member-b}/loopd && mkdir -p ...` (rerun the per-role mkdir from Step E).
+
+To remove External-Peer-1: stop the network in Polar, delete the node, restart. The Treasury↔External-Peer-1 channel is lost; you'll need to redo Step B.
+
 ## When to use this vs the real test nodes
 
 This local setup is for the bulk of day-to-day work — most code changes can be exercised here in seconds. Use the real test Umbrel nodes (treasury, farmer, merchant) when:
