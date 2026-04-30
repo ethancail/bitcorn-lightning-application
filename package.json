@@ -7,9 +7,9 @@
     "dev:treasury": "cd app/api && dotenv -e ../../.env.dev.treasury -- npm run dev",
     "dev:memberA": "cd app/api && dotenv -e ../../.env.dev.member-a  -- npm run dev",
     "dev:memberB": "cd app/api && dotenv -e ../../.env.dev.member-b  -- npm run dev",
-    "dev:webT": "cd app/web && PORT=5173 npm run dev",
-    "dev:webA": "cd app/web && PORT=5174 npm run dev",
-    "dev:webB": "cd app/web && PORT=5175 npm run dev",
+    "dev:webT": "cd app/web && npm run dev -- --port 5173 --strictPort",
+    "dev:webA": "cd app/web && npm run dev -- --port 5174 --strictPort",
+    "dev:webB": "cd app/web && npm run dev -- --port 5175 --strictPort",
     "dev:all": "concurrently -n T,A,B,wT,wA,wB \"npm:dev:treasury\" \"npm:dev:memberA\" \"npm:dev:memberB\" \"npm:dev:webT\" \"npm:dev:webA\" \"npm:dev:webB\""
   },
   "devDependencies": {

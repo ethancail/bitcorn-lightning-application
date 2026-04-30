@@ -3,7 +3,13 @@ import path from "path";
 import { db } from "./index";
 
 export function runMigrations() {
-  const MIGRATIONS_DIR = path.join(process.cwd(), "dist", "db", "migrations");
+  // Resolve relative to this file, not the cwd. Works for both:
+  //   - dev (tsx watch)  → __dirname = app/api/src/db/  → src/db/migrations/
+  //   - prod (node dist) → __dirname = app/api/dist/db/ → dist/db/migrations/
+  // Previously hardcoded `cwd/dist/db/migrations` only worked in prod, and
+  // silently no-op'd in dev because the path didn't exist (existsSync false
+  // → early return at line below).
+  const MIGRATIONS_DIR = path.join(__dirname, "migrations");
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS migrations (
