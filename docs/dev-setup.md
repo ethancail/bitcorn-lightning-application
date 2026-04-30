@@ -315,7 +315,7 @@ npm run dev:loopd-B &
 What the scripts run:
 
 - **`dev:loopserver`** runs the official `lightninglabs/loopserver:latest` Docker image with `--network host` so the container can reach Polar's LND + bitcoind on `127.0.0.1`. Flags wired in:
-  - `--lnd.host=127.0.0.1:10007 --lnd.macaroondir=/root/.lnd/data/chain/bitcoin/regtest --lnd.tlspath=/root/.lnd/tls.cert` — anchor to External-Peer-1's LND (read-only volume mount)
+  - `--lnd.host=127.0.0.1:10007 --lnd.macaroondir=/lnd/data/chain/bitcoin/regtest --lnd.tlspath=/lnd/tls.cert` — anchor to External-Peer-1's LND (read-only volume mounted at `/lnd`, NOT `/root/.lnd` — the loopserver image runs as `uid=100(loopserver)` which can't traverse the container's `/root/` directory; mounting at `/lnd` puts the data under a world-traversable path)
   - `--bitcoin.host=127.0.0.1:18444 --bitcoin.user=polaruser --bitcoin.password=polarpass` — Polar's bitcoind RPC (default Polar credentials)
   - `--bitcoin.zmqpubrawblock=tcp://127.0.0.1:28335 --bitcoin.zmqpubrawtx=tcp://127.0.0.1:29336` — Polar's bitcoind ZMQ ports for raw block/tx notifications. **Required** — loopserver crashes at startup with `invalid config: zmqpubrawblock must be set` if these aren't passed.
   - `--maxamt=5000000` — caps any single swap at 5M sats (matches the channel capacity)
