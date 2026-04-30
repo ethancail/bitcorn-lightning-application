@@ -215,7 +215,7 @@ When you do need real swap fidelity in regtest, this layer adds:
 
 After this layer is up, Member Liquidity Advisor recommendations on Farmer1 and Merchant1 trigger actual end-to-end Loop swaps against the local `loopserver`. Channel state transitions, the rebalance cost ledger, and every line of `src/swaps/` exercise their real code paths.
 
-> **⚠ DRAFT STATUS:** The `dev:loopserver` and `dev:loopd-{T,A,B}` npm scripts in this repo are PLACEHOLDERS (`exit 1` with TODO messages). The walkthrough below is the intended shape; specific command incantations marked `{TODO: …}` will be filled in once `loopserver --help` and `loopd --help` have been verified against the pinned `lightninglabs/loop` tag. See spec §5 Step 6 / Step 7 for the verification checklist.
+> **⚠ DRAFT STATUS:** Spec §3 assumed `loopserver` was buildable from the `lightninglabs/loop` repo at `./cmd/loopserver`. **It isn't** — that path doesn't exist in any release of the repo (verified across v0.5.1-beta through v0.33.0-beta). Lightning Labs publishes `loopserver` only as a Docker image at `lightninglabs/loopserver:latest`, documented in the loop repo's own `regtest/README.md`. The walkthrough below uses Docker for `loopserver` and a native Go binary (built from the same repo's `cmd/loopd`) for the per-role `loopd` clients. The npm scripts have been filled in with verified `loopd v0.33.0-beta` flags. The §6 smoke tests still need to run end-to-end before this PR is ready for review.
 
 ### Step A: Add External-Peer-1 to Polar
 
@@ -251,21 +251,27 @@ On the Treasury web tab (`http://localhost:5173`):
 
 Refresh the Channels page. The Treasury↔External-Peer-1 channel should now surface under the **External Peers** section, not Unclassified.
 
-### Step D: Build `loopserver` and `loopd`
+### Step D: Pull `loopserver` (Docker) and build `loopd` (native)
 
-Lightning Labs publishes both binaries in the `lightninglabs/loop` repo. Pin to a verified release tag — `master` is volatile.
+Two binaries with different distribution methods:
+
+- **`loopserver`** is published as a Docker image only — `lightninglabs/loopserver:latest`. There is no Go source for it in the public `lightninglabs/loop` repo. Documented in the loop repo's `regtest/README.md`.
+- **`loopd`** is the swap client; we build it from source against a pinned tag of `lightninglabs/loop`.
 
 ```bash
-# {TODO: pin tag once verified — check https://github.com/lightninglabs/loop/releases}
-LOOP_TAG=v0.30.0-beta
+# Pull the loopserver Docker image
+docker pull lightninglabs/loopserver:latest
 
+# Build loopd from source (pinned tag — master is volatile)
+LOOP_TAG=v0.33.0-beta
 git clone --depth 1 --branch ${LOOP_TAG} https://github.com/lightninglabs/loop ~/.bitcorn-dev/loop-src
 cd ~/.bitcorn-dev/loop-src
-go build -o ~/.bitcorn-dev/loopserver/loopserver ./cmd/loopserver
 go build -o ~/.bitcorn-dev/loopserver/loopd ./cmd/loopd
 ```
 
-Verify both: `~/.bitcorn-dev/loopserver/loopserver --help` and `~/.bitcorn-dev/loopserver/loopd --help` should exit 0 and print their flag listings.
+Verify: `~/.bitcorn-dev/loopserver/loopd --version` should print `loopd version 0.33.0-beta`. `docker image inspect lightninglabs/loopserver:latest --format '{{.Id}}'` should print a sha256.
+
+You also need to be in the `docker` group to run the loopserver container — `sudo usermod -aG docker $USER && newgrp docker` (one-time, then either `newgrp docker` in your current shell or log out / log back in).
 
 ### Step E: Configure `.env.dev.*` with the Loop layer vars
 
@@ -295,28 +301,37 @@ Create the three loopd data directories: `mkdir -p ~/.bitcorn-dev/{treasury,memb
 In a separate terminal from the one running `npm run dev:all`:
 
 ```bash
-# {TODO: fill in once the loopserver CLI flags are verified}
+# Start loopserver (Docker container, anchored to External-Peer-1)
 npm run dev:loopserver
 
-# After loopserver is up and logs "listening on ..."
-# {TODO: fill in once loopd CLI flags are verified}
+# Wait ~3s for it to log "listening on" — `docker logs bitcorn-loopserver`
+
+# Start the three per-role loopd clients (in three more terminals or as background jobs)
 npm run dev:loopd-T &
 npm run dev:loopd-A &
 npm run dev:loopd-B &
 ```
 
-The expected shape (subject to verification against `loopserver --help`):
+What the scripts run:
+
+- **`dev:loopserver`** runs `docker run --rm -d --name bitcorn-loopserver --network host -v <External-Peer-1 LND dir>:/root/.lnd:ro lightninglabs/loopserver:latest daemon --maxamt=5000000 --lnd.host=127.0.0.1:10007 --lnd.macaroondir=/root/.lnd/data/chain/bitcoin/regtest --lnd.tlspath=/root/.lnd/tls.cert`. The `--network host` flag is necessary on Linux so the container can reach Polar's LND on `127.0.0.1`. The LND data dir is mounted read-only.
+- **`dev:loopd-{T,A,B}`** runs `loopd --network=regtest --loopdir=<per-role dir> --rpclisten=localhost:<role port> --lnd.host=127.0.0.1:<that role's LND gRPC> --lnd.macaroonpath=<...> --lnd.tlspath=<...> --server.host=localhost:11009 --server.notls`. The `--server.notls` flag is required because the regtest loopserver doesn't run TLS.
+
+Verify reachability:
 
 ```bash
-~/.bitcorn-dev/loopserver/loopserver \
-    --network=regtest \
-    --lnd.host=${EXTERNAL_PEER_LND_GRPC} \
-    --lnd.macaroonpath=${EXTERNAL_PEER_LND_DIR}/data/chain/bitcoin/regtest/admin.macaroon \
-    --lnd.tlspath=${EXTERNAL_PEER_LND_DIR}/tls.cert \
-    --listen=0.0.0.0:11009
+nc -z localhost 11009 && echo "loopserver OK"
+nc -z localhost 11010 && echo "loopd-T OK"
+nc -z localhost 11020 && echo "loopd-A OK"
+nc -z localhost 11030 && echo "loopd-B OK"
+docker logs bitcorn-loopserver --tail 20    # should show 'listening on ...'
 ```
 
-Verify reachability: `nc -z localhost 11009 && echo OK`.
+To stop just the loopserver container without killing other things: `npm run dev:loopserver-stop`.
+
+Stopping the whole Loop layer: `npm run dev:kill` (now also kills 11009/11010/11020/11030) plus `npm run dev:loopserver-stop` for the Docker container.
+
+> **⚠ Channel-direction caveat for Loop In:** The current Treasury↔External-Peer-1 channel was opened by Treasury with all funds on Treasury's side (cap=10M, External-Peer-1 local=0). Loop Out from Farmer1 (the §6 first smoke test) works fine because Treasury → External-Peer-1 has full forward capacity. **Loop In from Merchant1 will fail until External-Peer-1 has some outbound capacity.** Two options: (a) run the Loop Out smoke test first, which moves sats to External-Peer-1's side via the off-chain HTLC, then attempt Loop In; (b) open a second channel from External-Peer-1 → Treasury funded from External-Peer-1's 5 BTC on-chain so the asymmetric provisioning the spec called for is in place. Option (a) matches the spec's §6 ordering and is simpler if you only need to validate end-to-end once.
 
 ### Step G: Smoke tests
 
