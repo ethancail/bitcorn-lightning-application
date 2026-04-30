@@ -145,15 +145,17 @@ In the root `package.json`, add:
     "dev:treasury":  "cd app/api && dotenv -e ../../.env.dev.treasury -- npm run dev",
     "dev:memberA":   "cd app/api && dotenv -e ../../.env.dev.member-a  -- npm run dev",
     "dev:memberB":   "cd app/api && dotenv -e ../../.env.dev.member-b  -- npm run dev",
-    "dev:webT":      "cd app/web && PORT=5173 npm run dev",
-    "dev:webA":      "cd app/web && PORT=5174 npm run dev",
-    "dev:webB":      "cd app/web && PORT=5175 npm run dev",
+    "dev:webT":      "cd app/web && VITE_API_BASE=http://localhost:3101 npm run dev -- --port 5173 --strictPort",
+    "dev:webA":      "cd app/web && VITE_API_BASE=http://localhost:3102 npm run dev -- --port 5174 --strictPort",
+    "dev:webB":      "cd app/web && VITE_API_BASE=http://localhost:3103 npm run dev -- --port 5175 --strictPort",
     "dev:all":       "concurrently -n T,A,B,wT,wA,wB \"npm:dev:treasury\" \"npm:dev:memberA\" \"npm:dev:memberB\" \"npm:dev:webT\" \"npm:dev:webA\" \"npm:dev:webB\""
   }
 }
 ```
 
 If the repo doesn't have a root `package.json` yet, create one with `npm init -y` first.
+
+A note on `VITE_API_BASE`: each web instance is pinned to a specific API port via this env var. Without it, all three web tabs would default to `localhost:3101` (treasury API) regardless of which Vite instance they came from, because `app/web/src/config/api.ts` falls back to port 3101 when no override is provided. Setting `VITE_API_BASE` per role tells Vite to expose `import.meta.env.VITE_API_BASE` to the client bundle, which `api.ts` reads as the second-priority resolution branch.
 
 ## Step 5: Run and validate
 

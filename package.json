@@ -7,9 +7,9 @@
     "dev:treasury": "cd app/api && dotenv -e ../../.env.dev.treasury -- npm run dev",
     "dev:memberA": "cd app/api && dotenv -e ../../.env.dev.member-a  -- npm run dev",
     "dev:memberB": "cd app/api && dotenv -e ../../.env.dev.member-b  -- npm run dev",
-    "dev:webT": "cd app/web && npm run dev -- --port 5173 --strictPort",
-    "dev:webA": "cd app/web && npm run dev -- --port 5174 --strictPort",
-    "dev:webB": "cd app/web && npm run dev -- --port 5175 --strictPort",
+    "dev:webT": "cd app/web && VITE_API_BASE=http://localhost:3101 npm run dev -- --port 5173 --strictPort",
+    "dev:webA": "cd app/web && VITE_API_BASE=http://localhost:3102 npm run dev -- --port 5174 --strictPort",
+    "dev:webB": "cd app/web && VITE_API_BASE=http://localhost:3103 npm run dev -- --port 5175 --strictPort",
     "dev:all": "concurrently -n T,A,B,wT,wA,wB \"npm:dev:treasury\" \"npm:dev:memberA\" \"npm:dev:memberB\" \"npm:dev:webT\" \"npm:dev:webA\" \"npm:dev:webB\"",
     "dev:kill": "lsof -ti:3101,3102,3103,5173,5174,5175 | xargs -r kill -9 2>/dev/null; echo 'dev ports cleared'"
   },
