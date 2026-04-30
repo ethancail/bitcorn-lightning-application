@@ -259,8 +259,17 @@ Two binaries with different distribution methods:
 - **`loopd`** is the swap client; we build it from source against a pinned tag of `lightninglabs/loop`.
 
 ```bash
-# Pull the loopserver Docker image
-docker pull lightninglabs/loopserver:latest
+# Pull the loopserver Docker image — pinned to v0.9.221-beta (Nov 2024).
+# `latest` (v0.11.33-beta as of writing) and any v0.10+ tag have a buggy
+# Postgres migration in the static-address feature path that fails at
+# startup with "migration requires timezone to be UTC, got: UTC". The
+# error is self-contradictory (the runtime timezone IS 'UTC' but the
+# comparison fails) and has been present since the static-address
+# tables were introduced in late 2024. v0.9.221-beta predates the
+# feature, doesn't have those tables, so the broken migration can't
+# run. Loop In and Loop Out work fine on this version (the only thing
+# missing is the static-address Loop In variant, which we don't use).
+docker pull lightninglabs/loopserver:v0.9.221-beta
 
 # Build loopd from source (pinned tag — master is volatile)
 LOOP_TAG=v0.33.0-beta
