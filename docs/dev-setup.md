@@ -333,6 +333,18 @@ LOOP_MACAROON_PATH=/home/<you>/.bitcorn-dev/member-b/loopd/regtest/loop.macaroon
 
 These tell the API where to find its loopd over gRPC. Both `tls.cert` and `loop.macaroon` live under the `regtest/` subdirectory loopd creates — the loopdir root only holds `logs/` and `macaroons.db`. Without them, the API falls back to the production-Umbrel defaults (`bitcorn-lightning-node_loopd_1:8443`) which don't exist locally — Loop UI surfaces will report "loop unavailable" and the §6 smoke tests will fail before reaching the swap server.
 
+#### Loop In route preflight (one extra var per role)
+
+The Loop In flow has a preflight that probes whether a Lightning route exists *from the Loop server back to the merchant's node*. In production that's Lightning Labs' Loop server pubkey; locally it must be **External-Peer-1's pubkey** because that's the LND node loopserver is anchored to. Without this override, the probe never finds a route and the UI surfaces `route_unavailable` ("Treasury has no inbound capacity…") even though loopd itself is healthy.
+
+Add the same line to all three `.env.dev.*` files (capture the pubkey from External-Peer-1's Connect tab in Polar, or `lncli getinfo` inside the External-Peer-1 container):
+
+```bash
+LOOP_SERVER_PUBKEYS=<External-Peer-1 pubkey>
+```
+
+This is only used for the route preflight — it doesn't change which loopd or loopserver the API talks to.
+
 ### Step F: Start the Loop layer
 
 In a separate terminal from the one running `npm run dev:all`:
