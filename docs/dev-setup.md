@@ -305,6 +305,34 @@ LOOPD_RPC_MEMBER_B=11030
 
 Create the three loopd data directories: `mkdir -p ~/.bitcorn-dev/{treasury,member-a,member-b}/loopd`.
 
+You also need to wire each role's API process to its corresponding loopd. Add these to each `.env.dev.*` file with role-specific values:
+
+`.env.dev.treasury`:
+```bash
+LOOP_GRPC_HOST=127.0.0.1
+LOOP_GRPC_PORT=11010
+LOOP_TLS_CERT_PATH=/home/<you>/.bitcorn-dev/treasury/loopd/tls.cert
+LOOP_MACAROON_PATH=/home/<you>/.bitcorn-dev/treasury/loopd/regtest/loop.macaroon
+```
+
+`.env.dev.member-a`:
+```bash
+LOOP_GRPC_HOST=127.0.0.1
+LOOP_GRPC_PORT=11020
+LOOP_TLS_CERT_PATH=/home/<you>/.bitcorn-dev/member-a/loopd/tls.cert
+LOOP_MACAROON_PATH=/home/<you>/.bitcorn-dev/member-a/loopd/regtest/loop.macaroon
+```
+
+`.env.dev.member-b`:
+```bash
+LOOP_GRPC_HOST=127.0.0.1
+LOOP_GRPC_PORT=11030
+LOOP_TLS_CERT_PATH=/home/<you>/.bitcorn-dev/member-b/loopd/tls.cert
+LOOP_MACAROON_PATH=/home/<you>/.bitcorn-dev/member-b/loopd/regtest/loop.macaroon
+```
+
+These tell the API where to find its loopd over gRPC. Without them, the API falls back to the production-Umbrel defaults (`bitcorn-lightning-node_loopd_1:8443`) which don't exist locally — Loop UI surfaces will report "loop unavailable" and the §6 smoke tests will fail before reaching the swap server.
+
 ### Step F: Start the Loop layer
 
 In a separate terminal from the one running `npm run dev:all`:
