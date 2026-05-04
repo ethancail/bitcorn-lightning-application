@@ -48,7 +48,23 @@ function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> })
       <div className="panel-header">Coinbase Integration</div>
       <div className="panel-body">
         <p style={{ marginTop: 0, marginBottom: 12 }}>
-          Paste your Coinbase Cloud Key JSON file below. We'll verify the key with Coinbase, then encrypt it at rest.
+          Paste your Coinbase Developer Platform (CDP) API Key JSON file below. Sign in at{" "}
+          <a
+            href="https://portal.cdp.coinbase.com"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            portal.cdp.coinbase.com
+          </a>{" "}
+          with your normal Coinbase account — no separate developer account is required.
+          We'll verify the key with Coinbase, then encrypt it at rest.
+        </p>
+        <p className="text-dim" style={{ marginTop: 0, marginBottom: 12, fontSize: "0.8125rem" }}>
+          When creating the key, enable all three permissions:{" "}
+          <strong>View</strong> (read balances),{" "}
+          <strong>Trade</strong> (place buy orders), and{" "}
+          <strong>Transfer</strong> (withdraw BTC to your node).
+          A key missing Transfer will pass verification but fail silently 72h later at the sweep step.
         </p>
         <textarea
           value={blob}
@@ -70,7 +86,7 @@ function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> })
             rel="noopener noreferrer"
             style={{ fontSize: "0.8125rem" }}
           >
-            How to create a Coinbase Cloud Key →
+            How to create a CDP API Key →
           </a>
         </div>
       </div>

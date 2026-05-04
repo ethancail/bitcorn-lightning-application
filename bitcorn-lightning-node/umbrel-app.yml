@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.12"
+version: "1.13.13"
 port: 3200
 
 description: >
@@ -27,6 +27,16 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.13: Auto-Buy onboarding copy. The disconnected Coinbase card on
+  the Auto-Buy page now spells out the three required CDP API key
+  permissions (View, Trade, Transfer) and warns that a key missing
+  Transfer will pass save-time verification but fail silently 72h later
+  at the sweep step. Also reassures operators that signing in at
+  portal.cdp.coinbase.com uses their normal Coinbase account — no
+  separate developer account is required. Helper link renamed
+  "Cloud Key" → "CDP API Key" for terminology consistency. No backend
+  changes.
+
   v1.13.12: Calendar-based valuation input UI. Replaces the flat 8-metric
   /valuation-input form with a year/month/day navigable calendar. Year
   view shows a 12-row heatmap of completeness across the year; month
