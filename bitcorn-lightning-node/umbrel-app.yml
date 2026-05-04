@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.13"
+version: "1.13.14"
 port: 3200
 
 description: >
@@ -27,6 +27,20 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.14: More Auto-Buy onboarding copy. Two gaps that bit a real
+  operator during smoke-test setup. (1) Coinbase's CDP create-key
+  dialog defaults to Ed25519 signature algorithm, which our scheduler
+  (ES256/ECDSA) rejects with key_name_and_private_key_required at
+  save time — disconnected card now points operators to Advanced
+  Settings → Signature algorithm → ECDSA. Permissions guidance
+  reframed under "API restrictions" header for parallel structure.
+  (2) The not-yet-whitelisted state previously had only one sentence
+  + a help link about Coinbase's address allowlist; replaced with
+  explicit 6-step inline instructions and a clearer warning that
+  "I've whitelisted this in Coinbase" only flips a local flag —
+  skipping the Coinbase-side step lets buys place but causes the
+  72h sweep to fail. No backend changes.
+
   v1.13.13: Auto-Buy onboarding copy. The disconnected Coinbase card on
   the Auto-Buy page now spells out the three required CDP API key
   permissions (View, Trade, Transfer) and warns that a key missing
