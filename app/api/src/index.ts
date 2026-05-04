@@ -2803,6 +2803,9 @@ const server = http.createServer(async (req, res) => {
         }
         const verifyResult = await listAccounts({ keyName, privateKeyPem });
         if (!verifyResult.ok) {
+          console.error(
+            `[autobuy-credentials-post] verification failed: coinbase HTTP ${verifyResult.status} — ${verifyResult.error}`,
+          );
           const status = verifyResult.status === 401 || verifyResult.status === 403 ? 401 : 502;
           res.writeHead(status, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "verification_failed", detail: verifyResult.error }));
@@ -2885,6 +2888,9 @@ const server = http.createServer(async (req, res) => {
       }
       const result = await listAccounts({ keyName: row.key_name, privateKeyPem });
       if (!result.ok) {
+        console.error(
+          `[autobuy-credentials-verify] verification failed: coinbase HTTP ${result.status} — ${result.error}`,
+        );
         const status = result.status === 401 || result.status === 403 ? 401 : 502;
         res.writeHead(status, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: false, status: result.status, error: result.error }));
