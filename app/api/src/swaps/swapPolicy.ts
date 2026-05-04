@@ -279,47 +279,48 @@ export async function checkMemberLoopInPolicy(params: {
     return { ok: false, reason: "Unable to check on-chain balance", code: "balance_check_failed" };
   }
 
-  // ── 4. Route probe (preflight) ────────────────────────────────────────
-  const { probeRouteToLoopServer } = await import("../lightning/lnd");
-  const probe = await probeRouteToLoopServer(nodePubkey, amountSat);
-  if (!probe.routable) {
-    return {
-      ok: false,
-      reason: "No route available from Loop server to your node. Treasury may lack inbound capacity on external channels. Try a smaller amount or check back shortly.",
-      code: "route_unavailable",
-    };
-  }
+  // Checks 4 + 5 only run pre-quote (phase 1). Post-quote (phase 2)
+  // happens after the swap_request row has been INSERTed, so re-running
+  // the daily-cap query would double-count the just-created row against
+  // its own amount. Phase 2 exists solely to validate the quoted fee.
+  if (quotedFeeSat === undefined) {
+    // ── 4. Route probe (preflight) ──────────────────────────────────────
+    const { probeRouteToLoopServer } = await import("../lightning/lnd");
+    const probe = await probeRouteToLoopServer(nodePubkey, amountSat);
+    if (!probe.routable) {
+      return {
+        ok: false,
+        reason: "No route available from Loop server to your node. Treasury may lack inbound capacity on external channels. Try a smaller amount or check back shortly.",
+        code: "route_unavailable",
+      };
+    }
 
-  // ── 5. Daily refill cap ───────────────────────────────────────────────
-  const dayAgo = Date.now() - 86_400_000;
-  const dailyRow = db.prepare(`
-    SELECT COALESCE(SUM(amount_sat), 0) AS total
-    FROM swap_requests
-    WHERE node_pubkey = ? AND role = 'member' AND swap_type = 'loop_in'
-      AND status NOT IN ('failed', 'expired', 'blocked_policy')
-      AND created_at > ?
-  `).get(nodePubkey, dayAgo) as { total: number };
+    // ── 5. Daily refill cap ─────────────────────────────────────────────
+    const dayAgo = Date.now() - 86_400_000;
+    const dailyRow = db.prepare(`
+      SELECT COALESCE(SUM(amount_sat), 0) AS total
+      FROM swap_requests
+      WHERE node_pubkey = ? AND role = 'member' AND swap_type = 'loop_in'
+        AND status NOT IN ('failed', 'expired', 'blocked_policy')
+        AND created_at > ?
+    `).get(nodePubkey, dayAgo) as { total: number };
 
-  if (dailyRow.total + amountSat > ENV.memberMaxDailyRefillSat) {
-    return {
-      ok: false,
-      reason: `Daily refill limit exceeded (${ENV.memberMaxDailyRefillSat.toLocaleString()} sats/day)`,
-      code: "daily_limit_exceeded",
-    };
-  }
-
-  // ── 6. Fee cap (phase 2 only — requires quoted fee) ───────────────────
-  if (quotedFeeSat !== undefined) {
+    if (dailyRow.total + amountSat > ENV.memberMaxDailyRefillSat) {
+      return {
+        ok: false,
+        reason: `Daily refill limit exceeded (${ENV.memberMaxDailyRefillSat.toLocaleString()} sats/day)`,
+        code: "daily_limit_exceeded",
+      };
+    }
+  } else {
+    // ── 6. Fee cap (phase 2 only) ───────────────────────────────────────
     const feeLimit = Math.ceil(amountSat * ENV.loopMaxSwapFeePct / 100);
     if (quotedFeeSat > feeLimit) {
       return { ok: false, reason: `Quoted fee (${quotedFeeSat.toLocaleString()}) exceeds cap (${feeLimit.toLocaleString()})`, code: "fee_exceeds_cap" };
     }
   }
 
-  console.log(
-    `[swap-policy] member loop-in approved: ${amountSat} sats, ` +
-    `daily_total=${dailyRow.total}, route_via=${probe.serverPubkey?.slice(0, 12)}`
-  );
+  console.log(`[swap-policy] member loop-in approved: ${amountSat} sats (phase ${quotedFeeSat === undefined ? 1 : 2})`);
 
   return { ok: true };
 }
