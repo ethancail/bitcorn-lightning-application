@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.14"
+version: "1.13.15"
 port: 3200
 
 description: >
@@ -27,6 +27,16 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.15: Auto-Buy verification diagnostics. When a Coinbase CDP key
+  fails verification at save time (401/403/etc), the actual Coinbase
+  error response now lands in docker logs under
+  [autobuy-credentials-post] / [autobuy-credentials-verify] prefixes,
+  and the dashboard toast surfaces the underlying detail instead of
+  just "verification_failed". Operators hitting an IP-allowlist /
+  permissions / key-format issue now get an actionable error message
+  on the first try, and treasury operators with shell access can
+  grep docker logs for the same string. No backend behavior change.
+
   v1.13.14: More Auto-Buy onboarding copy. Two gaps that bit a real
   operator during smoke-test setup. (1) Coinbase's CDP create-key
   dialog defaults to Ed25519 signature algorithm, which our scheduler
