@@ -12,6 +12,7 @@
 //   POST /valuation/manual    — Treasury-signed manual metric entries (HMAC; handlers/manualInput.ts)
 //   GET  /valuation/manual/day      — Read all 8 metric values for a date (handlers/manualInputQuery.ts)
 //   GET  /valuation/manual/calendar — Per-day completeness summary across a range (handlers/manualInputQuery.ts)
+//   POST /valuation/refresh   — Manually trigger the engine cron (HMAC; handlers/refresh.ts)
 //
 // Deploy runbook, secret management, and architecture: docs/COINBASE_INTEGRATION.md.
 // Valuation engine runs on cron (wrangler.toml [triggers]); see valuation/cron.ts.
@@ -27,6 +28,7 @@ import {
 } from "./handlers/valuation";
 import { handleManualInput } from "./handlers/manualInput";
 import { handleManualInputCalendar, handleManualInputDay } from "./handlers/manualInputQuery";
+import { handleValuationRefresh } from "./handlers/refresh";
 import { handleScheduled } from "./valuation/cron";
 import { CORS_HEADERS } from "./lib/cors";
 import type { Env } from "./lib/types";
@@ -68,6 +70,9 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/valuation/manual") {
       return handleManualInput(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/valuation/refresh") {
+      return handleValuationRefresh(request, env);
     }
     if (request.method === "POST" && (url.pathname === "/" || url.pathname === "")) {
       return handleOnramp(request, env);
