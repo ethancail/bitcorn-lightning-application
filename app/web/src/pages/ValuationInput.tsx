@@ -43,6 +43,8 @@ export default function ValuationInput() {
     return today.month;
   });
   const [date, setDate] = useState<string>(initialDate ?? today.date);
+  // Bumped after a successful Worker refresh; InputsTab re-fetches when this changes.
+  const [inputsRefreshKey, setInputsRefreshKey] = useState(0);
 
   // Sync state to URL
   useEffect(() => {
@@ -128,20 +130,20 @@ export default function ValuationInput() {
       <div style={{ marginTop: 48 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
           <h2 style={{ margin: 0 }}>Composite Model Inputs</h2>
-          <RefreshWorkerButton />
+          <RefreshWorkerButton onRefreshed={() => setInputsRefreshKey((k) => k + 1)} />
         </div>
-        <InputsTab />
+        <InputsTab refreshKey={inputsRefreshKey} />
       </div>
     </div>
   );
 }
 
 // Treasury-only "recompute now" button. The Worker's valuation engine runs
-// nightly at 00:15 UTC; this triggers it on demand. Used after manual-input
-// edits to see them flow into the composite Z-score immediately, or after
-// adapter logic changes (e.g. when an upstream data source is replaced) to
-// repopulate computed-locally rows without waiting for cron.
-function RefreshWorkerButton() {
+// nightly at 00:15 UTC; this triggers it on demand. The Worker engine runs
+// async after returning 204, so we wait briefly before bumping the parent's
+// refresh key — this ensures the InputsTab re-fetch sees the new KV values
+// rather than the snapshot from before the engine wrote.
+function RefreshWorkerButton({ onRefreshed }: { onRefreshed: () => void }) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: "success" | "error"; msg: string } | null>(null);
 
@@ -150,8 +152,16 @@ function RefreshWorkerButton() {
     setToast(null);
     try {
       const res = await api.refreshValuationWorker();
-      if (res.ok) setToast({ kind: "success", msg: "Refreshed — values may take a few seconds to update" });
-      else setToast({ kind: "error", msg: `Worker refresh failed: ${res.worker_error ?? "unknown"}` });
+      if (res.ok) {
+        setToast({ kind: "success", msg: "Refreshed — values may take a few seconds to update" });
+        // Worker accepts the request synchronously but writes KV from the
+        // engine's continuation. 4s is a generous floor for the engine to
+        // finish all 12 adapter fetches + KV writes; if it hasn't, the next
+        // re-fetch still shows the prior values without breaking the UI.
+        setTimeout(() => onRefreshed(), 4_000);
+      } else {
+        setToast({ kind: "error", msg: `Worker refresh failed: ${res.worker_error ?? "unknown"}` });
+      }
     } catch (err) {
       setToast({ kind: "error", msg: err instanceof Error ? err.message : String(err) });
     } finally {
