@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.15"
+version: "1.13.16"
 port: 3200
 
 description: >
@@ -27,6 +27,14 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.16: Tightened wording on two SAGE valuation inputs the finance
+  owner flagged as ambiguous. Hash Ribbons now reads "30D MA ÷ 60D MA
+  of hashrate" (the actual ratio, not a binary crossover signal), and
+  Realized Cap HODL Waves reads "% of realized cap held in 1y–2y band"
+  (the percentage in the 1–2 year age band). Description-only change
+  in the operator-facing Valuation Inputs form; no behavior, schema,
+  or Worker changes.
+
   v1.13.15: Auto-Buy verification diagnostics. When a Coinbase CDP key
   fails verification at save time (401/403/etc), the actual Coinbase
   error response now lands in docker logs under
