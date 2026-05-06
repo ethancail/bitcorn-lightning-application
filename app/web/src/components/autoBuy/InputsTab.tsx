@@ -17,7 +17,13 @@ const DISPLAY_ORDER: Array<{ key: string; label: string; category: string; sourc
   { key: "pi_cycle",           label: "Pi Cycle Top",           category: "Price Model",   source: "Computed locally" },
 ];
 
-export default function InputsTab() {
+interface InputsTabProps {
+  // Bump to trigger a re-fetch (e.g. after a manual Worker refresh).
+  // Default 0 — when omitted, the table fetches once on mount.
+  refreshKey?: number;
+}
+
+export default function InputsTab({ refreshKey = 0 }: InputsTabProps) {
   const [inputs, setInputs] = useState<ValuationInputsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +31,7 @@ export default function InputsTab() {
     api.getValuationInputs()
       .then(setInputs)
       .catch((err) => setError(err?.message ?? "unavailable"));
-  }, []);
+  }, [refreshKey]);
 
   if (error) {
     return (
