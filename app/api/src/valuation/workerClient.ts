@@ -63,3 +63,38 @@ export async function postManualInputToWorker(
     };
   }
 }
+
+/**
+ * Trigger the Worker's valuation engine to recompute now (instead of
+ * waiting for the 00:15 UTC cron). Same HMAC contract as
+ * postManualInputToWorker — empty body, signed timestamp.
+ */
+export async function postRefreshToWorker(
+  workerBaseUrl: string,
+  hmacSecret: string,
+): Promise<WorkerPostResult> {
+  const body = "";
+  const timestamp = new Date().toISOString();
+  const signature = signHmac(hmacSecret, timestamp, body);
+
+  try {
+    const res = await fetch(`${workerBaseUrl}/valuation/refresh`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Valuation-Timestamp": timestamp,
+        "X-Valuation-Signature": signature,
+      },
+      body,
+    });
+    if (res.status === 204) return { ok: true, status: 204 };
+    const errBody = await res.text().catch(() => "");
+    return { ok: false, status: res.status, error: errBody.slice(0, 500) };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}

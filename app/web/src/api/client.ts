@@ -209,6 +209,12 @@ export const api = {
   submitValuationDay: (req: DaySubmitRequest) =>
     apiFetch<DaySubmitResponse>("/api/valuation/manual", { method: "POST", body: JSON.stringify(req) }),
 
+  refreshValuationWorker: () =>
+    apiFetch<{ ok: boolean; worker_status?: number; worker_error?: string | null }>(
+      "/api/valuation/refresh-worker",
+      { method: "POST" },
+    ),
+
   // ─── Coinbase Auto-Buy ───────────────────────────────────────────────
   getAutoBuyStatus: () =>
     apiFetch<AutoBuyStatus>("/api/autobuy/status"),

@@ -4,6 +4,7 @@ import YearHeatmap from "../components/valuation/YearHeatmap";
 import MonthGrid from "../components/valuation/MonthGrid";
 import DayForm from "../components/valuation/DayForm";
 import InputsTab from "../components/autoBuy/InputsTab";
+import { api } from "../api/client";
 
 type View = "year" | "month" | "day";
 
@@ -125,9 +126,49 @@ export default function ValuationInput() {
 
       {/* Composite Model Inputs — read-only view of all 12 inputs */}
       <div style={{ marginTop: 48 }}>
-        <h2 style={{ marginBottom: 16 }}>Composite Model Inputs</h2>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+          <h2 style={{ margin: 0 }}>Composite Model Inputs</h2>
+          <RefreshWorkerButton />
+        </div>
         <InputsTab />
       </div>
+    </div>
+  );
+}
+
+// Treasury-only "recompute now" button. The Worker's valuation engine runs
+// nightly at 00:15 UTC; this triggers it on demand. Used after manual-input
+// edits to see them flow into the composite Z-score immediately, or after
+// adapter logic changes (e.g. when an upstream data source is replaced) to
+// repopulate computed-locally rows without waiting for cron.
+function RefreshWorkerButton() {
+  const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<{ kind: "success" | "error"; msg: string } | null>(null);
+
+  const click = async () => {
+    setBusy(true);
+    setToast(null);
+    try {
+      const res = await api.refreshValuationWorker();
+      if (res.ok) setToast({ kind: "success", msg: "Refreshed — values may take a few seconds to update" });
+      else setToast({ kind: "error", msg: `Worker refresh failed: ${res.worker_error ?? "unknown"}` });
+    } catch (err) {
+      setToast({ kind: "error", msg: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      {toast && (
+        <span style={{ fontSize: "0.8125rem", color: toast.kind === "success" ? "var(--green, #10b981)" : "var(--red, #ef4444)" }}>
+          {toast.msg}
+        </span>
+      )}
+      <button onClick={click} disabled={busy} style={{ padding: "6px 14px" }}>
+        {busy ? "Refreshing…" : "Refresh now"}
+      </button>
     </div>
   );
 }
