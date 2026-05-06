@@ -70,7 +70,7 @@ import {
   listLatestPerMetric,
   type ManualMetricKey,
 } from "./valuation/manualInputStore";
-import { postManualInputToWorker } from "./valuation/workerClient";
+import { postManualInputToWorker, postRefreshToWorker } from "./valuation/workerClient";
 import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
@@ -465,6 +465,35 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: "internal_error" }));
       }
     });
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/valuation/refresh-worker") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    if (!ENV.valuationWorkerUrl || !ENV.valuationSubmitHmac) {
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "valuation_worker_not_configured" }));
+      return;
+    }
+    try {
+      const result = await postRefreshToWorker(ENV.valuationWorkerUrl, ENV.valuationSubmitHmac);
+      if (result.ok) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      } else {
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, worker_status: result.status, worker_error: result.error ?? null }));
+      }
+    } catch (err) {
+      console.error("[valuation-refresh-worker]", err instanceof Error ? err.message : err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
     return;
   }
 

@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.16"
+version: "1.13.17"
 port: 3200
 
 description: >
@@ -27,6 +27,16 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.17: "Refresh now" button on the Valuation Inputs page. Lets a
+  treasury operator trigger the Worker's valuation engine on demand
+  (the same job that runs nightly at 00:15 UTC), so manual edits and
+  Worker-side adapter changes can flow into the Composite Valuation
+  Model card immediately rather than waiting for the cron tick. The
+  button appears next to the "Composite Model Inputs" header and
+  surfaces a success/error toast inline. Backed by a new treasury-only
+  POST /api/valuation/refresh-worker endpoint that signs the existing
+  HMAC contract — no new secrets to configure.
+
   v1.13.16: Tightened wording on two SAGE valuation inputs the finance
   owner flagged as ambiguous. Hash Ribbons now reads "30D MA ÷ 60D MA
   of hashrate" (the actual ratio, not a binary crossover signal), and
