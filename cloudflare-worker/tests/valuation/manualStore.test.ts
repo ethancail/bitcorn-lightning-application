@@ -17,10 +17,10 @@ function mockKV() {
 }
 
 describe("MANUAL_METRIC_KEYS", () => {
-  it("lists exactly the 8 manual-entry metrics", () => {
+  it("lists exactly the 9 manual-entry metrics", () => {
     expect(MANUAL_METRIC_KEYS).toEqual([
       "mvrv", "puell", "sopr", "reserve_risk",
-      "nvt", "hash_ribbons", "difficulty_ribbon", "hodl_waves",
+      "nvt", "hash_ribbons", "difficulty_ribbon", "miner_outflows", "hodl_waves",
     ]);
   });
 });
@@ -30,7 +30,7 @@ describe("appendManualSubmission + loadManualHistory", () => {
     const kv = mockKV();
     const values: ManualValues = {
       mvrv: 2.1, puell: 0.4, sopr: 1.008, reserve_risk: 0.003,
-      nvt: 85.4, hash_ribbons: 1.02, difficulty_ribbon: 0.023, hodl_waves: 0.15,
+      nvt: 85.4, hash_ribbons: 1.02, difficulty_ribbon: 0.023, miner_outflows: 1500, hodl_waves: 0.15,
     };
     await appendManualSubmission(kv, "2026-04-17T14:32:00Z", values);
 
@@ -44,8 +44,8 @@ describe("appendManualSubmission + loadManualHistory", () => {
 
   it("a second submission appends another row", async () => {
     const kv = mockKV();
-    const v1: ManualValues = { mvrv: 1, puell: 1, sopr: 1, reserve_risk: 1, nvt: 1, hash_ribbons: 1, difficulty_ribbon: 1, hodl_waves: 1 };
-    const v2: ManualValues = { mvrv: 2, puell: 2, sopr: 2, reserve_risk: 2, nvt: 2, hash_ribbons: 2, difficulty_ribbon: 2, hodl_waves: 2 };
+    const v1: ManualValues = { mvrv: 1, puell: 1, sopr: 1, reserve_risk: 1, nvt: 1, hash_ribbons: 1, difficulty_ribbon: 1, miner_outflows: 1, hodl_waves: 1 };
+    const v2: ManualValues = { mvrv: 2, puell: 2, sopr: 2, reserve_risk: 2, nvt: 2, hash_ribbons: 2, difficulty_ribbon: 2, miner_outflows: 2, hodl_waves: 2 };
     await appendManualSubmission(kv, "2026-04-16T14:00:00Z", v1);
     await appendManualSubmission(kv, "2026-04-17T14:00:00Z", v2);
     const history = await loadManualHistory(kv);

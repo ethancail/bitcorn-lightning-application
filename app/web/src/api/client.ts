@@ -948,6 +948,7 @@ export type ManualMetricKey =
   | "nvt"
   | "hash_ribbons"
   | "difficulty_ribbon"
+  | "miner_outflows"
   | "hodl_waves";
 
 export type ManualMetricStatus = {
