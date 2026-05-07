@@ -8,6 +8,7 @@ export const MANUAL_METRIC_KEYS = [
   "nvt",
   "hash_ribbons",
   "difficulty_ribbon",
+  "miner_outflows",
   "hodl_waves",
 ] as const;
 
