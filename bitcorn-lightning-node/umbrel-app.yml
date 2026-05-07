@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.20"
+version: "1.13.21"
 port: 3200
 
 description: >
@@ -27,6 +27,19 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.21: Fix a sawtooth artifact in the BTC Moving Averages and
+  Power Law charts that appeared starting around 2026-02-26. Coinbase's
+  v2 historic-prices endpoint has been silently downsampling responses
+  (~305 entries spanning 365 days, with roughly 14 missing dates in
+  any 90-day window). The chart's gap-fill chain was falling back to
+  the live spot price on those missing dates, producing a zigzag
+  between real and current prices once power-law-data.json's baked
+  values ran out (Feb 20). Now Charts.tsx linearly interpolates between
+  adjacent known prices before passing the map to the chart components.
+  Affects all three charts that consume the historic map (PowerLaw,
+  Moving Averages, Corn-Bitcoin ratio). Frontend-only fix; longer term
+  we should switch to a denser BTC price source.
+
   v1.13.20: Correct the Miner Outflows metric metadata shipped in
   v1.13.19. The original chart URL pointed at a slug that doesn't
   exist on Glassnode; the canonical metric is the "Miner Outflow
