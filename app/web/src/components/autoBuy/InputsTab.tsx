@@ -7,7 +7,7 @@ const DISPLAY_ORDER: Array<{ key: string; label: string; category: string; sourc
   { key: "nvt",               label: "NVT",                    category: "On-chain",      source: "Manual entry" },
   { key: "reserve_risk",      label: "Reserve Risk",           category: "On-chain",      source: "Manual entry" },
   { key: "sopr",              label: "SOPR (30d MA)",          category: "On-chain",      source: "Manual entry" },
-  { key: "miner_outflows",    label: "Miner Outflows",         category: "Miner",         source: "Manual entry" },
+  { key: "miner_outflows",    label: "Miner Outflow Multiple", category: "Miner",         source: "Manual entry" },
   { key: "puell",             label: "Puell Multiple",         category: "Miner",         source: "Manual entry" },
   { key: "hash_ribbons",      label: "Hash Ribbons",           category: "Miner",         source: "Manual entry" },
   { key: "difficulty_ribbon", label: "Difficulty Ribbon",      category: "Miner",         source: "Manual entry" },

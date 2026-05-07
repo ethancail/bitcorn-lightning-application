@@ -6,9 +6,9 @@ describe("minerOutflows adapter", () => {
     expect(minerOutflows.key).toBe("miner_outflows");
   });
 
-  it("is a manual adapter (post-v1.13.16 — switched from CryptoQuant)", () => {
+  it("is a manual adapter (post-v1.13.19 — switched from CryptoQuant)", () => {
     expect(minerOutflows.source).toBe("manual");
     expect(minerOutflows.category).toBe("mining");
-    expect(minerOutflows.label).toBe("Miner Outflows");
+    expect(minerOutflows.label).toBe("Miner Outflow Multiple");
   });
 });
