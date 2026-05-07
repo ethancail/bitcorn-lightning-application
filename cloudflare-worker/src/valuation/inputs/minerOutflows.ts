@@ -1,11 +1,15 @@
 import { makeManualAdapter } from "./manualInput";
 
-// Switched from CryptoQuant API fetch to manual entry in v1.13.16. Operators
-// now enter Miner Outflows weekly via /valuation-input alongside the other
-// 8 manual Glassnode metrics. Keeps all manual inputs on a single subscription
-// (Glassnode) and removes the CryptoQuant API key dependency.
+// Switched from CryptoQuant API fetch to manual entry in v1.13.19. The
+// operator-facing metric is the Glassnode "Miner Outflow Multiple" — the
+// ratio of current miners' outflow to its 365-day MA in USD. Stationary
+// across cycles (z-scores cleanly), shape parallels Puell Multiple. Source
+// chart: https://studio.glassnode.com/charts/mining.MinersOutflowMultiple
+//
+// The DB key (miner_outflows) and composite weight (0.04) are unchanged
+// from the CryptoQuant era — only the source/label changed.
 export const minerOutflows = makeManualAdapter({
   key: "miner_outflows",
-  label: "Miner Outflows",
+  label: "Miner Outflow Multiple",
   category: "mining",
 });

@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.19"
+version: "1.13.20"
 port: 3200
 
 description: >
@@ -27,6 +27,18 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.13.20: Correct the Miner Outflows metric metadata shipped in
+  v1.13.19. The original chart URL pointed at a slug that doesn't
+  exist on Glassnode; the canonical metric is the "Miner Outflow
+  Multiple" (mining.MinersOutflowMultiple) — a stationary ratio of
+  current miners' outflow to its 365-day MA in USD, structurally
+  parallel to Puell Multiple. Renames the form row label from
+  "Miner Outflows" → "Miner Outflow Multiple" (3 places: DayForm,
+  worker adapter, InputsTab DISPLAY_ORDER) and tightens the
+  typicalRange to "0.5 to 3" with a real Glassnode chart URL. DB
+  key (miner_outflows), composite weight (0.04), and adapter source
+  ("manual") are unchanged. No backend behavior change.
+
   v1.13.19: Miner Outflows switches from CryptoQuant auto-fetch to
   manual entry. The auto-fetch had been silently returning empty
   results because no CRYPTOQUANT_API_KEY was set on the Worker, and
