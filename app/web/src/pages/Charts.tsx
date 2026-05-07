@@ -32,6 +32,43 @@ type CoinbaseHistoricResponse = {
   };
 };
 
+// Coinbase's v2 historic endpoint downsamples the response (~305 entries
+// across 365 days, with roughly 14 missing dates per 90-day window). Without
+// gap-fill, the chart's fallback to `currentPrice` for missing dates produces
+// a visible sawtooth past the power-law-data.json cutoff. Linearly interpolate
+// between adjacent known prices to smooth the line.
+//
+// Boundary: only fills *between* known dates. Dates after the last known
+// entry fall through to `currentPrice` in the chart components' existing
+// fill chain, which is correct (don't fabricate prices past real data).
+function fillDateGaps(sparse: Map<string, number>): Map<string, number> {
+  if (sparse.size < 2) return sparse;
+  const dates = [...sparse.keys()].sort();
+  const filled = new Map(sparse);
+  const dayMs = 86_400_000;
+
+  for (let i = 0; i < dates.length - 1; i++) {
+    const startDate = dates[i];
+    const endDate = dates[i + 1];
+    const startPrice = sparse.get(startDate)!;
+    const endPrice = sparse.get(endDate)!;
+
+    const startTs = new Date(`${startDate}T00:00:00Z`).getTime();
+    const endTs = new Date(`${endDate}T00:00:00Z`).getTime();
+    const gapDays = Math.round((endTs - startTs) / dayMs);
+    if (gapDays <= 1) continue;
+
+    for (let d = 1; d < gapDays; d++) {
+      const ts = startTs + d * dayMs;
+      const dateStr = new Date(ts).toISOString().slice(0, 10);
+      const interpolated = startPrice + (endPrice - startPrice) * (d / gapDays);
+      filled.set(dateStr, interpolated);
+    }
+  }
+
+  return filled;
+}
+
 // ─── Component ───────────────────────────────────────────────────────────
 
 export default function Charts() {
@@ -60,7 +97,7 @@ export default function Charts() {
           const price = parseFloat(p.price);
           if (!isNaN(price) && price > 0) map.set(date, price);
         }
-        setHistoricPrices(map);
+        setHistoricPrices(fillDateGaps(map));
       })
       .catch(() => {});
 
