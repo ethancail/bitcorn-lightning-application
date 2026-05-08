@@ -347,17 +347,27 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Status read for the calling member's own subscription row.
-  // Per spec §9 — open to the member; no admin gate. Returns 404 if the
-  // calling node has no subscription row yet (e.g., first-run gate not
-  // yet acknowledged, or peer with no treasury channel).
-  if (req.method === "GET" && req.url === "/api/subscription/status") {
+  // Status read for a member's subscription row. Stage 2 contract:
+  // treasury-only, identifies the target via `?member_pubkey=<hex>`
+  // query param. Treasury is the source of truth for subscription state
+  // (the detector + backfill run only there); members reaching this
+  // endpoint via Stage 4's entitlement-token middleware will have their
+  // verified pubkey set on the request and the query-param fallback
+  // becomes the admin debug path. Until Stage 4 lands, this is admin-
+  // only; members get their status via the treasury operator's UI.
+  if (req.method === "GET" && req.url?.startsWith("/api/subscription/status")) {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
     try {
-      const node = getNodeInfo();
-      const memberPubkey = node?.pubkey;
+      const url = new URL(req.url, "http://localhost");
+      const memberPubkey = url.searchParams.get("member_pubkey");
       if (!memberPubkey) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "no_local_node_pubkey" }));
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "missing_member_pubkey_query_param" }));
         return;
       }
       const row = db

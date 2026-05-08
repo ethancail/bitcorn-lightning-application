@@ -31,7 +31,7 @@ import { isFirstRunAcknowledged } from "./firstRunGate";
 import { getSubscriptionPolicy } from "./policy";
 import { allocateSubscriptionForMember } from "./addressAllocator";
 import { attributePayment, computeNewPaidThrough } from "./paymentMath";
-import { fetchBtcUsdCents } from "./btcUsdSpot";
+import { fetchBtcUsdSpotCents, satsToUsdCents } from "./btcUsdSpot";
 
 export interface ScanSummary {
   skipped_reason?: "first_run_not_acknowledged" | "lnd_unavailable";
@@ -199,9 +199,12 @@ async function processConfirmedUtxo(
   }
 
   // Best-effort BTC/USD read, outside the DB transaction so a slow
-  // Coinbase response doesn't hold the SQLite lock.
-  const usdCents = await fetchBtcUsdCents();
-  if (usdCents == null) {
+  // Coinbase response doesn't hold the SQLite lock. The column stores
+  // the USD-cents value of THIS payment (sats × spot ÷ 100M), not the
+  // BTC/USD spot rate itself — see satsToUsdCents.
+  const spotCentsPerBtc = await fetchBtcUsdSpotCents();
+  const usdCentsOfPayment = satsToUsdCents(utxo.tokens, spotCentsPerBtc);
+  if (spotCentsPerBtc == null) {
     console.warn(
       `[subscription] BTC/USD lookup failed for credit ${utxo.transaction_id}:${utxo.transaction_vout}`,
     );
@@ -237,7 +240,7 @@ async function processConfirmedUtxo(
       utxo.transaction_id,
       utxo.transaction_vout,
       utxo.tokens,
-      usdCents,
+      usdCentsOfPayment,
       now,
       now,
       outcome.period_extension_days,
