@@ -9,7 +9,7 @@ Read this end-to-end before making any edits. Verify against current code if the
 ## TL;DR — where we are right now
 
 - **Auto-buy is fully built and live on the treasury node** (v1.13.7 on main). Scheduler, safety caps, Coinbase client, credential vault, state machine all shipped and tested for compilation.
-- **DCA/Valuation surface is hidden** (v1.13.0+) because Glassnode quoted $13k/yr — too steep. The engine still runs, UI just shows a flat-DCA view.
+- **DCA/Valuation surface is live again** (un-hidden in v1.13.9 / PR #130). It was hidden v1.13.0–v1.13.8 while the data-source question was open; once the team committed to the operator-driven manual-entry path as the medium-term answer, the UI came back.
 - **Task #73 (real-money smoke test) is the only remaining validation step.** The operator has to walk the Coinbase onboarding flow with a CDP key and verify a live buy moves through the state machine.
 - **No one has actually run a real Coinbase buy through our system yet.** That's the next action.
 
@@ -17,23 +17,13 @@ Read this end-to-end before making any edits. Verify against current code if the
 
 ## Critical context (what a fresh session might get wrong)
 
-### 1. The DCA is hidden, not removed
+### 1. DCA UI is live — manual valuation-input is the data source
 
-Four files contain `DCA_HIDE (v1.13.x):` comment markers. The backend — scheduler, caps, Worker valuation engine, cron, all 12 input adapters, KV keys — is fully intact and running. Only the UI is hidden.
+The DCA / valuation surface was hidden in v1.13.0 (Glassnode quoted $13k/yr for the 8 inputs) and un-hidden in v1.13.9 / PR #130 once the team committed to the manual-entry path as the medium-term data source. Today the UI is visible: the gauge, zone definitions, and distribution stats panels render; the Valuation Inputs sidebar link is back; and the Dashboard's "Valuation inputs need attention" banner is live again. There are no `DCA_HIDE` markers in `app/web/src` anymore.
 
-```bash
-grep -rn "DCA_HIDE" app/web/src
-```
+The operator enters the 8 SAGE metrics on the treasury node via `/valuation-input`, signed via HMAC to the Worker; the 3 computed-locally inputs (stockToFlow, ma200w, piCycle) run on the Worker as before. The Glassnode subscription decision is still pending budget approval — the SAGE designer's position is that all 8 SAGE inputs should source from Glassnode for methodology consistency, so any free-data adapter that re-emerges should expect to be reverted on those grounds.
 
-Hits:
-- `app/web/src/pages/AutoBuy.tsx` — Valuation Chart tab hidden (was gauge, zone defs, distribution stats)
-- `app/web/src/components/autoBuy/StrategyTab.tsx` — Zone Multipliers editor hidden, banner language simplified
-- `app/web/src/App.tsx` — "Valuation Inputs" sidebar link removed (route still accessible via direct URL)
-- `app/web/src/pages/Dashboard.tsx` — "Valuation inputs need attention" banner hidden
-
-**To un-hide (when Glassnode resolves or Path B lands):** uncomment the blocks at each grep hit. ~5 edits, 4 files, no type/contract changes.
-
-**Backend behavior while hidden:** scheduler still fetches `/valuation/current`, gets `{z_score: 0, zone: "fair_value", multiplier: 1}` (or null if KV empty), multiplies `base_unit × 1 = base_unit`. Behaves as flat DCA. When/if operator enters manual metrics via `/valuation-input` direct URL, the composite updates and multipliers re-engage — no code changes required.
+**Backend behavior is unchanged from v1.13.0.** Scheduler fetches `/valuation/current`, multiplies `base_unit × multiplier` from the composite. If KV is empty (no manual inputs entered yet), Worker returns null and scheduler treats it as flat DCA (`multiplier = 1`).
 
 ### 2. The v1.11.x saga — do NOT revert these
 
@@ -135,13 +125,13 @@ Failure states (terminal but countable toward consecutive-failures threshold): `
 
 | File | Purpose |
 |---|---|
-| `app/web/src/pages/AutoBuy.tsx` | Page shell. Valuation Chart tab is DCA_HIDE-commented |
-| `app/web/src/components/autoBuy/StrategyTab.tsx` | DCA Strategy content — master controls, next-buy banner, StrategyEditor, HistoryTable, CoinbaseCard. Zone Multipliers editor is DCA_HIDE-commented |
-| `app/web/src/components/autoBuy/ValuationTab.tsx` | Hidden for now. Has semicircle gauge, Zone Definitions, Distribution Stats |
+| `app/web/src/pages/AutoBuy.tsx` | Page shell. Tabs: DCA Strategy + Valuation Chart |
+| `app/web/src/components/autoBuy/StrategyTab.tsx` | DCA Strategy content — master controls, next-buy banner, StrategyEditor, Zone Multipliers editor, HistoryTable, CoinbaseCard |
+| `app/web/src/components/autoBuy/ValuationTab.tsx` | Semicircle gauge, Zone Definitions, Distribution Stats |
 | `app/web/src/components/autoBuy/CoinbaseCard.tsx` | 3-state credential onboarding (disconnected, connected-not-whitelisted, ready) |
 | `app/web/src/components/autoBuy/HistoryTable.tsx` | Purchase history with pagination + status filter |
-| `app/web/src/components/autoBuy/InputsTab.tsx` | Read-only 12-input model inputs table. Currently only referenced from `/valuation-input` page |
-| `app/web/src/pages/ValuationInput.tsx` | Treasury-only manual metric entry. Still live via direct URL |
+| `app/web/src/components/autoBuy/InputsTab.tsx` | Read-only 12-input model inputs table. Referenced from the `/valuation-input` page |
+| `app/web/src/pages/ValuationInput.tsx` | Treasury-only manual metric entry, reached via the Valuation Inputs sidebar link |
 | `app/web/src/api/client.ts` | All API wrappers + types. Types at bottom (search `export type`) |
 
 ### Cloudflare Worker
@@ -214,8 +204,8 @@ Queue of likely-next-things in rough priority order:
 
 1. **USD balance runway banner** (proposed, not built). Ships as v1.13.8 after smoke test. Add USD balance to `/api/autobuy/status` response (already fetched in `listAccounts` calls), compute runway = `balance / (base_unit × buys_per_week / 7)`. UI banners at <7 days (amber) / <1 day (red). ~50 lines. Lets operator know when to manually top up.
 2. **Known scheduler issue I3**: stranded `buy_placed` rows don't count against rolling caps. Real Coinbase spend slipping past caps. Fix would require polling historical orders by `client_order_id` prefix to reconcile. Not urgent but documented.
-3. **Path B — free-data DCA composite**: if operators want DCA signal back without Glassnode, delete manual-input pipeline + 8 Glassnode adapters (already gone from Worker — that's what Plan 1-rev did). Re-weight the remaining 3 computed adapters (stockToFlow 0.12, ma200w 0.10, piCycle 0.07 → renormalized to sum to 1). Un-hide the DCA UI. Net: flat-3-input composite, zero ongoing cost.
-4. **Full Glassnode revival**: if/when boss approves $13k/yr, restore the 8 Glassnode adapters (in git history on Plan 1-rev's parent commits, specifically before `38c69e...` deleted them). Revert Plan 1-rev. Un-hide DCA UI. Budget: ~4 hours work to resurrect.
+3. **Path B — free-data DCA composite**: if the operator's weekly manual-entry burden needs to go away without paying for Glassnode, delete the manual-input pipeline + the 8 stub adapters that read it. Re-weight the 3 computed adapters (stockToFlow 0.12, ma200w 0.10, piCycle 0.07 → renormalized to sum to 1). Net: flat-3-input composite, zero ongoing cost. Trade-off: methodology consistency drops from 8 SAGE inputs to 3, which the SAGE designer is on record against.
+4. **Full Glassnode revival**: if/when boss approves $13k/yr, restore the 8 Glassnode adapters (in git history on Plan 1-rev's parent commits, specifically before `38c69e...` deleted them). Revert Plan 1-rev. Budget: ~4 hours work to resurrect.
 
 ### Deferred (lower priority)
 
@@ -236,6 +226,8 @@ Glassnode quoted $13k/yr for the 8 metrics we need. User's boss hadn't approved 
 - **C)** Pay Glassnode → unverified budget
 
 Decision: hide with `DCA_HIDE` markers, keep engine running, re-enable later via B or C. Preserves optionality.
+
+**Follow-up (2026-04-28, v1.13.9, PR #130):** un-hid the DCA surface once the team committed to manual entry as the medium-term data source. The "preserve optionality" bet paid off — Path B (free-data) and Path C (Glassnode) both remain available, since the choice deferred was the data-source decision, not the UI visibility.
 
 ### 2026-04-22: v1.12.0 — gauge + stats panels
 
@@ -309,7 +301,7 @@ Operator workflow that works:
 - Operator secrets go in `/home/umbrel/umbrel/app-data/bitcorn-lightning-node/.env` (survives updates, loaded via `exports.sh` at service start)
 
 Existing operator secrets in `.env`:
-- `VALUATION_SUBMIT_HMAC` — 64-char hex, matches the value set on the Worker. Used for signing manual valuation submissions. Currently set even though the feature is hidden — harmless.
+- `VALUATION_SUBMIT_HMAC` — 64-char hex, matches the value set on the Worker. Used for signing manual valuation submissions.
 
 Potential future additions to `.env`:
 - `AUTOBUY_MAX_SINGLE_BUY_USD`, `AUTOBUY_MAX_7D_USD`, `AUTOBUY_MAX_30D_USD` — override defaults for Task #73 safety
@@ -333,13 +325,10 @@ If you touch `App.tsx`, `api/client.ts`, or `styles.css`, flag it — those are 
 ## Decision log for common next-session questions
 
 **Q: Should I revive the Glassnode adapters?**
-A: Only if user's boss approves the subscription cost (was $13k/yr at last quote). Otherwise stay hidden. Path B (3 computed adapters, no Glassnode) is the middle ground — preserves the DCA pitch at zero cost but requires code work to re-weight and un-hide.
+A: Only if user's boss approves the subscription cost (was $13k/yr at last quote). Until then, manual entry of the 8 SAGE inputs by the operator remains the data source. Path B (3 computed adapters, no Glassnode) is the alternate route — zero ongoing cost, but methodology consistency drops from 8 inputs to 3.
 
 **Q: Should I automate Coinbase funding?**
 A: No. Industry standard is operator keeps USD in exchange wallet. We added a "runway banner" proposal to the queue — that gives operators visibility without us building against unstable Coinbase APIs.
-
-**Q: Can I un-hide DCA?**
-A: Only with user approval. If un-hiding, `grep -rn "DCA_HIDE" app/web/src` → uncomment 4 blocks. Verify Worker is still publishing valuation data before shipping the un-hide (otherwise users see stale "populating" messages).
 
 **Q: What if the operator's Execute Now fails?**
 A: Check in order:
