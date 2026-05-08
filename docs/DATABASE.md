@@ -31,8 +31,9 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `027_member_liquidity_advisor.sql` | Member-side advisor: channel classifications + advisor config |
 | `028_member_advisor_config.sql` | Additional advisor defaults |
 | `032_member_channel_role.sql` | `channel_role` on `member_liquidity_advisor_config` (merchant/farmer/unknown) |
+| `036_member_subscription.sql` | On-chain monthly subscription: `subscription_policy`, `subscription`, `subscription_payment`, `subscription_pending_attribution` |
 
-Gaps in numbering (016–019, 029–031) indicate migrations not present in the current tree — do not re-use those numbers.
+Gaps in numbering (016–019, 029–031) indicate migrations not present in the current tree — do not re-use those numbers. Migrations 033–035 exist in the tree but are not yet listed here (`033_valuation_manual_inputs.sql`, `034_coinbase_autobuy.sql`, `035_valuation_manual_calendar.sql`); a separate cleanup pass should fold them in.
 
 ## Key Tables
 
@@ -78,6 +79,12 @@ Gaps in numbering (016–019, 029–031) indicate migrations not present in the 
 **Member advisor (member-side)**
 - `member_channel_classifications` — per-run classification history
 - `member_liquidity_advisor_config` — advisor settings including `channel_role`
+
+**Subscription (member, on-chain)**
+- `subscription_policy` — single-row policy: price (sats), period (days), tier grace windows, underpay tolerance
+- `subscription` — one row per member: deposit address, BIP32 path, `paid_through`, last payment, `current_tier`
+- `subscription_payment` — append-only ledger; `kind ∈ {onchain, admin_override}`; UNIQUE (txid, vout) where txid is non-null
+- `subscription_pending_attribution` — confirmed receipts that fell below the underpay tolerance, awaiting admin resolution
 
 All timestamps are stored as milliseconds unless noted in a migration.
 
