@@ -18,6 +18,7 @@ import {
   getRouteToDestination,
   payViaRoutes,
   createChainAddress,
+  getUtxos,
   payViaPaymentDetails
 } from "ln-service";
 import crypto from "crypto";
@@ -305,6 +306,17 @@ export async function getLndChainTransactions() {
 export async function createLndChainAddress(): Promise<{ address: string }> {
   const { lnd } = getLndClient();
   return createChainAddress({ lnd, format: "p2wpkh" });
+}
+
+/**
+ * Lists unspent on-chain UTXOs known to LND, with per-output address
+ * and amount. Used by the subscription-rail detector (filtered to
+ * subscription deposit addresses) and by `getDeployableChainBalance()`
+ * (sum of unswept subscription receipts).
+ */
+export async function getLndUtxos(args: { min_confirmations?: number } = {}) {
+  const { lnd } = getLndClient();
+  return getUtxos({ lnd, ...args });
 }
 
 /**

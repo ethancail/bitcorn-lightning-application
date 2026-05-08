@@ -88,6 +88,10 @@ Before any channel open, `src/utils/capital-guardrails.ts` checks:
 
 Returns 429 on violation. Policy stored in `treasury_capital_policy` (single row). Read/write via `/api/treasury/capital-policy`.
 
+**Subscription-receipt segregation (Path B / V8 fallback).** The on-chain subscription rail receives 50,000 sats / 30 days payments to per-member deposit addresses. Because `bitcoind` direct RPC is not available, the deposit addresses are LND-internal — created via `createChainAddress` and tagged with a per-member label of the form `bitcorn:subscription:<member_pubkey_short>` stored in `subscription.derivation_path`. Receipts therefore co-mingle with the LND hot-wallet balance physically, but are logically segregated by the address set.
+
+The deploy-ratio guardrail must not see those receipts as deployable capital (subscription revenue is not channel-open reserve). `getDeployableChainBalance()` in `capital-guardrails.ts` reads `getLndChainBalance()` and subtracts the sum of unspent UTXOs whose address is in `subscription.deposit_address`. Only the deploy-ratio numerator uses this helper; display, audit, and other read paths keep using the unfiltered balance. An admin "sweep" action (planned, not in v1) is the explicit moment a subscription receipt becomes deployable: once swept to a non-subscription address, it disappears from the helper's exclusion set.
+
 ## Liquidity Management
 
 Steady-state rebalancing in Bitcorn is **member-driven and role-aware**, not treasury-coordinated. Each member self-services their channel based on their declared role: farmers run Loop Out (clearing accumulated local balance), grain merchants run Loop In (refilling depleted local balance). The treasury reserves treasury-side rebalancing for provisioning, external-inbound maintenance, and edge cases — not steady-state operation.
