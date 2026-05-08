@@ -20,7 +20,7 @@ function validBody(timestamp = "2026-04-17T14:32:00Z"): string {
     submitted_at: timestamp,
     values: {
       mvrv: 2.1, puell: 0.4, sopr: 1.008, reserve_risk: 0.003,
-      nvt: 85.4, hash_ribbons: 1.02, difficulty_ribbon: 0.023, hodl_waves: 0.15,
+      nvt: 85.4, hash_ribbons: 1.02, difficulty_ribbon: 0.023, miner_outflows: 1500, hodl_waves: 0.15,
     },
   });
 }

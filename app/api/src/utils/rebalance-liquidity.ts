@@ -1,5 +1,11 @@
 /**
- * Liquidity snapshot and viability checks for circular rebalance.
+ * Liquidity snapshot and viability checks for circular rebalance (LEGACY).
+ *
+ * Used by the legacy circular rebalance path (`src/lightning/rebalance-circular.ts`).
+ * Not part of steady-state operation — the active rebalancing model is member-
+ * driven via the Member Liquidity Advisor; see `docs/ARCHITECTURE.md` § Liquidity
+ * Management.
+ *
  * Enforces minimum remote ratio on incoming and local ratio on outgoing,
  * plus available balance checks (after reserves and safety buffer).
  */

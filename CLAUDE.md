@@ -111,8 +111,8 @@ Do not reuse 3001 or 3009. Do not expose 3109 via Umbrel app-proxy. Port 3109 is
 
 - `TREASURY_PUBKEY` — hard-coded in `docker-compose.yml` as `02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca`. Identifies the treasury node so all member installs get correct role detection automatically.
 - `LND_GRPC_HOST` — default `lightning_lnd_1:10009`
-- `REBALANCE_SCHEDULER_ENABLED` — default `false` (Loop Out scheduler)
-- `CLUSTER_REBALANCE_ENABLED` — default `false` (cluster engine v1)
+- `REBALANCE_SCHEDULER_ENABLED` — default `false` (treasury-side Loop Out scheduler — edge-case + external-inbound maintenance only; off in steady state)
+- `CLUSTER_REBALANCE_ENABLED` — default `false` (cluster engine v1 — legacy; off and not used in steady state)
 - `RATE_LIMIT_MAX_SINGLE_PAYMENT` — default `250000` sats
 - `REBALANCE_MAX_FEE_PPM` — default `1000` (caps effective fee-to-amount ratio; prevents net-negative micro-rebalances)
 - `COINBASE_APP_ID` + `COINBASE_WORKER_URL` — required for Fund Node button (503 if either unset)
@@ -125,8 +125,10 @@ Docs describe *what* exists; source code shows *how* it works. When using Claude
 |------|----------------|
 | Channel ROI / peer scoring | `src/api/treasury-channel-metrics.ts`, `src/api/treasury-liquidity-health.ts`, `src/api/treasury.ts` |
 | Capital guardrails | `src/utils/capital-guardrails.ts`, migration `013_treasury_capital_policy.sql` |
-| Rebalance engine v1 (clusters) | `src/rebalance/*`, migrations `023`–`025` |
-| Rebalance logic (Loop Out) | `src/lightning/loop.ts`, `src/lightning/rebalance-loop.ts`, `src/lightning/rebalance-scheduler.ts`, migrations `014`, `015` |
+| Member Liquidity Advisor (steady-state rebalancing) | `src/memberAdvisor/*`, migrations `027`, `028`, `032` |
+| Treasury push (provisioning + edge-case) | `src/memberLiquidity/*`, migration `026` |
+| Loop Out (treasury, edge-case maintenance) | `src/lightning/loop.ts`, `src/lightning/rebalance-loop.ts`, `src/lightning/rebalance-scheduler.ts`, migrations `014`, `015` |
+| Cluster engine v1 (legacy, gated off) | `src/rebalance/*`, migrations `023`–`025` |
 | Expansion engine | `src/api/treasury-expansion.ts`, `src/utils/capital-guardrails.ts` |
 | Metrics / net yield | `src/api/treasury.ts`, migrations `007`–`009`, `014` |
 | All routes | `src/index.ts` |
@@ -164,7 +166,8 @@ See `docs/LOOP_SETUP.md` for the full gotcha list. Highlights that bite regularl
 
 ### Rebalancing
 
-- **Keysend push ≠ rebalance:** In hub-and-spoke topology with no external peers for circular routes, keysend push is a one-way payment. Disabled. Keysend *enforcement* (preflight + 24h skip on rejection) is retained.
+- **Steady-state rebalancing is member-driven, not treasury-coordinated:** the Member Liquidity Advisor on each member node recommends Loop In (merchant) or Loop Out (farmer) locally; the treasury does not orchestrate steady-state rebalancing. Treasury push and treasury-side Loop Out are reserved for provisioning and edge cases. See `docs/ARCHITECTURE.md` § Liquidity Management.
+- **Keysend push ≠ rebalance:** In hub-and-spoke topology with no external peers for circular routes, keysend push permanently transfers sats — it is *not* a rebalancing tool, and is disabled as such. Keysend remains the execution path for *treasury push* (provisioning + edge cases). Keysend enforcement (preflight + 24h skip on rejection) is retained for that path.
 - **Role matters:** `channel_role` (merchant/farmer/unknown) is set by the user and controls whether the advisor recommends Loop In, Loop Out, or a channel upgrade. Never auto-classify by balance heuristics.
 
 ### Cloudflare Worker

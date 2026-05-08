@@ -4,8 +4,9 @@ export type RebalanceCostType = "circular" | "keysend" | "loop_out" | "loop_in" 
 
 /**
  * Log a rebalance cost for true net accounting.
- * Call after circular rebalance (payViaRoutes/payViaPaymentRequest internal),
- * loop out/in, or when recording manual channel open costs.
+ * Call when recording any rebalance cost — Loop Out (current steady-state path),
+ * legacy circular rebalance, treasury push (keysend), or manual channel open
+ * costs. The cost ledger captures all sources for accurate `net_sats` accounting.
  */
 export function insertRebalanceCost(
   type: RebalanceCostType,

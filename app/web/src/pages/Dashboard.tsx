@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
-import { api, type TreasuryMetrics, type TreasuryAlert } from "../api/client";
-import NodeBalancePanel from "../components/NodeBalancePanel";
-import FundNodePanel from "../components/FundNodePanel";
+import { api, type TreasuryMetrics, type TreasuryAlert, type NodeBalances } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import ValuationInputAlertBanner from "../components/ValuationInputAlertBanner";
 
@@ -16,10 +14,19 @@ function sats(n: number) {
   return String(n);
 }
 
+function formatSigned(n: number): { text: string; cls: "positive" | "negative" | "neutral" } {
+  if (n > 0) return { text: `+${n.toLocaleString()}`, cls: "positive" };
+  if (n < 0) return { text: `−${Math.abs(n).toLocaleString()}`, cls: "negative" };
+  return { text: "0", cls: "neutral" };
+}
+
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<TreasuryMetrics | null>(null);
   const [alerts, setAlerts] = useState<TreasuryAlert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [balances, setBalances] = useState<NodeBalances | null>(null);
+  const [fundLoading, setFundLoading] = useState(false);
+  const [fundError, setFundError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.allSettled([
@@ -41,10 +48,39 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, []);
 
+  // Balance polling (replaces <NodeBalancePanel />)
+  useEffect(() => {
+    api.getNodeBalances().then(setBalances).catch(() => {});
+    const id = setInterval(() => {
+      api.getNodeBalances().then(setBalances).catch(() => {});
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  async function handleFund() {
+    setFundLoading(true);
+    setFundError(null);
+    try {
+      const { url } = await api.getCoinbaseOnrampUrl();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      const msg = e?.message ?? "failed";
+      setFundError(
+        msg === "coinbase_not_configured"
+          ? "Coinbase Onramp is not configured on this node."
+          : msg,
+      );
+    } finally {
+      setFundLoading(false);
+    }
+  }
+
   const m24 = metrics?.last_24h;
   const mAll = metrics?.all_time;
   const cap = metrics?.capital_efficiency;
   const liq = metrics?.liquidity.channels_total;
+  const net24 = metrics ? formatSigned(m24?.net_sats ?? 0) : null;
+  const netAll = metrics ? formatSigned(mAll?.net_sats ?? 0) : null;
 
   // Filter out VALUATION_MANUAL_STALE — it has its own dedicated banner with a
   // "Enter now →" link, so skipping it from the generic list avoids double-render.
@@ -63,8 +99,40 @@ export default function Dashboard() {
         </p>
       </div>
 
-      <NodeBalancePanel />
-      <FundNodePanel />
+      <div className="dashboard-top-strip fade-in">
+        <div className="bal-group">
+          <div className="bal-item">
+            <span className="bal-label">On-chain</span>
+            <span className="bal-value">
+              {balances ? balances.onchain_sats.toLocaleString() : "—"}
+              <span className="unit">sats</span>
+            </span>
+          </div>
+          <div className="bal-item">
+            <span className="bal-label">Channel</span>
+            <span className="bal-value">
+              {balances ? balances.lightning_sats.toLocaleString() : "—"}
+              <span className="unit">sats</span>
+            </span>
+          </div>
+          <div className="bal-item">
+            <span className="bal-label">Total</span>
+            <span className="bal-value">
+              {balances ? balances.total_sats.toLocaleString() : "—"}
+              <span className="unit">sats</span>
+            </span>
+          </div>
+        </div>
+        <button
+          className="btn btn-primary"
+          onClick={handleFund}
+          disabled={fundLoading}
+        >
+          {fundLoading ? "Opening…" : "Fund Node →"}
+        </button>
+        {fundError && <div className="fund-error">{fundError}</div>}
+      </div>
+
       <BitcoinPriceGraph />
 
       {/* ── Valuation input staleness banner (dedicated, links to /valuation-input) ── */}
@@ -85,14 +153,35 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Treasury Revenue ──────────────────────────────────────── */}
-      <div className="panel fade-in" style={{ marginBottom: 16 }}>
+      {/* ── Treasury Revenue (Briefing Room: panel.ops + hero + policy cards) ── */}
+      <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
         <div className="panel-header">
           <span className="panel-title"><span className="icon">◈</span>Treasury Revenue</span>
           {!loading && activeAlerts.length === 0 && (
             <span className="badge badge-green">All systems healthy</span>
           )}
         </div>
+        {!loading && net24 && netAll && (
+          <div className="revenue-hero">
+            <span
+              className={`revenue-hero-num ${net24.cls}`}
+              aria-label={`24 hour net revenue: ${
+                net24.cls === "positive" ? "plus " : net24.cls === "negative" ? "minus " : ""
+              }${Math.abs(m24?.net_sats ?? 0).toLocaleString()} sats`}
+            >
+              {net24.text}
+            </span>
+            <span className="revenue-hero-caption">sats · 24h net</span>
+            <span
+              className="revenue-hero-alltime"
+              aria-label={`all time net revenue: ${
+                netAll.cls === "positive" ? "plus " : netAll.cls === "negative" ? "minus " : ""
+              }${Math.abs(mAll?.net_sats ?? 0).toLocaleString()} sats`}
+            >
+              ALL-TIME {netAll.text} sats
+            </span>
+          </div>
+        )}
         <div className="panel-body">
           {loading ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -101,57 +190,33 @@ export default function Dashboard() {
           ) : !metrics ? (
             <div className="empty-state">Unable to load treasury metrics.</div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* Revenue table */}
-              <div style={{ overflowX: "auto" }}>
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th></th>
-                      <th style={{ textAlign: "right" }}>Last 24h</th>
-                      <th style={{ textAlign: "right" }}>All Time</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style={{ fontWeight: 500 }}>Forwarding Fees</td>
-                      <td className="td-num td-mono" style={{ color: "var(--green)" }}>
-                        +{fmt(m24?.forwarded_fees_sats ?? 0)}
-                      </td>
-                      <td className="td-num td-mono" style={{ color: "var(--green)" }}>
-                        +{fmt(mAll?.forwarded_fees_sats ?? 0)}
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style={{ fontWeight: 500 }}>Rebalance Costs</td>
-                      <td className="td-num td-mono" style={{ color: "var(--red)" }}>
-                        -{fmt(Math.abs(m24?.rebalance_costs_sats ?? 0))}
-                      </td>
-                      <td className="td-num td-mono" style={{ color: "var(--red)" }}>
-                        -{fmt(Math.abs(mAll?.rebalance_costs_sats ?? 0))}
-                      </td>
-                    </tr>
-                    <tr style={{ borderTop: "2px solid var(--border)" }}>
-                      <td style={{ fontWeight: 600 }}>Net Revenue</td>
-                      <td className="td-num td-mono" style={{
-                        fontWeight: 600,
-                        color: (m24?.net_sats ?? 0) >= 0 ? "var(--green)" : "var(--red)",
-                      }}>
-                        {(m24?.net_sats ?? 0) >= 0 ? "+" : ""}{fmt(m24?.net_sats ?? 0)}
-                      </td>
-                      <td className="td-num td-mono" style={{
-                        fontWeight: 600,
-                        color: (mAll?.net_sats ?? 0) >= 0 ? "var(--green)" : "var(--red)",
-                      }}>
-                        {(mAll?.net_sats ?? 0) >= 0 ? "+" : ""}{fmt(mAll?.net_sats ?? 0)}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div className="policy-card" style={{ cursor: "default" }}>
+                <div>
+                  <div className="policy-card-label">Forwarding fees</div>
+                  <div className="policy-card-meta">
+                    24h · earned on routed payments · all-time {formatSigned(mAll?.forwarded_fees_sats ?? 0).text}
+                  </div>
+                </div>
+                <div className="policy-card-value" style={{ color: "var(--green)" }}>
+                  {formatSigned(m24?.forwarded_fees_sats ?? 0).text}
+                  <span className="unit">sats</span>
+                </div>
+              </div>
+              <div className="policy-card" style={{ cursor: "default" }}>
+                <div>
+                  <div className="policy-card-label">Rebalance costs</div>
+                  <div className="policy-card-meta">
+                    24h · paid to rebalance ops · all-time {formatSigned(-Math.abs(mAll?.rebalance_costs_sats ?? 0)).text}
+                  </div>
+                </div>
+                <div className="policy-card-value" style={{ color: "var(--red)" }}>
+                  {formatSigned(-Math.abs(m24?.rebalance_costs_sats ?? 0)).text}
+                  <span className="unit">sats</span>
+                </div>
               </div>
 
-              {/* Capital stats */}
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8 }}>
                 <div className="stat-card" style={{ flex: "1 1 140px" }}>
                   <div className="stat-label">Capital Deployed</div>
                   <div className="stat-value" style={{ fontSize: "1.125rem" }}>

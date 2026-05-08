@@ -1,5 +1,7 @@
 # Treasury Dashboard UX Redesign
 
+> **Superseded by the v1.13.3 dashboard polish (`docs/superpowers/specs/2026-04-23-dashboard-treasury-polish-design.md`).** Retained for historical context only — the panel order, KPI strip, and architectural assumptions described here do not match shipped code. The KPI strip referenced "Reb Costs" and "Pending Fee Changes" cards that presupposed the cluster engine's fee-steering and circular-rebalance flows, both legacy under the current role-based model.
+
 **Goal:** Reorganize the treasury dashboard into an operator cockpit — alerts and KPIs first, detailed work surfaces in the middle, BTC price graph at the bottom.
 
 **Approach:** Inline enrichment (Approach A) — all new components live in Dashboard.tsx, shared data hoisted to parent.

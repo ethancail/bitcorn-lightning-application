@@ -1,14 +1,16 @@
-// ⚠️ DEPRECATED: Keysend push execution path.
-// As of v1.7.0, the active liquidity execution path uses the swap subsystem
-// (src/swaps/swapService.ts) instead of direct keysend push.
-// This file is retained for reference but is no longer called from liquidityRoutes.ts.
-// The approve handler now creates a liquidity_action + swap_request instead.
-
 /**
- * Liquidity executor — executes an approved treasury push via keysend.
+ * Liquidity executor — executes an operator-approved treasury push via keysend.
+ * Called from `liquidityRoutes.ts` when the treasury operator approves a member
+ * liquidity recommendation (see `POST /api/member-liquidity/recommendations/:id/approve`).
+ *
+ * Treasury push is reserved for initial channel provisioning and edge-case
+ * maintenance — not steady-state rebalancing. Steady-state member rebalancing
+ * is owned by the member node via the Member Liquidity Advisor (Loop In/Out).
+ * Keysend-as-rebalancing was disabled in v1.3.5; this is the keysend-as-push
+ * execution path, which is retained.
  *
  * Invoice path is preferred per spec but requires N2N infrastructure
- * that doesn't exist yet. Keysend is the v1 execution method.
+ * that doesn't exist yet. Keysend is the current execution method.
  *
  * No on-chain settlement. No polling loop. Push completes synchronously.
  */

@@ -4,7 +4,6 @@ import { api, type NodeInfo } from "../api/client";
 
 type WizardData = {
   detectedPubkey: string;
-  treasuryPubkey: string;
   feeRatePpm: number;
   minOnchainReserveSats: number;
   maxDeployRatioPct: number;
@@ -17,20 +16,26 @@ function truncPubkey(pk: string) {
 }
 
 function StepLine({ current, total }: { current: number; total: number }) {
-  const labels = ["Node", "Identity", "Base Fee", "Policy", "Confirm"];
+  const labels = ["Detect node", "Base fee rate", "Capital guardrails", "Review & launch"];
   return (
-    <div>
-      <div className="wizard-step-line">
-        {Array.from({ length: total }).map((_, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "center", flex: i < total - 1 ? 1 : 0 }}>
-            <div
-              className={`wizard-step-dot ${i < current ? "done" : i === current ? "active" : ""}`}
-            />
-            {i < total - 1 && <div className="wizard-step-connector" />}
+    <div className="wizard-step-rail" role="list">
+      {labels.slice(0, total).map((label, i) => {
+        const state = i < current ? "done" : i === current ? "active" : "future";
+        const num = String(i + 1).padStart(2, "0");
+        return (
+          <div
+            key={label}
+            className={`wizard-rail-item ${state}`}
+            role="listitem"
+            aria-current={state === "active" ? "step" : undefined}
+            aria-label={state === "done" ? `${label} — complete` : undefined}
+          >
+            <span className="num">{num}</span>
+            <span className="dot" />
+            <span className="lbl">{label}</span>
           </div>
-        ))}
-      </div>
-      <div className="wizard-step-label">{`Step ${current + 1} of ${total} — ${labels[current]}`}</div>
+        );
+      })}
     </div>
   );
 }
@@ -128,6 +133,17 @@ function Screen1({
         </div>
       )}
 
+      {!loading && node && (
+        <div className="alert info" style={{ marginTop: 12 }}>
+          <span className="alert-icon">ℹ</span>
+          <div className="alert-body">
+            <div className="alert-msg">
+              <code style={{ fontFamily: "var(--mono)" }}>TREASURY_PUBKEY</code> is an environment variable managed by Umbrel — it cannot be changed from the UI. Set it to the pubkey above in your Umbrel app settings before proceeding.
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="wizard-footer" style={{ borderRadius: "0 0 12px 12px" }}>
         <span />
         <button
@@ -142,82 +158,9 @@ function Screen1({
   );
 }
 
-// ─── Screen 2: Treasury Identity ─────────────────────────────────────────
+// ─── Screen 2: Base Fee Rate ──────────────────────────────────────────────
 
 function Screen2({
-  data,
-  onChange,
-  onNext,
-  onBack,
-}: {
-  data: WizardData;
-  onChange: (v: Partial<WizardData>) => void;
-  onNext: () => void;
-  onBack: () => void;
-}) {
-  return (
-    <div className="wizard-screen fade-in">
-      <div className="wizard-title">Treasury Identity</div>
-      <div className="wizard-subtitle">Set the pubkey that identifies this hub node.</div>
-
-      <div className="form-group">
-        <label className="form-label">Detected Node Pubkey</label>
-        <input
-          className="form-input"
-          readOnly
-          value={data.detectedPubkey}
-        />
-        <span className="form-helper">Auto-detected from your LND node.</span>
-      </div>
-
-      <div
-        style={{
-          background: "var(--bg-2)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius)",
-          padding: "14px 16px",
-          display: "flex",
-          flexDirection: "column",
-          gap: 8,
-        }}
-      >
-        <div className="form-label">Treasury Hub Pubkey</div>
-        <div
-          className="mono"
-          style={{ color: "var(--amber)", fontSize: "0.8125rem", wordBreak: "break-all" }}
-        >
-          {data.detectedPubkey || "—"}
-        </div>
-        <div className="form-helper">
-          This is your node's pubkey. Set <code style={{ color: "var(--amber)", fontFamily: "var(--mono)" }}>TREASURY_PUBKEY</code> to
-          this value in your Umbrel app environment settings. Once set, all treasury
-          endpoints will be gated to this node.
-        </div>
-      </div>
-
-      <div className="alert info" style={{ marginTop: 4 }}>
-        <span className="alert-icon">ℹ</span>
-        <div className="alert-body">
-          <div className="alert-msg">
-            <code style={{ fontFamily: "var(--mono)" }}>TREASURY_PUBKEY</code> is an environment variable managed by Umbrel — it cannot be
-            changed from the UI. Configure it in the Umbrel app settings before proceeding.
-          </div>
-        </div>
-      </div>
-
-      <div className="wizard-footer" style={{ borderRadius: "0 0 12px 12px" }}>
-        <button className="btn btn-ghost" onClick={onBack}>← Back</button>
-        <button className="btn btn-primary" onClick={onNext}>
-          Next →
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── Screen 3: Base Fee Rate ──────────────────────────────────────────────
-
-function Screen3({
   data,
   onChange,
   onNext,
@@ -294,9 +237,9 @@ function Screen3({
   );
 }
 
-// ─── Screen 4: Capital Policy ─────────────────────────────────────────────
+// ─── Screen 3: Capital Policy ─────────────────────────────────────────────
 
-function Screen4({
+function Screen3({
   data,
   onChange,
   onNext,
@@ -359,9 +302,9 @@ function Screen4({
   );
 }
 
-// ─── Screen 5: Confirmation ───────────────────────────────────────────────
+// ─── Screen 4: Confirmation ───────────────────────────────────────────────
 
-function Screen5({
+function Screen4({
   data,
   onBack,
   onConfirm,
@@ -374,51 +317,69 @@ function Screen5({
   saving: boolean;
   error: string | null;
 }) {
-  const rows: Array<{ label: string; value: string }> = [
-    { label: "Hub Pubkey (reference)", value: truncPubkey(data.detectedPubkey) },
-    { label: "Base Fee Rate", value: `${data.feeRatePpm} ppm` },
-    { label: "Min On-Chain Reserve", value: `${data.minOnchainReserveSats.toLocaleString()} sats` },
-    { label: "Max Deploy Ratio", value: `${data.maxDeployRatioPct}%` },
-    { label: "Max Daily Loss Cap", value: `${data.maxDailyLossSats.toLocaleString()} sats` },
+  // Hub pubkey is displayed as a single smaller reference card above
+  // the policy cards (no unit, truncated mono value).
+  const policyCards: Array<{ label: string; meta: string; value: string; unit: string }> = [
+    {
+      label: "Base Fee Rate",
+      meta: "Routing fee (ppm)",
+      value: data.feeRatePpm.toLocaleString(),
+      unit: "ppm",
+    },
+    {
+      label: "Min On-Chain Reserve",
+      meta: "Floor for automated opens",
+      value: data.minOnchainReserveSats.toLocaleString(),
+      unit: "sats",
+    },
+    {
+      label: "Max Deploy Ratio",
+      meta: "Share of funds deployable",
+      value: String(data.maxDeployRatioPct),
+      unit: "%",
+    },
+    {
+      label: "Max Daily Loss Cap",
+      meta: "Pauses automation if exceeded",
+      value: data.maxDailyLossSats.toLocaleString(),
+      unit: "sats",
+    },
   ];
 
   return (
     <div className="wizard-screen fade-in">
-      <div className="wizard-title">Confirm & Launch</div>
-      <div className="wizard-subtitle">Review the configuration before writing it to the node.</div>
+      <div className="wizard-title">Review &amp; Launch</div>
+      <div className="wizard-subtitle">
+        Review the configuration before writing it to the node. All values are editable later under Settings.
+      </div>
 
-      <div
-        style={{
-          background: "var(--bg-2)",
-          border: "1px solid var(--border)",
-          borderRadius: "var(--radius)",
-          overflow: "hidden",
-        }}
-      >
-        {rows.map((row, i) => (
-          <div
-            key={row.label}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              padding: "11px 16px",
-              borderBottom: i < rows.length - 1 ? "1px solid var(--border)" : "none",
-            }}
-          >
-            <span className="form-label" style={{ marginBottom: 0 }}>{row.label}</span>
-            <span
-              className="mono"
-              style={{ color: "var(--amber)", fontSize: "0.875rem" }}
-            >
-              {row.value}
-            </span>
+      <div className="policy-card" style={{ cursor: "default", marginBottom: 8 }}>
+        <div>
+          <div className="policy-card-label">Hub Pubkey</div>
+          <div className="policy-card-meta">Reference — set via <code style={{ fontFamily: "var(--mono)" }}>TREASURY_PUBKEY</code> env var</div>
+        </div>
+        <div className="policy-card-value">
+          {truncPubkey(data.detectedPubkey)}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {policyCards.map((card) => (
+          <div key={card.label} className="policy-card" style={{ cursor: "default" }}>
+            <div>
+              <div className="policy-card-label">{card.label}</div>
+              <div className="policy-card-meta">{card.meta}</div>
+            </div>
+            <div className="policy-card-value">
+              {card.value}
+              <span className="unit">{card.unit}</span>
+            </div>
           </div>
         ))}
       </div>
 
       {error && (
-        <div className="alert critical">
+        <div className="alert critical" style={{ marginTop: 12 }}>
           <span className="alert-icon">✕</span>
           <div className="alert-body">
             <div className="alert-msg">{error}</div>
@@ -487,7 +448,6 @@ export default function Wizard() {
 
   const [data, setData] = useState<WizardData>({
     detectedPubkey: "",
-    treasuryPubkey: "",
     feeRatePpm: 500,
     minOnchainReserveSats: 100000,
     maxDeployRatioPct: 80,
@@ -495,6 +455,36 @@ export default function Wizard() {
   });
 
   const patch = (v: Partial<WizardData>) => setData((d) => ({ ...d, ...v }));
+
+  // On mount, if a prior policy exists (re-entry via Settings → Re-run
+  // Setup Wizard), pre-populate inputs from it. On first install the
+  // API may return zeros/defaults, in which case we fall back to the
+  // hardcoded defaults above.
+  useEffect(() => {
+    Promise.all([
+      api.getFeePolicy().catch(() => null),
+      api.getCapitalPolicy().catch(() => null),
+    ]).then(([fee, capital]) => {
+      const patch_: Partial<WizardData> = {};
+      if (fee && fee.fee_rate_ppm > 0) {
+        patch_.feeRatePpm = fee.fee_rate_ppm;
+      }
+      if (capital) {
+        if (capital.min_onchain_reserve_sats > 0) {
+          patch_.minOnchainReserveSats = capital.min_onchain_reserve_sats;
+        }
+        if (capital.max_deploy_ratio_ppm > 0) {
+          patch_.maxDeployRatioPct = Math.round(capital.max_deploy_ratio_ppm / 10000);
+        }
+        if (capital.max_daily_loss_sats > 0) {
+          patch_.maxDailyLossSats = capital.max_daily_loss_sats;
+        }
+      }
+      if (Object.keys(patch_).length > 0) {
+        setData((d) => ({ ...d, ...patch_ }));
+      }
+    });
+  }, []);
 
   const handleConfirm = async () => {
     setSaving(true);
@@ -523,14 +513,13 @@ export default function Wizard() {
   const screens = [
     <Screen1
       onNext={() => setStep(1)}
-      onNodeDetected={(pk) => patch({ detectedPubkey: pk, treasuryPubkey: pk })}
+      onNodeDetected={(pk) => patch({ detectedPubkey: pk })}
     />,
     <Screen2 data={data} onChange={patch} onNext={() => setStep(2)} onBack={() => setStep(0)} />,
     <Screen3 data={data} onChange={patch} onNext={() => setStep(3)} onBack={() => setStep(1)} />,
-    <Screen4 data={data} onChange={patch} onNext={() => setStep(4)} onBack={() => setStep(2)} />,
-    <Screen5
+    <Screen4
       data={data}
-      onBack={() => setStep(3)}
+      onBack={() => setStep(2)}
       onConfirm={handleConfirm}
       saving={saving}
       error={saveError}
@@ -544,9 +533,11 @@ export default function Wizard() {
           <div className="wizard-brand">
             <span style={{ fontSize: "1.25rem" }}>⚡</span>
             <span className="wizard-brand-mark">BITCORN LIGHTNING</span>
-            <span className="topbar-tag">SETUP</span>
+            <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber-dim)", letterSpacing: "0.04em" }}>
+              · first-run setup
+            </span>
           </div>
-          <StepLine current={step} total={5} />
+          <StepLine current={step} total={4} />
         </div>
 
         <div className="wizard-body">{screens[step]}</div>

@@ -1,59 +1,15 @@
-import type { Env } from "../../lib/types";
-import type { InputAdapter, InputReading } from "./types";
+import { makeManualAdapter } from "./manualInput";
 
-const ENDPOINT = "https://api.cryptoquant.com/v1/btc/flow-indicator/miner-outflow";
-
-export const minerOutflows: InputAdapter = {
+// Switched from CryptoQuant API fetch to manual entry in v1.13.19. The
+// operator-facing metric is the Glassnode "Miner Outflow Multiple" — the
+// ratio of current miners' outflow to its 365-day MA in USD. Stationary
+// across cycles (z-scores cleanly), shape parallels Puell Multiple. Source
+// chart: https://studio.glassnode.com/charts/mining.MinersOutflowMultiple
+//
+// The DB key (miner_outflows) and composite weight (0.04) are unchanged
+// from the CryptoQuant era — only the source/label changed.
+export const minerOutflows = makeManualAdapter({
   key: "miner_outflows",
-  label: "Miner Outflows",
+  label: "Miner Outflow Multiple",
   category: "mining",
-  source: "CryptoQuant",
-
-  async fetchLatest(env: Env): Promise<InputReading | null> {
-    const history = await fetchAll(env);
-    if (history.length === 0) return null;
-    return history[history.length - 1];
-  },
-
-  async fetchHistory(env: Env): Promise<InputReading[]> {
-    return fetchAll(env);
-  },
-};
-
-async function fetchAll(env: Env): Promise<InputReading[]> {
-  const key = env.CRYPTOQUANT_API_KEY;
-  if (!key) {
-    console.warn("[minerOutflows] CRYPTOQUANT_API_KEY not set");
-    return [];
-  }
-  const url = new URL(ENDPOINT);
-  url.searchParams.set("exchange", "all_miner");
-  url.searchParams.set("window", "day");
-  try {
-    const res = await fetch(url.toString(), {
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    if (!res.ok) {
-      console.error(`[minerOutflows] HTTP ${res.status}`);
-      return [];
-    }
-    const body = (await res.json()) as {
-      result?: { data?: Array<{ datetime?: string; flow_total?: number }> };
-    };
-    const rows = body.result?.data;
-    if (!Array.isArray(rows)) return [];
-    const readings: InputReading[] = [];
-    for (const row of rows) {
-      if (!row.datetime || typeof row.flow_total !== "number") continue;
-      if (!Number.isFinite(row.flow_total)) continue;
-      const ts = Math.floor(new Date(row.datetime).getTime() / 1000);
-      if (!Number.isFinite(ts)) continue;
-      readings.push({ timestamp: ts, value: row.flow_total });
-    }
-    readings.sort((a, b) => a.timestamp - b.timestamp);
-    return readings;
-  } catch (err) {
-    console.error("[minerOutflows] fetch error:", err instanceof Error ? err.message : err);
-    return [];
-  }
-}
+});

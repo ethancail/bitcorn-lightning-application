@@ -1,5 +1,7 @@
 # Merchant Refill Channel — Design Spec
 
+> **Shipped — see `RefillChannel.tsx` for the current implementation. The route swap from `WithdrawBitcoin.tsx` to `RefillChannel.tsx` for `/refill` is still pending per `docs/IMPLEMENTATION.md`.**
+
 **Date:** 2026-04-14
 **Status:** Approved — ready for implementation planning
 **Scope:** Full v1 (preflight, advisor integration, deep-link, projected state, daily cap, pending detection)

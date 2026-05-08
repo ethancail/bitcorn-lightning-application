@@ -19,6 +19,7 @@ import Peers from "./pages/Peers";
 import ValuationInput from "./pages/ValuationInput";
 import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
+import Liquidity from "./pages/Liquidity";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
 // Browsers change number input values on scroll wheel — confusing for sats fields.
@@ -1623,13 +1624,17 @@ function ChannelsPage() {
           let purpose: LanePurpose = "unclassified";
           let state: LaneState = "unknown";
 
-          if (externalPubkeys.has(c.peer_pubkey) || tags.includes("external")) {
+          // Accept both the short tag (`external`) and the lane-purpose name
+          // (`external-peer`) so tagging matches the vocabulary used in
+          // dev-setup.md and the Bitcorn lane model. Same for merchant /
+          // farmer.
+          if (externalPubkeys.has(c.peer_pubkey) || tags.includes("external") || tags.includes("external-peer")) {
             purpose = "external_peer";
             state = externalState(localPct);
-          } else if (tags.includes("merchant")) {
+          } else if (tags.includes("merchant") || tags.includes("merchant-lane")) {
             purpose = "merchant_lane";
             state = merchantState(localPct);
-          } else if (tags.includes("farmer")) {
+          } else if (tags.includes("farmer") || tags.includes("farmer-lane")) {
             purpose = "farmer_lane";
             state = farmerState(localPct);
           }
@@ -1706,7 +1711,7 @@ function ChannelsPage() {
             {/* All lane tables use: Name(auto) | Capacity(90px) | Detail(120px) | Gauge(140px) | State(110px) | Action(80px) */}
 
             {/* ── Merchant Lanes ──────────────────────────────────────── */}
-            <div className="panel fade-in" style={{ marginBottom: 16 }}>
+            <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
               <div className="panel-header">
                 <span className="panel-title"><span className="icon">↗</span>Merchant Lanes</span>
                 <span className="badge badge-muted">{merchantLanes.length}</span>
@@ -1768,7 +1773,7 @@ function ChannelsPage() {
             </div>
 
             {/* ── Farmer Lanes ────────────────────────────────────────── */}
-            <div className="panel fade-in" style={{ marginBottom: 16 }}>
+            <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
               <div className="panel-header">
                 <span className="panel-title"><span className="icon">↙</span>Farmer Lanes</span>
                 <span className="badge badge-muted">{farmerLanes.length}</span>
@@ -1831,7 +1836,7 @@ function ChannelsPage() {
 
             {/* ── External Routing Peers ──────────────────────────────── */}
             {externalLanes.length > 0 && (
-              <div className="panel fade-in" style={{ marginBottom: 16 }}>
+              <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
                 <div className="panel-header">
                   <span className="panel-title"><span className="icon">⟐</span>External Routing Peers</span>
                   <span className="badge badge-muted">{externalLanes.length}</span>
@@ -1889,7 +1894,7 @@ function ChannelsPage() {
 
             {/* ── Unclassified Channels table ────────────────────────── */}
             {unclassifiedLanes.length > 0 && (
-              <div className="panel fade-in" style={{ marginBottom: 16 }}>
+              <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
                 <div className="panel-header">
                   <span className="panel-title"><span className="icon">?</span>Unclassified</span>
                   <span className="badge badge-muted">{unclassifiedLanes.length}</span>
@@ -2164,7 +2169,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
   }
 
   return (
-    <div className="panel fade-in" style={{ marginTop: 16 }}>
+    <div className="panel ops fade-in" style={{ marginTop: 16 }}>
       <div className="panel-header">
         <span className="panel-title">
           <span className="icon">+</span>Open Channel
@@ -2457,7 +2462,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
 }
 
 function LiquidityPage() {
-  return <NetworkGraph />;
+  return <Liquidity />;
 }
 
 

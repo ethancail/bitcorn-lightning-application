@@ -48,10 +48,24 @@ function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> })
       <div className="panel-header">Coinbase Integration</div>
       <div className="panel-body">
         <p style={{ marginTop: 0, marginBottom: 12 }}>
-          Paste your Coinbase Developer Platform (CDP) API Key JSON file below. We'll verify the key with Coinbase, then encrypt it at rest.
+          Paste your Coinbase Developer Platform (CDP) API Key JSON file below. Sign in at{" "}
+          <a
+            href="https://portal.cdp.coinbase.com"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            portal.cdp.coinbase.com
+          </a>{" "}
+          with your normal Coinbase account — no separate developer account is required.
+          We'll verify the key with Coinbase, then encrypt it at rest.
         </p>
         <p className="text-dim" style={{ marginTop: 0, marginBottom: 12, fontSize: "0.8125rem" }}>
-          When creating the key, enable all three permissions:{" "}
+          Under <strong>Advanced Settings → Signature algorithm</strong>, select{" "}
+          <strong>ECDSA</strong>. The dialog defaults to Ed25519, which our scheduler can't sign with —
+          Coinbase's own create-key dialog flags ECDSA as required for Advanced Trade.
+        </p>
+        <p className="text-dim" style={{ marginTop: 0, marginBottom: 12, fontSize: "0.8125rem" }}>
+          Under <strong>API restrictions</strong>, enable all three permissions:{" "}
           <strong>View</strong> (read balances),{" "}
           <strong>Trade</strong> (place buy orders), and{" "}
           <strong>Transfer</strong> (withdraw BTC to your node).
@@ -77,7 +91,7 @@ function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> })
             rel="noopener noreferrer"
             style={{ fontSize: "0.8125rem" }}
           >
-            How to create a Coinbase Cloud Key →
+            How to create a CDP API Key →
           </a>
         </div>
       </div>
@@ -174,9 +188,19 @@ function ConnectedNotWhitelistedState({ status, onRefresh }: { status: AutoBuySt
         {/* Address panel */}
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: "0.875rem", fontWeight: 600, marginBottom: 4 }}>Your dedicated deposit address</div>
-          <p className="text-dim" style={{ fontSize: "0.8125rem", marginTop: 0, marginBottom: 12 }}>
-            Add this address to Coinbase's withdrawal allowlist before enabling Auto-Buy. Coinbase requires 2FA to add an address — this is enforced in Coinbase's own UI, not ours.
+          <p className="text-dim" style={{ fontSize: "0.8125rem", marginTop: 0, marginBottom: 8 }}>
+            Add this address to Coinbase's withdrawal allowlist before enabling Auto-Buy.
+            The whole flow happens on Coinbase's side — clicking "I've whitelisted this in Coinbase" below
+            only flips a flag here. If you skip the Coinbase step, the buy will still place but the sweep will fail 72h later.
           </p>
+          <ol className="text-dim" style={{ fontSize: "0.8125rem", marginTop: 0, marginBottom: 12, paddingLeft: 20 }}>
+            <li>Sign into <a href="https://coinbase.com" target="_blank" rel="noopener noreferrer">coinbase.com</a> → top-right avatar → <strong>Settings</strong></li>
+            <li>Open <strong>Privacy &amp; data → Allow list</strong> (or search "allowlist" in Settings)</li>
+            <li>Toggle <strong>Allow list</strong> on if it isn't already</li>
+            <li>Click <strong>Add address</strong> → asset <strong>Bitcoin (BTC)</strong> → paste the address below → label it (e.g. "BitCorn Lightning Node")</li>
+            <li>Confirm with 2FA — Coinbase enforces this in their UI, not ours</li>
+            <li>Wait the activation hold (typically 24–72h) before the first withdrawal can land</li>
+          </ol>
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
             {qr && <img src={qr} alt="QR code" style={{ width: 160, height: 160, borderRadius: 4, background: "white", padding: 8 }} />}
             <div style={{ flex: 1 }}>

@@ -15,7 +15,10 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw Object.assign(new Error(err.error ?? "Request failed"), { status: res.status });
+    const message = err.detail
+      ? `${err.error ?? "Request failed"}: ${err.detail}`
+      : (err.error ?? "Request failed");
+    throw Object.assign(new Error(message), { status: res.status, detail: err.detail });
   }
   return res.json();
 }
@@ -196,6 +199,21 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  getValuationDay: (date: string) =>
+    apiFetch<DayValues>(`/api/valuation/manual/day?date=${encodeURIComponent(date)}`),
+
+  getValuationCalendar: (from: string, to: string) =>
+    apiFetch<CalendarSummary>(`/api/valuation/manual/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+
+  submitValuationDay: (req: DaySubmitRequest) =>
+    apiFetch<DaySubmitResponse>("/api/valuation/manual", { method: "POST", body: JSON.stringify(req) }),
+
+  refreshValuationWorker: () =>
+    apiFetch<{ ok: boolean; worker_status?: number; worker_error?: string | null }>(
+      "/api/valuation/refresh-worker",
+      { method: "POST" },
+    ),
 
   // ─── Coinbase Auto-Buy ───────────────────────────────────────────────
   getAutoBuyStatus: () =>
@@ -930,6 +948,7 @@ export type ManualMetricKey =
   | "nvt"
   | "hash_ribbons"
   | "difficulty_ribbon"
+  | "miner_outflows"
   | "hodl_waves";
 
 export type ManualMetricStatus = {
@@ -960,6 +979,38 @@ export type SubmitValuationInputsResponse =
       worker_error: string | null;
       worker_status: number;
     };
+
+export interface DayMetricStatus {
+  value: number | null;
+  submitted_at: number | null;
+  worker_sync_status: "pending" | "confirmed" | "failed" | null;
+}
+
+export interface DayValues {
+  date: string;
+  metrics: Record<ManualMetricKey, DayMetricStatus>;
+}
+
+export interface CalendarSummary {
+  from: string;
+  to: string;
+  days: Record<string, { filled: number; total: number }>;
+}
+
+export interface DaySubmitRequest {
+  date: string;
+  values?: Partial<Record<ManualMetricKey, number>>;
+  delete?: ManualMetricKey[];
+}
+
+export interface DaySubmitResponse {
+  ok: boolean;
+  date: string;
+  submitted_at: string;
+  local_saved?: boolean;
+  worker_error?: string | null;
+  worker_status?: number;
+}
 
 // ─── Coinbase Auto-Buy ─────────────────────────────────────────────────
 

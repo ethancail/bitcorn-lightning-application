@@ -1,10 +1,19 @@
 import { createHash, createHmac } from "crypto";
 import type { ManualMetricKey } from "./manualInputStore";
 
-export interface SubmissionBody {
-  submitted_at: string; // ISO
+export interface LegacySubmissionBody {
+  submitted_at: string;
   values: Record<ManualMetricKey, number>;
 }
+
+export interface CalendarSubmissionBody {
+  submitted_at: string;          // ISO; signed timestamp + audit
+  date: string;                  // "YYYY-MM-DD" — what date the data represents
+  values?: Partial<Record<ManualMetricKey, number>>;
+  delete?: ManualMetricKey[];
+}
+
+export type SubmissionBody = LegacySubmissionBody | CalendarSubmissionBody;
 
 export interface WorkerPostResult {
   ok: boolean;
@@ -21,8 +30,8 @@ function signHmac(secret: string, timestamp: string, body: string): string {
 }
 
 /**
- * Post a manual-input submission to the Worker. Never throws — returns a
- * structured result so the caller can persist a sync-status update.
+ * Post any manual-input submission shape (legacy append or calendar
+ * upsert/delete) to the Worker. Never throws — returns a structured result.
  */
 export async function postManualInputToWorker(
   workerBaseUrl: string,
@@ -30,7 +39,7 @@ export async function postManualInputToWorker(
   submission: SubmissionBody,
 ): Promise<WorkerPostResult> {
   const body = JSON.stringify(submission);
-  const timestamp = submission.submitted_at; // same ISO used as the signed timestamp
+  const timestamp = submission.submitted_at;
   const signature = signHmac(hmacSecret, timestamp, body);
 
   try {
@@ -43,9 +52,42 @@ export async function postManualInputToWorker(
       },
       body,
     });
-    if (res.status === 204) {
-      return { ok: true, status: 204 };
-    }
+    if (res.status === 204) return { ok: true, status: 204 };
+    const errBody = await res.text().catch(() => "");
+    return { ok: false, status: res.status, error: errBody.slice(0, 500) };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Trigger the Worker's valuation engine to recompute now (instead of
+ * waiting for the 00:15 UTC cron). Same HMAC contract as
+ * postManualInputToWorker — empty body, signed timestamp.
+ */
+export async function postRefreshToWorker(
+  workerBaseUrl: string,
+  hmacSecret: string,
+): Promise<WorkerPostResult> {
+  const body = "";
+  const timestamp = new Date().toISOString();
+  const signature = signHmac(hmacSecret, timestamp, body);
+
+  try {
+    const res = await fetch(`${workerBaseUrl}/valuation/refresh`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Valuation-Timestamp": timestamp,
+        "X-Valuation-Signature": signature,
+      },
+      body,
+    });
+    if (res.status === 204) return { ok: true, status: 204 };
     const errBody = await res.text().catch(() => "");
     return { ok: false, status: res.status, error: errBody.slice(0, 500) };
   } catch (err) {
