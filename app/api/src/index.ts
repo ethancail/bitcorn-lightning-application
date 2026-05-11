@@ -92,6 +92,13 @@ import {
   getLiquidityStatus as getMemberLiquidityStatus,
   getLiquidityHistory as getMemberLiquidityHistory,
 } from "./memberAdvisor/liquidityAdvisorRoutes";
+import {
+  acknowledgeFirstRun,
+  getFirstRunAcknowledgedAt,
+} from "./subscription/firstRunGate";
+import { backfillExistingMembers } from "./subscription/backfill";
+import { getSubscriptionPolicy } from "./subscription/policy";
+import { scanSubscriptionDeposits } from "./subscription/detector";
 import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
 import {
   handleMemberLoopOutQuote,
@@ -117,15 +124,22 @@ persistNodeInfo().catch(err => {
 (async () => {
   try {
     await syncLndState();
+    // Subscription detection runs after LND sync resolves so the
+    // address-set / channel-state it joins on is fresh. No-op (with a
+    // skipped_reason) when the operator hasn't acknowledged the
+    // first-run gate yet — see app/api/src/subscription/firstRunGate.ts.
+    await scanSubscriptionDeposits();
     console.log("[lnd] initial sync complete");
   } catch (err: any) {
     console.warn("[lnd] initial sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "");
   }
 
   setInterval(() => {
-    syncLndState().catch(err =>
-      console.warn("[lnd] periodic sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "")
-    );
+    syncLndState()
+      .then(() => scanSubscriptionDeposits())
+      .catch(err =>
+        console.warn("[lnd] periodic sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "")
+      );
   }, 15000);
 })();
 
@@ -306,6 +320,118 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "failed_to_generate_onramp_url" }));
     }
+    return;
+  }
+
+  // ── Subscription rail (Stage 2: detection) ─────────────────────────
+  // Treasury-only: operator acknowledges the first-run gate. Idempotent.
+  // After ack, kicks off a one-shot backfill that allocates grandfathered
+  // subscription rows + addresses for every existing peer in lnd_channels.
+  if (req.method === "POST" && req.url === "/api/admin/subscription/acknowledge-first-run") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const { acknowledged_at } = acknowledgeFirstRun();
+      const summary = await backfillExistingMembers();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ acknowledged_at, backfill: summary }));
+    } catch (err: any) {
+      console.error("[subscription] first-run ack failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "first_run_ack_failed" }));
+    }
+    return;
+  }
+
+  // Status read for a member's subscription row. Stage 2 contract:
+  // treasury-only, identifies the target via `?member_pubkey=<hex>`
+  // query param. Treasury is the source of truth for subscription state
+  // (the detector + backfill run only there); members reaching this
+  // endpoint via Stage 4's entitlement-token middleware will have their
+  // verified pubkey set on the request and the query-param fallback
+  // becomes the admin debug path. Until Stage 4 lands, this is admin-
+  // only; members get their status via the treasury operator's UI.
+  if (req.method === "GET" && req.url?.startsWith("/api/subscription/status")) {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const url = new URL(req.url, "http://localhost");
+      const memberPubkey = url.searchParams.get("member_pubkey");
+      if (!memberPubkey) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "missing_member_pubkey_query_param" }));
+        return;
+      }
+      const row = db
+        .prepare(
+          `SELECT member_pubkey, deposit_address, paid_through, created_at,
+                  last_payment_txid, last_payment_at, current_tier
+           FROM subscription WHERE member_pubkey = ?`,
+        )
+        .get(memberPubkey) as
+          | {
+              member_pubkey: string;
+              deposit_address: string;
+              paid_through: number;
+              created_at: number;
+              last_payment_txid: string | null;
+              last_payment_at: number | null;
+              current_tier: string;
+            }
+          | undefined;
+      if (!row) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "no_subscription_row" }));
+        return;
+      }
+      const policy = getSubscriptionPolicy();
+      const MS_PER_DAY = 86_400_000;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        member_pubkey: row.member_pubkey,
+        current_tier: row.current_tier,
+        paid_through: row.paid_through,
+        price_sats: policy.price_sats,
+        period_days: policy.period_days,
+        deposit_address: row.deposit_address,
+        last_payment_at: row.last_payment_at,
+        last_payment_txid: row.last_payment_txid,
+        grace: {
+          worker_until: row.paid_through + policy.grace_days_worker * MS_PER_DAY,
+          routing_until: row.paid_through + policy.grace_days_routing * MS_PER_DAY,
+          close_at: row.paid_through + policy.grace_days_close * MS_PER_DAY,
+        },
+      }));
+    } catch (err: any) {
+      console.error("[subscription] status read failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "status_read_failed" }));
+    }
+    return;
+  }
+
+  // Treasury-only: surface the first-run-ack state for the admin UI.
+  if (req.method === "GET" && req.url === "/api/admin/subscription/first-run-status") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    const acknowledged_at = getFirstRunAcknowledgedAt();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      acknowledged: acknowledged_at !== null,
+      acknowledged_at,
+    }));
     return;
   }
 

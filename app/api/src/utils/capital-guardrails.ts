@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { getCapitalPolicy } from "../api/treasury-capital-policy";
-import { getLndChainBalance, getLndPendingChannels } from "../lightning/lnd";
+import { getLndChainBalance, getLndPendingChannels, getLndUtxos } from "../lightning/lnd";
 
 const MIN_CHANNEL_SATS = 100_000;
 const MAX_CHANNEL_SATS = 16_777_215; // LND max channel size
@@ -11,6 +11,40 @@ export class CapitalGuardrailError extends Error {
     super(message);
     this.name = "CapitalGuardrailError";
   }
+}
+
+/**
+ * On-chain balance treated as deployable for the deploy-ratio guardrail.
+ *
+ * Per V8b branch (a) of the subscription-rail spec: the V8 fallback
+ * (no bitcoind direct RPC) co-mingles subscription receipts with LND's
+ * hot wallet, so the raw `getChainBalance()` reading would inflate the
+ * deploy-ratio numerator with revenue that isn't deployable capital.
+ * This helper subtracts unswept subscription receipts — UTXOs whose
+ * address is in the `subscription.deposit_address` set and which have
+ * not yet been moved to a non-subscription address by an admin sweep.
+ *
+ * Other call sites (display, audit, gross-balance reporting) keep
+ * using `getLndChainBalance()` directly; only the deploy-ratio
+ * guardrail's numerator switches to this helper.
+ */
+export async function getDeployableChainBalance(): Promise<{ chain_balance: number }> {
+  const [{ chain_balance }, { utxos }] = await Promise.all([
+    getLndChainBalance(),
+    getLndUtxos(),
+  ]);
+  const subscriptionAddresses = new Set(
+    (
+      db
+        .prepare("SELECT deposit_address FROM subscription")
+        .all() as Array<{ deposit_address: string }>
+    ).map((r) => r.deposit_address),
+  );
+  if (subscriptionAddresses.size === 0) return { chain_balance };
+  const unsweptSats = utxos
+    .filter((u) => subscriptionAddresses.has(u.address))
+    .reduce((sum, u) => sum + (u.tokens ?? 0), 0);
+  return { chain_balance: chain_balance - unsweptSats };
 }
 
 /** Pending capacity from our own execution records (requested/submitted). */
@@ -143,7 +177,10 @@ export async function assertCanExpand(
 
   const policy = getCapitalPolicy();
   const [confirmedBalance, pendingChannels] = await Promise.all([
-    getLndChainBalance().then((r) => r.chain_balance),
+    // Deploy-ratio numerator must net out unswept subscription
+    // receipts; raw chain_balance would inflate available capital
+    // with revenue that isn't deployable.
+    getDeployableChainBalance().then((r) => r.chain_balance),
     getLndPendingChannels(),
   ]);
   const channels = pendingChannels.pending_channels ?? [];

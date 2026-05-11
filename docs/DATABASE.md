@@ -42,8 +42,9 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `034_coinbase_autobuy.sql` | Coinbase Auto-Buy: credentials (encrypted), config, runs (state machine), sweeps |
 | `035_valuation_manual_calendar.sql` | Per-day calendar variant of manual valuation inputs (date-keyed upserts) |
 | `036_member_subscription.sql` | On-chain monthly subscription: `subscription_policy`, `subscription`, `subscription_payment`, `subscription_pending_attribution` |
+| `037_subscription_first_run_ack.sql` | Adds `first_run_acknowledged_at` to `subscription_policy` — Path B first-run gate |
 
-The migration set is contiguous from `001` through `036` with no gaps. Always allocate the next sequential number for new migrations.
+The migration set is contiguous from `001` through `037` with no gaps. Always allocate the next sequential number for new migrations.
 
 ## Key Tables
 
