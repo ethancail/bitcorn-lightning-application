@@ -26,9 +26,42 @@ import { getLndInfo, lndSignMessage } from "../lightning/lnd";
 const REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const INITIAL_DELAY_MS = 10 * 1000;
 const CHALLENGE_PREFIX = "bitcorn:token-request:";
+const WORKER_DISCOVERY_TIMEOUT_MS = 3000;
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let initialTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Worker-published treasury API URL discovery (v1.14.1+). Members
+ * without a local TREASURY_API_URL env var read this on each refresh
+ * tick. Returns null on any failure (Worker unreachable, malformed
+ * response, api_url field missing); caller handles the absence by
+ * returning a structured transport_error to the scheduler.
+ *
+ * The Worker URL itself is the existing COINBASE_WORKER_URL — same
+ * Worker the rest of the app already targets. If COINBASE_WORKER_URL
+ * is unset the member can't discover anything, but in practice every
+ * deployed install has it set (it's required for the Coinbase Onramp
+ * feature).
+ */
+async function discoverTreasuryApiUrlFromWorker(): Promise<string | null> {
+  if (!ENV.coinbaseWorkerUrl) return null;
+  const url = `${ENV.coinbaseWorkerUrl.replace(/\/+$/, "")}/treasury-info`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), WORKER_DISCOVERY_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { api_url?: string | null };
+    const candidate = body?.api_url;
+    if (typeof candidate !== "string" || !/^https?:\/\//i.test(candidate)) return null;
+    return candidate;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export interface CachedToken {
   member_pubkey: string;
@@ -107,12 +140,40 @@ export async function refreshLocalToken(): Promise<RefreshResult> {
     return { ok: false, reason: "lnd_unavailable", error: err?.message ?? String(err) };
   }
 
-  // Treasury nodes hit their own localhost; member nodes need the
-  // operator-configured TREASURY_API_URL pointing at the treasury's
-  // reachable API. The /token endpoint's self-mint carve-out handles
-  // the treasury case when localPubkey === treasuryPubkey.
-  const baseUrl =
-    ENV.treasuryApiUrl || `http://127.0.0.1:${PORTS.userApi}`;
+  // Resolve the base URL for the /token endpoint. Precedence:
+  //  1. Operator-set TREASURY_API_URL env on this node (operator
+  //     override always wins; useful for non-standard topologies).
+  //  2. If this IS the treasury node (localPubkey === treasuryPubkey),
+  //     hit localhost — the /token endpoint's self-mint carve-out
+  //     issues a full-scope token without a network roundtrip.
+  //  3. Otherwise (member node, env unset), discover via the Worker's
+  //     /treasury-info `api_url` field. This is the production
+  //     distribution path: the treasury operator sets the URL once via
+  //     `wrangler secret put TREASURY_API_URL`, all members discover it
+  //     without per-node SSH.
+  //  4. If all three fail, return a transport_error and let the next
+  //     refresh tick retry.
+  let baseUrl: string | null = null;
+  if (ENV.treasuryApiUrl) {
+    baseUrl = ENV.treasuryApiUrl;
+  } else if (
+    ENV.treasuryPubkey &&
+    localPubkey === ENV.treasuryPubkey.toLowerCase()
+  ) {
+    baseUrl = `http://127.0.0.1:${PORTS.userApi}`;
+  } else {
+    baseUrl = await discoverTreasuryApiUrlFromWorker();
+  }
+  if (!baseUrl) {
+    return {
+      ok: false,
+      reason: "transport_error",
+      error:
+        "treasury API URL not configured. Set TREASURY_API_URL on this node, " +
+        "or have the treasury operator publish it via `wrangler secret put " +
+        "TREASURY_API_URL` so members can discover it via /treasury-info.",
+    };
+  }
   const url = `${baseUrl.replace(/\/+$/, "")}/api/subscription/token`;
   let res: Response;
   try {
