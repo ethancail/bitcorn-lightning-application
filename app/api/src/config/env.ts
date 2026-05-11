@@ -184,4 +184,13 @@ export const ENV = {
     subscriptionTier3IntervalMs: Number(
         process.env.SUBSCRIPTION_TIER3_INTERVAL_MS ?? String(5 * 60 * 1000)
     ),
+    // Where the member node should POST /api/subscription/token to
+    // refresh its entitlement JWT. On treasury nodes leave this unset
+    // (the refresh scheduler falls back to localhost and the /token
+    // endpoint's self-mint carve-out issues a full-scope token for the
+    // treasury). On member nodes this must point at the treasury's
+    // reachable API URL (e.g., http://<treasury-tailnet-ip>:3101).
+    // Unset on a member node → refresh logs a warning and skips; the
+    // member operates without an entitlement token until configured.
+    treasuryApiUrl: process.env.TREASURY_API_URL || "",
 };

@@ -19,6 +19,8 @@ import {
   payViaRoutes,
   createChainAddress,
   getUtxos,
+  signMessage,
+  verifyMessage,
   payViaPaymentDetails
 } from "ln-service";
 import crypto from "crypto";
@@ -317,6 +319,32 @@ export async function createLndChainAddress(): Promise<{ address: string }> {
 export async function getLndUtxos(args: { min_confirmations?: number } = {}) {
   const { lnd } = getLndClient();
   return getUtxos({ lnd, ...args });
+}
+
+/**
+ * Signs a message with LND's identity key (secp256k1 ECDSA on a
+ * sha256d hash). Used by the subscription entitlement-token member
+ * auth to prove control of the local node's pubkey.
+ */
+export async function lndSignMessage(message: string): Promise<string> {
+  const { lnd } = getLndClient();
+  const { signature } = await signMessage({ lnd, message });
+  return signature;
+}
+
+/**
+ * Verifies a signed message and returns the pubkey that signed it.
+ * Used by the treasury's challenge-auth middleware on
+ * `/api/subscription/token` to authenticate the requester. The pubkey
+ * the caller claims must equal the pubkey returned by this call.
+ */
+export async function lndVerifyMessage(
+  message: string,
+  signature: string,
+): Promise<string> {
+  const { lnd } = getLndClient();
+  const { signed_by } = await verifyMessage({ lnd, message, signature });
+  return signed_by;
 }
 
 /**

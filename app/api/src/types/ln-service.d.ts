@@ -196,6 +196,17 @@ declare module "ln-service" {
     timeout?: number;
   }): Promise<void>;
 
+  export function signMessage(options: {
+    lnd: any;
+    message: string;
+  }): Promise<{ signature: string }>;
+
+  export function verifyMessage(options: {
+    lnd: any;
+    message: string;
+    signature: string;
+  }): Promise<{ signed_by: string }>;
+
   export function openChannel(options: {
     lnd: any;
     partner_public_key: string;

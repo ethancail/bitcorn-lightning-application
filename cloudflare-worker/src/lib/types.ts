@@ -10,6 +10,12 @@ export interface Env {
   PLANB_API_KEY?: string;
   // Manual-input HMAC (validated by POST /valuation/manual)
   VALUATION_SUBMIT_HMAC?: string;
+  // Subscription entitlement-token public key (base64url of the raw
+  // 32-byte Ed25519 public key, copied from the treasury's
+  // `/api/admin/subscription/public-key` endpoint). Used by
+  // `lib/jwt.ts` to validate JWTs on gated endpoints. Unset → gated
+  // endpoints return 503.
+  SUBSCRIPTION_PUBLIC_KEY?: string;
 }
 
 export type CommodityPrice = {

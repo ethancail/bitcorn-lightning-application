@@ -31,6 +31,7 @@ import { handleManualInputCalendar, handleManualInputDay } from "./handlers/manu
 import { handleValuationRefresh } from "./handlers/refresh";
 import { handleScheduled } from "./valuation/cron";
 import { CORS_HEADERS } from "./lib/cors";
+import { withJwtGate } from "./lib/jwt";
 import type { Env } from "./lib/types";
 
 export default {
@@ -41,41 +42,55 @@ export default {
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
+    // ── PUBLIC endpoints (setup-flow, no token required) ───────────
+    // Members need these BEFORE they have any entitlement token.
     if (request.method === "GET" && url.pathname === "/recommended-peers") {
       return handleRecommendedPeers();
     }
     if (request.method === "GET" && url.pathname === "/treasury-info") {
       return handleTreasuryInfo(env);
     }
-    if (request.method === "GET" && url.pathname === "/prices/corn-history") {
-      return handleCornHistory(env);
-    }
-    if (request.method === "GET" && url.pathname === "/prices") {
-      return handlePrices(env);
-    }
-    if (request.method === "GET" && url.pathname === "/valuation/current") {
-      return handleValuationCurrent(env);
-    }
-    if (request.method === "GET" && url.pathname === "/valuation/history") {
-      return handleValuationHistory(env, url);
-    }
-    if (request.method === "GET" && url.pathname === "/valuation/inputs") {
-      return handleValuationInputs(env);
-    }
-    if (request.method === "GET" && url.pathname === "/valuation/manual/day") {
-      return handleManualInputDay(request, env);
-    }
-    if (request.method === "GET" && url.pathname === "/valuation/manual/calendar") {
-      return handleManualInputCalendar(request, env);
-    }
+
+    // ── HMAC-gated endpoints (treasury-only writes, unchanged) ────
+    // Per spec §6.6 "The existing HMAC-signed manual-input contract
+    // (treasury → Worker) is untouched; member auth is a new
+    // orthogonal mechanism."
     if (request.method === "POST" && url.pathname === "/valuation/manual") {
       return handleManualInput(request, env);
     }
     if (request.method === "POST" && url.pathname === "/valuation/refresh") {
       return handleValuationRefresh(request, env);
     }
+
+    // ── PREPAY-scope endpoints (Onramp + commodity prices) ────────
+    // scope=prepay tokens are sufficient; scope=full tokens are also
+    // accepted (full is a superset).
     if (request.method === "POST" && (url.pathname === "/" || url.pathname === "")) {
-      return handleOnramp(request, env);
+      return withJwtGate(request, env, "prepay", () => handleOnramp(request, env));
+    }
+    if (request.method === "GET" && url.pathname === "/prices") {
+      return withJwtGate(request, env, "prepay", () => handlePrices(env));
+    }
+    if (request.method === "GET" && url.pathname === "/prices/corn-history") {
+      return withJwtGate(request, env, "prepay", () => handleCornHistory(env));
+    }
+
+    // ── FULL-scope endpoints (valuation reads) ────────────────────
+    // scope=prepay tokens are rejected with 403; scope=full required.
+    if (request.method === "GET" && url.pathname === "/valuation/current") {
+      return withJwtGate(request, env, "full", () => handleValuationCurrent(env));
+    }
+    if (request.method === "GET" && url.pathname === "/valuation/history") {
+      return withJwtGate(request, env, "full", () => handleValuationHistory(env, url));
+    }
+    if (request.method === "GET" && url.pathname === "/valuation/inputs") {
+      return withJwtGate(request, env, "full", () => handleValuationInputs(env));
+    }
+    if (request.method === "GET" && url.pathname === "/valuation/manual/day") {
+      return withJwtGate(request, env, "full", () => handleManualInputDay(request, env));
+    }
+    if (request.method === "GET" && url.pathname === "/valuation/manual/calendar") {
+      return withJwtGate(request, env, "full", () => handleManualInputCalendar(request, env));
     }
 
     return new Response("Not found", { status: 404 });
