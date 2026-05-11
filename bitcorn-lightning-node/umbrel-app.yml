@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.13.21"
+version: "1.14.0"
 port: 3200
 
 description: >
@@ -27,6 +27,35 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.14.0: Subscription rail wiring — Stages 1-4 of the on-chain monthly
+  member-subscription system. Four new migrations (036-039) add four
+  tables (subscription_policy, subscription, subscription_payment,
+  subscription_pending_attribution) plus a singleton local_token cache.
+  System defaults are safe: address allocation is gated on a one-time
+  operator advisory ack via POST /api/admin/subscription/acknowledge-first-run;
+  the Tier 2 routing gate is wired at the existing payInvoice chokepoint
+  but is a structural no-op until member nodes have local subscription
+  state; the Tier 3 cooperative-close scheduler ships in DRY-RUN mode
+  by default (SUBSCRIPTION_TIER3_LIVE=false) and only structured-logs
+  "would_close" events. Subscription scope is bounded by lane purpose
+  — only merchant-lane and farmer-lane channels are subscribers;
+  external-peer (e.g., ACINQ) and unclassified channels are exempt
+  entirely with three layers of defense-in-depth against accidental
+  Tier 3 close. Stage 4 adds Ed25519 entitlement tokens issued at
+  POST /api/subscription/token (signed challenge auth via LND's
+  signMessage), 24h JWT lifetime, scope=full|prepay claims; member
+  nodes cache their JWT in subscription_local_token and refresh every
+  ~12h. Worker validation expects a new SUBSCRIPTION_PUBLIC_KEY
+  Cloudflare secret — copy from GET /api/admin/subscription/public-key
+  after first boot. Operator setup notes: (1) for the system to do
+  anything at all, the treasury operator must POST the first-run ack;
+  (2) for member nodes to fetch tokens, set TREASURY_API_URL in their
+  .env pointing at the treasury's reachable API URL; (3) Worker
+  endpoints are now scope-gated — /prices and /prices/corn-history
+  require prepay scope, /valuation/* requires full scope, HMAC and
+  public-flow endpoints unchanged. UI for member-facing subscription
+  status + admin subscriptions view ships in a future release.
+
   v1.13.21: Fix a sawtooth artifact in the BTC Moving Averages and
   Power Law charts that appeared starting around 2026-02-26. Coinbase's
   v2 historic-prices endpoint has been silently downsampling responses
