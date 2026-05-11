@@ -32,6 +32,8 @@ import { getSubscriptionPolicy } from "./policy";
 import { allocateSubscriptionForMember } from "./addressAllocator";
 import { attributePayment, computeNewPaidThrough } from "./paymentMath";
 import { fetchBtcUsdSpotCents, satsToUsdCents } from "./btcUsdSpot";
+import { isInSubscriptionScope } from "./lanePurpose";
+import { recomputeAllTiers } from "./tierDispatch";
 
 export interface ScanSummary {
   skipped_reason?: "first_run_not_acknowledged" | "lnd_unavailable";
@@ -39,6 +41,7 @@ export interface ScanSummary {
   utxos_scanned: number;
   credits_written: number;
   pending_attribution_written: number;
+  tier_transitions: number;
   errors: Array<{ context: string; error: string }>;
 }
 
@@ -47,6 +50,7 @@ const ZERO_SUMMARY: Omit<ScanSummary, "skipped_reason"> = {
   utxos_scanned: 0,
   credits_written: 0,
   pending_attribution_written: 0,
+  tier_transitions: 0,
   errors: [],
 };
 
@@ -122,13 +126,39 @@ export async function scanSubscriptionDeposits(): Promise<ScanSummary> {
     }
   }
 
+  // Step 5: recompute current_tier for every subscription row per §5.
+  // Cheap (single SELECT + per-row UPDATE-on-change) and runs every
+  // tick so the API surfaces fresh tier values immediately after any
+  // credit + paid_through advance.
+  try {
+    const tiers = recomputeAllTiers(policy);
+    summary.tier_transitions = tiers.transitions.length;
+    for (const t of tiers.transitions) {
+      console.log(
+        `[subscription] tier transition ${t.from} → ${t.to} for ${t.member_pubkey.slice(0, 16)}…`,
+      );
+    }
+  } catch (err: any) {
+    summary.errors.push({
+      context: "recomputeAllTiers",
+      error: err?.message ?? String(err),
+    });
+  }
+
   return summary;
 }
 
 /**
- * Finds peers that have channels with the treasury but don't have a
- * `subscription` row yet, and allocates them in `prepay` mode. Returns
- * the count of newly-allocated subscriptions.
+ * Finds peers that have channels with the treasury, are in subscription
+ * scope (merchant_lane or farmer_lane), and don't have a `subscription`
+ * row yet — and allocates them in `prepay` mode. Returns the count of
+ * newly-allocated subscriptions.
+ *
+ * Lane-purpose filter is applied per-peer (not in SQL) because the
+ * classifier reads contacts.tags + the curated external-pubkey list,
+ * which would be awkward to encode at the query layer. The cost is
+ * one classifier call per uncontacted peer per tick — bounded by
+ * cluster size, negligible.
  */
 async function discoverAndAllocateNewMembers(): Promise<number> {
   const treasuryPubkey = ENV.treasuryPubkey ?? "";
@@ -144,6 +174,7 @@ async function discoverAndAllocateNewMembers(): Promise<number> {
 
   let allocated = 0;
   for (const { peer_pubkey } of peers) {
+    if (!isInSubscriptionScope(peer_pubkey)) continue;
     try {
       await allocateSubscriptionForMember(peer_pubkey, "fresh");
       allocated++;

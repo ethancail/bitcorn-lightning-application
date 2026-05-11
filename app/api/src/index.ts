@@ -99,6 +99,8 @@ import {
 import { backfillExistingMembers } from "./subscription/backfill";
 import { getSubscriptionPolicy } from "./subscription/policy";
 import { scanSubscriptionDeposits } from "./subscription/detector";
+import { assertTier2RoutingAllowed } from "./subscription/tier2Gate";
+import { startTier3Scheduler } from "./subscription/tier3Scheduler";
 import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
 import {
   handleMemberLoopOutQuote,
@@ -1983,8 +1985,17 @@ const server = http.createServer(async (req, res) => {
 
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify(result));
-          } catch (err) {
+          } catch (err: any) {
             console.error("PAY ERROR:", err);
+
+            // Tier 2 routing-gate denial → HTTP 402 with structured body
+            // per spec §5.2. Don't persist as a failed payment because
+            // no LND attempt was made.
+            if (err?.name === "Tier2Denied") {
+              res.writeHead(402, { "Content-Type": "application/json" });
+              res.end(JSON.stringify(err.body));
+              return;
+            }
 
             // Persist failed payment (includes rate-limited payments)
             insertOutboundPayment({
@@ -1999,7 +2010,7 @@ const server = http.createServer(async (req, res) => {
             // Check if it's a rate limit error (429) or other error (403)
             const isRateLimitError = String(err).includes("Rate limit exceeded");
             const statusCode = isRateLimitError ? 429 : 403;
-            
+
             res.writeHead(statusCode, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: String(err) }));
           }
@@ -2425,6 +2436,13 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(result.ok ? 200 : 402, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
       } catch (err: any) {
+        // Tier 2 routing-gate denial → HTTP 402 with structured body
+        // per spec §5.2.
+        if (err?.name === "Tier2Denied") {
+          res.writeHead(402, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(err.body));
+          return;
+        }
         const msg = String(err?.message ?? err);
         const isRateLimit = msg.includes("Rate limit exceeded");
         const isMembership = msg.includes("Active membership required");
@@ -2441,6 +2459,17 @@ const server = http.createServer(async (req, res) => {
     req.on("data", (chunk) => (body += chunk));
     req.on("end", async () => {
       try {
+        // Tier 2 gate: invoice-generation routes that mint invoices
+        // routed through the treasury are gated alongside payInvoice
+        // per spec §5.2 ("the same check applies").
+        try { assertTier2RoutingAllowed(); } catch (err: any) {
+          if (err?.name === "Tier2Denied") {
+            res.writeHead(402, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(err.body));
+            return;
+          }
+          throw err;
+        }
         const { amount_sats, memo } = JSON.parse(body || "{}");
         if (!amount_sats || amount_sats <= 0) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -3358,4 +3387,8 @@ server.listen(PORTS.userApi, () => {
   // Coinbase Auto-Buy scheduler — 15-min tick that runs the 5-step state
   // machine. Gated by autobuy_config.enabled and ENV.autoBuyEnabled.
   startScheduler(db);
+  // Subscription Tier 3 scheduler — close-due close (DRY-RUN by default
+  // per spec §10 step 7; promotes to live in Stage 6 after a ≥60-day
+  // observation window).
+  startTier3Scheduler();
 });

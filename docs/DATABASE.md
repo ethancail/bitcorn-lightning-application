@@ -43,8 +43,9 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `035_valuation_manual_calendar.sql` | Per-day calendar variant of manual valuation inputs (date-keyed upserts) |
 | `036_member_subscription.sql` | On-chain monthly subscription: `subscription_policy`, `subscription`, `subscription_payment`, `subscription_pending_attribution` |
 | `037_subscription_first_run_ack.sql` | Adds `first_run_acknowledged_at` to `subscription_policy` — Path B first-run gate |
+| `038_subscription_scope_cleanup.sql` | One-shot cleanup of Stage 2 over-broad backfill — deletes `subscription` (+ sentinel `subscription_payment`) rows for `external_peer` / `unclassified` peers per spec §3.0 |
 
-The migration set is contiguous from `001` through `037` with no gaps. Always allocate the next sequential number for new migrations.
+The migration set is contiguous from `001` through `038` with no gaps. Always allocate the next sequential number for new migrations.
 
 ## Key Tables
 
