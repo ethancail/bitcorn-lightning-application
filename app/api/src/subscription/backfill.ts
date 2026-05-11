@@ -1,20 +1,27 @@
 // One-shot backfill: allocate subscription rows + addresses for every
-// peer the treasury already has a channel with at the moment the
-// operator acknowledges the first-run gate.
+// in-scope peer the treasury already has a channel with at the moment
+// the operator acknowledges the first-run gate.
 //
-// Per spec §10 step 3: existing members are grandfathered as `current`
-// to avoid retroactively gating live members at flip-day. New members
-// (peers that appear in lnd_channels after the ack) start in `prepay`
-// via the sync-loop's per-tick member-discovery pass (see detector.ts).
+// Scope per spec §3.0: only `merchant_lane` and `farmer_lane` peers
+// are in subscription scope. `external_peer` (e.g., ACINQ) and
+// `unclassified` peers are skipped — the lane-purpose helper decides.
+//
+// Per spec §10 step 3: existing in-scope members are grandfathered as
+// `current` to avoid retroactively gating live members at flip-day.
+// New members (peers that appear in lnd_channels after the ack) start
+// in `prepay` via the sync-loop's per-tick member-discovery pass (see
+// detector.ts).
 
 import { db } from "../db";
 import { ENV } from "../config/env";
 import { allocateSubscriptionForMember } from "./addressAllocator";
+import { classifyLanePurpose, isInSubscriptionScope } from "./lanePurpose";
 
 interface BackfillSummary {
   members_seen: number;
   newly_allocated: number;
   already_present: number;
+  skipped_out_of_scope: Array<{ member_pubkey: string; lane_purpose: string }>;
   errors: Array<{ member_pubkey: string; error: string }>;
 }
 
@@ -31,6 +38,7 @@ export async function backfillExistingMembers(): Promise<BackfillSummary> {
     members_seen: 0,
     newly_allocated: 0,
     already_present: 0,
+    skipped_out_of_scope: [],
     errors: [],
   };
 
@@ -43,6 +51,16 @@ export async function backfillExistingMembers(): Promise<BackfillSummary> {
 
   for (const { peer_pubkey } of peers) {
     summary.members_seen++;
+
+    // Lane-purpose gate: external_peer and unclassified are exempt.
+    if (!isInSubscriptionScope(peer_pubkey)) {
+      summary.skipped_out_of_scope.push({
+        member_pubkey: peer_pubkey,
+        lane_purpose: classifyLanePurpose(peer_pubkey),
+      });
+      continue;
+    }
+
     const existing = db
       .prepare("SELECT 1 FROM subscription WHERE member_pubkey = ?")
       .get(peer_pubkey);
