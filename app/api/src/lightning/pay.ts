@@ -2,6 +2,7 @@ import { payViaPaymentRequest } from "ln-service";
 import { getLndClient } from "./lnd";
 import { db } from "../db";
 import { ENV } from "../config/env";
+import { assertTier2RoutingAllowed } from "../subscription/tier2Gate";
 
 /** Look up the active treasury channel ID (returns null on treasury node or if no channel). */
 function getTreasuryChannelId(): string | null {
@@ -13,6 +14,12 @@ function getTreasuryChannelId(): string | null {
 }
 
 export async function payInvoice(paymentRequest: string) {
+  // Tier 2 gate: refuse routing for members whose subscription is
+  // prepay / routing_lapsed / close_due. May throw Tier2Denied which
+  // the route handler maps to a 402 response. Per spec §5.2 the gate
+  // attaches at the existing forced-routing chokepoint (V1).
+  assertTier2RoutingAllowed();
+
   const { lnd } = getLndClient();
   const outgoingChannel = getTreasuryChannelId();
 

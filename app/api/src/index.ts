@@ -92,6 +92,24 @@ import {
   getLiquidityStatus as getMemberLiquidityStatus,
   getLiquidityHistory as getMemberLiquidityHistory,
 } from "./memberAdvisor/liquidityAdvisorRoutes";
+import {
+  acknowledgeFirstRun,
+  getFirstRunAcknowledgedAt,
+} from "./subscription/firstRunGate";
+import { backfillExistingMembers } from "./subscription/backfill";
+import { getSubscriptionPolicy } from "./subscription/policy";
+import { scanSubscriptionDeposits } from "./subscription/detector";
+import { assertTier2RoutingAllowed } from "./subscription/tier2Gate";
+import { startTier3Scheduler } from "./subscription/tier3Scheduler";
+import { verifyChallengeSignature, ChallengeAuthError } from "./subscription/challengeAuth";
+import { issueTokenForPubkey } from "./subscription/tokenIssuance";
+import { getTreasuryPublicKeyForCloudflare } from "./subscription/treasuryKeypair";
+import { startTokenRefreshScheduler } from "./subscription/tokenRefresh";
+import {
+  verifyEntitlementToken,
+  extractBearerToken,
+  JwtVerificationError,
+} from "./subscription/jwtVerify";
 import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
 import {
   handleMemberLoopOutQuote,
@@ -117,15 +135,22 @@ persistNodeInfo().catch(err => {
 (async () => {
   try {
     await syncLndState();
+    // Subscription detection runs after LND sync resolves so the
+    // address-set / channel-state it joins on is fresh. No-op (with a
+    // skipped_reason) when the operator hasn't acknowledged the
+    // first-run gate yet — see app/api/src/subscription/firstRunGate.ts.
+    await scanSubscriptionDeposits();
     console.log("[lnd] initial sync complete");
   } catch (err: any) {
     console.warn("[lnd] initial sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "");
   }
 
   setInterval(() => {
-    syncLndState().catch(err =>
-      console.warn("[lnd] periodic sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "")
-    );
+    syncLndState()
+      .then(() => scanSubscriptionDeposits())
+      .catch(err =>
+        console.warn("[lnd] periodic sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "")
+      );
   }, 15000);
 })();
 
@@ -306,6 +331,210 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "failed_to_generate_onramp_url" }));
     }
+    return;
+  }
+
+  // ── Subscription rail (Stage 2: detection) ─────────────────────────
+  // Treasury-only: operator acknowledges the first-run gate. Idempotent.
+  // After ack, kicks off a one-shot backfill that allocates grandfathered
+  // subscription rows + addresses for every existing peer in lnd_channels.
+  if (req.method === "POST" && req.url === "/api/admin/subscription/acknowledge-first-run") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const { acknowledged_at } = acknowledgeFirstRun();
+      const summary = await backfillExistingMembers();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ acknowledged_at, backfill: summary }));
+    } catch (err: any) {
+      console.error("[subscription] first-run ack failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "first_run_ack_failed" }));
+    }
+    return;
+  }
+
+  // POST /api/subscription/token — entitlement-token issuance (Stage 4).
+  // Auth: route-scoped challenge-sig middleware (member signs a
+  // time-bounded challenge with LND's signMessage). Mints a JWT per
+  // spec §6.3 based on the verified member's current_tier.
+  if (req.method === "POST" && req.url === "/api/subscription/token") {
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}") as { challenge?: string; signature?: string };
+        if (!parsed.challenge || !parsed.signature) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "missing_challenge_or_signature" }));
+          return;
+        }
+        let verified: { verified_pubkey: string };
+        try {
+          verified = await verifyChallengeSignature(parsed.challenge, parsed.signature);
+        } catch (err: any) {
+          if (err instanceof ChallengeAuthError) {
+            res.writeHead(401, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err.reason, detail: err.message }));
+            return;
+          }
+          throw err;
+        }
+        const result = await issueTokenForPubkey(verified.verified_pubkey);
+        if (result.kind === "minted") {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result.token));
+        } else {
+          // 402 per spec §6.3 for worker_lapsed / routing_lapsed /
+          // close_due / no_subscription_row. Body carries paid_through
+          // + deposit_address so the member UI can render a uniform
+          // "your subscription needs attention" panel.
+          res.writeHead(402, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "subscription_not_eligible", ...result.denial }));
+        }
+      } catch (err: any) {
+        console.error("[subscription] /token failed:", err);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: err?.message ?? "token_issuance_failed" }));
+      }
+    });
+    return;
+  }
+
+  // Status read for a member's subscription row. Two auth modes
+  // (Stage 4):
+  // 1. Member-callable via `Authorization: Bearer <jwt>` — the member
+  //    presents the JWT they got from /api/subscription/token. The
+  //    sub claim is the pubkey we look up by.
+  // 2. Admin debug via `?member_pubkey=<hex>` — treasury-only, no
+  //    token required, looks up by the query-param pubkey.
+  //
+  // Missing both → 401. Either path returns the same payload shape
+  // (spec §8.1).
+  if (req.method === "GET" && req.url?.startsWith("/api/subscription/status")) {
+    try {
+      const url = new URL(req.url, "http://localhost");
+      const queryPubkey = url.searchParams.get("member_pubkey");
+
+      let lookupPubkey: string | null = null;
+      if (queryPubkey) {
+        // Admin debug path — requires treasury role.
+        const node = getNodeInfo();
+        try { assertTreasury(node?.node_role); } catch (err: any) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: err?.message }));
+          return;
+        }
+        lookupPubkey = queryPubkey.toLowerCase();
+      } else {
+        // Member-callable path — Bearer JWT required.
+        const bearer = extractBearerToken(req.headers["authorization"] ?? null);
+        if (!bearer) {
+          res.writeHead(401, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "missing_authorization" }));
+          return;
+        }
+        try {
+          const verified = await verifyEntitlementToken(bearer);
+          lookupPubkey = verified.sub;
+        } catch (err: any) {
+          if (err instanceof JwtVerificationError) {
+            res.writeHead(401, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err.reason, detail: err.message }));
+            return;
+          }
+          throw err;
+        }
+      }
+
+      const row = db
+        .prepare(
+          `SELECT member_pubkey, deposit_address, paid_through, created_at,
+                  last_payment_txid, last_payment_at, current_tier
+           FROM subscription WHERE member_pubkey = ?`,
+        )
+        .get(lookupPubkey) as
+          | {
+              member_pubkey: string;
+              deposit_address: string;
+              paid_through: number;
+              created_at: number;
+              last_payment_txid: string | null;
+              last_payment_at: number | null;
+              current_tier: string;
+            }
+          | undefined;
+      if (!row) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "no_subscription_row" }));
+        return;
+      }
+      const policy = getSubscriptionPolicy();
+      const MS_PER_DAY = 86_400_000;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        member_pubkey: row.member_pubkey,
+        current_tier: row.current_tier,
+        paid_through: row.paid_through,
+        price_sats: policy.price_sats,
+        period_days: policy.period_days,
+        deposit_address: row.deposit_address,
+        last_payment_at: row.last_payment_at,
+        last_payment_txid: row.last_payment_txid,
+        grace: {
+          worker_until: row.paid_through + policy.grace_days_worker * MS_PER_DAY,
+          routing_until: row.paid_through + policy.grace_days_routing * MS_PER_DAY,
+          close_at: row.paid_through + policy.grace_days_close * MS_PER_DAY,
+        },
+      }));
+    } catch (err: any) {
+      console.error("[subscription] status read failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "status_read_failed" }));
+    }
+    return;
+  }
+
+  // Treasury-only: surface the Ed25519 public key for the operator
+  // to copy into the Cloudflare Worker's SUBSCRIPTION_PUBLIC_KEY
+  // secret. Lazy-generates the keypair if it doesn't exist yet.
+  if (req.method === "GET" && req.url === "/api/admin/subscription/public-key") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const pub = await getTreasuryPublicKeyForCloudflare();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(pub));
+    } catch (err: any) {
+      console.error("[subscription] public-key read failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "public_key_read_failed" }));
+    }
+    return;
+  }
+
+  // Treasury-only: surface the first-run-ack state for the admin UI.
+  if (req.method === "GET" && req.url === "/api/admin/subscription/first-run-status") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    const acknowledged_at = getFirstRunAcknowledgedAt();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      acknowledged: acknowledged_at !== null,
+      acknowledged_at,
+    }));
     return;
   }
 
@@ -1857,8 +2086,17 @@ const server = http.createServer(async (req, res) => {
 
             res.writeHead(200, { "Content-Type": "application/json" });
             res.end(JSON.stringify(result));
-          } catch (err) {
+          } catch (err: any) {
             console.error("PAY ERROR:", err);
+
+            // Tier 2 routing-gate denial → HTTP 402 with structured body
+            // per spec §5.2. Don't persist as a failed payment because
+            // no LND attempt was made.
+            if (err?.name === "Tier2Denied") {
+              res.writeHead(402, { "Content-Type": "application/json" });
+              res.end(JSON.stringify(err.body));
+              return;
+            }
 
             // Persist failed payment (includes rate-limited payments)
             insertOutboundPayment({
@@ -1873,7 +2111,7 @@ const server = http.createServer(async (req, res) => {
             // Check if it's a rate limit error (429) or other error (403)
             const isRateLimitError = String(err).includes("Rate limit exceeded");
             const statusCode = isRateLimitError ? 429 : 403;
-            
+
             res.writeHead(statusCode, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: String(err) }));
           }
@@ -2299,6 +2537,13 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(result.ok ? 200 : 402, { "Content-Type": "application/json" });
         res.end(JSON.stringify(result));
       } catch (err: any) {
+        // Tier 2 routing-gate denial → HTTP 402 with structured body
+        // per spec §5.2.
+        if (err?.name === "Tier2Denied") {
+          res.writeHead(402, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(err.body));
+          return;
+        }
         const msg = String(err?.message ?? err);
         const isRateLimit = msg.includes("Rate limit exceeded");
         const isMembership = msg.includes("Active membership required");
@@ -2315,6 +2560,17 @@ const server = http.createServer(async (req, res) => {
     req.on("data", (chunk) => (body += chunk));
     req.on("end", async () => {
       try {
+        // Tier 2 gate: invoice-generation routes that mint invoices
+        // routed through the treasury are gated alongside payInvoice
+        // per spec §5.2 ("the same check applies").
+        try { assertTier2RoutingAllowed(); } catch (err: any) {
+          if (err?.name === "Tier2Denied") {
+            res.writeHead(402, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(err.body));
+            return;
+          }
+          throw err;
+        }
         const { amount_sats, memo } = JSON.parse(body || "{}");
         if (!amount_sats || amount_sats <= 0) {
           res.writeHead(400, { "Content-Type": "application/json" });
@@ -3232,4 +3488,12 @@ server.listen(PORTS.userApi, () => {
   // Coinbase Auto-Buy scheduler — 15-min tick that runs the 5-step state
   // machine. Gated by autobuy_config.enabled and ENV.autoBuyEnabled.
   startScheduler(db);
+  // Subscription Tier 3 scheduler — close-due close (DRY-RUN by default
+  // per spec §10 step 7; promotes to live in Stage 6 after a ≥60-day
+  // observation window).
+  startTier3Scheduler();
+  // Subscription entitlement-token refresh — every node (treasury and
+  // members) refreshes its local JWT every ~12h. Treasury self-mints
+  // full-scope; members mint full or prepay depending on their tier.
+  startTokenRefreshScheduler();
 });

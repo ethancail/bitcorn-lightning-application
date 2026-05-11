@@ -52,3 +52,6 @@ dev/lnd/
 
 # Brainstorming session artifacts
 .superpowers/
+
+# Cloudflare wrangler local-dev secrets (gitignored — never commit)
+cloudflare-worker/.dev.vars

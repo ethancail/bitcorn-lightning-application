@@ -164,4 +164,33 @@ export const ENV = {
     memberMaxDailyRefillSat: Number(process.env.MEMBER_MAX_DAILY_REFILL_SAT ?? "5000000"),
     // On-chain reserve buffer — subtracted from available balance to prevent draining to zero
     memberOnchainReserveSat: Number(process.env.MEMBER_ONCHAIN_RESERVE_SAT ?? "50000"),
+
+    // --- Subscription rail tier enforcement (Stage 3+) ---
+    // Tier 2 routing-gate: when true, payInvoice and invoice-generation
+    // routes refuse to act for members whose current_tier ∈
+    // {prepay, routing_lapsed, close_due}. Default: true (the wiring
+    // ships enabled per spec §10 step 6 "feature-flag-able"; set to
+    // "false" to disable the gate without code changes).
+    subscriptionTier2Enabled: process.env.SUBSCRIPTION_TIER2_ENABLED !== "false",
+    // Tier 3 cooperative-close scheduler: when false (default), runs in
+    // dry-run mode and only structured-logs "would close" events. When
+    // true, actually issues LND CloseChannel calls. Per spec §10 step 7,
+    // promotion to live happens at Stage 6 after a ≥60-day observation
+    // of the dry-run behaviour.
+    subscriptionTier3Live: process.env.SUBSCRIPTION_TIER3_LIVE === "true",
+    // Cadence for the Tier 3 dry-run scheduler tick. 5 min default per
+    // spec §5.3 — the scheduler iterates members in close_due tier and
+    // logs (or, when live, issues) cooperative-close actions.
+    subscriptionTier3IntervalMs: Number(
+        process.env.SUBSCRIPTION_TIER3_INTERVAL_MS ?? String(5 * 60 * 1000)
+    ),
+    // Where the member node should POST /api/subscription/token to
+    // refresh its entitlement JWT. On treasury nodes leave this unset
+    // (the refresh scheduler falls back to localhost and the /token
+    // endpoint's self-mint carve-out issues a full-scope token for the
+    // treasury). On member nodes this must point at the treasury's
+    // reachable API URL (e.g., http://<treasury-tailnet-ip>:3101).
+    // Unset on a member node → refresh logs a warning and skips; the
+    // member operates without an entitlement token until configured.
+    treasuryApiUrl: process.env.TREASURY_API_URL || "",
 };

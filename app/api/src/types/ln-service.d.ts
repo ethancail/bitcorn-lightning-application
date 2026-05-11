@@ -173,12 +173,39 @@ declare module "ln-service" {
     before?: number;
   }): Promise<{ transactions: ChainTransaction[] }>;
 
+  export interface ChainUtxo {
+    address: string;
+    address_format: string;
+    confirmation_count: number;
+    output_script: string;
+    tokens: number;
+    transaction_id: string;
+    transaction_vout: number;
+  }
+
+  export function getUtxos(options: {
+    lnd: any;
+    min_confirmations?: number;
+    max_confirmations?: number;
+  }): Promise<{ utxos: ChainUtxo[] }>;
+
   export function addPeer(options: {
     lnd: any;
     public_key: string;
     socket?: string;
     timeout?: number;
   }): Promise<void>;
+
+  export function signMessage(options: {
+    lnd: any;
+    message: string;
+  }): Promise<{ signature: string }>;
+
+  export function verifyMessage(options: {
+    lnd: any;
+    message: string;
+    signature: string;
+  }): Promise<{ signed_by: string }>;
 
   export function openChannel(options: {
     lnd: any;
