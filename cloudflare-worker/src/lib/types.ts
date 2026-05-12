@@ -13,8 +13,13 @@ export interface Env {
   // Subscription entitlement-token public key (base64url of the raw
   // 32-byte Ed25519 public key, copied from the treasury's
   // `/api/admin/subscription/public-key` endpoint). Used by
-  // `lib/jwt.ts` to validate JWTs on gated endpoints. Unset → gated
-  // endpoints return 503.
+  // `lib/jwt.ts` to validate JWTs on gated endpoints, and surfaced via
+  // `handlers/treasuryInfo.ts` as a full JWK object so member nodes
+  // can validate locally. The raw-x storage form is the Worker's
+  // internal choice; the published external contract is the JWK JSON
+  // shape (`{kty: "OKP", crv: "Ed25519", x: <this>}`). Unset → gated
+  // endpoints return 503 and /treasury-info omits the JWK field
+  // (members then fall back to cross-node JWT validation).
   SUBSCRIPTION_PUBLIC_KEY?: string;
   // Treasury HTTP API URL surfaced via /treasury-info for member-node
   // token-refresh discovery. Set by the treasury operator via

@@ -51,7 +51,22 @@ async function generateAndPersist(): Promise<StoredKeyfile> {
   const dir = dirname(SIGNING_KEY_PATH);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true, mode: 0o700 });
   writeFileSync(SIGNING_KEY_PATH, JSON.stringify(file, null, 2), { mode: 0o600 });
-  console.log(`[subscription] generated Ed25519 signing keypair at ${SIGNING_KEY_PATH}`);
+  // Spec §3.1: log the JWK with a clearly-prefixed marker and the
+  // operator runbook on first generation so the operator sees what
+  // they need to copy into the Worker secret. The log fires exactly
+  // once per keypair lifetime (subsequent reads of the existing keyfile
+  // skip this branch via loadKeyfile()).
+  const jwkValueJson = JSON.stringify(file.publicJwk);
+  const rawXValue = String(file.publicJwk.x ?? "");
+  console.log(
+    `[SUBSCRIPTION_KEYPAIR_GENERATED] Ed25519 public key (JWK):\n` +
+      `${jwkValueJson}\n` +
+      `Operator action required:\n` +
+      `  wrangler secret put SUBSCRIPTION_PUBLIC_KEY <<<'${rawXValue}'\n` +
+      `  wrangler deploy\n` +
+      `(The Worker stores the raw base64url \`x\` value; /treasury-info\n` +
+      ` re-materializes the full JWK for member-side consumers.)`,
+  );
   return file;
 }
 

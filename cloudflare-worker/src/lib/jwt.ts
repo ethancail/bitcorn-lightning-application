@@ -27,7 +27,13 @@
 import { jwtVerify, importJWK } from "jose";
 import type { Env } from "./types";
 
-export type Scope = "full" | "prepay";
+// `payment` covers any subscriber tier other than `current` (prepay
+// during initial onboarding, plus all three lapsed tiers — payment
+// scope is the recovery-path entitlement that keeps Coinbase Onramp +
+// commodity-prices reads available so members can buy BTC and renew).
+// Per decisions/2026-05-11-subscription-stage-5a-architectural-deltas.md
+// decision #2.
+export type Scope = "full" | "payment";
 
 export interface VerifiedJwt {
   sub: string;
@@ -93,8 +99,8 @@ async function loadPublicKey(env: Env): Promise<CryptoKey> {
  * response per `err.status`.
  *
  * @param requiredScope The scope claim the token must have to access
- *   this endpoint. `"full"` callers reject any prepay token;
- *   `"prepay"` callers accept both prepay and full tokens (full is a
+ *   this endpoint. `"full"` callers reject any payment-scope token;
+ *   `"payment"` callers accept both payment and full tokens (full is a
  *   superset).
  */
 export async function verifyEntitlementToken(
@@ -142,19 +148,19 @@ export async function verifyEntitlementToken(
     throw new WorkerJwtError("JWT sub is not a 66-char hex pubkey", "bad_subject", 401);
   }
   const scope = payload.scope;
-  if (scope !== "full" && scope !== "prepay") {
+  if (scope !== "full" && scope !== "payment") {
     throw new WorkerJwtError(
-      `JWT scope must be "full" or "prepay", got: ${String(scope)}`,
+      `JWT scope must be "full" or "payment", got: ${String(scope)}`,
       "bad_scope",
       401,
     );
   }
-  // scope-required check: full > prepay. A `prepay`-scope token
+  // scope-required check: full > payment. A `payment`-scope token
   // calling a `full`-only endpoint is rejected with 403, not 401 —
   // the token is well-formed and authenticated, just under-scoped.
-  if (requiredScope === "full" && scope === "prepay") {
+  if (requiredScope === "full" && scope === "payment") {
     throw new WorkerJwtError(
-      "endpoint requires scope=full; token has scope=prepay",
+      "endpoint requires scope=full; token has scope=payment",
       "scope_insufficient",
       403,
     );
