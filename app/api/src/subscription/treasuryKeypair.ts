@@ -62,10 +62,16 @@ async function generateAndPersist(): Promise<StoredKeyfile> {
     `[SUBSCRIPTION_KEYPAIR_GENERATED] Ed25519 public key (JWK):\n` +
       `${jwkValueJson}\n` +
       `Operator action required:\n` +
-      `  wrangler secret put SUBSCRIPTION_PUBLIC_KEY <<<'${rawXValue}'\n` +
+      `  cd cloudflare-worker\n` +
+      `  wrangler secret put SUBSCRIPTION_PUBLIC_KEY\n` +
+      `  # when prompted, paste exactly (no trailing newline):\n` +
+      `  ${rawXValue}\n` +
       `  wrangler deploy\n` +
       `(The Worker stores the raw base64url \`x\` value; /treasury-info\n` +
-      ` re-materializes the full JWK for member-side consumers.)`,
+      ` re-materializes the full JWK for member-side consumers. Do not\n` +
+      ` use \`<<<\` here-strings or \`echo\` without -n: bash appends a\n` +
+      ` trailing newline that wrangler will store, which breaks JWT\n` +
+      ` validation in subtle ways.)`,
   );
   return file;
 }

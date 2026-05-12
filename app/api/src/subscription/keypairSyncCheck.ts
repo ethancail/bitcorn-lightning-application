@@ -93,7 +93,7 @@ async function runSyncCheck(): Promise<void> {
     console.warn(
       `[SUBSCRIPTION_KEYPAIR_SYNC] Worker has no SUBSCRIPTION_PUBLIC_KEY set; ` +
         `member-side JWT validation will fail until you publish it. ` +
-        `Run: wrangler secret put SUBSCRIPTION_PUBLIC_KEY <<<'${localX}' && wrangler deploy`,
+        `Run: cd cloudflare-worker && wrangler secret put SUBSCRIPTION_PUBLIC_KEY (paste ${localX} when prompted, no trailing newline) && wrangler deploy`,
     );
     return;
   }
@@ -101,7 +101,7 @@ async function runSyncCheck(): Promise<void> {
     console.warn(
       `[SUBSCRIPTION_KEYPAIR_SYNC] Worker SUBSCRIPTION_PUBLIC_KEY does not match local keypair. ` +
         `Likely cause: the local keypair was rotated but the Worker secret was not re-published. ` +
-        `Run: wrangler secret put SUBSCRIPTION_PUBLIC_KEY <<<'${localX}' && wrangler deploy`,
+        `Run: cd cloudflare-worker && wrangler secret put SUBSCRIPTION_PUBLIC_KEY (paste ${localX} when prompted, no trailing newline) && wrangler deploy`,
     );
     return;
   }
