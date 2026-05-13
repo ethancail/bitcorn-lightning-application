@@ -338,27 +338,27 @@ function PrepayRender({
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={pill.kind} label={pill.label} />} />
       <p className="sub-tagline">
-        You have <strong>payment access</strong> until your first payment. Send {fmtSats(status.price_sats)} sats to activate full membership.
+        You have <strong>payment access</strong> until your first payment. Send {fmtSats(status.price_sats)} to activate full membership.
       </p>
       <ul className="sub-prepay-bullets">
         <li><span className="sub-bullet-tick">✓</span> <strong>Available now</strong> — Coinbase Onramp for buying BTC, BTC/USD price reads, and the address below for receiving your first payment.</li>
         <li><span className="sub-bullet-plus">+</span> <strong>Activates on first payment</strong> — Lightning routing through the treasury, full hosted services, valuation engine, and complete dashboard.</li>
       </ul>
       <div className="sub-stats">
-        <Stat label="MONTHLY" value={fmtSats(status.price_sats)} suffix="sats" />
+        <Stat label="MONTHLY" value={status.price_sats.toLocaleString()} suffix="sats" />
         <Stat label="PAID THROUGH" value="on first payment" suffix={`+${status.period_days} days`} accent="blue" pendingValue />
         <Stat label="LAST PAYMENT" value="—" suffix="none yet" pendingValue />
       </div>
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
-        helper={`Send ${fmtSats(status.price_sats)} sats to activate.`}
+        helper={`Send ${fmtSats(status.price_sats)} to activate.`}
         fineprint="This address is yours for the lifetime of your membership. Don't have BTC on hand? Use Coinbase Onramp from the Buy Bitcoin tab — funds land in this wallet."
       />
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
         primary={<button className="sub-btn">Open Coinbase Onramp <span aria-hidden>↗</span></button>}
-        secondary={<button className="sub-btn">I have BTC — pay {fmtSats(status.price_sats)} sats</button>}
+        secondary={<button className="sub-btn">I have BTC — pay {fmtSats(status.price_sats)}</button>}
       />
     </section>
   );
@@ -387,7 +387,7 @@ function WorkerLapsedRender({
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
-        helper={`Send ${fmtSats(status.price_sats)} sats to renew for ${status.period_days} days.`}
+        helper={`Send ${fmtSats(status.price_sats)} to renew for ${status.period_days} days.`}
         fineprint="Don't have BTC on hand? Use Coinbase Onramp from the Buy Bitcoin tab — it's still available during the services-paused state. Funds you buy land in this same wallet."
       />
       <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
@@ -401,7 +401,7 @@ function WorkerLapsedRender({
       </Timeline>
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
-        primary={<button className="sub-btn">Renew ({fmtSats(status.price_sats)} sats) <span aria-hidden>→</span></button>}
+        primary={<button className="sub-btn">Renew ({fmtSats(status.price_sats)}) <span aria-hidden>→</span></button>}
         secondary={<button className="sub-btn">Buy BTC with card <span aria-hidden>↗</span></button>}
         tertiary={<a className="sub-link" href="#payment-history">View payment history <span aria-hidden>→</span></a>}
       />
@@ -430,7 +430,7 @@ function RoutingLapsedRender({
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
-        helper={`Send ${fmtSats(status.price_sats)} sats to renew for ${status.period_days} days.`}
+        helper={`Send ${fmtSats(status.price_sats)} to renew for ${status.period_days} days.`}
         fineprint="Don't have BTC on hand? Use Coinbase Onramp from the Buy Bitcoin tab — it's still available in this state. Funds you buy land in this same wallet."
       />
       <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
@@ -448,7 +448,7 @@ function RoutingLapsedRender({
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
         primary={<button className="sub-btn">Open Coinbase Onramp <span aria-hidden>↗</span></button>}
-        secondary={<button className="sub-btn">I have BTC — renew ({fmtSats(status.price_sats)} sats)</button>}
+        secondary={<button className="sub-btn">I have BTC — renew ({fmtSats(status.price_sats)})</button>}
         tertiary={<a className="sub-link" href="#payment-history">View payment history <span aria-hidden>→</span></a>}
       />
     </section>
@@ -466,13 +466,13 @@ function CloseDueRender({
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="red" label="pay to halt close" />} />
       <AlertBox variant="red" icon="✕">
-        Your subscription lapsed <strong>{lapsedDays} day{lapsedDays === 1 ? "" : "s"}</strong> ago. Your channel will be cooperatively closed on the next scheduler tick. A payment of <strong>{fmtSats(status.price_sats)} sats</strong> received before then will <strong>halt</strong> the close.
+        Your subscription lapsed <strong>{lapsedDays} day{lapsedDays === 1 ? "" : "s"}</strong> ago. Your channel will be cooperatively closed on the next scheduler tick. A payment of <strong>{fmtSats(status.price_sats)}</strong> received before then will <strong>halt</strong> the close.
       </AlertBox>
       <StatsGrid status={status} accent="red" />
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
-        helper={`Send ${fmtSats(status.price_sats)} sats to halt the pending close.`}
+        helper={`Send ${fmtSats(status.price_sats)} to halt the pending close.`}
         fineprint="The scheduler re-checks your subscription status immediately before issuing the close. A confirmed payment in that window halts it."
       />
       <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
@@ -545,7 +545,7 @@ function UnclassifiedRender() {
         Your node's role is pending classification. Subscription doesn't activate until your channel is classified as farmer or merchant. Contact your operator if this persists more than a few minutes.
       </AlertBox>
       <div className="sub-stats">
-        <Stat label="MONTHLY" value={fmtSats(50_000)} suffix="sats" />
+        <Stat label="MONTHLY" value={(50_000).toLocaleString()} suffix="sats" />
         <Stat label="PAID THROUGH" value="—" suffix="pending" pendingValue />
         <Stat label="LAST PAYMENT" value="—" suffix="pending" pendingValue />
       </div>
@@ -573,7 +573,7 @@ function PendingInitialSyncRender({
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="gray-pulsing" label="setting up" />} />
       <div className="sub-stats">
-        <Stat label="MONTHLY" value={fmtSats(50_000)} suffix="sats" pendingValue />
+        <Stat label="MONTHLY" value={(50_000).toLocaleString()} suffix="sats" pendingValue />
         <Stat label="PAID THROUGH" value="—" suffix="pending" pendingValue />
         <Stat label="LAST PAYMENT" value="—" suffix="pending" pendingValue />
       </div>
@@ -734,7 +734,7 @@ function StatsGrid({
   const lastPaymentSuffix = status.last_payment_at ? "confirmed" : "";
   return (
     <div className="sub-stats">
-      <Stat label="MONTHLY" value={fmtSats(status.price_sats)} suffix="sats" />
+      <Stat label="MONTHLY" value={status.price_sats.toLocaleString()} suffix="sats" />
       <Stat label="PAID THROUGH" value={paidThroughLabel} suffix={paidThroughRel} accent={accent} />
       <Stat label="LAST PAYMENT" value={lastPaymentLabel} suffix={lastPaymentSuffix} />
     </div>

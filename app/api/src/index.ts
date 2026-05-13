@@ -107,6 +107,7 @@ import { getTreasuryPublicKeyForCloudflare } from "./subscription/treasuryKeypai
 import {
   startTokenRefreshScheduler,
   getResolvedTreasuryBaseUrl,
+  getCachedToken,
 } from "./subscription/tokenRefresh";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
@@ -497,27 +498,53 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ error: "admin_query_treasury_only" }));
         return;
       }
-      const bearer = extractBearerToken(req.headers["authorization"] ?? null);
-      if (!bearer) {
-        res.writeHead(401, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "missing", detail: "missing Bearer JWT" }));
-        return;
-      }
-      // Fast-path local validation. Maps validation outcomes to
-      // 401 (re-authenticate) vs 503 (infrastructure not ready). The
-      // 503 path is reserved for `no_treasury_key` — semantically
-      // distinct from token-is-bad.
-      try {
-        await verifyEntitlementToken(bearer);
-      } catch (err: any) {
-        if (err instanceof JwtVerificationError) {
-          const fp = mapJwtErrorToFastPath(err);
-          res.writeHead(fp.status, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(fp.body));
+      // Bearer resolution for the member proxy. Two valid sources:
+      //
+      // 1. Authorization header — set by cross-node callers (a member
+      //    node calling another member's status, or a future external
+      //    caller). We validate this locally (fast-path 401/503) so
+      //    obviously-bad tokens fail without a cross-node round trip.
+      //
+      // 2. Cached local token — fallback for same-host web → local-API
+      //    calls. The web frontend has no way to obtain the cached
+      //    JWT (it's stored in the API's SQLite, not exposed to the
+      //    bundle), so a missing header is the normal case for the
+      //    Subscription panel polling its own local API. We use the
+      //    cached token as the proxy Bearer; treasury validates it
+      //    the same way it would any other Bearer. No local fast-path
+      //    validation in this branch because the cached token was just
+      //    minted by tokenRefresh — local validation would be a tautology.
+      //
+      // If neither source produces a usable token, return 503 (same
+      // semantic as treasury_unreachable — infrastructure isn't ready
+      // to serve status yet).
+      let bearer = extractBearerToken(req.headers["authorization"] ?? null);
+      if (bearer) {
+        try {
+          await verifyEntitlementToken(bearer);
+        } catch (err: any) {
+          if (err instanceof JwtVerificationError) {
+            const fp = mapJwtErrorToFastPath(err);
+            res.writeHead(fp.status, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(fp.body));
+            return;
+          }
+          throw err;
+        }
+      } else {
+        const cached = getCachedToken();
+        if (!cached || !cached.jwt) {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            error: "no_local_token",
+            detail: "no Authorization header and no cached subscription token; tokenRefresh has not yet completed a successful tick",
+          }));
           return;
         }
-        throw err;
+        bearer = cached.jwt;
       }
+      // bearer is guaranteed non-null at this point (branches above
+      // either set it or returned early). TS narrows correctly.
 
       // Resolve treasury base URL. tokenRefresh.ts caches it from
       // the most-recent /treasury-info discovery; if neither env nor
