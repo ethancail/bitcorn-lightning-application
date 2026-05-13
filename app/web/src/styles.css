@@ -2025,16 +2025,16 @@ input[type="number"] {
    ═══════════════════════════════════════════════════════════════ */
 
 .sub-panel {
-  background: #161618;
-  border: 1px solid rgba(245, 158, 11, 0.18);
+  background: var(--bg-1);
+  border: 1px solid color-mix(in srgb, var(--amber) 18%, transparent);
   border-radius: 4px;
   padding: 22px 26px;
   margin: 24px 0;
-  color: #d4d4d8;
+  color: var(--text);
   font-family: var(--sans);
 }
 .sub-panel-quiet {
-  border-color: rgba(245, 158, 11, 0.12);
+  border-color: color-mix(in srgb, var(--amber) 12%, transparent);
   padding: 16px 26px;
 }
 .sub-panel-skeleton {
@@ -2063,7 +2063,7 @@ input[type="number"] {
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(245, 158, 11, 0.9);
+  color: var(--amber);
   margin: 0;
 }
 
@@ -2106,7 +2106,7 @@ input[type="number"] {
 .sub-tagline {
   font-family: var(--mono);
   font-size: 13px;
-  color: #71717a;
+  color: var(--text-3);
   margin: 8px 0 20px 0;
 }
 
@@ -2117,7 +2117,7 @@ input[type="number"] {
   padding: 0;
   font-family: var(--mono);
   font-size: 13px;
-  color: #a1a1aa;
+  color: var(--text-2);
 }
 .sub-prepay-bullets li {
   margin-bottom: 6px;
@@ -2142,7 +2142,7 @@ input[type="number"] {
 .sub-reassure {
   font-family: var(--mono);
   font-size: 13px;
-  color: #a1a1aa;
+  color: var(--text-2);
   margin: 12px 0 18px 0;
   padding-left: 22px;
   position: relative;
@@ -2207,12 +2207,12 @@ input[type="number"] {
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.16em;
-  color: rgba(245,158,11,0.85);
+  color: var(--amber);
 }
 .sub-bracket-rule {
   flex: 1;
   height: 1px;
-  background: rgba(245,158,11,0.18);
+  background: color-mix(in srgb, var(--amber) 25%, transparent);
 }
 
 /* Stats grid */
@@ -2222,7 +2222,7 @@ input[type="number"] {
   gap: 24px;
   margin: 16px 0;
   padding-top: 16px;
-  border-top: 1px solid rgba(63,63,70,0.4);
+  border-top: 1px solid var(--border);
 }
 .sub-stat {
   font-family: var(--mono);
@@ -2230,22 +2230,23 @@ input[type="number"] {
 .sub-stat-label {
   font-size: 10px;
   letter-spacing: 0.18em;
-  color: #71717a;
+  color: var(--text-3);
   margin-bottom: 6px;
 }
 .sub-stat-value {
   font-size: 18px;
-  color: #f4f4f5;
+  color: var(--text);
   line-height: 1;
 }
 .sub-stat-suffix {
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-3);
   margin-top: 4px;
 }
 .sub-stat-pending .sub-stat-value,
 .sub-stat-pending .sub-stat-suffix {
-  color: #52525b;
+  color: var(--text-3);
+  opacity: 0.7;
 }
 
 /* Accent colors on Paid Through (per signal system §6) */
@@ -2280,10 +2281,10 @@ input[type="number"] {
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1.6;
-  color: #e4e4e7;
+  color: var(--text);
   padding: 12px;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid rgba(63,63,70,0.5);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
   border-radius: 3px;
   word-break: break-all;
   user-select: all;
@@ -2295,7 +2296,7 @@ input[type="number"] {
 .sub-deposit-helper {
   font-family: var(--mono);
   font-size: 12px;
-  color: #a1a1aa;
+  color: var(--text-2);
   margin: 8px 0 4px 0;
 }
 
@@ -2308,16 +2309,16 @@ input[type="number"] {
   border-radius: 3px;
   font-family: var(--mono);
   font-size: 13px;
-  color: #d4d4d8;
+  color: var(--text);
   background: transparent;
-  border: 1px solid #52525b;
+  border: 1px solid var(--border);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
   text-decoration: none;
 }
 .sub-btn:hover:not(:disabled) {
-  border-color: rgba(245,158,11,0.6);
-  color: #fbbf24;
+  border-color: var(--amber);
+  color: var(--amber);
 }
 .sub-btn:disabled {
   opacity: 0.5;
@@ -2327,11 +2328,11 @@ input[type="number"] {
 .sub-link {
   font-family: var(--mono);
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-3);
   text-decoration: none;
 }
 .sub-link:hover {
-  color: #fbbf24;
+  color: var(--amber);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
@@ -2360,12 +2361,12 @@ input[type="number"] {
   flex-direction: column;
   gap: 12px;
   padding: 12px 16px;
-  border: 1px solid rgba(63,63,70,0.4);
+  border: 1px solid var(--border);
   border-radius: 3px;
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1.5;
-  color: #a1a1aa;
+  color: var(--text-2);
 }
 .sub-timeline-row {
   display: flex;
@@ -2377,7 +2378,7 @@ input[type="number"] {
   font-weight: bold;
   width: 12px;
   text-align: center;
-  color: #71717a;
+  color: var(--text-3);
 }
 .sub-timeline-marker-amber   { color: #fbbf24; }
 .sub-timeline-marker-orange  { color: #fb923c; }
@@ -2388,7 +2389,7 @@ input[type="number"] {
 .sub-body-copy {
   font-family: var(--mono);
   font-size: 13px;
-  color: #a1a1aa;
+  color: var(--text-2);
   line-height: 1.6;
   margin: 8px 0;
 }
@@ -2397,7 +2398,7 @@ input[type="number"] {
 .sub-fineprint {
   font-family: var(--mono);
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-3);
   line-height: 1.5;
   margin-top: 14px;
 }
@@ -2406,7 +2407,7 @@ input[type="number"] {
 .sub-footer-note {
   font-family: var(--mono);
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-3);
   line-height: 1.5;
   margin-top: 18px;
 }
@@ -2419,7 +2420,7 @@ input[type="number"] {
   text-align: center;
   padding: 32px 24px;
   margin-top: 16px;
-  border-top: 1px dashed rgba(63,63,70,0.4);
+  border-top: 1px dashed var(--border);
 }
 .sub-pulsing-dots {
   display: flex;
@@ -2438,14 +2439,14 @@ input[type="number"] {
 .sub-centered-headline {
   font-family: var(--sans);
   font-size: 18px;
-  color: #f4f4f5;
+  color: var(--text);
   font-weight: 500;
   margin: 0 0 8px 0;
 }
 .sub-centered-body {
   font-family: var(--mono);
   font-size: 13px;
-  color: #a1a1aa;
+  color: var(--text-2);
   line-height: 1.6;
   max-width: 520px;
   margin: 0 0 16px 0;
@@ -2453,13 +2454,14 @@ input[type="number"] {
 .sub-stuck-escalation {
   font-family: var(--mono);
   font-size: 13px;
-  color: #fbbf24;
+  color: var(--amber);
   margin-top: 12px;
 }
 .sub-pending-channel-age {
   font-family: var(--mono);
   font-size: 11px;
-  color: #52525b;
+  color: var(--text-3);
+  opacity: 0.7;
   margin-top: 12px;
 }
 
@@ -2467,15 +2469,15 @@ input[type="number"] {
 .sub-retry-indicator {
   font-family: var(--mono);
   font-size: 12px;
-  color: #71717a;
+  color: var(--text-3);
   margin: 8px 0 16px 0;
 }
 
 /* Member identifier block (unexpected_missing_row §5) */
 .sub-member-id {
   padding: 14px;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid rgba(63,63,70,0.5);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
   border-radius: 3px;
   margin: 8px 0;
 }
@@ -2483,7 +2485,7 @@ input[type="number"] {
   display: block;
   font-family: var(--mono);
   font-size: 12px;
-  color: #e4e4e7;
+  color: var(--text);
   word-break: break-all;
   user-select: all;
   margin: 8px 0;
@@ -2492,13 +2494,98 @@ input[type="number"] {
 /* Skeleton */
 .sub-skeleton-line {
   height: 14px;
-  background: rgba(63,63,70,0.4);
+  background: var(--border);
   border-radius: 2px;
   margin: 12px 0;
 }
 
 /* Error detail */
 .sub-error-detail {
-  color: #71717a;
+  color: var(--text-3);
   font-size: 11px;
 }
+
+/* ─── Light-mode overrides for SubscriptionPanel ─────────────────
+   The signal-system semantic colors (pill hues, alert fills) were
+   defined for dark mode and don't read well on the cream light-mode
+   background. The chrome (.sub-panel container, body text, borders,
+   buttons) already adapts via theme tokens above. This block fills in
+   the state-semantic colors that need light-mode variants.
+   ──────────────────────────────────────────────────────────────── */
+
+/* Pills that need light-mode contrast adjustments — emerald/blue/
+   amber/orange/red work in both modes thanks to their saturation, but
+   gray and muted-amber need help. */
+[data-theme="light"] .sub-pill-gray-pulsing {
+  color: #525252;
+  border-color: #a3a3a3;
+  background: rgba(115,115,115,0.10);
+}
+[data-theme="light"] .sub-pill-muted-amber {
+  color: #92400e;
+  border-color: rgba(180,83,9,0.45);
+  background: rgba(253,230,138,0.40);
+}
+[data-theme="light"] .sub-pill-dim-red {
+  color: #991b1b;
+  border-color: rgba(185,28,28,0.50);
+  background: rgba(254,202,202,0.50);
+}
+
+/* Alert fills — the dark-mode warm-dark backgrounds don't work on
+   cream. Use desaturated tints with the same hue, darker text. */
+[data-theme="light"] .sub-alert-amber {
+  background: rgba(251,191,36,0.18);
+  border-color: rgba(180,83,9,0.45);
+  color: #78350f;
+}
+[data-theme="light"] .sub-alert-orange {
+  background: rgba(251,146,60,0.18);
+  border-color: rgba(194,65,12,0.50);
+  color: #7c2d12;
+}
+[data-theme="light"] .sub-alert-red {
+  background: rgba(248,113,113,0.18);
+  border-color: rgba(185,28,28,0.55);
+  color: #7f1d1d;
+}
+[data-theme="light"] .sub-alert-dim-red {
+  background: rgba(248,113,113,0.10);
+  border-color: rgba(185,28,28,0.40);
+  color: #7f1d1d;
+}
+[data-theme="light"] .sub-alert-dashed {
+  border-color: rgba(180,83,9,0.50);
+  color: #78350f;
+}
+
+/* Stat accent colors on Paid Through — the dark-mode hex values (e.g.
+   #fbbf24 amber) are too pale to read on cream. Use the theme tokens
+   instead so the accent picks up the light-mode darker hues. */
+[data-theme="light"] .sub-stat-accent-emerald,
+[data-theme="light"] .sub-stat-accent-amber {
+  color: var(--amber) !important;
+}
+[data-theme="light"] .sub-stat-accent-blue {
+  color: var(--blue) !important;
+}
+[data-theme="light"] .sub-stat-accent-orange {
+  color: #c2410c !important;
+}
+[data-theme="light"] .sub-stat-accent-red {
+  color: var(--red) !important;
+}
+
+/* Bullet markers in prepay and reassurance lines — the emerald/blue
+   from dark mode work on cream too, but slightly darker reads better. */
+[data-theme="light"] .sub-bullet-tick { color: var(--green); }
+[data-theme="light"] .sub-bullet-plus { color: var(--blue); }
+
+/* Timeline marker tones */
+[data-theme="light"] .sub-timeline-marker-amber   { color: var(--amber); }
+[data-theme="light"] .sub-timeline-marker-orange  { color: #c2410c; }
+[data-theme="light"] .sub-timeline-marker-red     { color: var(--red); }
+[data-theme="light"] .sub-timeline-marker-emerald { color: var(--green); }
+
+/* Stuck-state escalation copy */
+[data-theme="light"] .sub-stuck-escalation { color: var(--amber-dim); }
