@@ -195,6 +195,58 @@ To stop everything: `Ctrl+C` in the terminal running `dev:all`.
 
 **Port already in use.** Either `dev:all` is already running in another terminal, or another process has grabbed 3101–3103 / 5173–5175. The most common cause is orphan API processes from a prior `dev:all` that didn't shut down cleanly when you `Ctrl+C`'d the parent — `concurrently → npm → tsx → node` is enough indirection that SIGINT sometimes doesn't reach the leaf `node` processes. Run `npm run dev:kill` to force-clear all six dev ports, then re-run `dev:all`. `lsof -i :3101` shows what specifically owns a single port if you want to investigate before killing.
 
+**Polar bitcoind container exited; LND containers in restart loop.**
+*Symptom:* `docker ps` shows all four `polar-n1-*` LND containers in `Restarting (1) X seconds ago`. `docker ps -a` shows `polar-n1-backend1` as `Exited (0)` rather than `Up`. LND logs (`docker logs polar-n1-Treasury --tail 20`) show repeated lines like `unable to create partial chain control: lookup polar-n1-backend1 on 127.0.0.11:53: server misbehaving`.
+*Diagnosis:* The bitcoind backend container has stopped (host suspend, reboot, or Docker's idle-container threshold passing during a long break from dev work). LND containers can't reach it via Docker's internal DNS and crash-loop trying to connect on every restart.
+*Workaround:* `docker start polar-n1-backend1`. The four LND containers auto-recover within ~30 seconds without further intervention — they're configured to restart on failure and will succeed on their next attempt once bitcoind's DNS resolves. Confirm with `docker ps --format "{{.Names}} {{.Status}}" | grep polar`. Polar Desktop may briefly show the network as "stopped" in its UI until you click into it; the containers are running regardless.
+
+**Regtest LND reports `synced_to_chain=false` even though `block_height` matches bitcoind exactly.**
+*Symptom:* `lncli getinfo` (or the application's `lnd_node_info.synced_to_chain` column) shows `synced_to_chain: false` with `block_height` matching bitcoind's tip. The API logs `membership_status: unsynced` for the local node, and downstream code that gates on sync status (e.g. the autobuy scheduler, the rate-limited payment endpoint) treats the node as not ready.
+*Diagnosis:* LND's `synced_to_chain` flag isn't only about block height — it also requires the chain tip's *wall-clock timestamp* to be within a recent window (roughly 2 hours). On regtest, blocks only mine when you manually trigger them, so an idle regtest network has a stale tip even when every node has the same blocks. The flag won't flip until a fresh block extends the tip with a current timestamp.
+*Workaround:* Mine a single block to refresh the tip:
+```bash
+docker exec polar-n1-backend1 bitcoin-cli -regtest \
+  -rpcuser=polaruser -rpcpassword=polarpass -generate 1
+```
+`synced_to_chain` flips to `true` across all LND containers within a few seconds. Repeat once per dev session if Polar's been idle. Worth aliasing if you do this often.
+
+**No `sqlite3` CLI on the host (or installed version too old).**
+*Symptom:* `sqlite3 ~/.bitcorn-dev/treasury/db/bitcorn.sqlite` returns `command not found`, or the installed CLI is older than the schema expects and some PRAGMA queries fail.
+*Diagnosis:* The Bitcorn API uses `better-sqlite3` (Node) as its SQLite driver, so there's no project requirement on a host `sqlite3` binary. Most dev environments don't have one installed.
+*Workaround:* Use `better-sqlite3` directly via `node -e` — it's already a project dependency under `app/api/node_modules`:
+```bash
+cd app/api
+node -e "
+const Database = require('better-sqlite3');
+const db = new Database('/home/<you>/.bitcorn-dev/treasury/db/bitcorn.sqlite', { readonly: true });
+console.log(db.prepare('SELECT * FROM subscription_policy').get());
+"
+```
+Same pattern works for inspecting an Umbrel API container's DB when SSH is your only access:
+```bash
+sudo docker exec bitcorn-lightning-node_api_1 node -e "
+const Database = require('better-sqlite3');
+const db = new Database('/data/db/bitcorn.sqlite', { readonly: true });
+console.log(db.prepare('SELECT scope, expires_at FROM subscription_local_token').get());
+"
+```
+Note Umbrel containers using the older docker-compose underscore naming convention (`bitcorn-lightning-node_api_1`) vs the newer dash convention (`bitcorn-lightning-node-api-1`) — check `docker ps` if commands fail with "No such object."
+
+**`gh pr edit <n> --base <branch>` silently fails to retarget the PR.**
+*Symptom:* You run `gh pr edit 161 --base develop` to retarget a stacked PR after its parent merged. The command outputs a GraphQL deprecation warning about Projects (classic) and exits 0 with no further confirmation. `gh pr view 161 --json baseRefName` afterward still shows the OLD base. If you proceed to `gh pr merge 161 --merge`, the merge lands in the wrong base branch, stranding the work on a defunct intermediate branch.
+*Diagnosis:* Observed in `gh` CLI version 3.114.x. The `--base` retargeting is implemented as a GraphQL mutation, and the (unrelated) Projects-classic deprecation warning short-circuits the actual mutation while still returning a success exit code. The REST endpoint for the same operation isn't affected.
+*Workaround:* Bypass `gh pr edit` and call the REST endpoint directly:
+```bash
+gh api -X PATCH /repos/<owner>/<repo>/pulls/<n> -f base=<new-base-branch>
+```
+Returns the full updated PR object as JSON. `.base.ref` confirms the new base immediately.
+*Verification (run after either retargeting method):*
+```bash
+gh pr view <n> --json baseRefName -q '.baseRefName'
+```
+Should print the NEW base. **Never trust the absence of an error message** — `gh pr edit --base` has shipped this silent-failure mode in at least one production gh CLI version, so verify the retarget took before proceeding to merge.
+*Historical incident:* during the v1.14.0 release flow on 2026-05-11, PR #161's retarget from `feature/subscription-detection` to `develop` silently failed via this bug. The subsequent merge landed Stage 3's code on `feature/subscription-detection` (already a defunct branch since `feature/subscription-detection` itself had just merged to develop), so the Stage 3 commit was stranded one branch deep. Recovery required opening a fresh PR (#163) from the same head branch to develop. The lesson: verify with `gh pr view --json baseRefName` after every retarget, regardless of whether the retarget command appeared to succeed.
+
 ## Resetting state
 
 **Soft reset (preserves channels and balances).** Stop the network in Polar, then start it again. Existing data persists across restarts.

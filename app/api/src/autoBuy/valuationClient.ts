@@ -1,4 +1,5 @@
 import { ENV } from "../config/env";
+import { getCachedTokenIfFresh } from "../subscription/tokenRefresh";
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 60 min
 
@@ -36,8 +37,20 @@ async function fetchAndCache<T>(key: string, url: string): Promise<T | null> {
   if (hit && Date.now() - hit.cachedAt < CACHE_TTL_MS) {
     return hit.value;
   }
+  // The Worker's /valuation/* endpoints are full-scope JWT gated. Treasury
+  // self-mints a full-scope token (subscription/tokenIssuance.ts), so the
+  // cached token in subscription_local_token authorizes us. If no fresh
+  // token is available the Worker will 401 and we fall back to whatever
+  // cached value we have — same shape as transport_error handling.
+  // Stage 5a.3 will replace this inline attachment with a workerFetch()
+  // wrapper used by every Worker call site.
+  const headers: Record<string, string> = {};
+  const token = getCachedTokenIfFresh();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token.jwt}`;
+  }
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { headers });
     if (!res.ok) {
       console.error(`[valuationClient] ${url} → HTTP ${res.status}`);
       return hit?.value ?? null; // stale fallback on upstream failure

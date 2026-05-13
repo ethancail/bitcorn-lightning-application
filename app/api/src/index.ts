@@ -105,6 +105,7 @@ import { verifyChallengeSignature, ChallengeAuthError } from "./subscription/cha
 import { issueTokenForPubkey } from "./subscription/tokenIssuance";
 import { getTreasuryPublicKeyForCloudflare } from "./subscription/treasuryKeypair";
 import { startTokenRefreshScheduler } from "./subscription/tokenRefresh";
+import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
   verifyEntitlementToken,
   extractBearerToken,
@@ -3494,6 +3495,12 @@ server.listen(PORTS.userApi, () => {
   startTier3Scheduler();
   // Subscription entitlement-token refresh — every node (treasury and
   // members) refreshes its local JWT every ~12h. Treasury self-mints
-  // full-scope; members mint full or prepay depending on their tier.
+  // full-scope; members mint full (current tier) or payment (any other
+  // subscriber tier — prepay or any lapsed state).
   startTokenRefreshScheduler();
+  // Treasury-side: best-effort check that the Worker's published
+  // SUBSCRIPTION_PUBLIC_KEY matches the local Ed25519 keypair. Member
+  // nodes early-out inside the function. Logs a WARN with the operator
+  // runbook if drift is detected.
+  startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null);
 });

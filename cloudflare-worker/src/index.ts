@@ -62,21 +62,28 @@ export default {
       return handleValuationRefresh(request, env);
     }
 
-    // ── PREPAY-scope endpoints (Onramp + commodity prices) ────────
-    // scope=prepay tokens are sufficient; scope=full tokens are also
-    // accepted (full is a superset).
+    // ── SUBSCRIBER-BASE endpoints (Onramp + commodity prices) ─────
+    // Per decisions/2026-05-11-subscription-stage-5a-architectural-
+    // deltas.md decision #1: these endpoints serve the recovery path
+    // (Onramp lets a lapsed member acquire BTC to renew; prices give
+    // them the BTC/USD context to size the purchase), so any valid
+    // subscriber token is accepted — payment-scope (prepay + all
+    // lapsed tiers) and full-scope (current) both work.
     if (request.method === "POST" && (url.pathname === "/" || url.pathname === "")) {
-      return withJwtGate(request, env, "prepay", () => handleOnramp(request, env));
+      return withJwtGate(request, env, "payment", () => handleOnramp(request, env));
     }
     if (request.method === "GET" && url.pathname === "/prices") {
-      return withJwtGate(request, env, "prepay", () => handlePrices(env));
+      return withJwtGate(request, env, "payment", () => handlePrices(env));
     }
     if (request.method === "GET" && url.pathname === "/prices/corn-history") {
-      return withJwtGate(request, env, "prepay", () => handleCornHistory(env));
+      return withJwtGate(request, env, "payment", () => handleCornHistory(env));
     }
 
-    // ── FULL-scope endpoints (valuation reads) ────────────────────
-    // scope=prepay tokens are rejected with 403; scope=full required.
+    // ── TIER-GATED endpoints (valuation reads) ────────────────────
+    // payment-scope tokens are rejected with 403; only `current`-tier
+    // members hold full-scope tokens, so these endpoints are limited
+    // to actively-paid subscribers. Consumed services, not recovery
+    // paths.
     if (request.method === "GET" && url.pathname === "/valuation/current") {
       return withJwtGate(request, env, "full", () => handleValuationCurrent(env));
     }

@@ -1,19 +1,31 @@
 // JWT minting + tier-based authorization for /api/subscription/token.
 //
-// Source of truth: bitcorn-research/specs/2026-05-08-member-subscription.md §6
+// Source of truth:
+//   - bitcorn-research/specs/2026-05-08-member-subscription.md §6
+//   - bitcorn-research/decisions/2026-05-11-subscription-stage-5a-
+//     architectural-deltas.md (scope rename + broadened issuance)
 //
-// Issuance logic (§6.3):
-//   if current_tier == 'current'        → mint scope='full', exp=now+24h
-//   if current_tier == 'prepay'         → mint scope='prepay', exp=now+24h
-//   if current_tier == 'worker_lapsed'  → 402 (paid_through + deposit_address)
-//   otherwise                           → 402
+// Issuance logic (Stage 5a, post-deltas):
+//   if claimed pubkey == TREASURY_PUBKEY → SELF-MINT scope='full'
+//   look up subscription row
+//     if NOT EXISTS                        → 402 no_subscription_row
+//     if current_tier == 'current'         → mint scope='full',    exp=now+24h
+//     if current_tier == 'prepay'          → mint scope='payment', exp=now+24h
+//     if current_tier == 'worker_lapsed'   → mint scope='payment', exp=now+24h
+//     if current_tier == 'routing_lapsed'  → mint scope='payment', exp=now+24h
+//     if current_tier == 'close_due'       → mint scope='payment', exp=now+24h
+//
+// `payment` scope authorizes subscriber-base Worker endpoints (Onramp,
+// commodity prices) but not tier-gated endpoints (valuation). It is
+// the recovery-path scope — every subscriber state other than `current`
+// receives one so they can buy BTC and pay to advance.
 //
 // Token shape (§6.2):
 //   header  { "alg": "EdDSA", "typ": "JWT" }
 //   payload {
 //     "iss": "bitcorn-treasury",
 //     "sub": <member_pubkey hex>,
-//     "scope": "full" | "prepay",
+//     "scope": "full" | "payment",
 //     "iat": <unix>,
 //     "exp": <unix, iat + 24h>
 //   }
@@ -23,15 +35,14 @@
 // is issued. The treasury is not a subscriber, so there is no
 // subscription row to consult; but the treasury needs to authenticate
 // its own outgoing Worker calls (e.g., the autobuy scheduler reading
-// /valuation/current). Locked in interactive Stage 4 decision: "treasury
-// self-mints a full-scope token."
+// /valuation/current).
 
 import { SignJWT } from "jose";
 import { db } from "../db";
 import { ENV } from "../config/env";
 import { getTreasurySigningKeypair } from "./treasuryKeypair";
 
-export type TokenScope = "full" | "prepay";
+export type TokenScope = "full" | "payment";
 
 export interface MintedToken {
   jwt: string;
@@ -40,11 +51,10 @@ export interface MintedToken {
   expires_at_sec: number;
 }
 
+// Post-deltas, the only denial path is no_subscription_row. Lapsed
+// tiers now mint payment-scope tokens rather than denying.
 export interface IssuanceDenial {
-  reason: "worker_lapsed" | "routing_lapsed" | "close_due" | "no_subscription_row";
-  tier: string | null;
-  paid_through: number | null;
-  deposit_address: string | null;
+  reason: "no_subscription_row";
 }
 
 export type IssuanceResult =
@@ -53,10 +63,18 @@ export type IssuanceResult =
 
 const TOKEN_LIFETIME_SEC = 24 * 60 * 60;
 
+const PAYMENT_SCOPE_TIERS = new Set([
+  "prepay",
+  "worker_lapsed",
+  "routing_lapsed",
+  "close_due",
+]);
+
 /**
  * Resolves a member pubkey to a tier + auxiliary state, then mints
- * (or refuses) a token per §6.3. Pure of HTTP — caller wires the
- * result to a 200 / 402 / 500 response.
+ * (or refuses) a token per spec §6.3 as refined by the Stage 5a
+ * deltas record. Pure of HTTP — caller wires the result to a 200 /
+ * 402 / 500 response.
  */
 export async function issueTokenForPubkey(
   memberPubkey: string,
@@ -74,48 +92,27 @@ export async function issueTokenForPubkey(
 
   const row = db
     .prepare(
-      `SELECT current_tier, paid_through, deposit_address
-       FROM subscription WHERE member_pubkey = ?`,
+      `SELECT current_tier FROM subscription WHERE member_pubkey = ?`,
     )
-    .get(requestedPubkey) as
-      | {
-          current_tier: string;
-          paid_through: number;
-          deposit_address: string;
-        }
-      | undefined;
+    .get(requestedPubkey) as { current_tier: string } | undefined;
 
   if (!row) {
-    return {
-      kind: "denied",
-      denial: {
-        reason: "no_subscription_row",
-        tier: null,
-        paid_through: null,
-        deposit_address: null,
-      },
-    };
+    return { kind: "denied", denial: { reason: "no_subscription_row" } };
   }
 
   if (row.current_tier === "current") {
     return { kind: "minted", token: await mintToken(requestedPubkey, "full") };
   }
-  if (row.current_tier === "prepay") {
-    return { kind: "minted", token: await mintToken(requestedPubkey, "prepay") };
+  if (PAYMENT_SCOPE_TIERS.has(row.current_tier)) {
+    return { kind: "minted", token: await mintToken(requestedPubkey, "payment") };
   }
 
-  // worker_lapsed / routing_lapsed / close_due → 402 with details
-  // per spec §6.3. The body shape is the same so the member-side UI
-  // can render a uniform "your subscription needs attention" panel.
-  return {
-    kind: "denied",
-    denial: {
-      reason: row.current_tier as IssuanceDenial["reason"],
-      tier: row.current_tier,
-      paid_through: row.paid_through,
-      deposit_address: row.deposit_address,
-    },
-  };
+  // Defensive: any tier we don't recognize falls back to payment-
+  // scope. Better to issue a recovery-path token than deny a member
+  // whose tier the issuer was just updated for. (No known path exists
+  // to reach this branch — subscription.current_tier is a CHECK-bound
+  // enum — but Stage 6 may add tier values and this avoids breakage.)
+  return { kind: "minted", token: await mintToken(requestedPubkey, "payment") };
 }
 
 async function mintToken(
