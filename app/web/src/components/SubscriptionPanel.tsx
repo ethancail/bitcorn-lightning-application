@@ -32,6 +32,7 @@ type ViewState =
   | { kind: "ok"; status: SubscriptionStatus }
   | { kind: "auth_error"; statusCode: number; detail?: string }
   | { kind: "infrastructure_error"; detail?: string }
+  | { kind: "transport_unreachable"; detail?: string }
   | { kind: "network_error"; detail?: string };
 
 export default function SubscriptionPanel() {
@@ -66,9 +67,20 @@ export default function SubscriptionPanel() {
     } catch (err: any) {
       const statusCode: number | undefined = err?.status;
       const detail: string | undefined = err?.detail ?? err?.message;
+      const code: string | undefined = err?.code;
       if (statusCode === 401) {
         setView({ kind: "auth_error", statusCode, detail });
+      } else if (statusCode === 503 && code === "treasury_unreachable") {
+        // Spec §10 #4 — distinct view kind for upstream-service-recovery
+        // shape: panel knows recovery is automatic when the connection
+        // restores; Refresh-now action has no lockout (matching the
+        // "upstream service recovery" UX expectation rather than
+        // "deterministic retry against a definitive answer").
+        setView({ kind: "transport_unreachable", detail });
       } else if (statusCode === 503) {
+        // no_local_token / no_treasury_key — local-side prerequisites
+        // not satisfied; recovery requires the local refresh scheduler
+        // to complete a tick.
         setView({ kind: "infrastructure_error", detail });
       } else {
         setView({ kind: "network_error", detail });
@@ -94,12 +106,24 @@ export default function SubscriptionPanel() {
     return <LoadingPanel />;
   }
   if (view.kind === "infrastructure_error") {
-    // 503 path: infrastructure not ready (no_treasury_key, treasury
-    // unreachable). Distinct from auth — show the error state with
+    // 503 + no_local_token / no_treasury_key — local-side prerequisites
+    // not satisfied. Distinct from auth — show the error state with
     // retry affordance.
     return (
       <ErrorPanel
         message="Couldn't load subscription state — infrastructure not ready."
+        detail={view.detail}
+        onRetry={fetchStatus}
+        lastFetchAt={lastFetchAt}
+      />
+    );
+  }
+  if (view.kind === "transport_unreachable") {
+    // Spec §10 #4 — 503 + treasury_unreachable. Treasury can't be
+    // reached from this node. Self-heals when the connection comes
+    // back; Refresh-now action without lockout.
+    return (
+      <TransportUnreachablePanel
         detail={view.detail}
         onRetry={fetchStatus}
         lastFetchAt={lastFetchAt}
@@ -728,6 +752,50 @@ function ErrorPanel({
       </AlertBox>
       <p className="sub-retry-indicator">
         <span aria-hidden>·</span> last attempt {ago}.
+      </p>
+      <BracketHeading>ACTIONS</BracketHeading>
+      <ActionsRow
+        primary={<button className="sub-btn" onClick={onRetry}>Refresh now <span aria-hidden>→</span></button>}
+      />
+    </section>
+  );
+}
+
+// Spec §10 #4 — distinct from ErrorPanel (which covers infrastructure_error
+// for local-side prerequisites: no_local_token / no_treasury_key) and from
+// UnexpectedMissingRowRender (which covers the operational-anomaly Case D
+// where the treasury responds with applicable:false, reason:missing).
+//
+// transport_unreachable shape:
+//   - dim-red pill register (same emotional register as unexpected_missing_row;
+//     system is honestly reporting it can't do its job, no user action required)
+//   - "Couldn't reach the treasury" headline
+//   - "Retrying automatically" sub-copy (recovery is upstream-service-coming-back,
+//     not operator-side investigation)
+//   - Refresh now → action without lockout (deterministic-retry lockout
+//     belongs to unexpected_missing_row where the same answer comes back;
+//     here retry timing is non-deterministic and resolves when the tunnel
+//     reconnects, so instant retry is the right affordance)
+function TransportUnreachablePanel({
+  detail,
+  onRetry,
+  lastFetchAt,
+}: {
+  detail?: string;
+  onRetry: () => void;
+  lastFetchAt: number;
+}) {
+  const ago = useLiveAgo(lastFetchAt);
+  return (
+    <section className="sub-panel">
+      <PanelHeader pill={<Pill kind="dim-red" label="treasury unreachable" />} />
+      <AlertBox variant="dim-red" icon="✕">
+        Couldn't reach the treasury. Retrying automatically — service should
+        recover when the connection is restored.
+        {detail ? <span className="sub-error-detail"> ({detail})</span> : null}
+      </AlertBox>
+      <p className="sub-retry-indicator">
+        <span aria-hidden>·</span> Checking again automatically every 15 seconds — last attempt {ago}.
       </p>
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
