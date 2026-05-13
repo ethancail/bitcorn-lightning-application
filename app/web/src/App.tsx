@@ -19,6 +19,7 @@ import Peers from "./pages/Peers";
 import ValuationInput from "./pages/ValuationInput";
 import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
+import SubscriptionPanel from "./components/SubscriptionPanel";
 import Liquidity from "./pages/Liquidity";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
@@ -592,6 +593,13 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
       <p style={{ color: "var(--text-3)", fontSize: "0.875rem", marginBottom: 16 }}>
         Preferences for your BitCorn node
       </p>
+
+      {/* Subscription panel — member nodes only. Treasury doesn't
+          subscribe to itself; its own /api/subscription/status returns
+          Case E (no_channel to self), which would render a misleading
+          state. The treasury operator inspects subscription state via
+          the admin debug path (Stage 5b admin view). */}
+      {!isTreasury && <SubscriptionPanel />}
 
       <div className="settings-section-label">Personal</div>
 

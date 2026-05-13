@@ -33,6 +33,7 @@ export const api = {
   getCoinbaseOnrampUrl: () => apiFetch<OnrampUrlResponse>("/api/coinbase/onramp-url"),
   getCommodityPrices: () => apiFetch<CommodityPrices>("/api/commodity-prices"),
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
+  getSubscriptionStatus: () => apiFetch<SubscriptionStatus>("/api/subscription/status"),
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   getNodePreflight: () => apiFetch<PreflightResult>("/api/node/preflight"),
@@ -543,6 +544,53 @@ export type CornHistoryEntry = {
   month: number;
   price: number;
 };
+
+// ─── Subscription status (Stage 5a §5.2) ───────────────────────────────────
+// Discriminated by `applicable`. When true, the full subscription payload
+// is present. When false, `reason` identifies one of five sub-cases the UI
+// branches on.
+
+export type SubscriptionTier =
+  | "prepay"
+  | "current"
+  | "worker_lapsed"
+  | "routing_lapsed"
+  | "close_due";
+
+export type SubscriptionStatusApplicable = {
+  applicable: true;
+  member_pubkey: string;
+  current_tier: SubscriptionTier;
+  paid_through: number;
+  price_sats: number;
+  period_days: number;
+  deposit_address: string;
+  last_payment_at: number | null;
+  last_payment_txid: string | null;
+  grace: {
+    worker_until: number;
+    routing_until: number;
+    close_at: number;
+  };
+};
+
+export type SubscriptionNotApplicableReason =
+  | "external_peer"
+  | "unclassified"
+  | "not_yet_allocated"
+  | "missing"
+  | "no_channel";
+
+export type SubscriptionStatusNotApplicable = {
+  applicable: false;
+  reason: SubscriptionNotApplicableReason;
+  /** Present only when reason === "not_yet_allocated". */
+  channel_age_seconds?: number;
+};
+
+export type SubscriptionStatus =
+  | SubscriptionStatusApplicable
+  | SubscriptionStatusNotApplicable;
 
 export type CommodityPrice = {
   price: number;

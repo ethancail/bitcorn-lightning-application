@@ -104,13 +104,23 @@ import { startTier3Scheduler } from "./subscription/tier3Scheduler";
 import { verifyChallengeSignature, ChallengeAuthError } from "./subscription/challengeAuth";
 import { issueTokenForPubkey } from "./subscription/tokenIssuance";
 import { getTreasuryPublicKeyForCloudflare } from "./subscription/treasuryKeypair";
-import { startTokenRefreshScheduler } from "./subscription/tokenRefresh";
+import {
+  startTokenRefreshScheduler,
+  getResolvedTreasuryBaseUrl,
+  getCachedToken,
+} from "./subscription/tokenRefresh";
+import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
   verifyEntitlementToken,
   extractBearerToken,
   JwtVerificationError,
 } from "./subscription/jwtVerify";
+import {
+  computeSubscriptionStatusForPubkey,
+  mapJwtErrorToFastPath,
+} from "./subscription/statusHandler";
+import { observeTierForTransition } from "./subscription/transitionObserver";
 import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
 import {
   handleMemberLoopOutQuote,
@@ -313,10 +323,7 @@ const server = http.createServer(async (req, res) => {
       const { address } = await createLndChainAddress();
       const node = getNodeInfo();
 
-      const sessionToken = await getCoinbaseSessionToken(
-        ENV.coinbaseWorkerUrl,
-        address
-      );
+      const sessionToken = await getCoinbaseSessionToken(address);
       const url =
         `https://pay.coinbase.com/buy/select-asset` +
         `?appId=${encodeURIComponent(ENV.coinbaseAppId)}` +
@@ -406,92 +413,188 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Status read for a member's subscription row. Two auth modes
-  // (Stage 4):
-  // 1. Member-callable via `Authorization: Bearer <jwt>` — the member
-  //    presents the JWT they got from /api/subscription/token. The
-  //    sub claim is the pubkey we look up by.
-  // 2. Admin debug via `?member_pubkey=<hex>` — treasury-only, no
-  //    token required, looks up by the query-param pubkey.
+  // Status read for a member's subscription row.
   //
-  // Missing both → 401. Either path returns the same payload shape
-  // (spec §8.1).
+  // Source of truth: bitcorn-research/specs/2026-05-11-subscription-
+  // stage-5a-jwt-fix-and-member-ui.md §5
+  //
+  // Dispatch by node role:
+  //
+  // ── On treasury ──
+  //   Two auth paths coexist:
+  //   (1) Admin debug: `?member_pubkey=<hex>` — assertTreasury check
+  //       (local node_role); no Bearer required. Treasury-local
+  //       operator/admin inspection.
+  //   (2) Bearer JWT: extract sub claim, that's the lookup pubkey.
+  //   Either resolves to a pubkey, then computeSubscriptionStatusFor
+  //   Pubkey returns the §5.2 discriminated Case A-E shape.
+  //
+  // ── On member ──
+  //   Admin query-param is rejected with 403 (admin paths are treasury-
+  //   only). Bearer JWT is validated LOCALLY for the fast-path 401/503
+  //   per §5.1 (gives the UI a quick rejection without a cross-node
+  //   round trip for obviously-bad tokens). Then forward to treasury,
+  //   return its response unmodified. On a successful Case A response,
+  //   fire the tier-transition observer (§6.5) which checks for scope
+  //   mismatch and triggers an out-of-band token refresh if needed.
   if (req.method === "GET" && req.url?.startsWith("/api/subscription/status")) {
     try {
       const url = new URL(req.url, "http://localhost");
       const queryPubkey = url.searchParams.get("member_pubkey");
+      const node = getNodeInfo();
+      const isTreasury =
+        !!node?.pubkey &&
+        !!ENV.treasuryPubkey &&
+        node.pubkey.toLowerCase() === ENV.treasuryPubkey.toLowerCase();
 
-      let lookupPubkey: string | null = null;
+      if (isTreasury) {
+        // ── Treasury path: compute response locally ──
+        let lookupPubkey: string;
+        if (queryPubkey) {
+          // Admin debug — requires treasury role (we are on treasury
+          // here, so this passes; assertTreasury kept as belt-and-
+          // suspenders against future role-config drift).
+          try { assertTreasury(node?.node_role); } catch (err: any) {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err?.message }));
+            return;
+          }
+          lookupPubkey = queryPubkey.toLowerCase();
+        } else {
+          const bearer = extractBearerToken(req.headers["authorization"] ?? null);
+          if (!bearer) {
+            res.writeHead(401, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "missing", detail: "missing Bearer JWT" }));
+            return;
+          }
+          try {
+            const verified = await verifyEntitlementToken(bearer);
+            lookupPubkey = verified.sub;
+          } catch (err: any) {
+            if (err instanceof JwtVerificationError) {
+              const fp = mapJwtErrorToFastPath(err);
+              res.writeHead(fp.status, { "Content-Type": "application/json" });
+              res.end(JSON.stringify(fp.body));
+              return;
+            }
+            throw err;
+          }
+        }
+        const payload = computeSubscriptionStatusForPubkey(lookupPubkey);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(payload));
+        return;
+      }
+
+      // ── Member path: validate locally, proxy to treasury ──
       if (queryPubkey) {
-        // Admin debug path — requires treasury role.
-        const node = getNodeInfo();
-        try { assertTreasury(node?.node_role); } catch (err: any) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: err?.message }));
-          return;
-        }
-        lookupPubkey = queryPubkey.toLowerCase();
-      } else {
-        // Member-callable path — Bearer JWT required.
-        const bearer = extractBearerToken(req.headers["authorization"] ?? null);
-        if (!bearer) {
-          res.writeHead(401, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "missing_authorization" }));
-          return;
-        }
+        // Admin debug is treasury-only; member nodes refuse to proxy
+        // it (would otherwise be a per-pubkey-data exfiltration hole
+        // since the member→treasury call is unauthenticated past the
+        // local network).
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "admin_query_treasury_only" }));
+        return;
+      }
+      // Bearer resolution for the member proxy. Two valid sources:
+      //
+      // 1. Authorization header — set by cross-node callers (a member
+      //    node calling another member's status, or a future external
+      //    caller). We validate this locally (fast-path 401/503) so
+      //    obviously-bad tokens fail without a cross-node round trip.
+      //
+      // 2. Cached local token — fallback for same-host web → local-API
+      //    calls. The web frontend has no way to obtain the cached
+      //    JWT (it's stored in the API's SQLite, not exposed to the
+      //    bundle), so a missing header is the normal case for the
+      //    Subscription panel polling its own local API. We use the
+      //    cached token as the proxy Bearer; treasury validates it
+      //    the same way it would any other Bearer. No local fast-path
+      //    validation in this branch because the cached token was just
+      //    minted by tokenRefresh — local validation would be a tautology.
+      //
+      // If neither source produces a usable token, return 503 (same
+      // semantic as treasury_unreachable — infrastructure isn't ready
+      // to serve status yet).
+      let bearer = extractBearerToken(req.headers["authorization"] ?? null);
+      if (bearer) {
         try {
-          const verified = await verifyEntitlementToken(bearer);
-          lookupPubkey = verified.sub;
+          await verifyEntitlementToken(bearer);
         } catch (err: any) {
           if (err instanceof JwtVerificationError) {
-            res.writeHead(401, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: err.reason, detail: err.message }));
+            const fp = mapJwtErrorToFastPath(err);
+            res.writeHead(fp.status, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(fp.body));
             return;
           }
           throw err;
         }
+      } else {
+        const cached = getCachedToken();
+        if (!cached || !cached.jwt) {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            error: "no_local_token",
+            detail: "no Authorization header and no cached subscription token; tokenRefresh has not yet completed a successful tick",
+          }));
+          return;
+        }
+        bearer = cached.jwt;
       }
+      // bearer is guaranteed non-null at this point (branches above
+      // either set it or returned early). TS narrows correctly.
 
-      const row = db
-        .prepare(
-          `SELECT member_pubkey, deposit_address, paid_through, created_at,
-                  last_payment_txid, last_payment_at, current_tier
-           FROM subscription WHERE member_pubkey = ?`,
-        )
-        .get(lookupPubkey) as
-          | {
-              member_pubkey: string;
-              deposit_address: string;
-              paid_through: number;
-              created_at: number;
-              last_payment_txid: string | null;
-              last_payment_at: number | null;
-              current_tier: string;
-            }
-          | undefined;
-      if (!row) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "no_subscription_row" }));
+      // Resolve treasury base URL. tokenRefresh.ts caches it from
+      // the most-recent /treasury-info discovery; if neither env nor
+      // cache is populated, the refresh scheduler hasn't yet succeeded
+      // — return 503 (infrastructure not ready, same recovery semantic
+      // as no_treasury_key).
+      const treasuryBase = getResolvedTreasuryBaseUrl();
+      if (!treasuryBase) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: "treasury_unreachable",
+          detail: "no treasury base URL resolved; tokenRefresh has not yet completed a successful tick",
+        }));
         return;
       }
-      const policy = getSubscriptionPolicy();
-      const MS_PER_DAY = 86_400_000;
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({
-        member_pubkey: row.member_pubkey,
-        current_tier: row.current_tier,
-        paid_through: row.paid_through,
-        price_sats: policy.price_sats,
-        period_days: policy.period_days,
-        deposit_address: row.deposit_address,
-        last_payment_at: row.last_payment_at,
-        last_payment_txid: row.last_payment_txid,
-        grace: {
-          worker_until: row.paid_through + policy.grace_days_worker * MS_PER_DAY,
-          routing_until: row.paid_through + policy.grace_days_routing * MS_PER_DAY,
-          close_at: row.paid_through + policy.grace_days_close * MS_PER_DAY,
-        },
-      }));
+
+      let treasuryRes: Response;
+      try {
+        treasuryRes = await fetch(
+          `${treasuryBase.replace(/\/+$/, "")}/api/subscription/status`,
+          {
+            method: "GET",
+            headers: { Authorization: `Bearer ${bearer}` },
+            // 5s timeout per spec §5.1
+            signal: AbortSignal.timeout(5000),
+          },
+        );
+      } catch (err: any) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: "treasury_unreachable",
+          detail: err?.message ?? String(err),
+        }));
+        return;
+      }
+      const treasuryBody = await treasuryRes.json().catch(() => ({}));
+      res.writeHead(treasuryRes.status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(treasuryBody));
+
+      // Side-effect: tier-transition observation. Only fires on
+      // applicable: true responses (no tier to observe otherwise).
+      // The observer itself dedupes via in-flight guard and no-ops
+      // when scope already matches the new tier.
+      if (
+        treasuryRes.status === 200 &&
+        treasuryBody &&
+        typeof treasuryBody === "object" &&
+        (treasuryBody as { applicable?: boolean }).applicable === true
+      ) {
+        const tier = (treasuryBody as { current_tier?: string }).current_tier;
+        if (typeof tier === "string") observeTierForTransition(tier);
+      }
     } catch (err: any) {
       console.error("[subscription] status read failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
@@ -832,16 +935,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Public — commodity prices proxied from Cloudflare Worker (KV-cached)
+  // Commodity prices proxied from Cloudflare Worker (KV-cached).
+  // Worker-side: subscriber-base scope — any valid Bearer accepted.
   if (req.method === "GET" && req.url === "/api/commodity-prices") {
     try {
-      const workerUrl = ENV.coinbaseWorkerUrl;
-      if (!workerUrl) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "commodity_prices_not_configured" }));
-        return;
-      }
-      const response = await fetch(`${workerUrl}/prices`);
+      const response = await workerFetch("/prices");
       if (!response.ok) {
         res.writeHead(502, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "commodity_prices_unavailable" }));
@@ -850,7 +948,12 @@ const server = http.createServer(async (req, res) => {
       const data = await response.json();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "commodity_prices_not_configured" }));
+        return;
+      }
       console.error("[commodity-prices]", err);
       res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "commodity_prices_unavailable" }));
@@ -858,16 +961,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Public — historical corn prices proxied from Cloudflare Worker
+  // Historical corn prices proxied from Cloudflare Worker.
+  // Worker-side: subscriber-base scope.
   if (req.method === "GET" && req.url === "/api/corn-history") {
     try {
-      const workerUrl = ENV.coinbaseWorkerUrl;
-      if (!workerUrl) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "worker_not_configured" }));
-        return;
-      }
-      const response = await fetch(`${workerUrl}/prices/corn-history`);
+      const response = await workerFetch("/prices/corn-history");
       if (!response.ok) {
         res.writeHead(502, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "corn_history_unavailable" }));
@@ -876,7 +974,12 @@ const server = http.createServer(async (req, res) => {
       const data = await response.json();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "worker_not_configured" }));
+        return;
+      }
       console.error("[corn-history]", err);
       res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "corn_history_unavailable" }));
@@ -884,16 +987,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Public — treasury connection info proxied from Cloudflare Worker
+  // Treasury connection info proxied from Cloudflare Worker.
+  // Worker-side: public — no Bearer required, wrapper attaches one if
+  // cached anyway (harmless on public endpoints).
   if (req.method === "GET" && req.url === "/api/treasury-info") {
     try {
-      const workerUrl = ENV.coinbaseWorkerUrl;
-      if (!workerUrl) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "worker_not_configured" }));
-        return;
-      }
-      const response = await fetch(`${workerUrl}/treasury-info`);
+      const response = await workerFetch("/treasury-info");
       if (!response.ok) {
         res.writeHead(502, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "treasury_info_unavailable" }));
@@ -902,7 +1001,12 @@ const server = http.createServer(async (req, res) => {
       const data = await response.json();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "worker_not_configured" }));
+        return;
+      }
       console.error("[treasury-info]", err);
       res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "treasury_info_unavailable" }));
@@ -2293,15 +2397,18 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && req.url === "/api/network/recommended-peers") {
     try {
-      const workerUrl = ENV.coinbaseWorkerUrl;
-      if (!workerUrl) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "worker_not_configured" }));
-        return;
+      // Worker-side: public — no Bearer required.
+      let response: Response;
+      try {
+        response = await workerFetch("/recommended-peers");
+      } catch (err: any) {
+        if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "worker_not_configured" }));
+          return;
+        }
+        throw err;
       }
-
-      // Fetch curated list from Worker
-      const response = await fetch(`${workerUrl}/recommended-peers`);
       if (!response.ok) {
         res.writeHead(502, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "recommended_peers_unavailable" }));
@@ -2369,15 +2476,19 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        // Fetch approved list from Worker — peer_id must match
-        const workerUrl = ENV.coinbaseWorkerUrl;
-        if (!workerUrl) {
-          res.writeHead(503, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "worker_not_configured" }));
-          return;
+        // Fetch approved list from Worker — peer_id must match.
+        // Worker-side: public — no Bearer required.
+        let response: Response;
+        try {
+          response = await workerFetch("/recommended-peers");
+        } catch (err: any) {
+          if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+            res.writeHead(503, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "worker_not_configured" }));
+            return;
+          }
+          throw err;
         }
-
-        const response = await fetch(`${workerUrl}/recommended-peers`);
         if (!response.ok) {
           res.writeHead(502, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "could not verify peer against approved list" }));
