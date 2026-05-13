@@ -18,7 +18,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     const message = err.detail
       ? `${err.error ?? "Request failed"}: ${err.detail}`
       : (err.error ?? "Request failed");
-    throw Object.assign(new Error(message), { status: res.status, detail: err.detail });
+    throw Object.assign(new Error(message), {
+      status: res.status,
+      detail: err.detail,
+      code: err.error,
+    });
   }
   return res.json();
 }
