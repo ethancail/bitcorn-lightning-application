@@ -38,6 +38,18 @@ export default function SubscriptionPanel() {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const [pendingSinceMs, setPendingSinceMs] = useState<number | null>(null);
   const [lastFetchAt, setLastFetchAt] = useState<number>(Date.now());
+  // Local pubkey used by unexpected_missing_row's support-context block.
+  // Fetched once on mount; LND identity doesn't change post-boot. Null
+  // until first fetch completes — the render falls back to a neutral
+  // placeholder during the brief window.
+  const [localPubkey, setLocalPubkey] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.getNode()
+      .then((node) => { if (!cancelled) setLocalPubkey(node.pubkey ?? null); })
+      .catch(() => { /* leave null; render falls back gracefully */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -119,6 +131,7 @@ export default function SubscriptionPanel() {
       status={status}
       pendingSinceMs={pendingSinceMs}
       lastFetchAt={lastFetchAt}
+      localPubkey={localPubkey}
       onRetry={fetchStatus}
     />
   );
@@ -507,18 +520,20 @@ function NotApplicablePanel({
   status,
   pendingSinceMs,
   lastFetchAt,
+  localPubkey,
   onRetry,
 }: {
   status: SubscriptionStatusNotApplicable;
   pendingSinceMs: number | null;
   lastFetchAt: number;
+  localPubkey: string | null;
   onRetry: () => void;
 }) {
   switch (status.reason) {
     case "external_peer":     return <ExternalPeerRender />;
     case "unclassified":      return <UnclassifiedRender />;
     case "not_yet_allocated": return <PendingInitialSyncRender pendingSinceMs={pendingSinceMs} channelAgeSec={status.channel_age_seconds ?? 0} onRetry={onRetry} />;
-    case "missing":           return <UnexpectedMissingRowRender lastFetchAt={lastFetchAt} onRetry={onRetry} />;
+    case "missing":           return <UnexpectedMissingRowRender lastFetchAt={lastFetchAt} localPubkey={localPubkey} onRetry={onRetry} />;
     case "no_channel":        return <NoChannelRender />;
   }
 }
@@ -611,9 +626,11 @@ function PendingInitialSyncRender({
 
 function UnexpectedMissingRowRender({
   lastFetchAt,
+  localPubkey,
   onRetry,
 }: {
   lastFetchAt: number;
+  localPubkey: string | null;
   onRetry: () => void;
 }) {
   const ago = useLiveAgo(lastFetchAt);
@@ -624,12 +641,13 @@ function UnexpectedMissingRowRender({
     onRetry();
     setTimeout(() => setLocked(false), 2500);
   };
-  // For v1 use a placeholder pubkey since we don't have the member's
-  // local pubkey wired here yet. Stage 5a.3 / 5b will surface the
-  // actual local pubkey from /api/node.
-  const memberPubkey = "—";
+  // The pubkey is the support-context identifier this error state's
+  // job revolves around (signal system §5). Fetched from /api/node on
+  // panel mount; renders a neutral placeholder for the brief window
+  // before the fetch completes (or if it fails entirely).
+  const memberPubkey = localPubkey ?? "—";
   const copyPubkey = useCallback(() => {
-    if (memberPubkey === "—") return;
+    if (!memberPubkey || memberPubkey === "—") return;
     void navigator.clipboard?.writeText(memberPubkey).catch(() => {});
   }, [memberPubkey]);
   return (
