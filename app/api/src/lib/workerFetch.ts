@@ -50,6 +50,15 @@ export class WorkerFetchError extends Error {
   }
 }
 
+// Rate-limit the "no cached token → trigger refresh inline" path so a
+// burst of Worker calls from a token-less node doesn't hammer the
+// treasury. Members in this state should hit refresh at most once per
+// 30s; subsequent Worker calls within that window proceed without a
+// Bearer (public endpoints succeed; gated endpoints return 401 to the
+// caller, which is more informative than a generic 500).
+const NO_TOKEN_REFRESH_MIN_INTERVAL_MS = 30 * 1000;
+let lastNoTokenRefreshAt = 0;
+
 /**
  * Performs an authenticated request against the Worker. Returns the
  * raw Response — callers handle status codes + parsing.
@@ -91,6 +100,34 @@ export async function workerFetch(
       );
     }
   };
+
+  // If there's no cached token at all, try a refresh inline before the
+  // first call. This handles the bootstrap case where the panel hasn't
+  // yet completed a successful tokenRefresh tick but a Worker call
+  // (e.g., Onramp) is happening — without this path, the call sends a
+  // Bearer-less request, the Worker rejects with 401 missing, the
+  // calling route returns a generic 500. Rate-limited to ≤1 refresh
+  // per 30s so a burst of token-less calls doesn't hammer treasury.
+  // If refresh fails (treasury unreachable, no subscription row, etc.),
+  // the call proceeds without a Bearer — public endpoints succeed,
+  // gated endpoints return 401 which is more informative than 500.
+  if (!getCachedTokenIfFresh()) {
+    const now = Date.now();
+    if (now - lastNoTokenRefreshAt >= NO_TOKEN_REFRESH_MIN_INTERVAL_MS) {
+      lastNoTokenRefreshAt = now;
+      console.log(
+        `[workerFetch] no cached token; attempting refresh before ${path}`,
+      );
+      const refresh = await refreshLocalToken();
+      if (!refresh.ok) {
+        console.warn(
+          `[workerFetch] inline refresh failed — reason=${refresh.reason}` +
+            (refresh.error ? ` error=${refresh.error}` : "") +
+            `; proceeding without Bearer (gated endpoints will 401)`,
+        );
+      }
+    }
+  }
 
   let response = await sendOnce();
 
