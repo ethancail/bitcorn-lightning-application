@@ -2025,7 +2025,13 @@ input[type="number"] {
    ═══════════════════════════════════════════════════════════════ */
 
 .sub-panel {
-  background: var(--bg-1);
+  /* Match the .panel.ops background blend so the Subscription panel
+     visually harmonizes with the other Settings panels (Appearance,
+     Channel Role) instead of reading as a darker outlier. Same amber-
+     tinted bg-2 base; we add the 1px amber border-all-around as the
+     Subscription panel's distinctive identity vs .panel.ops's 2px-
+     amber-top-border treatment. */
+  background: color-mix(in srgb, var(--amber) 6%, var(--bg-2));
   border: 1px solid color-mix(in srgb, var(--amber) 18%, transparent);
   border-radius: 4px;
   padding: 22px 26px;
