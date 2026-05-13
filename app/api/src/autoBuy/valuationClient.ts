@@ -1,5 +1,23 @@
-import { ENV } from "../config/env";
-import { getCachedTokenIfFresh } from "../subscription/tokenRefresh";
+// Client for the Worker's /valuation/* endpoints, used by the auto-buy
+// scheduler + valuation UI surfaces.
+//
+// Worker-side: tier-gated scope=full per the Stage 5a deltas. Only
+// treasury (self-mints scope=full) + `current`-tier members have
+// access. Members in prepay/lapsed tiers get 403 from the Worker.
+//
+// Routes through workerFetch() per spec §7.3 — wrapper handles Bearer
+// attachment + 401 retry. Previously had inline Bearer attachment (5a.1
+// hotfix); this migration brings the site into compliance with "the
+// only path Worker calls take is through this wrapper."
+//
+// Historical note: this module previously supported a VALUATION_WORKER_
+// URL override to point /valuation/* at a different Worker than the
+// Coinbase Onramp one. The override was never used in practice (both
+// always pointed at the same Worker). The workerFetch wrapper uses
+// ENV.coinbaseWorkerUrl; if a real split-Worker need arises, the
+// wrapper can be parameterized with a baseUrlOverride option.
+
+import { workerFetch, WorkerFetchError } from "../lib/workerFetch";
 
 const CACHE_TTL_MS = 60 * 60 * 1000; // 60 min
 
@@ -32,40 +50,27 @@ export interface InputSnapshot {
   updated_at: string;
 }
 
-async function fetchAndCache<T>(key: string, url: string): Promise<T | null> {
+async function fetchAndCache<T>(key: string, path: string): Promise<T | null> {
   const hit = cache.get(key) as CacheEntry<T> | undefined;
   if (hit && Date.now() - hit.cachedAt < CACHE_TTL_MS) {
     return hit.value;
   }
-  // The Worker's /valuation/* endpoints are full-scope JWT gated. Treasury
-  // self-mints a full-scope token (subscription/tokenIssuance.ts), so the
-  // cached token in subscription_local_token authorizes us. If no fresh
-  // token is available the Worker will 401 and we fall back to whatever
-  // cached value we have — same shape as transport_error handling.
-  // Stage 5a.3 will replace this inline attachment with a workerFetch()
-  // wrapper used by every Worker call site.
-  const headers: Record<string, string> = {};
-  const token = getCachedTokenIfFresh();
-  if (token) {
-    headers["Authorization"] = `Bearer ${token.jwt}`;
-  }
   try {
-    const res = await fetch(url, { headers });
+    const res = await workerFetch(path);
     if (!res.ok) {
-      console.error(`[valuationClient] ${url} → HTTP ${res.status}`);
+      console.error(`[valuationClient] ${path} → HTTP ${res.status}`);
       return hit?.value ?? null; // stale fallback on upstream failure
     }
     const value = (await res.json()) as T;
     cache.set(key, { value, cachedAt: Date.now() });
     return value;
   } catch (err) {
-    console.error(`[valuationClient] ${url} fetch error:`, err instanceof Error ? err.message : err);
+    if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+      return null; // Worker URL unset; same as previous workerBase() === null behavior
+    }
+    console.error(`[valuationClient] ${path} fetch error:`, err instanceof Error ? err.message : err);
     return hit?.value ?? null;
   }
-}
-
-function workerBase(): string | null {
-  return ENV.valuationWorkerUrl || ENV.coinbaseWorkerUrl || null;
 }
 
 /**
@@ -73,9 +78,7 @@ function workerBase(): string | null {
  * Callers (scheduler) should treat null as "skip this tick".
  */
 export async function getCurrent(): Promise<CurrentValuation | null> {
-  const base = workerBase();
-  if (!base) return null;
-  return fetchAndCache<CurrentValuation>("current", `${base}/valuation/current`);
+  return fetchAndCache<CurrentValuation>("current", "/valuation/current");
 }
 
 /**
@@ -83,23 +86,19 @@ export async function getCurrent(): Promise<CurrentValuation | null> {
  * the Worker; cache key folds them so different ranges are cached separately.
  */
 export async function getHistory(sinceISO?: string, untilISO?: string): Promise<{ series: HistoryRow[] } | null> {
-  const base = workerBase();
-  if (!base) return null;
   const qs = new URLSearchParams();
   if (sinceISO) qs.set("since", sinceISO);
   if (untilISO) qs.set("until", untilISO);
   const suffix = qs.toString();
-  const url = `${base}/valuation/history${suffix ? `?${suffix}` : ""}`;
-  return fetchAndCache<{ series: HistoryRow[] }>(`history:${suffix}`, url);
+  const path = `/valuation/history${suffix ? `?${suffix}` : ""}`;
+  return fetchAndCache<{ series: HistoryRow[] }>(`history:${suffix}`, path);
 }
 
 /**
  * Per-input snapshot map (12 keys).
  */
 export async function getInputs(): Promise<Record<string, InputSnapshot> | null> {
-  const base = workerBase();
-  if (!base) return null;
-  return fetchAndCache<Record<string, InputSnapshot>>("inputs", `${base}/valuation/inputs`);
+  return fetchAndCache<Record<string, InputSnapshot>>("inputs", "/valuation/inputs");
 }
 
 /**

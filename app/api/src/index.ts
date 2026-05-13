@@ -109,6 +109,7 @@ import {
   getResolvedTreasuryBaseUrl,
   getCachedToken,
 } from "./subscription/tokenRefresh";
+import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
   verifyEntitlementToken,
@@ -322,10 +323,7 @@ const server = http.createServer(async (req, res) => {
       const { address } = await createLndChainAddress();
       const node = getNodeInfo();
 
-      const sessionToken = await getCoinbaseSessionToken(
-        ENV.coinbaseWorkerUrl,
-        address
-      );
+      const sessionToken = await getCoinbaseSessionToken(address);
       const url =
         `https://pay.coinbase.com/buy/select-asset` +
         `?appId=${encodeURIComponent(ENV.coinbaseAppId)}` +
@@ -937,16 +935,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Public — commodity prices proxied from Cloudflare Worker (KV-cached)
+  // Commodity prices proxied from Cloudflare Worker (KV-cached).
+  // Worker-side: subscriber-base scope — any valid Bearer accepted.
   if (req.method === "GET" && req.url === "/api/commodity-prices") {
     try {
-      const workerUrl = ENV.coinbaseWorkerUrl;
-      if (!workerUrl) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "commodity_prices_not_configured" }));
-        return;
-      }
-      const response = await fetch(`${workerUrl}/prices`);
+      const response = await workerFetch("/prices");
       if (!response.ok) {
         res.writeHead(502, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "commodity_prices_unavailable" }));
@@ -955,7 +948,12 @@ const server = http.createServer(async (req, res) => {
       const data = await response.json();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "commodity_prices_not_configured" }));
+        return;
+      }
       console.error("[commodity-prices]", err);
       res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "commodity_prices_unavailable" }));
@@ -963,16 +961,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Public — historical corn prices proxied from Cloudflare Worker
+  // Historical corn prices proxied from Cloudflare Worker.
+  // Worker-side: subscriber-base scope.
   if (req.method === "GET" && req.url === "/api/corn-history") {
     try {
-      const workerUrl = ENV.coinbaseWorkerUrl;
-      if (!workerUrl) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "worker_not_configured" }));
-        return;
-      }
-      const response = await fetch(`${workerUrl}/prices/corn-history`);
+      const response = await workerFetch("/prices/corn-history");
       if (!response.ok) {
         res.writeHead(502, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "corn_history_unavailable" }));
@@ -981,7 +974,12 @@ const server = http.createServer(async (req, res) => {
       const data = await response.json();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "worker_not_configured" }));
+        return;
+      }
       console.error("[corn-history]", err);
       res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "corn_history_unavailable" }));
@@ -989,16 +987,12 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Public — treasury connection info proxied from Cloudflare Worker
+  // Treasury connection info proxied from Cloudflare Worker.
+  // Worker-side: public — no Bearer required, wrapper attaches one if
+  // cached anyway (harmless on public endpoints).
   if (req.method === "GET" && req.url === "/api/treasury-info") {
     try {
-      const workerUrl = ENV.coinbaseWorkerUrl;
-      if (!workerUrl) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "worker_not_configured" }));
-        return;
-      }
-      const response = await fetch(`${workerUrl}/treasury-info`);
+      const response = await workerFetch("/treasury-info");
       if (!response.ok) {
         res.writeHead(502, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "treasury_info_unavailable" }));
@@ -1007,7 +1001,12 @@ const server = http.createServer(async (req, res) => {
       const data = await response.json();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
-    } catch (err) {
+    } catch (err: any) {
+      if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "worker_not_configured" }));
+        return;
+      }
       console.error("[treasury-info]", err);
       res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "treasury_info_unavailable" }));
@@ -2398,15 +2397,18 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && req.url === "/api/network/recommended-peers") {
     try {
-      const workerUrl = ENV.coinbaseWorkerUrl;
-      if (!workerUrl) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "worker_not_configured" }));
-        return;
+      // Worker-side: public — no Bearer required.
+      let response: Response;
+      try {
+        response = await workerFetch("/recommended-peers");
+      } catch (err: any) {
+        if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "worker_not_configured" }));
+          return;
+        }
+        throw err;
       }
-
-      // Fetch curated list from Worker
-      const response = await fetch(`${workerUrl}/recommended-peers`);
       if (!response.ok) {
         res.writeHead(502, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "recommended_peers_unavailable" }));
@@ -2474,15 +2476,19 @@ const server = http.createServer(async (req, res) => {
           return;
         }
 
-        // Fetch approved list from Worker — peer_id must match
-        const workerUrl = ENV.coinbaseWorkerUrl;
-        if (!workerUrl) {
-          res.writeHead(503, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "worker_not_configured" }));
-          return;
+        // Fetch approved list from Worker — peer_id must match.
+        // Worker-side: public — no Bearer required.
+        let response: Response;
+        try {
+          response = await workerFetch("/recommended-peers");
+        } catch (err: any) {
+          if (err instanceof WorkerFetchError && err.reason === "not_configured") {
+            res.writeHead(503, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "worker_not_configured" }));
+            return;
+          }
+          throw err;
         }
-
-        const response = await fetch(`${workerUrl}/recommended-peers`);
         if (!response.ok) {
           res.writeHead(502, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "could not verify peer against approved list" }));
