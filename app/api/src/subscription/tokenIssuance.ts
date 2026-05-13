@@ -63,12 +63,21 @@ export type IssuanceResult =
 
 const TOKEN_LIFETIME_SEC = 24 * 60 * 60;
 
-const PAYMENT_SCOPE_TIERS = new Set([
-  "prepay",
-  "worker_lapsed",
-  "routing_lapsed",
-  "close_due",
-]);
+/**
+ * Maps a subscription tier to the scope a freshly-minted token for
+ * that tier should carry. `current` → full; every other subscriber
+ * tier → payment. Defensive fallback to payment for unknown tiers
+ * (Stage 6 may add tier values; better to issue a recovery-path token
+ * than deny a member whose tier the issuer was just updated for).
+ *
+ * Exported so the tier-transition observer (transitionObserver.ts)
+ * uses the same mapping as the issuer — if this mapping ever evolves
+ * (new tier, scope rename), both update in lockstep.
+ */
+export function scopeForTier(tier: string): TokenScope {
+  if (tier === "current") return "full";
+  return "payment";
+}
 
 /**
  * Resolves a member pubkey to a tier + auxiliary state, then mints
@@ -100,19 +109,10 @@ export async function issueTokenForPubkey(
     return { kind: "denied", denial: { reason: "no_subscription_row" } };
   }
 
-  if (row.current_tier === "current") {
-    return { kind: "minted", token: await mintToken(requestedPubkey, "full") };
-  }
-  if (PAYMENT_SCOPE_TIERS.has(row.current_tier)) {
-    return { kind: "minted", token: await mintToken(requestedPubkey, "payment") };
-  }
-
-  // Defensive: any tier we don't recognize falls back to payment-
-  // scope. Better to issue a recovery-path token than deny a member
-  // whose tier the issuer was just updated for. (No known path exists
-  // to reach this branch — subscription.current_tier is a CHECK-bound
-  // enum — but Stage 6 may add tier values and this avoids breakage.)
-  return { kind: "minted", token: await mintToken(requestedPubkey, "payment") };
+  return {
+    kind: "minted",
+    token: await mintToken(requestedPubkey, scopeForTier(row.current_tier)),
+  };
 }
 
 async function mintToken(

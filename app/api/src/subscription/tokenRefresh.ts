@@ -56,6 +56,21 @@ let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 let bootRetryIdx = 0;
 let lastTreasuryInfoFetchAt = 0;
 let inFlightTreasuryInfoFetch: Promise<TreasuryInfo | null> | null = null;
+// Module-level cache of the most-recent successful api_url discovery
+// (member nodes only — treasury hits localhost). Populated by refresh
+// ticks and self-heal fetches. The member-side status proxy reads
+// this synchronously so it doesn't need to fire its own /treasury-info
+// per status poll (15s cadence vs 12h refresh + on-demand self-heal).
+//
+// Cache staleness: if the refresh scheduler has been failing for
+// multiple cycles, the cached URL may be silently wrong (treasury
+// moved, env-var changed on the operator side, etc.). After
+// CACHED_BASE_STALE_THRESHOLD_MS without a successful re-validation,
+// getResolvedTreasuryBaseUrl returns null so the proxy surfaces a
+// clean 503 instead of forwarding to a possibly-defunct endpoint.
+let cachedResolvedTreasuryBase: string | null = null;
+let cachedResolvedTreasuryBaseAt = 0;
+const CACHED_BASE_STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 2 refresh cycles
 
 interface TreasuryInfo {
   api_url: string | null;
@@ -175,6 +190,38 @@ function persistTreasuryPublicKey(jwkString: string): void {
   }
 }
 
+/**
+ * Synchronous read of the resolved treasury base URL. Precedence
+ * mirrors refreshLocalToken():
+ *   1. ENV.treasuryApiUrl (operator override; never goes stale)
+ *   2. cached value from the most-recent successful /treasury-info
+ *      discovery (member nodes), invalidated after 24h of no
+ *      re-validation
+ *
+ * Returns null on:
+ *   - member nodes that haven't yet completed a successful refresh
+ *   - member nodes whose cached URL hasn't been re-validated in >24h
+ *     (refreshes have been failing for 2+ cycles; serving the cached
+ *     URL could mask a real outage as a connection-refused downstream)
+ *
+ * Used by the member-side status proxy (statusHandler.ts).
+ */
+export function getResolvedTreasuryBaseUrl(): string | null {
+  if (ENV.treasuryApiUrl) return ENV.treasuryApiUrl;
+  if (!cachedResolvedTreasuryBase) return null;
+  const ageMs = Date.now() - cachedResolvedTreasuryBaseAt;
+  if (ageMs > CACHED_BASE_STALE_THRESHOLD_MS) {
+    console.warn(
+      `[subscription-token] cached treasury base URL is ` +
+        `${Math.floor(ageMs / 60_000)}min stale (>24h since last ` +
+        `/treasury-info re-validation); refusing to serve — proxy will ` +
+        `503 until refresh succeeds`,
+    );
+    return null;
+  }
+  return cachedResolvedTreasuryBase;
+}
+
 export interface CachedToken {
   member_pubkey: string;
   jwt: string;
@@ -290,6 +337,16 @@ export async function refreshLocalToken(): Promise<RefreshResult> {
         baseUrl = treasuryInfo.api_url;
       }
     }
+  }
+  // Cache the resolved URL for synchronous reads by the member-side
+  // status proxy (statusHandler.ts). Members poll status every 15s;
+  // re-running /treasury-info per poll would be wasteful when refresh
+  // already discovers it on its 12h cadence. We also stamp the cache
+  // timestamp so getResolvedTreasuryBaseUrl can invalidate stale
+  // entries (refreshes failing for 2+ cycles).
+  if (baseUrl && !onTreasury) {
+    cachedResolvedTreasuryBase = baseUrl;
+    cachedResolvedTreasuryBaseAt = Date.now();
   }
   if (!baseUrl) {
     return {

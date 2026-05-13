@@ -39,11 +39,25 @@ export async function persistChannels() {
 
   for (const c of channels ?? []) {
     currentIds.push(c.id);
+    // INSERT-then-UPDATE rather than INSERT OR REPLACE so `first_seen_at`
+    // (migration 041) is set exactly once per channel — the timestamp
+    // of the first sync that observed this channel. Used by the
+    // subscription status route to discriminate "transient: sync loop
+    // hasn't allocated a row yet" from "operational anomaly: row should
+    // exist by now" (spec §5.2 Case C vs D, 60s threshold).
     db.prepare(`
-      INSERT OR REPLACE INTO lnd_channels
-      (channel_id, peer_pubkey, capacity_sat, local_balance_sat,
-       remote_balance_sat, active, private, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO lnd_channels
+        (channel_id, peer_pubkey, capacity_sat, local_balance_sat,
+         remote_balance_sat, active, private, updated_at, first_seen_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(channel_id) DO UPDATE SET
+        peer_pubkey = excluded.peer_pubkey,
+        capacity_sat = excluded.capacity_sat,
+        local_balance_sat = excluded.local_balance_sat,
+        remote_balance_sat = excluded.remote_balance_sat,
+        active = excluded.active,
+        private = excluded.private,
+        updated_at = excluded.updated_at
     `).run(
       c.id,
       c.partner_public_key,
@@ -52,7 +66,8 @@ export async function persistChannels() {
       c.remote_balance,
       c.is_active ? 1 : 0,
       c.is_private ? 1 : 0,
-      now
+      now,
+      now,  // first_seen_at — preserved on conflict via the ON CONFLICT clause omitting this column
     );
   }
 
