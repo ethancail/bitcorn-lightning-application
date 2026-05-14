@@ -20,6 +20,7 @@ import ValuationInput from "./pages/ValuationInput";
 import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
+import SubscriptionPayments from "./pages/SubscriptionPayments";
 import Liquidity from "./pages/Liquidity";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
@@ -438,6 +439,7 @@ function MemberShell() {
           <Route path="/refill" element={<RefillChannel />} />
           <Route path="/withdraw" element={<WithdrawBitcoin />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/subscription/payments" element={<SubscriptionPayments />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>

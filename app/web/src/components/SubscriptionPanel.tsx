@@ -13,6 +13,7 @@
 // error) without blocking the rest of the UI.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import QRCode from "qrcode";
 import {
   api,
@@ -356,7 +357,7 @@ function CurrentRender({
       <ActionsRow
         primary={<button className="sub-btn">Renew now <span aria-hidden>→</span></button>}
         secondary={<button className="sub-btn" onClick={onRefresh}>Refresh token</button>}
-        tertiary={<a className="sub-link" href="#payment-history">View payment history <span aria-hidden>→</span></a>}
+        tertiary={<Link className="sub-link" to="/subscription/payments">View payment history <span aria-hidden>→</span></Link>}
       />
     </section>
   );
@@ -440,7 +441,7 @@ function WorkerLapsedRender({
       <ActionsRow
         primary={<button className="sub-btn">Renew ({fmtSats(status.price_sats)}) <span aria-hidden>→</span></button>}
         secondary={<button className="sub-btn">Buy BTC with card <span aria-hidden>↗</span></button>}
-        tertiary={<a className="sub-link" href="#payment-history">View payment history <span aria-hidden>→</span></a>}
+        tertiary={<Link className="sub-link" to="/subscription/payments">View payment history <span aria-hidden>→</span></Link>}
       />
     </section>
   );
@@ -486,7 +487,7 @@ function RoutingLapsedRender({
       <ActionsRow
         primary={<button className="sub-btn">Open Coinbase Onramp <span aria-hidden>↗</span></button>}
         secondary={<button className="sub-btn">I have BTC — renew ({fmtSats(status.price_sats)})</button>}
-        tertiary={<a className="sub-link" href="#payment-history">View payment history <span aria-hidden>→</span></a>}
+        tertiary={<Link className="sub-link" to="/subscription/payments">View payment history <span aria-hidden>→</span></Link>}
       />
     </section>
   );
@@ -530,7 +531,7 @@ function CloseDueRender({
       <ActionsRow
         primary={<button className="sub-btn">Open Coinbase Onramp <span aria-hidden>↗</span></button>}
         secondary={<button className="sub-btn">I have BTC — pay now to halt close</button>}
-        tertiary={<a className="sub-link" href="#payment-history">View payment history <span aria-hidden>→</span></a>}
+        tertiary={<Link className="sub-link" to="/subscription/payments">View payment history <span aria-hidden>→</span></Link>}
       />
     </section>
   );
