@@ -110,7 +110,7 @@ function SubscriptionPaymentsBody({
   if (view.kind === "transport_unreachable") {
     return (
       <ErrorState
-        message="Couldn't reach the treasury. Retrying will retry the connection."
+        message="Couldn't reach the treasury. Click Try again to retry."
         detail={view.detail}
         onRetry={onRetry}
       />
