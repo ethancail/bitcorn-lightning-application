@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.17.0"
+version: "1.17.1"
 port: 3200
 
 description: >
@@ -27,6 +27,21 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.17.1: Two operator-reported follow-ups to the v1.17.0 admin
+  members list.
+  (1) Light-mode contrast — all 11 pill colors now read correctly
+  on cream backgrounds. The v1.15.1 theme-adapt pass had assumed
+  emerald/blue/amber/orange/red worked in both modes; the Stage 5b
+  distribution counter (11 pills side-by-side) was the first surface
+  to make the contrast gap scannable. Added [data-theme="light"]
+  overrides using Tailwind 800-ish darker hues; dark mode unchanged.
+  (2) Contact names — the Member column now shows the contact's
+  name on top and the truncated pubkey underneath when an entry
+  exists in the Contacts page. Sort and search both work against
+  contact name OR pubkey. Click-to-copy still copies the full pubkey
+  for support workflows. No backend changes; rows without contacts
+  fall back to pubkey-only display.
+
   v1.17.0: Stage 5b — admin members list. First operator-facing
   cross-member visibility surface. New page at /admin/members
   (treasury role only) shows one row per channel-peer pubkey with
