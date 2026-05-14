@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.15.2"
+version: "1.16.0"
 port: 3200
 
 description: >
@@ -27,6 +27,22 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.16.0: Member-side subscription payment history page.
+  Closes the Stage 5a gap where the Subscription panel rendered a
+  "View payment history →" tertiary link that went nowhere. New page
+  at `/subscription/payments` (member shell only) renders the
+  member's own subscription_payment ledger via the local API proxy
+  to treasury — same Bearer-resolution + 401/503 discrimination
+  pattern as `/api/subscription/status`. Status pills:
+  emerald=confirmed, gray-pulsing=pending, muted-amber=manual
+  override. The grandfather admin_override sentinel renders as
+  "grandfather" in the Amount column (not "0 sats") with the
+  admin_reason text shown alongside, and sorts to the bottom of the
+  history by received_at. Treasury operators do not see this page;
+  cross-member visibility ships with the future Stage 5b admin
+  Subscriptions surface. No migrations, no Worker changes — pure
+  read endpoint + UI. Operator action: none. Member action: none.
+
   v1.14.1: Closes the Stage 4 TREASURY_API_URL distribution gap.
   Members now discover the treasury's HTTP API URL via the Worker's
   /treasury-info response (new api_url field), so the treasury operator
