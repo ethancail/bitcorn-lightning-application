@@ -17,10 +17,21 @@ import {
   api,
   type AdminMembersResponse,
   type AdminMembersRow,
+  type Contact,
   type LanePurpose,
   type SubscriptionStateKey,
 } from "../api/client";
 import { Pill, stateToPill } from "../components/Pill";
+
+/** Map a pubkey to its contact name, if any. Returns undefined when
+ *  there is no contact entry for the pubkey. Distinct from
+ *  resolveContactName() in client.ts (which falls back to a truncated
+ *  pubkey string) — here the admin view renders the truncated pubkey
+ *  itself in a secondary line, so we want to know "is there a name"
+ *  separately rather than collapsing both states into one string. */
+function findContactName(pubkey: string, contacts: Contact[]): string | undefined {
+  return contacts.find((c) => c.pubkey === pubkey)?.name;
+}
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -65,7 +76,7 @@ type SortDirection = "asc" | "desc";
 
 type ViewState =
   | { kind: "loading" }
-  | { kind: "ok"; response: AdminMembersResponse }
+  | { kind: "ok"; response: AdminMembersResponse; contacts: Contact[] }
   | { kind: "error"; code?: string; detail?: string };
 
 // ─── Root component ──────────────────────────────────────────────
@@ -97,8 +108,15 @@ export default function AdminMembers() {
   const fetchMembers = useCallback(async () => {
     setRefreshing(true);
     try {
-      const response = await api.getAdminMembers();
-      setView({ kind: "ok", response });
+      // Members + contacts in parallel — same pattern Dashboard.tsx
+      // and ChannelsPage use for cross-pubkey name resolution. The
+      // contacts call is best-effort: a failure there shouldn't
+      // hide the members list, just fall back to pubkey-only display.
+      const [response, contacts] = await Promise.all([
+        api.getAdminMembers(),
+        api.getContacts().catch(() => [] as Contact[]),
+      ]);
+      setView({ kind: "ok", response, contacts });
     } catch (err: any) {
       setView({
         kind: "error",
@@ -128,6 +146,7 @@ export default function AdminMembers() {
       {view.kind === "ok" && (
         <AdminMembersBody
           response={view.response}
+          contacts={view.contacts}
           selectedStates={selectedStates}
           setSelectedStates={setSelectedStates}
           selectedLanes={selectedLanes}
@@ -147,6 +166,7 @@ export default function AdminMembers() {
 
 function AdminMembersBody({
   response,
+  contacts,
   selectedStates,
   setSelectedStates,
   selectedLanes,
@@ -158,6 +178,7 @@ function AdminMembersBody({
   setSort,
 }: {
   response: AdminMembersResponse;
+  contacts: Contact[];
   selectedStates: Set<SubscriptionStateKey>;
   setSelectedStates: (s: Set<SubscriptionStateKey>) => void;
   selectedLanes: Set<LanePurpose>;
@@ -169,17 +190,24 @@ function AdminMembersBody({
   setSort: (s: { column: SortColumn; direction: SortDirection }) => void;
 }) {
   const filtered = useMemo(() => {
+    const needle = pubkeySearch.toLowerCase();
     return response.members.filter((row) => {
       if (!selectedStates.has(row.subscription_state)) return false;
       if (!selectedLanes.has(row.lane_purpose)) return false;
-      if (pubkeySearch && !row.member_pubkey.toLowerCase().includes(pubkeySearch.toLowerCase())) {
-        return false;
+      if (needle) {
+        // Match against contact name OR pubkey — operators searching
+        // by either should find the row. Case-insensitive substring
+        // on both sides.
+        const name = findContactName(row.member_pubkey, contacts);
+        const matchesName = name?.toLowerCase().includes(needle) ?? false;
+        const matchesPubkey = row.member_pubkey.toLowerCase().includes(needle);
+        if (!matchesName && !matchesPubkey) return false;
       }
       return true;
     });
-  }, [response.members, selectedStates, selectedLanes, pubkeySearch]);
+  }, [response.members, contacts, selectedStates, selectedLanes, pubkeySearch]);
 
-  const sorted = useMemo(() => sortRows(filtered, sort), [filtered, sort]);
+  const sorted = useMemo(() => sortRows(filtered, sort, contacts), [filtered, sort, contacts]);
 
   return (
     <>
@@ -203,7 +231,7 @@ function AdminMembersBody({
       ) : sorted.length === 0 ? (
         <EmptyPanel message="No members match the active filters." />
       ) : (
-        <MembersTable rows={sorted} sort={sort} setSort={setSort} />
+        <MembersTable rows={sorted} contacts={contacts} sort={sort} setSort={setSort} />
       )}
     </>
   );
@@ -214,17 +242,35 @@ function AdminMembersBody({
 function sortRows(
   rows: AdminMembersRow[],
   sort: { column: SortColumn; direction: SortDirection },
+  contacts: Contact[],
 ): AdminMembersRow[] {
   const dir = sort.direction === "asc" ? 1 : -1;
   const copy = [...rows];
-  copy.sort((a, b) => dir * compareRows(a, b, sort.column));
+  copy.sort((a, b) => dir * compareRows(a, b, sort.column, contacts));
   return copy;
 }
 
-function compareRows(a: AdminMembersRow, b: AdminMembersRow, column: SortColumn): number {
+function compareRows(
+  a: AdminMembersRow,
+  b: AdminMembersRow,
+  column: SortColumn,
+  contacts: Contact[],
+): number {
   switch (column) {
-    case "pubkey":
+    case "pubkey": {
+      // "Member" column sort — by contact name when known, else by
+      // pubkey. Named entries sort alphabetically among themselves;
+      // unnamed entries sort alphabetically by pubkey AFTER named
+      // entries. Operators thinking "alphabetical by name" get the
+      // expected ordering for the entries they actually identify by
+      // name; unnamed entries fall through to the existing hex sort.
+      const nameA = findContactName(a.member_pubkey, contacts);
+      const nameB = findContactName(b.member_pubkey, contacts);
+      if (nameA && nameB) return nameA.localeCompare(nameB);
+      if (nameA) return Number.NEGATIVE_INFINITY; // named first
+      if (nameB) return Number.POSITIVE_INFINITY;
       return a.member_pubkey.localeCompare(b.member_pubkey);
+    }
     case "lane":
       return a.lane_purpose.localeCompare(b.lane_purpose);
     case "state":
@@ -408,10 +454,12 @@ function FilterDropdown<T extends string>({
 
 function MembersTable({
   rows,
+  contacts,
   sort,
   setSort,
 }: {
   rows: AdminMembersRow[];
+  contacts: Contact[];
   sort: { column: SortColumn; direction: SortDirection };
   setSort: (s: { column: SortColumn; direction: SortDirection }) => void;
 }) {
@@ -427,7 +475,7 @@ function MembersTable({
       <table className="admin-members-table">
         <thead>
           <tr>
-            <SortHeader column="pubkey" sort={sort} onSort={handleSort}>Member pubkey</SortHeader>
+            <SortHeader column="pubkey" sort={sort} onSort={handleSort}>Member</SortHeader>
             <SortHeader column="lane" sort={sort} onSort={handleSort}>Lane</SortHeader>
             <SortHeader column="state" sort={sort} onSort={handleSort}>State</SortHeader>
             <SortHeader column="tier" sort={sort} onSort={handleSort}>Tier</SortHeader>
@@ -437,7 +485,11 @@ function MembersTable({
         </thead>
         <tbody>
           {rows.map((row) => (
-            <MemberRow key={row.member_pubkey} row={row} />
+            <MemberRow
+              key={row.member_pubkey}
+              row={row}
+              contactName={findContactName(row.member_pubkey, contacts)}
+            />
           ))}
         </tbody>
       </table>
@@ -465,12 +517,18 @@ function SortHeader({
   );
 }
 
-function MemberRow({ row }: { row: AdminMembersRow }) {
+function MemberRow({
+  row,
+  contactName,
+}: {
+  row: AdminMembersRow;
+  contactName: string | undefined;
+}) {
   const pill = stateToPill(row.subscription_state);
   return (
     <tr>
       <td>
-        <PubkeyCell pubkey={row.member_pubkey} />
+        <PubkeyCell pubkey={row.member_pubkey} contactName={contactName} />
       </td>
       <td>{formatLane(row.lane_purpose)}</td>
       <td>
@@ -483,7 +541,13 @@ function MemberRow({ row }: { row: AdminMembersRow }) {
   );
 }
 
-function PubkeyCell({ pubkey }: { pubkey: string }) {
+function PubkeyCell({
+  pubkey,
+  contactName,
+}: {
+  pubkey: string;
+  contactName: string | undefined;
+}) {
   const [copied, setCopied] = useState(false);
   const short = `${pubkey.slice(0, 8)}…${pubkey.slice(-8)}`;
   const markCopied = () => {
@@ -513,14 +577,25 @@ function PubkeyCell({ pubkey }: { pubkey: string }) {
     try { if (document.execCommand("copy")) markCopied(); } catch { /* clipboard unavailable */ }
     document.body.removeChild(ta);
   };
+  // Two-line layout when a contact exists: name on top (sans-serif,
+  // primary text), truncated pubkey on bottom (Plex Mono, muted).
+  // Click still copies the full pubkey — operator's support-workflow
+  // affordance preserved.
   return (
     <button
       type="button"
-      className="admin-members-pubkey"
+      className={`admin-members-pubkey${contactName ? " has-contact" : ""}`}
       onClick={handleCopy}
       title={pubkey}
     >
-      <code>{short}</code>
+      {contactName ? (
+        <span className="admin-members-pubkey-stack">
+          <span className="admin-members-contact-name">{contactName}</span>
+          <code className="admin-members-pubkey-short">{short}</code>
+        </span>
+      ) : (
+        <code>{short}</code>
+      )}
       {copied && <span className="admin-members-pubkey-copied">copied</span>}
     </button>
   );
