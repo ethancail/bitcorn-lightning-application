@@ -21,6 +21,7 @@ import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
 import SubscriptionPayments from "./pages/SubscriptionPayments";
+import AdminMembers from "./pages/AdminMembers";
 import Liquidity from "./pages/Liquidity";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
@@ -213,6 +214,7 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
     { to: "/swaps", icon: "⟲", label: "Swaps" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
     { to: "/valuation-input", icon: "◐", label: "Valuation Inputs" },
+    { to: "/admin/members", icon: "◆", label: "Members" },
   ];
 
   return (
@@ -300,6 +302,7 @@ function AppShell() {
           <Route path="/auto-buy" element={<AutoBuy />} />
           <Route path="/valuation-input" element={<ValuationInput />} />
           <Route path="/settings" element={<SettingsPage isTreasury />} />
+          <Route path="/admin/members" element={<AdminMembers />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </main>

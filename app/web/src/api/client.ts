@@ -39,6 +39,7 @@ export const api = {
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
   getSubscriptionStatus: () => apiFetch<SubscriptionStatus>("/api/subscription/status"),
   getSubscriptionPayments: () => apiFetch<SubscriptionPaymentsResponse>("/api/subscription/payments"),
+  getAdminMembers: () => apiFetch<AdminMembersResponse>("/api/admin/members"),
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   getNodePreflight: () => apiFetch<PreflightResult>("/api/node/preflight"),
@@ -621,6 +622,45 @@ export type SubscriptionPaymentRow = {
 export type SubscriptionPaymentsResponse = {
   member_pubkey: string;
   payments: SubscriptionPaymentRow[];
+};
+
+// ─── Admin members list (Stage 5b) ─────────────────────────────────
+
+export type LanePurpose =
+  | "merchant_lane"
+  | "farmer_lane"
+  | "external_peer"
+  | "unclassified";
+
+export type SubscriptionStateKey =
+  | "current"
+  | "prepay"
+  | "worker_lapsed"
+  | "routing_lapsed"
+  | "close_due"
+  | "external_peer"
+  | "unclassified"
+  | "not_yet_allocated"
+  | "missing"
+  | "no_channel";
+
+export type AdminMembersRow = {
+  member_pubkey: string;
+  lane_purpose: LanePurpose;
+  subscription_state: SubscriptionStateKey;
+  current_tier: SubscriptionTier | null;
+  paid_through: number | null;
+  last_payment_at: number | null;
+  last_payment_amount_sats: number | null;
+};
+
+export type AdminMembersResponse = {
+  fetched_at: number;
+  members: AdminMembersRow[];
+  totals: {
+    total_members: number;
+    by_state: Record<SubscriptionStateKey, number>;
+  };
 };
 
 export type CommodityPrice = {

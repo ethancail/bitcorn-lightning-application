@@ -23,6 +23,7 @@ import {
   type SubscriptionStatusNotApplicable,
   type SubscriptionTier,
 } from "../api/client";
+import { Pill, tierToPill, type PillKind } from "./Pill";
 
 const POLL_INTERVAL_MS = 15_000;
 const PENDING_STUCK_THRESHOLD_MS = 90_000; // §6.1 escalation
@@ -176,20 +177,9 @@ function PanelHeader({ pill }: { pill?: React.ReactNode }) {
   );
 }
 
-// ─── Pill component (per signal system §2) ──────────────────────
-
-type PillKind =
-  | "emerald" | "blue" | "gray-pulsing" | "muted-amber"
-  | "amber" | "orange" | "red" | "dim-red";
-
-function Pill({ kind, label }: { kind: PillKind; label: string }) {
-  return (
-    <span className={`sub-pill sub-pill-${kind}`}>
-      <span className="sub-pill-dot" aria-hidden />
-      {label}
-    </span>
-  );
-}
+// Pill component + PillKind + tierToPill helper extracted to
+// ./Pill.tsx in Stage 5b (admin members list T3 verification gate).
+// Both surfaces consume the same signal-system §2 vocabulary.
 
 // ─── Bracket heading (per signal system §5) ─────────────────────
 
@@ -263,15 +253,7 @@ function bip21Uri(address: string, amountSats: number): string {
   return `bitcoin:${address}?amount=${btc}`;
 }
 
-function tierToPill(tier: SubscriptionTier): { kind: PillKind; label: string } {
-  switch (tier) {
-    case "current":         return { kind: "emerald", label: "current" };
-    case "prepay":          return { kind: "blue", label: "prepay" };
-    case "worker_lapsed":   return { kind: "amber", label: "services paused" };
-    case "routing_lapsed":  return { kind: "orange", label: "routing paused" };
-    case "close_due":       return { kind: "red", label: "pay to halt close" };
-  }
-}
+// tierToPill extracted to ./Pill.tsx (Stage 5b T3 extraction).
 
 // ─── Live-updating "X seconds ago" (signal system §10) ──────────
 
