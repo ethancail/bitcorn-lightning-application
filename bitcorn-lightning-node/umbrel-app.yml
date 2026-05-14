@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.16.0"
+version: "1.17.0"
 port: 3200
 
 description: >
@@ -27,6 +27,26 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.17.0: Stage 5b — admin members list. First operator-facing
+  cross-member visibility surface. New page at /admin/members
+  (treasury role only) shows one row per channel-peer pubkey with
+  subscription state, lane purpose, current tier, paid-through date,
+  and last payment. Pill colors follow the existing signal system
+  vocabulary so the operator sees the same emerald/amber/orange/red
+  visual language across member-facing and operator-facing surfaces.
+  Top-of-page distribution counter shows all eleven states (including
+  zeros, dimmed but visible) — answers "is anything concerning?" at
+  a glance. Default sort surfaces lapsed members at the top. Filters
+  (state multi-select, lane multi-select, pubkey search) compose with
+  AND. Auto-refreshes every 60s. Pure read-only operational surface;
+  no actions, no drill-down, no aggregate financial metrics — those
+  wait for real operator use to name. Auth follows the existing
+  /api/admin/* convention (assertTreasury + host-level access
+  control). Operator setup: none. Member action: none. Internal
+  refactor: extracted the subscription panel's pill rendering to a
+  shared Pill component so the admin view and panel share the
+  signal-system vocabulary.
+
   v1.16.0: Member-side subscription payment history page.
   Closes the Stage 5a gap where the Subscription panel rendered a
   "View payment history →" tertiary link that went nowhere. New page

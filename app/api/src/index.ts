@@ -121,6 +121,7 @@ import {
   mapJwtErrorToFastPath,
 } from "./subscription/statusHandler";
 import { computePaymentHistoryForPubkey } from "./subscription/paymentsHandler";
+import { computeMembersListForTreasury } from "./subscription/adminMembersHandler";
 import { observeTierForTransition } from "./subscription/transitionObserver";
 import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
 import {
@@ -726,6 +727,37 @@ const server = http.createServer(async (req, res) => {
       console.error("[subscription] payments read failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "payments_read_failed" }));
+    }
+    return;
+  }
+
+  // Stage 5b — admin members list. Cross-member operational state
+  // visibility for the treasury operator (per
+  // bitcorn-research/specs/2026-05-20-stage-5b-admin-members-list.md).
+  //
+  // Auth: assertTreasury(role) — matches the 5+ existing /api/admin/*
+  // endpoints. Per the Stage 5b verification gates (T2 finding), the
+  // existing admin convention is node-role auth + host-level access
+  // control, *not* operator-credential auth. Acceptable for v1's
+  // read-only scope; revisit for any v2 surface adding action
+  // affordances.
+  //
+  // Response shape: paymentsHandler.ts header + spec §4.2.
+  if (req.method === "GET" && req.url === "/api/admin/members") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const payload = computeMembersListForTreasury();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(payload));
+    } catch (err: any) {
+      console.error("[admin] members list failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "members_list_failed" }));
     }
     return;
   }
