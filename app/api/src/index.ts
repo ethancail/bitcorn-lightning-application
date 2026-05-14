@@ -120,6 +120,7 @@ import {
   computeSubscriptionStatusForPubkey,
   mapJwtErrorToFastPath,
 } from "./subscription/statusHandler";
+import { computePaymentHistoryForPubkey } from "./subscription/paymentsHandler";
 import { observeTierForTransition } from "./subscription/transitionObserver";
 import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
 import {
@@ -599,6 +600,132 @@ const server = http.createServer(async (req, res) => {
       console.error("[subscription] status read failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "status_read_failed" }));
+    }
+    return;
+  }
+
+  // GET /api/subscription/payments — member's subscription_payment
+  // ledger. Same dispatch shape as /api/subscription/status: treasury
+  // computes locally from the JWT subject, members validate the
+  // caller's JWT for fast-path 401/503 and proxy to treasury.
+  //
+  // Source of truth: paymentsHandler.ts header + spec §5.1 (proxy
+  // pattern). The treasury response shape is { member_pubkey, payments }
+  // where payments is sorted by received_at DESC.
+  if (req.method === "GET" && req.url?.startsWith("/api/subscription/payments")) {
+    try {
+      const node = getNodeInfo();
+      const isTreasury = node?.node_role === "treasury";
+      const url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+      const queryPubkey = url.searchParams.get("member_pubkey");
+
+      if (isTreasury) {
+        // ── Treasury path: compute response locally ──
+        let lookupPubkey: string;
+        if (queryPubkey) {
+          // Admin debug — treasury-only. Same gate as /status's admin
+          // path; uses the future Stage 5b admin Subscriptions view's
+          // entry point. Belt-and-suspenders against role-config drift.
+          try { assertTreasury(node?.node_role); } catch (err: any) {
+            res.writeHead(403, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err?.message }));
+            return;
+          }
+          lookupPubkey = queryPubkey.toLowerCase();
+        } else {
+          const bearer = extractBearerToken(req.headers["authorization"] ?? null);
+          if (!bearer) {
+            res.writeHead(401, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "missing", detail: "missing Bearer JWT" }));
+            return;
+          }
+          try {
+            const verified = await verifyEntitlementToken(bearer);
+            lookupPubkey = verified.sub;
+          } catch (err: any) {
+            if (err instanceof JwtVerificationError) {
+              const fp = mapJwtErrorToFastPath(err);
+              res.writeHead(fp.status, { "Content-Type": "application/json" });
+              res.end(JSON.stringify(fp.body));
+              return;
+            }
+            throw err;
+          }
+        }
+        const payload = computePaymentHistoryForPubkey(lookupPubkey);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(payload));
+        return;
+      }
+
+      // ── Member path: validate locally, proxy to treasury ──
+      // (Identical Bearer-resolution + proxy shape as /status. The
+      // shared utilities — mapJwtErrorToFastPath, getCachedToken,
+      // getResolvedTreasuryBaseUrl — handle the discrimination.)
+      if (queryPubkey) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "admin_query_treasury_only" }));
+        return;
+      }
+      let bearer = extractBearerToken(req.headers["authorization"] ?? null);
+      if (bearer) {
+        try {
+          await verifyEntitlementToken(bearer);
+        } catch (err: any) {
+          if (err instanceof JwtVerificationError) {
+            const fp = mapJwtErrorToFastPath(err);
+            res.writeHead(fp.status, { "Content-Type": "application/json" });
+            res.end(JSON.stringify(fp.body));
+            return;
+          }
+          throw err;
+        }
+      } else {
+        const cached = getCachedToken();
+        if (!cached || !cached.jwt) {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({
+            error: "no_local_token",
+            detail: "no Authorization header and no cached subscription token; tokenRefresh has not yet completed a successful tick",
+          }));
+          return;
+        }
+        bearer = cached.jwt;
+      }
+      const treasuryBase = getResolvedTreasuryBaseUrl();
+      if (!treasuryBase) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: "treasury_unreachable",
+          detail: "no treasury base URL resolved; tokenRefresh has not yet completed a successful tick",
+        }));
+        return;
+      }
+      let treasuryRes: Response;
+      try {
+        treasuryRes = await fetch(
+          `${treasuryBase.replace(/\/+$/, "")}/api/subscription/payments`,
+          {
+            method: "GET",
+            headers: { Authorization: `Bearer ${bearer}` },
+            signal: AbortSignal.timeout(5000),
+          },
+        );
+      } catch (err: any) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: "treasury_unreachable",
+          detail: err?.message ?? String(err),
+        }));
+        return;
+      }
+      const treasuryBody = await treasuryRes.json().catch(() => ({}));
+      res.writeHead(treasuryRes.status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(treasuryBody));
+    } catch (err: any) {
+      console.error("[subscription] payments read failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "payments_read_failed" }));
     }
     return;
   }

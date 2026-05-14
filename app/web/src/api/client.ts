@@ -18,7 +18,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     const message = err.detail
       ? `${err.error ?? "Request failed"}: ${err.detail}`
       : (err.error ?? "Request failed");
-    throw Object.assign(new Error(message), { status: res.status, detail: err.detail });
+    throw Object.assign(new Error(message), {
+      status: res.status,
+      detail: err.detail,
+      code: err.error,
+    });
   }
   return res.json();
 }
@@ -34,6 +38,7 @@ export const api = {
   getCommodityPrices: () => apiFetch<CommodityPrices>("/api/commodity-prices"),
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
   getSubscriptionStatus: () => apiFetch<SubscriptionStatus>("/api/subscription/status"),
+  getSubscriptionPayments: () => apiFetch<SubscriptionPaymentsResponse>("/api/subscription/payments"),
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   getNodePreflight: () => apiFetch<PreflightResult>("/api/node/preflight"),
@@ -591,6 +596,32 @@ export type SubscriptionStatusNotApplicable = {
 export type SubscriptionStatus =
   | SubscriptionStatusApplicable
   | SubscriptionStatusNotApplicable;
+
+// ─── Subscription payment history (Stage 5a follow-up) ───────────────────
+
+export type SubscriptionPaymentStatus =
+  | "confirmed"      // on-chain receipt with confirmed_at set
+  | "pending"        // on-chain receipt seen but not yet confirmed
+  | "admin_override"; // grandfather sentinel or operator manual extension
+
+export type SubscriptionPaymentRow = {
+  id: number;
+  txid: string | null;
+  vout: number | null;
+  amount_sats: number;
+  amount_usd_cents_at_receipt: number | null;
+  received_at: number;
+  confirmed_at: number | null;
+  period_extension_days: number;
+  kind: "onchain" | "admin_override";
+  admin_reason: string | null;
+  status: SubscriptionPaymentStatus;
+};
+
+export type SubscriptionPaymentsResponse = {
+  member_pubkey: string;
+  payments: SubscriptionPaymentRow[];
+};
 
 export type CommodityPrice = {
   price: number;

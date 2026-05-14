@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.15.2
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.16.0
     restart: unless-stopped
     ports:
       - "3101:3101"
@@ -44,6 +44,36 @@ services:
     networks:
       - umbrel
 
+  # Cloudflare Tunnel sidecar — exposes the API container at a stable
+  # public hostname (e.g., https://treasury.<operator-domain>) via an
+  # outbound-initiated connection to Cloudflare's edge. Required for
+  # cross-tailnet members to reach the treasury (Stage 4.5 reachability
+  # gap; see bitcorn-research spec 2026-05-16-cloudflare-tunnel-hardening).
+  #
+  # Gated by the `tunnel` compose profile so deployments without a
+  # Cloudflare account / TUNNEL_TOKEN don't crash-loop this container.
+  # Operators on Phase 4 set `COMPOSE_PROFILES=tunnel` in `.env` to
+  # activate; operators staying on Phase 1 (manual ephemeral tunnel) or
+  # tailnet-only deployments leave it unset.
+  #
+  # Routing target (set in Cloudflare dashboard → Tunnel → Public Hostname):
+  #   http://bitcorn-lightning-node_api_1:3101
+  # Full container name avoids service-alias collisions on Umbrel's
+  # shared `umbrel_main_network` (same discipline as LOOP_GRPC_HOST).
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: bitcorn-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    depends_on:
+      - api
+    networks:
+      - umbrel
+    profiles:
+      - tunnel
+
   loopd:
     image: lightninglabs/lightning-terminal:v0.16.1-alpha
     restart: unless-stopped
@@ -74,7 +104,7 @@ services:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.15.2
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.16.0
     restart: unless-stopped
     ports:
       - "3200:3200"
