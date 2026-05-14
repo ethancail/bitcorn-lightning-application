@@ -2519,9 +2519,39 @@ input[type="number"] {
    the state-semantic colors that need light-mode variants.
    ──────────────────────────────────────────────────────────────── */
 
-/* Pills that need light-mode contrast adjustments — emerald/blue/
-   amber/orange/red work in both modes thanks to their saturation, but
-   gray and muted-amber need help. */
+/* Light-mode pill overrides. The dark-mode hex values (Tailwind
+   400 saturations) wash out on cream backgrounds — bright colors at
+   high saturation read fine against #0a0a0a but not against #fdfaf2.
+   Each light-mode override drops to a Tailwind 800-ish darker hue
+   for the text while keeping the same color family for border + bg.
+   The Stage 5b admin distribution counter surfaced this in a way
+   the single-pill subscription panel didn't, because eleven pills
+   side-by-side made the contrast issue scannable across the palette. */
+[data-theme="light"] .sub-pill-emerald {
+  color: #065f46;
+  border-color: rgba(6,95,70,0.45);
+  background: rgba(52,211,153,0.18);
+}
+[data-theme="light"] .sub-pill-blue {
+  color: #1e40af;
+  border-color: rgba(30,64,175,0.45);
+  background: rgba(56,189,248,0.18);
+}
+[data-theme="light"] .sub-pill-amber {
+  color: #92400e;
+  border-color: rgba(146,64,14,0.50);
+  background: rgba(251,191,36,0.22);
+}
+[data-theme="light"] .sub-pill-orange {
+  color: #9a3412;
+  border-color: rgba(154,52,18,0.50);
+  background: rgba(251,146,60,0.22);
+}
+[data-theme="light"] .sub-pill-red {
+  color: #991b1b;
+  border-color: rgba(153,27,27,0.55);
+  background: rgba(248,113,113,0.22);
+}
 [data-theme="light"] .sub-pill-gray-pulsing {
   color: #525252;
   border-color: #a3a3a3;
@@ -2536,6 +2566,14 @@ input[type="number"] {
   color: #991b1b;
   border-color: rgba(185,28,28,0.50);
   background: rgba(254,202,202,0.50);
+}
+
+/* Admin distribution counter: the zero-count dimming via opacity:0.45
+   works on dark mode (contrast is high to begin with) but cuts below
+   readable on cream backgrounds. Lift the dimming in light mode so
+   zero pills stay scannable while still reading as "quiet." */
+[data-theme="light"] .admin-members-distribution-pill.is-zero {
+  opacity: 0.65;
 }
 
 /* Alert fills — the dark-mode warm-dark backgrounds don't work on
