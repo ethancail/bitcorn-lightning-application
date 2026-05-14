@@ -2907,3 +2907,32 @@ input[type="number"] {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+
+/* Two-line "Member" cell: contact name on top (sans-serif primary
+   text), truncated pubkey on bottom (Plex Mono muted). Renders only
+   when the row has a matching entry in the contacts table; rows
+   without a contact fall back to single-line pubkey display. */
+.admin-members-pubkey.has-contact {
+  align-items: flex-start;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+}
+.admin-members-pubkey-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  text-align: left;
+}
+.admin-members-contact-name {
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--fg-1);
+}
+.admin-members-pubkey-short {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.7rem;
+  color: var(--fg-2);
+  opacity: 0.8;
+}
