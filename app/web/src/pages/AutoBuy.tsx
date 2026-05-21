@@ -8,12 +8,98 @@ import StrategyTab from "../components/autoBuy/StrategyTab";
 // The table now lives on the treasury-only /valuation-input page instead.
 type TabId = "valuation" | "strategy";
 
+// Shape of a structured error from the /api/valuation/* routes — apiFetch
+// attaches { code, status, detail } to the Error it throws. `code` matches
+// the API's error-kind discriminator (scope_insufficient / auth_missing /
+// auth_invalid / upstream_error / worker_unreachable / worker_not_configured).
+interface ApiError extends Error {
+  code?: string;
+  status?: number;
+  detail?: string;
+}
+
+// Maps the API's structured error code to a user-facing banner. Each
+// branch describes WHY the call failed and what the user can do, not
+// the underlying HTTP plumbing — error_kinds collapse into one of
+// three operator intents (subscription tier, infra setup, transient).
+function describeValuationError(err: ApiError | null): {
+  type: string;
+  msg: string;
+  severity: "warning" | "info";
+} | null {
+  if (!err) return null;
+  switch (err.code) {
+    case "scope_insufficient":
+      return {
+        type: "Subscription tier insufficient",
+        msg:
+          "Valuation reads require an active subscription. Your token has payment-scope " +
+          "only, which authorizes Coinbase Onramp but not the Auto-Buy composite model. " +
+          "Pay the monthly subscription to restore full-scope access.",
+        severity: "warning",
+      };
+    case "auth_missing":
+      return {
+        type: "Not subscribed",
+        msg:
+          "This node has no subscription token cached. If you've just installed, the first " +
+          "refresh runs ~10s after boot — try reloading shortly. If the issue persists, " +
+          "your subscription row may not have been allocated yet on the treasury.",
+        severity: "info",
+      };
+    case "auth_invalid":
+      return {
+        type: "Subscription token issue",
+        msg:
+          `Your subscription token failed validation (${err.detail ?? "unknown reason"}). ` +
+          "Transient signature or expiry failures self-heal on the next refresh; persistent " +
+          "errors indicate a treasury key mismatch — contact your operator.",
+        severity: "warning",
+      };
+    case "upstream_error":
+      return {
+        type: "Worker upstream error",
+        msg:
+          `The Coinbase Worker is reachable but its upstream returned an error ` +
+          `(${err.detail ?? "unknown"}). Usually transient; the scheduler will retry on the ` +
+          `next tick.`,
+        severity: "warning",
+      };
+    case "worker_unreachable":
+      return {
+        type: "Worker unreachable",
+        msg:
+          "Couldn't reach the Coinbase Worker over the network. Check your node's outbound " +
+          "connectivity and that the Worker is deployed at COINBASE_WORKER_URL.",
+        severity: "warning",
+      };
+    case "worker_not_configured":
+      return {
+        type: "Worker not configured",
+        msg:
+          "COINBASE_WORKER_URL is not set on this node. Your operator needs to configure it " +
+          "via the Umbrel app settings or env_file.",
+        severity: "warning",
+      };
+    default:
+      // Fallback for unmapped errors — preserves prior generic-banner UX
+      // when the API returns a status we haven't taught the UI about yet.
+      return {
+        type: "Valuation unavailable",
+        msg:
+          `Worker returned no data (${err.code ?? "unknown"}). The scheduler will refuse to ` +
+          `buy if no fresh valuation is available.`,
+        severity: "warning",
+      };
+  }
+}
+
 export default function AutoBuy() {
   const [tab, setTab] = useState<TabId>("valuation");
   const [status, setStatus] = useState<AutoBuyStatus | null>(null);
   const [valuation, setValuation] = useState<ValuationCurrent | null>(null);
   const [loading, setLoading] = useState(true);
-  const [valuationError, setValuationError] = useState<string | null>(null);
+  const [valuationError, setValuationError] = useState<ApiError | null>(null);
 
   const refresh = useCallback(() => {
     return Promise.allSettled([api.getAutoBuyStatus(), api.getValuationCurrent()]).then(
@@ -23,7 +109,7 @@ export default function AutoBuy() {
           setValuation(vR.value);
           setValuationError(null);
         } else {
-          setValuationError(vR.reason?.message || "valuation_unavailable");
+          setValuationError(vR.reason as ApiError);
         }
       },
     );
@@ -35,6 +121,8 @@ export default function AutoBuy() {
     return () => clearInterval(id);
   }, [refresh]);
 
+  const errorBanner = describeValuationError(valuationError);
+
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
@@ -45,14 +133,12 @@ export default function AutoBuy() {
         </p>
       </div>
 
-      {valuationError && tab === "valuation" && (
-        <div className="alert warning" style={{ marginBottom: 16 }}>
-          <span className="alert-icon">⚠</span>
+      {errorBanner && tab === "valuation" && (
+        <div className={`alert ${errorBanner.severity}`} style={{ marginBottom: 16 }}>
+          <span className="alert-icon">{errorBanner.severity === "warning" ? "⚠" : "ⓘ"}</span>
           <div className="alert-body">
-            <div className="alert-type">Valuation unavailable</div>
-            <div className="alert-msg">
-              Worker returned no data. {valuationError}. The scheduler will refuse to buy if no fresh valuation is available.
-            </div>
+            <div className="alert-type">{errorBanner.type}</div>
+            <div className="alert-msg">{errorBanner.msg}</div>
           </div>
         </div>
       )}
