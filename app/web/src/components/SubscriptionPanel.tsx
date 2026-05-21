@@ -37,10 +37,56 @@ type ViewState =
   | { kind: "transport_unreachable"; detail?: string }
   | { kind: "network_error"; detail?: string };
 
+/** Derive a stable string key from a view state — the signal that
+ *  identifies which polled-error state the panel is currently in.
+ *  Returns null for healthy/transient views that don't render the
+ *  state-duration indicator. */
+function deriveStateKey(view: ViewState): string | null {
+  if (view.kind === "infrastructure_error") return "infrastructure_error";
+  if (view.kind === "transport_unreachable") return "transport_unreachable";
+  if (view.kind === "network_error") return "network_error";
+  if (
+    view.kind === "ok" &&
+    !view.status.applicable &&
+    view.status.reason === "missing"
+  ) {
+    return "missing";
+  }
+  return null;
+}
+
+/** Track when a non-null stateKey was first entered. Preserves the
+ *  timestamp across polls that keep stateKey the same (e.g., the 15s
+ *  re-poll while still in `infrastructure_error`); resets on state
+ *  change (e.g., `infrastructure_error` → `transport_unreachable`);
+ *  clears when stateKey is null (e.g., recovering to a healthy state).
+ *
+ *  This is the v2 fix for the deltas-record-noted "units-flip
+ *  unobservable" bug: the original implementation used the panel's
+ *  last-fetch timestamp, which the 15s polling cadence reset before
+ *  the indicator could cross the 60-second seconds-to-minutes
+ *  boundary. State-entry timestamps persist across polls, so the
+ *  indicator now reflects real time-in-state. */
+function useStateEnteredAt(stateKey: string | null): number | null {
+  const [enteredAt, setEnteredAt] = useState<number | null>(null);
+  const lastKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (stateKey === null) {
+      lastKeyRef.current = null;
+      setEnteredAt(null);
+    } else if (stateKey !== lastKeyRef.current) {
+      lastKeyRef.current = stateKey;
+      setEnteredAt(Date.now());
+    }
+    // else: same state, preserve enteredAt across this poll
+  }, [stateKey]);
+  return enteredAt;
+}
+
 export default function SubscriptionPanel() {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const [pendingSinceMs, setPendingSinceMs] = useState<number | null>(null);
-  const [lastFetchAt, setLastFetchAt] = useState<number>(Date.now());
+  const stateEnteredAt = useStateEnteredAt(deriveStateKey(view));
   // Local pubkey used by unexpected_missing_row's support-context block.
   // Fetched once on mount; LND identity doesn't change post-boot. Null
   // until first fetch completes — the render falls back to a neutral
@@ -58,7 +104,6 @@ export default function SubscriptionPanel() {
     try {
       const status = await api.getSubscriptionStatus();
       setView({ kind: "ok", status });
-      setLastFetchAt(Date.now());
 
       // Track stuck-in-not_yet_allocated for the 90s escalation copy.
       if (!status.applicable && status.reason === "not_yet_allocated") {
@@ -87,7 +132,6 @@ export default function SubscriptionPanel() {
       } else {
         setView({ kind: "network_error", detail });
       }
-      setLastFetchAt(Date.now());
     }
   }, []);
 
@@ -116,7 +160,7 @@ export default function SubscriptionPanel() {
         message="Couldn't load subscription state — infrastructure not ready."
         detail={view.detail}
         onRetry={fetchStatus}
-        lastFetchAt={lastFetchAt}
+        stateEnteredAt={stateEnteredAt}
       />
     );
   }
@@ -128,7 +172,7 @@ export default function SubscriptionPanel() {
       <TransportUnreachablePanel
         detail={view.detail}
         onRetry={fetchStatus}
-        lastFetchAt={lastFetchAt}
+        stateEnteredAt={stateEnteredAt}
       />
     );
   }
@@ -138,7 +182,7 @@ export default function SubscriptionPanel() {
         message="Couldn't load subscription state."
         detail={view.detail}
         onRetry={fetchStatus}
-        lastFetchAt={lastFetchAt}
+        stateEnteredAt={stateEnteredAt}
       />
     );
   }
@@ -156,7 +200,7 @@ export default function SubscriptionPanel() {
     <NotApplicablePanel
       status={status}
       pendingSinceMs={pendingSinceMs}
-      lastFetchAt={lastFetchAt}
+      stateEnteredAt={stateEnteredAt}
       localPubkey={localPubkey}
       onRetry={fetchStatus}
     />
@@ -255,18 +299,28 @@ function bip21Uri(address: string, amountSats: number): string {
 
 // tierToPill extracted to ./Pill.tsx (Stage 5b T3 extraction).
 
-// ─── Live-updating "X seconds ago" (signal system §10) ──────────
-
-function useLiveAgo(sinceMs: number): string {
+// ─── Live-updating duration string (signal system §10) ──────────
+//
+// Returns the time since `sinceMs` as "N seconds" / "1 minute" /
+// "N minutes" — units flip past the 60-second boundary, plural-vs-
+// singular flips at 1. Re-renders at the RETRY_INDICATOR_TICK_MS
+// cadence (1s) so the displayed value tracks real elapsed time.
+//
+// The previous version of this helper appended " ago" to support
+// "last attempt {ago}" copy. The Stage 5a units-flip fix moved all
+// consumers off last-fetch timestamps onto state-entered timestamps;
+// "in this state for {duration}" reads naturally without the "ago"
+// suffix, so the helper now returns the duration only.
+function useLiveDuration(sinceMs: number): string {
   const [, tick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => tick((n) => n + 1), RETRY_INDICATOR_TICK_MS);
     return () => clearInterval(id);
   }, []);
   const ageSec = Math.floor((Date.now() - sinceMs) / 1000);
-  if (ageSec < 60) return `${ageSec} second${ageSec === 1 ? "" : "s"} ago`;
+  if (ageSec < 60) return `${ageSec} second${ageSec === 1 ? "" : "s"}`;
   const ageMin = Math.floor(ageSec / 60);
-  return `${ageMin} minute${ageMin === 1 ? "" : "s"} ago`;
+  return `${ageMin} minute${ageMin === 1 ? "" : "s"}`;
 }
 
 // ─── Stat cell (per signal system §6) ───────────────────────────
@@ -526,13 +580,13 @@ function CloseDueRender({
 function NotApplicablePanel({
   status,
   pendingSinceMs,
-  lastFetchAt,
+  stateEnteredAt,
   localPubkey,
   onRetry,
 }: {
   status: SubscriptionStatusNotApplicable;
   pendingSinceMs: number | null;
-  lastFetchAt: number;
+  stateEnteredAt: number | null;
   localPubkey: string | null;
   onRetry: () => void;
 }) {
@@ -540,7 +594,7 @@ function NotApplicablePanel({
     case "external_peer":     return <ExternalPeerRender />;
     case "unclassified":      return <UnclassifiedRender />;
     case "not_yet_allocated": return <PendingInitialSyncRender pendingSinceMs={pendingSinceMs} channelAgeSec={status.channel_age_seconds ?? 0} onRetry={onRetry} />;
-    case "missing":           return <UnexpectedMissingRowRender lastFetchAt={lastFetchAt} localPubkey={localPubkey} onRetry={onRetry} />;
+    case "missing":           return <UnexpectedMissingRowRender stateEnteredAt={stateEnteredAt} localPubkey={localPubkey} onRetry={onRetry} />;
     case "no_channel":        return <NoChannelRender />;
   }
 }
@@ -632,15 +686,19 @@ function PendingInitialSyncRender({
 }
 
 function UnexpectedMissingRowRender({
-  lastFetchAt,
+  stateEnteredAt,
   localPubkey,
   onRetry,
 }: {
-  lastFetchAt: number;
+  stateEnteredAt: number | null;
   localPubkey: string | null;
   onRetry: () => void;
 }) {
-  const ago = useLiveAgo(lastFetchAt);
+  // stateEnteredAt is non-null whenever this render function is
+  // reached (the parent only routes to "missing" when the view has
+  // committed to that state); falling back to Date.now() as a defensive
+  // measure preserves render-time stability if the parent ever drifts.
+  const duration = useLiveDuration(stateEnteredAt ?? Date.now());
   const [locked, setLocked] = useState(false);
   const handleRetry = () => {
     if (locked) return;
@@ -664,7 +722,7 @@ function UnexpectedMissingRowRender({
         Your subscription state couldn't be loaded — this is unexpected. The subscription row should exist but isn't responding. This is usually a temporary sync issue that resolves within a minute, but may indicate something the system needs help with.
       </AlertBox>
       <p className="sub-retry-indicator">
-        <span aria-hidden>·</span> Checking again automatically every 15 seconds — last attempt {ago}.
+        <span aria-hidden>·</span> Checking again automatically every 15 seconds — in this state for {duration}.
       </p>
       <BracketHeading>MEMBER IDENTIFIER</BracketHeading>
       <div className="sub-member-id">
@@ -719,14 +777,14 @@ function ErrorPanel({
   message,
   detail,
   onRetry,
-  lastFetchAt,
+  stateEnteredAt,
 }: {
   message: string;
   detail?: string;
   onRetry: () => void;
-  lastFetchAt: number;
+  stateEnteredAt: number | null;
 }) {
-  const ago = useLiveAgo(lastFetchAt);
+  const duration = useLiveDuration(stateEnteredAt ?? Date.now());
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="dim-red" label="couldn't load" />} />
@@ -734,7 +792,7 @@ function ErrorPanel({
         {message} {detail ? <span className="sub-error-detail">({detail})</span> : null}
       </AlertBox>
       <p className="sub-retry-indicator">
-        <span aria-hidden>·</span> last attempt {ago}.
+        <span aria-hidden>·</span> in this state for {duration}.
       </p>
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
@@ -762,13 +820,13 @@ function ErrorPanel({
 function TransportUnreachablePanel({
   detail,
   onRetry,
-  lastFetchAt,
+  stateEnteredAt,
 }: {
   detail?: string;
   onRetry: () => void;
-  lastFetchAt: number;
+  stateEnteredAt: number | null;
 }) {
-  const ago = useLiveAgo(lastFetchAt);
+  const duration = useLiveDuration(stateEnteredAt ?? Date.now());
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="dim-red" label="treasury unreachable" />} />
@@ -778,7 +836,7 @@ function TransportUnreachablePanel({
         {detail ? <span className="sub-error-detail"> ({detail})</span> : null}
       </AlertBox>
       <p className="sub-retry-indicator">
-        <span aria-hidden>·</span> Checking again automatically every 15 seconds — last attempt {ago}.
+        <span aria-hidden>·</span> Checking again automatically every 15 seconds — in this state for {duration}.
       </p>
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
