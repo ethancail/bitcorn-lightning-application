@@ -574,6 +574,13 @@ export type SubscriptionStatusApplicable = {
   last_payment_at: number | null;
   last_payment_txid: string | null;
   grace: {
+    /**
+     * Pre-payment fresh-onboarding grace deadline (ms epoch). Meaningful
+     * only when `last_payment_txid === null` (member hasn't paid yet).
+     * After this milestone the row drops from `current` to `prepay`
+     * until a payment lands. Added in migration 042.
+     */
+    fresh_until: number;
     worker_until: number;
     routing_until: number;
     close_at: number;

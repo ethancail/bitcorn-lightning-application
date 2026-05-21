@@ -3,10 +3,11 @@
 //
 // Source of truth: bitcorn-research/specs/2026-05-08-member-subscription.md §5
 //
-// Dispatch order (per spec):
+// Dispatch order (per spec, augmented by migration 042's fresh grace):
 //
-//   if NOT EXISTS (SELECT 1 FROM subscription_payment             → prepay
-//                  WHERE member_pubkey = m.member_pubkey)
+//   if NOT EXISTS (SELECT 1 FROM subscription_payment WHERE member_pubkey = m.member_pubkey)
+//     if now() <= created_at + grace_days_fresh                   → current  (fresh-onboarding grace)
+//     else                                                        → prepay
 //   elif now() <= paid_through                                    → current
 //   elif now() <= paid_through + grace_days_worker                → current  (Tier 1 grace)
 //   elif now() <= paid_through + grace_days_routing               → worker_lapsed
@@ -20,6 +21,12 @@
 // grandfathered members get a sentinel admin_override row at backfill
 // time, so the presence of any payment row distinguishes
 // "grandfathered or paid" from "true pre-pay" (no rows at all).
+//
+// The fresh-grace branch lets newly signed-up members evaluate the
+// full-scope feature set (Auto-Buy, valuation reads) for grace_days_fresh
+// days before their JWT scope drops to payment-only. After that window
+// expires with no payment they fall to `prepay` and need to pay to
+// recover access. Default 30 days = one full subscription period.
 //
 // Run from the detector after the UTXO scan. Cheap to run every 15s —
 // it's an UPDATE per row keyed on the indexed primary.
@@ -43,13 +50,24 @@ const MS_PER_DAY = 86_400_000;
  */
 export function computeTier(args: {
   hasAnyPaymentRow: boolean;
+  createdAtMs: number;
   paidThroughMs: number;
+  graceDaysFresh: number;
   graceDaysWorker: number;
   graceDaysRouting: number;
   graceDaysClose: number;
   nowMs: number;
 }): TierValue {
-  if (!args.hasAnyPaymentRow) return "prepay";
+  if (!args.hasAnyPaymentRow) {
+    // Fresh-onboarding grace: new members get `current` (and therefore
+    // full-scope tokens) for grace_days_fresh days from sign-up so they
+    // can evaluate the service before being asked to pay. After the
+    // window they fall to `prepay` until a payment lands.
+    if (args.nowMs <= args.createdAtMs + args.graceDaysFresh * MS_PER_DAY) {
+      return "current";
+    }
+    return "prepay";
+  }
   const t = args.paidThroughMs;
   if (args.nowMs <= t) return "current";
   if (args.nowMs <= t + args.graceDaysWorker * MS_PER_DAY) return "current";
@@ -71,7 +89,10 @@ export interface RecomputeSummary {
 export function recomputeAllTiers(
   policy: Pick<
     SubscriptionPolicy,
-    "grace_days_worker" | "grace_days_routing" | "grace_days_close"
+    | "grace_days_fresh"
+    | "grace_days_worker"
+    | "grace_days_routing"
+    | "grace_days_close"
   >,
 ): RecomputeSummary {
   const summary: RecomputeSummary = { rows_seen: 0, transitions: [] };
@@ -83,6 +104,7 @@ export function recomputeAllTiers(
     .prepare(
       `SELECT
          s.member_pubkey,
+         s.created_at,
          s.paid_through,
          s.current_tier AS old_tier,
          EXISTS (
@@ -93,6 +115,7 @@ export function recomputeAllTiers(
     )
     .all() as Array<{
       member_pubkey: string;
+      created_at: number;
       paid_through: number;
       old_tier: TierValue;
       has_payment_row: 0 | 1;
@@ -106,7 +129,9 @@ export function recomputeAllTiers(
     summary.rows_seen++;
     const newTier = computeTier({
       hasAnyPaymentRow: row.has_payment_row === 1,
+      createdAtMs: row.created_at,
       paidThroughMs: row.paid_through,
+      graceDaysFresh: policy.grace_days_fresh,
       graceDaysWorker: policy.grace_days_worker,
       graceDaysRouting: policy.grace_days_routing,
       graceDaysClose: policy.grace_days_close,

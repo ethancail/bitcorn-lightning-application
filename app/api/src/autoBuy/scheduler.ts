@@ -152,11 +152,14 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   if (pending) return; // will be handled on the next step's existing path
 
   // Fetch composite valuation
-  const val = await getCurrent();
-  if (!val) {
-    console.warn("[autobuy-scheduler] no valuation data; skipping tick");
+  const valResult = await getCurrent();
+  if (!valResult.ok) {
+    console.warn(
+      `[autobuy-scheduler] no valuation data (${valResult.error.kind}); skipping tick`,
+    );
     return;
   }
+  const val = valResult.value;
 
   const freshness = caps.checkValuationFreshness(val.updated_at);
   if (!freshness.ok) {
