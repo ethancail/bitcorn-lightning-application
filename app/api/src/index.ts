@@ -79,7 +79,55 @@ import { startScheduler, runTick, ensureWithdrawAddress } from "./autoBuy/schedu
 import { listAccounts } from "./autoBuy/coinbaseClient";
 import { encrypt, decrypt } from "./autoBuy/credentials";
 import * as caps from "./autoBuy/caps";
-import { getCurrent, getHistory, getInputs } from "./autoBuy/valuationClient";
+import {
+  getCurrent,
+  getHistory,
+  getInputs,
+  type ValuationFetchError,
+} from "./autoBuy/valuationClient";
+
+// Maps a ValuationFetchError to an appropriate HTTP status + body shape
+// for the /api/valuation/* routes. Each Worker-side failure mode gets a
+// distinct status so the frontend can render a tailored message
+// ("subscription tier insufficient" vs "Worker unreachable" vs "not
+// subscribed") instead of the generic "valuation_unavailable" that
+// every cause used to collapse to. Body shape: { error: <kind>,
+// detail?: string } — error code matches the union discriminator
+// 1:1 so the frontend can switch on it directly.
+function mapValuationErrorToHttp(error: ValuationFetchError): {
+  status: number;
+  body: { error: string; detail?: string };
+} {
+  switch (error.kind) {
+    case "scope_insufficient":
+      // 403 — token authenticated but doesn't cover this endpoint's
+      // required scope. Member's subscription tier is below `current`.
+      return { status: 403, body: { error: "scope_insufficient" } };
+    case "auth_missing":
+      // 401 — no Bearer at all. Most likely the node never completed
+      // its first token refresh (no subscription row on treasury, or
+      // treasury was unreachable at every refresh attempt so far).
+      return { status: 401, body: { error: "auth_missing" } };
+    case "auth_invalid":
+      // 401 — token present but failed validation. Transient forms
+      // (expired/bad_signature) self-heal via workerFetch's retry;
+      // a persistent surface means the token is structurally wrong.
+      return { status: 401, body: { error: "auth_invalid", detail: error.detail } };
+    case "upstream_error":
+      // 502 — Worker reached us but its upstream (Coinbase, etc.)
+      // failed. Distinguishes "Worker broken" from "Worker unreachable".
+      return {
+        status: 502,
+        body: { error: "upstream_error", detail: `Worker returned ${error.status}` },
+      };
+    case "worker_unreachable":
+      // 503 — couldn't talk to the Worker at all (DNS, timeout, etc.).
+      return { status: 503, body: { error: "worker_unreachable", detail: error.detail } };
+    case "worker_not_configured":
+      // 503 — operator hasn't set COINBASE_WORKER_URL on this node.
+      return { status: 503, body: { error: "worker_not_configured" } };
+  }
+}
 import {
   getBtcExchangeRate,
   createPaymentInvoice,
@@ -3669,14 +3717,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     try {
-      const data = await getCurrent();
-      if (!data) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "valuation_unavailable" }));
+      const result = await getCurrent();
+      if (!result.ok) {
+        const mapped = mapValuationErrorToHttp(result.error);
+        res.writeHead(mapped.status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(mapped.body));
         return;
       }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
+      res.end(JSON.stringify(result.value));
     } catch (err: any) {
       console.error("[valuation-current]", err);
       res.writeHead(503, { "Content-Type": "application/json" });
@@ -3696,14 +3745,15 @@ const server = http.createServer(async (req, res) => {
       const url = new URL(req.url, "http://localhost");
       const since = url.searchParams.get("since") ?? undefined;
       const until = url.searchParams.get("until") ?? undefined;
-      const data = await getHistory(since, until);
-      if (!data) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "valuation_unavailable" }));
+      const result = await getHistory(since, until);
+      if (!result.ok) {
+        const mapped = mapValuationErrorToHttp(result.error);
+        res.writeHead(mapped.status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(mapped.body));
         return;
       }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
+      res.end(JSON.stringify(result.value));
     } catch (err: any) {
       console.error("[valuation-history]", err);
       res.writeHead(503, { "Content-Type": "application/json" });
@@ -3720,14 +3770,15 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     try {
-      const data = await getInputs();
-      if (!data) {
-        res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "valuation_unavailable" }));
+      const result = await getInputs();
+      if (!result.ok) {
+        const mapped = mapValuationErrorToHttp(result.error);
+        res.writeHead(mapped.status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(mapped.body));
         return;
       }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
+      res.end(JSON.stringify(result.value));
     } catch (err: any) {
       console.error("[valuation-inputs]", err);
       res.writeHead(503, { "Content-Type": "application/json" });

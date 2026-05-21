@@ -41,6 +41,15 @@ export interface SubscriptionStatusApplicable {
   last_payment_at: number | null;
   last_payment_txid: string | null;
   grace: {
+    /**
+     * Pre-payment fresh-onboarding grace deadline (ms epoch). Computed
+     * as `created_at + grace_days_fresh * MS_PER_DAY`. Only meaningful
+     * when the member has no payment row yet — once they pay, the
+     * post-payment grace milestones (worker_until/routing_until/close_at)
+     * take over. The UI can surface "fresh grace remaining" by
+     * comparing now to this value when `last_payment_txid === null`.
+     */
+    fresh_until: number;
     worker_until: number;
     routing_until: number;
     close_at: number;
@@ -108,6 +117,7 @@ export function computeSubscriptionStatusForPubkey(
       last_payment_at: row.last_payment_at,
       last_payment_txid: row.last_payment_txid,
       grace: {
+        fresh_until: row.created_at + policy.grace_days_fresh * MS_PER_DAY,
         worker_until: row.paid_through + policy.grace_days_worker * MS_PER_DAY,
         routing_until: row.paid_through + policy.grace_days_routing * MS_PER_DAY,
         close_at: row.paid_through + policy.grace_days_close * MS_PER_DAY,
