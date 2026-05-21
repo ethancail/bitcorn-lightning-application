@@ -246,16 +246,22 @@ export function getCachedToken(): CachedToken | null {
 
 /**
  * Returns the cached JWT if it's present and not yet expired. The
- * `validity_buffer_sec` gives the caller room to detect imminent
+ * `validityBufferSec` gives the caller room to detect imminent
  * expiry and refuse to send a stale token mid-flight; default 60s.
+ *
+ * Unit note: `expires_at` is stored in milliseconds (see persist site
+ * around line 394: `payload.expires_at_sec * 1000`), so the comparison
+ * works in ms and the seconds-denominated buffer is multiplied. This
+ * matches the convention used by the refresh-loop callback below
+ * (line ~508), which also reads `expires_at` as ms.
  */
 export function getCachedTokenIfFresh(
   validityBufferSec = 60,
 ): CachedToken | null {
   const tok = getCachedToken();
   if (!tok) return null;
-  const nowSec = Math.floor(Date.now() / 1000);
-  if (tok.expires_at - nowSec <= validityBufferSec) return null;
+  const nowMs = Date.now();
+  if (tok.expires_at - nowMs <= validityBufferSec * 1000) return null;
   return tok;
 }
 
