@@ -14,13 +14,20 @@
 //   elif now() <= paid_through + grace_days_close                 → routing_lapsed
 //   else                                                          → close_due
 //
-// The prepay test is `NOT EXISTS` against subscription_payment, not
-// `last_payment_txid IS NULL` against subscription. This was a Stage 2
-// architectural call (decision record:
-// 2026-05-08-subscription-stage-2-architectural-deltas.md, point 6):
-// grandfathered members get a sentinel admin_override row at backfill
-// time, so the presence of any payment row distinguishes
-// "grandfathered or paid" from "true pre-pay" (no rows at all).
+// The prepay test is `NOT EXISTS` against subscription_payment with
+// `period_extension_days > 0`, not `last_payment_txid IS NULL` against
+// subscription. This was a Stage 2 architectural call (decision
+// record: 2026-05-08-subscription-stage-2-architectural-deltas.md,
+// point 6): grandfathered members get a sentinel admin_override row
+// at backfill time with `period_extension_days = 0`.
+//
+// The `period_extension_days > 0` filter (added in v1.17.3) is what
+// makes fresh-grace work for grandfathered members too: the sentinel
+// row marks "this member existed at flip-day" but doesn't credit any
+// time, so it shouldn't disqualify them from the 30-day evaluation
+// window. Real payments (`kind='onchain'` or operator overrides that
+// credit time) have `period_extension_days > 0` and continue to set
+// `hasAnyPaymentRow=true`, routing the paid-tier ladder as before.
 //
 // The fresh-grace branch lets newly signed-up members evaluate the
 // full-scope feature set (Auto-Buy, valuation reads) for grace_days_fresh
@@ -100,6 +107,13 @@ export function recomputeAllTiers(
 
   // Single-query join: for each subscription, EXISTS check on payment.
   // EXISTS keeps the result boolean instead of materialising the count.
+  //
+  // `period_extension_days > 0` filters out sentinel admin_override
+  // rows (grandfather backfill markers with extension=0 that exist
+  // only to anchor `paid_through`). See the spec note above — without
+  // this filter, every grandfathered member would short-circuit the
+  // fresh-grace branch and fall straight into the paid-tier ladder at
+  // day 7 (worker grace expires).
   const rows = db
     .prepare(
       `SELECT
@@ -110,6 +124,7 @@ export function recomputeAllTiers(
          EXISTS (
            SELECT 1 FROM subscription_payment p
            WHERE p.member_pubkey = s.member_pubkey
+             AND p.period_extension_days > 0
          ) AS has_payment_row
        FROM subscription s`,
     )
