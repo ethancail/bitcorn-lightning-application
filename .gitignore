@@ -34,9 +34,12 @@ logs/
 *.log
 npm-debug.log*
 
-# Data
-data/*.db
-data/*.sqlite
+# Data — runtime SQLite + WAL/SHM at any depth under data/.
+# The original `data/*.sqlite` pattern didn't recurse, so
+# `data/db/bitcorn.sqlite` (and -wal/-shm) silently slipped into the
+# index. Recursive-glob form covers subdirs and the WAL/SHM siblings.
+data/**/*.db
+data/**/*.sqlite*
 
 # Secrets
 secrets/
@@ -45,6 +48,11 @@ secrets/
 
 # Screenshots (Playwright/dev previews)
 screenshots/
+# Root-level scratch screenshots from ad-hoc dev sessions.
+/*.png
+
+# Pandoc-rendered scratch HTML at the repo root.
+/*.html
 
 # Local dev overrides (contain local pubkeys and paths)
 docker-compose.override.yml
@@ -55,3 +63,11 @@ dev/lnd/
 
 # Cloudflare wrangler local-dev secrets (gitignored — never commit)
 cloudflare-worker/.dev.vars
+# Wrangler's local-dev state cache (miniflare KV, etc.) — per-machine.
+cloudflare-worker/.wrangler/
+
+# Claude Code per-project state (agents, settings, session data).
+.claude/
+
+# Playwright-MCP per-project snapshot artifacts (page-*.yml dumps).
+.playwright-mcp/
