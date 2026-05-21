@@ -127,7 +127,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
         <div className="alert-body">
           <div className="alert-type">No hub channel</div>
           <div className="alert-msg">
-            Open a channel to the hub to start routing payments and earning forwarding fees.
+            Open a channel to the hub to start sending and receiving Lightning payments.
           </div>
         </div>
       </div>
@@ -407,7 +407,6 @@ export default function MemberDashboard() {
   }
 
   const ch = stats?.treasury_channel;
-  const fees = stats?.forwarded_fees;
   const badge = statusBadge(stats?.membership_status ?? "");
 
   // USD conversion helper
@@ -711,35 +710,6 @@ export default function MemberDashboard() {
         );
       })()}
 
-      {/* Forwarded fees — only show once they have / had a channel */}
-      {(hasChannel || (fees && fees.total_sats > 0)) && (
-        <div className="panel ops fade-in">
-          <div className="panel-header">
-            <span className="panel-title">
-              <span className="icon">↗</span>Forwarded Fees Earned
-            </span>
-          </div>
-          <div className="panel-body">
-            <div className="dashboard-grid" style={{ gridTemplateColumns: "1fr 1fr 1fr" }}>
-              <div className="stat-card">
-                <div className="stat-label">Last 24h</div>
-                <div className="stat-value">{fees?.last_24h_sats.toLocaleString() ?? "—"}</div>
-                <div className="stat-sub">sats</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Last 30 days</div>
-                <div className="stat-value">{fees?.last_30d_sats.toLocaleString() ?? "—"}</div>
-                <div className="stat-sub">sats</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">All Time</div>
-                <div className="stat-value">{fees?.total_sats.toLocaleString() ?? "—"}</div>
-                <div className="stat-sub">sats</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
