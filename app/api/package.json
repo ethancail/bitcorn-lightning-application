@@ -5,6 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "postbuild": "node -e \"require('fs').cpSync('src/db/migrations','dist/db/migrations',{recursive:true,force:true})\"",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js"
   },
