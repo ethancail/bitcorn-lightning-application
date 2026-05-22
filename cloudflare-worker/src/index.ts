@@ -14,6 +14,11 @@
 //   GET  /valuation/manual/calendar — Per-day completeness summary across a range (handlers/manualInputQuery.ts)
 //   POST /valuation/refresh   — Manually trigger the engine cron (HMAC; handlers/refresh.ts)
 //
+//   ─── Stablecoin rail (per spec §5) ───
+//   GET  /base/contract-info  — Public; SettlementRouter address + live state (handlers/base.ts)
+//   POST /base/contract-state — payment-scope; allowlisted ABI read wrapper (handlers/base.ts)
+//   GET  /base/balance        — payment-scope; convenience ERC-20 balanceOf (handlers/base.ts)
+//
 // Deploy runbook, secret management, and architecture: docs/COINBASE_INTEGRATION.md.
 // Valuation engine runs on cron (wrangler.toml [triggers]); see valuation/cron.ts.
 
@@ -29,6 +34,11 @@ import {
 import { handleManualInput } from "./handlers/manualInput";
 import { handleManualInputCalendar, handleManualInputDay } from "./handlers/manualInputQuery";
 import { handleValuationRefresh } from "./handlers/refresh";
+import {
+  handleBaseBalance,
+  handleBaseContractInfo,
+  handleBaseContractState,
+} from "./handlers/base";
 import { handleScheduled } from "./valuation/cron";
 import { CORS_HEADERS } from "./lib/cors";
 import { withJwtGate } from "./lib/jwt";
@@ -49,6 +59,12 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/treasury-info") {
       return handleTreasuryInfo(env);
+    }
+    // /base/contract-info is public per spec §5.2: contract addresses and
+    // live fee/pause state are on-chain-public anyway, and members need
+    // them for sync before they hold any entitlement token.
+    if (request.method === "GET" && url.pathname === "/base/contract-info") {
+      return handleBaseContractInfo(env);
     }
 
     // ── HMAC-gated endpoints (treasury-only writes, unchanged) ────
@@ -77,6 +93,15 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/prices/corn-history") {
       return withJwtGate(request, env, "payment", () => handleCornHistory(env));
+    }
+    // BASE state-read endpoints: subscriber-base (payment) scope per spec §5.2.
+    // Recovery-path-adjacent — lapsed members must be able to see their USDC
+    // balances to decide whether to renew.
+    if (request.method === "POST" && url.pathname === "/base/contract-state") {
+      return withJwtGate(request, env, "payment", () => handleBaseContractState(request, env));
+    }
+    if (request.method === "GET" && url.pathname === "/base/balance") {
+      return withJwtGate(request, env, "payment", () => handleBaseBalance(request, env));
     }
 
     // ── TIER-GATED endpoints (valuation reads) ────────────────────
