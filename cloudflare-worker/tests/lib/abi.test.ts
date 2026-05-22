@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  decodeIndexedTopic,
   decodeReturn,
   encodeCallData,
+  eventTopic0,
   isAddress,
   normalizeAddress,
   parseSignature,
@@ -25,6 +27,96 @@ describe("abi.selector", () => {
 
   it("normalizes whitespace", () => {
     expect(selector("balanceOf( address )")).toBe(selector("balanceOf(address)"));
+  });
+});
+
+describe("abi.eventTopic0", () => {
+  // Reference vectors:
+  //   - Settled vector cross-checked against the actual on-chain log emitted by
+  //     the smoke-test settle tx on Base Sepolia (block 41851567).
+  //   - Transfer / Approval vectors are canonical ERC20.
+  //   - FeeBpsUpdated / Paused / Unpaused precomputed locally + verified via
+  //     keccak256 from the @noble/hashes library at implementation time.
+  it.each([
+    [
+      "Settled(address,address,uint256,uint256,bytes32)",
+      "0x4a69742b8c79b607e7d6ec3e71d19c5d19a09a822a87b2339620d028f570178b",
+    ],
+    [
+      "FeeBpsUpdated(uint16,uint16)",
+      "0x8d10f5697a370f640ed5d474159aba3cc86e9bc260a5e9d2db875ad992cb1a1f",
+    ],
+    [
+      "Paused(address)",
+      "0x62e78cea01bee320cd4e420270b5ea74000d11b0c9f74754ebdbfc544b05a258",
+    ],
+    [
+      "Unpaused(address)",
+      "0x5db9ee0a495bf2e6ff9c91a7834c1ba4fdd244a5e8aa4e537bd38aeae4b073aa",
+    ],
+    [
+      "Transfer(address,address,uint256)",
+      "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+    ],
+    [
+      "Approval(address,address,uint256)",
+      "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925",
+    ],
+  ])("computes topic0 for %s", (sig, expected) => {
+    expect(eventTopic0(sig)).toBe(expected);
+  });
+
+  it("returns the full 32-byte hash (66 hex chars including 0x)", () => {
+    const topic = eventTopic0("Paused(address)");
+    expect(topic).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(topic.length).toBe(66);
+  });
+
+  it("normalizes whitespace", () => {
+    expect(eventTopic0("Paused( address )")).toBe(eventTopic0("Paused(address)"));
+  });
+});
+
+describe("abi.decodeIndexedTopic", () => {
+  it("decodes an indexed address (left-padded with zeros)", () => {
+    // Real fixture from the smoke-test settle tx — sender topic.
+    const senderTopic = "0x0000000000000000000000004842925cf6b6671e8e1a25892bdea0807b4814fd";
+    expect(decodeIndexedTopic("address", senderTopic)).toBe(
+      "0x4842925cf6b6671e8e1a25892bdea0807b4814fd",
+    );
+  });
+
+  it("decodes an indexed bytes32 (the topic IS the bytes32, no padding)", () => {
+    // Real fixture — tradeRef from the smoke-test settle tx.
+    const tradeRef = "0xf3f9467ab985f6fdff87a5fa4bb6ff265fd303b413dc334748d2e1236384f155";
+    expect(decodeIndexedTopic("bytes32", tradeRef)).toBe(tradeRef);
+  });
+
+  it("decodes an indexed uint256", () => {
+    const topic = "0x000000000000000000000000000000000000000000000000000000000001e240"; // 123456
+    expect(decodeIndexedTopic("uint256", topic)).toBe(123456n);
+  });
+
+  it("decodes an indexed bool (true)", () => {
+    const topic = "0x" + "0".repeat(63) + "1";
+    expect(decodeIndexedTopic("bool", topic)).toBe(true);
+  });
+
+  it("decodes an indexed bool (false)", () => {
+    const topic = "0x" + "0".repeat(64);
+    expect(decodeIndexedTopic("bool", topic)).toBe(false);
+  });
+
+  it("rejects a topic with wrong length", () => {
+    expect(() => decodeIndexedTopic("address", "0xabcd")).toThrow(/32 bytes/);
+    expect(() => decodeIndexedTopic("address", "0x" + "0".repeat(63))).toThrow(/32 bytes/);
+  });
+
+  it("accepts a topic without 0x prefix (defensive)", () => {
+    const senderNoPrefix = "0000000000000000000000004842925cf6b6671e8e1a25892bdea0807b4814fd";
+    expect(decodeIndexedTopic("address", senderNoPrefix)).toBe(
+      "0x4842925cf6b6671e8e1a25892bdea0807b4814fd",
+    );
   });
 });
 

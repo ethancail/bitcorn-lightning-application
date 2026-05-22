@@ -121,3 +121,34 @@ export async function ethBlockNumber(env: Env): Promise<string> {
 export async function ethChainId(env: Env): Promise<string> {
   return callRpc<string>(env, "eth_chainId", []);
 }
+
+/** Structured shape of a log entry as returned by eth_getLogs. */
+export interface RpcLog {
+  blockNumber: string;
+  blockHash: string;
+  transactionHash: string;
+  transactionIndex: string;
+  logIndex: string;
+  address: string;
+  topics: string[];
+  data: string;
+  removed: boolean;
+}
+
+/**
+ * eth_getLogs — returns event logs matching a filter. Block bounds are
+ * 0x-prefixed hex (or "latest"); `topics` is positional, with `null`
+ * meaning "match any" at that slot. Caller supplies the topic[0] filter
+ * (event selector) so the upstream RPC can use a topic-index lookup.
+ */
+export async function ethGetLogs(
+  env: Env,
+  filter: {
+    fromBlock: string;
+    toBlock: string;
+    address?: string;
+    topics?: Array<string | null | string[]>;
+  },
+): Promise<RpcLog[]> {
+  return callRpc<RpcLog[]>(env, "eth_getLogs", [filter]);
+}

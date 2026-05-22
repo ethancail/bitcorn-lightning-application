@@ -1,6 +1,6 @@
 // Bitcorn Lightning — Cloudflare Worker BASE proxy handlers.
 //
-// Three endpoints surface BASE-side state to the API container while keeping
+// Four endpoints surface BASE-side state to the API container while keeping
 // the upstream RPC API key secret-side. Authorization mirrors the existing
 // three-category Worker model (public / subscriber-base / tier-gated) per
 // spec §5.2.
@@ -8,16 +8,19 @@
 //   GET  /base/contract-info   — public; static config + live feeBps/paused
 //   POST /base/contract-state  — subscriber-base; generic ABI-call wrapper
 //   GET  /base/balance         — subscriber-base; convenience for balanceOf
+//   POST /base/events          — subscriber-base; allowlisted eth_getLogs wrapper
 //
 // Spec: bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md §5
 // Contract: bitcorn-stablecoin-rail repo, deployed to 0xF1Bc89... on Base Sepolia
 
 import { CORS_HEADERS } from "../lib/cors";
-import { ethCall, ethBlockNumber, BaseRpcError } from "../lib/baseRpc";
+import { ethCall, ethBlockNumber, ethGetLogs, BaseRpcError, RpcLog } from "../lib/baseRpc";
 import {
   AbiType,
+  decodeIndexedTopic,
   decodeReturn,
   encodeCallData,
+  eventTopic0,
   isAddress,
   normalizeAddress,
   parseSignature,
@@ -62,6 +65,63 @@ const ERC20_SIGNATURES: Record<string, SignatureSpec> = {
   "symbol()":     { signature: "symbol()",     returnTypes: [] /* string; v1 doesn't decode */ },
   "totalSupply()":{ signature: "totalSupply()",returnTypes: ["uint256"] },
 };
+
+// Event allowlist for /base/events. v1 covers the four events the §7 sync
+// loop needs to observe: Settled (state-changing), FeeBpsUpdated (governance),
+// Paused/Unpaused (governance). Other SettlementRouter events (OwnershipProposed,
+// FeeRecipientUpdated, OwnershipTransferred, OwnershipTransferStarted) are
+// audited on-chain via BaseScan; adding them is a small allowlist extension
+// when the sync loop needs them.
+
+interface EventSpec {
+  /** Full event signature for topic[0] computation (param names stripped). */
+  signature: string;
+  /** Indexed parameter types in declaration order — drive `topics[1..N]` decoding. */
+  indexedTypes: AbiType[];
+  /** Snake-case field names returned in the decoded payload (parallel to indexedTypes). */
+  indexedNames: string[];
+  /** Non-indexed parameter types in declaration order — drive `data` decoding. */
+  dataTypes: AbiType[];
+  /** Snake-case field names returned in the decoded payload (parallel to dataTypes). */
+  dataNames: string[];
+}
+
+const EVENT_ALLOWLIST: Record<string, EventSpec> = {
+  Settled: {
+    signature: "Settled(address,address,uint256,uint256,bytes32)",
+    indexedTypes: ["address", "address", "bytes32"],
+    indexedNames: ["sender", "recipient", "trade_ref"],
+    dataTypes: ["uint256", "uint256"],
+    dataNames: ["amount", "fee"],
+  },
+  FeeBpsUpdated: {
+    signature: "FeeBpsUpdated(uint16,uint16)",
+    indexedTypes: [],
+    indexedNames: [],
+    dataTypes: ["uint16", "uint16"],
+    dataNames: ["old_bps", "new_bps"],
+  },
+  Paused: {
+    // OZ Pausable's Paused(address) event — note `account` is NOT indexed.
+    signature: "Paused(address)",
+    indexedTypes: [],
+    indexedNames: [],
+    dataTypes: ["address"],
+    dataNames: ["account"],
+  },
+  Unpaused: {
+    signature: "Unpaused(address)",
+    indexedTypes: [],
+    indexedNames: [],
+    dataTypes: ["address"],
+    dataNames: ["account"],
+  },
+};
+
+// Block-range cap for a single /base/events call. Alchemy's free tier
+// rejects eth_getLogs queries spanning more than 10k blocks; this cap
+// ensures the Worker returns a clean 400 before the upstream rejects.
+const MAX_BLOCK_RANGE = 10_000;
 
 // -----------------------------------------------------------------------
 // GET /base/contract-info  (public)
@@ -304,6 +364,206 @@ export async function handleBaseBalance(request: Request, env: Env): Promise<Res
   } catch (err) {
     return mapRpcError(err);
   }
+}
+
+// -----------------------------------------------------------------------
+// POST /base/events  (subscriber-base scope)
+// -----------------------------------------------------------------------
+
+interface EventsRequest {
+  event?: string;
+  from_block?: number;
+  to_block?: number;
+  contract?: string;
+}
+
+/**
+ * Fetch decoded event logs from the SettlementRouter over a block range.
+ *
+ * Body:
+ *   - event (required): one of "Settled", "FeeBpsUpdated", "Paused", "Unpaused"
+ *   - from_block (required): inclusive start block, integer
+ *   - to_block (required): inclusive end block, integer
+ *   - contract (optional): defaults to env.SETTLEMENT_ROUTER_ADDRESS; if
+ *     supplied, must match (allowlist guard)
+ *
+ * Allowlists enforced server-side:
+ *   1. `event` must appear in EVENT_ALLOWLIST. Anything else → 400.
+ *   2. `contract` must equal the configured SettlementRouter. Anything
+ *      else → 400. New target contracts require an allowlist + spec
+ *      amendment.
+ *   3. `to_block - from_block` is capped at MAX_BLOCK_RANGE (10,000).
+ *      Most upstream RPC providers reject larger ranges anyway; failing
+ *      fast at the Worker gives a clean error code.
+ *
+ * Response:
+ *   {
+ *     event: "Settled",
+ *     contract: "0x...",
+ *     from_block: N,
+ *     to_block: N+1000,
+ *     logs: [
+ *       {
+ *         block_number: ...,
+ *         tx_hash: "0x...",
+ *         log_index: ...,
+ *         decoded: { sender, recipient, trade_ref, amount, fee }   // event-shape-specific
+ *       }, ...
+ *     ],
+ *     as_of_block_number: N+1100  // current tip; lets caller measure how far behind
+ *                                  // their requested range is
+ *   }
+ *
+ * Each indexed parameter is decoded via decodeIndexedTopic; non-indexed
+ * parameters via decodeReturn. BigInts (uint256) come back as decimal
+ * strings (same convention as /base/contract-state).
+ */
+export async function handleBaseEvents(request: Request, env: Env): Promise<Response> {
+  let body: EventsRequest;
+  try {
+    body = (await request.json()) as EventsRequest;
+  } catch {
+    return jsonError(400, "invalid_json", "request body must be JSON");
+  }
+
+  const { event, from_block, to_block, contract } = body;
+
+  if (!event || typeof event !== "string") {
+    return jsonError(400, "invalid_event", "event field is required");
+  }
+  const spec = EVENT_ALLOWLIST[event];
+  if (!spec) {
+    return jsonError(
+      400,
+      "event_not_allowed",
+      `event "${event}" is not in the allowlist (allowed: ${Object.keys(EVENT_ALLOWLIST).join(", ")})`,
+    );
+  }
+
+  if (typeof from_block !== "number" || !Number.isInteger(from_block) || from_block < 0) {
+    return jsonError(400, "invalid_from_block", "from_block must be a non-negative integer");
+  }
+  if (typeof to_block !== "number" || !Number.isInteger(to_block) || to_block < from_block) {
+    return jsonError(400, "invalid_to_block", "to_block must be an integer >= from_block");
+  }
+  if (to_block - from_block > MAX_BLOCK_RANGE) {
+    return jsonError(
+      400,
+      "block_range_too_large",
+      `block range ${to_block - from_block} exceeds cap of ${MAX_BLOCK_RANGE} blocks`,
+    );
+  }
+
+  // Resolve target contract — defaults to env.SETTLEMENT_ROUTER_ADDRESS.
+  const targetContract = contract ?? env.SETTLEMENT_ROUTER_ADDRESS;
+  if (!targetContract) {
+    return jsonError(
+      503,
+      "router_unconfigured",
+      "SETTLEMENT_ROUTER_ADDRESS is not set on the Worker",
+    );
+  }
+  if (!isAddress(targetContract)) {
+    return jsonError(400, "invalid_contract", "contract must be a 20-byte hex address");
+  }
+  if (
+    env.SETTLEMENT_ROUTER_ADDRESS &&
+    normalizeAddress(targetContract) !== normalizeAddress(env.SETTLEMENT_ROUTER_ADDRESS)
+  ) {
+    return jsonError(
+      400,
+      "contract_not_allowed",
+      "explicit contract override is not the SettlementRouter",
+    );
+  }
+
+  const topic0 = eventTopic0(spec.signature);
+  let rawLogs: RpcLog[];
+  try {
+    rawLogs = await ethGetLogs(env, {
+      fromBlock: "0x" + from_block.toString(16),
+      toBlock: "0x" + to_block.toString(16),
+      address: targetContract,
+      topics: [topic0],
+    });
+  } catch (err) {
+    return mapRpcError(err);
+  }
+
+  // Decode each log using the event spec. A malformed log (e.g. wrong topic
+  // count) shouldn't ever happen given the topic0 filter, but we catch
+  // per-log so one bad row doesn't blow up the whole response.
+  const logs: unknown[] = [];
+  const decodeErrors: Array<{ tx_hash: string; log_index: string; error: string }> = [];
+  for (const log of rawLogs) {
+    try {
+      logs.push(decodeLog(spec, log));
+    } catch (err) {
+      decodeErrors.push({
+        tx_hash: log.transactionHash,
+        log_index: log.logIndex,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  // Best-effort tip read so the caller can compute "how far behind my
+  // to_block is". A failure here doesn't fail the call.
+  let asOfBlockNumber: number = to_block;
+  try {
+    const tipHex = await ethBlockNumber(env);
+    asOfBlockNumber = Number(BigInt(tipHex));
+  } catch {
+    // Fall through: caller still gets the logs.
+  }
+
+  return new Response(
+    JSON.stringify({
+      event,
+      contract: normalizeAddress(targetContract),
+      from_block,
+      to_block,
+      logs,
+      decode_errors: decodeErrors,
+      as_of_block_number: asOfBlockNumber,
+    }),
+    { headers: JSON_HEADERS },
+  );
+}
+
+/** Decode one log against the event spec. Throws on shape mismatch. */
+function decodeLog(spec: EventSpec, log: RpcLog): unknown {
+  // log.topics[0] is the event selector — already filtered upstream. The
+  // remaining topics map 1:1 to the indexed parameters in declaration order.
+  const indexedTopics = log.topics.slice(1);
+  if (indexedTopics.length !== spec.indexedTypes.length) {
+    throw new Error(
+      `expected ${spec.indexedTypes.length} indexed topics for ${spec.signature}, ` +
+        `got ${indexedTopics.length}`,
+    );
+  }
+
+  const decoded: Record<string, string | number | boolean> = {};
+
+  for (let i = 0; i < spec.indexedTypes.length; i++) {
+    decoded[spec.indexedNames[i]] = serializeValue(
+      decodeIndexedTopic(spec.indexedTypes[i], indexedTopics[i]),
+    );
+  }
+
+  if (spec.dataTypes.length > 0) {
+    const dataValues = decodeReturn(log.data, spec.dataTypes);
+    for (let i = 0; i < spec.dataTypes.length; i++) {
+      decoded[spec.dataNames[i]] = serializeValue(dataValues[i]);
+    }
+  }
+
+  return {
+    block_number: Number(BigInt(log.blockNumber)),
+    tx_hash: log.transactionHash,
+    log_index: Number(BigInt(log.logIndex)),
+    decoded,
+  };
 }
 
 // -----------------------------------------------------------------------
