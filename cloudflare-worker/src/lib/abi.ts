@@ -56,6 +56,25 @@ export function selector(signature: string): string {
 }
 
 /**
+ * Compute the topic[0] hash for an event signature like
+ * `"Settled(address,address,uint256,uint256,bytes32)"`. Returns the full
+ * 32-byte (66-char incl. 0x) keccak hash — events use the full hash as their
+ * filter key, unlike function selectors which use only the first 4 bytes.
+ *
+ * Reference vectors (verified against the deployed SettlementRouter on Base
+ * Sepolia):
+ *   keccak256("Settled(address,address,uint256,uint256,bytes32)")
+ *     = 0x4a69742b8c79b607e7d6ec3e71d19c5d19a09a822a87b2339620d028f570178b
+ *   keccak256("FeeBpsUpdated(uint16,uint16)")
+ *     = 0xb7a3a0eebbc5f1f8b3a1c2... (test-validated)
+ */
+export function eventTopic0(signature: string): string {
+  const normalized = signature.replace(/\s+/g, "");
+  const hash = keccak_256(new TextEncoder().encode(normalized));
+  return "0x" + bytesToHex(hash);
+}
+
+/**
  * Parse a Solidity function signature like `"balanceOf(address)"` into its
  * name and ordered argument types. Throws on malformed input.
  */
@@ -160,6 +179,27 @@ function decodeWord(hex: string, offset: number, type: AbiType): unknown {
     case "uint256": return BigInt("0x" + word);
     case "bytes32": return "0x" + word;
   }
+}
+
+/**
+ * Decode a single indexed event topic into a typed value. Event topics are
+ * always exactly 32 bytes; the ABI representation matches a single return word.
+ *
+ * Used by the /base/events handler to translate `log.topics[1..N]` (the
+ * indexed parameters) into typed JSON. Topic[0] is the event selector hash
+ * and is filtered separately; this function never decodes it.
+ *
+ * @param type    The ABI type the indexed parameter was declared as.
+ * @param topicHex A 0x-prefixed 66-char hex string from `log.topics[i]`.
+ */
+export function decodeIndexedTopic(type: AbiType, topicHex: string): unknown {
+  const clean = topicHex.startsWith("0x") ? topicHex.slice(2) : topicHex;
+  if (clean.length !== 64) {
+    throw new Error(
+      `indexed topic must be 32 bytes (64 hex chars after 0x), got ${clean.length} chars`,
+    );
+  }
+  return decodeWord(clean, 0, type);
 }
 
 /**

@@ -18,6 +18,7 @@
 //   GET  /base/contract-info  — Public; SettlementRouter address + live state (handlers/base.ts)
 //   POST /base/contract-state — payment-scope; allowlisted ABI read wrapper (handlers/base.ts)
 //   GET  /base/balance        — payment-scope; convenience ERC-20 balanceOf (handlers/base.ts)
+//   POST /base/events         — payment-scope; allowlisted eth_getLogs wrapper (handlers/base.ts)
 //
 // Deploy runbook, secret management, and architecture: docs/COINBASE_INTEGRATION.md.
 // Valuation engine runs on cron (wrangler.toml [triggers]); see valuation/cron.ts.
@@ -38,6 +39,7 @@ import {
   handleBaseBalance,
   handleBaseContractInfo,
   handleBaseContractState,
+  handleBaseEvents,
 } from "./handlers/base";
 import { handleScheduled } from "./valuation/cron";
 import { CORS_HEADERS } from "./lib/cors";
@@ -102,6 +104,9 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/base/balance") {
       return withJwtGate(request, env, "payment", () => handleBaseBalance(request, env));
+    }
+    if (request.method === "POST" && url.pathname === "/base/events") {
+      return withJwtGate(request, env, "payment", () => handleBaseEvents(request, env));
     }
 
     // ── TIER-GATED endpoints (valuation reads) ────────────────────
