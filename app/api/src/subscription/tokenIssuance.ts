@@ -5,15 +5,27 @@
 //   - bitcorn-research/decisions/2026-05-11-subscription-stage-5a-
 //     architectural-deltas.md (scope rename + broadened issuance)
 //
-// Issuance logic (Stage 5a, post-deltas):
+// Issuance logic (Stage 5a, post-deltas; v1.17.4 self-service):
 //   if claimed pubkey == TREASURY_PUBKEY → SELF-MINT scope='full'
 //   look up subscription row
-//     if NOT EXISTS                        → 402 no_subscription_row
+//     if NOT EXISTS                        → AUTO-ALLOCATE (mode=fresh) +
+//                                            recompute tier, then proceed
 //     if current_tier == 'current'         → mint scope='full',    exp=now+24h
 //     if current_tier == 'prepay'          → mint scope='payment', exp=now+24h
 //     if current_tier == 'worker_lapsed'   → mint scope='payment', exp=now+24h
 //     if current_tier == 'routing_lapsed'  → mint scope='payment', exp=now+24h
 //     if current_tier == 'close_due'       → mint scope='payment', exp=now+24h
+//
+// Self-service allocation (v1.17.4) eliminates the 402 no_subscription_row
+// failure mode. Previously, only channel-peers got subscription rows
+// (via discoverAndAllocateNewMembers in detector.ts). Members without a
+// channel — typical for Auto-Buy-only customers who use the node for
+// on-chain DCA without joining the Lightning hub — were permanently
+// blocked from subscribing. Now any caller with a valid LND-signed
+// challenge can self-allocate; the fresh-grace branch fires for the
+// first 30 days so they get a working scope='full' JWT immediately and
+// can evaluate Auto-Buy before paying. After grace expires the standard
+// pay-or-lock dynamics apply.
 //
 // `payment` scope authorizes subscriber-base Worker endpoints (Onramp,
 // commodity prices) but not tier-gated endpoints (valuation). It is
@@ -41,6 +53,9 @@ import { SignJWT } from "jose";
 import { db } from "../db";
 import { ENV } from "../config/env";
 import { getTreasurySigningKeypair } from "./treasuryKeypair";
+import { allocateSubscriptionForMember } from "./addressAllocator";
+import { recomputeAllTiers } from "./tierDispatch";
+import { getSubscriptionPolicy } from "./policy";
 
 export type TokenScope = "full" | "payment";
 
@@ -51,8 +66,14 @@ export interface MintedToken {
   expires_at_sec: number;
 }
 
-// Post-deltas, the only denial path is no_subscription_row. Lapsed
-// tiers now mint payment-scope tokens rather than denying.
+// Post-v1.17.4 self-service, issuance never denies. Missing subscription
+// rows are auto-allocated; lapsed tiers mint payment-scope tokens. The
+// only failure paths are exceptions (treasury LND down, first-run not
+// acknowledged, DB write failure) which propagate up as 500.
+//
+// Type kept as a discriminated union for forward compatibility — if
+// future scope work needs a denial reason again (rate limit, blocklist),
+// add it here without breaking the handler shape.
 export interface IssuanceDenial {
   reason: "no_subscription_row";
 }
@@ -99,14 +120,33 @@ export async function issueTokenForPubkey(
     return { kind: "minted", token: await mintToken(requestedPubkey, "full") };
   }
 
-  const row = db
+  let row = db
     .prepare(
       `SELECT current_tier FROM subscription WHERE member_pubkey = ?`,
     )
     .get(requestedPubkey) as { current_tier: string } | undefined;
 
+  // Self-service allocation: if no row exists, the caller has already
+  // proven control of `requestedPubkey` via LND-signed challenge
+  // (verifyChallengeSignature in the /api/subscription/token handler),
+  // so we treat the request as an opt-in to subscribe. Allocate a
+  // `fresh` row (no sentinel — fresh mode skips the grandfather marker)
+  // and immediately recompute tiers so the fresh-grace branch in
+  // tierDispatch.computeTier puts the new row at `current`. Then fall
+  // through to the normal mint path; the freshly-allocated row will
+  // mint scope='full' for the first 30 days.
+  //
+  // allocateSubscriptionForMember is idempotent — if a concurrent
+  // request just created the row, the existing row is returned and
+  // the recompute is a no-op.
   if (!row) {
-    return { kind: "denied", denial: { reason: "no_subscription_row" } };
+    await allocateSubscriptionForMember(requestedPubkey, "fresh");
+    recomputeAllTiers(getSubscriptionPolicy());
+    row = db
+      .prepare(
+        `SELECT current_tier FROM subscription WHERE member_pubkey = ?`,
+      )
+      .get(requestedPubkey) as { current_tier: string };
   }
 
   return {
