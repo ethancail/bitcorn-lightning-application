@@ -1,0 +1,97 @@
+// TypeScript types for the BASE sync subsystem.
+//
+// Spec: bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md §7
+//
+// Numeric values from on-chain (balances, fee amounts) are kept as
+// `bigint` in memory and serialized to TEXT in SQLite. The Worker
+// returns them as decimal strings via its ABI decoder; this module
+// parses to bigint, stores as string, never as Number (USDC at 6
+// decimals stays within int64 but defensively avoiding float precision
+// loss is cheaper than a future debugging session).
+
+export interface MemberBaseWalletRow {
+    id: number;
+    memberPubkey: string;
+    walletAddress: string; // always lowercased on write
+    registeredAt: number;
+    isActive: boolean;
+}
+
+export interface BaseSyncCursorRow {
+    lastSyncedBlockNumber: number;
+    lastSyncedAt: number;
+}
+
+export interface BaseUsdcBalanceCacheRow {
+    walletAddress: string;
+    balanceUnits: bigint;
+    asOfBlockNumber: number;
+    asOfAt: number;
+}
+
+export interface BaseSettlementEventRow {
+    id: number;
+    blockNumber: number;
+    txHash: string;
+    logIndex: number;
+    senderAddress: string;
+    recipientAddress: string;
+    amountUnits: bigint;
+    feeUnits: bigint;
+    tradeRef: string;
+    settledAt: number;
+    discoveredAt: number;
+}
+
+export interface BaseContractStateCacheRow {
+    settlementRouterAddress: string;
+    currentFeeBps: number;
+    isPaused: boolean;
+    feeRecipientAddress: string;
+    asOfBlockNumber: number;
+    asOfAt: number;
+}
+
+// ─── Worker response shapes (mirror the Worker's handler outputs) ─────
+
+export interface WorkerContractInfoResponse {
+    chain_id: number | null;
+    settlement_router_address: string | null;
+    settlement_router_deploy_block: number | null;
+    usdc_token_address: string | null;
+    current_fee_bps: number | null;
+    is_paused: boolean | null;
+    as_of_block_number: number | null;
+    rpc_status: "ok" | "unconfigured" | "upstream_error";
+}
+
+export interface WorkerContractStateResponse {
+    contract: string;
+    signature: string;
+    result: string | number | boolean | unknown;
+    as_of_block_number: number;
+}
+
+export interface WorkerBalanceResponse {
+    address: string;
+    token: string;
+    token_symbol: string | null;
+    balance_raw: string;
+    decimals: number;
+    balance_human: string;
+    as_of_block_number: number;
+}
+
+// ─── Sync loop result type (for logging + the future /api/base/* admin endpoints) ─────
+
+export interface SyncTickResult {
+    started_at: number;
+    finished_at: number;
+    skipped_reason?: "in_progress" | "no_wallets" | "worker_not_configured";
+    wallets_attempted: number;
+    wallets_succeeded: number;
+    wallets_failed: number;
+    contract_state_synced: boolean;
+    cursor_advanced_to?: number;
+    errors: Array<{ context: string; error: string }>;
+}

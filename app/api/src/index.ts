@@ -158,6 +158,7 @@ import {
   getCachedToken,
 } from "./subscription/tokenRefresh";
 import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
+import { startBaseSyncLoop } from "./base/sync";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
   verifyEntitlementToken,
@@ -3824,4 +3825,15 @@ server.listen(PORTS.userApi, () => {
   // nodes early-out inside the function. Logs a WARN with the operator
   // runbook if drift is detected.
   startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null);
+  // BASE sync loop — polls the Worker /base/* endpoints at 60s cadence to
+  // refresh per-wallet USDC balances and the SettlementRouter governance
+  // state. No-op until at least one member registers a BASE wallet (the
+  // §8.1 UI; pending separate work). Gated on COINBASE_WORKER_URL being
+  // configured, since the loop can't run without Worker access.
+  // Spec: bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md §7
+  if (ENV.coinbaseWorkerUrl) {
+    startBaseSyncLoop({ runImmediately: false });
+  } else {
+    console.warn("[base/sync] COINBASE_WORKER_URL not configured; BASE sync loop disabled");
+  }
 });
