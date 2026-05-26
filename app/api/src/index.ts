@@ -159,6 +159,16 @@ import {
 } from "./subscription/tokenRefresh";
 import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
 import { startBaseSyncLoop } from "./base/sync";
+import {
+  handleBalance as handleStablecoinBalance,
+  handleChallenge as handleStablecoinChallenge,
+  handleContractState as handleStablecoinContractState,
+  handleSettlements as handleStablecoinSettlements,
+  handleSyncCursor as handleStablecoinSyncCursor,
+  handleWalletRegister as handleStablecoinWalletRegister,
+  handleWalletStatus as handleStablecoinWalletStatus,
+  handleWalletUnregister as handleStablecoinWalletUnregister,
+} from "./stablecoin/handlers";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
   verifyEntitlementToken,
@@ -1193,6 +1203,37 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: "corn_history_unavailable" }));
     }
     return;
+  }
+
+  // ─── Stablecoin rail (spec §8 + 2026-05-26 amendment) ─────────────────
+  // All routes scoped under /api/stablecoin/*. Member identity is the local
+  // node's pubkey via getNodeInfo(); same trust model as the subscription
+  // endpoints above (local-network-only via CORS restriction at the top
+  // of this file). More specific routes (/wallet/challenge) must come
+  // before /wallet — the raw-http if/else chain matches by exact pathname.
+  if (req.method === "POST" && req.url === "/api/stablecoin/wallet/challenge") {
+    return handleStablecoinChallenge(req, res);
+  }
+  if (req.method === "POST" && req.url === "/api/stablecoin/wallet") {
+    return handleStablecoinWalletRegister(req, res);
+  }
+  if (req.method === "GET" && req.url === "/api/stablecoin/wallet") {
+    return handleStablecoinWalletStatus(req, res);
+  }
+  if (req.method === "DELETE" && req.url === "/api/stablecoin/wallet") {
+    return handleStablecoinWalletUnregister(req, res);
+  }
+  if (req.method === "GET" && req.url === "/api/stablecoin/balance") {
+    return handleStablecoinBalance(req, res);
+  }
+  if (req.method === "GET" && req.url === "/api/stablecoin/contract-state") {
+    return handleStablecoinContractState(req, res);
+  }
+  if (req.method === "GET" && req.url === "/api/stablecoin/sync-cursor") {
+    return handleStablecoinSyncCursor(req, res);
+  }
+  if (req.method === "GET" && req.url?.startsWith("/api/stablecoin/settlements")) {
+    return handleStablecoinSettlements(req, res);
   }
 
   // Treasury connection info proxied from Cloudflare Worker.
