@@ -82,6 +82,35 @@ export interface WorkerBalanceResponse {
     as_of_block_number: number;
 }
 
+// Shape returned by POST /base/events (Worker PR #199). The Worker decodes
+// each log against the requested event's spec and returns a `decoded` object
+// whose keys depend on the event. For Settled, the keys are the five fields
+// below (snake_case to match the Worker's serialization).
+export interface DecodedSettledFields {
+    sender: string;
+    recipient: string;
+    trade_ref: string;
+    amount: string; // bigint as decimal string
+    fee: string; // bigint as decimal string
+}
+
+export interface DecodedLog {
+    block_number: number;
+    tx_hash: string;
+    log_index: number;
+    decoded: Record<string, string | number | boolean>;
+}
+
+export interface WorkerEventsResponse {
+    event: string;
+    contract: string;
+    from_block: number;
+    to_block: number;
+    logs: DecodedLog[];
+    decode_errors: Array<{ tx_hash: string; log_index: string; error: string }>;
+    as_of_block_number: number;
+}
+
 // ─── Sync loop result type (for logging + the future /api/base/* admin endpoints) ─────
 
 export interface SyncTickResult {
@@ -93,5 +122,10 @@ export interface SyncTickResult {
     wallets_failed: number;
     contract_state_synced: boolean;
     cursor_advanced_to?: number;
+    // ─── Step 5 (event sync) per PR #200 ───
+    events_processed: number; // count of Settled rows newly written this tick
+    events_already_indexed: number; // duplicates skipped by UNIQUE(tx_hash, log_index)
+    decode_errors_count: number; // malformed logs surfaced by the Worker
+    event_chunks_attempted: number; // number of /base/events calls in this tick
     errors: Array<{ context: string; error: string }>;
 }
