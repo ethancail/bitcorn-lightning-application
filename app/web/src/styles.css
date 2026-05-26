@@ -2936,3 +2936,608 @@ input[type="number"] {
   color: var(--fg-2);
   opacity: 0.8;
 }
+
+/* ─── Stablecoin Rail (§8) — Briefing-Room-aligned ─────────────── */
+
+/* Emerald alert variant — used by the success states and the
+   "wallet registered" / "settlement submitted" confirmations. The
+   .sub-* alert family didn't have an emerald until now; this fits
+   alongside amber/orange/red/dim-red/dashed. */
+.sub-alert-emerald {
+  border: 1px solid var(--green);
+  background: var(--green-glow);
+  color: var(--green);
+}
+.sub-alert-emerald .sub-alert-icon { color: var(--green); }
+
+/* Stablecoin page chrome ─────────────────────────────────────── */
+
+.stablecoin-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.page-header h1 {
+  margin-bottom: 4px;
+}
+.page-subtitle {
+  color: var(--text-3);
+  font-size: 0.875rem;
+}
+
+.stablecoin-banner {
+  margin: 0;
+}
+
+/* Wallet status panel ───────────────────────────────────────── */
+
+.stablecoin-wallet-status {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stablecoin-wallet-row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stablecoin-label {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  min-width: 120px;
+}
+
+.stablecoin-address,
+.stablecoin-mini-address {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--text);
+  background: var(--bg-2);
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.stablecoin-balance {
+  font-family: var(--mono);
+  font-size: 1rem;
+  color: var(--amber);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.stablecoin-balance-staleness {
+  font-size: 0.6875rem;
+  color: var(--text-3);
+}
+
+.stablecoin-no-wallet {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+/* Wallet registration / picker ─────────────────────────────── */
+
+.stablecoin-wallet-panel {
+  margin-bottom: 16px;
+}
+
+.stablecoin-intro {
+  color: var(--text);
+  font-size: 0.875rem;
+  margin-bottom: 12px;
+}
+
+.stablecoin-fineprint {
+  color: var(--text-3);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+
+.stablecoin-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0 12px;
+}
+
+.stablecoin-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--sans);
+  width: 100%;
+}
+
+.stablecoin-tile:hover:not(:disabled) {
+  border-color: var(--amber);
+  background: var(--bg-3);
+}
+
+.stablecoin-tile:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.stablecoin-tile-recommended {
+  border-color: var(--amber);
+  background: var(--amber-glow2);
+}
+
+.stablecoin-tile-recommended:hover:not(:disabled) {
+  background: var(--amber-glow);
+}
+
+.stablecoin-tile-label {
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.stablecoin-tile-caption {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  margin-top: 4px;
+}
+
+.stablecoin-tile-recommended .stablecoin-tile-caption {
+  color: var(--amber);
+}
+
+.stablecoin-tile-status {
+  font-size: 0.75rem;
+  color: var(--amber);
+  margin-top: 4px;
+  font-family: var(--mono);
+}
+
+.stablecoin-network-hint {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  margin-top: 8px;
+}
+
+.stablecoin-network-hint code {
+  font-family: var(--mono);
+  background: var(--bg-2);
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: var(--text-2);
+}
+
+.stablecoin-registered-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stablecoin-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Send form ──────────────────────────────────────────────────── */
+
+.stablecoin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stablecoin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stablecoin-field-label {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.stablecoin-field-hint {
+  font-size: 0.6875rem;
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.stablecoin-input {
+  font-family: var(--mono);
+  font-size: 0.875rem;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+
+.stablecoin-input:focus {
+  outline: none;
+  border-color: var(--amber);
+  background: var(--bg-3);
+}
+
+.stablecoin-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.stablecoin-fee {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+}
+
+.stablecoin-fee-label {
+  color: var(--text-3);
+  margin-right: 4px;
+}
+
+.stablecoin-fee-value {
+  color: var(--amber);
+  font-weight: 500;
+}
+
+.stablecoin-fee-rate {
+  color: var(--text-3);
+  font-size: 0.8125rem;
+}
+
+.stablecoin-fee-compact {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-2);
+}
+
+/* History list ────────────────────────────────────────────────── */
+
+.stablecoin-history {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.stablecoin-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+
+.stablecoin-history-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.stablecoin-history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.stablecoin-row {
+  background: var(--bg-1);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stablecoin-row-pending {
+  background: color-mix(in srgb, var(--yellow) 6%, var(--bg-1));
+  border-left: 3px solid var(--yellow);
+}
+
+.stablecoin-row-failed {
+  background: color-mix(in srgb, var(--red) 6%, var(--bg-1));
+  border-left: 3px solid var(--red);
+}
+
+.stablecoin-row-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.stablecoin-row-direction {
+  font-family: var(--mono);
+  color: var(--text-3);
+  font-size: 1rem;
+  width: 16px;
+  flex-shrink: 0;
+}
+
+.stablecoin-row-address {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--text-2);
+  flex: 1;
+}
+
+.stablecoin-row-amount {
+  font-family: var(--mono);
+  font-size: 0.9375rem;
+  color: var(--amber);
+  font-weight: 500;
+  margin-left: auto;
+}
+
+.stablecoin-row-link {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  color: var(--text-3);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.stablecoin-row-link:hover {
+  color: var(--amber);
+}
+
+/* Primary external links (wallet address, contract router) — more
+   discoverable than the subtle secondary row links (block/tx), per
+   the §3 "small icon not a button" guidance: amber-tinted with a
+   larger, clearly-clickable arrow. The hover title reads
+   "View on BaseScan". */
+.stablecoin-extlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--amber-dim);
+}
+.stablecoin-extlink:hover {
+  color: var(--amber);
+}
+.stablecoin-extlink-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  color: var(--amber);
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+.stablecoin-extlink:hover .stablecoin-extlink-icon {
+  opacity: 1;
+}
+
+.stablecoin-pill {
+  font-family: var(--mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+
+.stablecoin-pill-pending {
+  background: var(--yellow-glow);
+  color: var(--yellow);
+  border: 1px solid var(--yellow);
+}
+
+.stablecoin-pill-failed {
+  background: var(--red-glow);
+  color: var(--red);
+  border: 1px solid var(--red);
+}
+
+.stablecoin-pill-sent {
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  color: var(--blue);
+  border: 1px solid var(--blue);
+}
+
+.stablecoin-pill-received {
+  background: var(--green-glow);
+  color: var(--green);
+  border: 1px solid var(--green);
+}
+
+.stablecoin-row-secondary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: var(--text-3);
+  padding-left: 70px;
+}
+
+.stablecoin-row-fee-inline {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-3);
+  padding-left: 70px;
+}
+
+.stablecoin-row-detail {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stablecoin-detail-row {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 0.75rem;
+}
+
+.stablecoin-detail-label {
+  font-family: var(--mono);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  min-width: 110px;
+  font-size: 0.6875rem;
+}
+
+.stablecoin-detail-value {
+  font-family: var(--mono);
+  color: var(--text);
+  font-size: 0.75rem;
+  word-break: break-all;
+}
+
+/* Empty state ───────────────────────────────────────────────── */
+
+.stablecoin-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 32px 16px;
+  gap: 12px;
+}
+
+.stablecoin-empty-heading {
+  font-size: 1.125rem;
+  color: var(--text);
+}
+
+.stablecoin-empty-body {
+  font-size: 0.875rem;
+  color: var(--text-2);
+  max-width: 360px;
+}
+
+.stablecoin-empty-qr {
+  padding: 8px;
+  background: var(--text);
+  border-radius: var(--radius);
+}
+
+.stablecoin-empty-address {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  color: var(--text-2);
+  background: var(--bg-2);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  word-break: break-all;
+  max-width: 100%;
+}
+
+.stablecoin-empty-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Spinner ──────────────────────────────────────────────────── */
+
+.stablecoin-spinner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 16px;
+  gap: 12px;
+}
+
+.stablecoin-spinner-text {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--text-3);
+}
+
+/* Contract strip ────────────────────────────────────────────── */
+
+.stablecoin-contract-strip .panel-body {
+  padding: 12px 20px;
+}
+
+.stablecoin-contract-row {
+  display: flex;
+  gap: 32px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.stablecoin-contract-value {
+  font-family: var(--mono);
+  font-size: 0.875rem;
+  color: var(--text);
+  margin-top: 4px;
+}
+
+.stablecoin-loading {
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--text-3);
+}
+
+/* Mobile ────────────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  .stablecoin-row-main {
+    flex-wrap: wrap;
+  }
+  .stablecoin-row-amount {
+    margin-left: 0;
+    width: 100%;
+  }
+  .stablecoin-row-secondary,
+  .stablecoin-row-fee-inline {
+    padding-left: 0;
+  }
+  .stablecoin-detail-row {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .stablecoin-detail-label {
+    min-width: auto;
+  }
+  .stablecoin-contract-row {
+    gap: 16px;
+  }
+}
