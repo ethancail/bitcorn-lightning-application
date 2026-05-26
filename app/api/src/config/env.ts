@@ -110,6 +110,19 @@ export const ENV = {
     // use the default 64.
     baseConfirmationDepth: Number(process.env.BASE_CONFIRMATION_DEPTH ?? "64"),
 
+    // --- BASE RPC for SIWE verification (spec amendment 2026-05-26 §2) ---
+    // The SIWE wallet-binding flow uses Coinbase Smart Wallet (ERC-1271
+    // smart account) as the recommended wallet. Verifying its signatures
+    // requires calling `isValidSignature` on-chain, which means viem's
+    // verifySiweMessage needs a chain RPC client. This duplicates the
+    // Worker's BASE_SEPOLIA_RPC_URL minus a config layer — kept SIWE-only
+    // on the API side; operational chain reads still go through the Worker
+    // (see deltas-record candidate #11 on Worker-as-source-of-truth).
+    //
+    // Local dev: set to the same Alchemy URL the Worker uses. Production:
+    // set via docker-compose env when the rail ships to mainnet.
+    baseRpcUrl: process.env.BASE_RPC_URL || "",
+
     // --- Valuation manual input (treasury → Worker HMAC-signed submissions) ---
     // Base URL of the Cloudflare Worker that accepts POST /valuation/manual.
     // Defaults to COINBASE_WORKER_URL since both endpoints live on the same
