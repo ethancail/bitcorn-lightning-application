@@ -8,12 +8,15 @@
     "start": "serve -s dist -l 3200"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.100.14",
     "date-fns": "^4.1.0",
     "qrcode": "^1.5.4",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-router-dom": "^6.28.0",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "viem": "^2.51.0",
+    "wagmi": "^2.19.5"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",

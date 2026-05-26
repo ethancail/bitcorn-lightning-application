@@ -21,6 +21,9 @@ import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
 import SubscriptionPayments from "./pages/SubscriptionPayments";
+import Stablecoin from "./pages/Stablecoin";
+import WalletRegistrationPanel from "./stablecoin/components/WalletRegistrationPanel";
+import { RailScope } from "./stablecoin/RailScope";
 import AdminMembers from "./pages/AdminMembers";
 import Liquidity from "./pages/Liquidity";
 
@@ -325,6 +328,7 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
     { to: "/channels", icon: "◈", label: "My Channels" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
     { to: "/payments", icon: "↗", label: "My Payments" },
+    { to: "/stablecoin", icon: "◇", label: "Stablecoin" },
   ];
 
   return (
@@ -424,29 +428,40 @@ function MemberShell() {
     };
   }, []);
 
+  // RailScope wraps the entire MemberShell so the wagmi WagmiProvider's
+  // connection state survives nav between /settings (where wallet is
+  // registered) and /stablecoin (where it's used to sign settlements).
+  // Without this, each route's local RailScope would create a separate
+  // wagmi context and the connection would have to round-trip through
+  // localStorage on every navigation — a noticeable flicker. Treasury
+  // shell does not need this; treasury operator doesn't register a BASE
+  // wallet at v1.
   return (
-    <div className="app-shell">
-      <Topbar node={node} role="MEMBER" onMenuToggle={() => setMenuOpen((v) => !v)} />
-      <div className={`sidebar-overlay ${menuOpen ? "visible" : ""}`} onClick={() => setMenuOpen(false)} />
-      <MemberSidebar open={menuOpen} onClose={() => setMenuOpen(false)} channelRole={channelRole} />
-      <main className="main-content">
-        <Routes>
-          <Route path="/dashboard" element={<MemberDashboard />} />
-          <Route path="/charts" element={<Charts />} />
-          <Route path="/contacts" element={<Contacts />} />
-          <Route path="/channels" element={<ChannelsPage />} />
-          <Route path="/payments" element={<Payments title="My Payments" />} />
-          <Route path="/auto-buy" element={<AutoBuy />} />
-          <Route path="/deposit" element={<DepositBitcoin />} />
-          <Route path="/cashout" element={<WithdrawBitcoin />} />
-          <Route path="/refill" element={<RefillChannel />} />
-          <Route path="/withdraw" element={<WithdrawBitcoin />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/subscription/payments" element={<SubscriptionPayments />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </main>
-    </div>
+    <RailScope>
+      <div className="app-shell">
+        <Topbar node={node} role="MEMBER" onMenuToggle={() => setMenuOpen((v) => !v)} />
+        <div className={`sidebar-overlay ${menuOpen ? "visible" : ""}`} onClick={() => setMenuOpen(false)} />
+        <MemberSidebar open={menuOpen} onClose={() => setMenuOpen(false)} channelRole={channelRole} />
+        <main className="main-content">
+          <Routes>
+            <Route path="/dashboard" element={<MemberDashboard />} />
+            <Route path="/charts" element={<Charts />} />
+            <Route path="/contacts" element={<Contacts />} />
+            <Route path="/channels" element={<ChannelsPage />} />
+            <Route path="/payments" element={<Payments title="My Payments" />} />
+            <Route path="/auto-buy" element={<AutoBuy />} />
+            <Route path="/deposit" element={<DepositBitcoin />} />
+            <Route path="/cashout" element={<WithdrawBitcoin />} />
+            <Route path="/refill" element={<RefillChannel />} />
+            <Route path="/withdraw" element={<WithdrawBitcoin />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/subscription/payments" element={<SubscriptionPayments />} />
+            <Route path="/stablecoin" element={<Stablecoin />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </RailScope>
   );
 }
 
@@ -605,6 +620,13 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           state. The treasury operator inspects subscription state via
           the admin debug path (Stage 5b admin view). */}
       {!isTreasury && <SubscriptionPanel />}
+
+      {/* Stablecoin Wallet — member nodes only. Treasury operator
+          doesn't register a wallet (settles flow through member-to-member
+          relationships, not via the treasury's own BASE wallet). The
+          panel itself queries /api/stablecoin/wallet which derives the
+          member identity from the local LND pubkey. */}
+      {!isTreasury && <WalletRegistrationPanel />}
 
       <div className="settings-section-label">Personal</div>
 
