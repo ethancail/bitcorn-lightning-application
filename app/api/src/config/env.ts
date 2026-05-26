@@ -102,6 +102,14 @@ export const ENV = {
     // If unset, GET /api/coinbase/onramp-url returns coinbase_not_configured.
     coinbaseWorkerUrl: process.env.COINBASE_WORKER_URL || "",
 
+    // --- BASE sync loop (spec §7) ---
+    // Number of blocks to wait before considering a Settled event safely
+    // committed for event-sync purposes. Spec §7.4 + T7 recommend 64 blocks
+    // (~2 minutes at BASE's 2-second block time). Testnet dev can override
+    // to a lower value (e.g. 12) for faster iteration; production should
+    // use the default 64.
+    baseConfirmationDepth: Number(process.env.BASE_CONFIRMATION_DEPTH ?? "64"),
+
     // --- Valuation manual input (treasury → Worker HMAC-signed submissions) ---
     // Base URL of the Cloudflare Worker that accepts POST /valuation/manual.
     // Defaults to COINBASE_WORKER_URL since both endpoints live on the same

@@ -27,14 +27,28 @@
 // state is still written, and the cursor still advances. The failure is
 // recorded in the tick result for logging.
 
-import { fetchContractInfo, fetchFeeRecipient, fetchUsdcBalance, BaseWorkerError } from "./workerClient";
+import {
+    fetchContractInfo,
+    fetchFeeRecipient,
+    fetchSettledEvents,
+    fetchUsdcBalance,
+    BaseWorkerError,
+} from "./workerClient";
 import {
     advanceSyncCursor,
+    getSyncCursor,
     listActiveBaseWallets,
     upsertContractState,
+    upsertSettlementEvent,
     upsertUsdcBalance,
 } from "./store";
-import type { SyncTickResult } from "./types";
+import type { DecodedSettledFields, SyncTickResult } from "./types";
+import { ENV } from "../config/env";
+
+// Max blocks per /base/events call — matches the Worker's MAX_BLOCK_RANGE
+// constant (handlers/base.ts). Larger event-sync ranges chunk into multiple
+// Worker round-trips. Spec §7.4.
+const MAX_EVENT_RANGE = 10_000;
 
 const DEFAULT_TICK_INTERVAL_MS = 60_000;
 
@@ -51,6 +65,14 @@ export async function runOneTick(): Promise<SyncTickResult> {
     const started_at = Date.now();
     const errors: SyncTickResult["errors"] = [];
 
+    // Zero defaults for event-sync counters; used by all early-return paths.
+    const zeroEventCounts = {
+        events_processed: 0,
+        events_already_indexed: 0,
+        decode_errors_count: 0,
+        event_chunks_attempted: 0,
+    };
+
     if (tickInProgress) {
         return {
             started_at,
@@ -60,6 +82,7 @@ export async function runOneTick(): Promise<SyncTickResult> {
             wallets_succeeded: 0,
             wallets_failed: 0,
             contract_state_synced: false,
+            ...zeroEventCounts,
             errors: [],
         };
     }
@@ -79,13 +102,16 @@ export async function runOneTick(): Promise<SyncTickResult> {
                 wallets_succeeded: 0,
                 wallets_failed: 0,
                 contract_state_synced: false,
+                ...zeroEventCounts,
                 errors: [],
             };
         }
 
         // ─── Step 1+2: contract info + fee recipient → contract state cache ───
+        // Also captures the chain tip + router deploy block needed by Step 5.
         let contractStateSynced = false;
-        let observedBlock: number | null = null;
+        let chainTip: number | null = null;
+        let routerDeployBlock: number | null = null;
         try {
             const info = await fetchContractInfo();
             if (info.rpc_status === "unconfigured") {
@@ -97,6 +123,7 @@ export async function runOneTick(): Promise<SyncTickResult> {
                     wallets_succeeded: 0,
                     wallets_failed: 0,
                     contract_state_synced: false,
+                    ...zeroEventCounts,
                     errors: [],
                 };
             }
@@ -116,7 +143,10 @@ export async function runOneTick(): Promise<SyncTickResult> {
                     asOfAt: Date.now(),
                 });
                 contractStateSynced = true;
-                observedBlock = info.as_of_block_number;
+                chainTip = info.as_of_block_number;
+                // Option B (PR #200 T-gate decision): Worker is single source
+                // of truth for the deploy block. Cached locally only in-tick.
+                routerDeployBlock = info.settlement_router_deploy_block;
             } else {
                 errors.push({
                     context: "contract_info",
@@ -143,8 +173,11 @@ export async function runOneTick(): Promise<SyncTickResult> {
                     Date.now(),
                 );
                 walletsSucceeded += 1;
-                if (observedBlock == null || balance.as_of_block_number > observedBlock) {
-                    observedBlock = balance.as_of_block_number;
+                // Update chain tip with the freshest block seen across calls;
+                // balance reads happen after contract_info so they're typically
+                // newer by a block or two.
+                if (chainTip == null || balance.as_of_block_number > chainTip) {
+                    chainTip = balance.as_of_block_number;
                 }
             } catch (err) {
                 walletsFailed += 1;
@@ -155,13 +188,27 @@ export async function runOneTick(): Promise<SyncTickResult> {
             }
         }
 
-        // ─── Step 4: advance the cursor ───
-        // Only advance if we observed a block this tick. If every call failed,
-        // leave the cursor where it was so the staleness signal stays accurate.
+        // ─── Step 5: Settled event sync (spec §7.2 step 3) ───
+        // Cursor semantic v2: last_synced_block_number reflects the last block
+        // whose Settled events are committed to base_settlement_event. Stricter
+        // than v1 (which advanced cursor on any observed block); matches §7.4's
+        // reorg-safe replay guarantee.
+        const eventResult = await syncSettledEvents(chainTip, routerDeployBlock, errors);
+
+        // ─── Step 6: cursor maintenance ───
+        // Block advances only on Step 5 progress. Timestamp refreshes on every
+        // successful tick so the UI's staleness signal stays accurate even when
+        // Step 5 has nothing to do (chain hasn't moved past confirmation depth).
         let cursorAdvancedTo: number | undefined;
-        if (observedBlock != null) {
-            advanceSyncCursor(observedBlock, Date.now());
-            cursorAdvancedTo = observedBlock;
+        if (eventResult.cursorAdvancedTo != null) {
+            advanceSyncCursor(eventResult.cursorAdvancedTo, Date.now());
+            cursorAdvancedTo = eventResult.cursorAdvancedTo;
+        } else if (chainTip != null) {
+            // Step 5 didn't advance, but the tick otherwise succeeded enough
+            // to confirm the loop is running. Touch the timestamp without
+            // moving the block.
+            const current = getSyncCursor();
+            advanceSyncCursor(current.lastSyncedBlockNumber, Date.now());
         }
 
         return {
@@ -172,11 +219,156 @@ export async function runOneTick(): Promise<SyncTickResult> {
             wallets_failed: walletsFailed,
             contract_state_synced: contractStateSynced,
             cursor_advanced_to: cursorAdvancedTo,
+            events_processed: eventResult.processed,
+            events_already_indexed: eventResult.alreadyIndexed,
+            decode_errors_count: eventResult.decodeErrorsCount,
+            event_chunks_attempted: eventResult.chunksAttempted,
             errors,
         };
     } finally {
         tickInProgress = false;
     }
+}
+
+// -----------------------------------------------------------------------
+// Step 5 internals
+// -----------------------------------------------------------------------
+
+interface EventSyncResult {
+    cursorAdvancedTo: number | null;
+    processed: number;
+    alreadyIndexed: number;
+    decodeErrorsCount: number;
+    chunksAttempted: number;
+}
+
+/**
+ * Pull Settled events from the Worker over [fromBlock, toBlock] (chunked at
+ * MAX_EVENT_RANGE) and upsert each into base_settlement_event. Idempotent
+ * via the UNIQUE(tx_hash, log_index) constraint. Returns the last block
+ * whose events were successfully committed, or null if no progress was made.
+ *
+ * Cold-start handling: when the cursor is still at its seeded (0,0) value,
+ * the fromBlock anchors on `routerDeployBlock` per the Option B decision
+ * locked at session start. Without a deploy block from /base/contract-info,
+ * cold-start can't run — surfaces an error and returns no progress.
+ *
+ * Failure isolation: a failed chunk stops further processing but does NOT
+ * roll back previously-committed chunks. The cursor reflects the last
+ * fully-committed chunk so the next tick resumes from there.
+ *
+ * decode_errors handling: per the T-gate decision, malformed logs (surfaced
+ * by the Worker in `response.decode_errors`) are SKIPPED — no row written —
+ * but the cursor still advances for that chunk (the malformed logs were at
+ * confirmation depth and won't change on re-query). The count is surfaced
+ * in `decodeErrorsCount` for operator visibility; non-zero counts warrant
+ * manual review per spec §7.5.
+ */
+async function syncSettledEvents(
+    chainTip: number | null,
+    routerDeployBlock: number | null,
+    errors: SyncTickResult["errors"],
+): Promise<EventSyncResult> {
+    const out: EventSyncResult = {
+        cursorAdvancedTo: null,
+        processed: 0,
+        alreadyIndexed: 0,
+        decodeErrorsCount: 0,
+        chunksAttempted: 0,
+    };
+
+    if (chainTip == null) {
+        errors.push({
+            context: "event_sync",
+            error: "no chain tip available (contract_info + all balance fetches failed)",
+        });
+        return out;
+    }
+
+    const confDepth = ENV.baseConfirmationDepth;
+    const toBlock = chainTip - confDepth;
+    if (toBlock < 0) {
+        // Brand-new chain — won't happen on Sepolia/mainnet in practice.
+        return out;
+    }
+
+    // Resolve fromBlock: cold-start anchors on deploy block, otherwise resume
+    // from one past the last committed cursor.
+    const cursor = getSyncCursor();
+    let fromBlock: number;
+    if (cursor.lastSyncedBlockNumber === 0) {
+        if (routerDeployBlock == null) {
+            errors.push({
+                context: "event_sync",
+                error: "cold-start: contract_info did not return settlement_router_deploy_block; cannot anchor cursor",
+            });
+            return out;
+        }
+        fromBlock = routerDeployBlock;
+    } else {
+        fromBlock = cursor.lastSyncedBlockNumber + 1;
+    }
+
+    if (fromBlock > toBlock) {
+        // Steady state: chain hasn't advanced past (cursor + confirmation
+        // depth) since last tick. Normal and frequent.
+        return out;
+    }
+
+    // Chunk into MAX_EVENT_RANGE-sized windows. The Worker enforces the same
+    // cap (handlers/base.ts MAX_BLOCK_RANGE = 10_000); chunking client-side
+    // means cold-start backfills work without operator intervention.
+    let chunkFrom = fromBlock;
+    let lastCommittedTo: number | null = null;
+    while (chunkFrom <= toBlock) {
+        const chunkTo = Math.min(chunkFrom + MAX_EVENT_RANGE - 1, toBlock);
+        out.chunksAttempted += 1;
+        try {
+            const response = await fetchSettledEvents(chunkFrom, chunkTo);
+            const now = Date.now();
+            for (const log of response.logs) {
+                // The Worker returns the decoded payload under `log.decoded`;
+                // for Settled events it carries the five DecodedSettledFields.
+                const d = log.decoded as unknown as DecodedSettledFields;
+                const inserted = upsertSettlementEvent({
+                    blockNumber: log.block_number,
+                    txHash: log.tx_hash,
+                    logIndex: log.log_index,
+                    senderAddress: d.sender,
+                    recipientAddress: d.recipient,
+                    amountUnits: BigInt(d.amount),
+                    feeUnits: BigInt(d.fee),
+                    tradeRef: d.trade_ref,
+                    // v1 limitation: /base/events doesn't return block.timestamp.
+                    // Using discovery time as a proxy. block_number is the
+                    // definitive ordering anchor; UI displays "discovered at"
+                    // for the wall-clock cue. Follow-up: extend the Worker
+                    // response with block_timestamp or do a separate
+                    // eth_getBlockByNumber call.
+                    settledAt: now,
+                    discoveredAt: now,
+                });
+                if (inserted) out.processed += 1;
+                else out.alreadyIndexed += 1;
+            }
+            out.decodeErrorsCount += response.decode_errors.length;
+            lastCommittedTo = chunkTo;
+            chunkFrom = chunkTo + 1;
+        } catch (err) {
+            errors.push({
+                context: `event_sync:${chunkFrom}-${chunkTo}`,
+                error: err instanceof Error ? err.message : String(err),
+            });
+            // Stop processing further chunks; cursor reflects last successful
+            // chunk only. Next tick retries from chunkFrom.
+            break;
+        }
+    }
+
+    if (lastCommittedTo != null) {
+        out.cursorAdvancedTo = lastCommittedTo;
+    }
+    return out;
 }
 
 /**

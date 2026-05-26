@@ -190,6 +190,64 @@ export function upsertContractState(
         );
 }
 
+// -----------------------------------------------------------------------
+// base_settlement_event
+// -----------------------------------------------------------------------
+
+/**
+ * Insert a Settled event row, deduplicated by the table's UNIQUE(tx_hash,
+ * log_index) constraint. Returns true if a new row was written, false if
+ * the (tx_hash, log_index) pair was already present.
+ *
+ * Idempotent by design: the sync loop re-reads overlapping block ranges
+ * on retries and crash recovery (spec §7.4), and the UNIQUE constraint
+ * collapses repeats to no-ops. Addresses are lowercased on write.
+ */
+export function upsertSettlementEvent(
+    event: {
+        blockNumber: number;
+        txHash: string;
+        logIndex: number;
+        senderAddress: string;
+        recipientAddress: string;
+        amountUnits: bigint;
+        feeUnits: bigint;
+        tradeRef: string;
+        settledAt: number;
+        discoveredAt: number;
+    },
+    database: Db = defaultDb,
+): boolean {
+    const result = database
+        .prepare(
+            `INSERT OR IGNORE INTO base_settlement_event
+                 (block_number, tx_hash, log_index, sender_address, recipient_address,
+                  amount_units, fee_units, trade_ref, settled_at, discovered_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+            event.blockNumber,
+            event.txHash.toLowerCase(),
+            event.logIndex,
+            event.senderAddress.toLowerCase(),
+            event.recipientAddress.toLowerCase(),
+            event.amountUnits.toString(),
+            event.feeUnits.toString(),
+            event.tradeRef.toLowerCase(),
+            event.settledAt,
+            event.discoveredAt,
+        );
+    return result.changes === 1;
+}
+
+/** Count of rows in base_settlement_event. Used by tests + future admin endpoints. */
+export function countSettlementEvents(database: Db = defaultDb): number {
+    const row = database
+        .prepare(`SELECT COUNT(*) as n FROM base_settlement_event`)
+        .get() as { n: number };
+    return row.n;
+}
+
 export function getContractState(database: Db = defaultDb): BaseContractStateCacheRow | null {
     const row = database
         .prepare(

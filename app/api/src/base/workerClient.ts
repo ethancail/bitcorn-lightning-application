@@ -15,6 +15,7 @@ import type {
     WorkerBalanceResponse,
     WorkerContractInfoResponse,
     WorkerContractStateResponse,
+    WorkerEventsResponse,
 } from "./types";
 
 export class BaseWorkerError extends Error {
@@ -63,6 +64,27 @@ export async function fetchContractStateCall(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contract, signature, args }),
+    });
+}
+
+/**
+ * Fetch decoded Settled events from the Worker over a block range. The
+ * Worker enforces the event allowlist and chunking (returns 400 if the
+ * range exceeds 10k blocks per call); the sync loop's caller is
+ * responsible for chunking large catch-up ranges.
+ */
+export async function fetchSettledEvents(
+    fromBlock: number,
+    toBlock: number,
+): Promise<WorkerEventsResponse> {
+    return doFetch<WorkerEventsResponse>("/base/events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            event: "Settled",
+            from_block: fromBlock,
+            to_block: toBlock,
+        }),
     });
 }
 
