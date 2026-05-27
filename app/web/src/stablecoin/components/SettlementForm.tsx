@@ -63,11 +63,16 @@ function computeTradeRef(input: string): Hex {
 export default function SettlementForm({
   contractState,
   memberPubkey,
+  disabled = false,
   onSubmitted,
   onClose,
 }: {
   contractState: ContractStateResponse | null;
   memberPubkey: string;
+  /** Hard-disables the form (inputs + submit) when the Bitcorn API is
+   *  unreachable — §9 network_unreachable. Fields stay visible so the
+   *  user keeps their partial input; only interaction is blocked. */
+  disabled?: boolean;
   onSubmitted: () => void;
   onClose: () => void;
 }) {
@@ -114,6 +119,9 @@ export default function SettlementForm({
 
   const submitting =
     step.kind === "approving" || step.kind === "settling";
+  // Inputs + submit are inert while a tx is in flight OR while the API is
+  // unreachable (offline). Cancel stays live so the user can still close.
+  const inert = submitting || disabled;
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -316,6 +324,15 @@ export default function SettlementForm({
           </div>
         </div>
       )}
+      {disabled && (
+        <div className="sub-alert sub-alert-dim-red" style={{ marginBottom: 12 }}>
+          <span className="sub-alert-icon" aria-hidden>✕</span>
+          <div className="sub-alert-body">
+            Can't initiate a settlement while Bitcorn is offline. Your input is kept;
+            try again once the connection is restored.
+          </div>
+        </div>
+      )}
       <label className="stablecoin-field">
         <span className="stablecoin-field-label">Recipient address</span>
         <input
@@ -324,7 +341,7 @@ export default function SettlementForm({
           placeholder="0x…"
           value={recipient}
           onChange={(e) => setRecipient(e.target.value)}
-          disabled={submitting}
+          disabled={inert}
           spellCheck={false}
           autoComplete="off"
         />
@@ -338,7 +355,7 @@ export default function SettlementForm({
           placeholder="100.00"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          disabled={submitting}
+          disabled={inert}
         />
       </label>
       <label className="stablecoin-field">
@@ -349,7 +366,7 @@ export default function SettlementForm({
           placeholder="e.g. invoice-2026-04-15"
           value={reference}
           onChange={(e) => setReference(e.target.value)}
-          disabled={submitting}
+          disabled={inert}
           maxLength={120}
         />
         <span className="stablecoin-field-hint">
@@ -377,7 +394,7 @@ export default function SettlementForm({
         <StepProgress step={step} />
       )}
       <div className="stablecoin-actions" style={{ marginTop: 12 }}>
-        <button type="submit" className="btn btn-primary" disabled={submitting || !isConnected || isPaused}>
+        <button type="submit" className="btn btn-primary" disabled={inert || !isConnected || isPaused}>
           {submitting ? "Working…" : "Send USDC"}
         </button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} disabled={submitting}>
