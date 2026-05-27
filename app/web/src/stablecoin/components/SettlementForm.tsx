@@ -193,8 +193,41 @@ export default function SettlementForm({
         }
 
         setStep({ kind: "settling" });
+        // ALWAYS pass an explicit gas limit so the wallet never runs its own
+        // estimation. Immediately after the approve confirms, ANY estimation —
+        // the wallet's OR our own estimateContractGas — can hit an RPC node
+        // that hasn't yet indexed the approve, see the pre-approve allowance,
+        // mis-estimate settle as a revert, and (in the wallet's case) fall back
+        // to a max gas limit the chain rejects ("exceeds max transaction gas
+        // limit"). Estimation is therefore racy on BOTH sides; the only
+        // deterministic fix is to not depend on it for the submitted value.
+        //
+        // settle() is a bounded operation — one USDC transferFrom + a Settled
+        // event, ~80-100k gas (v2's nonzero-fee path adds a second transfer,
+        // still well under this floor). A fixed 250k floor is generous and far
+        // below the chain's per-tx cap, so the submission is always accepted;
+        // by the time it's mined the approve is canonical, so settle executes.
+        // We still try a real estimate and take the max, but the floor — not
+        // the estimate — is what guarantees a sane explicit gas is always set.
+        const SETTLE_GAS_FLOOR = 250_000n;
+        let settleGas = SETTLE_GAS_FLOOR;
+        try {
+          const est = await publicClient.estimateContractGas({
+            address: routerAddress,
+            abi: SETTLEMENT_ROUTER_ABI,
+            functionName: "settle",
+            args: [recipientAddress, amountUnits, tradeRef],
+            account: walletAddress,
+          });
+          const buffered = (est * 125n) / 100n;
+          if (buffered > settleGas) settleGas = buffered;
+        } catch {
+          // Estimation raced the just-confirmed approve; the fixed floor
+          // covers it. Never fall back to the wallet's own estimation.
+        }
         const settleHash = await writeContractAsync({
           chainId: DEFAULT_CHAIN.id,
+          gas: settleGas,
           address: routerAddress,
           abi: SETTLEMENT_ROUTER_ABI,
           functionName: "settle",

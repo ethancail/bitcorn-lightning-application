@@ -17,6 +17,24 @@
 
 const KEY_PREFIX = "bitcorn:stablecoin:pending:";
 
+/**
+ * Window event broadcast on every Pending-store mutation. The settlement
+ * form (writer) and the history list (reader) are sibling components that
+ * share state only through localStorage; without a signal, the list reads
+ * its Pending entries once on mount and never sees a newly-submitted one
+ * until a confirm-reconcile happens to sweep it away — so the Pending row
+ * never renders during the in-flight window. The list subscribes to this
+ * event and re-reads. Mirrors the existing `bitcorn:stablecoin-wallet-changed`
+ * cross-component pattern.
+ */
+export const PENDING_CHANGED_EVENT = "bitcorn:stablecoin-pending-changed";
+
+function broadcastPendingChanged(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(PENDING_CHANGED_EVENT));
+  }
+}
+
 export interface PendingEntry {
   tx_hash: `0x${string}`;
   submitted_at: number;
@@ -83,6 +101,7 @@ export function addPendingEntry(
   const filtered = entries.filter((e) => e.tx_hash !== entry.tx_hash);
   filtered.push(entry);
   localStorage.setItem(keyFor(memberPubkey), JSON.stringify(filtered));
+  broadcastPendingChanged();
 }
 
 export function removePendingEntry(
@@ -93,6 +112,7 @@ export function removePendingEntry(
   const filtered = entries.filter((e) => e.tx_hash !== txHash);
   if (filtered.length === entries.length) return;
   localStorage.setItem(keyFor(memberPubkey), JSON.stringify(filtered));
+  broadcastPendingChanged();
 }
 
 export function markPendingFailed(
@@ -105,6 +125,7 @@ export function markPendingFailed(
     e.tx_hash === txHash ? { ...e, status: "failed" as const, revert_reason: revertReason } : e,
   );
   localStorage.setItem(keyFor(memberPubkey), JSON.stringify(updated));
+  broadcastPendingChanged();
 }
 
 /**

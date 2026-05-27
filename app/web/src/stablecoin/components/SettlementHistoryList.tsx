@@ -31,6 +31,7 @@ import {
   markPendingFailed,
   reconcileAgainstSettled,
   removePendingEntry,
+  PENDING_CHANGED_EVENT,
   type PendingEntry,
 } from "../pendingStore";
 import { basescanBlockUrl, basescanTxUrl } from "../contract";
@@ -90,6 +91,17 @@ export default function SettlementHistoryList({
     const id = setInterval(() => void fetchHistory(), REFRESH_INTERVAL_MS);
     return () => clearInterval(id);
   }, [fetchHistory]);
+
+  // Re-read the Pending store whenever a sibling mutates it (notably the
+  // settlement form adding an entry on submit). Without this, a freshly
+  // submitted Pending entry sits invisibly in localStorage until a
+  // confirm-reconcile sweeps it away, so the Pending row never renders
+  // during the in-flight window — defeating the point of the Pending state.
+  useEffect(() => {
+    const onPendingChanged = () => refreshPending();
+    window.addEventListener(PENDING_CHANGED_EVENT, onPendingChanged);
+    return () => window.removeEventListener(PENDING_CHANGED_EVENT, onPendingChanged);
+  }, [refreshPending]);
 
   // Reverted-tx detection — for each Pending entry, poll receipt every 30s.
   // Stop polling once the entry is removed or marked failed.
