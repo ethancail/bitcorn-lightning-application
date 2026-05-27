@@ -2972,6 +2972,14 @@ input[type="number"] {
   margin: 0;
 }
 
+/* Expandable "Why?" detail inside the offline banner (§9 revision). */
+.stablecoin-banner-detail {
+  margin-top: 6px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
 /* Wallet status panel ───────────────────────────────────────── */
 
 .stablecoin-wallet-status {

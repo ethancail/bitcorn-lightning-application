@@ -11,15 +11,19 @@
 //
 // Cross-cutting overlays:
 //   - StaleBanner       (spec amendment §7 — 3 / 15 min thresholds)
-//   - RailErrorBanner   (spec amendment §9 — three failure classes)
+//   - RailErrorBanner   (spec amendment §9 revised — the one reachable
+//                        backend-error state: the API container itself is
+//                        unreachable)
 //   - ColdStartSpinner  (spec amendment §10 — initial cold-start UX)
 //
-// JWT auth note: the spec amendment's §9 "JWT authentication failure"
-// surfaces here as a 502/503 from the API container when the
-// API↔Worker JWT pairing breaks. The frontend itself does not carry a
-// bearer token — local-network trust via CORS at the API. The mapping
-// from upstream errors to the three RailErrorBanner variants happens
-// in classifyError() below.
+// Error model (§9 revised 2026-05-27, Path A): the page reads the API
+// container's local cache; the read endpoints never proxy to the Worker in
+// real time. So Worker degradation (JWT or RPC) surfaces only as §7
+// staleness (StaleBanner), NOT as a distinct error banner — the originally
+// prescribed auth_failure / upstream_rpc states are unreachable here and
+// were dropped. The single reachable error state is "the browser can't
+// reach the API at all" (all reads reject), which renders RailErrorBanner
+// and disables the Send form.
 
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -31,32 +35,13 @@ import {
   type WalletStatusResponse,
 } from "../stablecoin/client";
 import { api, type NodeInfo } from "../api/client";
-import RailErrorBanner, { type RailErrorKind } from "../stablecoin/components/RailErrorBanner";
+import RailErrorBanner from "../stablecoin/components/RailErrorBanner";
 import StaleBanner from "../stablecoin/components/StaleBanner";
 import SettlementForm from "../stablecoin/components/SettlementForm";
 import SettlementHistoryList from "../stablecoin/components/SettlementHistoryList";
 import { basescanAddressUrl } from "../stablecoin/contract";
 
 const POLL_INTERVAL_MS = 15_000;
-
-function classifyError(err: unknown): RailErrorKind | null {
-  const e = err as { status?: number; code?: string; message?: string };
-  if (e?.status === undefined) {
-    // Network-level fetch failure (TypeError "Failed to fetch", etc.)
-    return "network_unreachable";
-  }
-  if (e.status === 502 || e.code === "upstream_error" || e.code === "worker_unreachable") {
-    // API container reached the Worker but the Worker → BASE RPC failed.
-    return "upstream_rpc";
-  }
-  if (e.status === 503 || e.status === 401 || e.code === "auth_failure" || e.code === "node_not_ready") {
-    // The API container can't authenticate to the Worker (or LND isn't
-    // ready yet); the spec amendment groups these as the "auth failure
-    // after retry" variant.
-    return "auth_failure";
-  }
-  return null;
-}
 
 // MemberShell wraps with RailScope (WagmiProvider + QueryClientProvider)
 // — see App.tsx note. This page assumes those providers are in scope.
@@ -66,7 +51,7 @@ export default function Stablecoin() {
   const [contractState, setContractState] = useState<ContractStateResponse | null>(null);
   const [cursor, setCursor] = useState<SyncCursorResponse | null>(null);
   const [node, setNode] = useState<NodeInfo | null>(null);
-  const [errorKind, setErrorKind] = useState<RailErrorKind | null>(null);
+  const [offline, setOffline] = useState(false);
   const [errorDetail, setErrorDetail] = useState<string | undefined>();
   const [initialLoadDone, setInitialLoadDone] = useState(false);
   const [showSendForm, setShowSendForm] = useState(false);
@@ -86,23 +71,23 @@ export default function Stablecoin() {
       stablecoinApi.getSyncCursor(),
     ]);
 
-    // Surface the worst error class encountered. If wallet-status failed
-    // with auth_failure but contract-state succeeded, we still render —
-    // partial data is better than nothing per spec amendment §9's
-    // distinction between "Bitcorn is observing" (degraded) and "Bitcorn
-    // is offline" (unreachable).
+    // Only a total read failure (all calls reject) means "offline". A
+    // partial success still renders — partial data beats nothing, and a
+    // reachable API is by definition not offline.
     const errors = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     if (errors.length === results.length) {
-      // All three calls failed — most likely network_unreachable or a
-      // general API down. Pick the first error to classify.
+      // All reads rejected → the browser can't reach the API at all. This
+      // is the one reachable §9 error state ("Bitcorn is offline"). Worker
+      // degradation never lands here — it leaves the API serving cached
+      // 200s and surfaces as §7 staleness instead.
       const err = errors[0].reason;
-      setErrorKind(classifyError(err));
+      setOffline(true);
       setErrorDetail((err as { detail?: string; message?: string })?.detail ?? (err as { message?: string })?.message);
       setInitialLoadDone(true);
       return;
     }
 
-    setErrorKind(null);
+    setOffline(false);
     setErrorDetail(undefined);
 
     const [wResult, cResult, cursorResult] = results;
@@ -116,14 +101,10 @@ export default function Stablecoin() {
         const bal = await stablecoinApi.getBalance();
         setBalance(bal);
       } catch (err) {
-        const e = err as { status?: number };
         // 404 balance_not_cached_yet during cold-start is expected for a
-        // newly-registered wallet; surface as "—" rather than an error
-        // banner.
-        if (e.status !== 404) {
-          const kind = classifyError(err);
-          if (kind) setErrorKind(kind);
-        }
+        // newly-registered wallet; surface as "—". A non-404 here is a
+        // partial failure while other reads succeeded (so the API is up,
+        // not offline) — show "—" without an offline banner.
         setBalance(null);
       }
     } else {
@@ -160,14 +141,8 @@ export default function Stablecoin() {
         </p>
       </header>
 
-      {errorKind === "network_unreachable" && (
-        <RailErrorBanner kind="network_unreachable" detail={errorDetail} onRetry={() => void fetchAll()} />
-      )}
-      {errorKind === "auth_failure" && (
-        <RailErrorBanner kind="auth_failure" detail={errorDetail} onRetry={() => void fetchAll()} />
-      )}
-      {errorKind === "upstream_rpc" && (
-        <RailErrorBanner kind="upstream_rpc" detail={errorDetail} />
+      {offline && (
+        <RailErrorBanner detail={errorDetail} onRetry={() => void fetchAll()} />
       )}
       <StaleBanner cursor={cursor} />
 
@@ -235,7 +210,11 @@ export default function Stablecoin() {
               <h2>Send USDC</h2>
             </div>
             {!showSendForm && (
-              <button className="btn btn-primary btn-sm" onClick={() => setShowSendForm(true)}>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => setShowSendForm(true)}
+                disabled={offline}
+              >
                 New settlement
               </button>
             )}
@@ -245,6 +224,7 @@ export default function Stablecoin() {
               <SettlementForm
                 contractState={contractState}
                 memberPubkey={memberPubkey}
+                disabled={offline}
                 onSubmitted={() => void fetchAll()}
                 onClose={() => setShowSendForm(false)}
               />
