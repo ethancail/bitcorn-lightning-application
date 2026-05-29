@@ -43,6 +43,21 @@ import { basescanAddressUrl } from "../stablecoin/contract";
 
 const POLL_INTERVAL_MS = 15_000;
 
+// How long after registration we treat a missing /balance response as
+// "the sync loop hasn't gotten to it yet" rather than as a generic empty
+// state. The sync loop's tick interval is on the order of 30s, plus an
+// RPC round-trip — being conservative here avoids showing "Syncing…"
+// indefinitely for a wallet that's genuinely uncached for some other
+// reason. (Item 31c)
+const FIRST_SYNC_WINDOW_MS = 5 * 60 * 1000;
+
+function isAwaitingFirstSync(walletStatus: WalletStatusResponse | null): boolean {
+  if (!walletStatus?.wallet_address || !walletStatus.is_active) return false;
+  const registeredAt = walletStatus.registered_at;
+  if (!registeredAt) return false;
+  return Date.now() - registeredAt < FIRST_SYNC_WINDOW_MS;
+}
+
 // MemberShell wraps with RailScope (WagmiProvider + QueryClientProvider)
 // — see App.tsx note. This page assumes those providers are in scope.
 export default function Stablecoin() {
@@ -185,11 +200,28 @@ export default function Stablecoin() {
               <div className="stablecoin-wallet-row">
                 <div className="stablecoin-label">USDC BALANCE</div>
                 <div className="stablecoin-balance">
-                  {balance ? `${balance.balance_human} USDC` : "—"}
-                  {balance && (
-                    <span className="stablecoin-balance-staleness">
-                      as of {Math.floor(balance.staleness_seconds)}s ago
-                    </span>
+                  {balance ? (
+                    <>
+                      <span>{balance.balance_human} USDC</span>
+                      <span className="stablecoin-balance-staleness">
+                        as of {Math.floor(balance.staleness_seconds)}s ago
+                      </span>
+                    </>
+                  ) : isAwaitingFirstSync(walletStatus) ? (
+                    // Registered very recently and the sync loop hasn't
+                    // populated the cache yet — the /balance endpoint is
+                    // returning 404 (balance_not_cached_yet) by design.
+                    // Give the user a concrete affordance ("we know about
+                    // it, it just isn't synced yet") instead of a bare "—"
+                    // that reads as "unavailable forever." (Item 31c)
+                    <>
+                      <span className="stablecoin-balance-syncing">Syncing…</span>
+                      <span className="stablecoin-balance-staleness">
+                        first balance read after registration
+                      </span>
+                    </>
+                  ) : (
+                    "—"
                   )}
                 </div>
               </div>
@@ -223,6 +255,7 @@ export default function Stablecoin() {
             <div className="panel-body">
               <SettlementForm
                 contractState={contractState}
+                cursor={cursor}
                 memberPubkey={memberPubkey}
                 disabled={offline}
                 onSubmitted={() => void fetchAll()}
@@ -255,6 +288,8 @@ export default function Stablecoin() {
               memberPubkey={memberPubkey}
               walletAddress={walletStatus!.wallet_address!}
               chainId={chainId}
+              contractState={contractState}
+              offline={offline}
               onSendClick={() => setShowSendForm(true)}
             />
           </div>

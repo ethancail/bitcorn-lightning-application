@@ -3029,6 +3029,26 @@ input[type="number"] {
   color: var(--text-3);
 }
 
+/* Affordance for "balance not cached yet" — registered wallet whose
+   /balance endpoint is still 404'ing because the sync loop hasn't run
+   against it yet. Reads as "we know about you, hang on" rather than
+   bare "—" which reads as "unavailable forever." (Item 31c) */
+.stablecoin-balance-syncing {
+  color: var(--text-2);
+  font-style: italic;
+}
+
+/* Inline hint just above the submit button when sync is very_stale
+   (>15 min behind). Lower-key than a full alert banner — the page-level
+   StaleBanner already carries the loud version. (Item 31d) */
+.stablecoin-submit-hint {
+  font-size: 0.75rem;
+  color: var(--text-2);
+  padding: 6px 10px;
+  border-left: 2px solid var(--yellow);
+  background: color-mix(in srgb, var(--yellow) 4%, transparent);
+}
+
 .stablecoin-no-wallet {
   display: flex;
   flex-direction: column;
@@ -3274,6 +3294,32 @@ input[type="number"] {
 .stablecoin-row-failed {
   background: color-mix(in srgb, var(--red) 6%, var(--bg-1));
   border-left: 3px solid var(--red);
+}
+
+/* One-shot pulse when a Pending row flips to Failed (Item 37).
+   PendingRow applies .stablecoin-row-just-failed only on the
+   submitted→failed transition and clears it after FLIP_PULSE_DURATION_MS,
+   so the animation runs exactly once per flip. Without the JS-driven
+   class, every mount of a Failed row would re-pulse — including reloads
+   where the row was already failed when the page loaded.
+   Animation: brief deeper red wash + border thickening, then back. */
+.stablecoin-row-just-failed {
+  animation: stablecoin-flip-pulse 2s ease-out 1;
+}
+
+@keyframes stablecoin-flip-pulse {
+  0% {
+    background: color-mix(in srgb, var(--red) 30%, var(--bg-1));
+    border-left-width: 6px;
+  }
+  60% {
+    background: color-mix(in srgb, var(--red) 15%, var(--bg-1));
+    border-left-width: 4px;
+  }
+  100% {
+    background: color-mix(in srgb, var(--red) 6%, var(--bg-1));
+    border-left-width: 3px;
+  }
 }
 
 .stablecoin-row-main {

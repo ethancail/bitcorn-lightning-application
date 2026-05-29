@@ -18,7 +18,7 @@
 // confirm modal, or WalletConnect's mobile-deeplink/QR flow) — we do not
 // wrap or interstitial.
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { keccak256, toBytes, type Hex } from "viem";
 import { useAccount, useChainId, usePublicClient, useSwitchChain, useWriteContract } from "wagmi";
 import FeeDisplay from "./FeeDisplay";
@@ -30,8 +30,12 @@ import {
   formatUsdc,
 } from "../contract";
 import { DEFAULT_CHAIN } from "../wagmi";
-import { addPendingEntry } from "../pendingStore";
-import type { ContractStateResponse } from "../client";
+import {
+  addPendingEntry,
+  getPendingEntries,
+  PENDING_CHANGED_EVENT,
+} from "../pendingStore";
+import type { ContractStateResponse, SyncCursorResponse } from "../client";
 
 type FormStep =
   | { kind: "idle" }
@@ -39,6 +43,13 @@ type FormStep =
   | { kind: "approving"; txHash?: Hex }
   | { kind: "settling"; txHash?: Hex }
   | { kind: "submitted"; txHash: Hex }
+  /** The submitted tx was later observed reverted by the history list's
+   *  receipt-poll (§4 exit b). We mirror the failure into the form's own
+   *  state so the user isn't left looking at a "✓ submitted" panel that
+   *  has gone stale — Item 36 (the 2026-05-28 Item 33 live trial showed
+   *  the success panel persisting alongside a Failed row in the history
+   *  list, with now-misleading copy). */
+  | { kind: "submitted_failed"; txHash: Hex; reason: string }
   | { kind: "error"; message: string };
 
 const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
@@ -62,12 +73,18 @@ function computeTradeRef(input: string): Hex {
 
 export default function SettlementForm({
   contractState,
+  cursor,
   memberPubkey,
   disabled = false,
   onSubmitted,
   onClose,
 }: {
   contractState: ContractStateResponse | null;
+  /** Sync-loop cursor (§7 staleness gradient). When `staleness_label`
+   *  reaches `very_stale` (>15 min) we render a small inline notice
+   *  above the submit button warning that the post-submit Pending row
+   *  may take longer than usual to resolve. (Item 31d) */
+  cursor: SyncCursorResponse | null;
   memberPubkey: string;
   /** Hard-disables the form (inputs + submit) when the Bitcorn API is
    *  unreachable — §9 network_unreachable. Fields stay visible so the
@@ -122,6 +139,32 @@ export default function SettlementForm({
   // Inputs + submit are inert while a tx is in flight OR while the API is
   // unreachable (offline). Cancel stays live so the user can still close.
   const inert = submitting || disabled;
+
+  // Item 36: while the form is parked on the "✓ submitted" panel, watch the
+  // Pending store for the case where the receipt-poll later flips the
+  // matching tx to failed. SettlementHistoryList does the marking; we just
+  // observe the broadcast and update our own view so the success copy
+  // doesn't linger next to a Failed row.
+  useEffect(() => {
+    if (step.kind !== "submitted") return;
+    const submittedTxHash = step.txHash;
+    const check = () => {
+      const entries = getPendingEntries(memberPubkey);
+      const match = entries.find((e) => e.tx_hash === submittedTxHash);
+      if (match?.status === "failed") {
+        setStep({
+          kind: "submitted_failed",
+          txHash: submittedTxHash,
+          reason: match.revert_reason ?? "Transaction reverted on-chain.",
+        });
+      }
+    };
+    // Run once in case the flip already happened before the listener
+    // attached (e.g. on remount or during a rapid revert).
+    check();
+    window.addEventListener(PENDING_CHANGED_EVENT, check);
+    return () => window.removeEventListener(PENDING_CHANGED_EVENT, check);
+  }, [memberPubkey, step]);
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -306,6 +349,32 @@ export default function SettlementForm({
     );
   }
 
+  if (step.kind === "submitted_failed") {
+    // The success panel has flipped to failure because the receipt-poll
+    // observed a revert. The same row will already render in the history
+    // list (and may have the just-flipped pulse). Here we replace the
+    // "✓ submitted" copy with the specific reason so the user doesn't see
+    // a misleading success message next to a failed history row. (Item 36)
+    return (
+      <div className="stablecoin-form">
+        <div className="sub-alert sub-alert-dim-red">
+          <span className="sub-alert-icon" aria-hidden>✕</span>
+          <div className="sub-alert-body">
+            <strong>Settlement reverted on-chain.</strong>{" "}
+            <span>{step.reason}</span>
+            <div style={{ marginTop: 8, fontSize: "0.75rem", fontFamily: "var(--mono)", color: "var(--text-2)" }}>
+              tx: {step.txHash}
+            </div>
+          </div>
+        </div>
+        <div className="stablecoin-actions" style={{ marginTop: 12 }}>
+          <button className="btn btn-primary" onClick={reset}>Try again</button>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form className="stablecoin-form" onSubmit={handleSubmit}>
       {!isConnected && (
@@ -392,6 +461,19 @@ export default function SettlementForm({
       )}
       {(step.kind === "approving" || step.kind === "settling") && (
         <StepProgress step={step} />
+      )}
+      {cursor?.staleness_label === "very_stale" && (
+        // Spec amendment §7: when the sync cursor reaches very_stale
+        // (>15 min behind) the StaleBanner already warns at the page
+        // level. Repeat a concise affordance here at the submit point so
+        // the user understands the post-submit Pending row may take
+        // longer than usual to resolve — the submission itself still
+        // works (the contract is the source of truth, not Bitcorn's
+        // view of it). (Item 31d)
+        <div className="stablecoin-submit-hint" style={{ marginTop: 8 }}>
+          Bitcorn's view of the chain is delayed by ≥15 min. Your settlement will still
+          submit, but it may take longer than usual to appear in your history.
+        </div>
       )}
       <div className="stablecoin-actions" style={{ marginTop: 12 }}>
         <button type="submit" className="btn btn-primary" disabled={inert || !isConnected || isPaused}>
