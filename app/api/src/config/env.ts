@@ -62,17 +62,6 @@ export const ENV = {
     // Minimum minutes between two successful automated rebalances
     rebalanceCooldownMinutes: Number(process.env.REBALANCE_COOLDOWN_MINUTES ?? "30"),
 
-    // --- Cluster rebalance engine v1 (LEGACY — gated off by default; retained for code reference) ---
-    // Set to "true" to enable the cluster-based rebalance engine (fee steering +
-    // circular rebalance + topology monitor). Not part of steady-state operation
-    // under the role-based rebalancing model — see `docs/ARCHITECTURE.md`
-    // § Liquidity Management.
-    clusterRebalanceEnabled: process.env.CLUSTER_REBALANCE_ENABLED === "true",
-    // Interval between cluster rebalance runs in milliseconds (default: 15 min)
-    clusterRebalanceIntervalMs: Number(
-        process.env.CLUSTER_REBALANCE_INTERVAL_MS ?? "900000"
-    ),
-
     // --- Loop (submarine swaps via Bitcorn's litd sidecar in remote-LND mode) ---
     // litd runs Loop as an integrated subserver, connected to LND remotely.
     // ARM64-compatible (standalone loopd images have broken ARM builds).

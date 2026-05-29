@@ -16,21 +16,13 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/lightning/rebalance-scheduler.ts` | Scheduled Loop Out rebalance loop |
 | `src/lightning/rebalance-circular.ts` | Circular rebalance execution (legacy, unused in hub-and-spoke) |
 | `src/lightning/network-payments.ts` | Network payment business logic (create invoice, pay, history, settlement sync) |
-| **Cluster engine v1 (legacy — gated off by default; retained for code reference, not the active rebalancing engine):** | |
-| `src/rebalance/rebalanceScheduler.ts` | Cluster rebalance engine orchestrator (15-min interval, off unless `CLUSTER_REBALANCE_ENABLED=true`) |
-| `src/rebalance/clusterState.ts` | Reads cluster definitions + live LND balances + forwarding volumes → `ClusterState[]` |
-| `src/rebalance/feeSteering.ts` | Per-cluster fee adjustment (below_band → raise, above_band → lower) |
-| `src/rebalance/cycleEnumerator.ts` | Candidate enumeration: amount bucketing, channel selection, route probing |
-| `src/rebalance/cycleScorer.ts` | Benefit/cost scoring, picks best candidate or no_action |
-| `src/rebalance/rebalanceExecutor.ts` | Executes circular payment, records outcome, updates pair history |
-| `src/rebalance/topologyMonitor.ts` | Detects structural issues, emits recommendations, takes inventory snapshots |
 | `src/api/treasury.ts` | Aggregate treasury metrics |
 | `src/api/treasury-liquidity-health.ts` | Per-channel liquidity assessment |
 | `src/api/treasury-channel-metrics.ts` | Per-channel profitability and payback |
 | `src/api/treasury-expansion.ts` | Channel expansion recommendations & execution |
 | `src/utils/capital-guardrails.ts` | Pre-expansion policy enforcement |
 | `src/config/env.ts` | All environment variables with defaults — authoritative |
-| `src/memberLiquidity/liquidityDetector.ts` | Treasury-side: detects member channel imbalances from cluster data |
+| `src/memberLiquidity/liquidityDetector.ts` | Treasury-side: holds the `MemberLiquidityActionType` union (detection function removed 2026-05 alongside the cluster engine) |
 | `src/memberLiquidity/liquidityAdvisor.ts` | Treasury-side: computes keysend push estimates |
 | `src/memberLiquidity/liquidityExecutor.ts` | Treasury-side: executes keysend push to member |
 | `src/memberLiquidity/liquidityRoutes.ts` | Treasury-side: route handlers for `/api/member-liquidity/*` |
