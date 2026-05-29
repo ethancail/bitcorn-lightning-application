@@ -30,7 +30,6 @@ import {
   getOutcomes as getLiquidityOutcomes,
   getOutcomeById as getLiquidityOutcomeById,
 } from "./memberLiquidity/liquidityRoutes";
-import { getAllClusterStates } from "./rebalance/clusterState";
 import { assertDailyLossCapNotExceeded, DailyLossCapError } from "./utils/loss-cap";
 import {
   getTreasuryFeePolicy,
@@ -74,7 +73,6 @@ import { postManualInputToWorker, postRefreshToWorker } from "./valuation/worker
 import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
-import { startClusterRebalanceScheduler } from "./rebalance/rebalanceScheduler";
 import { startScheduler, runTick, ensureWithdrawAddress } from "./autoBuy/scheduler";
 import { listAccounts } from "./autoBuy/coinbaseClient";
 import { encrypt, decrypt } from "./autoBuy/credentials";
@@ -2241,38 +2239,6 @@ const server = http.createServer(async (req, res) => {
 
   // ─── Member liquidity endpoints (treasury-only) ────────────────────────────
 
-  if (req.method === "GET" && req.url === "/api/member-liquidity/clusters") {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const states = getAllClusterStates();
-      const clusters = states.map((s) => ({
-        clusterId: s.clusterId,
-        label: s.label,
-        peerPubkey: s.peerPubkey,
-        policyRole: s.policyRole,
-        totalCapacitySats: s.totalCapacitySats,
-        localBalanceSats: s.localBalanceSats,
-        remoteBalanceSats: s.remoteBalanceSats,
-        localPct: s.localPct,
-        targetMinPct: s.targetMinPct,
-        targetMidPct: s.targetMidPct,
-        targetMaxPct: s.targetMaxPct,
-        deviationDirection: s.deviationDirection,
-        deviationPct: s.deviationPct,
-        channelCount: s.channels.length,
-        activeChannelCount: s.channels.filter((c) => c.active).length,
-      }));
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ clusters }));
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
-
   if (req.method === "GET" && req.url === "/api/member-liquidity/recommendations") {
     try {
       const node = getNodeInfo();
@@ -3840,10 +3806,6 @@ server.listen(PORTS.userApi, () => {
   // Loop Out rebalance scheduler — requires REBALANCE_SCHEDULER_ENABLED=true
   // and the loopd sidecar to be running (included in the Bitcorn app stack).
   startRebalanceScheduler();
-  // Cluster-based rebalance engine v1 (legacy) — fee steering + circular rebalance
-  // + topology monitoring. Gated off by default (CLUSTER_REBALANCE_ENABLED=false);
-  // not part of steady-state rebalancing. Retained pending a removal pass.
-  startClusterRebalanceScheduler();
   // Member liquidity advisor — classifies treasury channel health on member nodes.
   // Runs on all nodes but only acts on non-treasury nodes.
   startMemberAdvisorScheduler();
