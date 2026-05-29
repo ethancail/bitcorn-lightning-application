@@ -23,9 +23,9 @@
 // window. Captured here so future implementers understand the trade-off
 // (spec amendment §10's "deltas-record-worthy cadence choice").
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePublicClient } from "wagmi";
-import { stablecoinApi, type SettlementRow } from "../client";
+import { stablecoinApi, type ContractStateResponse, type SettlementRow } from "../client";
 import {
   getPendingEntries,
   markPendingFailed,
@@ -34,7 +34,8 @@ import {
   PENDING_CHANGED_EVENT,
   type PendingEntry,
 } from "../pendingStore";
-import { basescanBlockUrl, basescanTxUrl } from "../contract";
+import { basescanBlockUrl, basescanTxUrl, USDC_ADDRESS_BY_CHAIN } from "../contract";
+import { classifyRevertOnChain } from "../revertClassifier";
 import ColdStartSpinner from "./ColdStartSpinner";
 import EmptyState from "./EmptyState";
 
@@ -50,6 +51,14 @@ interface Props {
   memberPubkey: string;
   walletAddress: string;
   chainId: number;
+  /** Router address from /contract-state — used by the revert-reason
+   *  classifier (Item 35) to pre-check `paused()`. When absent (cold
+   *  start or offline), classification falls back to the generic message. */
+  contractState: ContractStateResponse | null;
+  /** True when the page-level RailErrorBanner is already shown. Suppress
+   *  the list's own error banner in that case so the user sees a single
+   *  offline surface, not two (Item 31a). */
+  offline?: boolean;
   onSendClick: () => void;
 }
 
@@ -57,6 +66,8 @@ export default function SettlementHistoryList({
   memberPubkey,
   walletAddress,
   chainId,
+  contractState,
+  offline = false,
   onSendClick,
 }: Props) {
   const [view, setView] = useState<View>({ kind: "loading" });
@@ -104,7 +115,12 @@ export default function SettlementHistoryList({
   }, [refreshPending]);
 
   // Reverted-tx detection — for each Pending entry, poll receipt every 30s.
-  // Stop polling once the entry is removed or marked failed.
+  // Stop polling once the entry is removed or marked failed. When a revert
+  // is detected, run the on-chain reason classifier (Item 35) so the user
+  // sees the actual cause ("Settlement contract is paused" / "Allowance
+  // insufficient") instead of the generic copy.
+  const routerAddress = contractState?.settlement_router_address as `0x${string}` | undefined;
+  const usdcAddress = USDC_ADDRESS_BY_CHAIN[chainId];
   useEffect(() => {
     if (!publicClient || pending.length === 0) return;
     let cancelled = false;
@@ -115,7 +131,17 @@ export default function SettlementHistoryList({
           const receipt = await publicClient.getTransactionReceipt({ hash: entry.tx_hash });
           if (cancelled) return;
           if (receipt && receipt.status === "reverted") {
-            markPendingFailed(memberPubkey, entry.tx_hash, "Transaction reverted on-chain");
+            let reason = "Transaction reverted on-chain.";
+            if (routerAddress && usdcAddress) {
+              reason = await classifyRevertOnChain(publicClient, {
+                router: routerAddress,
+                usdc: usdcAddress,
+                wallet: walletAddress as `0x${string}`,
+                amount: BigInt(entry.amount_units_raw),
+              });
+              if (cancelled) return;
+            }
+            markPendingFailed(memberPubkey, entry.tx_hash, reason);
             refreshPending();
           }
         } catch {
@@ -129,7 +155,7 @@ export default function SettlementHistoryList({
       cancelled = true;
       clearInterval(id);
     };
-  }, [memberPubkey, pending, publicClient, refreshPending]);
+  }, [memberPubkey, pending, publicClient, refreshPending, routerAddress, usdcAddress, walletAddress]);
 
   const handleDismissPending = useCallback(
     (txHash: `0x${string}`) => {
@@ -149,6 +175,14 @@ export default function SettlementHistoryList({
   }
 
   if (view.kind === "error") {
+    // When the page-level RailErrorBanner is already shown (offline), don't
+    // surface a second "couldn't load history" banner — same root cause,
+    // single user-actionable retry, less noise. The list will recover
+    // automatically once the offline state clears and the next poll
+    // succeeds. (Item 31a)
+    if (offline) {
+      return null;
+    }
     return (
       <div className="sub-alert sub-alert-dim-red stablecoin-banner">
         <span className="sub-alert-icon" aria-hidden>✕</span>
@@ -187,6 +221,10 @@ export default function SettlementHistoryList({
             key={entry.tx_hash}
             entry={entry}
             chainId={chainId}
+            expanded={expandedTxHash === entry.tx_hash}
+            onToggle={() =>
+              setExpandedTxHash((prev) => (prev === entry.tx_hash ? null : entry.tx_hash))
+            }
             onDismiss={() => handleDismissPending(entry.tx_hash)}
           />
         ))}
@@ -209,13 +247,22 @@ export default function SettlementHistoryList({
 
 // ─── Pending row ────────────────────────────────────────────────────────
 
+// How long the just-flipped pulse animation runs. Long enough to draw the
+// eye for a user who's looking at the page, short enough that the row's
+// resting state is the canonical visual after a few seconds. (Item 37)
+const FLIP_PULSE_DURATION_MS = 2_000;
+
 function PendingRow({
   entry,
   chainId,
+  expanded,
+  onToggle,
   onDismiss,
 }: {
   entry: PendingEntry;
   chainId: number;
+  expanded: boolean;
+  onToggle: () => void;
   onDismiss: () => void;
 }) {
   const ageSec = Math.floor((Date.now() - entry.submitted_at) / 1000);
@@ -226,9 +273,33 @@ function PendingRow({
       ? `${Math.floor(ageSec / 60)}m ago`
       : `${Math.floor(ageSec / 3600)}h ago`;
   const isFailed = entry.status === "failed";
+
+  // Track the previous status so we can detect the Pending→Failed transition
+  // and apply a one-shot pulse animation. Without this the .stablecoin-row-failed
+  // animation would run on every mount — including reloads where the row was
+  // already failed when the page loaded — defeating the point of the cue.
+  // (Item 37; Item 33 live trial showed users had to discover the silent
+  // status flip on their own.)
+  const prevStatusRef = useRef(entry.status);
+  const [justFlipped, setJustFlipped] = useState(false);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    if (prev !== "failed" && entry.status === "failed") {
+      setJustFlipped(true);
+      const id = setTimeout(() => setJustFlipped(false), FLIP_PULSE_DURATION_MS);
+      prevStatusRef.current = entry.status;
+      return () => clearTimeout(id);
+    }
+    prevStatusRef.current = entry.status;
+  }, [entry.status]);
+
+  const submittedAt = new Date(entry.submitted_at);
+
   return (
-    <li className={`stablecoin-row stablecoin-row-pending ${isFailed ? "stablecoin-row-failed" : ""}`}>
-      <div className="stablecoin-row-main">
+    <li
+      className={`stablecoin-row stablecoin-row-pending ${isFailed ? "stablecoin-row-failed" : ""} ${justFlipped ? "stablecoin-row-just-failed" : ""} ${expanded ? "stablecoin-row-expanded" : ""}`}
+    >
+      <button type="button" className="stablecoin-row-main" onClick={onToggle}>
         <span className={`stablecoin-pill ${isFailed ? "stablecoin-pill-failed" : "stablecoin-pill-pending"}`}>
           {isFailed ? "Failed" : "Pending"}
         </span>
@@ -240,17 +311,44 @@ function PendingRow({
           href={basescanTxUrl(chainId, entry.tx_hash)}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={(e) => e.stopPropagation()}
           title="View on BaseScan"
         >
           tx ↗
         </a>
-      </div>
+      </button>
       <div className="stablecoin-row-secondary">
         <span>{isFailed ? entry.revert_reason ?? "Transaction reverted" : `Submitted ${ageLabel} — waiting for confirmation`}</span>
         <button className="btn btn-ghost btn-sm" onClick={onDismiss}>
           Dismiss
         </button>
       </div>
+      {expanded && (
+        <div className="stablecoin-row-detail">
+          <DetailRow label="Transaction">
+            <a
+              href={basescanTxUrl(chainId, entry.tx_hash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="stablecoin-row-link"
+            >
+              {entry.tx_hash} ↗
+            </a>
+          </DetailRow>
+          <DetailRow label="Recipient">
+            <code>{entry.recipient_address}</code>
+          </DetailRow>
+          <DetailRow label="Amount">{entry.amount_human} USDC</DetailRow>
+          <DetailRow label="Submitted">
+            {submittedAt.toLocaleString()}
+          </DetailRow>
+          <DetailRow label="Status">
+            {isFailed
+              ? (entry.revert_reason ?? "Transaction reverted on-chain.")
+              : "Waiting for the Settled event — usually within ~60s of submission."}
+          </DetailRow>
+        </div>
+      )}
     </li>
   );
 }

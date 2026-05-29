@@ -38,13 +38,17 @@ export const ERC20_ABI = parseAbi([
 ]);
 
 /**
- * Minimal SettlementRouter ABI — only `settle(...)`. The reads (feeBps,
- * paused, feeRecipient) all go through the API container's cache via
- * /api/stablecoin/contract-state, so the frontend never calls them
- * directly.
+ * Minimal SettlementRouter ABI — `settle(...)` for writes, `paused()` for
+ * the post-revert reason classifier (revertClassifier.ts). Steady-state
+ * reads (feeBps, paused, feeRecipient) all go through the API container's
+ * cache via /api/stablecoin/contract-state; the only reason to read
+ * `paused()` directly is to attribute a *just-observed* revert at the
+ * moment the receipt-poll detects it, where freshness matters and the
+ * cache could lag by up to one sync tick.
  */
 export const SETTLEMENT_ROUTER_ABI = parseAbi([
   "function settle(address recipient, uint256 amount, bytes32 tradeRef) external",
+  "function paused() view returns (bool)",
 ]);
 
 /**
