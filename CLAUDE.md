@@ -93,16 +93,16 @@ The older `sudo ~/umbrel/scripts/app restart <appId>` does not exist on newer Um
 | Port | Purpose |
 |------|---------|
 | 3101 | User/Admin API (JWT, Umbrel-aware) |
-| 3109 | Node-to-Node API (HMAC only, never proxied) — **stub only** |
+| 3109 | Node-to-Node API — **reserved, no implementation** |
 | 3200 | Web UI |
 
-Do not reuse 3001 or 3009. Do not expose 3109 via Umbrel app-proxy. Port 3109 is completely unimplemented (only `ports.ts` / `hmac.ts` / `node-api.ts` stubs exist); no member liquidity coordination uses it.
+Do not reuse 3001 or 3009. Do not expose 3109 via Umbrel app-proxy. Port 3109 is reserved in `ports.ts` but has no implementation — the stub files were removed 2026-05; the longer-term fate of the reservation itself is an open decision. No member liquidity coordination uses it.
 
 ## Security Constraints
 
 - Secrets generated on first run and stored under `/data/secrets` — never hardcode or commit
 - User/Admin API (3101): JWT auth
-- Node-to-Node API (3109): HMAC + timestamp + nonce (when implemented)
+- Node-to-Node API (3109): reserved port, no implementation. Original design called for HMAC + timestamp + nonce; not built.
 - No `docker.sock` mounts, no privileged containers, no host networking
 
 ## Environment Variables
@@ -112,7 +112,6 @@ Do not reuse 3001 or 3009. Do not expose 3109 via Umbrel app-proxy. Port 3109 is
 - `TREASURY_PUBKEY` — hard-coded in `docker-compose.yml` as `02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca`. Identifies the treasury node so all member installs get correct role detection automatically.
 - `LND_GRPC_HOST` — default `lightning_lnd_1:10009`
 - `REBALANCE_SCHEDULER_ENABLED` — default `false` (treasury-side Loop Out scheduler — edge-case + external-inbound maintenance only; off in steady state)
-- `CLUSTER_REBALANCE_ENABLED` — default `false` (cluster engine v1 — legacy; off and not used in steady state)
 - `RATE_LIMIT_MAX_SINGLE_PAYMENT` — default `250000` sats
 - `REBALANCE_MAX_FEE_PPM` — default `1000` (caps effective fee-to-amount ratio; prevents net-negative micro-rebalances)
 - `COINBASE_APP_ID` + `COINBASE_WORKER_URL` — required for Fund Node button (503 if either unset)
@@ -128,7 +127,6 @@ Docs describe *what* exists; source code shows *how* it works. When using Claude
 | Member Liquidity Advisor (steady-state rebalancing) | `src/memberAdvisor/*`, migrations `027`, `028`, `032` |
 | Treasury push (provisioning + edge-case) | `src/memberLiquidity/*`, migration `026` |
 | Loop Out (treasury, edge-case maintenance) | `src/lightning/loop.ts`, `src/lightning/rebalance-loop.ts`, `src/lightning/rebalance-scheduler.ts`, migrations `014`, `015` |
-| Cluster engine v1 (legacy, gated off) | `src/rebalance/*`, migrations `023`–`025` |
 | Expansion engine | `src/api/treasury-expansion.ts`, `src/utils/capital-guardrails.ts` |
 | Metrics / net yield | `src/api/treasury.ts`, migrations `007`–`009`, `014` |
 | All routes | `src/index.ts` |

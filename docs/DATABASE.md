@@ -71,20 +71,20 @@ The migration set is contiguous from `001` through `039` with no gaps. Always al
 - `contacts` — address book with tags
 - `member_keysend_status` — tracks peers that reject keysend (24h skip window)
 
-**Cluster rebalance engine v1 (legacy — gated off by default)**
+**Cluster rebalance engine v1 (removed 2026-05; tables retained)**
 
-These tables are populated only when `CLUSTER_REBALANCE_ENABLED=true`, which is off in steady-state operation. The cluster engine is no longer the active rebalancing model; see `docs/ARCHITECTURE.md` § Liquidity Management for the member-driven role-based model.
+The cluster rebalance engine was removed in 2026-05 (see `decisions/2026-05-28-dormant-subsystems-disposition.md` in the bitcorn-research repo). Migrations 023–025 are retained because the kept `memberLiquidity` treasury-push code still `SELECT`s from `rebalance_clusters` and `rebalance_cluster_channels` — dropping the tables would break it at runtime. With the engine removed there is no writer; the tables are read but always empty (flagged as a latent finding in `docs/ARCHITECTURE.md` § Treasury Push).
 
-- `rebalance_clusters` — cluster definitions
-- `rebalance_cluster_channels` — channel → cluster membership
-- `rebalance_fee_policy` — per-cluster fee bands and current state
-- `rebalance_fee_events` — fee steering history
-- `rebalance_runs` — per-execution run log
-- `rebalance_candidates` — enumerated candidates per run
-- `rebalance_outcomes` — execution outcomes
-- `rebalance_pair_history` — success rate per (from, to) pair
-- `rebalance_topology_recommendations` — topology monitor recommendations
-- `treasury_inventory_snapshots` — periodic inventory snapshots
+- `rebalance_clusters` — cluster definitions (read by retained `memberLiquidity` code; no writer)
+- `rebalance_cluster_channels` — channel → cluster membership (read by retained `memberLiquidity` code; no writer)
+- `rebalance_fee_policy` — per-cluster fee bands and current state (orphaned)
+- `rebalance_fee_events` — fee steering history (orphaned)
+- `rebalance_runs` — per-execution run log (orphaned)
+- `rebalance_candidates` — enumerated candidates per run (orphaned)
+- `rebalance_outcomes` — execution outcomes (orphaned)
+- `rebalance_pair_history` — success rate per (from, to) pair (orphaned)
+- `rebalance_topology_recommendations` — topology monitor recommendations (orphaned)
+- `treasury_inventory_snapshots` — periodic inventory snapshots (orphaned)
 
 **Member liquidity (treasury-side)**
 - `member_liquidity_recommendations` — pending/resolved top-up recommendations
