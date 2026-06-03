@@ -42,7 +42,7 @@ export default function HistoryTable() {
             <option value="skipped_stale_data">Skipped (stale)</option>
             <option value="skipped_zero_multiplier">Skipped (zero)</option>
             <option value="skipped_cap_hit">Skipped (cap)</option>
-            <option value="skipped_insufficient_usd">Skipped (no USD)</option>
+            <option value="skipped_insufficient_funds">Skipped (funds)</option>
             <option value="failed_buy">Failed (buy)</option>
             <option value="failed_withdraw">Failed (withdraw)</option>
           </select>
@@ -64,14 +64,15 @@ export default function HistoryTable() {
                 <th style={{ padding: "8px 12px", textAlign: "right" }}>Intended USD</th>
                 <th style={{ padding: "8px 12px", textAlign: "right" }}>Filled BTC</th>
                 <th style={{ padding: "8px 12px", textAlign: "right" }}>Filled USD</th>
+                <th style={{ padding: "8px 12px" }}>Currency</th>
                 <th style={{ padding: "8px 12px" }}>Reason</th>
               </tr>
             </thead>
             <tbody>
               {loading && rows.length === 0 ? (
-                <tr><td colSpan={9} style={{ padding: 16 }}><em className="text-dim">Loading…</em></td></tr>
+                <tr><td colSpan={10} style={{ padding: 16 }}><em className="text-dim">Loading…</em></td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={9} style={{ padding: 16 }}><em className="text-dim">No runs yet.</em></td></tr>
+                <tr><td colSpan={10} style={{ padding: 16 }}><em className="text-dim">No runs yet.</em></td></tr>
               ) : rows.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{formatTs(r.scheduled_for)}</td>
@@ -82,6 +83,7 @@ export default function HistoryTable() {
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{r.intended_buy_usd != null ? `$${r.intended_buy_usd.toFixed(2)}` : "—"}</td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{r.filled_btc != null ? r.filled_btc.toFixed(8) : "—"}</td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{r.filled_usd != null ? `$${r.filled_usd.toFixed(2)}` : "—"}</td>
+                  <td style={{ padding: "8px 12px" }}>{r.currency_used || (r.currencies_checked ? r.currencies_checked : "—")}</td>
                   <td style={{ padding: "8px 12px", fontSize: "0.75rem", color: "var(--text-dim)" }}>
                     {r.error_code ?? r.error_message ?? ""}
                   </td>
@@ -123,7 +125,7 @@ function StatusBadge({ status }: { status: string }) {
     skipped_stale_data:      { label: "SKIPPED",           cls: "badge-muted" },
     skipped_zero_multiplier: { label: "SKIPPED",           cls: "badge-muted" },
     skipped_cap_hit:         { label: "CAP HIT",           cls: "badge-muted" },
-    skipped_insufficient_usd:{ label: "LOW USD",           cls: "badge-muted" },
+    skipped_insufficient_funds:{ label: "LOW FUNDS",       cls: "badge-muted" },
     failed_buy:              { label: "FAILED",            cls: "badge-red" },
     failed_withdraw:         { label: "FAILED",            cls: "badge-red" },
   };
