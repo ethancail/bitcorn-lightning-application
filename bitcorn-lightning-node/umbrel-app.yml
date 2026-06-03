@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.17.5"
+version: "1.17.6"
 port: 3200
 
 description: >
@@ -27,6 +27,18 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.17.6: Currency-adaptive Auto-Buy. The scheduler can now spend
+  USD or USDC, governed by a new per-node Currency Preference setting
+  (USD only / USDC only / Both, USD first / Both, USDC first;
+  default "Both, USDC first"). Previously it spent only USD and
+  silently skipped when a node was funded in USDC. The buy now reads
+  both balances each tick and places a BTC-USD or BTC-USDC order
+  accordingly, spending exactly one currency per run; USD and USDC
+  count 1:1 toward the same spend caps. The insufficient-funds skip
+  state is renamed to reflect the selected currency, and the purchase
+  history records which currency was used. No change to valuation,
+  sweep, credentials, or caps behavior.
+
   v1.17.5: Restores Coinbase Auto-Buy on the treasury node. The
   auto-buy scheduler is gated by an env-level kill switch
   (AUTOBUY_ENABLED) in addition to the in-app enable toggle. That

@@ -10,6 +10,11 @@ import {
   type CoinbaseCredentials,
 } from "./coinbaseClient";
 import { decrypt } from "./credentials";
+import {
+  selectCurrency,
+  currenciesCheckedFor,
+  type CurrencyPreference,
+} from "./currency";
 import { getCurrent } from "./valuationClient";
 
 const TICK_INTERVAL_MS = 15 * 60 * 1000;
@@ -104,6 +109,7 @@ function readConfig(db: Database.Database) {
     base_unit_usd: number;
     frequency: string;
     zone_multipliers: string;
+    currency_preference: string;
     withdraw_address: string;
     withdraw_address_whitelisted_at: number | null;
     sweep_day_of_week: number;
@@ -209,25 +215,46 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
     return;
   }
 
+  // Read both USD and USDC balances; an absent account is treated as 0
+  // (mirroring the existing Number.isFinite guard). selectCurrency (§2) then
+  // picks which to spend, bounded by the configured preference.
   const usdAcct = accounts.data.accounts.find((a) => a.currency === "USD");
-  const parsed = usdAcct ? Number(usdAcct.available_balance.value) : 0;
-  const usdBalance = Number.isFinite(parsed) ? parsed : 0;
-  if (usdBalance < intendedUsd) {
-    insertSkippedRow(db, "skipped_insufficient_usd", `usd_balance=${usdBalance}`, mult, val, intendedUsd);
+  const parsedUsd = usdAcct ? Number(usdAcct.available_balance.value) : 0;
+  const usdBalance = Number.isFinite(parsedUsd) ? parsedUsd : 0;
+
+  const usdcAcct = accounts.data.accounts.find((a) => a.currency === "USDC");
+  const parsedUsdc = usdcAcct ? Number(usdcAcct.available_balance.value) : 0;
+  const usdcBalance = Number.isFinite(parsedUsdc) ? parsedUsdc : 0;
+
+  const preference = cfg.currency_preference as CurrencyPreference;
+  const currenciesChecked = currenciesCheckedFor(preference);
+  const currency = selectCurrency(preference, usdBalance, usdcBalance, intendedUsd);
+  if (!currency) {
+    // Shortfall in the selected currency/currencies — skip, place no order (§7).
+    const detail =
+      preference === "usd_only"  ? `usd_balance=${usdBalance}`
+    : preference === "usdc_only" ? `usdc_balance=${usdcBalance}`
+    :                              `usd_balance=${usdBalance};usdc_balance=${usdcBalance}`;
+    const scope =
+      preference === "usd_only"  ? `(usd_only) usd=${usdBalance}`
+    : preference === "usdc_only" ? `(usdc_only) usdc=${usdcBalance}`
+    :                              `(both) usd=${usdBalance} usdc=${usdcBalance}`;
+    insertSkippedRow(db, "skipped_insufficient_funds", detail, mult, val, intendedUsd, currenciesChecked);
+    console.log(`[autobuy-scheduler] skip: insufficient funds ${scope} need=${intendedUsd}`);
     scheduleNext(db, cfg);
     return;
   }
 
-  // All checks pass — place the buy.
+  // All checks pass — place the buy in the selected currency.
   // TODO: v1 known limitation — if placeMarketBuy returns a network-level error
   // (status=0), Coinbase may still have committed the order. On the next tick
   // this path would generate a fresh client_order_id and could double-fill.
   // Future: reconcile by querying Coinbase for recent autobuy-prefixed orders
   // before re-placing. For v1 we accept this low-probability edge; operators
   // have per-buy + rolling caps as the outer containment.
-  const placed = await placeMarketBuy(creds, intendedUsd);
+  const placed = await placeMarketBuy(creds, intendedUsd, currency);
   if (!placed.ok) {
-    insertFailedBuyRow(db, placed.error, mult, val, intendedUsd, null);
+    insertFailedBuyRow(db, placed.error, mult, val, intendedUsd, null, currenciesChecked);
     caps.recordFailure(db);
     scheduleNext(db, cfg);
     return;
@@ -236,14 +263,14 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   db.prepare(
     `INSERT INTO autobuy_runs
        (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
-        status, coinbase_order_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'buy_placed', ?, ?, ?)`,
+        status, coinbase_order_id, currencies_checked, currency_used, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'buy_placed', ?, ?, ?, ?, ?)`,
   ).run(
     now, val.z_score, val.zone, mult, cfg.base_unit_usd, intendedUsd,
-    placed.order_id, now, now,
+    placed.order_id, currenciesChecked, currency, now, now,
   );
   scheduleNext(db, cfg);
-  console.log(`[autobuy-scheduler] placed buy order=${placed.order_id} usd=${intendedUsd} zone=${val.zone}`);
+  console.log(`[autobuy-scheduler] placed buy order=${placed.order_id} ${currency.toLowerCase()}=${intendedUsd} zone=${val.zone}`);
 }
 
 function parseZoneMultiplier(zoneMultipliersJson: string, zone: string): number {
@@ -263,14 +290,15 @@ function insertSkippedRow(
   multiplier: number | null,
   val: { z_score: number; zone: string },
   intendedUsd: number | null = null,
+  currenciesChecked: string | null = null,
 ): void {
   const now = nowSec();
   db.prepare(
     `INSERT INTO autobuy_runs
        (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
-        status, error_code, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
-  ).run(now, val.z_score, val.zone, multiplier, intendedUsd, status, reason, now, now);
+        status, error_code, currencies_checked, created_at, updated_at)
+     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+  ).run(now, val.z_score, val.zone, multiplier, intendedUsd, status, reason, currenciesChecked, now, now);
 }
 
 function insertFailedBuyRow(
@@ -280,14 +308,15 @@ function insertFailedBuyRow(
   val: { z_score: number; zone: string },
   intendedUsd: number,
   orderId: string | null,
+  currenciesChecked: string | null = null,
 ): void {
   const now = nowSec();
   db.prepare(
     `INSERT INTO autobuy_runs
        (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
-        status, coinbase_order_id, error_message, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, ?, 'failed_buy', ?, ?, ?, ?)`,
-  ).run(now, val.z_score, val.zone, multiplier, intendedUsd, orderId, errorMessage.slice(0, 500), now, now);
+        status, coinbase_order_id, error_message, currencies_checked, created_at, updated_at)
+     VALUES (?, ?, ?, ?, NULL, ?, 'failed_buy', ?, ?, ?, ?, ?)`,
+  ).run(now, val.z_score, val.zone, multiplier, intendedUsd, orderId, errorMessage.slice(0, 500), currenciesChecked, now, now);
 }
 
 function scheduleNext(

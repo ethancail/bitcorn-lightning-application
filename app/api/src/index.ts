@@ -3544,7 +3544,7 @@ const server = http.createServer(async (req, res) => {
       ).all();
       const recent = db.prepare(
         `SELECT id, scheduled_for, z_score, zone, multiplier, intended_buy_usd, filled_btc, filled_usd,
-                status, filled_at, withdraw_txid, error_code, error_message
+                status, filled_at, withdraw_txid, error_code, error_message, currencies_checked, currency_used
          FROM autobuy_runs ORDER BY id DESC LIMIT 20`,
       ).all();
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -3554,6 +3554,7 @@ const server = http.createServer(async (req, res) => {
           base_unit_usd: cfg.base_unit_usd,
           frequency: cfg.frequency,
           zone_multipliers: JSON.parse(cfg.zone_multipliers),
+          currency_preference: cfg.currency_preference,
           withdraw_address: cfg.withdraw_address,
           withdraw_address_whitelisted_at: cfg.withdraw_address_whitelisted_at,
           sweep_day_of_week: cfg.sweep_day_of_week,
@@ -3600,7 +3601,8 @@ const server = http.createServer(async (req, res) => {
       const rows = db.prepare(
         `SELECT id, scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
                 status, coinbase_order_id, filled_btc, filled_usd, filled_at,
-                withdraw_txid, error_code, error_message, created_at, updated_at
+                withdraw_txid, error_code, error_message, currencies_checked, currency_used,
+                created_at, updated_at
          FROM autobuy_runs ${where} ORDER BY id DESC LIMIT ? OFFSET ?`,
       ).all(...params);
       const total = db.prepare(
@@ -3673,6 +3675,16 @@ const server = http.createServer(async (req, res) => {
           }
           updates.push("zone_multipliers = ?");
           params.push(JSON.stringify(zm));
+        }
+        if (parsed.currency_preference !== undefined) {
+          // Defense in depth alongside the DB CHECK constraint (migration 049).
+          if (!["usd_only", "usdc_only", "usd_preferred", "usdc_preferred"].includes(parsed.currency_preference)) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "invalid_currency_preference" }));
+            return;
+          }
+          updates.push("currency_preference = ?");
+          params.push(parsed.currency_preference);
         }
         if (parsed.sweep_day_of_week !== undefined) {
           const d = Number(parsed.sweep_day_of_week);
