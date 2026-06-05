@@ -4,7 +4,41 @@ import { api, type AutoBuyRun } from "../../api/client";
 
 const PAGE_SIZE = 25;
 
-export default function HistoryTable() {
+// Mirrors WITHDRAW_HOLD_SECONDS in app/api/src/autoBuy/scheduler.ts (the 72h
+// post-fill hold before BTC is eligible to sweep). The API doesn't expose the
+// constant, so the frontend mirrors it for display purposes only — if the
+// backend hold ever changes, update this too.
+const WITHDRAW_HOLD_SECONDS = 72 * 3600;
+
+const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+// First UTC calendar day with getUTCDay() === sweepDow on/after `fromSec`.
+// The sweep step (stepRunSweep) is gated to that UTC day-of-week, so this is
+// the earliest day the withdrawal can be placed. Same-day sweep is possible
+// when the hold elapses on the sweep day itself — hence the "~" estimate in
+// the rendered text.
+function nextSweepDateUtc(fromSec: number, sweepDow: number): Date {
+  const d = new Date(fromSec * 1000);
+  const candidate = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  while (candidate.getUTCDay() !== sweepDow) candidate.setUTCDate(candidate.getUTCDate() + 1);
+  return candidate;
+}
+
+function fmtUtcDay(d: Date): string {
+  return `${DOW_LABELS[d.getUTCDay()]} ${d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })}`;
+}
+
+function fmtLocalDate(sec: number): string {
+  return new Date(sec * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+interface Props {
+  // autobuy_config.sweep_day_of_week (0=Sunday, UTC) — passed from StrategyTab's
+  // status payload. Optional: when absent, the delivery line omits the sweep date.
+  sweepDayOfWeek?: number;
+}
+
+export default function HistoryTable({ sweepDayOfWeek }: Props) {
   const [rows, setRows] = useState<AutoBuyRun[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -20,6 +54,37 @@ export default function HistoryTable() {
   }, [offset, statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Expected-delivery context for in-flight post-buy states. Answers "when
+  // does the BTC actually reach my node?" without the admin needing to know
+  // the hold + weekly-sweep mechanics. Returns null for all other statuses.
+  const deliveryLine = (r: AutoBuyRun): { text: string; full: string } | null => {
+    if (r.status === "awaiting_withdraw_hold") {
+      if (r.filled_at == null) return null;
+      const holdEnd = r.filled_at + WITHDRAW_HOLD_SECONDS;
+      const holdStr = fmtLocalDate(holdEnd);
+      if (sweepDayOfWeek == null) {
+        return {
+          text: `hold ends ${holdStr}`,
+          full: `Coinbase 72-hour hold ends ${new Date(holdEnd * 1000).toLocaleString()}.`,
+        };
+      }
+      const sweep = nextSweepDateUtc(holdEnd, sweepDayOfWeek);
+      return {
+        text: `hold ends ${holdStr} · → node ~${fmtUtcDay(sweep)} (UTC)`,
+        full: `Coinbase 72-hour hold ends ${new Date(holdEnd * 1000).toLocaleString()}; BTC sweeps to your node on the next configured sweep day (${DOW_LABELS[sweepDayOfWeek]}, UTC) — est. ${fmtUtcDay(sweep)}.`,
+      };
+    }
+    if (r.status === "sweep_assigned") {
+      if (sweepDayOfWeek == null) return null;
+      const sweep = nextSweepDateUtc(Math.floor(Date.now() / 1000), sweepDayOfWeek);
+      return {
+        text: `→ node ~${fmtUtcDay(sweep)} (UTC)`,
+        full: `Hold elapsed; BTC sweeps to your node on the next configured sweep day (${DOW_LABELS[sweepDayOfWeek]}, UTC) — est. ${fmtUtcDay(sweep)}.`,
+      };
+    }
+    return null;
+  };
 
   return (
     <div className="panel" style={{ marginBottom: 16 }}>
@@ -76,7 +141,17 @@ export default function HistoryTable() {
               ) : rows.map((r) => (
                 <tr key={r.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{formatTs(r.scheduled_for)}</td>
-                  <td style={{ padding: "8px 12px" }}><StatusBadge status={r.status} /></td>
+                  <td style={{ padding: "8px 12px" }}>
+                    <StatusBadge status={r.status} />
+                    {(() => {
+                      const ctx = deliveryLine(r);
+                      return ctx ? (
+                        <div className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 2, whiteSpace: "nowrap" }} title={ctx.full}>
+                          {ctx.text}
+                        </div>
+                      ) : null;
+                    })()}
+                  </td>
                   <td style={{ padding: "8px 12px" }}>{r.zone ?? "—"}</td>
                   <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{r.z_score != null ? r.z_score.toFixed(2) : "—"}</td>
                   <td style={{ padding: "8px 12px", textAlign: "right" }}>{r.multiplier != null ? `${r.multiplier}×` : "—"}</td>

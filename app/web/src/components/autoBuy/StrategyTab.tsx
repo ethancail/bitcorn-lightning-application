@@ -62,7 +62,7 @@ export default function StrategyTab({ status, valuation, onRefresh }: Props) {
       {/* Multipliers editor */}
       <MultipliersEditor config={cfg} onSaved={onRefresh} />
 
-      <HistoryTable />
+      <HistoryTable sweepDayOfWeek={cfg.sweep_day_of_week} />
       <CoinbaseCard status={status} onRefresh={onRefresh} />
     </div>
   );
