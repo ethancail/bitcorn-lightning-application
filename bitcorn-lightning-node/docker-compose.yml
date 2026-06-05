@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.17.3
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.17.8
     restart: unless-stopped
     ports:
       - "3101:3101"
@@ -23,6 +23,13 @@ services:
       TREASURY_PUBKEY: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
       COINBASE_APP_ID: 1cebd598-0a9d-4567-8603-8ef051fd1101
       COINBASE_WORKER_URL: "https://bitcorn-onramp.ethancail.workers.dev"
+      # Auto-buy scheduler master enable (env-level kill switch). env.ts reads
+      # `AUTOBUY_ENABLED === "true"`; any other value (or unset) resolves to
+      # false, and every 15-min scheduler tick silently no-ops at canSchedule()
+      # regardless of the in-app autobuy_config.enabled flag (the UI badge).
+      # Must be the literal string "true". Absent here pre-v1.17.5 → auto-buy
+      # was dormant in production despite the UI showing "Enabled".
+      AUTOBUY_ENABLED: "true"
       LOOP_GRPC_HOST: bitcorn-lightning-node_loopd_1
       LOOP_GRPC_PORT: "8443"
       LOOP_TLS_CERT_PATH: "/loop-data/.lit/tls.cert"
@@ -104,7 +111,7 @@ services:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.17.3
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.17.8
     restart: unless-stopped
     ports:
       - "3200:3200"

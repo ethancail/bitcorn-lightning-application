@@ -129,21 +129,26 @@ export async function listAccounts(creds: CoinbaseCredentials) {
 }
 
 /**
- * Place a market BUY order for the given USD amount (quote_size).
- * Returns the Coinbase order_id on success. Uses a random client_order_id
- * to prevent accidental duplicate fills on retry.
+ * Place a market BUY order for the given quote amount (quote_size), spending
+ * the named currency. `currency` selects the product_id — "USD" → "BTC-USD",
+ * "USDC" → "BTC-USDC" — chosen upstream by selectCurrency (currency.ts §2).
+ * The quote size is the same USD-equivalent number regardless of currency
+ * (USDC is treated 1:1 with USD, §4). Returns the Coinbase order_id on
+ * success. Uses a random client_order_id to prevent accidental duplicate
+ * fills on retry.
  */
 export async function placeMarketBuy(
   creds: CoinbaseCredentials,
-  quoteSizeUsd: number,
+  quoteSize: number,
+  currency: "USD" | "USDC",
 ): Promise<{ ok: true; order_id: string } | { ok: false; status: number; error: string }> {
   const clientOrderId = `autobuy-${Date.now()}-${Math.floor(Math.random() * 1e9).toString(36)}`;
   const body = {
     client_order_id: clientOrderId,
-    product_id: "BTC-USD",
+    product_id: currency === "USD" ? "BTC-USD" : "BTC-USDC",
     side: "BUY",
     order_configuration: {
-      market_market_ioc: { quote_size: quoteSizeUsd.toFixed(2) },
+      market_market_ioc: { quote_size: quoteSize.toFixed(2) },
     },
   };
   const res = await coinbaseRequest<{

@@ -1,6 +1,6 @@
 // app/web/src/components/autoBuy/StrategyTab.tsx
 import { useEffect, useRef, useState } from "react";
-import { api, type AutoBuyStatus, type AutoBuyZoneMultipliers, type ValuationCurrent, type ValuationZone } from "../../api/client";
+import { api, type AutoBuyStatus, type AutoBuyZoneMultipliers, type CurrencyPreference, type ValuationCurrent, type ValuationZone } from "../../api/client";
 import HistoryTable from "./HistoryTable";
 import CoinbaseCard from "./CoinbaseCard";
 
@@ -9,6 +9,14 @@ interface Props {
   valuation: ValuationCurrent | null;
   onRefresh: () => Promise<unknown>;
 }
+
+// One-line explanation per currency-preference option (spec §6 / §12.3).
+const CURRENCY_PREF_HELP: Record<CurrencyPreference, string> = {
+  usd_only: "Spends only your USD balance; ignores USDC even if it would cover the buy.",
+  usdc_only: "Spends only your USDC balance; ignores USD even if it would cover the buy.",
+  usd_preferred: "Spends whichever balance covers the buy, trying USD first.",
+  usdc_preferred: "Spends whichever balance covers the buy, trying USDC first.",
+};
 
 const ZONE_ORDER: Array<{ key: keyof AutoBuyZoneMultipliers; label: string }> = [
   { key: "extreme_buy",  label: "Extreme Buy"  },
@@ -54,7 +62,7 @@ export default function StrategyTab({ status, valuation, onRefresh }: Props) {
       {/* Multipliers editor */}
       <MultipliersEditor config={cfg} onSaved={onRefresh} />
 
-      <HistoryTable />
+      <HistoryTable sweepDayOfWeek={cfg.sweep_day_of_week} />
       <CoinbaseCard status={status} onRefresh={onRefresh} />
     </div>
   );
@@ -64,6 +72,7 @@ function MultipliersEditor({ config, onSaved }: { config: NonNullable<AutoBuySta
   const [baseUnit, setBaseUnit] = useState(String(config.base_unit_usd));
   const [frequency, setFrequency] = useState(config.frequency);
   const [mult, setMult] = useState<AutoBuyZoneMultipliers>(config.zone_multipliers);
+  const [currencyPref, setCurrencyPref] = useState<CurrencyPreference>(config.currency_preference);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
@@ -78,16 +87,18 @@ function MultipliersEditor({ config, onSaved }: { config: NonNullable<AutoBuySta
       ? String(applied.base_unit_usd) === baseUnit
         && applied.frequency === frequency
         && JSON.stringify(applied.zone_multipliers) === JSON.stringify(mult)
+        && applied.currency_preference === currencyPref
       : true; // first mount: no local edits yet
 
     if (localMatchesApplied) {
       setBaseUnit(String(config.base_unit_usd));
       setFrequency(config.frequency);
       setMult(config.zone_multipliers);
+      setCurrencyPref(config.currency_preference);
       lastAppliedRef.current = config;
     }
     // else: preserve the user's unsaved edits, ignore this server update
-  }, [config, baseUnit, frequency, mult]);
+  }, [config, baseUnit, frequency, mult, currencyPref]);
 
   const handleSave = async () => {
     setSaving(true); setToast(null);
@@ -102,6 +113,7 @@ function MultipliersEditor({ config, onSaved }: { config: NonNullable<AutoBuySta
         base_unit_usd: base,
         frequency,
         zone_multipliers: mult,
+        currency_preference: currencyPref,
       });
       setToast({ kind: "success", message: "Saved." });
       await onSaved();
@@ -137,6 +149,25 @@ function MultipliersEditor({ config, onSaved }: { config: NonNullable<AutoBuySta
               <option value="monthly">Monthly</option>
             </select>
           </label>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            <span className="text-dim" style={{ fontSize: "0.75rem" }}>Currency Preference</span>
+            <select
+              value={currencyPref}
+              onChange={(e) => setCurrencyPref(e.target.value as CurrencyPreference)}
+              title={CURRENCY_PREF_HELP[currencyPref]}
+            >
+              <option value="usd_only">USD only</option>
+              <option value="usdc_only">USDC only</option>
+              <option value="usd_preferred">Both, USD first</option>
+              <option value="usdc_preferred">Both, USDC first</option>
+            </select>
+          </label>
+          <div className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>
+            {CURRENCY_PREF_HELP[currencyPref]}
+          </div>
         </div>
 
         <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em" }}>Zone Buy Multipliers</div>

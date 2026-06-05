@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.17.3"
+version: "1.17.8"
 port: 3200
 
 description: >
@@ -27,6 +27,69 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.17.8: Auto-Buy purchase history now shows when in-flight BTC
+  will actually reach your node. Purchases in the awaiting-withdraw
+  state previously showed only a status badge, leaving admins to
+  work out the 72-hour Coinbase hold and the weekly sweep schedule
+  themselves. The status cell now adds a context line: when the
+  72-hour hold ends and the estimated sweep day (the configured
+  weekly sweep day, UTC) when the BTC is withdrawn on-chain to the
+  node. Hovering the line shows the full explanation. Display-only
+  change; no schema, scheduler, or Coinbase behavior is affected.
+
+  v1.17.7: Display fix for the admin valuation inputs. The Reserve
+  Risk input rounded its saved-value readback to 4 decimals, so a
+  legitimate deep-undervaluation entry like 0.0009718 displayed as
+  "0.0010" — which looked like the value had been silently coerced.
+  It was not: the input, API, and storage (local DB + Worker KV) all
+  preserved full precision the whole time; only the on-screen readback
+  rounded. Reserve Risk now displays at 7 decimals so the readback
+  matches what is stored, and its range hint is corrected to note that
+  the metric can reach ~0.0008 in deep undervaluation (typical range
+  0.002 to 0.02). Display-only change; no schema, scheduler, Coinbase,
+  or stored-value behavior is affected.
+
+  v1.17.6: Currency-adaptive Auto-Buy. The scheduler can now spend
+  USD or USDC, governed by a new per-node Currency Preference setting
+  (USD only / USDC only / Both, USD first / Both, USDC first;
+  default "Both, USDC first"). Previously it spent only USD and
+  silently skipped when a node was funded in USDC. The buy now reads
+  both balances each tick and places a BTC-USD or BTC-USDC order
+  accordingly, spending exactly one currency per run; USD and USDC
+  count 1:1 toward the same spend caps. The insufficient-funds skip
+  state is renamed to reflect the selected currency, and the purchase
+  history records which currency was used. No change to valuation,
+  sweep, credentials, or caps behavior.
+
+  v1.17.5: Restores Coinbase Auto-Buy on the treasury node. The
+  auto-buy scheduler is gated by an env-level kill switch
+  (AUTOBUY_ENABLED) in addition to the in-app enable toggle. That
+  env var was never set in the deploy compose, so every 15-minute
+  scheduler tick silently no-op'd at the canSchedule() gate while
+  the UI showed "Enabled" — no buys, no skip rows, no pause, for
+  the life of the deployment. Adds AUTOBUY_ENABLED: "true" to the
+  api service environment. Config-only change; no application code
+  is modified (api/web images are functionally identical to v1.17.4).
+
+  v1.17.4: Self-service subscription allocation. Customer-facing
+  follow-up to v1.17.3 — Auto-Buy-only customers without a Lightning
+  channel to treasury can now subscribe. Previously, allocation only
+  fired in `discoverAndAllocateNewMembers` (channel-peer detector),
+  so no-channel members hit /api/subscription/token, got 402
+  no_subscription_row, and were permanently stuck with "Not
+  Subscribed" / no JWT cached. Now when /token sees a missing row
+  for a caller who has already proven control of their pubkey via
+  LND-signed challenge, the treasury auto-allocates a `fresh`
+  subscription row + recomputes tier (lands at `current` via
+  fresh-grace) + mints scope='full' inline. Combined with the
+  existing 30-day fresh-grace, a brand-new member with no channel
+  gets a working JWT on their first /token call and 30 days to
+  evaluate Auto-Buy before paying. Also drops the Forwarded Fees
+  Earned panel from the member dashboard (members are spokes, not
+  routers — the panel reported 1 sat / 1 sat / 1 sat in practice
+  and implied a routing-income role members don't have) and fixes
+  the "No hub channel" CTA copy to match.
+
   v1.17.3: Follow-up to v1.17.2 — fresh-grace now also applies to
   grandfathered members. The Stage 2 backfill seeds every
   grandfathered member with a sentinel admin_override row

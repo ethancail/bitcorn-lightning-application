@@ -100,7 +100,7 @@ Counted states (for rolling cap SUM): `buy_filled`, `awaiting_withdraw_hold`, `s
 
 `scheduled` → `buy_placed` → `buy_filled` → `awaiting_withdraw_hold` → `sweep_assigned` → `withdraw_placed` → `withdraw_confirmed`
 
-Skip states (terminal): `skipped_stale_data`, `skipped_zero_multiplier`, `skipped_cap_hit`, `skipped_insufficient_usd`
+Skip states (terminal): `skipped_stale_data`, `skipped_zero_multiplier`, `skipped_cap_hit`, `skipped_insufficient_funds` (renamed from `skipped_insufficient_usd` in migration 049 — currency-adaptive Phase 1)
 
 Failure states (terminal but countable toward consecutive-failures threshold): `failed_buy`, `failed_withdraw`
 

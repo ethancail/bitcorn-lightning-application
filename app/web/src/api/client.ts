@@ -241,6 +241,7 @@ export const api = {
     base_unit_usd?: number;
     frequency?: AutoBuyConfig["frequency"];
     zone_multipliers?: AutoBuyZoneMultipliers;
+    currency_preference?: CurrencyPreference;
     sweep_day_of_week?: number;
     whitelist_confirmed?: boolean;
   }) =>
@@ -1149,11 +1150,14 @@ export type AutoBuyZoneMultipliers = {
   extreme_sell: number;
 };
 
+export type CurrencyPreference = "usd_only" | "usdc_only" | "usd_preferred" | "usdc_preferred";
+
 export type AutoBuyConfig = {
   enabled: boolean;
   base_unit_usd: number;
   frequency: "daily" | "weekly" | "biweekly" | "monthly";
   zone_multipliers: AutoBuyZoneMultipliers;
+  currency_preference: CurrencyPreference;
   withdraw_address: string;
   withdraw_address_whitelisted_at: number | null;
   sweep_day_of_week: number;
@@ -1185,6 +1189,8 @@ export type AutoBuyRun = {
   withdraw_txid?: string | null;
   error_code?: string | null;
   error_message?: string | null;
+  currencies_checked?: string | null;
+  currency_used?: string | null;
   created_at?: number;
   updated_at?: number;
 };
