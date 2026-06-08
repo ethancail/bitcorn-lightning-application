@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type RecommendedPeer, type PendingChannel, resolveContactName, truncPubkey } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type RecommendedPeer, type PendingChannel, type AutoBuyAlertBadge, resolveContactName, truncPubkey } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -200,7 +200,39 @@ function BuyBitcoinButton() {
   );
 }
 
+// Auto-Buy nav badge (Phase 2, spec §4a). Polls the lightweight badge-count
+// endpoint every 60s (consistent with the Dashboard alert poll) so the
+// always-mounted sidebar never fetches full alert bodies app-wide. Both
+// sidebars share this hook.
+function useAutoBuyBadge(): AutoBuyAlertBadge {
+  const [badge, setBadge] = useState<AutoBuyAlertBadge>({ active_count: 0, highest_severity: null });
+  useEffect(() => {
+    const load = () => api.getAutoBuyAlertBadge().then(setBadge).catch(() => {});
+    load();
+    const id = setInterval(load, 60_000);
+    return () => clearInterval(id);
+  }, []);
+  return badge;
+}
+
+// Count chip on the Auto-Buy nav item. Red if any active alert is critical,
+// amber if all are warnings, nothing if zero — reusing the existing badge CSS
+// primitives (no new colours). Right-aligned via marginLeft:auto.
+function NavAlertBadge({ badge }: { badge: AutoBuyAlertBadge }) {
+  if (badge.active_count <= 0) return null;
+  return (
+    <span
+      className={`badge ${badge.highest_severity === "critical" ? "badge-red" : "badge-amber"}`}
+      style={{ marginLeft: "auto", fontSize: "0.625rem" }}
+      aria-label={`${badge.active_count} active Auto-Buy alert${badge.active_count === 1 ? "" : "s"}`}
+    >
+      {badge.active_count}
+    </span>
+  );
+}
+
 function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const autoBuyBadge = useAutoBuyBadge();
   const navigate = useNavigate();
 
   const navItems = [
@@ -234,6 +266,7 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
             >
               <span className="icon">{item.icon}</span>
               {item.label}
+              {item.to === "/auto-buy" && <NavAlertBadge badge={autoBuyBadge} />}
             </NavLink>
           </div>
           {i === 0 && (
@@ -313,6 +346,7 @@ function AppShell() {
 // ─── Member AppShell ───────────────────────────────────────────────────────
 
 function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose: () => void; channelRole: string }) {
+  const autoBuyBadge = useAutoBuyBadge();
   const isMerchant = channelRole === "merchant";
   const liquidityLabel = isMerchant ? "Refill Channel" : "Cash Out";
   const liquidityIcon = isMerchant ? "↙" : "↗";
@@ -344,6 +378,7 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
             >
               <span className="icon">{item.icon}</span>
               {item.label}
+              {item.to === "/auto-buy" && <NavAlertBadge badge={autoBuyBadge} />}
             </NavLink>
           </div>
           {i === 0 && (
