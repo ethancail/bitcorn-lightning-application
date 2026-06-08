@@ -15,6 +15,8 @@ import {
   currenciesCheckedFor,
   type CurrencyPreference,
 } from "./currency";
+import { classifyCoinbaseError, type AlertType } from "./alerts";
+import { raiseAlert, clearAlerts } from "./alertStore";
 import { getCurrent } from "./valuationClient";
 
 const TICK_INTERVAL_MS = 15 * 60 * 1000;
@@ -100,6 +102,34 @@ function loadCredentials(db: Database.Database): CoinbaseCredentials | null {
 
 function pauseWithReason(db: Database.Database, reason: string): void {
   db.prepare(`UPDATE autobuy_config SET enabled = 0, paused_reason = ? WHERE id = 1`).run(reason);
+}
+
+// Route a placement/poll failure to the right alert type via the shared
+// classifier (spec §2/§6): a 401/403 surfacing as a failed_buy error routes to
+// AUTH_FAILURE, a 429/5xx to RATE_LIMITED, everything else to ORDER_FAILED.
+// Additive only — does not change buy/pause semantics (the caller still writes
+// the failed_buy row and records the failure).
+function raiseOrderFailureAlert(
+  db: Database.Database,
+  httpStatus: number,
+  errorText: string,
+  runId: number,
+  orderStatus: string | null,
+): void {
+  const cls = classifyCoinbaseError(httpStatus, errorText);
+  let type: AlertType;
+  let context: Record<string, unknown>;
+  if (cls === "auth") {
+    type = "AUTOBUY_AUTH_FAILURE";
+    context = { paused_reason: null, http_status: httpStatus, source: "order_placement", error: errorText };
+  } else if (cls === "rate_limit") {
+    type = "AUTOBUY_RATE_LIMITED";
+    context = { http_status: httpStatus, retry_after: null, source: "order_placement", error: errorText };
+  } else {
+    type = "AUTOBUY_ORDER_FAILED";
+    context = { latest_run_id: runId, error_code: null, error_message: errorText, order_status: orderStatus };
+  }
+  raiseAlert(db, { type, latestRunId: runId, context });
 }
 
 function readConfig(db: Database.Database) {
@@ -209,11 +239,26 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   if (!accounts.ok) {
     if (accounts.status === 401 || accounts.status === 403) {
       pauseWithReason(db, "credentials_invalid");
+      raiseAlert(db, {
+        type: "AUTOBUY_AUTH_FAILURE",
+        latestRunId: null,
+        context: { paused_reason: "credentials_invalid", http_status: accounts.status, source: "list_accounts", error: accounts.error },
+      });
       return;
     }
+    // Non-auth listAccounts failure (429 / 5xx / network) — previously silent.
+    // Scenario 3: raise a transient rate-limit/unavailable alert (spec §2).
+    raiseAlert(db, {
+      type: "AUTOBUY_RATE_LIMITED",
+      latestRunId: null,
+      context: { http_status: accounts.status, retry_after: null, source: "list_accounts", error: accounts.error },
+    });
     console.warn(`[autobuy-scheduler] account check failed: ${accounts.status} ${accounts.error}`);
     return;
   }
+  // listAccounts ok — credentials demonstrably valid and the API reachable.
+  // Clear any active auth / rate-limit alerts (spec §3 aggressive api_ok clear).
+  clearAlerts(db, "api_ok");
 
   // Read both USD and USDC balances; an absent account is treated as 0
   // (mirroring the existing Number.isFinite guard). selectCurrency (§2) then
@@ -239,7 +284,17 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
       preference === "usd_only"  ? `(usd_only) usd=${usdBalance}`
     : preference === "usdc_only" ? `(usdc_only) usdc=${usdcBalance}`
     :                              `(both) usd=${usdBalance} usdc=${usdcBalance}`;
-    insertSkippedRow(db, "skipped_insufficient_funds", detail, mult, val, intendedUsd, currenciesChecked);
+    const runId = insertSkippedRow(db, "skipped_insufficient_funds", detail, mult, val, intendedUsd, currenciesChecked);
+    raiseAlert(db, {
+      type: "AUTOBUY_INSUFFICIENT_FUNDS",
+      latestRunId: runId,
+      context: {
+        currencies_checked: currenciesChecked,
+        usd_balance: usdBalance,
+        usdc_balance: usdcBalance,
+        intended_buy_usd: intendedUsd,
+      },
+    });
     console.log(`[autobuy-scheduler] skip: insufficient funds ${scope} need=${intendedUsd}`);
     scheduleNext(db, cfg);
     return;
@@ -254,7 +309,8 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   // have per-buy + rolling caps as the outer containment.
   const placed = await placeMarketBuy(creds, intendedUsd, currency);
   if (!placed.ok) {
-    insertFailedBuyRow(db, placed.error, mult, val, intendedUsd, null, currenciesChecked);
+    const runId = insertFailedBuyRow(db, placed.error, mult, val, intendedUsd, null, currenciesChecked);
+    raiseOrderFailureAlert(db, placed.status, placed.error, runId, null);
     caps.recordFailure(db);
     scheduleNext(db, cfg);
     return;
@@ -269,6 +325,9 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
     now, val.z_score, val.zone, mult, cfg.base_unit_usd, intendedUsd,
     placed.order_id, currenciesChecked, currency, now, now,
   );
+  // Buy placed successfully — clear any active insufficient-funds / order-failed
+  // alerts (spec §3). Auth / rate-limit already cleared via the api_ok above.
+  clearAlerts(db, "buy");
   scheduleNext(db, cfg);
   console.log(`[autobuy-scheduler] placed buy order=${placed.order_id} ${currency.toLowerCase()}=${intendedUsd} zone=${val.zone}`);
 }
@@ -291,14 +350,15 @@ function insertSkippedRow(
   val: { z_score: number; zone: string },
   intendedUsd: number | null = null,
   currenciesChecked: string | null = null,
-): void {
+): number {
   const now = nowSec();
-  db.prepare(
+  const info = db.prepare(
     `INSERT INTO autobuy_runs
        (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
         status, error_code, currencies_checked, created_at, updated_at)
      VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
   ).run(now, val.z_score, val.zone, multiplier, intendedUsd, status, reason, currenciesChecked, now, now);
+  return Number(info.lastInsertRowid);
 }
 
 function insertFailedBuyRow(
@@ -309,14 +369,15 @@ function insertFailedBuyRow(
   intendedUsd: number,
   orderId: string | null,
   currenciesChecked: string | null = null,
-): void {
+): number {
   const now = nowSec();
-  db.prepare(
+  const info = db.prepare(
     `INSERT INTO autobuy_runs
        (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
         status, coinbase_order_id, error_message, currencies_checked, created_at, updated_at)
      VALUES (?, ?, ?, ?, NULL, ?, 'failed_buy', ?, ?, ?, ?, ?)`,
   ).run(now, val.z_score, val.zone, multiplier, intendedUsd, orderId, errorMessage.slice(0, 500), currenciesChecked, now, now);
+  return Number(info.lastInsertRowid);
 }
 
 function scheduleNext(
@@ -348,11 +409,18 @@ async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
     if (!res.ok) {
       if (res.status === 401 || res.status === 403) {
         pauseWithReason(db, "credentials_invalid");
+        raiseAlert(db, {
+          type: "AUTOBUY_AUTH_FAILURE",
+          latestRunId: row.id,
+          context: { paused_reason: "credentials_invalid", http_status: res.status, source: "order_poll", error: res.error },
+        });
         return;
       }
       console.warn(`[autobuy-scheduler] pollOrder failed order=${row.coinbase_order_id}: ${res.error}`);
       continue; // next tick retries
     }
+    // A successful poll proves the credentials are valid and the API reachable.
+    clearAlerts(db, "api_ok");
     const order = res.order;
     const now = nowSec();
     if (order.status === "FILLED") {
@@ -367,6 +435,11 @@ async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
            WHERE id = ?`,
         ).run(now, row.id);
         caps.recordFailure(db);
+        raiseAlert(db, {
+          type: "AUTOBUY_ORDER_FAILED",
+          latestRunId: row.id,
+          context: { latest_run_id: row.id, error_code: "unparseable_fill_amount", error_message: null, order_status: order.status },
+        });
         console.warn(`[autobuy-scheduler] unparseable fill amounts order=${row.coinbase_order_id} size=${order.filled_size} value=${order.filled_value}`);
         continue;
       }
@@ -375,6 +448,8 @@ async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
          SET status = 'buy_filled', filled_btc = ?, filled_usd = ?, filled_at = ?, updated_at = ?
          WHERE id = ?`,
       ).run(filledBtc, filledUsd, filledAt, now, row.id);
+      // Fill confirmed — clear any active insufficient-funds / order-failed alerts (spec §3).
+      clearAlerts(db, "buy");
       console.log(`[autobuy-scheduler] filled order=${row.coinbase_order_id} btc=${filledBtc} usd=${filledUsd}`);
     } else if (order.status === "CANCELLED" || order.status === "EXPIRED" || order.status === "FAILED") {
       db.prepare(
@@ -383,6 +458,11 @@ async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
          WHERE id = ?`,
       ).run(order.status.toLowerCase(), now, row.id);
       caps.recordFailure(db);
+      raiseAlert(db, {
+        type: "AUTOBUY_ORDER_FAILED",
+        latestRunId: row.id,
+        context: { latest_run_id: row.id, error_code: order.status.toLowerCase(), error_message: null, order_status: order.status },
+      });
     }
     // OPEN / PENDING → leave as-is, poll again next tick
   }
@@ -451,9 +531,22 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
   if (!accounts.ok) {
     if (accounts.status === 401 || accounts.status === 403) {
       pauseWithReason(db, "credentials_invalid");
+      raiseAlert(db, {
+        type: "AUTOBUY_AUTH_FAILURE",
+        latestRunId: null,
+        context: { paused_reason: "credentials_invalid", http_status: accounts.status, source: "list_accounts", error: accounts.error },
+      });
+    } else {
+      raiseAlert(db, {
+        type: "AUTOBUY_RATE_LIMITED",
+        latestRunId: null,
+        context: { http_status: accounts.status, retry_after: null, source: "list_accounts", error: accounts.error },
+      });
     }
     return;
   }
+  // Sweep-path listAccounts ok — same aggressive api_ok clear as the buy path.
+  clearAlerts(db, "api_ok");
   const btcAcct = accounts.data.accounts.find((a) => a.currency === "BTC");
   if (!btcAcct) {
     console.warn("[autobuy-scheduler] no BTC account found");
@@ -468,7 +561,13 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
   if (!withdrawResult.ok) {
     // Record a failed sweep row for audit + mark all assigned runs as failed_withdraw
     const errorCode = withdrawResult.status === 400 ? "address_not_whitelisted" : `http_${withdrawResult.status}`;
-    db.prepare(
+    // Capture which runs are affected before the UPDATE rewrites their status,
+    // so the critical alert can point at the latest affected run (spec §2 Sc.5).
+    const affected = db.prepare(
+      `SELECT MAX(id) AS id, MAX(filled_at) AS buy_completed_at
+       FROM autobuy_runs WHERE status = 'sweep_assigned'`,
+    ).get() as { id: number | null; buy_completed_at: number | null };
+    const sweepInfo = db.prepare(
       `INSERT INTO autobuy_sweeps (swept_at, btc_amount, status, error_code, error_message)
        VALUES (?, ?, 'failed', ?, ?)`,
     ).run(now, totalRow.total, errorCode, withdrawResult.error.slice(0, 500));
@@ -481,6 +580,18 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
       pauseWithReason(db, "address_not_whitelisted");
     }
     caps.recordFailure(db);
+    raiseAlert(db, {
+      type: "AUTOBUY_SWEEP_FAILED",
+      latestRunId: affected?.id ?? null,
+      context: {
+        sweep_id: Number(sweepInfo.lastInsertRowid),
+        latest_run_id: affected?.id ?? null,
+        btc_amount: totalRow.total,
+        buy_completed_at: affected?.buy_completed_at ?? null,
+        error_code: errorCode,
+        error_message: withdrawResult.error.slice(0, 500),
+      },
+    });
     return;
   }
 
@@ -531,8 +642,17 @@ async function stepPollWithdraws(db: Database.Database): Promise<void> {
          WHERE withdraw_sweep_id = ? AND status = 'withdraw_placed'`,
       ).run(res.withdraw.network_tx_hash ?? null, now, sweep.id);
       caps.resetFailureCounter(db);
+      // Sweep confirmed — clear any active sweep-failed alert (spec §3).
+      clearAlerts(db, "sweep");
       console.log(`[autobuy-scheduler] sweep confirmed sweep=${sweep.id} txid=${res.withdraw.network_tx_hash ?? "<pending>"}`);
     } else if (res.withdraw.status === "failed" || res.withdraw.status === "cancelled") {
+      const sweepRow = db.prepare(
+        `SELECT btc_amount FROM autobuy_sweeps WHERE id = ?`,
+      ).get(sweep.id) as { btc_amount: number } | undefined;
+      const affected = db.prepare(
+        `SELECT MAX(id) AS id, MAX(filled_at) AS buy_completed_at
+         FROM autobuy_runs WHERE withdraw_sweep_id = ? AND status = 'withdraw_placed'`,
+      ).get(sweep.id) as { id: number | null; buy_completed_at: number | null };
       db.prepare(
         `UPDATE autobuy_sweeps SET status = 'failed', error_code = ? WHERE id = ?`,
       ).run(res.withdraw.status, sweep.id);
@@ -542,6 +662,18 @@ async function stepPollWithdraws(db: Database.Database): Promise<void> {
          WHERE withdraw_sweep_id = ? AND status = 'withdraw_placed'`,
       ).run(now, sweep.id);
       caps.recordFailure(db);
+      raiseAlert(db, {
+        type: "AUTOBUY_SWEEP_FAILED",
+        latestRunId: affected?.id ?? null,
+        context: {
+          sweep_id: sweep.id,
+          latest_run_id: affected?.id ?? null,
+          btc_amount: sweepRow?.btc_amount ?? null,
+          buy_completed_at: affected?.buy_completed_at ?? null,
+          error_code: res.withdraw.status,
+          error_message: null,
+        },
+      });
     }
     // "pending" → leave as-is
   }

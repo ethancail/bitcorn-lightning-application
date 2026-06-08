@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, type AutoBuyStatus, type ValuationCurrent } from "../api/client";
+import { api, type AutoBuyStatus, type ValuationCurrent, type AutoBuyAlert } from "../api/client";
 import ValuationTab from "../components/autoBuy/ValuationTab";
 import StrategyTab from "../components/autoBuy/StrategyTab";
+import AlertsTab from "../components/autoBuy/AlertsTab";
+import AutoBuyAlertBanner from "../components/autoBuy/AutoBuyAlertBanner";
+import { deriveBadge } from "../autoBuy/alertView";
 
 // Model Inputs tab removed in v1.11.4 — the full input table leaks which
 // metrics the treasury tracks, and this page is visible to member nodes.
 // The table now lives on the treasury-only /valuation-input page instead.
-type TabId = "valuation" | "strategy";
+// "alerts" added in v1.17.9 (Phase 2) — failure-notification history.
+type TabId = "valuation" | "strategy" | "alerts";
 
 // Shape of a structured error from the /api/valuation/* routes — apiFetch
 // attaches { code, status, detail } to the Error it throws. `code` matches
@@ -100,28 +104,47 @@ export default function AutoBuy() {
   const [valuation, setValuation] = useState<ValuationCurrent | null>(null);
   const [loading, setLoading] = useState(true);
   const [valuationError, setValuationError] = useState<ApiError | null>(null);
+  const [alerts, setAlerts] = useState<AutoBuyAlert[]>([]);
 
   const refresh = useCallback(() => {
-    return Promise.allSettled([api.getAutoBuyStatus(), api.getValuationCurrent()]).then(
-      ([sR, vR]) => {
-        if (sR.status === "fulfilled") setStatus(sR.value);
-        if (vR.status === "fulfilled") {
-          setValuation(vR.value);
-          setValuationError(null);
-        } else {
-          setValuationError(vR.reason as ApiError);
-        }
-      },
-    );
+    return Promise.allSettled([
+      api.getAutoBuyStatus(),
+      api.getValuationCurrent(),
+      api.getAutoBuyAlerts(),
+    ]).then(([sR, vR, aR]) => {
+      if (sR.status === "fulfilled") setStatus(sR.value);
+      if (vR.status === "fulfilled") {
+        setValuation(vR.value);
+        setValuationError(null);
+      } else {
+        setValuationError(vR.reason as ApiError);
+      }
+      // Active-alert fetch is best-effort — a failure here must not blank the
+      // page or surface as the valuation error banner.
+      if (aR.status === "fulfilled") setAlerts(aR.value);
+    });
   }, []);
 
   useEffect(() => {
     refresh().finally(() => setLoading(false));
+    // Active alerts (and the rest) poll every 30s — matches the existing page
+    // cadence and the spec §5 on-page interval.
     const id = setInterval(refresh, 30_000);
     return () => clearInterval(id);
   }, [refresh]);
 
+  const handleDismissAlert = useCallback(async (id: number) => {
+    try {
+      await api.dismissAutoBuyAlert(id);
+      const fresh = await api.getAutoBuyAlerts();
+      setAlerts(fresh);
+    } catch {
+      // best-effort — the 30s poll will reconcile if the dismiss raced
+    }
+  }, []);
+
   const errorBanner = describeValuationError(valuationError);
+  const alertBadge = deriveBadge(alerts);
 
   return (
     <div>
@@ -143,8 +166,11 @@ export default function AutoBuy() {
         </div>
       )}
 
+      {/* Active failure alerts — persistent across all tabs (spec §4b). */}
+      <AutoBuyAlertBanner alerts={alerts} onDismiss={handleDismissAlert} />
+
       <div className="tab-bar" style={{ display: "flex", gap: 4, marginBottom: 24, borderBottom: "1px solid var(--border)" }}>
-        {(["valuation", "strategy"] as TabId[]).map((t) => (
+        {(["valuation", "strategy", "alerts"] as TabId[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -158,9 +184,20 @@ export default function AutoBuy() {
               cursor: "pointer",
               fontSize: "0.9375rem",
               marginBottom: -1,
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
             }}
           >
-            {t === "valuation" ? "Valuation Chart" : "DCA Strategy"}
+            {t === "valuation" ? "Valuation Chart" : t === "strategy" ? "DCA Strategy" : "Alerts"}
+            {t === "alerts" && alertBadge.count > 0 && (
+              <span
+                className={`badge ${alertBadge.severity === "critical" ? "badge-red" : "badge-amber"}`}
+                style={{ fontSize: "0.625rem" }}
+              >
+                {alertBadge.count}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -171,6 +208,7 @@ export default function AutoBuy() {
         <>
           {tab === "valuation" && <ValuationTab valuation={valuation} />}
           {tab === "strategy" && <StrategyTab status={status} valuation={valuation} onRefresh={refresh} />}
+          {tab === "alerts" && <AlertsTab />}
         </>
       )}
     </div>
