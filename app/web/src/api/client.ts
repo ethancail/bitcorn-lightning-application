@@ -226,6 +226,18 @@ export const api = {
   getAutoBuyStatus: () =>
     apiFetch<AutoBuyStatus>("/api/autobuy/status"),
 
+  // Auto-Buy failure alerts (Phase 2). Active list (banner, 30s on-page poll),
+  // 30-day history (Alerts tab, on-demand), dismissal, and the lightweight
+  // badge count (nav badge, 60s app-wide poll).
+  getAutoBuyAlerts: () =>
+    apiFetch<{ alerts: AutoBuyAlert[] }>("/api/autobuy/alerts").then((r) => r.alerts),
+  getAutoBuyAlertHistory: () =>
+    apiFetch<{ alerts: AutoBuyAlert[] }>("/api/autobuy/alerts/history").then((r) => r.alerts),
+  dismissAutoBuyAlert: (id: number) =>
+    apiFetch<{ ok: true; alert: AutoBuyAlert }>(`/api/autobuy/alerts/${id}/dismiss`, { method: "POST" }),
+  getAutoBuyAlertBadge: () =>
+    apiFetch<AutoBuyAlertBadge>("/api/autobuy/alerts/badge-count"),
+
   getAutoBuyHistory: (opts?: { limit?: number; offset?: number; status?: string }) => {
     const qs = new URLSearchParams();
     if (opts?.limit != null) qs.set("limit", String(opts.limit));
@@ -1200,6 +1212,34 @@ export type AutoBuyStatus = {
   credentials: AutoBuyCredentialsInfo | null;
   in_flight: AutoBuyRun[];
   recent: AutoBuyRun[];
+};
+
+// Auto-Buy failure alerts (Phase 2). Reuses the shared AlertSeverity, but the
+// stored model is narrowed to warning|critical (the API never emits info).
+export type AutoBuyAlertType =
+  | "AUTOBUY_INSUFFICIENT_FUNDS"
+  | "AUTOBUY_AUTH_FAILURE"
+  | "AUTOBUY_RATE_LIMITED"
+  | "AUTOBUY_ORDER_FAILED"
+  | "AUTOBUY_SWEEP_FAILED";
+
+export type AutoBuyAlert = {
+  id: number;
+  type: AutoBuyAlertType | string;
+  severity: Extract<AlertSeverity, "warning" | "critical">;
+  status: "active" | "resolved" | "dismissed";
+  consecutive_count: number;
+  latest_run_id: number | null;
+  context: Record<string, unknown> | null;
+  created_at: number; // epoch seconds
+  updated_at: number;
+  resolved_at?: number | null;
+  dismissed_at?: number | null;
+};
+
+export type AutoBuyAlertBadge = {
+  active_count: number;
+  highest_severity: "warning" | "critical" | null;
 };
 
 export type ValuationZone = "extreme_buy" | "undervalued" | "fair_value" | "elevated" | "overvalued" | "extreme_sell";

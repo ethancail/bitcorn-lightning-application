@@ -74,6 +74,12 @@ import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/l
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
 import { startScheduler, runTick, ensureWithdrawAddress } from "./autoBuy/scheduler";
+import {
+  getActiveAlerts,
+  getAlertHistory,
+  getBadgeCount,
+  dismissAlert,
+} from "./autoBuy/alertStore";
 import { listAccounts } from "./autoBuy/coinbaseClient";
 import { encrypt, decrypt } from "./autoBuy/credentials";
 import * as caps from "./autoBuy/caps";
@@ -3620,6 +3626,106 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ rows, total: total.c, limit, offset }));
     } catch (err: any) {
       console.error("[autobuy-history]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  // ── Auto-Buy failure alerts (Phase 2) ──────────────────────────────────
+  // Gated assertNonEmpty (matches /api/autobuy/status), not assertTreasury —
+  // the Auto-Buy page and its alerts are available to treasury and members
+  // alike. More-specific routes (history, badge-count, dismiss) are matched
+  // before the bare /api/autobuy/alerts list.
+
+  if (req.method === "GET" && req.url?.startsWith("/api/autobuy/alerts/history")) {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ alerts: getAlertHistory(db) }));
+    } catch (err: any) {
+      console.error("[autobuy-alerts-history]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "GET" && req.url?.startsWith("/api/autobuy/alerts/badge-count")) {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(getBadgeCount(db)));
+    } catch (err: any) {
+      console.error("[autobuy-alerts-badge]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (
+    req.method === "POST" &&
+    req.url?.startsWith("/api/autobuy/alerts/") &&
+    req.url?.endsWith("/dismiss")
+  ) {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const idStr = req.url.slice("/api/autobuy/alerts/".length, -"/dismiss".length);
+      const id = Number(idStr);
+      if (!Number.isInteger(id) || id <= 0) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "invalid_alert_id" }));
+        return;
+      }
+      // Idempotent: dismissing an already-dismissed/resolved alert returns the
+      // current row unchanged (spec §5). A missing id is a 404.
+      const updated = dismissAlert(db, id);
+      if (!updated) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "alert_not_found" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, alert: updated }));
+    } catch (err: any) {
+      console.error("[autobuy-alerts-dismiss]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    (req.url === "/api/autobuy/alerts" || req.url?.startsWith("/api/autobuy/alerts?"))
+  ) {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ alerts: getActiveAlerts(db) }));
+    } catch (err: any) {
+      console.error("[autobuy-alerts]", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "internal_error" }));
     }
