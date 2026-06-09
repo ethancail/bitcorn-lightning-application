@@ -145,7 +145,7 @@ export default function Dashboard() {
             <div key={i} className={`alert ${a.severity === "critical" ? "critical" : "warning"}`} style={{ marginBottom: 0 }}>
               <span className="alert-icon">{a.severity === "critical" ? "✕" : "⚠"}</span>
               <div className="alert-body">
-                <div className="alert-type">{a.title}</div>
+                <div className="alert-type">{a.type}</div>
                 <div className="alert-msg">{a.message}</div>
               </div>
             </div>
