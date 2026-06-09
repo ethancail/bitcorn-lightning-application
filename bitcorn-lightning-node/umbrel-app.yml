@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.17.9"
+version: "1.17.10"
 port: 3200
 
 description: >
@@ -27,6 +27,13 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.17.10: Display fix on the treasury Dashboard alert list. Each
+  alert's heading rendered blank because it referenced a field that
+  doesn't exist on the alert type; it now shows the alert's type label.
+  The alert message below it was always correct. Display-only,
+  frontend-only change — no schema, scheduler, or Coinbase behavior is
+  affected.
+
   v1.17.9: Auto-Buy failures now raise active in-app alerts instead
   of being visible only by reading the purchase history. Five failure
   conditions surface — insufficient funds in your selected currency,
