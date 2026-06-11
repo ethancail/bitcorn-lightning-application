@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.17.10"
+version: "1.17.11"
 port: 3200
 
 description: >
@@ -27,6 +27,20 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.17.11: Display fix for the admin valuation inputs, mirroring the
+  v1.17.7 Reserve Risk fix for a sibling metric. The Difficulty Ribbon
+  input rounded its saved-value readback to 4 decimals, so a legitimate
+  low-compression entry (e.g. a value below 0.001 during stable
+  difficulty periods) displayed coarsely rounded — which looked like the
+  value had been silently coerced. It was not: the input, API, and
+  storage (local DB + Worker KV) all preserved full precision the whole
+  time; only the on-screen readback rounded. Difficulty Ribbon now
+  displays at 7 decimals so the readback matches what is stored, and its
+  range hint is corrected to note that the metric can drop below 0.001
+  during stable difficulty periods (typical range 0.005 to 0.08).
+  Display-only change; no schema, scheduler, Coinbase, or stored-value
+  behavior is affected.
+
   v1.17.10: Display fix on the treasury Dashboard alert list. Each
   alert's heading rendered blank because it referenced a field that
   doesn't exist on the alert type; it now shows the alert's type label.
