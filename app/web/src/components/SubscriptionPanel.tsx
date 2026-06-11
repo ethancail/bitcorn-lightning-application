@@ -24,6 +24,21 @@ import {
   type SubscriptionTier,
 } from "../api/client";
 import { Pill, tierToPill, type PillKind } from "./Pill";
+import PayFromNodeModal from "./PayFromNodeModal";
+import { actionsFor, type ActionDescriptor } from "./subscriptionActions";
+import { onrampErrorMessage } from "./subscriptionPayMessages";
+import { bip21Uri } from "./bip21";
+
+/** Handlers for the four Onramp-primary states' action buttons. Lifted
+ *  to the top-level panel so the Onramp session flow and the pay-from-
+ *  node modal are shared across prepay / worker_lapsed / routing_lapsed
+ *  / close_due. */
+interface ActionHandlers {
+  onOpenPayModal: () => void;
+  onOnramp: () => void;
+  onrampLoading: boolean;
+  onrampError: string | null;
+}
 
 const POLL_INTERVAL_MS = 15_000;
 const PENDING_STUCK_THRESHOLD_MS = 90_000; // §6.1 escalation
@@ -86,6 +101,30 @@ function useStateEnteredAt(stateKey: string | null): number | null {
 export default function SubscriptionPanel() {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const [pendingSinceMs, setPendingSinceMs] = useState<number | null>(null);
+  // Pay-from-node modal + Coinbase Onramp handler — shared across the
+  // four Onramp-primary states (decision 2026-06-11).
+  const [payModalOpen, setPayModalOpen] = useState(false);
+  const [onrampLoading, setOnrampLoading] = useState(false);
+  const [onrampError, setOnrampError] = useState<string | null>(null);
+  const handleOnramp = useCallback(async () => {
+    setOnrampLoading(true);
+    setOnrampError(null);
+    try {
+      const { url } = await api.getCoinbaseOnrampUrl();
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e: any) {
+      // Visible error — NOT the sidebar's silent-catch (decision §3).
+      setOnrampError(onrampErrorMessage(e?.code, e?.message));
+    } finally {
+      setOnrampLoading(false);
+    }
+  }, []);
+  const actionHandlers: ActionHandlers = {
+    onOpenPayModal: () => setPayModalOpen(true),
+    onOnramp: handleOnramp,
+    onrampLoading,
+    onrampError,
+  };
   const stateEnteredAt = useStateEnteredAt(deriveStateKey(view));
   // Local pubkey used by unexpected_missing_row's support-context block.
   // Fetched once on mount; LND identity doesn't change post-boot. Null
@@ -190,10 +229,16 @@ export default function SubscriptionPanel() {
   const { status } = view;
   if (status.applicable) {
     return (
-      <ApplicablePanel
-        status={status}
-        onRefresh={fetchStatus}
-      />
+      <>
+        <ApplicablePanel
+          status={status}
+          onRefresh={fetchStatus}
+          handlers={actionHandlers}
+        />
+        {payModalOpen && (
+          <PayFromNodeModal status={status} onClose={() => setPayModalOpen(false)} />
+        )}
+      </>
     );
   }
   return (
@@ -292,10 +337,9 @@ function chunkAddress(addr: string, size = 4): string {
   return out.join(" ");
 }
 
-function bip21Uri(address: string, amountSats: number): string {
-  const btc = (amountSats / 1e8).toFixed(8);
-  return `bitcoin:${address}?amount=${btc}`;
-}
+// bip21Uri extracted to ./bip21.ts (2026-06-11) so the pay-from-node
+// modal's "I have BTC elsewhere" anchor and the deposit QR share one
+// implementation and it can be unit-tested.
 
 // tierToPill extracted to ./Pill.tsx (Stage 5b T3 extraction).
 
@@ -354,16 +398,91 @@ function Stat({
 function ApplicablePanel({
   status,
   onRefresh,
+  handlers,
 }: {
   status: SubscriptionStatusApplicable;
   onRefresh: () => void;
+  handlers: ActionHandlers;
 }) {
   if (status.current_tier === "current")        return <CurrentRender   status={status} onRefresh={onRefresh} />;
-  if (status.current_tier === "prepay")         return <PrepayRender    status={status} onRefresh={onRefresh} />;
-  if (status.current_tier === "worker_lapsed")  return <WorkerLapsedRender status={status} onRefresh={onRefresh} />;
-  if (status.current_tier === "routing_lapsed") return <RoutingLapsedRender status={status} onRefresh={onRefresh} />;
-  if (status.current_tier === "close_due")      return <CloseDueRender   status={status} onRefresh={onRefresh} />;
+  if (status.current_tier === "prepay")         return <PrepayRender    status={status} handlers={handlers} />;
+  if (status.current_tier === "worker_lapsed")  return <WorkerLapsedRender status={status} handlers={handlers} />;
+  if (status.current_tier === "routing_lapsed") return <RoutingLapsedRender status={status} handlers={handlers} />;
+  if (status.current_tier === "close_due")      return <CloseDueRender   status={status} handlers={handlers} />;
   return null;
+}
+
+// ─── Shared Onramp-primary actions (prepay / worker_lapsed /
+//     routing_lapsed / close_due) ───────────────────────────────────
+//
+// All four states render from the actionsFor() descriptor so every
+// button provably carries a handler — the inert-button bug (decision
+// 2026-06-11) cannot recur silently. Onramp errors surface inline
+// (no silent catch).
+
+function renderActionButton(
+  d: ActionDescriptor | undefined,
+  handlers: ActionHandlers,
+): React.ReactNode {
+  if (!d) return undefined;
+  const labelWithGlyph = (
+    <>
+      {d.label}
+      {d.glyph && <> <span aria-hidden>{d.glyph}</span></>}
+    </>
+  );
+  switch (d.kind) {
+    case "onramp":
+      return (
+        <button className="sub-btn" onClick={handlers.onOnramp} disabled={handlers.onrampLoading}>
+          {handlers.onrampLoading ? "Opening…" : labelWithGlyph}
+        </button>
+      );
+    case "pay-modal":
+      return (
+        <button className="sub-btn" onClick={handlers.onOpenPayModal}>
+          {labelWithGlyph}
+        </button>
+      );
+    case "history":
+      return (
+        <Link className="sub-link" to="/subscription/payments">
+          {labelWithGlyph}
+        </Link>
+      );
+    default:
+      return <button className="sub-btn">{labelWithGlyph}</button>;
+  }
+}
+
+function OnrampPrimaryActions({
+  tier,
+  status,
+  handlers,
+}: {
+  tier: SubscriptionTier;
+  status: SubscriptionStatusApplicable;
+  handlers: ActionHandlers;
+}) {
+  const actions = actionsFor(tier, status.price_sats);
+  return (
+    <>
+      <ActionsRow
+        primary={renderActionButton(actions.primary, handlers)}
+        secondary={renderActionButton(actions.secondary, handlers)}
+        tertiary={
+          actions.tertiary
+            ? renderActionButton(actions.tertiary, handlers)
+            : undefined
+        }
+      />
+      {handlers.onrampError && (
+        <p className="sub-error-detail" role="alert" style={{ marginTop: 8 }}>
+          {handlers.onrampError}
+        </p>
+      )}
+    </>
+  );
 }
 
 // ─── current ─────────────────────────────────────────────────────
@@ -403,9 +522,10 @@ function CurrentRender({
 
 function PrepayRender({
   status,
+  handlers,
 }: {
   status: SubscriptionStatusApplicable;
-  onRefresh: () => void;
+  handlers: ActionHandlers;
 }) {
   const pill = tierToPill("prepay");
   return (
@@ -430,10 +550,7 @@ function PrepayRender({
         fineprint="This address is yours for the lifetime of your membership. Don't have BTC on hand? Use Coinbase Onramp from the Buy Bitcoin tab — funds land in this wallet."
       />
       <BracketHeading>ACTIONS</BracketHeading>
-      <ActionsRow
-        primary={<button className="sub-btn">Open Coinbase Onramp <span aria-hidden>↗</span></button>}
-        secondary={<button className="sub-btn">I have BTC — pay {fmtSats(status.price_sats)}</button>}
-      />
+      <OnrampPrimaryActions tier="prepay" status={status} handlers={handlers} />
     </section>
   );
 }
@@ -442,9 +559,10 @@ function PrepayRender({
 
 function WorkerLapsedRender({
   status,
+  handlers,
 }: {
   status: SubscriptionStatusApplicable;
-  onRefresh: () => void;
+  handlers: ActionHandlers;
 }) {
   const lapsedDays = daysAgo(status.paid_through);
   const daysToRouting = Math.max(0, daysUntil(status.grace.routing_until));
@@ -474,20 +592,21 @@ function WorkerLapsedRender({
         </TimelineRow>
       </Timeline>
       <BracketHeading>ACTIONS</BracketHeading>
-      <ActionsRow
-        primary={<button className="sub-btn">Renew ({fmtSats(status.price_sats)}) <span aria-hidden>→</span></button>}
-        secondary={<button className="sub-btn">Buy BTC with card <span aria-hidden>↗</span></button>}
-        tertiary={<Link className="sub-link" to="/subscription/payments">View payment history <span aria-hidden>→</span></Link>}
-      />
+      {/* Relabeled 2026-06-11 to the locked Onramp-primary pattern
+          (primary "Open Coinbase Onramp ↗", secondary "I have BTC —
+          renew (…)"); was the only state diverging from signal-system
+          §4 ("Open Coinbase Onramp", not "Buy BTC with card"). */}
+      <OnrampPrimaryActions tier="worker_lapsed" status={status} handlers={handlers} />
     </section>
   );
 }
 
 function RoutingLapsedRender({
   status,
+  handlers,
 }: {
   status: SubscriptionStatusApplicable;
-  onRefresh: () => void;
+  handlers: ActionHandlers;
 }) {
   const lapsedDays = daysAgo(status.paid_through);
   const daysToClose = Math.max(0, daysUntil(status.grace.close_at));
@@ -520,20 +639,17 @@ function RoutingLapsedRender({
         </TimelineRow>
       </Timeline>
       <BracketHeading>ACTIONS</BracketHeading>
-      <ActionsRow
-        primary={<button className="sub-btn">Open Coinbase Onramp <span aria-hidden>↗</span></button>}
-        secondary={<button className="sub-btn">I have BTC — renew ({fmtSats(status.price_sats)})</button>}
-        tertiary={<Link className="sub-link" to="/subscription/payments">View payment history <span aria-hidden>→</span></Link>}
-      />
+      <OnrampPrimaryActions tier="routing_lapsed" status={status} handlers={handlers} />
     </section>
   );
 }
 
 function CloseDueRender({
   status,
+  handlers,
 }: {
   status: SubscriptionStatusApplicable;
-  onRefresh: () => void;
+  handlers: ActionHandlers;
 }) {
   const lapsedDays = daysAgo(status.paid_through);
   return (
@@ -564,11 +680,7 @@ function CloseDueRender({
           state a member could plausibly recover from). Inverted
           hierarchy: Onramp primary, pay-now secondary — same pattern
           as worker_lapsed/routing_lapsed. */}
-      <ActionsRow
-        primary={<button className="sub-btn">Open Coinbase Onramp <span aria-hidden>↗</span></button>}
-        secondary={<button className="sub-btn">I have BTC — pay now to halt close</button>}
-        tertiary={<Link className="sub-link" to="/subscription/payments">View payment history <span aria-hidden>→</span></Link>}
-      />
+      <OnrampPrimaryActions tier="close_due" status={status} handlers={handlers} />
     </section>
   );
 }

@@ -39,6 +39,12 @@ export const api = {
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
   getSubscriptionStatus: () => apiFetch<SubscriptionStatus>("/api/subscription/status"),
   getSubscriptionPayments: () => apiFetch<SubscriptionPaymentsResponse>("/api/subscription/payments"),
+  // Pay-from-node modal (the "I have BTC → Pay from this node" path).
+  // The POST takes no body — amount + destination are derived
+  // server-side from the treasury status; the quote returns the
+  // member-local fee estimate for the confirm-step preview.
+  getPayFromNodeQuote: () => apiFetch<PayFromNodeQuote>("/api/subscription/pay-from-node/quote"),
+  payFromNode: () => apiFetch<PayFromNodeResult>("/api/subscription/pay-from-node", { method: "POST" }),
   getAdminMembers: () => apiFetch<AdminMembersResponse>("/api/admin/members"),
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
@@ -617,6 +623,19 @@ export type SubscriptionStatusNotApplicable = {
 export type SubscriptionStatus =
   | SubscriptionStatusApplicable
   | SubscriptionStatusNotApplicable;
+
+// Pay-from-node modal (decision 2026-06-11). The quote's amount +
+// deposit_address echo the treasury-truth status; estimated_fee_sats is
+// the member-local LND fee estimate the treasury can't compute.
+export type PayFromNodeQuote = {
+  amount_sats: number;
+  deposit_address: string;
+  estimated_fee_sats: number;
+};
+
+export type PayFromNodeResult = {
+  txid: string;
+};
 
 // ─── Subscription payment history (Stage 5a follow-up) ───────────────────
 
