@@ -87,20 +87,26 @@ describe("bannerFor — gated tiers render with correct severity/copy", () => {
     expect(d.body).toContain("refused until you renew");
   });
 
-  it("close_due → red, halt-close action, ceil'd day count", () => {
-    const d = bannerFor(applicable("close_due"), NOW); // close_at = NOW + 5d
+  it("close_due → red, halt-close action, imminent (no countdown)", () => {
+    const d = bannerFor(applicable("close_due"), NOW);
     expect(d.render).toBe(true);
     expect(d.severity).toBe("red");
     expect(d.headline).toBe("Critical: channel close imminent");
     expect(d.actionLabel).toBe("Pay now to halt close");
-    expect(d.body).toContain("~5 days");
+    expect(d.body).toContain("queued");
+    expect(d.body).toContain("halts it");
+    expect(d.body).toContain("50,000 sats");
   });
 
-  it("close_due day count rounds UP on a fractional-day boundary", () => {
-    // 4 days + 1 hour out → Math.ceil → 5 days, never 4.
-    const closeAt = NOW + 4 * 86_400_000 + 3_600_000;
-    const d = bannerFor(applicable("close_due", { grace: { ...applicable("close_due").grace, close_at: closeAt } }), NOW);
-    expect(d.body).toContain("~5 days");
+  it("close_due never renders a countdown — close_at is always past for close_due", () => {
+    // By construction (tierDispatch §5) close_due ⟺ now > paid_through +
+    // grace_days_close = close_at, so a real close_at is always in the
+    // past. The banner must not show "~N days" (would be non-positive).
+    const pastClose = { ...applicable("close_due").grace, close_at: NOW - 86_400_000 };
+    const d = bannerFor(applicable("close_due", { grace: pastClose }), NOW);
+    expect(d.body).not.toMatch(/~-?\d/);     // no "~N" / "~-N" day token
+    expect(d.body).not.toContain("days");
+    expect(d.body).not.toContain("NaN");
   });
 
   it("price flows from status.price_sats, never hardcoded 50k", () => {

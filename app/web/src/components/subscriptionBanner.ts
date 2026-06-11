@@ -76,20 +76,11 @@ export function gatedTierOf(status: SubscriptionStatus | null): GatedTier | null
   return null; // current
 }
 
-const MS_PER_DAY = 86_400_000;
-
 function formatDate(ms: number | null | undefined): string {
   if (!ms) return "—";
   return new Date(ms).toLocaleDateString(undefined, {
     year: "numeric", month: "short", day: "numeric",
   });
-}
-
-/** Whole days from nowMs until ms, rounded up (signal system §10's
- *  rounding discipline). nowMs is explicit so the count is deterministic
- *  under test. */
-function daysUntil(ms: number, nowMs: number): number {
-  return Math.ceil((ms - nowMs) / MS_PER_DAY);
 }
 
 export interface BannerDescriptor {
@@ -103,11 +94,20 @@ export interface BannerDescriptor {
 /**
  * The dashboard banner descriptor. Takes the full status (so the
  * not-applicable / current / null filtering is inside the tested
- * function) and an explicit nowMs (so the close_due day count is
- * deterministic — no Date.now() in the pure module). Amounts always
- * come from status.price_sats via fmtSats — never a hardcoded 50,000.
+ * function). Amounts always come from status.price_sats via fmtSats —
+ * never a hardcoded 50,000.
+ *
+ * nowMs is retained in the signature (callers pass Date.now()) for
+ * determinism of any future time-relative copy; no current branch reads
+ * it. The close_due banner deliberately does NOT show a countdown:
+ * `grace.close_at` is paid_through + grace_days_close, which is the
+ * moment the close_due tier BEGINS — by the time the tier is close_due,
+ * that instant is already in the past, and the Tier 3 scheduler closes
+ * on its next tick (no further grace). A countdown would render a
+ * non-positive number; the honest framing is "imminent / pay now".
  */
 export function bannerFor(status: SubscriptionStatus | null, nowMs: number): BannerDescriptor {
+  void nowMs;
   const tier = gatedTierOf(status);
   if (!tier || status?.applicable !== true) return { render: false };
 
@@ -143,18 +143,16 @@ export function bannerFor(status: SubscriptionStatus | null, nowMs: number): Ban
           `are refused until you renew (${price}).`,
         actionLabel: `Renew ${price}`,
       };
-    case "close_due": {
-      const days = daysUntil(status.grace.close_at, nowMs);
+    case "close_due":
       return {
         render: true,
         severity: "red",
         headline: "Critical: channel close imminent",
         body:
-          `Your subscription lapsed on ${lapsedOn}. Your channel is queued ` +
-          `for cooperative close in ~${days} days. Paying ${price} now halts the close.`,
+          `Your subscription lapsed on ${lapsedOn}. Your channel is now queued ` +
+          `for cooperative close — paying ${price} now halts it.`,
         actionLabel: "Pay now to halt close",
       };
-    }
   }
 }
 
