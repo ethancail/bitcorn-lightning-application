@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.17.12"
+version: "1.17.13"
 port: 3200
 
 description: >
@@ -27,6 +27,18 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.17.13: Internal test-coverage release. Adds unit tests for the
+  subscription payment detector — the logic that watches the on-chain
+  deposit addresses and credits subscription payments. A code audit
+  confirmed this logic was behaving correctly but had no automated test
+  coverage, so a future change could have regressed it without CI
+  noticing. This release adds 20 tests covering the amount-tolerance
+  rule (correct, under-, and over-payments), the pro-rata renewal
+  stacking math, and the safety guards (only confirmed payments to a
+  known member address are credited, never double-credited). No user-
+  facing behavior changes — detector logic is unchanged; this purely
+  locks in the existing behavior so it can't silently break later.
+
   v1.17.12: The subscription panel's two action buttons — "Open Coinbase
   Onramp" and "I have BTC" — now do something. In every state that uses
   the Onramp-primary layout (prepay, services-paused, routing-paused, and
