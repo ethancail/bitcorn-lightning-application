@@ -22,6 +22,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       status: res.status,
       detail: err.detail,
       code: err.error,
+      body: err, // full parsed error body — carries the 402 remediation payload
     });
   }
   return res.json();

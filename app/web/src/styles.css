@@ -32,6 +32,12 @@
   --purple:      #a78bfa;
   --purple-glow: rgba(167,139,250,0.10);
 
+  /* Orange — subscription routing_lapsed severity (signal system §2).
+     Matches the .sub-alert-orange value so out-of-panel surfaces carry
+     the same orange-400 semantics. */
+  --orange:      #fb923c;
+  --orange-glow: rgba(251,146,60,0.12);
+
   --text:        #e8e8f0;
   --text-2:      #9898b0;
   --text-3:      #5a5a70;
@@ -785,6 +791,12 @@ p + .settings-section-label { margin-top: 8px; }
   color: #86efac;
 }
 
+.alert.orange {
+  background: var(--orange-glow);
+  border-color: var(--orange);
+  color: #fdba74;
+}
+
 .alert-icon { font-size: 1rem; flex-shrink: 0; }
 
 .alert-body {}
@@ -797,6 +809,45 @@ p + .settings-section-label { margin-top: 8px; }
   margin-bottom: 2px;
 }
 .alert-msg { font-weight: 500; }
+
+/* Member subscription banner — a dashboard .alert that carries a
+   headline, body, an inline action button, and a quiet panel link.
+   Joins the dashboard's existing alert register (no panel-interior
+   classes), severity-themed by .alert.{info,warning,orange,critical}. */
+.member-sub-banner {
+  align-items: center;
+  margin-bottom: 20px;
+}
+.member-sub-banner-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.member-sub-banner-headline {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+.member-sub-banner-link {
+  font-size: 0.75rem;
+  color: inherit;
+  opacity: 0.8;
+  text-decoration: none;
+  width: fit-content;
+  margin-top: 2px;
+}
+.member-sub-banner-link:hover { opacity: 1; text-decoration: underline; }
+.member-sub-banner-action {
+  margin-left: 16px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  align-self: center;
+}
+@media (max-width: 640px) {
+  .member-sub-banner { align-items: flex-start; flex-direction: column; }
+  .member-sub-banner-action { margin-left: 0; margin-top: 10px; }
+}
 
 /* ─── Tables ───────────────────────────────────────────────────── */
 .data-table {
@@ -874,6 +925,7 @@ p + .settings-section-label { margin-top: 8px; }
 .badge-red    { background: var(--red-glow);    color: var(--red); }
 .badge-amber  { background: var(--amber-glow);  color: var(--amber); }
 .badge-blue   { background: var(--blue-glow);   color: var(--blue); }
+.badge-orange { background: var(--orange-glow); color: var(--orange); }
 .badge-muted  { background: var(--bg-3); color: var(--text-3); }
 
 .tag-pill {
@@ -1787,6 +1839,9 @@ input[type="number"] {
   --purple:      #7c3aed;
   --purple-glow: rgba(124,58,237,0.10);
 
+  --orange:      #c2410c;
+  --orange-glow: rgba(194,65,12,0.10);
+
   --text:        #1c1408;
   --text-2:      #685a49;
   --text-3:      #998a78;
@@ -1800,6 +1855,7 @@ input[type="number"] {
 [data-theme="light"] .alert.warning  { color: var(--yellow); }
 [data-theme="light"] .alert.info     { color: var(--blue); }
 [data-theme="light"] .alert.healthy  { color: var(--green); }
+[data-theme="light"] .alert.orange   { color: var(--orange); }
 
 /* Payment section — hardcoded rgba amber → adjusted for light bg */
 [data-theme="light"] .payment-tabs       { border-color: rgba(217,119,6,0.25); }

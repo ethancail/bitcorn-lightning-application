@@ -9,6 +9,8 @@ import {
   type NodeBalances,
 } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
+import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
+import { useSubscriptionStatus } from "../components/useSubscriptionStatus";
 
 const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
 
@@ -337,6 +339,7 @@ export default function MemberDashboard() {
   const [balances, setBalances] = useState<NodeBalances | null>(null);
   const [fundLoading, setFundLoading] = useState(false);
   const [fundError, setFundError] = useState<string | null>(null);
+  const subStatus = useSubscriptionStatus();
 
   useEffect(() => {
     api
@@ -424,6 +427,7 @@ export default function MemberDashboard() {
 
   return (
     <div>
+      <MemberSubscriptionBanner status={subStatus} />
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>My Dashboard</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>

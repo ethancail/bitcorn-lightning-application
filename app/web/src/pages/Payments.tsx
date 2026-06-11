@@ -11,6 +11,12 @@ import {
   resolveContactName,
   fmtSats,
 } from "../api/client";
+import {
+  is402SubscriptionDenied,
+  extract402Payload,
+  type RoutingDeniedPayload,
+} from "../components/subscription402";
+import RoutingDeniedNotice from "../components/RoutingDeniedNotice";
 
 type Tab = "request" | "pay";
 
@@ -174,6 +180,7 @@ function RequestPaymentForm({
   const [invoice, setInvoice] = useState<InvoiceResult | null>(null);
   // const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [error, setError] = useState("");
+  const [deniedPayload, setDeniedPayload] = useState<RoutingDeniedPayload | null>(null);
   const [copied, setCopied] = useState(false);
 
   // Receive capacity from treasury channel
@@ -222,6 +229,7 @@ function RequestPaymentForm({
     if (sats <= 0) return;
     setCreating(true);
     setError("");
+    setDeniedPayload(null);
     try {
       const result = await api.createNetworkInvoice({
         amount_sats: sats,
@@ -235,7 +243,14 @@ function RequestPaymentForm({
       // setQrDataUrl(dataUrl);
       onCreated();
     } catch (err: any) {
-      setError(err.message || "Failed to create invoice");
+      // A prepay/lapsed farmer is blocked from minting a routed invoice.
+      // Recognize the structured 402 and surface remediation; otherwise
+      // fall back to the generic error string.
+      if (is402SubscriptionDenied(err)) {
+        setDeniedPayload(extract402Payload(err));
+      } else {
+        setError(err.message || "Failed to create invoice");
+      }
     } finally {
       setCreating(false);
     }
@@ -410,11 +425,15 @@ function RequestPaymentForm({
         style={{ marginBottom: 16 }}
       />
 
-      {error && (
+      {deniedPayload ? (
+        <div style={{ marginBottom: 12 }}>
+          <RoutingDeniedNotice payload={deniedPayload} blockedAction="receive" />
+        </div>
+      ) : error ? (
         <div className="alert warning" style={{ marginBottom: 12 }}>
           {error}
         </div>
-      )}
+      ) : null}
 
       <button
         className="btn btn-primary"
@@ -444,6 +463,7 @@ function PayInvoiceForm({
   const [paying, setPaying] = useState(false);
   const [result, setResult] = useState<PaymentResult | null>(null);
   const [error, setError] = useState("");
+  const [deniedPayload, setDeniedPayload] = useState<RoutingDeniedPayload | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Send capacity from treasury channel (= member's local balance)
@@ -489,13 +509,22 @@ function PayInvoiceForm({
     if (!decoded) return;
     setPaying(true);
     setError("");
+    setDeniedPayload(null);
     setResult(null);
     try {
       const res = await api.payNetworkInvoice(bolt11.trim());
       setResult(res);
       if (res.ok) onPaid();
     } catch (err: any) {
-      setError(err.message || "Payment failed");
+      // /api/network/pay returns 402 both for subscription routing
+      // denial AND for ordinary failed payments — is402SubscriptionDenied
+      // checks the error code, not just the status, so only a genuine
+      // denial surfaces the remediation notice.
+      if (is402SubscriptionDenied(err)) {
+        setDeniedPayload(extract402Payload(err));
+      } else {
+        setError(err.message || "Payment failed");
+      }
     } finally {
       setPaying(false);
     }
@@ -506,6 +535,7 @@ function PayInvoiceForm({
     setDecoded(null);
     setResult(null);
     setError("");
+    setDeniedPayload(null);
   };
 
   if (result) {
@@ -697,11 +727,15 @@ function PayInvoiceForm({
         </div>
       )}
 
-      {error && (
+      {deniedPayload ? (
+        <div style={{ marginBottom: 12 }}>
+          <RoutingDeniedNotice payload={deniedPayload} blockedAction="send" />
+        </div>
+      ) : error ? (
         <div className="alert warning" style={{ marginBottom: 12 }}>
           {error}
         </div>
-      )}
+      ) : null}
 
       <button
         className="btn btn-primary"

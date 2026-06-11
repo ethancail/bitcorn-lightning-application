@@ -62,7 +62,11 @@ export default function PayFromNodeModal({
   status,
   onClose,
 }: {
-  status: SubscriptionStatusApplicable;
+  // Only price_sats + deposit_address are read, so the prop is narrowed
+  // to that Pick. The panel's full-status call site still satisfies it,
+  // and the 402 RoutingDeniedNotice can feed the denial payload directly
+  // without a second status fetch.
+  status: Pick<SubscriptionStatusApplicable, "price_sats" | "deposit_address">;
   onClose: () => void;
 }) {
   const [state, dispatch] = useReducer(reducePayModal, INITIAL_PAY_MODAL_STATE);
@@ -191,7 +195,8 @@ export default function PayFromNodeModal({
             <div className="dialog-title">Payment sent</div>
             <div className="dialog-body">
               Your payment is broadcasting. It's detected within ~15–30 seconds
-              after the first confirmation — this panel updates automatically.
+              after the first confirmation — your subscription status updates
+              automatically.
             </div>
             <div className="sub-stat-label">TRANSACTION ID</div>
             <code className="sub-deposit-address" title={state.txid}>
