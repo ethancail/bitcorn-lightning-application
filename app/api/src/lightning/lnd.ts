@@ -21,7 +21,9 @@ import {
   getUtxos,
   signMessage,
   verifyMessage,
-  payViaPaymentDetails
+  payViaPaymentDetails,
+  sendToChainAddress,
+  getChainFeeRate
 } from "ln-service";
 import crypto from "crypto";
 import fs from "fs";
@@ -308,6 +310,44 @@ export async function getLndChainTransactions() {
 export async function createLndChainAddress(): Promise<{ address: string }> {
   const { lnd } = getLndClient();
   return createChainAddress({ lnd, format: "p2wpkh" });
+}
+
+/**
+ * Sends a fixed amount of on-chain sats to a destination address from
+ * the local LND wallet. Used by the subscription pay-from-node flow
+ * (POST /api/subscription/pay-from-node) — the member pays their own
+ * subscription deposit address from their node's on-chain wallet.
+ *
+ * Returns the broadcast transaction's id (the txid). Defaults to a
+ * 6-block confirmation target (subscription deadlines are day-scale —
+ * see the implementation deltas — so next-block fees are waste).
+ */
+export async function sendLndToChainAddress(
+  address: string,
+  tokens: number,
+  targetConfirmations = 6,
+): Promise<{ id: string; tokens: number; is_confirmed: boolean }> {
+  const { lnd } = getLndClient();
+  return sendToChainAddress({
+    lnd,
+    address,
+    tokens,
+    target_confirmations: targetConfirmations,
+  });
+}
+
+/**
+ * Returns the current estimated on-chain fee RATE (sats per vByte) for
+ * a given confirmation target. This is a rate, not a total fee — the
+ * caller multiplies by an estimated transaction vsize. Backs the
+ * pay-from-node quote's fee preview (the fee number must come from the
+ * member's local LND, which the treasury can't compute).
+ */
+export async function getLndChainFeeRate(
+  confirmationTarget = 6,
+): Promise<{ tokens_per_vbyte: number }> {
+  const { lnd } = getLndClient();
+  return getChainFeeRate({ lnd, confirmation_target: confirmationTarget });
 }
 
 /**

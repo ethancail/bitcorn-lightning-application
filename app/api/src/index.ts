@@ -53,10 +53,10 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled } from "./lightning/lnd";
+import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, sendLndToChainAddress, getLndChainFeeRate } from "./lightning/lnd";
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
-import { assertTreasury, assertNonEmpty } from "./utils/role";
+import { assertTreasury, assertNonEmpty, assertMember } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
@@ -175,6 +175,14 @@ import {
   mapJwtErrorToFastPath,
 } from "./subscription/statusHandler";
 import { computePaymentHistoryForPubkey } from "./subscription/paymentsHandler";
+import {
+  deriveLocalMemberStatus,
+  estimateFeeSats,
+  classifySendError,
+  errorHttpStatus,
+  acquireSendLock,
+  releaseSendLock,
+} from "./subscription/payFromNode";
 import { computeMembersListForTreasury } from "./subscription/adminMembersHandler";
 import { observeTierForTransition } from "./subscription/transitionObserver";
 import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
@@ -781,6 +789,109 @@ const server = http.createServer(async (req, res) => {
       console.error("[subscription] payments read failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "payments_read_failed" }));
+    }
+    return;
+  }
+
+  // ── Subscription pay-from-node (the "I have BTC → Pay from this node"
+  //    modal path) ──────────────────────────────────────────────────────
+  //
+  // Source of truth: decisions/2026-06-11-subscription-panel-action-
+  // button-behaviors.md (§ Backend endpoint design) + deltas/2026-06-11-
+  // subscription-pay-from-node-implementation-deltas.md.
+  //
+  // Member-local, member-only. NO request body — amount and destination
+  // are derived server-side (treasury price_sats + the member's own
+  // deposit_address) so this can only ever send the subscription price
+  // to the member's own address. The quote endpoint is separate from
+  // status because the fee estimate is member-local LND truth the
+  // treasury can't compute.
+
+  // GET quote — preview the fee for the pay-from-node confirm step.
+  // (More specific path than the POST below; method differs anyway.)
+  if (req.method === "GET" && req.url === "/api/subscription/pay-from-node/quote") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    try {
+      const status = await deriveLocalMemberStatus();
+      if (!status.ok) {
+        res.writeHead(errorHttpStatus(status.code), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: status.code, detail: status.detail }));
+        return;
+      }
+      let rate: { tokens_per_vbyte: number };
+      try {
+        rate = await getLndChainFeeRate(6);
+      } catch (err: any) {
+        const detail = err?.message ?? String(err);
+        res.writeHead(errorHttpStatus("fee_estimate_failed"), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "fee_estimate_failed", detail }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        amount_sats: status.target.price_sats,
+        deposit_address: status.target.deposit_address,
+        estimated_fee_sats: estimateFeeSats(rate.tokens_per_vbyte),
+      }));
+    } catch (err: any) {
+      console.error("[subscription] pay-from-node quote failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "quote_failed" }));
+    }
+    return;
+  }
+
+  // POST pay-from-node — send the subscription price from the member's
+  // own LND on-chain wallet to their own deposit address. Single
+  // in-flight send per node (the authoritative double-send defense).
+  if (req.method === "POST" && req.url === "/api/subscription/pay-from-node") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    // Deliberately no request-body read: amount + destination are
+    // server-derived. The lock is taken before the slow derive+send so
+    // a double-click is refused regardless of which step is in flight.
+    if (!acquireSendLock()) {
+      res.writeHead(errorHttpStatus("payment_in_flight"), { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "payment_in_flight", detail: "a subscription send is already in flight on this node" }));
+      return;
+    }
+    try {
+      const status = await deriveLocalMemberStatus();
+      if (!status.ok) {
+        res.writeHead(errorHttpStatus(status.code), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: status.code, detail: status.detail }));
+        return;
+      }
+      let result: { id: string };
+      try {
+        result = await sendLndToChainAddress(
+          status.target.deposit_address,
+          status.target.price_sats,
+          6,
+        );
+      } catch (err: any) {
+        const { code, detail } = classifySendError(err);
+        res.writeHead(errorHttpStatus(code), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: code, detail }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ txid: result.id }));
+    } catch (err: any) {
+      console.error("[subscription] pay-from-node send failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "send_failed" }));
+    } finally {
+      releaseSendLock();
     }
     return;
   }

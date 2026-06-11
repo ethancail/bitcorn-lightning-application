@@ -1211,6 +1211,46 @@ input[type="number"] {
   justify-content: flex-end;
 }
 
+/* ─── Pay-from-node modal (subscription "I have BTC" flow) ─────── */
+.sub-pay-modal {
+  max-width: 440px;
+}
+
+.sub-pay-preview {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.sub-pay-preview > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.sub-pay-preview dt {
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  font-family: var(--mono);
+}
+
+.sub-pay-preview dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.8125rem;
+  color: var(--text-1);
+  text-align: right;
+  word-break: break-all;
+}
+
 /* ─── Dashboard page grid ──────────────────────────────────────── */
 .dashboard-grid {
   display: grid;
