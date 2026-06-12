@@ -191,7 +191,12 @@ export default function BitcoinPriceGraph() {
   const prices = data.map((d) => d.price);
   const yMin = prices.length ? Math.min(...prices) : 0;
   const yMax = prices.length ? Math.max(...prices) : 0;
-  const yTicks = niceTicks(yMin, yMax, 5);
+  // Target 4 ticks: the panel chart is only 120px tall (~90px plot area),
+  // where ~4 y-labels fit without Recharts dropping any. A higher target
+  // can overshoot to 6 ticks after nice-rounding, and Recharts then hides
+  // labels non-uniformly — which reads as irregular spacing, the very bug
+  // this fixes.
+  const yTicks = niceTicks(yMin, yMax, 4);
   const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
 
   const xTicks = sampleTicks(data, 6);

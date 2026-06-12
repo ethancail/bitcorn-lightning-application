@@ -43,6 +43,37 @@ describe("niceTicks", () => {
     expect(() => niceTicks(NaN, 5, 5)).not.toThrow();
     expect(() => niceTicks(10, Infinity, 5)).not.toThrow();
   });
+
+  // The guarantee that keeps the 120px panel chart from dropping labels:
+  // the count must never exceed maxTicks (a naive nice-tick generator
+  // overshoots by 1–2 after snapping the domain to the grid).
+  it("NEVER exceeds maxTicks — guards against Recharts label-dropping", () => {
+    const ranges: Array<[number, number]> = [
+      [13_000, 128_000], [62_000, 64_500], [58_500, 66_000], [18_000, 42_000],
+      [60_100, 130_900], [1_050, 9_990], [99_000, 101_000], [62_800, 63_700],
+    ];
+    for (const [lo, hi] of ranges) {
+      for (const cap of [4, 5]) {
+        const ticks = niceTicks(lo, hi, cap);
+        expect(ticks.length).toBeLessThanOrEqual(cap);
+        // still uniform + still brackets the data
+        const step = ticks[1] - ticks[0];
+        expect(ticks.every((t, i) => i === 0 || t - ticks[i - 1] === step)).toBe(true);
+        expect(ticks[0]).toBeLessThanOrEqual(lo);
+        expect(ticks.at(-1)!).toBeGreaterThanOrEqual(hi);
+      }
+    }
+  });
+
+  it("defaults to maxTicks=4, producing clean uniform labels for panel ranges", () => {
+    // The 7d-style range that previously overshot to 5 ticks (one label
+    // dropped by Recharts → looked irregular): now exactly 4 at $5k.
+    expect(niceTicks(58_500, 66_000)).toEqual([55_000, 60_000, 65_000, 70_000]);
+    // 24h-style tight range → 4 at $1k.
+    expect(niceTicks(62_000, 64_500)).toEqual([62_000, 63_000, 64_000, 65_000]);
+    // The documented 5y range is unchanged at the default cap.
+    expect(niceTicks(13_000, 128_000)).toEqual([0, 50_000, 100_000, 150_000]);
+  });
 });
 
 describe("formatAxisPrice", () => {

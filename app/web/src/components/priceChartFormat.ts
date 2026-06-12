@@ -45,38 +45,61 @@ export function formatAxisPrice(n: number): string {
   return Number.isInteger(k) ? `$${k}k` : `$${k.toFixed(1)}k`;
 }
 
+// Smallest "nice" step (1 / 2 / 2.5 / 5 × 10ⁿ) that is >= x.
+function niceStepCeil(x: number): number {
+  if (x <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(x)));
+  for (const m of [1, 2, 2.5, 5]) {
+    if (m * mag >= x - 1e-9) return m * mag;
+  }
+  return 10 * mag;
+}
+
+// Next nice step strictly above the given one (1→2→2.5→5→10×).
+function bumpStep(step: number): number {
+  const mag = Math.pow(10, Math.floor(Math.log10(step)));
+  const n = step / mag; // ≈ 1, 2, 2.5, or 5
+  if (n < 1.5) return 2 * mag;
+  if (n < 2.25) return 2.5 * mag;
+  if (n < 3.5) return 5 * mag;
+  return 10 * mag;
+}
+
 /**
- * "Nice numbers" tick generator (Heckbert): given a data [min, max] and a
- * target tick count, returns evenly-spaced ticks on a round interval
- * (1 / 2 / 2.5 / 5 × 10ⁿ) bracketing the range. The chart snaps its
- * domain to [first, last] and renders these as the y-axis ticks, so the
- * axis shows round numbers while still zooming to the data — and the
- * interval adapts automatically as the price scale changes.
+ * "Nice numbers" y-axis tick generator with a GUARANTEED maximum count.
+ * Returns evenly-spaced ticks on a round interval (1 / 2 / 2.5 / 5 × 10ⁿ)
+ * bracketing [min, max], with at most `maxTicks` of them. The chart snaps
+ * its domain to [first, last] and renders these as the y-axis ticks, so
+ * the axis shows round numbers while still zooming to the data, and the
+ * interval adapts to the price scale automatically.
+ *
+ * The cap matters: snapping the domain to the grid (floor/ceil) can widen
+ * the range by up to one step on each end, so a naive "target N" can emit
+ * N+1 or N+2 ticks. On the 120px panel chart that overflows the plot area
+ * and Recharts then drops labels at irregular positions — reproducing the
+ * very "irregular spacing" this fixes. So we bump to the next nice step
+ * until the count fits, guaranteeing every tick has room to render.
  */
-export function niceTicks(min: number, max: number, targetCount = 5): number[] {
+export function niceTicks(min: number, max: number, maxTicks = 4): number[] {
   if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
     return [min];
   }
   const [lo, hi] = min < max ? [min, max] : [max, min];
-  const range = hi - lo;
-  const rawStep = range / Math.max(1, targetCount - 1);
-  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
-  const norm = rawStep / mag;
-  let niceStep: number;
-  if (norm <= 1) niceStep = 1;
-  else if (norm <= 2) niceStep = 2;
-  else if (norm <= 2.5) niceStep = 2.5;
-  else if (norm <= 5) niceStep = 5;
-  else niceStep = 10;
-  niceStep *= mag;
+  const cap = Math.max(2, maxTicks);
+  const tickCount = (s: number) => Math.ceil(hi / s) - Math.floor(lo / s) + 1;
 
-  const niceMin = Math.floor(lo / niceStep) * niceStep;
-  const niceMax = Math.ceil(hi / niceStep) * niceStep;
+  let step = niceStepCeil((hi - lo) / cap);
+  for (let guard = 0; tickCount(step) > cap && guard < 24; guard++) {
+    step = bumpStep(step);
+  }
+
+  const niceMin = Math.floor(lo / step) * step;
+  const niceMax = Math.ceil(hi / step) * step;
+  const n = Math.round((niceMax - niceMin) / step);
   const ticks: number[] = [];
-  // Half-step slop guards against floating-point drift on the last tick.
-  for (let t = niceMin; t <= niceMax + niceStep * 0.5; t += niceStep) {
+  for (let i = 0; i <= n; i++) {
     // Snap each tick to the step grid to clear accumulated fp error.
-    ticks.push(Math.round(t / niceStep) * niceStep);
+    ticks.push(Math.round((niceMin + i * step) / step) * step);
   }
   return ticks;
 }
