@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.17.14"
+version: "1.17.15"
 port: 3200
 
 description: >
@@ -27,6 +27,22 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.17.15: Bitcorn Price chart readability fix on the Dashboard
+  (treasury and member). Two issues on the price panel are corrected.
+  (1) X-axis dates on the long-span views were ambiguous: the 5-year
+  view rendered labels like "Jun 21" (meaning June 2021) that read as
+  "June 21st", and the 1-year view showed only the month with no year,
+  which is ambiguous across a year boundary. Both now show an explicit
+  apostrophe-year — "Jun '25" — so the year is unmistakable. The 24h
+  (clock time), 7d (weekday), and 30d (month + day) views were already
+  unambiguous and are unchanged. (2) The Y-axis used irregular price
+  intervals derived from the data range (e.g. $128k / $73k / $43k /
+  $13k); it now rounds to "nice" intervals (e.g. $0 / $50k / $100k /
+  $150k), and the interval adapts automatically to the price scale of
+  the selected range. The chart's formatting + tick math was extracted
+  into a reusable, unit-tested module. Display-only change — no schema,
+  scheduler, Coinbase, or price-data behavior is affected.
+
   v1.17.14: Member subscription discoverability. v1.17.12 made the
   subscription panel's payment buttons work, but a member still had to
   find the Settings page to discover they needed to pay. This release
