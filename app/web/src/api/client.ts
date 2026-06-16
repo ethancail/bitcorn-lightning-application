@@ -46,6 +46,16 @@ export const api = {
   // member-local fee estimate for the confirm-step preview.
   getPayFromNodeQuote: () => apiFetch<PayFromNodeQuote>("/api/subscription/pay-from-node/quote"),
   payFromNode: () => apiFetch<PayFromNodeResult>("/api/subscription/pay-from-node", { method: "POST" }),
+  // Member Profile — public Lightning alias (member-naming feature). All three
+  // are member-local + member-only; the API rejects the treasury node (403).
+  getProfileAlias: () => apiFetch<ProfileAlias>("/api/profile/alias"),
+  setProfileAlias: (alias: string) =>
+    apiFetch<{ ok: boolean; alias: string; applied_at: number }>("/api/profile/alias", {
+      method: "POST",
+      body: JSON.stringify({ alias }),
+    }),
+  clearProfileAlias: () =>
+    apiFetch<{ ok: boolean }>("/api/profile/alias", { method: "DELETE" }),
   getAdminMembers: () => apiFetch<AdminMembersResponse>("/api/admin/members"),
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
@@ -335,6 +345,17 @@ export type NodeInfo = {
   has_treasury_channel: number;
   membership_status: string;
   node_role: string;
+};
+
+// Member public alias state (GET /api/profile/alias). `alias` null => the
+// pseudonymous "not set" default; `default_alias` is the pubkey-derived value
+// the node falls back to. Timestamps are unix seconds.
+export type ProfileAlias = {
+  alias: string | null;
+  alias_set_at: number | null;
+  alias_applied_at: number | null;
+  pubkey: string;
+  default_alias: string;
 };
 
 export type TreasuryMetrics = {

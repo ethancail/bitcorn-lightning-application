@@ -348,4 +348,16 @@ declare module "ln-service" {
     lnd: any;
     confirmation_target?: number;
   }): Promise<{ tokens_per_vbyte: number }>;
+
+  // Updates the node alias advertised in the graph (BOLT 7 node_announcement).
+  // Re-exported by ln-service@58 from the `lightning` package
+  // (lnd_methods/peers/update_alias.js). Library validates only that
+  // `alias !== undefined` (empty string passes the library but LND rejects it
+  // as a no-op — see lnd.ts updateNodeAlias). Requires the `peersrpc` build tag
+  // and `peers:write` permission; unsupported on LND <= 0.14.5. Resolves with no
+  // value.
+  export function updateAlias(options: {
+    lnd: any;
+    alias: string;
+  }): Promise<void>;
 }
