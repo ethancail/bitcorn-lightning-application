@@ -20,6 +20,7 @@ import ValuationInput from "./pages/ValuationInput";
 import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
+import ProfilePanel from "./components/ProfilePanel";
 import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
 import { settingsBadgeFor, type BadgeSeverity } from "./components/subscriptionBanner";
 import SubscriptionPayments from "./pages/SubscriptionPayments";
@@ -674,6 +675,11 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
       {!isTreasury && <SubscriptionPanel />}
 
       <div className="settings-section-label">Personal</div>
+
+      {/* Profile — member-only public Lightning alias. Identity reads ahead of
+          appearance; mounted with !isTreasury (treasury sets BitCorn1 via
+          Umbrel/lnd.conf, not here). See member-naming spec §6. */}
+      {!isTreasury && <ProfilePanel />}
 
       <div className="panel">
         <div className="panel-header">
