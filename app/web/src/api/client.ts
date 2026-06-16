@@ -22,6 +22,7 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
       status: res.status,
       detail: err.detail,
       code: err.error,
+      body: err, // full parsed error body — carries the 402 remediation payload
     });
   }
   return res.json();
@@ -39,6 +40,22 @@ export const api = {
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
   getSubscriptionStatus: () => apiFetch<SubscriptionStatus>("/api/subscription/status"),
   getSubscriptionPayments: () => apiFetch<SubscriptionPaymentsResponse>("/api/subscription/payments"),
+  // Pay-from-node modal (the "I have BTC → Pay from this node" path).
+  // The POST takes no body — amount + destination are derived
+  // server-side from the treasury status; the quote returns the
+  // member-local fee estimate for the confirm-step preview.
+  getPayFromNodeQuote: () => apiFetch<PayFromNodeQuote>("/api/subscription/pay-from-node/quote"),
+  payFromNode: () => apiFetch<PayFromNodeResult>("/api/subscription/pay-from-node", { method: "POST" }),
+  // Member Profile — public Lightning alias (member-naming feature). All three
+  // are member-local + member-only; the API rejects the treasury node (403).
+  getProfileAlias: () => apiFetch<ProfileAlias>("/api/profile/alias"),
+  setProfileAlias: (alias: string) =>
+    apiFetch<{ ok: boolean; alias: string; applied_at: number }>("/api/profile/alias", {
+      method: "POST",
+      body: JSON.stringify({ alias }),
+    }),
+  clearProfileAlias: () =>
+    apiFetch<{ ok: boolean }>("/api/profile/alias", { method: "DELETE" }),
   getAdminMembers: () => apiFetch<AdminMembersResponse>("/api/admin/members"),
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
@@ -330,6 +347,17 @@ export type NodeInfo = {
   node_role: string;
 };
 
+// Member public alias state (GET /api/profile/alias). `alias` null => the
+// pseudonymous "not set" default; `default_alias` is the pubkey-derived value
+// the node falls back to. Timestamps are unix seconds.
+export type ProfileAlias = {
+  alias: string | null;
+  alias_set_at: number | null;
+  alias_applied_at: number | null;
+  pubkey: string;
+  default_alias: string;
+};
+
 export type TreasuryMetrics = {
   as_of: number;
   all_time: {
@@ -617,6 +645,19 @@ export type SubscriptionStatusNotApplicable = {
 export type SubscriptionStatus =
   | SubscriptionStatusApplicable
   | SubscriptionStatusNotApplicable;
+
+// Pay-from-node modal (decision 2026-06-11). The quote's amount +
+// deposit_address echo the treasury-truth status; estimated_fee_sats is
+// the member-local LND fee estimate the treasury can't compute.
+export type PayFromNodeQuote = {
+  amount_sats: number;
+  deposit_address: string;
+  estimated_fee_sats: number;
+};
+
+export type PayFromNodeResult = {
+  txid: string;
+};
 
 // ─── Subscription payment history (Stage 5a follow-up) ───────────────────
 

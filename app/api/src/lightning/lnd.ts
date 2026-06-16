@@ -21,7 +21,10 @@ import {
   getUtxos,
   signMessage,
   verifyMessage,
-  payViaPaymentDetails
+  payViaPaymentDetails,
+  sendToChainAddress,
+  getChainFeeRate,
+  updateAlias
 } from "ln-service";
 import crypto from "crypto";
 import fs from "fs";
@@ -119,6 +122,69 @@ export async function getLndInfo(): Promise<{
     console.error("🔥 getWalletInfo error:", error);
     throw error;
   }
+}
+
+/**
+ * Update the local node's public alias (gossiped via node_announcement).
+ *
+ * Thin wrapper over ln-service `updateAlias` so the two profile endpoints and
+ * the startup re-assert share one typed call with consistent error surfacing.
+ *
+ * Preconditions (member-naming spec §4/§8, verified on Polar regtest 2026-06-16):
+ *  - LND built with the `peersrpc` build tag (official Umbrel images include it).
+ *  - `peers:write` permission — covered by the admin.macaroon this client loads.
+ *  - LND version > 0.14.5 (unsupported below; current Umbrel clears this).
+ *
+ * Error surfacing from ln-service: missing peersrpc tag -> [400,
+ * 'ExpectedPeersRpcLndBuildTagToUpdateAlias']; any other LND error -> [503,
+ * 'UnexpectedErrorUpdatingNodeAlias', {err}]. Notably an EMPTY-STRING alias is
+ * NOT a usable "unset": LND reports "unable to detect any new values to update
+ * the node announcement" (proto3 scalar field presence), which surfaces here as
+ * the 503 variant. The clear path therefore re-asserts the pubkey-hex default
+ * (see clearNodeAlias) rather than passing "".
+ */
+export async function updateNodeAlias(alias: string): Promise<void> {
+  const { lnd } = getLndClient();
+  await updateAlias({ lnd, alias });
+}
+
+/**
+ * Returns true if an ln-service error is LND's "no new values to update"
+ * response — the proto3 no-op described in updateNodeAlias. The clear path
+ * treats this as success (the alias is already at the requested value).
+ */
+function isNoNewValuesError(err: unknown): boolean {
+  const text = JSON.stringify(err ?? "").toLowerCase();
+  return text.includes("no new values") || text.includes("any new values");
+}
+
+/**
+ * Clear the local node's public alias by re-asserting the pubkey-derived
+ * default-looking value (§8 fallback (a)). Returns the default string applied.
+ *
+ * Idempotent: if the node's current alias already equals the default, the LND
+ * call is skipped (avoids the proto3 "no new values" error on re-clear); if the
+ * call is made and LND nonetheless reports "no new values", that is swallowed as
+ * success. Any other LND error propagates.
+ */
+export async function clearNodeAlias(): Promise<string> {
+  const { lnd } = getLndClient();
+  const info = await getWalletInfo({ lnd });
+  if (!info.public_key) {
+    throw new Error("LND wallet info missing public_key; cannot compute default alias");
+  }
+  const { lndDefaultAlias } = await import("../profile/aliasValidation");
+  const defaultAlias = lndDefaultAlias(info.public_key);
+
+  if (info.alias === defaultAlias) {
+    return defaultAlias; // already at the default — nothing to broadcast.
+  }
+  try {
+    await updateAlias({ lnd, alias: defaultAlias });
+  } catch (err) {
+    if (!isNoNewValuesError(err)) throw err;
+  }
+  return defaultAlias;
 }
 
 /**
@@ -308,6 +374,44 @@ export async function getLndChainTransactions() {
 export async function createLndChainAddress(): Promise<{ address: string }> {
   const { lnd } = getLndClient();
   return createChainAddress({ lnd, format: "p2wpkh" });
+}
+
+/**
+ * Sends a fixed amount of on-chain sats to a destination address from
+ * the local LND wallet. Used by the subscription pay-from-node flow
+ * (POST /api/subscription/pay-from-node) — the member pays their own
+ * subscription deposit address from their node's on-chain wallet.
+ *
+ * Returns the broadcast transaction's id (the txid). Defaults to a
+ * 6-block confirmation target (subscription deadlines are day-scale —
+ * see the implementation deltas — so next-block fees are waste).
+ */
+export async function sendLndToChainAddress(
+  address: string,
+  tokens: number,
+  targetConfirmations = 6,
+): Promise<{ id: string; tokens: number; is_confirmed: boolean }> {
+  const { lnd } = getLndClient();
+  return sendToChainAddress({
+    lnd,
+    address,
+    tokens,
+    target_confirmations: targetConfirmations,
+  });
+}
+
+/**
+ * Returns the current estimated on-chain fee RATE (sats per vByte) for
+ * a given confirmation target. This is a rate, not a total fee — the
+ * caller multiplies by an estimated transaction vsize. Backs the
+ * pay-from-node quote's fee preview (the fee number must come from the
+ * member's local LND, which the treasury can't compute).
+ */
+export async function getLndChainFeeRate(
+  confirmationTarget = 6,
+): Promise<{ tokens_per_vbyte: number }> {
+  const { lnd } = getLndClient();
+  return getChainFeeRate({ lnd, confirmation_target: confirmationTarget });
 }
 
 /**

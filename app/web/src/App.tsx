@@ -20,6 +20,9 @@ import ValuationInput from "./pages/ValuationInput";
 import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
+import ProfilePanel from "./components/ProfilePanel";
+import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
+import { settingsBadgeFor, type BadgeSeverity } from "./components/subscriptionBanner";
 import SubscriptionPayments from "./pages/SubscriptionPayments";
 import Stablecoin from "./pages/Stablecoin";
 import WalletRegistrationPanel from "./stablecoin/components/WalletRegistrationPanel";
@@ -234,6 +237,34 @@ function NavAlertBadge({ badge }: { badge: AutoBuyAlertBadge }) {
   );
 }
 
+// Subscription state marker on the member Settings nav entry (Direction
+// A-lite). A near-clone of NavAlertBadge — but subscription state is a
+// tier, not a quantity, so it renders a glyph (! for the lapsed family,
+// · for prepay's quiet register) rather than a count. Severity follows
+// the shared banner map via settingsBadgeFor; hidden for current and
+// every not-applicable / null state. Kept separate from NavAlertBadge
+// (which is count-typed and shipping) rather than generalizing it.
+const SUB_BADGE_GLYPH: Record<BadgeSeverity, string> = {
+  blue: "·",
+  amber: "!",
+  orange: "!",
+  red: "!",
+};
+
+function SubscriptionNavBadge({ status }: { status: ReturnType<typeof useSubscriptionStatus> }) {
+  const badge = settingsBadgeFor(status);
+  if (!badge.show || !badge.severity) return null;
+  return (
+    <span
+      className={`badge badge-${badge.severity}`}
+      style={{ marginLeft: "auto", fontSize: "0.625rem" }}
+      aria-label={`Subscription status: ${badge.severity === "blue" ? "activation pending" : "action needed"}`}
+    >
+      {SUB_BADGE_GLYPH[badge.severity]}
+    </span>
+  );
+}
+
 function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const autoBuyBadge = useAutoBuyBadge();
   const navigate = useNavigate();
@@ -350,6 +381,7 @@ function AppShell() {
 
 function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose: () => void; channelRole: string }) {
   const autoBuyBadge = useAutoBuyBadge();
+  const subStatus = useSubscriptionStatus();
   const isMerchant = channelRole === "merchant";
   const liquidityLabel = isMerchant ? "Refill Channel" : "Cash Out";
   const liquidityIcon = isMerchant ? "↙" : "↗";
@@ -425,6 +457,7 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
         >
           <span className="icon">⚙</span>
           Settings
+          <SubscriptionNavBadge status={subStatus} />
         </NavLink>
       </div>
     </nav>
@@ -664,6 +697,11 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
       {!isTreasury && <WalletRegistrationPanel />}
 
       <div className="settings-section-label">Personal</div>
+
+      {/* Profile — member-only public Lightning alias. Identity reads ahead of
+          appearance; mounted with !isTreasury (treasury sets BitCorn1 via
+          Umbrel/lnd.conf, not here). See member-naming spec §6. */}
+      {!isTreasury && <ProfilePanel />}
 
       <div className="panel">
         <div className="panel-header">

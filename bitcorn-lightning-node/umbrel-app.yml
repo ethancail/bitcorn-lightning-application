@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.17.11"
+version: "1.17.16"
 port: 3200
 
 description: >
@@ -27,6 +27,116 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.17.16: Member naming & identity. Members can now set an optional
+  public Lightning alias from a new Profile section in member Settings,
+  making their node identifiable by name on the public Lightning network
+  (mempool.space, lnrouter.app, Amboss) instead of only a pubkey-derived
+  hex string. The default state is unchanged and pseudonymous — the
+  feature is opt-in and findable in Settings, with no banner or nag.
+  Setting an alias applies it to the member's own LND via the
+  UpdateNodeAnnouncement RPC, signed by the member's own key (the
+  treasury is never in the path). Because LND does not persist a
+  runtime-set alias across restart, the member node re-asserts its
+  stored alias on every API startup (member-scope only; the treasury's
+  alias remains set via Umbrel/lnd.conf). Clearing an alias re-asserts
+  the node's pubkey-derived default — LND has no true "unset" (an empty
+  alias is a no-op at the RPC layer), and a previously-gossiped alias
+  can only be overwritten, not retracted from network history. Alias
+  submissions through the Bitcorn UI are checked against an
+  operator-configurable reserved-names list using a case-insensitive
+  Levenshtein-2 similarity match, so look-alike impersonation of the
+  treasury or operator names is rejected; rejections return a generic
+  "not available" message that never reveals the list. New schema
+  (migration 051: member_profile + blocked_aliases) and three
+  member-only endpoints (GET/POST/DELETE /api/profile/alias). No change
+  to channels, routing, payments, or any treasury behavior.
+
+  v1.17.15: Bitcorn Price chart readability fix on the Dashboard
+  (treasury and member). Two issues on the price panel are corrected.
+  (1) X-axis dates on the long-span views were ambiguous: the 5-year
+  view rendered labels like "Jun 21" (meaning June 2021) that read as
+  "June 21st", and the 1-year view showed only the month with no year,
+  which is ambiguous across a year boundary. Both now show an explicit
+  apostrophe-year — "Jun '25" — so the year is unmistakable. The 24h
+  (clock time), 7d (weekday), and 30d (month + day) views were already
+  unambiguous and are unchanged. (2) The Y-axis used irregular price
+  intervals derived from the data range (e.g. $128k / $73k / $43k /
+  $13k); it now rounds to "nice" intervals (e.g. $0 / $50k / $100k /
+  $150k), and the interval adapts automatically to the price scale of
+  the selected range. The chart's formatting + tick math was extracted
+  into a reusable, unit-tested module. Display-only change — no schema,
+  scheduler, Coinbase, or price-data behavior is affected.
+
+  v1.17.14: Member subscription discoverability. v1.17.12 made the
+  subscription panel's payment buttons work, but a member still had to
+  find the Settings page to discover they needed to pay. This release
+  surfaces subscription state where the member already is, across three
+  coordinated surfaces — all driven by one shared status source so they
+  can never disagree.
+  (1) Dashboard banner — a severity-aware, non-dismissible strip at the
+  top of the member Dashboard. Quiet blue "activate your membership" for
+  a brand-new (prepay) member; amber when hosted services lapse; orange
+  when hub routing is blocked; red when a channel close is imminent (with
+  a live day-count to the close). It shows nothing for a healthy member,
+  and clears on its own once payment confirms. The action button opens
+  the same pay-from-this-node flow as the Settings panel, inline over the
+  Dashboard — no navigating away.
+  (2) Point-of-block remediation — when the hub refuses a routed payment
+  or invoice because the membership isn't active, the send/receive forms
+  now explain exactly what's blocked and offer the same inline payment
+  path, instead of dropping a cryptic error. Crucially this only triggers
+  on a genuine subscription denial: an ordinary failed payment (which the
+  API also reports with HTTP 402) still shows a normal error, not a
+  spurious "pay your subscription" prompt.
+  (3) Settings nav badge — a small severity-colored marker on the
+  Settings menu entry so lapsed state is visible from anywhere in the
+  member shell.
+  The banner is deliberately non-dismissible: subscription state is a
+  standing condition, not a one-off notification — the only way to clear
+  it is to resolve it, and the banner carries the way to do that.
+  Also in this release: a new --orange theme token (both light and dark)
+  so the routing-blocked severity renders correctly in both themes; a
+  fix for a latent bug where the API-base config read the browser
+  `window` object unguarded (harmless in the browser, but it broke the
+  frontend test suite); and the pay modal's success copy was generalized
+  now that it appears outside the Settings panel. Frontend-only — no
+  schema, scheduler, treasury, or Coinbase behavior changes; the backend
+  already sent the full remediation payload.
+
+  v1.17.13: Internal test-coverage release. Adds unit tests for the
+  subscription payment detector — the logic that watches the on-chain
+  deposit addresses and credits subscription payments. A code audit
+  confirmed this logic was behaving correctly but had no automated test
+  coverage, so a future change could have regressed it without CI
+  noticing. This release adds 20 tests covering the amount-tolerance
+  rule (correct, under-, and over-payments), the pro-rata renewal
+  stacking math, and the safety guards (only confirmed payments to a
+  known member address are credited, never double-credited). No user-
+  facing behavior changes — detector logic is unchanged; this purely
+  locks in the existing behavior so it can't silently break later.
+
+  v1.17.12: The subscription panel's two action buttons — "Open Coinbase
+  Onramp" and "I have BTC" — now do something. In every state that uses
+  the Onramp-primary layout (prepay, services-paused, routing-paused, and
+  pay-to-halt-close) both buttons previously rendered correctly but had
+  no behavior wired to them. They are now fully functional. "Open
+  Coinbase Onramp" opens the same session-tokenized Coinbase Onramp flow
+  as the sidebar Buy Bitcoin button, with a visible error if Onramp isn't
+  configured on the node (no more silent failure). "I have BTC" now opens
+  a payment chooser with two paths: "Pay from this node" sends the
+  subscription amount on-chain straight from your node's own wallet — a
+  new backend endpoint that derives the amount and your own deposit
+  address server-side (it can only ever send the subscription price to
+  your own address), previews the estimated network fee, and confirms in
+  one step; and "I have BTC elsewhere" opens your external Bitcoin wallet
+  via a standard payment link. Payment is detected automatically within
+  ~15–30 seconds of the first confirmation, exactly like any other
+  subscription payment. Also corrects the services-paused state's button
+  labels to match the rest of the panel ("Open Coinbase Onramp" rather
+  than "Buy BTC with card"). No schema, scheduler, or treasury-side
+  changes; the on-chain send is an ordinary payment to the existing
+  detector.
+
   v1.17.11: Display fix for the admin valuation inputs, mirroring the
   v1.17.7 Reserve Risk fix for a sibling metric. The Difficulty Ribbon
   input rounded its saved-value readback to 4 decimals, so a legitimate

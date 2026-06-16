@@ -52,10 +52,12 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled } from "./lightning/lnd";
+import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, sendLndToChainAddress, getLndChainFeeRate, updateNodeAlias, clearNodeAlias } from "./lightning/lnd";
+import { normalizeAlias, validateAliasFormat, isAliasBlocked, lndDefaultAlias } from "./profile/aliasValidation";
+import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow } from "./profile/profileStore";
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
-import { assertTreasury, assertNonEmpty } from "./utils/role";
+import { assertTreasury, assertNonEmpty, assertMember } from "./utils/role";
 import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
@@ -184,6 +186,14 @@ import {
   mapJwtErrorToFastPath,
 } from "./subscription/statusHandler";
 import { computePaymentHistoryForPubkey } from "./subscription/paymentsHandler";
+import {
+  deriveLocalMemberStatus,
+  estimateFeeSats,
+  classifySendError,
+  errorHttpStatus,
+  acquireSendLock,
+  releaseSendLock,
+} from "./subscription/payFromNode";
 import { computeMembersListForTreasury } from "./subscription/adminMembersHandler";
 import { observeTierForTransition } from "./subscription/transitionObserver";
 import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
@@ -791,6 +801,224 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "payments_read_failed" }));
     }
+    return;
+  }
+
+  // ── Subscription pay-from-node (the "I have BTC → Pay from this node"
+  //    modal path) ──────────────────────────────────────────────────────
+  //
+  // Source of truth: decisions/2026-06-11-subscription-panel-action-
+  // button-behaviors.md (§ Backend endpoint design) + deltas/2026-06-11-
+  // subscription-pay-from-node-implementation-deltas.md.
+  //
+  // Member-local, member-only. NO request body — amount and destination
+  // are derived server-side (treasury price_sats + the member's own
+  // deposit_address) so this can only ever send the subscription price
+  // to the member's own address. The quote endpoint is separate from
+  // status because the fee estimate is member-local LND truth the
+  // treasury can't compute.
+
+  // GET quote — preview the fee for the pay-from-node confirm step.
+  // (More specific path than the POST below; method differs anyway.)
+  if (req.method === "GET" && req.url === "/api/subscription/pay-from-node/quote") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    try {
+      const status = await deriveLocalMemberStatus();
+      if (!status.ok) {
+        res.writeHead(errorHttpStatus(status.code), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: status.code, detail: status.detail }));
+        return;
+      }
+      let rate: { tokens_per_vbyte: number };
+      try {
+        rate = await getLndChainFeeRate(6);
+      } catch (err: any) {
+        const detail = err?.message ?? String(err);
+        res.writeHead(errorHttpStatus("fee_estimate_failed"), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "fee_estimate_failed", detail }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        amount_sats: status.target.price_sats,
+        deposit_address: status.target.deposit_address,
+        estimated_fee_sats: estimateFeeSats(rate.tokens_per_vbyte),
+      }));
+    } catch (err: any) {
+      console.error("[subscription] pay-from-node quote failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "quote_failed" }));
+    }
+    return;
+  }
+
+  // POST pay-from-node — send the subscription price from the member's
+  // own LND on-chain wallet to their own deposit address. Single
+  // in-flight send per node (the authoritative double-send defense).
+  if (req.method === "POST" && req.url === "/api/subscription/pay-from-node") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    // Deliberately no request-body read: amount + destination are
+    // server-derived. The lock is taken before the slow derive+send so
+    // a double-click is refused regardless of which step is in flight.
+    if (!acquireSendLock()) {
+      res.writeHead(errorHttpStatus("payment_in_flight"), { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "payment_in_flight", detail: "a subscription send is already in flight on this node" }));
+      return;
+    }
+    try {
+      const status = await deriveLocalMemberStatus();
+      if (!status.ok) {
+        res.writeHead(errorHttpStatus(status.code), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: status.code, detail: status.detail }));
+        return;
+      }
+      let result: { id: string };
+      try {
+        result = await sendLndToChainAddress(
+          status.target.deposit_address,
+          status.target.price_sats,
+          6,
+        );
+      } catch (err: any) {
+        const { code, detail } = classifySendError(err);
+        res.writeHead(errorHttpStatus(code), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: code, detail }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ txid: result.id }));
+    } catch (err: any) {
+      console.error("[subscription] pay-from-node send failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "send_failed" }));
+    } finally {
+      releaseSendLock();
+    }
+    return;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // MEMBER PROFILE — public Lightning alias (member-naming spec, migration 051)
+  //
+  // Member-local and member-only: these run on the member's own Bitcorn API
+  // and act against the member's own LND. There is NO treasury hop — the alias
+  // is signed by the member's own key (spec §3). assertMember rejects the
+  // treasury node (its alias is set via Umbrel/lnd.conf, not here).
+  //
+  // Response shape is the house {error, detail} (NOT the spec's {code,message})
+  // for consistency with every other handler — the frontend matches on the
+  // `error` string. All set-path rejections collapse to the generic
+  // `alias_not_available` so the operator blocklist is never leaked (spec §3.A
+  // / Gate-1 decision 3); the frontend's own format validation gives specific
+  // hints client-side where there is no secret to protect.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // GET /api/profile/alias — current alias + timestamps + pseudonymous default.
+  if (req.method === "GET" && req.url === "/api/profile/alias") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    const pubkey = node!.pubkey;
+    const profile = getMemberProfile(pubkey);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      alias: profile?.alias ?? null,
+      alias_set_at: profile?.alias_set_at ?? null,
+      alias_applied_at: profile?.alias_applied_at ?? null,
+      pubkey,
+      default_alias: lndDefaultAlias(pubkey),
+    }));
+    return;
+  }
+
+  // POST /api/profile/alias — set/change the alias. Body: { alias: string }.
+  if (req.method === "POST" && req.url === "/api/profile/alias") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    const pubkey = node!.pubkey;
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}") as { alias?: unknown };
+        if (typeof parsed.alias !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_request", detail: "alias must be a string" }));
+          return;
+        }
+        const normalized = normalizeAlias(parsed.alias);
+        // Generic rejection for ALL set-path failures (format + blocklist) so
+        // the blocklist is never explained (Gate-1 decision 3).
+        const fmt = validateAliasFormat(normalized);
+        const blocked = fmt.valid && isAliasBlocked(normalized, getBlockedAliasList());
+        if (!fmt.valid || blocked) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "alias_not_available", detail: "This alias is not available, please choose another" }));
+          return;
+        }
+
+        // Persist intent first so a failed LND apply is recoverable by the
+        // startup re-assert / "pending" UI (spec §3.A).
+        const now = Math.floor(Date.now() / 1000);
+        recordAliasIntent(pubkey, normalized, now);
+        try {
+          await updateNodeAlias(normalized);
+        } catch (lndErr: any) {
+          console.error("[profile] updateAlias failed:", lndErr);
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "alias_lnd_failed", detail: "Could not update the alias on your Lightning node — please try again." }));
+          return;
+        }
+        markAliasApplied(pubkey, now);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, alias: normalized, applied_at: now }));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "profile_set_failed", detail: String(err?.message ?? err) }));
+      }
+    });
+    return;
+  }
+
+  // DELETE /api/profile/alias — clear the alias (re-assert pubkey-hex default).
+  if (req.method === "DELETE" && req.url === "/api/profile/alias") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    const pubkey = node!.pubkey;
+    // Clear local state first: even if the LND apply lags, we must stop
+    // re-asserting the old alias on the next boot (spec §3.B).
+    clearMemberAliasRow(pubkey);
+    try {
+      await clearNodeAlias();
+    } catch (lndErr: any) {
+      console.error("[profile] clearAlias failed:", lndErr);
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "alias_lnd_failed", detail: "Local alias cleared, but the Lightning node update failed — the network announcement may lag." }));
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 
@@ -3919,8 +4147,32 @@ const server = http.createServer(async (req, res) => {
 });
 
 
+// Startup re-assert of the member's public alias (member-naming spec §4).
+// LND does not persist a runtime-set alias across restart, so on every boot a
+// member node must re-apply its stored alias. Member-scope only: the treasury's
+// alias is set via Umbrel/lnd.conf and must not be touched by app code. Failure
+// is logged and ignored — a missed re-assert is recoverable (re-save from the
+// Profile UI, or the next boot retries). Deferred ~5s like the member advisor so
+// the initial LND sync has populated node_role/pubkey before we read them.
+async function reassertMemberAlias(): Promise<void> {
+  try {
+    const node = getNodeInfo();
+    if (!node || node.node_role === "treasury") return;
+    const profile = getMemberProfile(node.pubkey);
+    if (!profile?.alias) return;
+    await updateNodeAlias(profile.alias);
+    markAliasApplied(node.pubkey, Math.floor(Date.now() / 1000));
+    console.log(`[profile] re-asserted member alias on startup: ${profile.alias}`);
+  } catch (err: any) {
+    console.warn("[profile] startup alias re-assert failed (will retry next boot):", err?.message ?? err);
+  }
+}
+
 server.listen(PORTS.userApi, () => {
   console.log(`[api] listening on port ${PORTS.userApi}`);
+  // Re-assert the member's stored alias once LND is reachable (~5s, matching
+  // the member advisor's startup delay). Member-scoped inside the function.
+  setTimeout(() => { void reassertMemberAlias(); }, 5000);
   // Loop Out rebalance scheduler — requires REBALANCE_SCHEDULER_ENABLED=true
   // and the loopd sidecar to be running (included in the Bitcorn app stack).
   startRebalanceScheduler();

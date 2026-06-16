@@ -314,4 +314,50 @@ declare module "ln-service" {
     format: 'p2wpkh' | 'np2wpkh' | 'p2tr';
     is_unused?: boolean;
   }): Promise<{ address: string }>;
+
+  // Transcribed verbatim from the `lightning` package typedefs
+  // (lnd_methods/onchain/send_to_chain_address.d.ts and
+  // .../get_chain_fee_rate.d.ts), which ln-service@58 re-exports.
+  // Both are ASYNC and require `lnd`. Declaring them locally from
+  // memory is how the decodePaymentRequest production bug happened —
+  // these match the library's own signatures. Two foot-guns the
+  // upstream types make explicit and a hand-written declaration would
+  // get wrong:
+  //   - sendToChainAddress returns the txid as `id`, NOT `txid`.
+  //   - getChainFeeRate takes `confirmation_target` (NOT
+  //     `target_confirmations`) and returns a per-vByte RATE, not a
+  //     total fee.
+  // Narrowed to the fields we actually use; full upstream surface is
+  // larger (utxo_selection, is_send_all, wss/log, etc.).
+  export function sendToChainAddress(options: {
+    lnd: any;
+    address: string;
+    tokens: number;
+    target_confirmations?: number;
+    fee_tokens_per_vbyte?: number;
+    description?: string;
+  }): Promise<{
+    id: string; // transaction id hex (the txid)
+    confirmation_count: number;
+    is_confirmed: boolean;
+    is_outgoing: boolean;
+    tokens: number;
+  }>;
+
+  export function getChainFeeRate(options: {
+    lnd: any;
+    confirmation_target?: number;
+  }): Promise<{ tokens_per_vbyte: number }>;
+
+  // Updates the node alias advertised in the graph (BOLT 7 node_announcement).
+  // Re-exported by ln-service@58 from the `lightning` package
+  // (lnd_methods/peers/update_alias.js). Library validates only that
+  // `alias !== undefined` (empty string passes the library but LND rejects it
+  // as a no-op — see lnd.ts updateNodeAlias). Requires the `peersrpc` build tag
+  // and `peers:write` permission; unsupported on LND <= 0.14.5. Resolves with no
+  // value.
+  export function updateAlias(options: {
+    lnd: any;
+    alias: string;
+  }): Promise<void>;
 }

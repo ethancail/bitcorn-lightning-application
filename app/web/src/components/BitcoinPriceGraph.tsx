@@ -7,10 +7,9 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { niceTicks, formatAxisPrice, formatTimeLabel, type Period } from "./priceChartFormat";
 
 // ─── Types ───────────────────────────────────────────────────────────────
-
-type Period = "24h" | "7d" | "30d" | "1y" | "5y";
 
 type PricePoint = {
   time: number;
@@ -64,27 +63,6 @@ function formatUsd(n: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-}
-
-function formatAxisPrice(n: number): string {
-  if (n >= 1000) return `$${(n / 1000).toFixed(0)}k`;
-  return `$${n.toFixed(0)}`;
-}
-
-function formatTimeLabel(unixSeconds: number, period: Period): string {
-  const d = new Date(unixSeconds * 1000);
-  switch (period) {
-    case "24h":
-      return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
-    case "7d":
-      return d.toLocaleDateString("en-US", { weekday: "short" });
-    case "30d":
-      return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    case "1y":
-      return d.toLocaleDateString("en-US", { month: "short" });
-    case "5y":
-      return d.toLocaleDateString("en-US", { month: "short", year: "2-digit" });
-  }
 }
 
 function formatTooltipTime(unixSeconds: number, period: Period): string {
@@ -206,11 +184,20 @@ export default function BitcoinPriceGraph() {
       : null;
   const isPositive = changeAmt != null && changeAmt >= 0;
 
-  // Y axis domain with 2% padding
+  // Y axis: round "nice" ticks bracketing the data range, with the domain
+  // snapped to those ticks so the axis shows clean numbers (e.g. $0/$50k/
+  // $100k/$150k) while still zooming to the data. The interval adapts to
+  // the price scale automatically (see priceChartFormat.niceTicks).
   const prices = data.map((d) => d.price);
   const yMin = prices.length ? Math.min(...prices) : 0;
   const yMax = prices.length ? Math.max(...prices) : 0;
-  const yPad = (yMax - yMin) * 0.02 || 100;
+  // Target 4 ticks: the panel chart is only 120px tall (~90px plot area),
+  // where ~4 y-labels fit without Recharts dropping any. A higher target
+  // can overshoot to 6 ticks after nice-rounding, and Recharts then hides
+  // labels non-uniformly — which reads as irregular spacing, the very bug
+  // this fixes.
+  const yTicks = niceTicks(yMin, yMax, 4);
+  const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
 
   const xTicks = sampleTicks(data, 6);
 
@@ -298,7 +285,8 @@ export default function BitcoinPriceGraph() {
                   tick={{ fill: TEXT_3, fontFamily: getMono(), fontSize: 11 }}
                 />
                 <YAxis
-                  domain={[yMin - yPad, yMax + yPad]}
+                  domain={yDomain}
+                  ticks={yTicks}
                   tickFormatter={formatAxisPrice}
                   axisLine={false}
                   tickLine={false}

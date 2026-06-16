@@ -228,6 +228,22 @@ export async function payNetworkInvoice(
       memo: description ?? null,
     };
   } catch (err: any) {
+    // Tier 2 routing-gate denial: payInvoice threw before any outbound
+    // attempt. Mark the pending row failed and RE-THROW so the route
+    // handler returns the structured 402 Tier2DenialBody (tier /
+    // paid_through / deposit_address / price_sats) that the point-of-block
+    // remediation UI consumes — rather than collapsing it into a generic
+    // PaymentResult whose error string the frontend can't parse. Skip the
+    // payments_outbound record: there was no outbound to account for.
+    if (err?.name === "Tier2Denied") {
+      db.prepare(`
+        UPDATE network_payments
+        SET status = 'failed'
+        WHERE payment_hash = ? AND direction = 'send'
+      `).run(paymentHash);
+      throw err;
+    }
+
     // Update to failed
     db.prepare(`
       UPDATE network_payments
