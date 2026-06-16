@@ -68,6 +68,8 @@ Frontend deps: `react`, `react-dom`, `react-router-dom`, `recharts`, `date-fns`,
 
 Merge path: `feature/*` → `develop` → sideload test on Umbrel → `main`.
 
+**Back-merge is required arc closure, not an afterthought.** After merging a release to `main`, immediately back-merge `main` → `develop` as the closing step of the arc; never defer it. The back-merge happens BEFORE the implementation deltas are placed via Cowork — both are part of arc closure, not optional. (Deferring it has caused `develop` to silently drift multiple releases behind `main` more than once.)
+
 ### Umbrel Gotchas (read before releasing)
 
 **Version must match in two files.** Bump `umbrel-app.yml` AND `bitcorn-lightning-node/docker-compose.yml` image tags together. Drift → Umbrel pulls stale images.
