@@ -22,7 +22,13 @@ import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
 import ProfilePanel from "./components/ProfilePanel";
 import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
-import { settingsBadgeFor, type BadgeSeverity } from "./components/subscriptionBanner";
+import {
+  settingsBadgeFor,
+  autoPayBadgeSeverity,
+  combineBadges,
+  type BadgeSeverity,
+} from "./components/subscriptionBanner";
+import { useAutoPayConfig } from "./components/useAutoPayConfig";
 import SubscriptionPayments from "./pages/SubscriptionPayments";
 import Stablecoin from "./pages/Stablecoin";
 import WalletRegistrationPanel from "./stablecoin/components/WalletRegistrationPanel";
@@ -252,7 +258,12 @@ const SUB_BADGE_GLYPH: Record<BadgeSeverity, string> = {
 };
 
 function SubscriptionNavBadge({ status }: { status: ReturnType<typeof useSubscriptionStatus> }) {
-  const badge = settingsBadgeFor(status);
+  // Combine the tier signal with the auto-pay signal (active alert OR pending
+  // price change), taking the higher severity (§7C). The badge now also fires
+  // for an opted-in member with a failed auto-pay or an unacknowledged price
+  // change, even when their tier is healthy.
+  const { cfg } = useAutoPayConfig();
+  const badge = combineBadges(settingsBadgeFor(status), autoPayBadgeSeverity(cfg));
   if (!badge.show || !badge.severity) return null;
   return (
     <span
