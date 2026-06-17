@@ -135,6 +135,24 @@ export const ENV = {
     // Operator must click Resume to re-enable. Reset on any successful sweep.
     autoBuyFailurePauseThreshold: Number(process.env.AUTOBUY_FAILURE_PAUSE_THRESHOLD ?? "3"),
 
+    // --- Subscription auto-pay (member-node-local renewal) ---
+    // Scheduler tick cadence. 60s matches the frontend status-poll cadence and
+    // is "prompt" against the 23-day grace runway between worker_lapsed (+7d)
+    // and routing_lapsed (+30d).
+    autoPayPollIntervalMs: Number(process.env.AUTOPAY_POLL_INTERVAL_MS ?? "60000"),
+    // Re-fire guard (Gate-1): after a successful send, don't re-attempt within
+    // this window — covers the on-chain confirmation + treasury-credit latency
+    // (detector requires conf >= 1) so a level-triggered tick can't double-send
+    // before the tier returns to current. 2h is comfortably > the 6-block
+    // (~60min) target and trivially inside the grace runway.
+    autoPaySettlementCooldownMs: Number(process.env.AUTOPAY_SETTLEMENT_COOLDOWN_MS ?? "7200000"),
+    // After a failure, don't re-attempt within this window (default 1h) — avoids
+    // retry-spamming a broken/underfunded node every 60s tick.
+    autoPayFailureBackoffMs: Number(process.env.AUTOPAY_FAILURE_BACKOFF_MS ?? "3600000"),
+    // Stop attempting for this lapse episode after K consecutive failures
+    // (mirrors AUTOBUY_FAILURE_PAUSE_THRESHOLD). A successful pay resets it.
+    autoPayFailurePauseThreshold: Number(process.env.AUTOPAY_FAILURE_PAUSE_THRESHOLD ?? "3"),
+
     // --- Member swap / withdrawal limits ---
     // Minimum sats a member can withdraw via Loop Out (default: Loop minimum = 250,000)
     memberMinWithdrawalSat: Number(process.env.MEMBER_MIN_WITHDRAWAL_SAT ?? "250000"),

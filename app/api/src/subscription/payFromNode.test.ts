@@ -4,6 +4,7 @@ import {
   estimateFeeSats,
   ESTIMATED_TX_VBYTES,
   classifySendError,
+  classifyFeeRateError,
   lndErrorDetail,
   errorHttpStatus,
   acquireSendLock,
@@ -113,6 +114,21 @@ describe("classifySendError — LND send error → app error code", () => {
     const r = classifySendError([500, "SomethingWeirdHappened", { foo: 1 }]);
     expect(r.code).toBe("send_failed");
     expect(r.detail).toContain("SomethingWeirdHappened");
+  });
+});
+
+describe("classifyFeeRateError — fee-rate failure → lnd_unavailable vs fee_estimate_failed", () => {
+  it("maps connection failures to lnd_unavailable", () => {
+    expect(classifyFeeRateError([503, "FailedToConnect"]).code).toBe("lnd_unavailable");
+    expect(classifyFeeRateError(new Error("connect ECONNREFUSED 127.0.0.1:10009")).code).toBe(
+      "lnd_unavailable",
+    );
+  });
+
+  it("maps any other fee-rate failure to fee_estimate_failed, preserving detail", () => {
+    const r = classifyFeeRateError(new Error("no fee estimate available for target"));
+    expect(r.code).toBe("fee_estimate_failed");
+    expect(r.detail).toContain("no fee estimate");
   });
 });
 

@@ -56,6 +56,24 @@ export const api = {
     }),
   clearProfileAlias: () =>
     apiFetch<{ ok: boolean }>("/api/profile/alias", { method: "DELETE" }),
+  // Subscription auto-pay (member-node-local renewal). All member-only.
+  getAutoPayConfig: () => apiFetch<AutoPayConfig>("/api/profile/auto-pay"),
+  setAutoPay: (enabled: boolean) =>
+    apiFetch<{ enabled: boolean; enabled_at: number | null }>("/api/profile/auto-pay", {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    }),
+  acknowledgePriceChange: () =>
+    apiFetch<{ acknowledged_price: number; acknowledged_at: number }>(
+      "/api/profile/acknowledge-price-change",
+      { method: "POST" },
+    ),
+  getAutoPayHistory: () =>
+    apiFetch<{ alerts: AutoPayAlert[] }>("/api/profile/auto-pay/history").then((r) => r.alerts),
+  dismissAutoPayAlert: (id: number) =>
+    apiFetch<{ ok: true; alert: AutoPayAlert }>(`/api/profile/auto-pay/alerts/${id}/dismiss`, {
+      method: "POST",
+    }),
   getAdminMembers: () => apiFetch<AdminMembersResponse>("/api/admin/members"),
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
@@ -356,6 +374,42 @@ export type ProfileAlias = {
   alias_applied_at: number | null;
   pubkey: string;
   default_alias: string;
+};
+
+// Subscription auto-pay alert (GET /api/profile/auto-pay*). Severity domain is
+// ('info','warning') — auto-pay has no 'critical'. Timestamps are unix seconds.
+export type AutoPayAlertType =
+  | "AUTOPAY_INSUFFICIENT_FUNDS"
+  | "AUTOPAY_LND_UNAVAILABLE"
+  | "AUTOPAY_PAYMENT_FAILED"
+  | "AUTOPAY_FEE_ESTIMATE_FAILED"
+  | "AUTOPAY_SUCCEEDED";
+
+export type AutoPayAlert = {
+  id: number;
+  member_pubkey: string;
+  type: AutoPayAlertType | string;
+  severity: "info" | "warning";
+  status: "active" | "resolved" | "dismissed";
+  consecutive_count: number;
+  context: Record<string, unknown> | null;
+  created_at: number;
+  updated_at: number;
+  resolved_at?: number | null;
+  dismissed_at?: number | null;
+};
+
+// GET /api/profile/auto-pay — one call feeds the Profile section, the Dashboard
+// banner, and the nav badge.
+export type AutoPayConfig = {
+  enabled: boolean;
+  enabled_at: number | null;
+  last_acknowledged_price: number | null;
+  last_acknowledged_price_at: number | null;
+  current_price: number | null;
+  price_change_pending: boolean;
+  active_alerts: AutoPayAlert[];
+  badge: { active_count: number; highest_severity: "info" | "warning" | null };
 };
 
 export type TreasuryMetrics = {

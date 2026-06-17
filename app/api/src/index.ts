@@ -53,7 +53,7 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, sendLndToChainAddress, getLndChainFeeRate, updateNodeAlias, clearNodeAlias } from "./lightning/lnd";
+import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, getLndChainFeeRate, updateNodeAlias, clearNodeAlias } from "./lightning/lnd";
 import { normalizeAlias, validateAliasFormat, isAliasBlocked, lndDefaultAlias } from "./profile/aliasValidation";
 import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow } from "./profile/profileStore";
 import { ENV } from "./config/env";
@@ -157,6 +157,16 @@ import { getSubscriptionPolicy } from "./subscription/policy";
 import { scanSubscriptionDeposits } from "./subscription/detector";
 import { assertTier2RoutingAllowed } from "./subscription/tier2Gate";
 import { startTier3Scheduler } from "./subscription/tier3Scheduler";
+import { startAutoPayScheduler } from "./subscription/autoPayScheduler";
+import {
+  getAutoPayConfig,
+  setAutoPay,
+  acknowledgePriceChange,
+} from "./subscription/autoPayHandler";
+import {
+  getAlertHistory as getAutoPayAlertHistory,
+  dismissAlert as dismissAutoPayAlert,
+} from "./subscription/autoPayAlertStore";
 import { verifyChallengeSignature, ChallengeAuthError } from "./subscription/challengeAuth";
 import { issueTokenForPubkey } from "./subscription/tokenIssuance";
 import { getTreasuryPublicKeyForCloudflare } from "./subscription/treasuryKeypair";
@@ -180,10 +190,8 @@ import { computePaymentHistoryForPubkey } from "./subscription/paymentsHandler";
 import {
   deriveLocalMemberStatus,
   estimateFeeSats,
-  classifySendError,
   errorHttpStatus,
-  acquireSendLock,
-  releaseSendLock,
+  executePayFromNode,
 } from "./subscription/payFromNode";
 import { computeMembersListForTreasury } from "./subscription/adminMembersHandler";
 import { observeTierForTransition } from "./subscription/transitionObserver";
@@ -859,41 +867,23 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     // Deliberately no request-body read: amount + destination are
-    // server-derived. The lock is taken before the slow derive+send so
-    // a double-click is refused regardless of which step is in flight.
-    if (!acquireSendLock()) {
-      res.writeHead(errorHttpStatus("payment_in_flight"), { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "payment_in_flight", detail: "a subscription send is already in flight on this node" }));
-      return;
-    }
+    // server-derived. executePayFromNode owns the in-flight lock, the
+    // server-side derivation, the balance pre-check, the send, and error
+    // classification — the SAME entry point the auto-pay scheduler calls, so
+    // the single in-flight lock serializes manual + automatic sends.
     try {
-      const status = await deriveLocalMemberStatus();
-      if (!status.ok) {
-        res.writeHead(errorHttpStatus(status.code), { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: status.code, detail: status.detail }));
-        return;
+      const result = await executePayFromNode();
+      if (result.ok) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ txid: result.txid }));
+      } else {
+        res.writeHead(errorHttpStatus(result.code), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: result.code, detail: result.detail }));
       }
-      let result: { id: string };
-      try {
-        result = await sendLndToChainAddress(
-          status.target.deposit_address,
-          status.target.price_sats,
-          6,
-        );
-      } catch (err: any) {
-        const { code, detail } = classifySendError(err);
-        res.writeHead(errorHttpStatus(code), { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: code, detail }));
-        return;
-      }
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ txid: result.id }));
     } catch (err: any) {
       console.error("[subscription] pay-from-node send failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "send_failed" }));
-    } finally {
-      releaseSendLock();
     }
     return;
   }
@@ -913,6 +903,132 @@ const server = http.createServer(async (req, res) => {
   // / Gate-1 decision 3); the frontend's own format validation gives specific
   // hints client-side where there is no secret to protect.
   // ═══════════════════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // Subscription auto-pay (member-node-local renewal). All member-only via the
+  // same assertMember guard pay-from-node uses. More-specific routes first
+  // (dismiss + history before the bare /auto-pay). Spec §8 endpoints A–E.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // E. POST /api/profile/auto-pay/alerts/{id}/dismiss — flip active → dismissed.
+  if (
+    req.method === "POST" &&
+    req.url?.startsWith("/api/profile/auto-pay/alerts/") &&
+    req.url?.endsWith("/dismiss")
+  ) {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    const idStr = req.url.slice("/api/profile/auto-pay/alerts/".length, -"/dismiss".length);
+    const id = Number(idStr);
+    if (!Number.isInteger(id) || id <= 0) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid_alert_id" }));
+      return;
+    }
+    const updated = dismissAutoPayAlert(db, node!.pubkey, id);
+    if (!updated) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "alert_not_found" }));
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, alert: updated }));
+    return;
+  }
+
+  // D. GET /api/profile/auto-pay/history — recent events (all statuses, 30d).
+  if (req.method === "GET" && req.url?.startsWith("/api/profile/auto-pay/history")) {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ alerts: getAutoPayAlertHistory(db, node!.pubkey) }));
+    return;
+  }
+
+  // C. GET /api/profile/auto-pay — config + current price + price-change flag +
+  //    active alerts + badge (one call feeds Profile, banner, and nav badge).
+  if (req.method === "GET" && req.url === "/api/profile/auto-pay") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    try {
+      const cfg = await getAutoPayConfig(node!.pubkey);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(cfg));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "autopay_config_failed", detail: String(err?.message ?? err) }));
+    }
+    return;
+  }
+
+  // A. POST /api/profile/auto-pay — body { enabled: boolean }.
+  if (req.method === "POST" && req.url === "/api/profile/auto-pay") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    const pubkey = node!.pubkey;
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}") as { enabled?: unknown };
+        if (typeof parsed.enabled !== "boolean") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_request", detail: "enabled must be a boolean" }));
+          return;
+        }
+        const result = await setAutoPay(pubkey, parsed.enabled);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "autopay_set_failed", detail: String(err?.message ?? err) }));
+      }
+    });
+    return;
+  }
+
+  // B. POST /api/profile/acknowledge-price-change — no body; reads current price.
+  if (req.method === "POST" && req.url === "/api/profile/acknowledge-price-change") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    try {
+      const result = await acknowledgePriceChange(node!.pubkey);
+      if (!result.ok) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: result.code, detail: result.detail }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        acknowledged_price: result.acknowledged_price,
+        acknowledged_at: result.acknowledged_at,
+      }));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "acknowledge_failed", detail: String(err?.message ?? err) }));
+    }
+    return;
+  }
 
   // GET /api/profile/alias — current alias + timestamps + pseudonymous default.
   if (req.method === "GET" && req.url === "/api/profile/alias") {
@@ -4189,6 +4305,11 @@ server.listen(PORTS.userApi, () => {
   // full-scope; members mint full (current tier) or payment (any other
   // subscriber tier — prepay or any lapsed state).
   startTokenRefreshScheduler();
+  // Subscription auto-pay scheduler — member-node-local renewal. Runs on all
+  // nodes but acts only on members; observes the member's own tier with the
+  // browser closed and fires pay-from-node when a member who opted in is
+  // observed in a recoverable-lapsed state. Off by default per member (opt-in).
+  startAutoPayScheduler();
   // Treasury-side: best-effort check that the Worker's published
   // SUBSCRIPTION_PUBLIC_KEY matches the local Ed25519 keypair. Member
   // nodes early-out inside the function. Logs a WARN with the operator
