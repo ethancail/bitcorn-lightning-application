@@ -16,7 +16,7 @@
 // produce render:false / show:false — absence is the signal for a
 // healthy member.
 
-import { fmtSats, type SubscriptionStatus } from "../api/client";
+import { fmtSats, type SubscriptionStatus, type AutoPayConfig } from "../api/client";
 
 export type GatedTier = "prepay" | "worker_lapsed" | "routing_lapsed" | "close_due";
 export type BannerSeverity = "info" | "amber" | "orange" | "red";
@@ -154,6 +154,94 @@ export function bannerFor(status: SubscriptionStatus | null, nowMs: number): Ban
         actionLabel: "Pay now to halt close",
       };
   }
+}
+
+// ─── Auto-pay surfaces (spec 2026-06-12 §6, §7B, §7C) ──────────────────────
+//
+// Kept here, alongside the tier banner/badge, so the auto-pay banner and nav
+// badge derive from the same pure-descriptor discipline and can't drift. The
+// MemberSubscriptionBanner composes these with bannerFor: the lapsed-tier
+// banner takes visual priority; the price-change banner is independent and may
+// stack; the per-alert banners are dismissible.
+
+export interface PriceChangeBannerDescriptor {
+  render: boolean;
+  headline?: string;
+  body?: string;
+}
+
+/** Non-dismissible price-change banner (§6). Renders only while the member is
+ *  opted in and the live price differs from the last acknowledged one (the
+ *  server computes price_change_pending; this turns it into copy). */
+export function priceChangeBannerFor(cfg: AutoPayConfig | null): PriceChangeBannerDescriptor {
+  if (!cfg || !cfg.price_change_pending || cfg.current_price == null) return { render: false };
+  const prev =
+    cfg.last_acknowledged_price != null ? fmtSats(cfg.last_acknowledged_price) : "a different amount";
+  return {
+    render: true,
+    headline: "Subscription price has changed",
+    body: `Your auto-pay will now charge ${fmtSats(cfg.current_price)}. Previously: ${prev}.`,
+  };
+}
+
+/** Copy per auto-pay alert type (§5 table). Severity comes from the alert row;
+ *  this is just the headline/body. */
+export function autoPayAlertContent(type: string): { headline: string; body: string } {
+  switch (type) {
+    case "AUTOPAY_INSUFFICIENT_FUNDS":
+      return {
+        headline: "Auto-pay couldn't renew your subscription",
+        body: "Your node's on-chain balance is below the renewal amount plus fee.",
+      };
+    case "AUTOPAY_LND_UNAVAILABLE":
+      return {
+        headline: "Auto-pay couldn't reach your node's wallet",
+        body: "Auto-pay will retry automatically once your wallet is reachable.",
+      };
+    case "AUTOPAY_PAYMENT_FAILED":
+      return {
+        headline: "Auto-pay renewal failed to send",
+        body: "The renewal payment couldn't be broadcast.",
+      };
+    case "AUTOPAY_FEE_ESTIMATE_FAILED":
+      return {
+        headline: "Auto-pay couldn't estimate the network fee",
+        body: "Auto-pay will retry automatically.",
+      };
+    case "AUTOPAY_SUCCEEDED":
+      return {
+        headline: "Auto-pay renewed your subscription",
+        body: "Your subscription was renewed automatically.",
+      };
+    default:
+      return { headline: "Auto-pay update", body: "" };
+  }
+}
+
+/** Nav-badge severity contributed by auto-pay state: amber for a pending price
+ *  change or an active warning, blue for an info-only active alert, else null. */
+export function autoPayBadgeSeverity(cfg: AutoPayConfig | null): BadgeSeverity | null {
+  if (!cfg) return null;
+  if (cfg.price_change_pending) return "amber";
+  if (cfg.badge.highest_severity === "warning") return "amber";
+  if (cfg.badge.highest_severity === "info") return "blue";
+  return null;
+}
+
+const BADGE_RANK: Record<BadgeSeverity, number> = { blue: 1, amber: 2, orange: 3, red: 4 };
+
+/** Combine the tier badge with the auto-pay badge severity, taking the higher
+ *  severity (§7C — "highest-severity active signal"). */
+export function combineBadges(
+  tierBadge: BadgeDescriptor,
+  apSeverity: BadgeSeverity | null,
+): BadgeDescriptor {
+  const tierSev = tierBadge.show ? tierBadge.severity ?? null : null;
+  if (tierSev && apSeverity) {
+    return { show: true, severity: BADGE_RANK[tierSev] >= BADGE_RANK[apSeverity] ? tierSev : apSeverity };
+  }
+  const sev = tierSev ?? apSeverity;
+  return sev ? { show: true, severity: sev } : { show: false };
 }
 
 export interface BadgeDescriptor {

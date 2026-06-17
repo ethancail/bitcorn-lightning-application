@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, truncPubkey, type ProfileAlias } from "../api/client";
 import { aliasInputState, ALIAS_MAX_BYTES } from "./aliasInputState";
+import AutoPaySection from "./AutoPaySection";
 
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: string };
 
@@ -197,6 +198,9 @@ export default function ProfilePanel() {
             explorer archives.
           </p>
         </div>
+
+        {/* Auto-renew subscription (auto-pay opt-in) */}
+        <AutoPaySection />
       </div>
     </div>
   );

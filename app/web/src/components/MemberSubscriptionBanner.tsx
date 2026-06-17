@@ -1,26 +1,29 @@
-// Severity-aware, non-dismissible subscription banner for the member
-// Dashboard (Direction B).
+// Severity-aware subscription banner for the member Dashboard (Direction B),
+// extended for subscription auto-pay (spec 2026-06-12 §7B).
 //
-// Source of truth: specs/2026-06-11-subscription-discoverability-implementation.md §3
+// Sources:
+//   - specs/2026-06-11-subscription-discoverability-implementation.md §3 (tier banner)
+//   - specs/2026-06-12-subscription-auto-pay-implementation.md §7B (price-change + alerts)
 //
-// A thin renderer over the pure bannerFor() descriptor — it adds no tier
-// logic of its own. Renders only for the four payment-action tiers
-// (prepay / worker_lapsed / routing_lapsed / close_due); returns null for
-// current, every applicable:false reason, and a not-yet-fetched (null)
-// status, so the page is pixel-identical to today when the member is
-// healthy.
-//
-// Non-dismissible by design: subscription tiers are standing states, not
-// discrete events. There is no close affordance and nothing in
-// localStorage — the banner clears when the 60s status poll observes a
-// tier transition out of the gated set. The only way to dismiss it is to
-// pay, and the banner carries the way to do that (inline PayFromNodeModal,
-// the modal's first mount outside Settings).
+// Composition / precedence: the lapsed-tier banner (a standing state) renders
+// first and takes visual priority; the price-change banner is independent and
+// non-dismissible (acknowledge or opt out to clear); active auto-pay alert
+// banners are dismissible (warnings) or a low-key info notice (SUCCEEDED). The
+// tier banner path is unchanged — a healthy member with no auto-pay signal
+// still sees nothing.
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import type { SubscriptionStatus } from "../api/client";
-import { bannerFor, ALERT_VARIANT_CLASS, SEVERITY_ICON } from "./subscriptionBanner";
+import { api, type SubscriptionStatus } from "../api/client";
+import {
+  bannerFor,
+  priceChangeBannerFor,
+  autoPayAlertContent,
+  ALERT_VARIANT_CLASS,
+  SEVERITY_ICON,
+  type BannerSeverity,
+} from "./subscriptionBanner";
+import { useAutoPayConfig } from "./useAutoPayConfig";
 import PayFromNodeModal from "./PayFromNodeModal";
 
 export default function MemberSubscriptionBanner({
@@ -29,35 +32,85 @@ export default function MemberSubscriptionBanner({
   status: SubscriptionStatus | null;
 }) {
   const [payModalOpen, setPayModalOpen] = useState(false);
-  const descriptor = bannerFor(status, Date.now());
+  const { cfg, reload } = useAutoPayConfig();
 
-  // The descriptor's render flag already filters null / not-applicable /
-  // current; the applicable narrowing here is what lets us hand the modal
-  // a SubscriptionStatusApplicable. Both conditions hold together when
-  // render is true, but TypeScript needs the explicit narrow.
-  if (!descriptor.render || !status || status.applicable !== true) return null;
+  const tier = bannerFor(status, Date.now());
+  const tierRenders = tier.render && !!status && status.applicable === true;
 
-  const severity = descriptor.severity!;
+  const priceChange = priceChangeBannerFor(cfg);
+  const activeAlerts = cfg?.active_alerts ?? [];
+
+  // Nothing to show — pixel-identical to a healthy member's dashboard.
+  if (!tierRenders && !priceChange.render && activeAlerts.length === 0) return null;
 
   return (
     <>
-      <div className={`alert ${ALERT_VARIANT_CLASS[severity]} member-sub-banner`}>
-        <span className="alert-icon" aria-hidden>{SEVERITY_ICON[severity]}</span>
-        <div className="member-sub-banner-body">
-          <div className="member-sub-banner-headline">{descriptor.headline}</div>
-          <div>{descriptor.body}</div>
-          <Link className="member-sub-banner-link" to="/settings">
-            View subscription →
-          </Link>
+      {tierRenders && status && status.applicable === true && (
+        <div className={`alert ${ALERT_VARIANT_CLASS[tier.severity!]} member-sub-banner`}>
+          <span className="alert-icon" aria-hidden>{SEVERITY_ICON[tier.severity!]}</span>
+          <div className="member-sub-banner-body">
+            <div className="member-sub-banner-headline">{tier.headline}</div>
+            <div>{tier.body}</div>
+            <Link className="member-sub-banner-link" to="/settings">
+              View subscription →
+            </Link>
+          </div>
+          <button
+            className="btn btn-primary member-sub-banner-action"
+            onClick={() => setPayModalOpen(true)}
+          >
+            {tier.actionLabel}
+          </button>
         </div>
-        <button
-          className="btn btn-primary member-sub-banner-action"
-          onClick={() => setPayModalOpen(true)}
-        >
-          {descriptor.actionLabel}
-        </button>
-      </div>
-      {payModalOpen && (
+      )}
+
+      {/* Price-change banner — non-dismissible until Acknowledge or Opt out (§6). */}
+      {priceChange.render && (
+        <div className="alert warning member-sub-banner">
+          <span className="alert-icon" aria-hidden>⚠</span>
+          <div className="member-sub-banner-body">
+            <div className="member-sub-banner-headline">{priceChange.headline}</div>
+            <div>{priceChange.body}</div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              className="btn btn-primary member-sub-banner-action"
+              onClick={() => void api.acknowledgePriceChange().then(reload).catch(() => {})}
+            >
+              Acknowledge
+            </button>
+            <button
+              className="btn member-sub-banner-action"
+              onClick={() => void api.setAutoPay(false).then(reload).catch(() => {})}
+            >
+              Opt out of auto-pay
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Active auto-pay alerts — warnings dismissible, SUCCEEDED a low-key notice (§5/§7B). */}
+      {activeAlerts.map((a) => {
+        const sev: BannerSeverity = a.severity === "warning" ? "amber" : "info";
+        const content = autoPayAlertContent(a.type);
+        return (
+          <div key={a.id} className={`alert ${ALERT_VARIANT_CLASS[sev]} member-sub-banner`}>
+            <span className="alert-icon" aria-hidden>{SEVERITY_ICON[sev]}</span>
+            <div className="member-sub-banner-body">
+              <div className="member-sub-banner-headline">{content.headline}</div>
+              <div>{content.body}</div>
+            </div>
+            <button
+              className="btn member-sub-banner-action"
+              onClick={() => void api.dismissAutoPayAlert(a.id).then(reload).catch(() => {})}
+            >
+              Dismiss
+            </button>
+          </div>
+        );
+      })}
+
+      {payModalOpen && status && status.applicable === true && (
         <PayFromNodeModal status={status} onClose={() => setPayModalOpen(false)} />
       )}
     </>
