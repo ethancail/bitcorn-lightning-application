@@ -714,7 +714,11 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           Umbrel/lnd.conf, not here). See member-naming spec §6. */}
       {!isTreasury && <ProfilePanel />}
 
-      <div className="panel">
+      {/* marginTop matches the inline-margin convention every other Settings
+          panel uses (ChannelRole .panel.ops marginTop:12, dashboard panels
+          marginTop:16); without it Appearance sat flush against ProfilePanel
+          — the only adjacent-panel transition on the page with 0px gap. */}
+      <div className="panel" style={{ marginTop: 16 }}>
         <div className="panel-header">
           <span className="panel-title"><span className="icon">◐</span>Appearance</span>
         </div>
