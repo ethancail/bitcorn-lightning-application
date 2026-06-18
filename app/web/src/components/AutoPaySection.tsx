@@ -1,8 +1,10 @@
 // AutoPaySection — member-facing subscription auto-pay opt-in control.
 //
 // Source: bitcorn-research/specs/2026-06-12-subscription-auto-pay-
-// implementation.md §7A. Rendered inside ProfilePanel, below the alias
-// controls. Member view only.
+// implementation.md §7A. Mounted in SubscriptionPanel's applicable branch as
+// its own .sub-panel card (v1.17.18 relocation from Profile — auto-renew is a
+// subscription concern, the automation of "Renew now", not an identity one).
+// Member view only.
 //
 // A thin renderer over api.getAutoPayConfig()/setAutoPay(): a toggle, the
 // always-visible standing-authorization status (decision §7 — the member must
@@ -66,7 +68,7 @@ export default function AutoPaySection() {
   const enabled = cfg?.enabled ?? false;
 
   return (
-    <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
+    <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>Auto-renew subscription</span>
         <label style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: saving ? "wait" : "pointer" }}>

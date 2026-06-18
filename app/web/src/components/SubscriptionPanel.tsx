@@ -25,6 +25,7 @@ import {
 } from "../api/client";
 import { Pill, tierToPill, type PillKind } from "./Pill";
 import PayFromNodeModal from "./PayFromNodeModal";
+import AutoPaySection from "./AutoPaySection";
 import { actionsFor, type ActionDescriptor } from "./subscriptionActions";
 import { onrampErrorMessage } from "./subscriptionPayMessages";
 import { bip21Uri } from "./bip21";
@@ -235,6 +236,15 @@ export default function SubscriptionPanel() {
           onRefresh={fetchStatus}
           handlers={actionHandlers}
         />
+        {/* Auto-renew (auto-pay opt-in) — the automation of the Renew now
+            action, so it lives with the subscription surface rather than in
+            Profile/identity (v1.17.18 relocation). Rendered once here for all
+            applicable tiers (current / prepay / lapsed family); hidden for
+            not-applicable / loading / error states where it would be
+            meaningless. Its own card below the subscription panel. */}
+        <section className="sub-panel">
+          <AutoPaySection />
+        </section>
         {payModalOpen && (
           <PayFromNodeModal status={status} onClose={() => setPayModalOpen(false)} />
         )}
