@@ -2,14 +2,22 @@
 //
 // Without this, every reverted settle() lands as the generic "Transaction
 // reverted on-chain" — operator-tested in the 2026-05-28 Item 33 live trial
-// and recorded there as a polish item (Item 35). Two causes account for the
-// vast majority of real-world reverts seen so far:
+// and recorded there as a polish item (Item 35). This classifier currently
+// recognizes exactly TWO causes (the only ones the pre-caps testnet trial
+// surfaced):
 //
 //   1. EnforcedPause — settle() called while the SettlementRouter is paused
 //      (operator-initiated, e.g. during an incident or upgrade window).
 //   2. ERC20 allowance shortfall — settle() called with allowance < amount,
 //      usually because a previous approve was used by an earlier settle and
 //      the user retried without re-approving.
+//
+// KNOWN GAP (audit N1): the SettlementRouter blast-radius cap reverts —
+// TxAmountExceedsCap (0x6a485608) and DailyVolumeExceedsCap (0xa60e7a1a) —
+// plus estimateGas Panic(0x11) are NOT recognized here; they fall through to
+// the generic "reverted on-chain" message. On mainnet with caps active these
+// are expected, not rare. Decoding them (viem selector parse) is a separate
+// future task; today this classifier covers only the two predicates above.
 //
 // Rather than parse the receipt's revert data (which would require knowing
 // every selector the SettlementRouter could throw + USDC + miscellaneous),

@@ -5,11 +5,12 @@
 -- Holds one row per (tx_hash, log_index) pair from the SettlementRouter's
 -- Settled event. The §7 sync loop's step 3 populates this via eth_getLogs.
 --
--- v1 of the sync loop ships WITHOUT log polling — the Worker does not yet
--- expose an /base/events endpoint that proxies eth_getLogs (PR #197
--- intentionally constrained to eth_call-based reads). This table is
--- created so the schema is ready when the events endpoint lands in a
--- follow-up; the table stays empty until then.
+-- Settled-event ingestion is LIVE: the Worker's /base/events endpoint
+-- (eth_getLogs proxy) and the §7 sync loop's ingestion have landed, so this
+-- table is populated each tick (confirmation-depth-gated for reorg safety,
+-- idempotent on UNIQUE below) and served via GET /api/stablecoin/settlements.
+-- (It was created ahead of the endpoint in the first v1 cut — when PR #197
+-- shipped eth_call reads only — but that gap has since been closed.)
 --
 -- UNIQUE(tx_hash, log_index) makes log re-reading on reorg or crash
 -- recovery idempotent. The (block_number, settled_at) index supports

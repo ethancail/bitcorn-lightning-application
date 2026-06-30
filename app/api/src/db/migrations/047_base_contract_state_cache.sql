@@ -12,12 +12,13 @@
 -- these on every tick. fee_recipient_address requires a separate
 -- /base/contract-state(feeRecipient()) call — the sync loop chains both.
 --
--- v1 ships with snapshot-based (lossy) state tracking: we observe the
--- end-state values but lose intermediate event history (the FeeBpsUpdated
--- and Paused/Unpaused logs). When /base/events lands on the Worker, a
--- follow-up wires per-event capture into base_settlement_event-adjacent
--- tables. For v1, knowing "fee is currently N bps" is enough — auditors
--- and operators reading historical state read directly from BaseScan.
+-- Governance state here is snapshot-based: we cache the current end-state
+-- (fee bps, paused, fee recipient) but do NOT capture intermediate
+-- governance-event history (the FeeBpsUpdated / Paused / Unpaused logs).
+-- NOTE: /base/events HAS since landed and Settled-event ingestion is live
+-- (see base_settlement_event), but per-event GOVERNANCE capture is still not
+-- wired — only the Settled stream is. Knowing "fee is currently N bps" is
+-- enough for the UI; auditors reading governance history read BaseScan.
 
 CREATE TABLE IF NOT EXISTS base_contract_state_cache (
     id                          INTEGER PRIMARY KEY CHECK (id = 1),

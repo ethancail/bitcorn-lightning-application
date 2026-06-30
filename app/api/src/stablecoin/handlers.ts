@@ -6,8 +6,8 @@
 // The handlers follow the raw-http convention from app/api/src/index.ts:
 // each takes (req, res) and writes the response directly. The "member"
 // identity is the local node's pubkey from getNodeInfo() — same trust
-// model as the existing subscription endpoints (local-network-only via
-// CORS).
+// model as the existing subscription endpoints: gated by local-node-pubkey
+// identity + local-network CORS, NOT by subscription scope.
 
 import type { IncomingMessage, ServerResponse } from "http";
 import type { Hex } from "viem";

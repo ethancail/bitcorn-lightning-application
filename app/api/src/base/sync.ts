@@ -3,20 +3,26 @@
 // Spec: bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md §7
 //
 // Runs in the API container at ~60s cadence. Each tick:
-//   1. Reads /base/contract-info (block number + governance state).
-//   2. Resolves feeRecipient() via /base/contract-state and upserts
-//      base_contract_state_cache.
-//   3. For every active wallet in member_base_wallet, calls /base/balance
-//      and upserts base_usdc_balance_cache.
-//   4. Advances base_sync_cursor.last_synced_block_number to the latest
-//      block observed during the tick.
+//   - Reads /base/contract-info (block number + governance state).
+//   - Resolves feeRecipient() via /base/contract-state and upserts
+//     base_contract_state_cache.
+//   - Polls /base/balance for every active wallet in member_base_wallet
+//     and upserts base_usdc_balance_cache.
+//   - Ingests SettlementRouter Settled events via the Worker's /base/events
+//     (eth_getLogs) proxy into base_settlement_event — gated at
+//     BASE_CONFIRMATION_DEPTH blocks below the tip for reorg safety,
+//     idempotent via UNIQUE(tx_hash, log_index), chunked over large ranges,
+//     with a cold-start backfill from the router deploy block.
+//   - Advances base_sync_cursor to the last block whose Settled events are
+//     committed (the block advances only on event-commit progress; the
+//     freshness timestamp refreshes on every successful tick).
 //
-// Step 3 of the spec (Settled events via eth_getLogs) is intentionally
-// SKIPPED in v1: PR #197 didn't add an /base/events Worker endpoint and
-// a session has been allocated to add it later. base_settlement_event
-// stays empty until that lands. The other four pieces of state (block
-// cursor, governance state, per-wallet balances, fee recipient) are
-// what the §8 UI needs at v1.
+// Settled-event ingestion is LIVE. (It was deferred in the first v1 cut —
+// PR #197 shipped eth_call reads only — but the Worker /base/events endpoint
+// and this loop's ingestion have since landed; base_settlement_event is
+// populated and served via GET /api/stablecoin/settlements.) Governance-event
+// *history* (FeeBpsUpdated / Paused / Unpaused) is still NOT captured — only
+// current governance state (fee bps, paused) is cached.
 //
 // Concurrency: the in-progress flag prevents overlapping ticks. A slow
 // RPC round-trip won't cause the next setInterval fire to compound the
