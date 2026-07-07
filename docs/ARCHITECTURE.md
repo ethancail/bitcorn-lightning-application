@@ -247,7 +247,7 @@ The full per-version changelog lives in `git log`. Snapshot of capabilities curr
 
 **Charts & commodities**
 - Bitcoin Power Law Trend (log scale, percentile bands, 2042 projection)
-- Price ticker strip: BTC + gold + corn + soybeans + wheat (cached 24h in CF KV)
+- Price ticker strip: BTC (client-side Coinbase spot) + gold + corn + soybeans + wheat (~10-min-delayed front-month futures via Worker `/prices`, KV-cached 10 min)
 - BTC Moving Averages (50/100/200-day)
 - Corn-Bitcoin ratio (bushels per BTC, USDA monthly interpolated to daily)
 - Corn Moving Averages
