@@ -32,7 +32,17 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/memberAdvisor/liquidityAdvisorRoutes.ts` | Member-side: route handlers for `/api/liquidity/*` |
 | `src/memberAdvisor/advisorScheduler.ts` | Member-side: 15-min scheduler (skips treasury nodes) |
 | `src/api/coinbase-onramp.ts` | Calls Cloudflare Worker to obtain a Coinbase session token |
-| `cloudflare-worker/src/index.ts` | Cloudflare Worker (Coinbase Onramp + commodity prices + corn history) |
+| `src/stablecoin/handlers.ts` | Stablecoin rail: member-facing `/api/stablecoin/*` route handlers (spec §8) |
+| `src/stablecoin/siwe.ts` | SIWE (EIP-4361) message build + verification for wallet registration (EOA + ERC-1271 smart wallet) |
+| `src/stablecoin/nonceStore.ts` | SQLite helpers for `siwe_challenge_nonce` (single-use challenge nonces) |
+| `src/stablecoin/staleness.ts` | Rail-specific staleness thresholds for the UI banner |
+| `src/base/sync.ts` | BASE sync loop (60s): `Settled`-event ingestion via Worker, balance + governance-state caching (spec §7) |
+| `src/base/store.ts` | SQLite helpers for the BASE sync subsystem (cursor, events, caches) |
+| `src/base/workerClient.ts` | Typed client for the Worker's `/base/*` endpoints |
+| `src/base/staleness.ts` | Pure staleness-signal derivation from sync-loop timestamps |
+| `cloudflare-worker/src/index.ts` | Cloudflare Worker thin router (Onramp, prices, valuation, treasury-info, `/base/*` — full endpoint list in its header comment) |
+| `cloudflare-worker/src/handlers/base.ts` | Worker BASE proxy: public `/base/contract-info` + allowlisted payment-scope reads |
+| `cloudflare-worker/src/lib/baseRpc.ts` | Forwards allowlisted JSON-RPC calls to the upstream BASE RPC (secret URL) |
 
 ### Routing
 
@@ -92,6 +102,14 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/pages/Payments.tsx` | Invoice-based payments (Request Payment + Pay Invoice) with QR |
 | `app/web/src/pages/Charts.tsx` | PowerLawChart + PriceTickerStrip + MovingAverages + CornBitcoin + CornMAs |
 | `app/web/src/pages/Contacts.tsx` | CRUD address book with tag editor and sync-from-peers |
+| `app/web/src/pages/Stablecoin.tsx` | Stablecoin Settlements page — member-side rail surface (spec §9.1) |
+| `app/web/src/stablecoin/RailScope.tsx` | Scoped WagmiProvider wrapper — keeps wagmi off the rest of the UI |
+| `app/web/src/stablecoin/wagmi.ts` | Wagmi v2 config: Coinbase Smart Wallet / MetaMask / WalletConnect; default chain from `VITE_BASE_CHAIN_ID` |
+| `app/web/src/stablecoin/contract.ts` | SettlementRouter + USDC bindings; BaseScan URL helpers (router address resolved at runtime) |
+| `app/web/src/stablecoin/client.ts` | Rail HTTP client extensions (`/api/stablecoin/*`) |
+| `app/web/src/stablecoin/pendingStore.ts` | Pending-settlement localStorage adapter (frontend-only Pending state) |
+| `app/web/src/stablecoin/revertClassifier.ts` | Maps `settle()` revert reasons to readable errors on the receipt-poll path |
+| `app/web/src/stablecoin/components/` | Rail UI: wallet registration, settlement form + history, stale/error banners |
 
 ### Patterns
 

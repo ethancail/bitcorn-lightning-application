@@ -211,6 +211,20 @@ Treasury Channels page renders four sections (Merchant Lanes / Farmer Lanes / Ex
 - **Settlement sync**: 15s sync loop matches pending receives in `network_payments` against `payments_inbound`. Auto-settles invoices.
 - **Dual recording**: outbound network payments recorded in both `network_payments` and `payments_outbound` for rate limiting compatibility.
 
+## Stablecoin Rail (BASE/USDC)
+
+A parallel, non-custodial member-to-member settlement rail on BASE (Ethereum L2) using USDC, alongside the Lightning rail. Authoritative spec: `bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md` (plus the 2026-05-26 frontend-UX amendment). The `SettlementRouter` contract lives in the separate `bitcorn-stablecoin-rail` repo with its own test/audit gates. This section stays at flow level — the spec is normative for detail.
+
+**Non-custodial by construction.** The member's own wallet (Coinbase Smart Wallet, MetaMask, or WalletConnect) signs `approve` → `settle` against the SettlementRouter — an atomic pass-through contract that never holds funds. No key custody, no server relay: the API and Worker only read chain state; neither can move member funds.
+
+Three layers:
+
+- **Browser ↔ BASE**: the wallet transacts with the chain directly. The member-only Stablecoin page drives registration + settlement; wagmi is scoped to the rail via `RailScope` so the rest of the UI takes no wagmi dependency.
+- **Worker = authenticated read-only RPC proxy**: public `/base/contract-info` plus allowlisted payment-scope reads (`/base/contract-state`, `/base/balance`, `/base/events`). RPC URL and contract addresses are Worker secrets; no write methods are proxied.
+- **API = sync + identity**: a 60s sync loop ingests `Settled` events through the Worker (64-block confirmation depth, singleton cursor, idempotent `UNIQUE(tx_hash, log_index)` indexing), caches wallet balances + router governance state, and derives the staleness signals behind the UI banners. Wallet↔member binding uses SIWE (EIP-4361; single-use nonce; EOA and ERC-1271 smart-wallet verification). Trust model matches the subscription endpoints: local-node-pubkey identity + CORS, not bearer roles.
+
+**Deployment status: pre-mainnet.** The rail currently runs against Base Sepolia (testnet). SettlementRouter v1 is deployed and smoke-tested there; v2 (blast-radius caps) lives on a feature branch of `bitcorn-stablecoin-rail`, rehearsal-deployed on Sepolia — not merged to main and not on mainnet. Mainnet is gated on third-party audit + regulatory memos, plus repointing the testnet-pinned chain configuration (API `readChainId()`, frontend `VITE_BASE_CHAIN_ID`, Worker secrets).
+
 ## Configuration
 
 See `app/api/src/config/env.ts` — that file is authoritative for all env vars and defaults. `docs/LOOP_SETUP.md` documents Loop-specific vars. `CLAUDE.md` lists only the small handful that change behavior in ways not obvious from reading the code.
@@ -251,6 +265,9 @@ The full per-version changelog lives in `git log`. Snapshot of capabilities curr
 - BTC Moving Averages (50/100/200-day)
 - Corn-Bitcoin ratio (bushels per BTC, USDA monthly interpolated to daily)
 - Corn Moving Averages
+
+**Stablecoin rail (pre-mainnet — Base Sepolia)**
+- Member-to-member USDC settlements via non-custodial SettlementRouter: wallet-signed, SIWE-bound registration, 60s event sync (see § Stablecoin Rail above)
 
 **Other**
 - Coinbase Onramp via Cloudflare Worker session token (see `docs/COINBASE_INTEGRATION.md`)

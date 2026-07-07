@@ -34,6 +34,19 @@ FundNodePanel (browser)
 | POST | `/` | Coinbase Onramp — accepts `{ address }` → returns `{ sessionToken }` |
 | GET | `/prices` | Live commodity futures prices (gold, corn, soybeans, wheat), cached 10 min in KV |
 | GET | `/prices/corn-history` | Historical monthly corn PRICE RECEIVED from USDA NASS (2014+), cached 24h in KV |
+| GET | `/recommended-peers` | Curated external peer list |
+| GET | `/treasury-info` | Treasury node connection info (member auto-connect) |
+| GET | `/valuation/current` | Latest composite Z-score + zone |
+| GET | `/valuation/history` | Daily composite history series |
+| GET | `/valuation/inputs` | Per-input snapshot map |
+| POST | `/valuation/manual` | Treasury-signed manual metric entries (HMAC) |
+| GET | `/valuation/manual/day` | All 8 metric values for a date |
+| GET | `/valuation/manual/calendar` | Per-day completeness summary across a range |
+| POST | `/valuation/refresh` | Manually trigger the valuation engine cron (HMAC) |
+| GET | `/base/contract-info` | Stablecoin rail — public: SettlementRouter address + live state |
+| POST | `/base/contract-state` | Stablecoin rail — payment-scope: allowlisted ABI read wrapper |
+| GET | `/base/balance` | Stablecoin rail — payment-scope: convenience ERC-20 `balanceOf` |
+| POST | `/base/events` | Stablecoin rail — payment-scope: allowlisted `eth_getLogs` wrapper |
 
 ### Secrets (stored in Cloudflare, never in git)
 

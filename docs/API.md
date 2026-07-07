@@ -7,6 +7,7 @@ Base URL is the API container (see `docker-compose.yml`). All responses are JSON
 - **Public:** No role check
 - **Member:** Requires `membership_status === "active_member"`
 - **Treasury:** Requires `node_role === "treasury"`; returns 403 otherwise
+- **Member-node local (stablecoin):** identity is the local node's own pubkey; gated by local-network CORS — no role check, no bearer token
 
 Role is derived from identity + treasury channel state — not bearer tokens.
 
@@ -47,6 +48,21 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 |--------|------|---------|
 | POST | `/api/pay` | Pay a BOLT11 invoice (`{ payment_request }`). Forces `outgoing_channel` to treasury. |
 | POST | `/api/network/pay` | Pay via network payment flow (recorded in `network_payments` + `payments_outbound`) |
+
+## Stablecoin Endpoints (member-node local)
+
+Member-facing surface of the BASE/USDC rail (**pre-mainnet** — currently runs against Base Sepolia). Identity is the local node's own pubkey — same trust model as the subscription endpoints: local-node identity + local-network CORS, not role checks or bearer tokens. See `docs/ARCHITECTURE.md` § Stablecoin Rail.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/stablecoin/wallet/challenge` | Issue SIWE challenge (single-use nonce) for wallet registration |
+| POST | `/api/stablecoin/wallet` | Register BASE wallet — verifies the signed SIWE message (EOA or ERC-1271 smart wallet) |
+| GET | `/api/stablecoin/wallet` | Wallet registration status |
+| DELETE | `/api/stablecoin/wallet` | Unlink the registered wallet |
+| GET | `/api/stablecoin/balance` | Cached USDC balance for the registered wallet (from the sync loop) |
+| GET | `/api/stablecoin/contract-state` | Cached SettlementRouter governance state (feeBps, paused, fee recipient) + staleness |
+| GET | `/api/stablecoin/sync-cursor` | BASE sync-loop cursor + staleness signal |
+| GET | `/api/stablecoin/settlements` | Indexed settlement history for the registered wallet (query: `limit`, `before_block` paging) |
 
 ## Treasury Endpoints
 
