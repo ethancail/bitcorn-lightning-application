@@ -414,7 +414,7 @@ function ApplicablePanel({
   onRefresh: () => void;
   handlers: ActionHandlers;
 }) {
-  if (status.current_tier === "current")        return <CurrentRender   status={status} onRefresh={onRefresh} />;
+  if (status.current_tier === "current")        return <CurrentRender   status={status} onRefresh={onRefresh} handlers={handlers} />;
   if (status.current_tier === "prepay")         return <PrepayRender    status={status} handlers={handlers} />;
   if (status.current_tier === "worker_lapsed")  return <WorkerLapsedRender status={status} handlers={handlers} />;
   if (status.current_tier === "routing_lapsed") return <RoutingLapsedRender status={status} handlers={handlers} />;
@@ -500,9 +500,11 @@ function OnrampPrimaryActions({
 function CurrentRender({
   status,
   onRefresh,
+  handlers,
 }: {
   status: SubscriptionStatusApplicable;
   onRefresh: () => void;
+  handlers: ActionHandlers;
 }) {
   const pill = tierToPill("current");
   return (
@@ -520,7 +522,7 @@ function CurrentRender({
       />
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
-        primary={<button className="sub-btn">Renew now <span aria-hidden>→</span></button>}
+        primary={<button className="sub-btn" onClick={handlers.onOpenPayModal}>Renew now <span aria-hidden>→</span></button>}
         secondary={<button className="sub-btn" onClick={onRefresh}>Refresh token</button>}
         tertiary={<Link className="sub-link" to="/subscription/payments">View payment history <span aria-hidden>→</span></Link>}
       />
@@ -873,7 +875,7 @@ function NoChannelRender() {
       </p>
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
-        secondary={<a className="sub-btn" href="#open-channel">Open a channel <span aria-hidden>→</span></a>}
+        secondary={<Link className="sub-btn" to="/dashboard">Open a channel <span aria-hidden>→</span></Link>}
       />
     </section>
   );
