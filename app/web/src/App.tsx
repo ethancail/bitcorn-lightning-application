@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type RecommendedPeer, type PendingChannel, type AutoBuyAlertBadge, resolveContactName, truncPubkey } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -1231,262 +1231,6 @@ function CapitalPolicyPanel() {
 
 // ─── Page stubs ────────────────────────────────────────────────────────────
 
-function RecommendedPeersPanel() {
-  const [peers, setPeers] = useState<RecommendedPeer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [openingId, setOpeningId] = useState<string | null>(null);
-  const [result, setResult] = useState<{ peerId: string; txid: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [selectedSize, setSelectedSize] = useState<Record<string, number>>({});
-
-  const PRESETS = [1_000_000, 5_000_000, 10_000_000];
-
-  useEffect(() => {
-    api.getRecommendedPeers()
-      .then((p) => {
-        setPeers(p);
-        // Default each peer to its recommended size
-        const defaults: Record<string, number> = {};
-        for (const peer of p) defaults[peer.id] = peer.recommended_channel_size_sat;
-        setSelectedSize(defaults);
-      })
-      .catch(() => setPeers([]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function handleOpen(peer: RecommendedPeer) {
-    const amount = selectedSize[peer.id] ?? peer.recommended_channel_size_sat;
-    setOpeningId(peer.id);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await api.openRecommendedChannel(peer.id, amount);
-      setResult({ peerId: peer.id, txid: res.funding_txid ?? "submitted" });
-      api.getRecommendedPeers().then(setPeers).catch(() => {});
-    } catch (e: any) {
-      setError(e.message ?? "Failed to open channel");
-    } finally {
-      setOpeningId(null);
-    }
-  }
-
-  const visiblePeers = showAdvanced ? peers : peers.filter((p) => !p.advanced);
-
-  if (loading) {
-    return (
-      <div className="panel fade-in" style={{ marginTop: 16 }}>
-        <div className="panel-header">
-          <span className="panel-title"><span className="icon">⟐</span>Treasury-Approved External Peers</span>
-        </div>
-        <div className="panel-body">
-          <div className="loading-shimmer" style={{ height: 60, borderRadius: 6 }} />
-        </div>
-      </div>
-    );
-  }
-
-  if (peers.length === 0) return null;
-
-  return (
-    <div id="recommended-peers-panel" className="panel fade-in" style={{ marginTop: 16 }}>
-      <div className="panel-header">
-        <span className="panel-title"><span className="icon">⟐</span>Treasury-Approved External Peers</span>
-        <span className="badge badge-muted">optional</span>
-      </div>
-      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: "0.8125rem", color: "var(--text-3)", marginBottom: 4 }}>
-          These are curated external routing peers vetted by the treasury operator.
-          Your hub channel is your primary connection — external peers are optional
-          and may improve routing diversity.
-        </div>
-
-        {error && (
-          <div className="alert critical" style={{ marginBottom: 0 }}>
-            <span className="alert-icon">✕</span>
-            <div className="alert-body"><div className="alert-msg">{error}</div></div>
-          </div>
-        )}
-
-        {visiblePeers.map((peer) => {
-          const hasChannel = peer.has_channel && peer.channels.length > 0;
-          const isOpening = openingId === peer.id;
-          const justOpened = result?.peerId === peer.id;
-
-          return (
-            <div
-              key={peer.id}
-              style={{
-                background: "var(--bg-3)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: "12px 16px",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontWeight: 600, fontSize: "0.9375rem" }}>{peer.label}</span>
-                  {peer.advanced && <span className="badge badge-muted" style={{ fontSize: "0.625rem" }}>advanced</span>}
-                  {peer.connected && <span className="badge badge-green" style={{ fontSize: "0.625rem" }}>connected</span>}
-                  {hasChannel && <span className="badge badge-blue" style={{ fontSize: "0.625rem" }}>channel open</span>}
-                </div>
-              </div>
-              <div style={{ fontSize: "0.8125rem", color: "var(--text-2)", marginBottom: 8 }}>
-                {peer.description}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.75rem", color: "var(--text-3)", marginBottom: 10 }}>
-                <div style={{ fontFamily: "var(--mono)" }}>
-                  {truncPubkey(peer.pubkey)} @ {peer.socket}
-                </div>
-                <div>
-                  Recommended size: {peer.recommended_channel_size_sat.toLocaleString()} sats
-                </div>
-              </div>
-
-              {/* Existing channels */}
-              {hasChannel && peer.channels.map((ch) => {
-                const localPct = ch.capacity_sat > 0 ? (ch.local_balance_sat / ch.capacity_sat) * 100 : 0;
-                const chUndersized = classifyCapacity(ch.capacity_sat, false) === "undersized";
-                const chUpgradeSize = peer.recommended_channel_size_sat > ch.capacity_sat
-                  ? peer.recommended_channel_size_sat
-                  : recommendedUpgradeSize(ch.capacity_sat, false);
-                return (
-                  <div key={ch.channel_id} style={{ marginBottom: 8 }}>
-                    {chUndersized && (
-                      <div style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        fontSize: "0.6875rem", color: "var(--yellow)", fontFamily: "var(--mono)",
-                        marginBottom: 4, padding: "4px 8px", background: "var(--yellow-glow)", borderRadius: 4,
-                      }}>
-                        <span>⚠ Current channel undersized ({ch.capacity_sat.toLocaleString()} sats) — open a {chUpgradeSize.toLocaleString()} sat channel</span>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-3)", marginBottom: 4 }}>
-                      <span>Local {localPct.toFixed(0)}%</span>
-                      <span>{ch.capacity_sat.toLocaleString()} sats</span>
-                    </div>
-                    <div style={{ height: 6, borderRadius: 3, background: "var(--bg-2)", overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${localPct}%`, background: "var(--green)", borderRadius: 3 }} />
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Show open form for undersized existing channels too */}
-              {hasChannel && peer.channels.some((ch) => classifyCapacity(ch.capacity_sat, false) === "undersized") && !justOpened && (() => {
-                const chUpgradeSize = peer.recommended_channel_size_sat > (peer.channels[0]?.capacity_sat ?? 0)
-                  ? peer.recommended_channel_size_sat
-                  : recommendedUpgradeSize(peer.channels[0]?.capacity_sat ?? 0, false);
-                return (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
-                    <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Open upgraded channel (sats)</div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {PRESETS.map((preset) => (
-                        <button
-                          key={preset}
-                          className={`btn ${(selectedSize[peer.id] ?? chUpgradeSize) === preset ? "btn-primary" : "btn-outline"}`}
-                          style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto" }}
-                          onClick={() => setSelectedSize((s) => ({ ...s, [peer.id]: preset }))}
-                        >
-                          {preset >= 1_000_000
-                            ? `${(preset / 1_000_000).toFixed(preset % 1_000_000 === 0 ? 0 : 1)}M`
-                            : `${(preset / 1_000).toFixed(0)}k`}
-                          {preset === chUpgradeSize ? " ★" : ""}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      type="number"
-                      className="form-input"
-                      style={{ fontSize: "0.8125rem" }}
-                      min={100000}
-                      step={100000}
-                      value={selectedSize[peer.id] ?? chUpgradeSize}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        if (!isNaN(val)) setSelectedSize((s) => ({ ...s, [peer.id]: val }));
-                      }}
-                    />
-                    <button
-                      className="btn btn-primary"
-                      style={{ width: "100%" }}
-                      onClick={() => handleOpen(peer)}
-                      disabled={isOpening || (selectedSize[peer.id] ?? 0) < 100_000}
-                    >
-                      {isOpening ? "Opening channel…" : `Open ${(selectedSize[peer.id] ?? chUpgradeSize).toLocaleString()} sat channel`}
-                    </button>
-                  </div>
-                );
-              })()}
-
-              {justOpened ? (
-                <div className="alert healthy" style={{ marginBottom: 0, padding: "6px 10px" }}>
-                  <span className="alert-icon">✓</span>
-                  <div className="alert-body">
-                    <div className="alert-msg" style={{ fontSize: "0.8125rem" }}>
-                      Channel opening submitted{result.txid !== "submitted" ? ` — ${result.txid.slice(0, 16)}...` : ""}
-                    </div>
-                  </div>
-                </div>
-              ) : !hasChannel ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Channel size (sats)</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {PRESETS.map((preset) => (
-                      <button
-                        key={preset}
-                        className={`btn ${(selectedSize[peer.id] ?? peer.recommended_channel_size_sat) === preset ? "btn-primary" : "btn-outline"}`}
-                        style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto" }}
-                        onClick={() => setSelectedSize((s) => ({ ...s, [peer.id]: preset }))}
-                      >
-                        {preset === peer.recommended_channel_size_sat
-                          ? `${(preset / 1_000_000).toFixed(preset % 1_000_000 === 0 ? 0 : 1)}M ★`
-                          : preset >= 1_000_000
-                            ? `${(preset / 1_000_000).toFixed(preset % 1_000_000 === 0 ? 0 : 1)}M`
-                            : `${(preset / 1_000).toFixed(0)}k`}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="number"
-                    className="form-input"
-                    style={{ fontSize: "0.8125rem" }}
-                    min={100000}
-                    step={100000}
-                    value={selectedSize[peer.id] ?? peer.recommended_channel_size_sat}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (!isNaN(val)) setSelectedSize((s) => ({ ...s, [peer.id]: val }));
-                    }}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    style={{ width: "100%" }}
-                    onClick={() => handleOpen(peer)}
-                    disabled={isOpening || (selectedSize[peer.id] ?? 0) < 100_000}
-                  >
-                    {isOpening ? "Opening channel…" : `Open ${(selectedSize[peer.id] ?? peer.recommended_channel_size_sat).toLocaleString()} sat channel`}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-
-        {peers.some((p) => p.advanced) && (
-          <button
-            className="btn btn-ghost"
-            style={{ fontSize: "0.75rem" }}
-            onClick={() => setShowAdvanced(!showAdvanced)}
-          >
-            {showAdvanced ? "Hide advanced peers" : "Show advanced peers"}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Capacity classification ──────────────────────────────────────────────
 // Treasury channels carry all member traffic (forced routing), need more capacity.
 // External peers are supplementary routing — lower thresholds.
@@ -2186,25 +1930,20 @@ function ChannelsPage() {
                             <span style={{ color: "var(--text-3)" }}>Recommended: </span>
                             <span style={{ fontFamily: "var(--mono)", color: "var(--amber)" }}>{upgradeSize.toLocaleString()} sats</span>
                           </div>
-                          <div style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
-                            {isTreasury
-                              ? "Treasury channels carry all routed payments. Open a larger channel to increase routing capacity."
-                              : "Open a larger channel alongside this one to improve routing diversity."}
-                          </div>
-                          <button
-                            className="btn btn-outline btn-sm"
-                            style={{ alignSelf: "flex-start", marginTop: 4 }}
-                            onClick={() => {
-                              if (isTreasury) {
-                                navigate(`/dashboard?upgrade_capacity=${upgradeSize}`);
-                              } else {
-                                const el = document.getElementById("recommended-peers-panel");
-                                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                              }
-                            }}
-                          >
-                            {isTreasury ? "Upgrade Treasury Channel →" : "View Recommended Peers →"}
-                          </button>
+                          {isTreasury && (
+                            <>
+                              <div style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
+                                Treasury channels carry all routed payments. Open a larger channel to increase routing capacity.
+                              </div>
+                              <button
+                                className="btn btn-outline btn-sm"
+                                style={{ alignSelf: "flex-start", marginTop: 4 }}
+                                onClick={() => navigate(`/dashboard?upgrade_capacity=${upgradeSize}`)}
+                              >
+                                Upgrade Treasury Channel →
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>

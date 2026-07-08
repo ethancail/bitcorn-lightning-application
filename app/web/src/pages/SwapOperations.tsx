@@ -6,7 +6,6 @@ import { API_BASE } from "../config/api";
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
 type Phase = "form" | "quoting" | "quoted" | "initiating" | "tracking";
-type Tab = "loop_out" | "loop_in";
 
 type ChannelInfo = {
   channel_id: string;
@@ -65,6 +64,16 @@ function formatDate(epoch: number): string {
   if (!epoch) return "\u2014";
   const d = new Date(epoch < 1e12 ? epoch * 1000 : epoch);
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+// Lightweight client-side shape check for the custom Loop Out destination \u2014
+// HRP prefix (bc/tb/bcrt) + bech32 charset + length. Full checksum validation
+// happens server-side (bech32 package \u2192 400 invalid_destination_address); this
+// only provides fast inline feedback before quoting.
+const DEST_ADDRESS_FORMAT = /^(bc1|tb1|bcrt1)[02-9ac-hj-np-z]{25,87}$/i;
+
+function chunkAddress(addr: string): string {
+  return addr.match(/.{1,4}/g)?.join(" ") ?? addr;
 }
 
 // ─── Channel Picker ─────────────────────────────────────────────────────────
@@ -192,7 +201,19 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
   const [amount, setAmount] = useState(250_000);
   const [channelId, setChannelId] = useState("");
   const [destinationAddress, setDestinationAddress] = useState("");
+  const [destTouched, setDestTouched] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [destVerified, setDestVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Destination is REQUIRED on the treasury manual path: the backend has no
+  // auto-generate branch here (initiateSwap throws "Destination address
+  // required" without a stored destination — pre-existing, surfaced in the
+  // 2026-07-08 regtest pass). The auto-generate option is intentionally
+  // removed from this UI until the backend fix lands as a separate regtested
+  // pass; restore optional-empty gating and its copy then.
+  const destTrimmed = destinationAddress.trim();
+  const destValid = DEST_ADDRESS_FORMAT.test(destTrimmed);
 
   const [quoteResp, setQuoteResp] = useState<SwapQuoteResponse | null>(null);
   const [countdown, setCountdown] = useState("");
@@ -264,6 +285,7 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
   function handleReset() {
     setPhase("form"); setQuoteResp(null); setTrackingId(null); setTrackingSwap(null);
     setError(null); setCountdown("");
+    setConfirmOpen(false); setDestVerified(false); setDestTouched(false);
     if (pollRef.current) clearInterval(pollRef.current);
     if (countdownRef.current) clearInterval(countdownRef.current);
   }
@@ -285,20 +307,30 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
 
           <AmountInput value={amount} onChange={setAmount} />
 
-          <details style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
-            <summary style={{ cursor: "pointer", userSelect: "none", marginBottom: 8 }}>Advanced: custom destination address</summary>
+          {/* Required field — not an "Advanced" expander: a control that gates
+             Get Quote must be visible, or the disabled button reads as broken. */}
+          <div>
+            <label className="form-label">Destination address</label>
             <input
               type="text" className="form-input" value={destinationAddress}
-              onChange={(e) => setDestinationAddress(e.target.value)}
-              placeholder="bc1q... (leave empty for auto-generated)"
+              onChange={(e) => { setDestinationAddress(e.target.value); setDestVerified(false); }}
+              onBlur={() => setDestTouched(true)}
+              placeholder="bc1q…"
               style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
             />
-          </details>
+            {destTouched && !destValid && (
+              <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
+                {destTrimmed === ""
+                  ? "Enter the on-chain destination address for this Loop Out."
+                  : "Not a valid bech32 address (bc1…)."}
+              </div>
+            )}
+          </div>
 
           {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
 
           <button className="btn btn-primary" style={{ width: "100%" }} onClick={handleGetQuote}
-            disabled={phase === "quoting" || amount < 250_000}>
+            disabled={phase === "quoting" || amount < 250_000 || !destValid}>
             {phase === "quoting" ? "Getting quote..." : "Get Quote"}
           </button>
         </div>
@@ -310,6 +342,56 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
     const q = quoteResp.quote;
     const netFee = (q.swap_fee_sat ?? 0) + (q.miner_fee_sat ?? 0);
     return (
+      <>
+      {/* Execute confirmation — same dialog pattern as the ChannelsPage close-
+         channel confirm. The operator-supplied destination renders in the
+         warning register with a required verification checkbox gating the
+         danger button. */}
+      {confirmOpen && (
+        <div className="dialog-overlay">
+          <div className="dialog-card">
+            <div className="dialog-title">Execute Loop Out?</div>
+            <div className="dialog-body">
+              This swaps <strong>{q.amount_sat.toLocaleString()} sats</strong> of channel balance
+              into an on-chain payment. Estimated fee: ~{netFee.toLocaleString()} sats (swap + miner).
+            </div>
+            {/* Destination is always operator-supplied on this path (no
+               auto-generate — see the note above destValid), so the warning
+               register + verify checkbox is the only variant. */}
+            <div className="alert warning" style={{ marginTop: 14, marginBottom: 0 }}>
+              <span className="alert-icon">⚠</span>
+              <div className="alert-body">
+                <div className="alert-msg">
+                  Funds will be sent on-chain to:
+                  <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", margin: "6px 0", wordBreak: "break-all", color: "var(--text)" }}>
+                    {chunkAddress(destTrimmed)}
+                  </div>
+                  On-chain sends cannot be reversed or refunded — a payment to a wrong address is unrecoverable.
+                </div>
+                <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 10, fontSize: "0.8125rem", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={destVerified}
+                    onChange={(e) => setDestVerified(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  I have verified this address is correct
+                </label>
+              </div>
+            </div>
+            <div className="dialog-actions">
+              <button className="btn btn-ghost" onClick={() => setConfirmOpen(false)}>Cancel</button>
+              <button
+                className="btn btn-danger"
+                disabled={!destVerified}
+                onClick={() => { setConfirmOpen(false); handleExecute(); }}
+              >
+                Execute Loop Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="panel fade-in">
         <div className="panel-header">
           <span className="panel-title"><span className="icon">≡</span>Loop Out Quote</span>
@@ -352,7 +434,8 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
           )}
           {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleExecute}
+            <button className="btn btn-primary" style={{ flex: 1 }}
+              onClick={() => { setDestVerified(false); setConfirmOpen(true); }}
               disabled={phase === "initiating" || countdown === "Expired" || !quoteResp.policy_check.ok}>
               {phase === "initiating" ? "Executing..." : "Execute Loop Out"}
             </button>
@@ -360,6 +443,7 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
           </div>
         </div>
       </div>
+      </>
     );
   }
 
@@ -393,177 +477,6 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
           </div>
           {isTerminal(trackingSwap.status) && (
             <button className="btn btn-outline" onClick={handleReset} style={{ alignSelf: "flex-start" }}>New Loop Out</button>
-          )}
-        </div>
-      </div>
-    );
-  }
-  return null;
-}
-
-// ─── Loop In Tab ─────────────────────────────────────────────────────────────
-
-function LoopInTab() {
-  const [phase, setPhase] = useState<Phase>("form");
-  const [amount, setAmount] = useState(250_000);
-  const [error, setError] = useState<string | null>(null);
-
-  const [quoteResp, setQuoteResp] = useState<SwapQuoteResponse | null>(null);
-  const [countdown, setCountdown] = useState("");
-  const [trackingId, setTrackingId] = useState<string | null>(null);
-  const [trackingSwap, setTrackingSwap] = useState<SwapRequest | null>(null);
-
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    if (phase === "quoted" && quoteResp?.swap_request.quote_expires_at) {
-      const expiresMs = quoteResp.swap_request.quote_expires_at < 1e12
-        ? quoteResp.swap_request.quote_expires_at * 1000 : quoteResp.swap_request.quote_expires_at;
-      const tick = () => {
-        const remaining = expiresMs - Date.now();
-        if (remaining <= 0) {
-          setCountdown("Expired"); setError("Quote has expired.");
-          if (countdownRef.current) clearInterval(countdownRef.current);
-        } else setCountdown(formatCountdown(expiresMs));
-      };
-      tick();
-      countdownRef.current = setInterval(tick, 1000);
-      return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
-    }
-  }, [phase, quoteResp]);
-
-  useEffect(() => {
-    if (phase === "tracking" && trackingId) {
-      const poll = () => {
-        api.adminGetSwap(trackingId).then((d) => {
-          setTrackingSwap(d.swap_request);
-          if (isTerminal(d.swap_request.status) && pollRef.current) clearInterval(pollRef.current);
-        }).catch(() => {});
-      };
-      poll();
-      pollRef.current = setInterval(poll, 15_000);
-      return () => { if (pollRef.current) clearInterval(pollRef.current); };
-    }
-  }, [phase, trackingId]);
-
-  async function handleGetQuote() {
-    setError(null);
-    if (amount < 250_000) { setError("Minimum swap is 250,000 sats"); return; }
-    setPhase("quoting");
-    try {
-      const resp = await api.adminLoopInQuote({ amount_sat: amount });
-      setQuoteResp(resp); setPhase("quoted");
-    } catch (e: any) { setError(e.message ?? "Failed to get quote"); setPhase("form"); }
-  }
-
-  async function handleExecute() {
-    if (!quoteResp) return;
-    setError(null); setPhase("initiating");
-    try {
-      const resp = await api.adminLoopIn({ swap_request_id: quoteResp.swap_request.id });
-      setTrackingId(resp.swap_request.id); setTrackingSwap(resp.swap_request); setPhase("tracking");
-    } catch (e: any) { setError(e.message ?? "Failed to execute"); setPhase("quoted"); }
-  }
-
-  function handleReset() {
-    setPhase("form"); setQuoteResp(null); setTrackingId(null); setTrackingSwap(null);
-    setError(null); setCountdown("");
-    if (pollRef.current) clearInterval(pollRef.current);
-    if (countdownRef.current) clearInterval(countdownRef.current);
-  }
-
-  if (phase === "form" || phase === "quoting") {
-    return (
-      <div className="panel fade-in">
-        <div className="panel-header">
-          <span className="panel-title"><span className="icon">↙</span>Loop In</span>
-          <span className="badge badge-muted">restore outbound capacity</span>
-        </div>
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <AmountInput value={amount} onChange={setAmount} />
-          {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
-          <button className="btn btn-primary" style={{ width: "100%" }} onClick={handleGetQuote}
-            disabled={phase === "quoting" || amount < 250_000}>
-            {phase === "quoting" ? "Getting quote..." : "Get Quote"}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if ((phase === "quoted" || phase === "initiating") && quoteResp) {
-    const q = quoteResp.quote;
-    return (
-      <div className="panel fade-in">
-        <div className="panel-header">
-          <span className="panel-title"><span className="icon">≡</span>Loop In Quote</span>
-          {countdown && (
-            <span className={`badge ${countdown === "Expired" ? "badge-red" : "badge-amber"}`}>
-              {countdown === "Expired" ? "Expired" : `Expires in ${countdown}`}
-            </span>
-          )}
-        </div>
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-            <div className="stat-card" style={{ flex: 1, minWidth: 130 }}>
-              <div className="stat-label">Amount</div>
-              <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(q.amount_sat)}</div>
-            </div>
-            <div className="stat-card" style={{ flex: 1, minWidth: 130 }}>
-              <div className="stat-label">Total Fee</div>
-              <div className="stat-value" style={{ fontSize: "1.125rem", color: "var(--amber)" }}>{fmtSats(q.total_fee_sat)}</div>
-            </div>
-          </div>
-          {!quoteResp.policy_check.ok && (
-            <div className="alert warning" style={{ marginBottom: 0 }}>
-              <span className="alert-icon">⚠</span>
-              <div className="alert-body"><div className="alert-msg">{(quoteResp.policy_check as any).reason}</div></div>
-            </div>
-          )}
-          {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn btn-primary" style={{ flex: 1 }} onClick={handleExecute}
-              disabled={phase === "initiating" || countdown === "Expired" || !quoteResp.policy_check.ok}>
-              {phase === "initiating" ? "Executing..." : "Execute Loop In"}
-            </button>
-            <button className="btn btn-outline" onClick={handleReset} disabled={phase === "initiating"}>Cancel</button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (phase === "tracking" && trackingSwap) {
-    const badge = statusBadge(trackingSwap.status);
-    return (
-      <div className="panel fade-in">
-        <div className="panel-header">
-          <span className="panel-title"><span className="icon">◎</span>Loop In Status</span>
-          <span className={`badge ${badge.cls}`}>{badge.label}</span>
-        </div>
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-            <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
-              <div className="stat-label">Amount</div>
-              <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(trackingSwap.amount_sat)}</div>
-            </div>
-            {trackingSwap.actual_fee_sat != null && (
-              <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
-                <div className="stat-label">Actual Fee</div>
-                <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(trackingSwap.actual_fee_sat)}</div>
-              </div>
-            )}
-          </div>
-          <div style={{ padding: "10px 14px", background: "var(--bg-3)", border: "1px solid var(--border)", borderRadius: 8, fontSize: "0.875rem",
-            color: trackingSwap.status === "failed" ? "var(--red)" : "var(--text-2)" }}>
-            {statusText(trackingSwap.status, trackingSwap.failure_reason)}
-            {!isTerminal(trackingSwap.status) && (
-              <span className="loading-shimmer" style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", marginLeft: 8, verticalAlign: "middle" }} />
-            )}
-          </div>
-          {isTerminal(trackingSwap.status) && (
-            <button className="btn btn-outline" onClick={handleReset} style={{ alignSelf: "flex-start" }}>New Loop In</button>
           )}
         </div>
       </div>
@@ -641,7 +554,6 @@ function SwapHistory() {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function SwapOperations() {
-  const [tab, setTab] = useState<Tab>("loop_out");
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
 
   useEffect(() => {
@@ -664,38 +576,14 @@ export default function SwapOperations() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Swap Operations</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Treasury Loop Out and Loop In swap management
+          Treasury Loop Out swap management
         </p>
       </div>
 
-      {/* Tab selector */}
-      <div style={{ display: "flex", gap: 0, marginBottom: 16, border: "1px solid var(--border)", borderRadius: 6, overflow: "hidden" }}>
-        <button
-          onClick={() => setTab("loop_out")}
-          style={{
-            flex: 1, padding: "10px 16px", border: "none", cursor: "pointer",
-            fontFamily: "var(--mono)", fontSize: "0.8125rem", fontWeight: 600,
-            background: tab === "loop_out" ? "var(--amber)" : "var(--bg-2)",
-            color: tab === "loop_out" ? "var(--bg)" : "var(--text-3)",
-          }}
-        >
-          ↗ Loop Out
-        </button>
-        <button
-          onClick={() => setTab("loop_in")}
-          style={{
-            flex: 1, padding: "10px 16px", border: "none", cursor: "pointer",
-            fontFamily: "var(--mono)", fontSize: "0.8125rem", fontWeight: 600,
-            background: tab === "loop_in" ? "var(--amber)" : "var(--bg-2)",
-            color: tab === "loop_in" ? "var(--bg)" : "var(--text-3)",
-          }}
-        >
-          ↙ Loop In
-        </button>
-      </div>
-
-      {tab === "loop_out" && <LoopOutTab channels={channels} />}
-      {tab === "loop_in" && <LoopInTab />}
+      {/* Treasury Loop In tab removed — deprecated flow (backend returns 410).
+         Treasury maintains inbound via Loop Out on external channels; member-side
+         Loop In (merchant refill) lives in RefillChannel.tsx. */}
+      <LoopOutTab channels={channels} />
 
       <SwapHistory />
     </div>
