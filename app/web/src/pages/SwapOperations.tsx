@@ -2,6 +2,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { api, fmtSats, resolveContactName, type Contact } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 import { API_BASE } from "../config/api";
+import ErrorState from "../components/ErrorState";
+import {
+  INITIAL_FRESHNESS,
+  ageLabel,
+  freshnessStatus,
+  recordFailure,
+  recordSuccess,
+  type FreshnessState,
+} from "../components/freshness";
 
 // ─── Shared helpers ──────────────────────────────────────────────────────────
 
@@ -196,7 +205,15 @@ function AmountInput({ value, onChange }: { value: number; onChange: (v: number)
 
 // ─── Loop Out Tab ────────────────────────────────────────────────────────────
 
-function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
+function LoopOutTab({
+  channels,
+  channelsError,
+  onRetryChannels,
+}: {
+  channels: ChannelInfo[];
+  channelsError?: string | null;
+  onRetryChannels?: () => void;
+}) {
   const [phase, setPhase] = useState<Phase>("form");
   const [amount, setAmount] = useState(250_000);
   const [channelId, setChannelId] = useState("");
@@ -219,6 +236,10 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
   const [countdown, setCountdown] = useState("");
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [trackingSwap, setTrackingSwap] = useState<SwapRequest | null>(null);
+  // U24 H5 (treasury): tracking-poll freshness — after 3 consecutive failed
+  // polls the tracking panel says it can't confirm status instead of
+  // spinning silently. Same treatment as the member Withdraw/Top Up pages.
+  const [pollFresh, setPollFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -243,11 +264,13 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
 
   useEffect(() => {
     if (phase === "tracking" && trackingId) {
+      setPollFresh(INITIAL_FRESHNESS);
       const poll = () => {
         api.adminGetSwap(trackingId).then((d) => {
+          setPollFresh((s) => recordSuccess(s, Date.now()));
           setTrackingSwap(d.swap_request);
           if (isTerminal(d.swap_request.status) && pollRef.current) clearInterval(pollRef.current);
-        }).catch(() => {});
+        }).catch(() => setPollFresh(recordFailure));
       };
       poll();
       pollRef.current = setInterval(poll, 15_000);
@@ -299,10 +322,20 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
           <span className="badge badge-muted">restore inbound capacity</span>
         </div>
         <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          {/* Channel picker */}
+          {/* Channel picker — U24 H7: a failed channels fetch renders an error
+             with retry, never the "No active channels available" fake-empty. */}
           <div>
             <label className="form-label">Channel</label>
-            <ChannelPicker channels={channels} selected={channelId} onSelect={setChannelId} />
+            {channelsError != null && channels.length === 0 ? (
+              <ErrorState
+                bare
+                message="Couldn't load channels."
+                detail={channelsError}
+                onRetry={() => onRetryChannels?.()}
+              />
+            ) : (
+              <ChannelPicker channels={channels} selected={channelId} onSelect={setChannelId} />
+            )}
           </div>
 
           <AmountInput value={amount} onChange={setAmount} />
@@ -475,6 +508,19 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
               <span className="loading-shimmer" style={{ display: "inline-block", width: 12, height: 12, borderRadius: "50%", marginLeft: 8, verticalAlign: "middle" }} />
             )}
           </div>
+          {/* U24 H5: status polls failing — say so instead of spinning silently. */}
+          {!isTerminal(trackingSwap.status) && freshnessStatus(pollFresh, true) === "stale" && (
+            <div className="alert warning" style={{ marginBottom: 0 }}>
+              <span className="alert-icon">⚠</span>
+              <div className="alert-body">
+                <div className="alert-msg">
+                  Can't confirm the swap status right now — last update{" "}
+                  {pollFresh.lastSuccessAt != null ? ageLabel(pollFresh.lastSuccessAt, Date.now()) : "unavailable since this page loaded"}.
+                  Retrying automatically; the swap continues server-side either way.
+                </div>
+              </div>
+            </div>
+          )}
           {isTerminal(trackingSwap.status) && (
             <button className="btn btn-outline" onClick={handleReset} style={{ alignSelf: "flex-start" }}>New Loop Out</button>
           )}
@@ -490,10 +536,16 @@ function LoopOutTab({ channels }: { channels: ChannelInfo[] }) {
 function SwapHistory() {
   const [swaps, setSwaps] = useState<SwapRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   const loadSwaps = useCallback(() => {
     setLoading(true);
-    api.adminSwapList(20).then((r) => setSwaps(r.swaps)).catch(() => setSwaps([])).finally(() => setLoading(false));
+    api.adminSwapList(20)
+      .then((r) => { setSwaps(r.swaps); setHistoryError(null); })
+      // U24 H7: keep last-good rows on failure — never clear to [] (which
+      // rendered as "No swaps yet." on a fetch failure).
+      .catch((e: any) => setHistoryError(e?.detail ?? e?.message ?? "fetch failed"))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { loadSwaps(); }, [loadSwaps]);
@@ -508,6 +560,15 @@ function SwapHistory() {
         {loading ? (
           <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 8 }}>
             {[1, 2, 3].map((i) => <div key={i} className="loading-shimmer" style={{ height: 40, borderRadius: 6 }} />)}
+          </div>
+        ) : historyError != null && swaps.length === 0 ? (
+          <div style={{ padding: "16px 20px" }}>
+            <ErrorState
+              bare
+              message="Couldn't load swap history."
+              detail={historyError}
+              onRetry={loadSwaps}
+            />
           </div>
         ) : swaps.length === 0 ? (
           <div className="empty-state" style={{ padding: "40px 20px" }}>No swaps yet.</div>
@@ -555,8 +616,9 @@ function SwapHistory() {
 
 export default function SwapOperations() {
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
+  const [channelsError, setChannelsError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadChannels = useCallback(() => {
     Promise.all([
       fetch(`${API_BASE}/api/channels`).then((r) => r.json()) as Promise<any[]>,
       api.getContacts().catch(() => [] as Contact[]),
@@ -568,8 +630,17 @@ export default function SwapOperations() {
           localPct: c.capacity_sat > 0 ? Math.round((c.local_balance_sat / c.capacity_sat) * 100) : 0,
         }))
       );
+      setChannelsError(null);
+    }).catch((e: any) => {
+      // U24 H7: the channels fetch was uncaught — an API hiccup rendered
+      // "No active channels available" on the real-money swap form.
+      setChannelsError(e?.detail ?? e?.message ?? "fetch failed");
     });
   }, []);
+
+  useEffect(() => {
+    loadChannels();
+  }, [loadChannels]);
 
   return (
     <div>
@@ -583,7 +654,7 @@ export default function SwapOperations() {
       {/* Treasury Loop In tab removed — deprecated flow (backend returns 410).
          Treasury maintains inbound via Loop Out on external channels; member-side
          Loop In (merchant refill) lives in RefillChannel.tsx. */}
-      <LoopOutTab channels={channels} />
+      <LoopOutTab channels={channels} channelsError={channelsError} onRetryChannels={loadChannels} />
 
       <SwapHistory />
     </div>

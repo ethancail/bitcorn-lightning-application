@@ -2,6 +2,14 @@ import { useState, useEffect } from "react";
 import { api, type TreasuryMetrics, type TreasuryAlert, type NodeBalances } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import ValuationInputAlertBanner from "../components/ValuationInputAlertBanner";
+import StaleMarker from "../components/StaleMarker";
+import {
+  INITIAL_FRESHNESS,
+  freshnessStatus,
+  recordFailure,
+  recordSuccess,
+  type FreshnessState,
+} from "../components/freshness";
 
 function fmt(n: number) {
   return n.toLocaleString();
@@ -25,6 +33,7 @@ export default function Dashboard() {
   const [alerts, setAlerts] = useState<TreasuryAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [balances, setBalances] = useState<NodeBalances | null>(null);
+  const [balFresh, setBalFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
   const [fundLoading, setFundLoading] = useState(false);
   const [fundError, setFundError] = useState<string | null>(null);
 
@@ -48,12 +57,20 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, []);
 
-  // Balance polling (replaces <NodeBalancePanel />)
+  // Balance polling (replaces <NodeBalancePanel />).
+  // U24 H8 (treasury): poll results feed the freshness tracker — on repeated
+  // failures the strip keeps last-good numbers with a staleness marker instead
+  // of clearing to "—". Same treatment as the member dashboard (Batch A).
   useEffect(() => {
-    api.getNodeBalances().then(setBalances).catch(() => {});
-    const id = setInterval(() => {
-      api.getNodeBalances().then(setBalances).catch(() => {});
-    }, 60_000);
+    const tick = () =>
+      api.getNodeBalances()
+        .then((b) => {
+          setBalances(b);
+          setBalFresh((s) => recordSuccess(s, Date.now()));
+        })
+        .catch(() => setBalFresh(recordFailure));
+    tick();
+    const id = setInterval(tick, 60_000);
     return () => clearInterval(id);
   }, []);
 
@@ -75,6 +92,7 @@ export default function Dashboard() {
     }
   }
 
+  const balStatus = freshnessStatus(balFresh, balances != null);
   const m24 = metrics?.last_24h;
   const mAll = metrics?.all_time;
   const cap = metrics?.capital_efficiency;
@@ -132,6 +150,19 @@ export default function Dashboard() {
         </button>
         {fundError && <div className="fund-error">{fundError}</div>}
       </div>
+
+      {/* U24 H8: Tier C — the strip above keeps last-good numbers; these
+          lines say when they can no longer be confirmed. */}
+      {balStatus === "stale" && (
+        <div style={{ marginTop: 6, marginBottom: 10 }}>
+          <StaleMarker state={balFresh} nowMs={Date.now()} noun="Balances" />
+        </div>
+      )}
+      {balStatus === "unavailable" && (
+        <div style={{ marginTop: 6, marginBottom: 10, fontSize: "0.75rem", color: "var(--red)", fontFamily: "var(--mono)" }} role="status">
+          Couldn't load balances — retrying automatically. Your funds are unaffected.
+        </div>
+      )}
 
       <BitcoinPriceGraph />
 

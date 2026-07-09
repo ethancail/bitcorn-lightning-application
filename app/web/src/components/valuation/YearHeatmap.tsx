@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type CalendarSummary } from "../../api/client";
+import ErrorState from "../ErrorState";
 
 interface Props {
   year: number;
@@ -27,15 +28,26 @@ function colorForCompleteness(filled: number): string {
 
 export default function YearHeatmap({ year, onSelectMonth, onPrevYear, onNextYear }: Props) {
   const [summary, setSummary] = useState<CalendarSummary | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const todayUtc = new Date().toISOString().slice(0, 10);
 
-  useEffect(() => {
+  // U24 M1: same treatment as MonthGrid — a failed load must never render an
+  // all-empty heatmap (overwrite risk on data that sizes real auto-buys), and
+  // clearing summary at load start stops a failed year-switch from showing
+  // the previous year's completeness.
+  const load = useCallback(() => {
     const from = `${year}-01-01`;
     const to = `${year}-12-31`;
+    setSummary(null);
+    setLoadError(null);
     api.getValuationCalendar(from, to)
       .then(setSummary)
-      .catch((err) => console.error("[YearHeatmap]", err));
+      .catch((err: any) => setLoadError(err?.detail ?? err?.message ?? "fetch failed"));
   }, [year]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const cells = useMemo(() => {
     const rows: Array<Array<{ date: string; filled: number; isFuture: boolean; exists: boolean }>> = [];
@@ -80,6 +92,17 @@ export default function YearHeatmap({ year, onSelectMonth, onPrevYear, onNextYea
           {year + 1} →
         </button>
       </div>
+      {loadError !== null ? (
+        <ErrorState
+          bare
+          message="Couldn't load this year's entries. What's shown as empty may not be — don't re-enter values until the calendar loads."
+          detail={loadError}
+          onRetry={load}
+        />
+      ) : summary === null ? (
+        <div className="loading-shimmer" style={{ height: 260, borderRadius: 6 }} />
+      ) : (
+      <>
       <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 8 }}>
         {cells.map((row, mIdx) => (
           <div key={mIdx} style={{ display: "contents" }}>
@@ -127,6 +150,8 @@ export default function YearHeatmap({ year, onSelectMonth, onPrevYear, onNextYea
         <span style={{ color: "#84cc16" }}>6–7</span>
         <span style={{ color: "#22c55e" }}>8/8</span>
       </div>
+      </>
+      )}
     </div>
   );
 }
