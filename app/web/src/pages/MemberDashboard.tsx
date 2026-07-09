@@ -682,6 +682,30 @@ export default function MemberDashboard() {
                   </div>
                 )}
 
+                {/* Merchant: top-up action (F1) — mirrors the farmer block below.
+                    "Top Up" per decisions/2026-07-09-ui-vocabulary-canonical-terms.md
+                    (Knot 2: merchant Loop In). Gated on the advisor's own loop_in
+                    recommendation — the same computed signal that builds refillUrl —
+                    rather than an invented balance threshold; it also makes the
+                    advisor alert above actionable. Unknown-role members see neither
+                    role's CTA (unchanged). */}
+                {isMerchant && rec?.action === "loop_in" && (
+                  <div className="member-action">
+                    <button
+                      className="btn btn-primary"
+                      style={{ width: "100%" }}
+                      onClick={() => navigate(refillUrl)}
+                    >
+                      Top Up →
+                    </button>
+                    <div className="caption">
+                      {rec?.suggestedAmountSats
+                        ? `Bitcorn recommends ${rec.suggestedAmountSats.toLocaleString()} sats — pre-filled for you.`
+                        : "Add funds from your Bitcoin balance to keep paying."}
+                    </div>
+                  </div>
+                )}
+
                 {/* Farmer: withdraw action */}
                 {isFarmer && ch!.local_sats >= 250_000 && (
                   <div className="member-action">
