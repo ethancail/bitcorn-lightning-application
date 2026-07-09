@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   api,
@@ -11,6 +11,15 @@ import {
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
 import { useSubscriptionStatus } from "../components/useSubscriptionStatus";
+import ErrorState from "../components/ErrorState";
+import StaleMarker from "../components/StaleMarker";
+import {
+  INITIAL_FRESHNESS,
+  freshnessStatus,
+  recordFailure,
+  recordSuccess,
+  type FreshnessState,
+} from "../components/freshness";
 
 const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
 
@@ -332,29 +341,40 @@ export default function MemberDashboard() {
   const [searchParams] = useSearchParams();
   const upgradeCapacity = parseInt(searchParams.get("upgrade_capacity") ?? "", 10) || undefined;
   const [stats, setStats] = useState<MemberStats | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
   const [usdRate, setUsdRate] = useState<number | null>(null);
   const [pendingTreasuryChannel, setPendingTreasuryChannel] = useState(false);
   const [balances, setBalances] = useState<NodeBalances | null>(null);
+  const [balFresh, setBalFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
   const [fundLoading, setFundLoading] = useState(false);
   const [fundError, setFundError] = useState<string | null>(null);
   const subStatus = useSubscriptionStatus();
 
-  useEffect(() => {
-    api
+  // U24 H2: a failed stats fetch must be distinguishable from "no channel" —
+  // otherwise the Connect-to-Hub onboarding form renders for a member who HAS
+  // a channel ("my channel is gone" illusion). loadStats records the error;
+  // the poll self-heals (success clears it). A poll failure with last-good
+  // stats on screen keeps them (keep-last-good; the balances strip below has
+  // the explicit staleness marker).
+  const loadStats = useCallback(() => {
+    return api
       .getMemberStats()
       .then((d) => {
         setStats(d);
-        setLoading(false);
+        setStatsError(null);
       })
-      .catch(() => setLoading(false));
+      .catch((e: any) => setStatsError(e?.detail ?? e?.message ?? "fetch failed"));
+  }, []);
 
+  useEffect(() => {
+    void loadStats().finally(() => setLoading(false));
     const id = setInterval(() => {
-      api.getMemberStats().then(setStats).catch(() => {});
+      api.getMemberStats().then((d) => { setStats(d); setStatsError(null); }).catch(() => {});
     }, 15_000);
     return () => clearInterval(id);
-  }, []);
+  }, [loadStats]);
 
   // Check for pending treasury channel (survives page reload)
   useEffect(() => {
@@ -382,12 +402,20 @@ export default function MemberDashboard() {
     api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
   }, []);
 
-  // Balance polling (replaces <NodeBalancePanel />)
+  // Balance polling (replaces <NodeBalancePanel />).
+  // U24 H8: poll results feed the freshness tracker — on repeated failures
+  // the strip keeps the last-good numbers with a staleness marker instead of
+  // clearing to "—" (which is indistinguishable from loading).
   useEffect(() => {
-    api.getNodeBalances().then(setBalances).catch(() => {});
-    const id = setInterval(() => {
-      api.getNodeBalances().then(setBalances).catch(() => {});
-    }, 60_000);
+    const tick = () =>
+      api.getNodeBalances()
+        .then((b) => {
+          setBalances(b);
+          setBalFresh((s) => recordSuccess(s, Date.now()));
+        })
+        .catch(() => setBalFresh(recordFailure));
+    tick();
+    const id = setInterval(tick, 60_000);
     return () => clearInterval(id);
   }, []);
 
@@ -423,7 +451,12 @@ export default function MemberDashboard() {
   const remotePct = ch ? Math.round((ch.remote_sats / ch.capacity_sats) * 100) : 0;
 
   const hasChannel = !loading && ch != null;
-  const noChannel = !loading && ch == null;
+  // U24 H2: three distinct states — stats failed to load (statsUnavailable,
+  // only reachable when the initial fetch failed and no poll has recovered),
+  // genuinely no channel (stats loaded, treasury_channel null), and has-channel.
+  const statsUnavailable = !loading && stats == null;
+  const noChannel = !loading && stats != null && ch == null;
+  const balStatus = freshnessStatus(balFresh, balances != null);
 
   return (
     <div>
@@ -469,6 +502,19 @@ export default function MemberDashboard() {
         {fundError && <div className="fund-error">{fundError}</div>}
       </div>
 
+      {/* U24 H8: Tier C — the strip above keeps last-good numbers; these
+          lines say when they can no longer be confirmed. */}
+      {balStatus === "stale" && (
+        <div style={{ marginTop: 6, marginBottom: 10 }}>
+          <StaleMarker state={balFresh} nowMs={Date.now()} noun="Balances" />
+        </div>
+      )}
+      {balStatus === "unavailable" && (
+        <div style={{ marginTop: 6, marginBottom: 10, fontSize: "0.75rem", color: "var(--red)", fontFamily: "var(--mono)" }} role="status">
+          Couldn't load balances — retrying automatically. Your funds are unaffected.
+        </div>
+      )}
+
       <BitcoinPriceGraph />
 
 
@@ -482,6 +528,24 @@ export default function MemberDashboard() {
           <span className={`badge ${badge.cls}`}>{badge.text}</span>
         )}
       </div>
+
+      {/* U24 H2: stats fetch failed and nothing loaded yet — error state, NOT
+          the Connect-to-Hub onboarding form. */}
+      {statsUnavailable && (
+        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <span className="panel-title"><span className="icon">◈</span>Your Channel</span>
+          </div>
+          <div className="panel-body">
+            <ErrorState
+              bare
+              message="Couldn't load your dashboard. Your channel and funds are unaffected — this is a display problem."
+              detail={statsError ?? undefined}
+              onRetry={() => void loadStats()}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Channel — pending opening, connect CTA, or earnings panel */}
       {noChannel && pendingTreasuryChannel && (

@@ -16,13 +16,18 @@ export default function ErrorState({
   message,
   detail,
   onRetry,
+  bare,
 }: {
   message: string;
   detail?: string;
   onRetry: () => void;
+  /** Render without the `sub-panel` section wrapper — for embedding inside
+   *  an existing `.panel-body` (U24 Batch A surfaces) where a nested panel
+   *  frame would double-border. Same alert + retry block either way. */
+  bare?: boolean;
 }) {
-  return (
-    <section className="sub-panel">
+  const body = (
+    <>
       <div className="sub-alert sub-alert-dim-red">
         <span className="sub-alert-icon" aria-hidden>✕</span>
         <div className="sub-alert-body">
@@ -35,6 +40,8 @@ export default function ErrorState({
           Try again <span aria-hidden>→</span>
         </button>
       </div>
-    </section>
+    </>
   );
+  if (bare) return <div>{body}</div>;
+  return <section className="sub-panel">{body}</section>;
 }

@@ -2,6 +2,15 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { api, fmtSats } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
+import ErrorState from "../components/ErrorState";
+import {
+  INITIAL_FRESHNESS,
+  ageLabel,
+  freshnessStatus,
+  recordFailure,
+  recordSuccess,
+  type FreshnessState,
+} from "../components/freshness";
 
 // ─── State machine ──────────────────────────────────────────────────────────
 type Stage = "loading" | "form" | "quoting" | "quoted" | "initiating" | "tracking";
@@ -106,6 +115,10 @@ export default function RefillChannel() {
   // ─── History state ────────────────────────────────────────────────────
   const [history, setHistory] = useState<SwapRequest[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  // U24 H5: tracking-poll freshness — after 3 consecutive failed polls the
+  // tracking panel says it can't confirm status instead of spinning silently.
+  const [pollFresh, setPollFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
   const [expandedSwapId, setExpandedSwapId] = useState<string | null>(null);
   const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[] } | null>(null);
 
@@ -176,8 +189,10 @@ export default function RefillChannel() {
     setHistoryLoading(true);
     api
       .getSwapHistory(10)
-      .then((r) => setHistory(r.swaps.filter((s) => s.swap_type === "loop_in")))
-      .catch(() => setHistory([]))
+      .then((r) => { setHistory(r.swaps.filter((s) => s.swap_type === "loop_in")); setHistoryError(null); })
+      // U24 H4: keep last-good rows on failure — never clear to [] (which
+      // rendered as "No refills yet" while a swap could be in flight).
+      .catch((e: any) => setHistoryError(e?.detail ?? e?.message ?? "fetch failed"))
       .finally(() => setHistoryLoading(false));
   }
 
@@ -210,17 +225,19 @@ export default function RefillChannel() {
   // ─── Poll tracking status ─────────────────────────────────────────────
   useEffect(() => {
     if (stage === "tracking" && trackingId) {
+      setPollFresh(INITIAL_FRESHNESS);
       const poll = () => {
         api
           .getSwap(trackingId)
           .then((detail) => {
+            setPollFresh((s) => recordSuccess(s, Date.now()));
             setTrackingSwap(detail.swap_request);
             if (isTerminal(detail.swap_request.status)) {
               if (pollRef.current) clearInterval(pollRef.current);
               loadHistory();
             }
           })
-          .catch(() => {});
+          .catch(() => setPollFresh(recordFailure));
       };
       poll();
       pollRef.current = setInterval(poll, 15_000);
@@ -730,6 +747,20 @@ export default function RefillChannel() {
               )}
             </div>
 
+            {/* U24 H5: status polls failing — say so instead of spinning silently. */}
+            {!isTerminal(trackingSwap.status) && freshnessStatus(pollFresh, true) === "stale" && (
+              <div className="alert warning" style={{ marginBottom: 0 }}>
+                <span className="alert-icon">⚠</span>
+                <div className="alert-body">
+                  <div className="alert-msg">
+                    Can't confirm the status right now — last update{" "}
+                    {pollFresh.lastSuccessAt != null ? ageLabel(pollFresh.lastSuccessAt, Date.now()) : "unavailable since this page loaded"}.
+                    Retrying automatically; your funds are safe either way.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Stuck swap warning */}
             {isStuck && (
               <div className="alert warning" style={{ marginBottom: 0 }}>
@@ -768,6 +799,13 @@ export default function RefillChannel() {
                 <div key={i} className="loading-shimmer" style={{ height: 40, borderRadius: 6 }} />
               ))}
             </div>
+          ) : historyError !== null && history.length === 0 ? (
+            <ErrorState
+              bare
+              message="Couldn't load your history."
+              detail={historyError}
+              onRetry={loadHistory}
+            />
           ) : history.length === 0 ? (
             <div className="empty-state">No refills yet</div>
           ) : (

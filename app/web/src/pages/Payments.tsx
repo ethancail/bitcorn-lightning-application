@@ -17,6 +17,7 @@ import {
   type RoutingDeniedPayload,
 } from "../components/subscription402";
 import RoutingDeniedNotice from "../components/RoutingDeniedNotice";
+import ErrorState from "../components/ErrorState";
 
 type Tab = "request" | "pay";
 
@@ -45,14 +46,19 @@ export default function Payments({ title }: { title: string }) {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [rate, setRate] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<NetworkPayment | null>(null);
 
   const loadPayments = useCallback(async () => {
     try {
       const data = await api.getNetworkPayments({ limit: 50 });
       setPayments(data);
-    } catch {
-      /* non-fatal */
+      setHistoryError(null);
+    } catch (e: any) {
+      // U24 H1: a failed history fetch must never render as "No payments
+      // yet." — record the failure so the panel can show an error state
+      // instead of a fake-empty. (Last-good rows, if any, stay on screen.)
+      setHistoryError(e?.detail ?? e?.message ?? "fetch failed");
     }
   }, []);
 
@@ -127,6 +133,15 @@ export default function Payments({ title }: { title: string }) {
         <div className="panel-body" style={{ padding: 0 }}>
           {loading ? (
             <div className="loading-shimmer" style={{ height: 120 }} />
+          ) : historyError !== null && payments.length === 0 ? (
+            <div style={{ padding: "16px 20px" }}>
+              <ErrorState
+                bare
+                message="Couldn't load your payment history. Your payments and funds are unaffected — this is a display problem."
+                detail={historyError}
+                onRetry={() => void loadPayments()}
+              />
+            </div>
           ) : payments.length === 0 ? (
             <div className="empty-state" style={{ padding: "40px 20px" }}>
               No payments yet. Create an invoice or pay one to get started.

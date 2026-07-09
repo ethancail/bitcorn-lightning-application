@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
@@ -20,6 +20,7 @@ import ValuationInput from "./pages/ValuationInput";
 import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
+import ErrorState from "./components/ErrorState";
 import ProfilePanel from "./components/ProfilePanel";
 import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
 import {
@@ -95,12 +96,12 @@ initTheme();
 // they have a channel to the hub. MemberDashboard handles the no-channel
 // state contextually with a "Connect to Hub" CTA.
 
-type AppStatus = "loading" | "treasury_setup" | "treasury" | "node";
+type AppStatus = "loading" | "treasury_setup" | "treasury" | "node" | "unreachable";
 
-function useAppStatus(): AppStatus {
+function useAppStatus(): { status: AppStatus; retry: () => void } {
   const [status, setStatus] = useState<AppStatus>("loading");
 
-  useEffect(() => {
+  const check = useCallback(() => {
     api
       .getNode()
       .then((node) => {
@@ -131,10 +132,25 @@ function useAppStatus(): AppStatus {
           setStatus("node");
         }
       })
-      .catch(() => setStatus("node"));
+      // U24 shell fix: this used to fall back to the member shell, so a
+      // treasury operator with a down API got a member UI full of fake-empty
+      // panels. Surface the outage as its own screen instead.
+      .catch(() => setStatus("unreachable"));
   }, []);
 
-  return status;
+  useEffect(() => {
+    check();
+  }, [check]);
+
+  // Auto-retry while unreachable — self-heals when the API comes back
+  // (e.g. container restarting) without requiring a manual click.
+  useEffect(() => {
+    if (status !== "unreachable") return;
+    const id = setInterval(check, 15_000);
+    return () => clearInterval(id);
+  }, [status, check]);
+
+  return { status, retry: check };
 }
 
 // ─── Shared Topbar ────────────────────────────────────────────────────────
@@ -1272,6 +1288,7 @@ function ChannelsPage() {
     }>
   >([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [health, setHealth] = useState<ChannelLiquidityHealth[]>([]);
   const [expandedHint, setExpandedHint] = useState<string | null>(null);
@@ -1295,8 +1312,14 @@ function ChannelsPage() {
       setContacts(ct);
       setHealth(lh);
       setClosingPubkeys(new Set(pend.filter((p: PendingChannel) => p.status === "closing").map((p: PendingChannel) => p.peer_pubkey)));
+      setLoadError(null);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch((e: any) => {
+      // U24 H3: a failed channels fetch must not render as "No channels
+      // found." — capture it for the error branch below.
+      setLoadError(e?.detail ?? e?.message ?? "fetch failed");
+      setLoading(false);
+    });
   }, []);
 
   function refreshChannels() {
@@ -1308,7 +1331,8 @@ function ChannelsPage() {
     ]).then(([ch, ct, lh, pend]) => {
       setChannels(ch); setContacts(ct); setHealth(lh);
       setClosingPubkeys(new Set(pend.filter((p: PendingChannel) => p.status === "closing").map((p: PendingChannel) => p.peer_pubkey)));
-    });
+      setLoadError(null);
+    }).catch((e: any) => setLoadError(e?.detail ?? e?.message ?? "fetch failed"));
   }
 
   async function handleCloseChannel() {
@@ -1839,6 +1863,18 @@ function ChannelsPage() {
               </div>
             ))}
           </div>
+        ) : loadError !== null && channels.length === 0 ? (
+          /* U24 H3: fetch failed with nothing loaded — error, not fake-empty.
+             This branch is shared with the treasury shell's empty-fallback,
+             which benefits incidentally; the treasury lane tables are Batch B. */
+          <div className="panel-body">
+            <ErrorState
+              bare
+              message="Couldn't load your channels. Your channels and funds are unaffected — this is a display problem."
+              detail={loadError}
+              onRetry={refreshChannels}
+            />
+          </div>
         ) : channels.length === 0 ? (
           <div className="empty-state">No channels found.</div>
         ) : (
@@ -2330,8 +2366,43 @@ function LiquidityPage() {
 
 // ─── Root router ──────────────────────────────────────────────────────────
 
+// U24 shell fix — full-screen state for "the browser can't reach the API at
+// all." Mirrors the INITIALIZING… splash's minimal styling; reassures about
+// funds and self-heals via useAppStatus's 15s auto-retry.
+function ApiUnreachableScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 16,
+        background: "var(--bg)",
+        padding: 24,
+      }}
+    >
+      <div style={{ fontFamily: "var(--mono)", color: "var(--red)", fontSize: "0.875rem", letterSpacing: "0.1em" }}>
+        CAN'T REACH YOUR BITCORN NODE
+      </div>
+      <div style={{ color: "var(--text-3)", fontSize: "0.8125rem", maxWidth: 420, textAlign: "center", fontFamily: "var(--sans)", lineHeight: 1.5 }}>
+        The app can't reach the Bitcorn API. Your node and funds are unaffected —
+        this is a connection problem. Retrying automatically every 15 seconds.
+      </div>
+      <button className="btn btn-outline btn-sm" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
+  );
+}
+
 function Root() {
-  const status = useAppStatus();
+  const { status, retry } = useAppStatus();
+
+  if (status === "unreachable") {
+    return <ApiUnreachableScreen onRetry={retry} />;
+  }
 
   if (status === "loading") {
     return (
