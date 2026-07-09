@@ -25,6 +25,7 @@ import {
   type SubscriptionPaymentRow,
   type SubscriptionPaymentStatus,
 } from "../api/client";
+import ErrorState from "../components/ErrorState";
 
 type ViewState =
   | { kind: "loading" }
@@ -254,32 +255,9 @@ function PaymentsSkeleton() {
   );
 }
 
-function ErrorState({
-  message,
-  detail,
-  onRetry,
-}: {
-  message: string;
-  detail?: string;
-  onRetry: () => void;
-}) {
-  return (
-    <section className="sub-panel">
-      <div className="sub-alert sub-alert-dim-red">
-        <span className="sub-alert-icon" aria-hidden>✕</span>
-        <div className="sub-alert-body">
-          {message}
-          {detail && <span className="sub-error-detail"> ({detail})</span>}
-        </div>
-      </div>
-      <div className="sub-actions">
-        <button className="sub-btn" onClick={onRetry}>
-          Try again <span aria-hidden>→</span>
-        </button>
-      </div>
-    </section>
-  );
-}
+// ErrorState extracted to ../components/ErrorState.tsx (2026-07-09, U24
+// pre-work) — AdminMembers renders the identical block; both now consume
+// the shared component.
 
 function formatDateTime(ms: number): string {
   return new Date(ms).toLocaleString(undefined, {

@@ -22,6 +22,7 @@ import {
   type SubscriptionStateKey,
 } from "../api/client";
 import { Pill, stateToPill } from "../components/Pill";
+import ErrorState from "../components/ErrorState";
 
 /** Map a pubkey to its contact name, if any. Returns undefined when
  *  there is no contact entry for the pubkey. Distinct from
@@ -142,7 +143,9 @@ export default function AdminMembers() {
         refreshing={refreshing}
       />
       {view.kind === "loading" && <LoadingSkeleton />}
-      {view.kind === "error" && <ErrorView code={view.code} detail={view.detail} onRetry={fetchMembers} />}
+      {view.kind === "error" && (
+        <ErrorState message={errorMessageFor(view.code)} detail={view.detail} onRetry={fetchMembers} />
+      )}
       {view.kind === "ok" && (
         <AdminMembersBody
           response={view.response}
@@ -620,38 +623,14 @@ function EmptyPanel({ message }: { message: string }) {
   );
 }
 
-function ErrorView({
-  code,
-  detail,
-  onRetry,
-}: {
-  code?: string;
-  detail?: string;
-  onRetry: () => void;
-}) {
-  // Mirror the SubscriptionPanel's view-kind discrimination (per spec
-  // §3.5 + Phase 4 spec §10 #4): transport_unreachable gets distinct
-  // copy from generic infrastructure / network errors.
-  const message =
-    code === "treasury_unreachable"
-      ? "Couldn't reach the treasury. Click Try again to retry."
-      : "Couldn't load members list.";
-  return (
-    <section className="sub-panel">
-      <div className="sub-alert sub-alert-dim-red">
-        <span className="sub-alert-icon" aria-hidden>✕</span>
-        <div className="sub-alert-body">
-          {message}
-          {detail && <span className="sub-error-detail"> ({detail})</span>}
-        </div>
-      </div>
-      <div className="sub-actions">
-        <button className="sub-btn" onClick={onRetry}>
-          Try again <span aria-hidden>→</span>
-        </button>
-      </div>
-    </section>
-  );
+// Mirror the SubscriptionPanel's view-kind discrimination (per spec
+// §3.5 + Phase 4 spec §10 #4): transport_unreachable gets distinct
+// copy from generic infrastructure / network errors. Rendering lives
+// in the shared components/ErrorState.tsx.
+function errorMessageFor(code?: string): string {
+  return code === "treasury_unreachable"
+    ? "Couldn't reach the treasury. Click Try again to retry."
+    : "Couldn't load members list.";
 }
 
 // ─── Formatters ──────────────────────────────────────────────────
