@@ -18,6 +18,7 @@ import {
 } from "../components/subscription402";
 import RoutingDeniedNotice from "../components/RoutingDeniedNotice";
 import ErrorState from "../components/ErrorState";
+import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 
 type Tab = "request" | "pay";
 
@@ -110,7 +111,7 @@ export default function Payments({ title }: { title: string }) {
               className={`payment-tab ${tab === "pay" ? "active" : ""}`}
               onClick={() => setTab("pay")}
             >
-              Pay Invoice
+              Send a Payment
             </button>
           </div>
 
@@ -155,7 +156,7 @@ export default function Payments({ title }: { title: string }) {
                     <th>Status</th>
                     <th>Amount</th>
                     <th>Fee</th>
-                    <th>Counterparty</th>
+                    <th>With</th>
                     <th>Memo</th>
                     <th>Date</th>
                   </tr>
@@ -312,10 +313,10 @@ function RequestPaymentForm({
         <div className="bolt11-text">{invoice.payment_request}</div>
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <button className="btn btn-primary" onClick={handleCopy} style={{ flex: 1 }}>
-            {copied ? "Copied!" : "Copy Invoice"}
+            {copied ? "Copied!" : "Copy payment request"}
           </button>
           <button className="btn btn-outline" onClick={handleReset}>
-            New Invoice
+            New payment request
           </button>
         </div>
       </div>
@@ -364,7 +365,7 @@ function RequestPaymentForm({
           {maxInvoice != null && maxInvoice > 0 && (
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
-                Max invoice
+                Most you can receive
               </div>
               <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
                 {maxInvoice.toLocaleString()} sats
@@ -377,7 +378,11 @@ function RequestPaymentForm({
       {/* Zero receive capacity — empty state */}
       {channelRemote != null && channelRemote === 0 && (
         <div className="alert critical" style={{ marginBottom: 12 }}>
-          No receive capacity. Your channel is fully on your side — Cash Out some Lightning balance to on-chain to restore inbound.
+          {/* Role-neutral by design (this page can't tell farmer from merchant;
+             see 2026-07-09 role-mapping verification): both remedies named,
+             neither role gets wrong advice. */}
+          You can't receive right now — your channel is full on your side. Room to
+          receive opens as you send, or you can withdraw funds to make room now.
         </div>
       )}
 
@@ -413,7 +418,7 @@ function RequestPaymentForm({
       )}
       {!isOverHard && isOverSoft && (
         <div className="alert warning" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
-          Amount is near receive capacity limit. Payment may fail due to routing fees or HTLC constraints. Consider requesting a smaller amount.
+          Amounts this close to your limit sometimes fail because of network fees. Consider requesting a slightly smaller amount.
         </div>
       )}
 
@@ -455,7 +460,7 @@ function RequestPaymentForm({
         onClick={handleCreate}
         disabled={sats <= 0 || creating || isOverHard}
       >
-        {creating ? "Creating..." : "Create Invoice"}
+        {creating ? "Creating..." : "Create Payment Request"}
       </button>
     </div>
   );
@@ -578,8 +583,10 @@ function PayInvoiceForm({
                 <strong>Memo:</strong> {result.memo}
               </div>
             )}
-            <div className="text-dim" style={{ fontSize: "0.75rem", marginTop: 8, wordBreak: "break-all" }}>
-              Hash: {result.payment_hash}
+            <div style={{ marginTop: 8 }}>
+              <TechnicalDetails>
+                <TechRow label="Payment hash">{result.payment_hash}</TechRow>
+              </TechnicalDetails>
             </div>
           </>
         ) : (
@@ -659,7 +666,7 @@ function PayInvoiceForm({
           {maxSendable != null && maxSendable > 0 && (
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
-                Max send
+                Most you can send
               </div>
               <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
                 {maxSendable.toLocaleString()} sats
@@ -672,11 +679,16 @@ function PayInvoiceForm({
       {/* Zero send capacity — empty state */}
       {channelLocal != null && channelLocal === 0 && (
         <div className="alert critical" style={{ marginBottom: 12 }}>
-          No send capacity. Your channel is fully on the treasury's side — Refill your channel to restore outbound.
+          {/* Role-neutral by design — see the receive-side note above. */}
+          You can't send right now — your sending balance is empty. Top up from your
+          Bitcoin balance, or funds you receive become available to send.
         </div>
       )}
 
-      <label className="form-label">Paste BOLT11 Invoice</label>
+      <label className="form-label">Payment request</label>
+      <div className="text-dim" style={{ fontSize: "0.75rem", marginBottom: 6 }}>
+        Paste the payment request you were sent — it starts with lnbc.
+      </div>
       <textarea
         className="form-input"
         rows={4}
@@ -686,7 +698,7 @@ function PayInvoiceForm({
         style={{ fontFamily: "var(--mono)", fontSize: "0.8rem", resize: "vertical", marginBottom: 12 }}
       />
 
-      {decoding && <div className="text-dim" style={{ marginBottom: 12 }}>Decoding...</div>}
+      {decoding && <div className="text-dim" style={{ marginBottom: 12 }}>Reading payment request…</div>}
 
       {decoded && (
         <div className="payment-preview">
@@ -721,12 +733,12 @@ function PayInvoiceForm({
       {/* Two-tier capacity warnings (after decode) */}
       {decoded && isOverHard && (
         <div className="alert critical" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
-          Amount exceeds send capacity ({hardCap?.toLocaleString()} sats). Payment cannot succeed — Refill your channel first.
+          This is more than you can send ({hardCap?.toLocaleString()} sats). Top up first.
         </div>
       )}
       {decoded && !isOverHard && isOverSoft && (
         <div className="alert warning" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
-          Amount is near send capacity limit. Payment may fail due to routing fees or HTLC constraints.
+          Amounts this close to your limit sometimes fail because of network fees. A slightly smaller amount is more reliable.
         </div>
       )}
 
@@ -885,8 +897,10 @@ function PaymentDetail({
         )}
       </div>
 
-      <div className="text-dim" style={{ fontSize: "0.75rem", wordBreak: "break-all", marginBottom: 12 }}>
-        Hash: {p.payment_hash}
+      <div style={{ marginBottom: 12 }}>
+        <TechnicalDetails>
+          <TechRow label="Payment hash">{p.payment_hash}</TechRow>
+        </TechnicalDetails>
       </div>
 
       {/* BOLT11 string + copy for received invoices */}
@@ -895,7 +909,7 @@ function PaymentDetail({
           <div className="bolt11-text">{p.payment_request}</div>
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <button className="btn btn-primary" onClick={handleCopy} style={{ flex: 1 }}>
-              {copied ? "Copied!" : "Copy Invoice"}
+              {copied ? "Copied!" : "Copy payment request"}
             </button>
             {canDelete && (
               <button className="btn btn-danger" onClick={handleDelete} disabled={deleting}>

@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, truncPubkey, type ProfileAlias } from "../api/client";
 import { aliasInputState, ALIAS_MAX_BYTES } from "./aliasInputState";
+import TechnicalDetails, { TechRow } from "./TechnicalDetails";
 
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: string };
 
@@ -129,7 +130,7 @@ export default function ProfilePanel() {
                 color: counterOver ? "var(--red, #ef4444)" : "var(--text-3)",
               }}
             >
-              {inputState.byteCount} / {ALIAS_MAX_BYTES} bytes
+              {inputState.byteCount} / {ALIAS_MAX_BYTES}
             </span>
           </div>
           <input
@@ -180,12 +181,13 @@ export default function ProfilePanel() {
           <p style={{ color: "var(--red, #ef4444)", fontSize: "0.8125rem", margin: 0 }}>{status.message}</p>
         )}
 
-        {/* Explanatory copy (decision §6) */}
+        {/* Explanatory copy (decision §6; jargon demoted per U2 — the
+            gossip/mempool.space pointer is kept for advanced users in the
+            Technical details expander below) */}
         <div style={{ fontSize: "0.75rem", color: "var(--text-3)", lineHeight: 1.5, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
           <p style={{ margin: "0 0 6px" }}>
-            Setting an alias makes your node identifiable on the public Lightning network. The alias
-            propagates via gossip and may take up to 24&nbsp;hours to be visible on tools like
-            mempool.space.
+            Your name is announced to the public Lightning network and can take up to
+            24&nbsp;hours to appear everywhere.
           </p>
           <p style={{ margin: "0 0 6px" }}>
             Your alias doesn't affect channel operation, routing, or any aspect of how BitCorn works
@@ -196,6 +198,12 @@ export default function ProfilePanel() {
             re-asserting it, but a previously-published alias may persist in network history and
             explorer archives.
           </p>
+          <div style={{ marginTop: 8 }}>
+            <TechnicalDetails>
+              <TechRow label="Propagation">via Lightning gossip; alias length limit is measured in bytes</TechRow>
+              <TechRow label="Check visibility">mempool.space (search your node ID)</TechRow>
+            </TechnicalDetails>
+          </div>
         </div>
       </div>
     </div>

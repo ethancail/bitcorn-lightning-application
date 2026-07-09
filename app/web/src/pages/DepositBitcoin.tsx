@@ -139,9 +139,9 @@ export default function DepositBitcoin() {
       <div className="panel fade-in">
         <div className="panel-header">
           <span className="panel-title">
-            <span className="icon">↙</span>On-Chain Address
+            <span className="icon">↙</span>Your Bitcoin Address
           </span>
-          <span className="badge badge-muted">not a Lightning invoice</span>
+          <span className="badge badge-muted">for Bitcoin transfers — not a payment request</span>
         </div>
         <div className="panel-body" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, padding: "32px 24px" }}>
           {loading ? (
@@ -192,7 +192,8 @@ export default function DepositBitcoin() {
                   marginTop: 4,
                 }}
               >
-                Send bitcoin on the Bitcoin mainnet to this address. This is an on-chain transaction — not Lightning. Funds will appear in your on-chain balance after confirmation.
+                Send bitcoin to this address from any wallet or exchange. Funds show up in your Bitcoin balance after network confirmation — usually within an hour.
+                {" "}Old addresses keep working.
               </p>
             </>
           )}
@@ -203,7 +204,7 @@ export default function DepositBitcoin() {
       <div className="panel fade-in" style={{ marginTop: 20 }}>
         <div className="panel-header">
           <span className="panel-title">
-            <span className="icon">◎</span>On-Chain Balance
+            <span className="icon">◎</span>Bitcoin Balance
           </span>
           <button
             className="btn btn-ghost"
@@ -249,7 +250,7 @@ export default function DepositBitcoin() {
           <span className="panel-title">
             <span className="icon">↓</span>Recent Deposits
           </span>
-          <span className="badge badge-muted">on-chain only</span>
+          <span className="badge badge-muted">Bitcoin deposits</span>
         </div>
         <div className="panel-body">
           {statusLoading && !status ? (

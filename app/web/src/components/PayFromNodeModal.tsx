@@ -167,8 +167,9 @@ export default function PayFromNodeModal({
               </div>
             </dl>
             <p className="sub-fineprint" style={{ marginTop: 10 }}>
-              The exact fee is set by your node at a 6-block target. Payment is
-              detected within ~15–30 seconds after the first confirmation.
+              The exact network fee is set when it sends — targeting confirmation within
+              about an hour. Payment is detected within ~15–30 seconds after the first
+              confirmation.
             </p>
             <div className="dialog-actions" style={{ marginTop: 18 }}>
               <button

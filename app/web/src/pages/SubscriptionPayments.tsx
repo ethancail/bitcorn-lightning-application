@@ -151,7 +151,7 @@ function PaymentsTable({ payments }: { payments: SubscriptionPaymentRow[] }) {
             <th>Date</th>
             <th>Amount</th>
             <th>Transaction</th>
-            <th>Period extension</th>
+            <th>Membership extended</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -193,7 +193,7 @@ function AmountCell({ payment }: { payment: SubscriptionPaymentRow }) {
   // ("grandfather") rather than a literal "0 sats" which reads as a
   // failure case to a member who doesn't know this row's job.
   if (payment.kind === "admin_override" && payment.amount_sats === 0) {
-    return <span className="sub-muted">grandfather</span>;
+    return <span className="sub-muted">granted by operator</span>;
   }
   const usd = payment.amount_usd_cents_at_receipt;
   return (
@@ -208,7 +208,7 @@ function AmountCell({ payment }: { payment: SubscriptionPaymentRow }) {
 
 function TxidCell({ payment }: { payment: SubscriptionPaymentRow }) {
   if (payment.kind === "admin_override") {
-    return <span className="sub-muted">{payment.admin_reason ?? "manual override"}</span>;
+    return <span className="sub-muted">{payment.admin_reason ?? "granted by operator"}</span>;
   }
   if (!payment.txid) return <span className="sub-muted">—</span>;
   const short = `${payment.txid.slice(0, 8)}…${payment.txid.slice(-6)}`;

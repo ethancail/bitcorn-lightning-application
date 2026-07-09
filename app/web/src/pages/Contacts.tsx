@@ -257,14 +257,14 @@ export default function Contacts() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Contacts</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Named address book for Lightning peers
+          Names for the people you send to and receive from
         </p>
       </div>
 
       {/* Action bar */}
       <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <button className="btn btn-outline" onClick={handleSync} disabled={syncing}>
-          {syncing ? "Syncing…" : "Sync Channel Peers"}
+          {syncing ? "Syncing…" : "Import from my channels"}
         </button>
         <button
           className="btn btn-primary"
@@ -302,7 +302,7 @@ export default function Contacts() {
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <input
               className="form-input"
-              placeholder="Pubkey (66-char hex)"
+              placeholder="Node ID (long code starting 02 or 03)"
               value={addPubkey}
               onChange={(e) => setAddPubkey(e.target.value)}
               style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
@@ -353,7 +353,7 @@ export default function Contacts() {
           <div className="empty-state" style={{ padding: "60px 20px" }}>
             <div style={{ marginBottom: 12 }}>No contacts yet.</div>
             <button className="btn btn-primary" onClick={handleSync} disabled={syncing}>
-              {syncing ? "Syncing…" : "Sync Channel Peers"}
+              {syncing ? "Syncing…" : "Import from my channels"}
             </button>
           </div>
         </div>

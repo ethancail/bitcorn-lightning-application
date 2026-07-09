@@ -12,6 +12,7 @@ import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
 import { useSubscriptionStatus } from "../components/useSubscriptionStatus";
 import ErrorState from "../components/ErrorState";
+import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import StaleMarker from "../components/StaleMarker";
 import {
   INITIAL_FRESHNESS,
@@ -235,12 +236,12 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
             <input
               className="form-input"
               type="text"
-              placeholder="host:port — needed if not already connected to the hub"
+              placeholder="e.g. 203.0.113.5:9735 — ask your operator"
               value={socket}
               onChange={(e) => setSocket(e.target.value)}
             />
             <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 4 }}>
-              Enter the hub's address to connect, or leave blank if already peered.
+              Enter the hub's address to connect, or leave blank if already connected.
             </div>
           </div>
         )}
@@ -259,9 +260,9 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
           <label className="form-label">Confirmation Speed</label>
           <div style={{ display: "flex", gap: 6 }}>
             {([
-              { label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~155 sats" },
-              { label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~770 sats" },
-              { label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,300 sats" },
+              { label: "Economy", rate: undefined, desc: "cheapest", time: "1–3 hours", cost: "~155 sats" },
+              { label: "Normal", rate: 5, desc: "balanced", time: "~30 min", cost: "~770 sats" },
+              { label: "Priority", rate: 15, desc: "fastest", time: "~10 min", cost: "~2,300 sats" },
             ] as const).map((opt) => (
               <button
                 key={opt.label}
@@ -297,40 +298,12 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
         </button>
       </div>
 
-      {/* Hub pubkey for reference */}
-      <div
-        style={{
-          borderTop: "1px solid var(--border)",
-          paddingTop: 16,
-        }}
-      >
-        <div
-          style={{
-            fontSize: "0.75rem",
-            color: "var(--text-3)",
-            fontFamily: "var(--mono)",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            marginBottom: 8,
-          }}
-        >
-          Hub Public Key
-        </div>
-        <div
-          style={{
-            background: "var(--bg-3)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: "8px 12px",
-            fontFamily: "var(--mono)",
-            fontSize: "0.75rem",
-            wordBreak: "break-all",
-            color: "var(--text-1)",
-            lineHeight: 1.6,
-          }}
-        >
-          {hubPubkey}
-        </div>
+      {/* Protocol reference — demoted per U2 (vocabulary record 2026-07-09) */}
+      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+        <TechnicalDetails>
+          <TechRow label="Hub node ID">{hubPubkey}</TechRow>
+          <TechRow label="Fee rates">Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB</TechRow>
+        </TechnicalDetails>
       </div>
     </div>
   );
@@ -471,7 +444,7 @@ export default function MemberDashboard() {
       <div className="dashboard-top-strip fade-in">
         <div className="bal-group">
           <div className="bal-item">
-            <span className="bal-label">On-chain</span>
+            <span className="bal-label">Bitcoin</span>
             <span className="bal-value">
               {balances ? balances.onchain_sats.toLocaleString() : "—"}
               <span className="unit">sats</span>
@@ -602,7 +575,7 @@ export default function MemberDashboard() {
         // Merchant: outbound capacity (local%) — depletes as they spend, green when high
         // Farmer: earnings accumulated (local%) — fills up like a grain bin, amber→green→amber→red as it fills
         // Unknown: raw local/remote split
-        const gaugeLabel = isMerchant ? "Outbound capacity" : isFarmer ? "Earnings accumulated" : "Channel balance";
+        const gaugeLabel = isMerchant ? "Room to send" : isFarmer ? "Earnings accumulated" : "Channel balance";
         const gaugePct = isMerchant ? localPct : isFarmer ? localPct : localPct;
         const gaugeRemaining = isMerchant
           ? `${localPct}% — ${ch!.local_sats.toLocaleString()} sats available to send`
@@ -717,7 +690,7 @@ export default function MemberDashboard() {
                       style={{ width: "100%" }}
                       onClick={() => navigate(cashOutUrl)}
                     >
-                      Cash Out Earnings →
+                      Withdraw Earnings →
                     </button>
                     <div className="caption">
                       Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
@@ -740,11 +713,11 @@ export default function MemberDashboard() {
                       <span style={{ fontFamily: "var(--mono)" }}>{ch!.capacity_sats.toLocaleString()} sats</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Your balance (outbound)</span>
+                      <span>Your side</span>
                       <span style={{ fontFamily: "var(--mono)" }}>{ch!.local_sats.toLocaleString()} sats</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Receiving capacity (inbound)</span>
+                      <span>Room to receive</span>
                       <span style={{ fontFamily: "var(--mono)" }}>{ch!.remote_sats.toLocaleString()} sats</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>

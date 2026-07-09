@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { api, fmtSats } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
+import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import {
   INITIAL_FRESHNESS,
   ageLabel,
@@ -40,13 +41,25 @@ function isTerminal(status: string): boolean {
   return status === "completed" || status === "failed" || status === "expired";
 }
 
+// Plain-language status per the 2026-07-09 vocabulary record (U1/U2). The
+// protocol-register originals live in statusTechnical below — demoted into
+// the Technical details expander, not deleted.
 function statusText(status: string, failureReason: string | null): string {
   switch (status) {
-    case "initiated": return "Paying Lightning invoice to Loop server...";
-    case "executing": return "Loop server publishing on-chain HTLC...";
-    case "confirming": return "Waiting for on-chain confirmation...";
+    case "initiated": return "Starting your withdrawal...";
+    case "executing": return "Sending funds to your Bitcoin address...";
+    case "confirming": return "Waiting for Bitcoin network confirmation...";
     case "completed": return "Withdrawal complete";
     case "failed": return `Withdrawal failed${failureReason ? `: ${failureReason}` : ""}`;
+    default: return status;
+  }
+}
+
+function statusTechnical(status: string): string {
+  switch (status) {
+    case "initiated": return "Paying Lightning invoice to Loop server";
+    case "executing": return "Loop server publishing on-chain HTLC";
+    case "confirming": return "Waiting for on-chain confirmation";
     default: return status;
   }
 }
@@ -109,6 +122,10 @@ export default function WithdrawBitcoin() {
   const [history, setHistory] = useState<SwapRequest[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  // BTC/USD for the fee $ estimate — same source + null→sats-only degrade as
+  // the dashboard (Knot 3, vocabulary record 2026-07-09; Coinbase spot via
+  // /api/exchange-rate).
+  const [usdRate, setUsdRate] = useState<number | null>(null);
   // U24 H5: tracking-poll freshness — after 3 consecutive failed polls the
   // tracking panel says it can't confirm status instead of spinning silently.
   const [pollFresh, setPollFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
@@ -166,7 +183,11 @@ export default function WithdrawBitcoin() {
   useEffect(() => {
     generateAddress();
     loadHistory();
+    api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
   }, []);
+
+  const toUsd = (sats: number) =>
+    usdRate ? `$${((sats / 100_000_000) * usdRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null;
 
   async function generateAddress() {
     setAddressLoading(true);
@@ -324,7 +345,7 @@ export default function WithdrawBitcoin() {
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ marginBottom: 4 }}>Withdraw Bitcoin</h1>
           <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-            Send bitcoin from your Lightning balance to a Bitcoin wallet
+            Move funds from Bitcorn to a Bitcoin wallet
           </p>
         </div>
         <div className="loading-shimmer" style={{ height: 200, borderRadius: 8 }} />
@@ -337,7 +358,7 @@ export default function WithdrawBitcoin() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Withdraw Bitcoin</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Send bitcoin from your Lightning balance to a Bitcoin wallet
+          Move funds from Bitcorn to a Bitcoin wallet
         </p>
       </div>
 
@@ -380,7 +401,7 @@ export default function WithdrawBitcoin() {
                 }}>
                   <div>
                     <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
-                      Available Balance
+                      In your channel
                     </div>
                     <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--amber)", lineHeight: 1.2 }}>
                       {channelLocal.toLocaleString()}
@@ -390,7 +411,7 @@ export default function WithdrawBitcoin() {
                   {maxWithdrawable != null && maxWithdrawable >= 250_000 && (
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
-                        Max Withdraw
+                        Most you can withdraw
                       </div>
                       <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
                         {maxWithdrawable.toLocaleString()} sats
@@ -558,11 +579,9 @@ export default function WithdrawBitcoin() {
                       <div className="stat-value" style={{ fontSize: "1.125rem" }}>
                         ~{fmtSats(netFee)}
                       </div>
-                      {(swapFee > 0 || minerFee > 0) && (
-                        <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", marginTop: 4 }}>
-                          {swapFee > 0 && <span>Swap: {fmtSats(swapFee)}</span>}
-                          {swapFee > 0 && minerFee > 0 && <span> + </span>}
-                          {minerFee > 0 && <span>Miner: {fmtSats(minerFee)}</span>}
+                      {toUsd(netFee) && (
+                        <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", marginTop: 4 }}>
+                          (~{toUsd(netFee)})
                         </div>
                       )}
                     </div>
@@ -575,10 +594,16 @@ export default function WithdrawBitcoin() {
                   </div>
                   {prepay > 0 && (
                     <div style={{ fontSize: "0.75rem", color: "var(--text-3)", padding: "8px 12px", background: "var(--bg-3)", borderRadius: 6 }}>
-                      A temporary prepay hold of <strong style={{ color: "var(--text-2)" }}>{fmtSats(prepay)}</strong> is
-                      sent during the swap and returned as part of your on-chain payment. It is not an additional fee.
+                      <strong style={{ color: "var(--text-2)" }}>{fmtSats(prepay)}</strong> is held temporarily
+                      while the withdrawal runs and returned with your funds — not an extra fee.
                     </div>
                   )}
+                  {/* Protocol fee breakdown — demoted per U2/Knot 3 */}
+                  <TechnicalDetails>
+                    {swapFee > 0 && <TechRow label="Swap service fee">{fmtSats(swapFee)}</TechRow>}
+                    {minerFee > 0 && <TechRow label="Bitcoin network (miner) fee">{fmtSats(minerFee)}</TechRow>}
+                    {prepay > 0 && <TechRow label="Prepay hold (returned)">{fmtSats(prepay)}</TechRow>}
+                  </TechnicalDetails>
                 </div>
               );
             })()}
@@ -664,6 +689,14 @@ export default function WithdrawBitcoin() {
                 />
               )}
             </div>
+
+            {!isTerminal(trackingSwap.status) && (
+              <TechnicalDetails>
+                <TechRow label="Protocol status">
+                  {trackingSwap.status} — {statusTechnical(trackingSwap.status)}
+                </TechRow>
+              </TechnicalDetails>
+            )}
 
             {/* U24 H5: status polls failing — say so instead of spinning silently. */}
             {!isTerminal(trackingSwap.status) && freshnessStatus(pollFresh, true) === "stale" && (
@@ -810,7 +843,7 @@ export default function WithdrawBitcoin() {
                                     )}
                                     {expandedDetail.execution?.onchain_txid && (
                                       <div style={{ fontFamily: "var(--mono)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
-                                        On-chain TX: {expandedDetail.execution.onchain_txid}
+                                        Bitcoin transaction: {expandedDetail.execution.onchain_txid}
                                       </div>
                                     )}
                                     {!isTerminal(expandedDetail.swap_request.status) && (

@@ -410,7 +410,9 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
   const autoBuyBadge = useAutoBuyBadge();
   const subStatus = useSubscriptionStatus();
   const isMerchant = channelRole === "merchant";
-  const liquidityLabel = isMerchant ? "Refill Channel" : "Cash Out";
+  // Canonical operation names per decisions/2026-07-09-ui-vocabulary-canonical-terms.md
+  // (Knot 2, updated: "Withdraw" = farmer Loop Out; "Top Up" = merchant Loop In).
+  const liquidityLabel = isMerchant ? "Top Up" : "Withdraw";
   const liquidityIcon = isMerchant ? "↙" : "↗";
   const liquidityRoute = isMerchant ? "/refill" : "/cashout";
 
@@ -1410,7 +1412,7 @@ function ChannelsPage() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Channels</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          {nodeRole === "treasury" ? "Channel lifecycle management" : "Active LND channel list"}
+          {nodeRole === "treasury" ? "Channel lifecycle management" : "Your channel to the Bitcorn hub"}
         </p>
       </div>
 
@@ -1894,7 +1896,7 @@ function ChannelsPage() {
                       {resolveContactName(c.peer_pubkey, contacts)}
                     </span>
                     {capStatus === "undersized" && (
-                      <span className="badge badge-red">undersized</span>
+                      <span className="badge badge-red">Too small</span>
                     )}
                     {c.active ? (
                       <span className="badge badge-green">active</span>
@@ -1914,12 +1916,12 @@ function ChannelsPage() {
                   <div className="channel-balance-labels">
                     <span className="channel-label-local">
                       <span className="channel-dot" style={{ background: "var(--green)" }} />
-                      Local: {c.local_balance_sat.toLocaleString()}
+                      Your side: {c.local_balance_sat.toLocaleString()}
                       <span className="channel-pct">({localPct.toFixed(0)}%)</span>
                     </span>
                     <span className="channel-label-remote">
                       <span className="channel-dot" style={{ background: "var(--red)" }} />
-                      Remote: {c.remote_balance_sat.toLocaleString()}
+                      Their side: {c.remote_balance_sat.toLocaleString()}
                       <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
                     </span>
                   </div>
