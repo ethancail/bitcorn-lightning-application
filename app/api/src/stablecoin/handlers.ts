@@ -88,7 +88,7 @@ function isLowercaseHexAddress(s: unknown): s is string {
 }
 
 function readChainId(): number {
-    return 84532;
+    return ENV.baseChainId;
 }
 
 function formatUsdcUnits(units: bigint, decimals: number): string {

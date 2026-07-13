@@ -123,3 +123,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # VITE_BASE_CHAIN_ID is baked into the bundle at build time
+          # (mainnet-preflight runbook §B1b). Reads the repo Actions variable
+          # when set — deploy-day flip = set the variable + rebuild, no code
+          # change — and falls back to Base Sepolia (84532) when unset.
+          build-args: |
+            VITE_BASE_CHAIN_ID=${{ vars.VITE_BASE_CHAIN_ID || '84532' }}

@@ -91,6 +91,19 @@ export const ENV = {
     // If unset, GET /api/coinbase/onramp-url returns coinbase_not_configured.
     coinbaseWorkerUrl: process.env.COINBASE_WORKER_URL || "",
 
+    // --- BASE chain selection (SIWE wallet binding) ---
+    // Numeric chainId the SIWE challenge/verify flow pins member wallet
+    // signatures to. Default: Base Sepolia (84532) — the current live
+    // deployment. Base mainnet (8453) is flipped via env at deploy day,
+    // never baked in code (mainnet-preflight runbook §B1). Guarded parse:
+    // unset, empty (compose ${VAR:-} interpolation yields ""), or garbage
+    // all fall back to 84532 — Number("") is 0 and Number("abc") is NaN;
+    // neither may reach SIWE verification.
+    baseChainId: (() => {
+        const n = Number(process.env.BASE_CHAIN_ID);
+        return Number.isInteger(n) && n > 0 ? n : 84532;
+    })(),
+
     // --- BASE sync loop (spec §7) ---
     // Number of blocks to wait before considering a Settled event safely
     // committed for event-sync purposes. Spec §7.4 + T7 recommend 64 blocks
