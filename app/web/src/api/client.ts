@@ -803,6 +803,7 @@ export type SubscriptionRevenueResponse = {
     payment_count: number;
     recurring_entitlement_sats: number;
     recurring_actual_sats: number;
+    /** Members with ≥1 confirmed on-chain payment (has actually paid). */
     paying_member_count: number;
     member_count: number;
   };

@@ -7,7 +7,9 @@
 // Headline row shows the current recurring cycle BOTH ways — the
 // entitlement projection (paying members × policy price) next to what
 // actually confirmed inside the window — plus all-time earnings and
-// the paying/enrolled member count. Below it, the top earners by
+// the paying/enrolled member count. "Paying" = has actually paid (≥1
+// confirmed on-chain payment; see revenueHandler.ts), NOT tier
+// 'current' — fresh-grace members who never paid don't count. Below it, the top earners by
 // all-time revenue, named via the case-normalized contacts join in
 // subscriptionRevenueView.ts. "View all" lands on /admin/members,
 // which carries the full per-member breakdown.
@@ -135,7 +137,9 @@ function RevenueBody({
           <div className="stat-value" style={{ fontSize: "1.125rem" }}>
             {totals.paying_member_count}
           </div>
-          <div className="stat-sub">of {totals.member_count} enrolled</div>
+          <div className="stat-sub">
+            of {totals.member_count} enrolled · ≥1 confirmed payment
+          </div>
         </div>
       </div>
 

@@ -156,30 +156,70 @@ describe("recurring window (confirmed_at)", () => {
   });
 });
 
-describe("entitlement and member counts", () => {
-  it("entitlement = paying members × price_sats read from subscription_policy", () => {
-    // Prove the policy is read, not hardcoded: bump the seeded 50k.
-    db.prepare(`UPDATE subscription_policy SET price_sats = 60000 WHERE id = 1`).run();
+describe("entitlement and member counts — paying = has actually paid", () => {
+  it("a fresh-grace member (tier 'current', zero payments) is NOT paying — the previously miscounted case", () => {
+    // tierDispatch stores 'current' for never-paid members inside the
+    // fresh-onboarding grace window. Tier-based counting inflated
+    // paying_member_count and the entitlement projection.
     insertMember(A, "current");
-    insertMember(B, "current");
-    insertMember(C, "worker_lapsed");
-
-    const r = computeSubscriptionRevenueForTreasury(db, NOW);
-    expect(r.policy.price_sats).toBe(60_000);
-    expect(r.totals.paying_member_count).toBe(2);
-    expect(r.totals.member_count).toBe(3);
-    expect(r.totals.recurring_entitlement_sats).toBe(120_000);
-  });
-
-  it("lapsed tiers are enrolled but not paying", () => {
-    insertMember(A, "routing_lapsed");
-    insertMember(B, "close_due");
-    insertMember(C, "prepay");
 
     const r = computeSubscriptionRevenueForTreasury(db, NOW);
     expect(r.totals.paying_member_count).toBe(0);
-    expect(r.totals.member_count).toBe(3);
+    expect(r.totals.member_count).toBe(1);
     expect(r.totals.recurring_entitlement_sats).toBe(0);
+  });
+
+  it("entitlement = paid members × price_sats read from subscription_policy", () => {
+    // Prove the policy is read, not hardcoded: bump the seeded 50k.
+    db.prepare(`UPDATE subscription_policy SET price_sats = 60000 WHERE id = 1`).run();
+    insertMember(A, "current");
+    insertMember(B, "current"); // enrolled, never paid → not counted
+    insertMember(C, "current"); // enrolled, never paid → not counted
+    insertPayment(A, { amount_sats: 60_000 });
+
+    const r = computeSubscriptionRevenueForTreasury(db, NOW);
+    expect(r.policy.price_sats).toBe(60_000);
+    expect(r.totals.paying_member_count).toBe(1);
+    expect(r.totals.member_count).toBe(3);
+    expect(r.totals.recurring_entitlement_sats).toBe(60_000);
+  });
+
+  it("a pending-only payment (confirmed_at NULL) does not count as paying", () => {
+    insertMember(A, "current");
+    insertPayment(A, { amount_sats: 50_000, confirmed_at: null });
+
+    const r = computeSubscriptionRevenueForTreasury(db, NOW);
+    expect(r.totals.paying_member_count).toBe(0);
+    expect(r.totals.recurring_entitlement_sats).toBe(0);
+  });
+
+  it("an admin_override-only member (grandfather sentinel) does not count as paying", () => {
+    insertMember(A, "current");
+    insertPayment(A, { amount_sats: 0, kind: "admin_override" });
+
+    const r = computeSubscriptionRevenueForTreasury(db, NOW);
+    expect(r.totals.paying_member_count).toBe(0);
+    expect(r.totals.recurring_entitlement_sats).toBe(0);
+  });
+
+  it("a lapsed member with a confirmed payment still counts as paying (has paid ≥ once)", () => {
+    insertMember(A, "routing_lapsed");
+    insertPayment(A, { amount_sats: 50_000, confirmed_at: NOW - 90 * MS_PER_DAY });
+
+    const r = computeSubscriptionRevenueForTreasury(db, NOW);
+    expect(r.totals.paying_member_count).toBe(1);
+    expect(r.totals.member_count).toBe(1);
+    expect(r.totals.recurring_entitlement_sats).toBe(50_000);
+  });
+
+  it("multiple payments by one member count that member once", () => {
+    insertMember(A, "current");
+    insertPayment(A, { amount_sats: 50_000 });
+    insertPayment(A, { amount_sats: 50_000 });
+
+    const r = computeSubscriptionRevenueForTreasury(db, NOW);
+    expect(r.totals.paying_member_count).toBe(1);
+    expect(r.totals.recurring_entitlement_sats).toBe(50_000);
   });
 });
 

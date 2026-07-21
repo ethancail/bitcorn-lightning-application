@@ -11,13 +11,14 @@
 // credit time also aren't on-chain revenue. Counting either would put
 // phantom rows in payment counts and skew nothing-or-zero sums.
 //
-// "Paying" = current_tier = 'current'. That is the app's own
-// good-standing vocabulary (tierDispatch.ts): paid-up members AND
-// fresh-grace members inside their onboarding window. Fresh-grace
-// members haven't paid yet but are expected to this cycle, so they
-// belong in the recurring-entitlement projection; their revenue rows
-// simply show 0. member_count is all subscription rows (enrolled
-// members), giving the widget's "N of M".
+// "Paying" = has actually paid: at least one CONFIRMED on-chain row in
+// the ledger (kind='onchain', confirmed_at set). Deliberately NOT
+// current_tier = 'current' — that tier includes fresh-grace members
+// inside their onboarding window (tierDispatch.ts) who have never made
+// a payment, which inflated the count and the entitlement projection.
+// Note the flip side: a lapsed member who paid at least once still
+// counts as paying here. member_count is all subscription rows
+// (enrolled members), giving the widget's "N of M".
 //
 // Like autoPayAlertStore.ts, functions take the DB connection as a
 // parameter (plus a clock) so tests can run against an in-memory
@@ -50,6 +51,7 @@ export interface SubscriptionRevenueResponse {
     recurring_entitlement_sats: number;
     /** Confirmed on-chain sats inside the current window. */
     recurring_actual_sats: number;
+    /** Members with ≥1 confirmed on-chain payment (has actually paid). */
     paying_member_count: number;
     member_count: number;
   };
@@ -142,10 +144,12 @@ export function computeSubscriptionRevenueForTreasury(
 
   const counts = db
     .prepare(
-      `SELECT COUNT(*) AS member_count,
-              COALESCE(SUM(CASE WHEN current_tier = 'current' THEN 1 ELSE 0 END), 0)
-                AS paying_member_count
-       FROM subscription`,
+      `SELECT
+         (SELECT COUNT(*) FROM subscription) AS member_count,
+         (SELECT COUNT(DISTINCT member_pubkey)
+            FROM subscription_payment
+           WHERE kind = 'onchain' AND confirmed_at IS NOT NULL)
+           AS paying_member_count`,
     )
     .get() as { member_count: number; paying_member_count: number };
 
