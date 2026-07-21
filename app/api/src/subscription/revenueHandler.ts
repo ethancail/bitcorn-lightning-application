@@ -16,9 +16,14 @@
 // current_tier = 'current' — that tier includes fresh-grace members
 // inside their onboarding window (tierDispatch.ts) who have never made
 // a payment, which inflated the count and the entitlement projection.
-// Note the flip side: a lapsed member who paid at least once still
-// counts as paying here. member_count is all subscription rows
-// (enrolled members), giving the widget's "N of M".
+// The flip side — a lapsed member who paid once stays "paying" forever
+// — is right for the "N of M" card but ratcheted the entitlement
+// projection up as members churned. The entitlement basis is therefore
+// the narrower ACTIVE-paid count: paying ∩ current_tier = 'current'
+// (the persisted tier from tierDispatch.ts; 'current' spans paid-up
+// and worker-grace, and its never-paid fresh-grace contaminant is
+// removed by the paying intersection). member_count is all
+// subscription rows (enrolled members), giving the widget's "N of M".
 //
 // Like autoPayAlertStore.ts, functions take the DB connection as a
 // parameter (plus a clock) so tests can run against an in-memory
@@ -47,12 +52,15 @@ export interface SubscriptionRevenueResponse {
     total_earned_sats: number;
     total_earned_usd_cents: number;
     payment_count: number;
-    /** paying_member_count × policy.price_sats — expected per cycle. */
+    /** active_paid_member_count × policy.price_sats — expected per cycle. */
     recurring_entitlement_sats: number;
     /** Confirmed on-chain sats inside the current window. */
     recurring_actual_sats: number;
     /** Members with ≥1 confirmed on-chain payment (has actually paid). */
     paying_member_count: number;
+    /** Paying members whose current_tier is 'current' — the entitlement
+     *  basis. Excludes lapsed once-paid members. */
+    active_paid_member_count: number;
     member_count: number;
   };
   /** Sorted by total_sats DESC. */
@@ -142,6 +150,9 @@ export function computeSubscriptionRevenueForTreasury(
     };
   });
 
+  // active_paid joins on the persisted current_tier (recomputed every
+  // detector pass by tierDispatch.ts) rather than re-deriving the §5
+  // ladder here — same source statusHandler/adminMembersHandler read.
   const counts = db
     .prepare(
       `SELECT
@@ -149,9 +160,19 @@ export function computeSubscriptionRevenueForTreasury(
          (SELECT COUNT(DISTINCT member_pubkey)
             FROM subscription_payment
            WHERE kind = 'onchain' AND confirmed_at IS NOT NULL)
-           AS paying_member_count`,
+           AS paying_member_count,
+         (SELECT COUNT(DISTINCT p.member_pubkey)
+            FROM subscription_payment p
+            JOIN subscription s ON s.member_pubkey = p.member_pubkey
+           WHERE p.kind = 'onchain' AND p.confirmed_at IS NOT NULL
+             AND s.current_tier = 'current')
+           AS active_paid_member_count`,
     )
-    .get() as { member_count: number; paying_member_count: number };
+    .get() as {
+      member_count: number;
+      paying_member_count: number;
+      active_paid_member_count: number;
+    };
 
   return {
     fetched_at: nowMs,
@@ -161,9 +182,11 @@ export function computeSubscriptionRevenueForTreasury(
       total_earned_sats: members.reduce((s, m) => s + m.total_sats, 0),
       total_earned_usd_cents: members.reduce((s, m) => s + m.total_usd_cents, 0),
       payment_count: members.reduce((s, m) => s + m.payment_count, 0),
-      recurring_entitlement_sats: counts.paying_member_count * policy.price_sats,
+      recurring_entitlement_sats:
+        counts.active_paid_member_count * policy.price_sats,
       recurring_actual_sats: members.reduce((s, m) => s + m.window_sats, 0),
       paying_member_count: counts.paying_member_count,
+      active_paid_member_count: counts.active_paid_member_count,
       member_count: counts.member_count,
     },
     members,
