@@ -23,11 +23,7 @@ import {
   type SubscriptionStateKey,
 } from "../api/client";
 import { Pill, stateToPill } from "../components/Pill";
-<<<<<<< HEAD
-=======
-import ErrorState from "../components/ErrorState";
 import { buildRevenueLookup, fmtUsdCents } from "../components/subscriptionRevenueView";
->>>>>>> b4fad5b (feat(subscription): treasury revenue dashboard widget + AdminMembers revenue columns)
 
 /** Map a pubkey to its contact name, if any. Returns undefined when
  *  there is no contact entry for the pubkey. Distinct from
