@@ -1,0 +1,10 @@
+{
+  "_comment": "Copy to state-snapshot.config.json (gitignored) and fill in. Every key is OPTIONAL — missing keys mark their STATE.md section as skipped. Env vars (STATE_RPC_URL, STATE_ROUTER_ADDRESS, STATE_SAFE_ADDRESS, STATE_TREASURY_HEALTH_URL, STATE_WORKER_URL, STATE_SIBLING_REPO, STATE_OUTPUT) override these.",
+  "rpc_url": "https://mainnet.base.org",
+  "router_address": "0x0000000000000000000000000000000000000000",
+  "safe_address": "0x0000000000000000000000000000000000000000",
+  "treasury_health_url": "https://treasury.example.com/health",
+  "worker_url": "https://worker.example.workers.dev",
+  "sibling_repo_path": "../bitcorn-stablecoin-rail",
+  "output_path": "STATE.md"
+}
