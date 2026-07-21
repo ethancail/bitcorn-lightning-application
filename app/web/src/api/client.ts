@@ -805,6 +805,9 @@ export type SubscriptionRevenueResponse = {
     recurring_actual_sats: number;
     /** Members with ≥1 confirmed on-chain payment (has actually paid). */
     paying_member_count: number;
+    /** Paying members whose tier is still 'current' — the entitlement
+     *  basis. Excludes lapsed once-paid members. */
+    active_paid_member_count: number;
     member_count: number;
   };
   members: MemberRevenueRow[];
