@@ -9,9 +9,17 @@ chain, deployment — to kill "what's implemented/deployed vs. what I remember" 
 Strictly read-only: the only write is the output file.
 
 ```bash
-node scripts/state-snapshot.mjs             # writes STATE.md
+node scripts/state-snapshot.mjs             # full snapshot: writes STATE.md
+node scripts/state-snapshot.mjs --fast      # Tier 1 only — fast/local; Tier 2 carried
+                                            # over from the last full run with its
+                                            # timestamp (--tier1 is an alias)
 node scripts/state-snapshot.mjs --selftest  # keccak/selector self-test only
 ```
+
+A committed SessionStart hook (`.claude/settings.json`) runs `--fast` and surfaces
+STATE.md into Claude Code session context on every session start. It never blocks a
+session: any failure degrades to a one-line message, and Tier 2 is never fetched at
+session start (no network waits) — run a full snapshot to refresh chain/deployment.
 
 **Tier 1 (always populates, pure local):** git state for this repo and (if present)
 the sibling `bitcorn-stablecoin-rail` checkout — branch tips, main↔develop

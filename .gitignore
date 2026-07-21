@@ -66,8 +66,13 @@ cloudflare-worker/.dev.vars
 # Wrangler's local-dev state cache (miniflare KV, etc.) — per-machine.
 cloudflare-worker/.wrangler/
 
-# Claude Code per-project state (agents, settings, session data).
-.claude/
+# Claude Code per-project state (agents, settings, session data) — ignored,
+# EXCEPT the committed team settings (SessionStart hook that regenerates
+# STATE.md Tier 1 and surfaces it into session context). The pattern must be
+# `.claude/*` (not `.claude/`) or the negation below can't re-include the
+# file: git never descends into a directory ignored as a whole.
+.claude/*
+!.claude/settings.json
 
 # Playwright-MCP per-project snapshot artifacts (page-*.yml dumps).
 .playwright-mcp/

@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" && { node scripts/state-snapshot.mjs --fast >/dev/null 2>&1 || echo '[state-snapshot] fast refresh failed (non-fatal) — STATE.md below may be stale or absent.'; }; cat STATE.md 2>/dev/null || echo '[state-snapshot] no STATE.md available — run: node scripts/state-snapshot.mjs'",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

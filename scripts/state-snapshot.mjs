@@ -5,7 +5,13 @@
 // real sources (git, code, chain, deployment) and writing a grounding doc.
 //
 // USAGE
-//   node scripts/state-snapshot.mjs             # writes STATE.md at repo root
+//   node scripts/state-snapshot.mjs             # full snapshot: writes STATE.md at repo root
+//   node scripts/state-snapshot.mjs --fast      # Tier 1 only (fast, local, no network):
+//                                               #   regenerates git + inventory sections and
+//                                               #   carries Tier 2 over from the last full run,
+//                                               #   labeled with that run's timestamp.
+//                                               #   (--tier1 is an alias.) Used by the
+//                                               #   SessionStart hook in .claude/settings.json.
 //   node scripts/state-snapshot.mjs --selftest  # run embedded self-tests only
 //
 // STRICTLY READ-ONLY: the only thing this script ever writes is the output
@@ -477,6 +483,43 @@ async function deploymentSection(cfg) {
   return lines;
 }
 
+// ─── fast mode: carry Tier 2 over from the last full snapshot ─────────────
+// Full runs stamp a marker comment before the Tier-2 sections; fast runs
+// splice everything from that marker onward out of the prior STATE.md,
+// re-labeling it with the full run's timestamp. Idempotent across repeated
+// fast runs (the previous carry-note line is stripped before re-inserting).
+
+const TIER2_MARKER_RE = /<!-- tier2-generated: (\S+) -->/;
+const CARRY_NOTE_PREFIX = "> _Tier 2 below is carried over";
+
+function carriedTier2(outputPath) {
+  try {
+    const prior = fs.readFileSync(outputPath, "utf8");
+    const m = prior.match(TIER2_MARKER_RE);
+    if (m) {
+      const rest = prior.slice(prior.indexOf(m[0])).split("\n").slice(1)
+        .filter((l) => !l.startsWith(CARRY_NOTE_PREFIX));
+      while (rest.length && rest[0].trim() === "") rest.shift();
+      return [
+        m[0],
+        "",
+        `${CARRY_NOTE_PREFIX} unchanged from the last FULL snapshot (${m[1]}) — chain/deployment were NOT re-read on this fast run. Refresh with ${codeSpan("node scripts/state-snapshot.mjs")}._`,
+        "",
+        ...rest,
+      ];
+    }
+  } catch {
+    // no prior snapshot readable — fall through to the placeholder
+  }
+  const placeholder = (title) => [
+    `## ${title} — Tier 2`,
+    "",
+    "_No prior full snapshot to carry over — run `node scripts/state-snapshot.mjs` (full) to populate this section._",
+    "",
+  ];
+  return [...placeholder("3. Chain state (Base)"), ...placeholder("4. Deployment health")];
+}
+
 // ─── main ─────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -486,6 +529,7 @@ async function main() {
     return;
   }
 
+  const fast = process.argv.includes("--fast") || process.argv.includes("--tier1");
   const cfg = loadConfig();
   const out = [];
 
@@ -495,7 +539,7 @@ async function main() {
     "",
     "# STATE — generated snapshot of actual current reality",
     "",
-    `- **Generated:** ${new Date().toISOString()} on ${os.hostname()}`,
+    `- **Generated:** ${new Date().toISOString()} on ${os.hostname()}${fast ? " — FAST run (Tier 1 refreshed; Tier 2 carried over from last full run)" : " — full run"}`,
     `- **Tier 1** (git + features inventory) is always local truth. **Tier 2** (chain, deployment) is best-effort — sections marked skipped/unavailable were not reachable or not configured, which says nothing about their real state.`,
     "",
     "## 1. Git state — Tier 1",
@@ -509,11 +553,16 @@ async function main() {
   out.push(...webInventory());
   out.push(...migrationsInventory());
 
-  out.push(...await chainSection(cfg));
-  out.push(...await deploymentSection(cfg));
+  if (fast) {
+    out.push(...carriedTier2(cfg.output));
+  } else {
+    out.push(`<!-- tier2-generated: ${new Date().toISOString()} -->`, "");
+    out.push(...await chainSection(cfg));
+    out.push(...await deploymentSection(cfg));
+  }
 
   fs.writeFileSync(cfg.output, out.join("\n"));
-  console.log(`wrote ${cfg.output}`);
+  console.log(`wrote ${cfg.output}${fast ? " (fast: Tier 1 refreshed)" : ""}`);
 }
 
 main().catch((e) => {
