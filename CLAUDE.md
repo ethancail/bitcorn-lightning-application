@@ -60,6 +60,13 @@ docker compose up -d --build
 
 Frontend deps: `react`, `react-dom`, `react-router-dom`, `recharts`, `date-fns`, `qrcode`.
 
+## STATE.md — Generated Ground Truth
+
+`scripts/state-snapshot.mjs` generates `STATE.md` (repo root, gitignored) from actual current reality: git state for this repo + the sibling stablecoin-rail checkout, a features inventory (API routes, pages, migrations/tables), and — when configured — Base chain and deployment reads. A committed SessionStart hook (`.claude/settings.json`) auto-runs the fast tier each session (`--fast`: local sections refreshed, chain/deployment carried over with their timestamp) and surfaces STATE.md into context.
+
+- Full snapshot (chain + deployment): `node scripts/state-snapshot.mjs` — config in `state-snapshot.config.example.json`, details in `scripts/README.md`
+- STATE.md is **generated — never hand-edit it**; trust it over memory for "what's on which branch / what's deployed"
+
 ## Branching & Deployment
 
 - `main` — production; pushes trigger Docker image builds via GitHub Actions
