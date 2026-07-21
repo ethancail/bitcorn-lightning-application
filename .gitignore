@@ -71,3 +71,8 @@ cloudflare-worker/.wrangler/
 
 # Playwright-MCP per-project snapshot artifacts (page-*.yml dumps).
 .playwright-mcp/
+
+# state-snapshot tool: generated output + local deployment config (both
+# machine-specific; regenerate with `node scripts/state-snapshot.mjs`).
+STATE.md
+state-snapshot.config.json
