@@ -203,6 +203,7 @@ import {
   executePayFromNode,
 } from "./subscription/payFromNode";
 import { computeMembersListForTreasury } from "./subscription/adminMembersHandler";
+import { computeSubscriptionRevenueForTreasury } from "./subscription/revenueHandler";
 import { observeTierForTransition } from "./subscription/transitionObserver";
 import { startMemberAdvisorScheduler } from "./memberAdvisor/advisorScheduler";
 import {
@@ -1165,6 +1166,31 @@ const server = http.createServer(async (req, res) => {
       console.error("[admin] members list failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "members_list_failed" }));
+    }
+    return;
+  }
+
+  // Subscription-revenue aggregates: per-member on-chain sums plus the
+  // dashboard headline numbers (total earned, recurring entitlement vs
+  // actual, paying/enrolled counts). Consumed by the treasury dashboard
+  // widget and the AdminMembers revenue columns. Same auth convention
+  // as /api/admin/members above. Names are attached client-side from
+  // contacts, per the same philosophy as the members list.
+  if (req.method === "GET" && req.url === "/api/admin/subscription/revenue") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const payload = computeSubscriptionRevenueForTreasury(db, Date.now());
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(payload));
+    } catch (err: any) {
+      console.error("[admin] subscription revenue failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "subscription_revenue_failed" }));
     }
     return;
   }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api, type TreasuryMetrics, type TreasuryAlert, type NodeBalances } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
+import SubscriptionRevenuePanel from "../components/SubscriptionRevenuePanel";
 import ValuationInputAlertBanner from "../components/ValuationInputAlertBanner";
 import StaleMarker from "../components/StaleMarker";
 import {
@@ -274,6 +275,9 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* ── Subscription Revenue (on-chain member subscriptions) ── */}
+      <SubscriptionRevenuePanel />
     </div>
   );
 }

@@ -19,19 +19,24 @@ import {
   type AdminMembersRow,
   type Contact,
   type LanePurpose,
+  type MemberRevenueRow,
   type SubscriptionStateKey,
 } from "../api/client";
 import { Pill, stateToPill } from "../components/Pill";
 import ErrorState from "../components/ErrorState";
+import { buildRevenueLookup, fmtUsdCents } from "../components/subscriptionRevenueView";
 
 /** Map a pubkey to its contact name, if any. Returns undefined when
  *  there is no contact entry for the pubkey. Distinct from
  *  resolveContactName() in client.ts (which falls back to a truncated
  *  pubkey string) — here the admin view renders the truncated pubkey
  *  itself in a secondary line, so we want to know "is there a name"
- *  separately rather than collapsing both states into one string. */
+ *  separately rather than collapsing both states into one string.
+ *  Case-insensitive: contacts store the pubkey as entered, so an
+ *  uppercase-entered contact would silently miss on exact match. */
 function findContactName(pubkey: string, contacts: Contact[]): string | undefined {
-  return contacts.find((c) => c.pubkey === pubkey)?.name;
+  const needle = pubkey.toLowerCase();
+  return contacts.find((c) => c.pubkey.toLowerCase() === needle)?.name;
 }
 
 // ─── Constants ───────────────────────────────────────────────────
@@ -72,12 +77,25 @@ const STATE_SEVERITY: Record<SubscriptionStateKey, number> = {
   no_channel: 9,
 };
 
-type SortColumn = "pubkey" | "lane" | "state" | "tier" | "paid_through" | "last_payment";
+type SortColumn =
+  | "pubkey"
+  | "lane"
+  | "state"
+  | "tier"
+  | "paid_through"
+  | "last_payment"
+  | "revenue"
+  | "payments";
 type SortDirection = "asc" | "desc";
 
 type ViewState =
   | { kind: "loading" }
-  | { kind: "ok"; response: AdminMembersResponse; contacts: Contact[] }
+  | {
+      kind: "ok";
+      response: AdminMembersResponse;
+      contacts: Contact[];
+      revenue: Map<string, MemberRevenueRow>;
+    }
   | { kind: "error"; code?: string; detail?: string };
 
 // ─── Root component ──────────────────────────────────────────────
@@ -109,15 +127,22 @@ export default function AdminMembers() {
   const fetchMembers = useCallback(async () => {
     setRefreshing(true);
     try {
-      // Members + contacts in parallel — same pattern Dashboard.tsx
-      // and ChannelsPage use for cross-pubkey name resolution. The
-      // contacts call is best-effort: a failure there shouldn't
-      // hide the members list, just fall back to pubkey-only display.
-      const [response, contacts] = await Promise.all([
+      // Members + contacts + revenue in parallel — same pattern
+      // Dashboard.tsx and ChannelsPage use for cross-pubkey name
+      // resolution. The contacts and revenue calls are best-effort:
+      // a failure there shouldn't hide the members list, just fall
+      // back to pubkey-only display / em-dash revenue cells.
+      const [response, contacts, revenueResponse] = await Promise.all([
         api.getAdminMembers(),
         api.getContacts().catch(() => [] as Contact[]),
+        api.getAdminSubscriptionRevenue().catch(() => null),
       ]);
-      setView({ kind: "ok", response, contacts });
+      setView({
+        kind: "ok",
+        response,
+        contacts,
+        revenue: buildRevenueLookup(revenueResponse?.members ?? []),
+      });
     } catch (err: any) {
       setView({
         kind: "error",
@@ -150,6 +175,7 @@ export default function AdminMembers() {
         <AdminMembersBody
           response={view.response}
           contacts={view.contacts}
+          revenue={view.revenue}
           selectedStates={selectedStates}
           setSelectedStates={setSelectedStates}
           selectedLanes={selectedLanes}
@@ -170,6 +196,7 @@ export default function AdminMembers() {
 function AdminMembersBody({
   response,
   contacts,
+  revenue,
   selectedStates,
   setSelectedStates,
   selectedLanes,
@@ -182,6 +209,7 @@ function AdminMembersBody({
 }: {
   response: AdminMembersResponse;
   contacts: Contact[];
+  revenue: Map<string, MemberRevenueRow>;
   selectedStates: Set<SubscriptionStateKey>;
   setSelectedStates: (s: Set<SubscriptionStateKey>) => void;
   selectedLanes: Set<LanePurpose>;
@@ -210,7 +238,10 @@ function AdminMembersBody({
     });
   }, [response.members, contacts, selectedStates, selectedLanes, pubkeySearch]);
 
-  const sorted = useMemo(() => sortRows(filtered, sort, contacts), [filtered, sort, contacts]);
+  const sorted = useMemo(
+    () => sortRows(filtered, sort, contacts, revenue),
+    [filtered, sort, contacts, revenue],
+  );
 
   return (
     <>
@@ -234,7 +265,7 @@ function AdminMembersBody({
       ) : sorted.length === 0 ? (
         <EmptyPanel message="No members match the active filters." />
       ) : (
-        <MembersTable rows={sorted} contacts={contacts} sort={sort} setSort={setSort} />
+        <MembersTable rows={sorted} contacts={contacts} revenue={revenue} sort={sort} setSort={setSort} />
       )}
     </>
   );
@@ -246,11 +277,22 @@ function sortRows(
   rows: AdminMembersRow[],
   sort: { column: SortColumn; direction: SortDirection },
   contacts: Contact[],
+  revenue: Map<string, MemberRevenueRow>,
 ): AdminMembersRow[] {
   const dir = sort.direction === "asc" ? 1 : -1;
   const copy = [...rows];
-  copy.sort((a, b) => dir * compareRows(a, b, sort.column, contacts));
+  copy.sort((a, b) => dir * compareRows(a, b, sort.column, contacts, revenue));
   return copy;
+}
+
+// Revenue rows are keyed by lowercased pubkey (subscription tables
+// store lowercased); member pubkeys come from lnd_channels, so
+// normalize before the lookup or the join silently misses.
+function findRevenue(
+  pubkey: string,
+  revenue: Map<string, MemberRevenueRow>,
+): MemberRevenueRow | undefined {
+  return revenue.get(pubkey.toLowerCase());
 }
 
 function compareRows(
@@ -258,6 +300,7 @@ function compareRows(
   b: AdminMembersRow,
   column: SortColumn,
   contacts: Contact[],
+  revenue: Map<string, MemberRevenueRow>,
 ): number {
   switch (column) {
     case "pubkey": {
@@ -291,6 +334,19 @@ function compareRows(
       return compareNullableNumber(a.paid_through, b.paid_through);
     case "last_payment":
       return compareNullableNumber(a.last_payment_at, b.last_payment_at);
+    // Members with no on-chain payments have no revenue row — treat as
+    // null so they pin to the end regardless of direction, like the
+    // other nullable columns.
+    case "revenue":
+      return compareNullableNumber(
+        findRevenue(a.member_pubkey, revenue)?.total_sats ?? null,
+        findRevenue(b.member_pubkey, revenue)?.total_sats ?? null,
+      );
+    case "payments":
+      return compareNullableNumber(
+        findRevenue(a.member_pubkey, revenue)?.payment_count ?? null,
+        findRevenue(b.member_pubkey, revenue)?.payment_count ?? null,
+      );
   }
 }
 
@@ -458,11 +514,13 @@ function FilterDropdown<T extends string>({
 function MembersTable({
   rows,
   contacts,
+  revenue,
   sort,
   setSort,
 }: {
   rows: AdminMembersRow[];
   contacts: Contact[];
+  revenue: Map<string, MemberRevenueRow>;
   sort: { column: SortColumn; direction: SortDirection };
   setSort: (s: { column: SortColumn; direction: SortDirection }) => void;
 }) {
@@ -484,6 +542,8 @@ function MembersTable({
             <SortHeader column="tier" sort={sort} onSort={handleSort}>Tier</SortHeader>
             <SortHeader column="paid_through" sort={sort} onSort={handleSort}>Paid through</SortHeader>
             <SortHeader column="last_payment" sort={sort} onSort={handleSort}>Last payment</SortHeader>
+            <SortHeader column="revenue" sort={sort} onSort={handleSort}>Revenue</SortHeader>
+            <SortHeader column="payments" sort={sort} onSort={handleSort}>Payments</SortHeader>
           </tr>
         </thead>
         <tbody>
@@ -492,6 +552,7 @@ function MembersTable({
               key={row.member_pubkey}
               row={row}
               contactName={findContactName(row.member_pubkey, contacts)}
+              revenue={findRevenue(row.member_pubkey, revenue)}
             />
           ))}
         </tbody>
@@ -523,9 +584,11 @@ function SortHeader({
 function MemberRow({
   row,
   contactName,
+  revenue,
 }: {
   row: AdminMembersRow;
   contactName: string | undefined;
+  revenue: MemberRevenueRow | undefined;
 }) {
   const pill = stateToPill(row.subscription_state);
   return (
@@ -540,6 +603,8 @@ function MemberRow({
       <td>{row.current_tier ?? <span className="sub-muted">—</span>}</td>
       <td>{formatPaidThrough(row.paid_through)}</td>
       <td>{formatLastPayment(row.last_payment_at, row.last_payment_amount_sats)}</td>
+      <td>{formatRevenue(revenue)}</td>
+      <td>{revenue ? revenue.payment_count : <span className="sub-muted">—</span>}</td>
     </tr>
   );
 }
@@ -663,6 +728,22 @@ function formatPaidThrough(ms: number | null): React.ReactNode {
   return (
     <span>
       <code>{date}</code> <span className="sub-muted">{annotation}</span>
+    </span>
+  );
+}
+
+// All-time on-chain revenue (kind='onchain' sums from the revenue
+// endpoint). Members with no payment history have no revenue row —
+// render the same em-dash as the other empty cells. USD is the value
+// at receipt, shown only when at least one payment captured a price.
+function formatRevenue(revenue: MemberRevenueRow | undefined): React.ReactNode {
+  if (!revenue) return <span className="sub-muted">—</span>;
+  return (
+    <span>
+      <code>{revenue.total_sats.toLocaleString()} sats</code>{" "}
+      {revenue.total_usd_cents > 0 && (
+        <span className="sub-muted">≈ {fmtUsdCents(revenue.total_usd_cents)}</span>
+      )}
     </span>
   );
 }
