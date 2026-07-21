@@ -75,6 +75,8 @@ export const api = {
       method: "POST",
     }),
   getAdminMembers: () => apiFetch<AdminMembersResponse>("/api/admin/members"),
+  getAdminSubscriptionRevenue: () =>
+    apiFetch<SubscriptionRevenueResponse>("/api/admin/subscription/revenue"),
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   getNodePreflight: () => apiFetch<PreflightResult>("/api/node/preflight"),
@@ -776,6 +778,36 @@ export type AdminMembersResponse = {
     total_members: number;
     by_state: Record<SubscriptionStateKey, number>;
   };
+};
+
+// ─── Subscription revenue (treasury dashboard + admin members) ─────
+// Mirrors app/api/src/subscription/revenueHandler.ts. All sums are
+// on-chain only (kind='onchain'); member_pubkey arrives lowercased.
+
+export type MemberRevenueRow = {
+  member_pubkey: string;
+  total_sats: number;
+  total_usd_cents: number;
+  payment_count: number;
+  window_sats: number;
+  window_payment_count: number;
+};
+
+export type SubscriptionRevenueResponse = {
+  fetched_at: number;
+  policy: { price_sats: number; period_days: number };
+  window_start: number;
+  totals: {
+    total_earned_sats: number;
+    total_earned_usd_cents: number;
+    payment_count: number;
+    recurring_entitlement_sats: number;
+    recurring_actual_sats: number;
+    /** Members with ≥1 confirmed on-chain payment (has actually paid). */
+    paying_member_count: number;
+    member_count: number;
+  };
+  members: MemberRevenueRow[];
 };
 
 export type CommodityPrice = {
