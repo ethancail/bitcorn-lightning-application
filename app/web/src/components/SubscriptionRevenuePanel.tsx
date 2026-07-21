@@ -5,7 +5,8 @@
 // a failure there falls back to truncated pubkeys, never hides revenue.
 //
 // Headline row shows the current recurring cycle BOTH ways — the
-// entitlement projection (paying members × policy price) next to what
+// entitlement projection (ACTIVE paying members × policy price;
+// lapsed once-paid members drop out of the basis) next to what
 // actually confirmed inside the window — plus all-time earnings and
 // the paying/enrolled member count. "Paying" = has actually paid (≥1
 // confirmed on-chain payment; see revenueHandler.ts), NOT tier
@@ -102,7 +103,8 @@ function RevenueBody({
             {totals.recurring_entitlement_sats.toLocaleString()}
           </div>
           <div className="stat-sub">
-            sats · {totals.paying_member_count} paying × {policy.price_sats.toLocaleString()}
+            sats · {totals.active_paid_member_count} active paying ×{" "}
+            {policy.price_sats.toLocaleString()}
           </div>
         </div>
         <div className="stat-card" style={{ flex: "1 1 150px" }}>

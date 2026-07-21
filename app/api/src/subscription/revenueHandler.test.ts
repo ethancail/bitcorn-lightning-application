@@ -165,11 +165,12 @@ describe("entitlement and member counts — paying = has actually paid", () => {
 
     const r = computeSubscriptionRevenueForTreasury(db, NOW);
     expect(r.totals.paying_member_count).toBe(0);
+    expect(r.totals.active_paid_member_count).toBe(0);
     expect(r.totals.member_count).toBe(1);
     expect(r.totals.recurring_entitlement_sats).toBe(0);
   });
 
-  it("entitlement = paid members × price_sats read from subscription_policy", () => {
+  it("entitlement = active-paid members × price_sats read from subscription_policy", () => {
     // Prove the policy is read, not hardcoded: bump the seeded 50k.
     db.prepare(`UPDATE subscription_policy SET price_sats = 60000 WHERE id = 1`).run();
     insertMember(A, "current");
@@ -180,6 +181,7 @@ describe("entitlement and member counts — paying = has actually paid", () => {
     const r = computeSubscriptionRevenueForTreasury(db, NOW);
     expect(r.policy.price_sats).toBe(60_000);
     expect(r.totals.paying_member_count).toBe(1);
+    expect(r.totals.active_paid_member_count).toBe(1);
     expect(r.totals.member_count).toBe(3);
     expect(r.totals.recurring_entitlement_sats).toBe(60_000);
   });
@@ -202,13 +204,30 @@ describe("entitlement and member counts — paying = has actually paid", () => {
     expect(r.totals.recurring_entitlement_sats).toBe(0);
   });
 
-  it("a lapsed member with a confirmed payment still counts as paying (has paid ≥ once)", () => {
+  it("a lapsed member with a confirmed payment stays in paying_member_count but NOT the entitlement basis", () => {
     insertMember(A, "routing_lapsed");
     insertPayment(A, { amount_sats: 50_000, confirmed_at: NOW - 90 * MS_PER_DAY });
 
     const r = computeSubscriptionRevenueForTreasury(db, NOW);
     expect(r.totals.paying_member_count).toBe(1);
+    expect(r.totals.active_paid_member_count).toBe(0);
     expect(r.totals.member_count).toBe(1);
+    expect(r.totals.recurring_entitlement_sats).toBe(0);
+  });
+
+  it("entitlement basis = active AND paid: lapsed-paid and never-paid members excluded", () => {
+    // A: active + paid → both counts. B: paid but lapsed → paying only.
+    // C: active (fresh grace) but never paid → neither count.
+    insertMember(A, "current");
+    insertPayment(A, { amount_sats: 50_000 });
+    insertMember(B, "routing_lapsed");
+    insertPayment(B, { amount_sats: 50_000, confirmed_at: NOW - 90 * MS_PER_DAY });
+    insertMember(C, "current");
+
+    const r = computeSubscriptionRevenueForTreasury(db, NOW);
+    expect(r.totals.paying_member_count).toBe(2);
+    expect(r.totals.active_paid_member_count).toBe(1);
+    expect(r.totals.member_count).toBe(3);
     expect(r.totals.recurring_entitlement_sats).toBe(50_000);
   });
 
@@ -219,6 +238,7 @@ describe("entitlement and member counts — paying = has actually paid", () => {
 
     const r = computeSubscriptionRevenueForTreasury(db, NOW);
     expect(r.totals.paying_member_count).toBe(1);
+    expect(r.totals.active_paid_member_count).toBe(1);
     expect(r.totals.recurring_entitlement_sats).toBe(50_000);
   });
 });
@@ -234,6 +254,7 @@ describe("empty state", () => {
       recurring_entitlement_sats: 0,
       recurring_actual_sats: 0,
       paying_member_count: 0,
+      active_paid_member_count: 0,
       member_count: 0,
     });
     expect(r.policy).toEqual({ price_sats: 50_000, period_days: 30 });
