@@ -73,6 +73,11 @@ cloudflare-worker/.wrangler/
 # file: git never descends into a directory ignored as a whole.
 .claude/*
 !.claude/settings.json
+# Shared repo skills (e.g. /recon) — tracked so they ride the repo across
+# machines. Everything else under .claude/ (settings.local.json, session
+# state) stays ignored via `.claude/*` above.
+!.claude/skills/
+!.claude/skills/**
 
 # Playwright-MCP per-project snapshot artifacts (page-*.yml dumps).
 .playwright-mcp/
