@@ -10,6 +10,18 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR:-.}/scripts/verify-gate.mjs\"",
+            "timeout": 300,
+            "statusMessage": "verify-gate: verifying uncommitted app changes"
+          }
+        ]
+      }
     ]
   }
 }
