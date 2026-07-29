@@ -44,18 +44,23 @@ check.
 
 ### Volatile facts must be stored as a query, not as an answer
 
-**Scar:** Two memory errors from the same root. A commit was recorded as "not pushed" and cited that
-way two weeks after it had reached origin. A runbook was cited by the wrong date because the date was
-transcribed instead of looked up.
+**Scar:** Three errors from the same root. A commit was recorded as "not pushed" and cited that way two
+weeks after it had reached origin. A runbook was cited by the wrong date because the date was
+transcribed instead of looked up. And — one layer up, while writing this very file — a trap was stated
+confidently to be already documented in `/build-with-verification`; a grep found zero hits, and it had
+to be added rather than generalized.
 
 **Lesson:** Before writing a fact down, ask whether it can change without anyone editing the note. If
 yes, it is volatile and does not get stored — store the *invocation* that answers it. "Not pushed"
-should never have been a note; it should have been `git log origin/main..HEAD`. Durable facts
-(decisions, architecture, preferences, why something is the way it is) get stored; volatile ones get
-re-queried, or stored as a pointer to their source.
+should never have been a note; it should have been `git log origin/main..HEAD`. This covers beliefs
+about file contents too: what a doc, skill, or config *says* is volatile, and confidence about it is
+not evidence — grep it. Durable facts (decisions, architecture, preferences, why something is the way
+it is) get stored; volatile ones get re-queried, or stored as a pointer to their source.
 
-**Disposition:** `[RECORDED]` — no enforcement point exists in this repo. It is a convention in the
-insurance vault's `CONVENTIONS.md` §3, which this repo does not carry.
+**Disposition:** `[PROMOTED → CLAUDE.md § STATE.md — Generated Ground Truth]` — as "volatile state is a
+query, not a fact — cite the invocation, never the value," beside the existing rule to trust STATE.md
+over memory. The insurance vault's `CONVENTIONS.md` §3 carries the fuller convention; this repo does
+not carry that file.
 
 ### Capture the exit code of the process you care about, not the pipeline's last stage
 
