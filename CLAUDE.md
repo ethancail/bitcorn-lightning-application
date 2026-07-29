@@ -14,6 +14,7 @@ Before touching a feature or bug, read the relevant doc(s):
 | `docs/DATABASE.md` | Schema, migrations, key tables |
 | `docs/LOOP_SETUP.md` | Loop Out setup + production gotchas (prepay model, min capacity, restart cascade) |
 | `docs/COINBASE_INTEGRATION.md` | Cloudflare Worker architecture, secrets, redeploy |
+| `learnings.md` | Scar index (repo root) — past failures and the generalized lesson from each; skim when about to repeat a class of mistake |
 
 For per-version history: `git log`. This file is not a changelog.
 
@@ -68,6 +69,7 @@ Frontend deps: `react`, `react-dom`, `react-router-dom`, `recharts`, `date-fns`,
 
 - Full snapshot (chain + deployment): `node scripts/state-snapshot.mjs` — config in `state-snapshot.config.example.json`, details in `scripts/README.md`
 - STATE.md is **generated — never hand-edit it**; trust it over memory for "what's on which branch / what's deployed"
+- **Volatile state is a query, not a fact — cite the invocation, never the value.** Branch position, push status, merge status, deploy status, and what's-in-prod all change without anyone editing the note that claims otherwise. So don't write the value down: write the command that answers it (`git log --oneline origin/main..HEAD`, `git status -sb`, `gh run list`, STATE.md) and re-run it at read time. This includes beliefs about what a file contains — grep it, don't recall it. (All three have burned us: a commit described as unpushed two weeks after it reached origin, a runbook cited by the wrong date, and a skill claimed to document a trap it never mentioned.)
 
 ## Branching & Deployment
 
