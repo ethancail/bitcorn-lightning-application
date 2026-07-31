@@ -29,6 +29,7 @@ import {
   parseUsdcAmount,
   formatUsdc,
 } from "../contract";
+import { feePreviewUnits, isFeeRateKnown } from "../feePreview";
 import { DEFAULT_CHAIN } from "../wagmi";
 import {
   addPendingEntry,
@@ -115,17 +116,23 @@ export default function SettlementForm({
   // sending so the wallet and this address always agree.
   const usdcAddress = USDC_ADDRESS_BY_CHAIN[DEFAULT_CHAIN.id];
   const routerAddress = contractState?.settlement_router_address as `0x${string}` | undefined;
+  // Is the on-chain fee rate KNOWN, or merely absent? Gated on the state
+  // EXISTING, never on the rate being nonzero — a cached 0 bps is knowledge.
+  // See feePreview.ts for why "unknown" must not be representable as 0.
+  const feeRateKnown = isFeeRateKnown(contractState);
   const feeBps = contractState?.current_fee_bps ?? 0;
   const isPaused = contractState?.is_paused ?? false;
 
-  // Fee preview against the input amount. Computed against the cached
-  // feeBps — the on-chain rate at execution wins, per spec §5.
-  const feePreviewUnits = useMemo(() => {
-    const units = parseUsdcAmount(amount);
-    if (units === null || feeBps === 0) return 0n;
-    return (units * BigInt(feeBps)) / 10000n;
-  }, [amount, feeBps]);
-  const feePreviewHuman = formatUsdc(feePreviewUnits);
+  // Fee preview against the input amount. Computed against the cached feeBps —
+  // the on-chain rate at execution wins, per spec §5.
+  //
+  // `null` means "no number to show" (rate unknown, or amount unparseable) and
+  // is deliberately distinct from 0n, a real zero fee — see feePreview.ts.
+  const previewUnits = useMemo(
+    () => feePreviewUnits(contractState, amount),
+    [contractState, amount],
+  );
+  const feePreviewHuman = previewUnits === null ? "—" : formatUsdc(previewUnits);
 
   const reset = useCallback(() => {
     setRecipient("");
@@ -442,11 +449,22 @@ export default function SettlementForm({
           Free-text — hashed via keccak256 and stored as a bytes32 on-chain.
         </span>
       </label>
-      <FeeDisplay
-        feeHuman={feePreviewHuman}
-        feeBps={feeBps}
-        variant="preview"
-      />
+      {feeRateKnown ? (
+        <FeeDisplay
+          feeHuman={feePreviewHuman}
+          feeBps={feeBps}
+          variant="preview"
+        />
+      ) : (
+        // Rate unavailable — say so rather than implying zero. Submission is
+        // already blocked in this state (the !routerAddress guard in
+        // handleSubmit), so this is informational, not a dead end.
+        <div className="stablecoin-fee">
+          <span className="stablecoin-fee-label">Fee Preview:</span>{" "}
+          <span className="stablecoin-fee-value">—</span>{" "}
+          <span className="stablecoin-fee-rate">(rate unavailable — not yet synced)</span>
+        </div>
+      )}
       {step.kind === "validation_error" && (
         <div className="sub-alert sub-alert-amber" style={{ marginTop: 8 }}>
           <span className="sub-alert-icon" aria-hidden>⚠</span>
@@ -476,7 +494,17 @@ export default function SettlementForm({
         </div>
       )}
       <div className="stablecoin-actions" style={{ marginTop: 12 }}>
-        <button type="submit" className="btn btn-primary" disabled={inert || !isConnected || isPaused}>
+        {/* `!routerAddress` mirrors the handleSubmit guard so the affordance
+            matches the behaviour. Without it the button looked live, and
+            clicking it produced "Contract state not loaded yet" — an error for
+            something the UI already knew. The guard in handleSubmit stays: it is
+            the load-bearing check (and the reason a null router can never reach
+            the wallet), this only stops the user from being invited to trip it. */}
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={inert || !isConnected || isPaused || !routerAddress}
+        >
           {submitting ? "Working…" : "Send USDC"}
         </button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} disabled={submitting}>
