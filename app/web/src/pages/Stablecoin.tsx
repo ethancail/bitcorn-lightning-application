@@ -35,6 +35,8 @@ import {
   type WalletStatusResponse,
 } from "../stablecoin/client";
 import { api, type NodeInfo } from "../api/client";
+import { useSubscriptionStatus } from "../components/useSubscriptionStatus";
+import { railGateNoticeFor } from "../stablecoin/railAccess";
 import RailErrorBanner from "../stablecoin/components/RailErrorBanner";
 import StaleBanner from "../stablecoin/components/StaleBanner";
 import SettlementForm from "../stablecoin/components/SettlementForm";
@@ -147,6 +149,19 @@ export default function Stablecoin() {
   const hasWallet = walletStatus?.wallet_address && walletStatus.is_active;
   const chainId = parseInt(import.meta.env.VITE_BASE_CHAIN_ID ?? "84532", 10);
 
+  // Subscription gate (railAccess.ts). Renders a "subscription required" notice
+  // in place of the staleness banner for a payment-scope tier, so a lapsed
+  // member is told the actual reason their data stopped moving.
+  //
+  // NOT a send-path gate, deliberately. The contract-state cache is never
+  // cleared on lapse, so a member who was `current` when it was last written
+  // still has a router address and CAN submit a settlement. That is consistent
+  // with the rail being non-custodial — their wallet talks to BASE directly and
+  // Bitcorn was never in the path. What lapses is Bitcorn's view, not their
+  // ability to move their own money.
+  const subStatus = useSubscriptionStatus();
+  const gateNotice = railGateNoticeFor(subStatus);
+
   return (
     <div className="page stablecoin-page">
       <header className="page-header">
@@ -159,7 +174,30 @@ export default function Stablecoin() {
       {offline && (
         <RailErrorBanner detail={errorDetail} onRetry={() => void fetchAll()} />
       )}
-      <StaleBanner cursor={cursor} />
+
+      {/* Subscription gate notice — and the staleness banner's suppressor.
+          A gated member's Worker reads are refused 403, so the sync cursor
+          stops advancing and StaleBanner would shout "settlement data is
+          significantly out of date." That is a false diagnosis: the data
+          isn't stale, the member isn't entitled. Rendering both would offer
+          two contradictory explanations for one cause, so the gate notice
+          wins and the staleness banner stands down. */}
+      {gateNotice.render ? (
+        <div className={`sub-alert ${gateNotice.variantClass} stablecoin-banner`}>
+          <span className="sub-alert-icon" aria-hidden>{gateNotice.icon}</span>
+          <div className="sub-alert-body">
+            <strong>{gateNotice.headline}</strong>{" "}
+            <span>{gateNotice.body}</span>
+            <div style={{ marginTop: 8 }}>
+              <Link to="/settings" className="btn btn-outline btn-sm">
+                Manage subscription
+              </Link>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <StaleBanner cursor={cursor} />
+      )}
 
       {/* ─── Panel 1: Wallet Status ───────────────────────────────── */}
       <section className="panel ops">

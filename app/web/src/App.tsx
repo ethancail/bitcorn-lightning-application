@@ -34,6 +34,7 @@ import SubscriptionPayments from "./pages/SubscriptionPayments";
 import Stablecoin from "./pages/Stablecoin";
 import WalletRegistrationPanel from "./stablecoin/components/WalletRegistrationPanel";
 import { RailScope } from "./stablecoin/RailScope";
+import { isRailGated } from "./stablecoin/railAccess";
 import AdminMembers from "./pages/AdminMembers";
 import Liquidity from "./pages/Liquidity";
 
@@ -416,6 +417,20 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
   const liquidityIcon = isMerchant ? "↙" : "↗";
   const liquidityRoute = isMerchant ? "/refill" : "/cashout";
 
+  // ⚠ COSMETIC ONLY — THIS GATES NOTHING.
+  //
+  // Hiding the nav entry is tidiness, not enforcement. `/stablecoin` stays
+  // mounted as a route (see the Routes block below) and is directly navigable by
+  // URL, bookmark, or back button, so a gated member can always reach the page.
+  // The ONLY enforcement is the Worker's `full`-scope gate on
+  // /base/{contract-state,balance,events} — without it this line is decoration.
+  //
+  // The route is deliberately NOT gated alongside this. Redirecting a gated
+  // member to /dashboard would silently swallow the explanation: the Stablecoin
+  // page itself renders the "subscription required" notice (railGateNoticeFor),
+  // and a redirect would mean the one member who most needs that message is the
+  // only one who never sees it. Hide the entry, keep the door, explain inside.
+  const railGated = isRailGated(subStatus);
   const navItems = [
     { to: "/dashboard", icon: "▤", label: "My Dashboard" },
     { to: "/charts", icon: "⟠", label: "Charts" },
@@ -423,7 +438,9 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
     { to: "/channels", icon: "◈", label: "My Channels" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
     { to: "/payments", icon: "↗", label: "My Payments" },
-    { to: "/stablecoin", icon: "◇", label: "Stablecoin" },
+    // Fails OPEN while subStatus is still null (first 60s of the poll) so the
+    // entry never blinks out for a healthy paying member — railAccess.ts.
+    ...(railGated ? [] : [{ to: "/stablecoin", icon: "◇", label: "Stablecoin" }]),
   ];
 
   return (
@@ -553,6 +570,11 @@ function MemberShell() {
             <Route path="/withdraw" element={<WithdrawBitcoin />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/subscription/payments" element={<SubscriptionPayments />} />
+            {/* Intentionally NOT gated — the nav entry above is hidden for a
+                gated member, but the route stays so a typed URL or bookmark
+                lands on the page's "subscription required" notice instead of a
+                silent redirect to /dashboard. Enforcement lives in the Worker's
+                full-scope gate, not here. */}
             <Route path="/stablecoin" element={<Stablecoin />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>
