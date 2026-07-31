@@ -105,8 +105,26 @@ export interface SettlementRow {
     log_index: number;
     sender_address: string;
     recipient_address: string;
-    amount_units_raw: string; // bigint serialized
+    amount_units_raw: string; // bigint serialized — GROSS, pulled from the sender
     fee_units_raw: string; // bigint serialized
+    /**
+     * What the RECIPIENT was actually credited: `amount - fee`, in base
+     * units. The Settled event emits gross and fee only, so this is
+     * derived — see toSettlementRow(). The contract computes the same
+     * quantity as `netToRecipient` (SettlementRouter.sol:267) and
+     * transfers exactly it, so this is an exact integer identity, not an
+     * estimate.
+     *
+     * Deliberately has NO `net_human` sibling. The two-decimal
+     * `*_human` fields are truncated (formatUsdcUnits), and a truncated
+     * net does not reconcile against a truncated gross and fee: at 25bps
+     * on 45001.00 USDC the three render as 45001.00 / 112.50 / 44888.49,
+     * where the displayed subtraction gives 44888.50. Emitting a 2dp net
+     * would invite consumers to reproduce that contradiction. Consumers
+     * that display net should format from these base units at the
+     * precision their surface needs.
+     */
+    net_units_raw: string; // bigint serialized
     amount_human: string;
     fee_human: string;
     trade_ref: string;

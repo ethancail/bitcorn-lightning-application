@@ -284,6 +284,60 @@ export function handleSyncCursor(_req: IncomingMessage, res: ServerResponse): vo
 const SETTLEMENTS_PAGE_SIZE = 50;
 const SETTLEMENTS_MAX_PAGE_SIZE = 200;
 
+/** The shape `handleSettlements` reads out of `base_settlement_event`. */
+export interface SettlementEventRow {
+    block_number: number;
+    tx_hash: string;
+    log_index: number;
+    sender_address: string;
+    recipient_address: string;
+    amount_units: string;
+    fee_units: string;
+    trade_ref: string;
+    settled_at: number;
+    discovered_at: number;
+}
+
+/**
+ * Map one stored Settled event to its wire row, from the point of view of
+ * `myWalletAddress`.
+ *
+ * Extracted from handleSettlements purely so the arithmetic and the
+ * direction call are unit-testable: the handler itself is bound to the
+ * module-level `db` and `getLocalMemberPubkey()` and takes no injection
+ * point.
+ *
+ * NET IS DERIVED IN BASE UNITS, NEVER FROM THE FORMATTED STRINGS.
+ * `formatUsdcUnits` truncates six decimals to two, so a sub-cent fee
+ * formats to "0.00" — subtracting formatted values would silently return
+ * the gross unchanged. BigInt subtraction of the stored units is exact.
+ *
+ * Both addresses are compared lowercased at the source: wallets via
+ * listActiveBaseWallets (base/store.ts:44), event addresses at insert
+ * (base/store.ts:232-233).
+ */
+export function toSettlementRow(r: SettlementEventRow, myWalletAddress: string): SettlementRow {
+    const amountUnits = BigInt(r.amount_units);
+    const feeUnits = BigInt(r.fee_units);
+    const netUnits = amountUnits - feeUnits;
+    return {
+        block_number: r.block_number,
+        tx_hash: r.tx_hash,
+        log_index: r.log_index,
+        sender_address: r.sender_address,
+        recipient_address: r.recipient_address,
+        amount_units_raw: r.amount_units,
+        fee_units_raw: r.fee_units,
+        net_units_raw: netUnits.toString(),
+        amount_human: formatUsdcUnits(amountUnits, 6),
+        fee_human: formatUsdcUnits(feeUnits, 6),
+        trade_ref: r.trade_ref,
+        settled_at: r.settled_at,
+        discovered_at: r.discovered_at,
+        direction: r.sender_address === myWalletAddress ? "sent" : "received",
+    };
+}
+
 export function handleSettlements(req: IncomingMessage, res: ServerResponse): void {
     const member = getLocalMemberPubkey();
     if (!member) return jsonError(res, 503, "node_not_ready");
@@ -314,37 +368,14 @@ export function handleSettlements(req: IncomingMessage, res: ServerResponse): vo
                 "ORDER BY block_number DESC, log_index DESC " +
                 "LIMIT ?",
         )
-        .all(mine.walletAddress, mine.walletAddress, cursorBlock, limit + 1) as Array<{
-            block_number: number;
-            tx_hash: string;
-            log_index: number;
-            sender_address: string;
-            recipient_address: string;
-            amount_units: string;
-            fee_units: string;
-            trade_ref: string;
-            settled_at: number;
-            discovered_at: number;
-        }>;
+        .all(mine.walletAddress, mine.walletAddress, cursorBlock, limit + 1) as SettlementEventRow[];
 
     const hasMore = rows.length > limit;
     const visible = hasMore ? rows.slice(0, limit) : rows;
 
-    const settlements: SettlementRow[] = visible.map((r) => ({
-        block_number: r.block_number,
-        tx_hash: r.tx_hash,
-        log_index: r.log_index,
-        sender_address: r.sender_address,
-        recipient_address: r.recipient_address,
-        amount_units_raw: r.amount_units,
-        fee_units_raw: r.fee_units,
-        amount_human: formatUsdcUnits(BigInt(r.amount_units), 6),
-        fee_human: formatUsdcUnits(BigInt(r.fee_units), 6),
-        trade_ref: r.trade_ref,
-        settled_at: r.settled_at,
-        discovered_at: r.discovered_at,
-        direction: r.sender_address === mine.walletAddress ? "sent" : "received",
-    }));
+    const settlements: SettlementRow[] = visible.map((r) =>
+        toSettlementRow(r, mine.walletAddress),
+    );
 
     const response: SettlementsResponse = {
         settlements,
