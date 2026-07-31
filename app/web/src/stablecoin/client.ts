@@ -75,8 +75,29 @@ export interface SettlementRow {
   log_index: number;
   sender_address: string;
   recipient_address: string;
+  /** GROSS — what the contract pulled from the sender. */
   amount_units_raw: string;
   fee_units_raw: string;
+  /**
+   * What the recipient was credited (`amount - fee`), in base units.
+   *
+   * OPTIONAL ON PURPOSE: an API container that predates this field won't
+   * send it. That is a reachable state, not a hypothetical — the web dev
+   * server (`npm run dev`, :3200) resolves API_BASE to a SEPARATELY-RUN
+   * API on :3101 (config/api.ts:21), so a new bundle against an older API
+   * is the normal development configuration. On Umbrel both images are
+   * pinned to one version tag, but the documented half-installed recovery
+   * (CLAUDE.md § Umbrel Gotchas) pulls them per-service and can leave the
+   * pair briefly mismatched.
+   *
+   * Nothing validates this response shape (railFetch casts), so declaring
+   * it non-optional would let `undefined` reach a formatter and render
+   * "undefined USDC" on a farmer's receipt — the same class of crash as
+   * the `pubkey.slice()` scar in CLAUDE.md § Hard-Won Gotchas. The
+   * selector in settlementAmounts.ts derives net from gross - fee when
+   * this is absent.
+   */
+  net_units_raw?: string;
   amount_human: string;
   fee_human: string;
   trade_ref: string;

@@ -7,6 +7,13 @@
 //   [direction icon]  [counterparty]    [amount]      [block N ↗]
 //                                       [Fee: X if nonzero]
 //
+// The [amount] is direction-dependent: a SENT row shows the gross the
+// member was debited, a RECEIVED row shows the net they were credited
+// (`amount - fee` — the contract makes the recipient bear the fee, see
+// SettlementRouter.sol:267). The selection lives in settlementAmounts.ts;
+// the expanded detail pane renders gross/fee/net at full 6-decimal
+// precision so the three figures reconcile on screen.
+//
 // Pending rows render at the top with a "Pending" pill and update in
 // place once the Settled event lands (§4: "the UI does not pop a new
 // row at the top while the old Pending row remains").
@@ -35,6 +42,7 @@ import {
   type PendingEntry,
 } from "../pendingStore";
 import { basescanBlockUrl, basescanTxUrl, USDC_ADDRESS_BY_CHAIN } from "../contract";
+import { viewerDetailAmounts, viewerHeadlineAmount } from "../settlementAmounts";
 import { classifyRevertOnChain } from "../revertClassifier";
 import ColdStartSpinner from "./ColdStartSpinner";
 import EmptyState from "./EmptyState";
@@ -375,13 +383,20 @@ function SettledRow({
   const feeUnits = BigInt(row.fee_units_raw);
   const hasFee = feeUnits > 0n;
   const syncedAt = new Date(row.discovered_at);
+  // Sent → gross (debited), received → net (credited). See
+  // settlementAmounts.ts for why the two directions differ.
+  const headlineAmount = viewerHeadlineAmount(row);
+  const isReceived = row.direction === "received";
+  // Detail pane runs at full 6dp so gross - fee = net reconciles on
+  // screen; the headline stays 2dp for scannability.
+  const detail = viewerDetailAmounts(row);
   return (
     <li className={`stablecoin-row stablecoin-row-settled ${expanded ? "stablecoin-row-expanded" : ""}`}>
       <button type="button" className="stablecoin-row-main" onClick={onToggle}>
         <span className={`stablecoin-pill stablecoin-pill-${row.direction}`}>{directionLabel}</span>
         <span className="stablecoin-row-direction">{directionGlyph}</span>
         <code className="stablecoin-row-address">{truncate(counterparty)}</code>
-        <span className="stablecoin-row-amount">{row.amount_human} USDC</span>
+        <span className="stablecoin-row-amount">{headlineAmount} USDC</span>
         <a
           className="stablecoin-row-link"
           href={basescanBlockUrl(chainId, row.block_number)}
@@ -413,10 +428,23 @@ function SettledRow({
           <DetailRow label="Counterparty">
             <code>{counterparty}</code>
           </DetailRow>
-          <DetailRow label="Amount">{row.amount_human} USDC</DetailRow>
-          <DetailRow label="Fee">
-            {row.fee_human} USDC <span className="stablecoin-fee-rate">(historical)</span>
+          {/* Full 6-decimal precision here, unlike the 2dp headline: this
+              is the reconciliation surface, and truncated figures don't
+              add up (25bps on 45001.00 shows 45001.00 - 112.50 = 44888.50
+              at 2dp, while the true net is 44888.4975). Both directions
+              get full precision so the fee shown matches BaseScan. */}
+          <DetailRow label={isReceived ? "Gross" : "Amount"}>
+            {detail.gross} USDC
           </DetailRow>
+          <DetailRow label="Fee">
+            {detail.fee} USDC <span className="stablecoin-fee-rate">(historical)</span>
+          </DetailRow>
+          {isReceived && (
+            <DetailRow label="Net received">
+              {detail.net} USDC{" "}
+              <span className="stablecoin-fee-rate">(gross − fee)</span>
+            </DetailRow>
+          )}
           <DetailRow label="Reference">
             <code>{row.trade_ref}</code>
           </DetailRow>
