@@ -12,6 +12,7 @@ for (const file of [
     "045_base_usdc_balance_cache.sql",
     "046_base_settlement_event.sql",
     "047_base_contract_state_cache.sql",
+    "053_base_sync_cursor_attempt_success.sql",
 ]) {
     memDb.exec(fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8"));
 }
@@ -81,7 +82,10 @@ beforeEach(() => {
     memDb.exec("DELETE FROM base_usdc_balance_cache");
     memDb.exec("DELETE FROM base_contract_state_cache");
     memDb.exec("DELETE FROM base_settlement_event");
-    memDb.exec("UPDATE base_sync_cursor SET last_synced_block_number = 0, last_synced_at = 0 WHERE id = 1");
+    memDb.exec(
+        "UPDATE base_sync_cursor SET last_synced_block_number = 0, last_synced_at = 0, " +
+            "last_attempt_at = 0, last_success_at = 0 WHERE id = 1",
+    );
     __resetTickFlagForTests();
     fetchContractInfo.mockReset();
     fetchFeeRecipient.mockReset();
@@ -183,9 +187,23 @@ describe("runOneTick — failure isolation", () => {
             e.context === "event_sync" && e.error.includes("cold-start"),
         )).toBe(true);
         expect(fetchFeeRecipient).not.toHaveBeenCalled();
-        // Cursor timestamp DOES refresh (Step 6 touch path) — used by UI staleness.
-        expect(getSyncCursor().lastSyncedBlockNumber).toBe(0);
-        expect(getSyncCursor().lastSyncedAt).toBeGreaterThan(0);
+        // ⚠ THIS ASSERTION IS INVERTED FROM WHAT IT USED TO BE, and the old
+        // version was pinning the bug. It read:
+        //     expect(getSyncCursor().lastSyncedAt).toBeGreaterThan(0);
+        //   // "Cursor timestamp DOES refresh (Step 6 touch path)"
+        // i.e. it asserted that a tick which FAILED to sync any events still
+        // refreshed the freshness timestamp, because one balance read had
+        // succeeded. That is exactly the inverted signal migration 053 removes:
+        // event ingestion is dead here (cold-start has no deploy block), so the
+        // member's settlement history is frozen, and the staleness banner must
+        // say so instead of reporting "fresh".
+        //
+        // Post-fix: the loop is alive (attempt moves) but nothing succeeded
+        // (success stays at the never-synced sentinel).
+        const cursor = getSyncCursor();
+        expect(cursor.lastSyncedBlockNumber).toBe(0);
+        expect(cursor.lastAttemptAt).toBeGreaterThan(0);
+        expect(cursor.lastSuccessAt).toBe(0);
     });
 
     it("worker unconfigured: skipped cleanly without touching state", async () => {
@@ -368,8 +386,14 @@ describe("runOneTick — Step 5 event sync (happy paths)", () => {
         expect(fetchSettledEvents).not.toHaveBeenCalled();
         expect(result.event_chunks_attempted).toBe(0);
         expect(result.cursor_advanced_to).toBeUndefined();
-        // Timestamp still refreshed by the touch path.
-        expect(getSyncCursor().lastSyncedAt).toBeGreaterThan(0);
+        // Caught up IS a success: there was nothing to fetch precisely because
+        // our view of the Settled stream is current. So success refreshes even
+        // though the block number doesn't move. This is the case that must NOT
+        // be swept up by the stricter migration-053 rule — contrast the
+        // cold-start-blocked test above, where success correctly stays at 0.
+        const cursor = getSyncCursor();
+        expect(cursor.lastSuccessAt).toBeGreaterThan(0);
+        expect(cursor.lastAttemptAt).toBeGreaterThan(0);
     });
 });
 
@@ -413,6 +437,45 @@ describe("runOneTick — Step 5 chunking", () => {
         expect(result.event_chunks_attempted).toBe(2); // tried chunk 2, broke out before 3
         expect(result.cursor_advanced_to).toBe(41_861_565); // last successful chunk's toBlock
         expect(result.errors.some((e) => e.context.startsWith("event_sync:"))).toBe(true);
+        // Partial progress advances the block AND stamps success — real events
+        // did commit. But the tail is still missing, so the next tick must keep
+        // going; success here reflects "we committed through 41_861_565", which
+        // is true.
+        expect(getSyncCursor().lastSuccessAt).toBeGreaterThan(0);
+    });
+
+    it("⚠ event sync failing while balances succeed does NOT look fresh", async () => {
+        // THE CASE MIGRATION 053 EXISTS FOR, and the one the old `chainTip !=
+        // null` condition got wrong.
+        //
+        // Balance reads succeed, so the pre-fix code set chainTip and refreshed
+        // the freshness timestamp — while EVERY /base/events call failed, so the
+        // member's settlement history was frozen. The UI reported "fresh" over a
+        // dead stream: a hard failure looking healthier than a misconfiguration.
+        //
+        // Distinct from the partial-chunk test above: there, some events DID
+        // commit. Here nothing commits, so there is no success to stamp and the
+        // staleness banner must be allowed to climb.
+        upsertMemberBaseWallet(PUBKEY, WALLET, 1_700_000_000);
+        const bigTip = 41_872_000;
+        fetchContractInfo.mockResolvedValue({ ...okContractInfo, as_of_block_number: bigTip });
+        fetchFeeRecipient.mockResolvedValue(FEE_RECIPIENT);
+        fetchUsdcBalance.mockResolvedValue(okBalance(bigTip));
+        fetchSettledEvents.mockRejectedValue(new Error("eth_getLogs upstream error"));
+
+        const result = await runOneTick();
+
+        // The tick was otherwise healthy: contract state cached, wallet polled.
+        // Without the split, those successes alone would have masked the failure.
+        expect(result.contract_state_synced).toBe(true);
+        expect(result.wallets_succeeded).toBe(1);
+        expect(result.cursor_advanced_to).toBeUndefined();
+        expect(result.errors.some((e) => e.context.startsWith("event_sync:"))).toBe(true);
+
+        const cursor = getSyncCursor();
+        expect(cursor.lastAttemptAt).toBeGreaterThan(0); // loop is alive
+        expect(cursor.lastSuccessAt).toBe(0); // but nothing is current
+        expect(cursor.lastSyncedBlockNumber).toBe(0);
     });
 });
 

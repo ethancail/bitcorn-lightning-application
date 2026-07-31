@@ -19,7 +19,14 @@ export interface MemberBaseWalletRow {
 
 export interface BaseSyncCursorRow {
     lastSyncedBlockNumber: number;
-    lastSyncedAt: number;
+    /** Last tick that RAN (migration 053). Diagnostic; drives no UI. */
+    lastAttemptAt: number;
+    /**
+     * Last tick that proved the Settled stream current (migration 053). This is
+     * the staleness signal. 0 = never — the seeded sentinel, rendered as
+     * `never_synced` rather than as an absurd age.
+     */
+    lastSuccessAt: number;
 }
 
 export interface BaseUsdcBalanceCacheRow {

@@ -26,6 +26,27 @@ export default function StaleBanner({
   if (!cursor) return null;
   if (cursor.staleness_label === "fresh") return null;
 
+  // never_synced renders NOTHING, and that is the accurate answer.
+  //
+  // The cursor sits at its seeded 0 whenever the sync loop has never recorded a
+  // success — overwhelmingly because no BASE wallet is registered yet, in which
+  // case sync.ts returns `no_wallets` before it ever contacts the Worker.
+  // Nothing is broken and nothing is late. This state used to fall through to
+  // the very_stale branch below and render "Settlement data is significantly out
+  // of date (cursor age: 29,758,925 min)" in prominent red — a false alarm shown
+  // to every subscriber who opened this page before connecting a wallet.
+  //
+  // The page's own Wallet panel already explains the pre-registration state
+  // ("You haven't registered a BASE wallet yet") and links to Settings, so a
+  // second banner here would be duplicate noise on the common path and a red
+  // alarm on a healthy node. Absence is the honest signal — the same convention
+  // as subscriptionBanner.ts, where a healthy member renders no banner at all.
+  //
+  // The genuinely degraded never-synced case (wallet registered, Worker
+  // unconfigured or refusing) is deliberately quiet here too: the member cannot
+  // act on it. It belongs in operator logs, not a member banner.
+  if (cursor.staleness_label === "never_synced") return null;
+
   const ageMin = Math.floor(cursor.staleness_seconds / 60);
   const tooltip = `Last synced block: ${cursor.last_synced_block_number.toLocaleString()}. Cursor age: ${cursor.staleness_seconds}s.`;
 

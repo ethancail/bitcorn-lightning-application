@@ -8,8 +8,6 @@
 // for fields that come from cache rows that may not exist yet. The
 // frontend (Phase 2 PR) parses bigints back from these strings.
 
-import type { StalenessLabel } from "../base/staleness";
-
 export interface SiweChallengeNonceRow {
     id: number;
     memberPubkey: string;
@@ -66,7 +64,20 @@ export interface BalanceResponse {
     as_of_block_number: number;
     as_of_at: number;
     staleness_seconds: number;
-    staleness_label: StalenessLabel;
+    /**
+     * Classified by classifyRailStaleness (the rail's 3/15-min thresholds), so
+     * it carries the RAIL label type — matching what the web client already
+     * declared for this field (web client.ts BalanceResponse). It was typed as
+     * the generic base/staleness.ts StalenessLabel here only because the two
+     * unions happened to be identical before `never_synced` existed; the
+     * mismatch was latent, not intentional.
+     *
+     * `never_synced` is unreachable in practice for a BALANCE: the cache row is
+     * only ever written on a successful read, so as_of_at is always > 0. The
+     * union is widened to match the classifier's real return type rather than to
+     * describe a reachable state.
+     */
+    staleness_label: RailStalenessLabel;
 }
 
 // ─── GET /api/stablecoin/contract-state ──────────────────────────────────
@@ -82,17 +93,32 @@ export interface ContractStateResponse {
 
 // ─── GET /api/stablecoin/sync-cursor ─────────────────────────────────────
 
-export type RailStalenessLabel = "fresh" | "stale" | "very_stale";
+export type RailStalenessLabel = "never_synced" | "fresh" | "stale" | "very_stale";
 
 export interface SyncCursorResponse {
     last_synced_block_number: number;
+    /**
+     * Alias of `last_success_at`, kept for wire compatibility with an older web
+     * bundle. Migration 053 split attempt from success; this field carries the
+     * SUCCESS timestamp, which is what it always claimed to mean.
+     */
     last_synced_at: number;
+    /** Last tick that proved the Settled stream current (migration 053). */
+    last_success_at: number;
+    /**
+     * Last tick that RAN. Diagnostic — deliberately NOT what the staleness
+     * banner reads, because liveness is not freshness. Surfaced so an operator
+     * can distinguish "the loop is dead" from "the loop is alive but the stream
+     * is stuck" without shelling into the container.
+     */
+    last_attempt_at: number;
+    /** 0 when never synced — there is no meaningful age to report. */
     staleness_seconds: number;
     /**
-     * The §7 rail-specific three-state label using 3-minute / 15-minute
-     * thresholds. Distinct from base/staleness.ts's general 5min/30min
-     * thresholds — the rail-frontend amendment locked tighter thresholds
-     * for the staleness banner.
+     * The §7 rail-specific label using 3-minute / 15-minute thresholds, plus the
+     * distinct `never_synced` state for a cursor that has no successful sync on
+     * record. Distinct from base/staleness.ts's general 5min/30min thresholds —
+     * the rail-frontend amendment locked tighter thresholds for the banner.
      */
     staleness_label: RailStalenessLabel;
 }

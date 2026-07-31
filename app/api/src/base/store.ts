@@ -78,16 +78,51 @@ export function upsertMemberBaseWallet(
 
 export function getSyncCursor(database: Db = defaultDb): BaseSyncCursorRow {
     const row = database
-        .prepare(`SELECT last_synced_block_number, last_synced_at FROM base_sync_cursor WHERE id = 1`)
-        .get() as { last_synced_block_number: number; last_synced_at: number } | undefined;
-    // Migration 044 seeds (0, 0); only missing if migrations haven't run.
+        .prepare(
+            `SELECT last_synced_block_number, last_attempt_at, last_success_at
+             FROM base_sync_cursor WHERE id = 1`,
+        )
+        .get() as
+        | {
+              last_synced_block_number: number;
+              last_attempt_at: number;
+              last_success_at: number;
+          }
+        | undefined;
+    // Migration 044 seeds the block at 0; migration 053 seeds both timestamps
+    // from last_synced_at (also 0 on a fresh install). The row is only missing
+    // if migrations haven't run. 0 is the never-synced sentinel that
+    // classifyRailStaleness reads — see stablecoin/staleness.ts.
     return {
         lastSyncedBlockNumber: row?.last_synced_block_number ?? 0,
-        lastSyncedAt: row?.last_synced_at ?? 0,
+        lastAttemptAt: row?.last_attempt_at ?? 0,
+        lastSuccessAt: row?.last_success_at ?? 0,
     };
 }
 
-export function advanceSyncCursor(
+/**
+ * Record that a tick RAN — nothing more. Diagnostic only; no user-facing
+ * surface reads last_attempt_at. Deliberately does NOT touch last_success_at:
+ * that separation is the whole point of migration 053. Before the split, the
+ * single timestamp was refreshed on mere liveness, so a node whose event
+ * ingestion had died still reported "fresh" to the staleness banner.
+ */
+export function recordSyncAttempt(at: number, database: Db = defaultDb): void {
+    database
+        .prepare(`UPDATE base_sync_cursor SET last_attempt_at = ? WHERE id = 1`)
+        .run(at);
+}
+
+/**
+ * Record that the Settled stream is provably current as of `at`, with the
+ * high-water mark at `blockNumber`.
+ *
+ * Callers must only reach this when the event sync either advanced or confirmed
+ * it was already caught up to (tip − confirmation depth) with no chunk errors.
+ * `last_synced_at` is written in lockstep as the deprecated alias (migration
+ * 053) so raw-SQL and base-rail-ops.ts readers stay correct.
+ */
+export function recordSyncSuccess(
     blockNumber: number,
     at: number,
     database: Db = defaultDb,
@@ -95,10 +130,13 @@ export function advanceSyncCursor(
     database
         .prepare(
             `UPDATE base_sync_cursor
-             SET last_synced_block_number = ?, last_synced_at = ?
+             SET last_synced_block_number = ?,
+                 last_success_at = ?,
+                 last_attempt_at = ?,
+                 last_synced_at  = ?
              WHERE id = 1`,
         )
-        .run(blockNumber, at);
+        .run(blockNumber, at, at, at);
 }
 
 // -----------------------------------------------------------------------

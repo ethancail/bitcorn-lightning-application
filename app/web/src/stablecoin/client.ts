@@ -14,7 +14,7 @@
 
 import { API_BASE } from "../config/api";
 
-export type RailStalenessLabel = "fresh" | "stale" | "very_stale";
+export type RailStalenessLabel = "never_synced" | "fresh" | "stale" | "very_stale";
 
 export interface ChallengeRequest {
   wallet_address: string;
@@ -64,7 +64,18 @@ export interface ContractStateResponse {
 
 export interface SyncCursorResponse {
   last_synced_block_number: number;
+  /** Legacy alias of `last_success_at` (API migration 053). */
   last_synced_at: number;
+  /**
+   * Last tick that proved the Settled stream current. Drives the staleness
+   * banner. OPTIONAL because an API container predating migration 053 won't send
+   * it — the same reachable-mismatch reasoning as SettlementRow.net_units_raw
+   * above (dev server on :3200 against a separately-run API, and the documented
+   * per-service Umbrel recovery pull).
+   */
+  last_success_at?: number;
+  /** Last tick that RAN. Diagnostic only; nothing user-facing reads it. */
+  last_attempt_at?: number;
   staleness_seconds: number;
   staleness_label: RailStalenessLabel;
 }
