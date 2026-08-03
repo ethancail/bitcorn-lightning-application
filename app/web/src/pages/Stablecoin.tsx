@@ -271,8 +271,19 @@ export default function Stablecoin() {
         </div>
       </section>
 
-      {/* ─── Panel 2: Send USDC ───────────────────────────────────── */}
-      {hasWallet && memberPubkey && (
+      {/* ─── Panel 2: Send USDC ─────────────────────────────────────
+          Hidden entirely when gated, rather than rendered disabled. A greyed-out
+          money form sitting under a "subscription required" notice is two
+          statements of the same fact, and the weaker one invites the member to
+          fill it in and discover the refusal at the submit button. Hiding makes
+          the page state unambiguous: the notice says what's wrong, and there is
+          nothing here implying it might work.
+
+          The submit guard is NOT conditional on this — validateSettlementSubmit
+          checks entitlement regardless. The render state is the affordance; the
+          guard is the block. Hiding the panel must never be the only thing
+          stopping a submit. */}
+      {hasWallet && memberPubkey && !gateNotice.render && (
         <section className="panel ops">
           <header className="panel-header">
             <div className="panel-title">
@@ -295,6 +306,7 @@ export default function Stablecoin() {
                 contractState={contractState}
                 cursor={cursor}
                 memberPubkey={memberPubkey}
+                subscriptionStatus={subStatus}
                 disabled={offline}
                 onSubmitted={() => void fetchAll()}
                 onClose={() => setShowSendForm(false)}

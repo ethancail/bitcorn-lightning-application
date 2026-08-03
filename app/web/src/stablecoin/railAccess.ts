@@ -134,7 +134,11 @@ export function railGateNoticeFor(status: SubscriptionStatus | null): RailGateNo
     ...common,
     headline: "Stablecoin settlements are paused",
     body:
-      "Your USDC is untouched and still yours — settlement history and balance " +
-      "display are what pause. Renew to restore them.",
+      "Your USDC is untouched and still yours — sending is disabled, and your " +
+      "history stops updating and balance stops refreshing. Renew to restore them.",
+    // "stops updating" rather than "pauses": already-ingested settlements are
+    // served from the local DB and keep rendering for a lapsed member. What
+    // stops is the sync loop adding NEW ones. Saying history "pauses" invites
+    // the reading that existing rows disappear, which is not what happens.
   };
 }
