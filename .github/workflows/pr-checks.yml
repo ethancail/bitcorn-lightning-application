@@ -26,8 +26,10 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────
-  # HARD GATES — verified green on BOTH the main and develop trees, so
-  # they cannot break a PR from either base.
+  # HARD GATES — verified passing on BOTH the main and develop trees, so
+  # they cannot break a PR from either base. Two of them (Worker tests,
+  # web typecheck) pass under a documented per-tree THRESHOLD rather than
+  # at zero; each carries the measurement and the flip event inline.
   # ─────────────────────────────────────────────────────────────────────
 
   api:
@@ -66,6 +68,103 @@ jobs:
         # must fail a release, and it has its own guard for that.
         run: npx vite build
 
+  web-typecheck:
+    name: Web — typecheck (hard gate, error ceiling)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        working-directory: app/web
+        run: npm install
+      - name: Typecheck (error ceiling)
+        working-directory: app/web
+        # ⚠ CEILING, NOT A PASS. Was advisory until 2026-08-03. It is now a real
+        # gate that tolerates N known errors and goes red the moment an N+1th
+        # appears — the same shape as the Worker failure ceiling above.
+        #
+        # WHY A COUNT AND NOT AN ALLOWLIST: scripts/verify-gate.mjs already
+        # carries a list of specific (file, TS-code) pairs (WEB_TSC_BASELINE). A
+        # second copy here would drift from it. A number cannot drift that way.
+        # It IS blunter — a new error appearing while an old one is fixed nets
+        # zero and slips through — which is the accepted trade, and the reason
+        # the ceiling should be driven to 0 rather than maintained.
+        #
+        # ─── MEASURED BASELINES, 2026-08-03 ─────────────────────────────
+        #
+        # develop: 0 errors. Was 4 (the recharts `payload` quartet — hand-written
+        #   Tooltip prop types omitting a field recharts really provides). Fixed
+        #   in this same change by completing the annotation: one added
+        #   `payload: ChartPoint` field in each of CornBitcoinChart,
+        #   CornMovingAveragesChart, MovingAveragesChart, PowerLawChart.
+        #
+        # main @ 19a667c: 17 errors. NOT 6 — that figure, recorded earlier, is
+        #   what you measure with vitest's types resolvable. CI installs from
+        #   main's own package.json, which has NO vitest devDependency, while
+        #   main still TRACKS 10 app/web/src/**/*.test.ts files. So tsc adds
+        #   10 × TS2307 "Cannot find module 'vitest'" plus 1 knock-on TS7006 on
+        #   top of the known 6 (4 recharts + 2 src/pages/SwapOperations.tsx:
+        #   TS2551 adminLoopInQuote, TS2339 adminLoopIn — API-client methods that
+        #   do not exist, deleted on develop by b818779, unshipped to main).
+        #   Re-measure, don't trust this number:
+        #     cd app/web && npm install && npx tsc --noEmit 2>&1 | grep -c "error TS"
+        #
+        # This is the same class of miss as the .nvmrc incident: an audit scoped
+        # to what a job MEASURES can miss what the job's environment actually
+        # PROVIDES.
+        #
+        # Branch-aware for the same reason MAX_FAILURES is — see the long note on
+        # the Worker step. One number would have to be 17, letting develop (where
+        # nearly all work happens) absorb 17 new errors silently.
+        #
+        # FLIP: after the develop→main convergence release — which carries
+        # b818779 (removing the SwapOperations pair), the recharts annotations,
+        # AND the vitest devDependency (removing all 11 TS2307/TS7006) — collapse
+        # both arms to a plain TSC_CEILING: "0" and delete this section. Verify
+        # on main's tree first; do not assume.
+        env:
+          TSC_CEILING: ${{ github.base_ref == 'main' && '17' || '0' }}
+        run: |
+          # Exit code deliberately captured, NOT relied on as the signal: tsc
+          # exits non-zero for "your code has type errors" AND for "I could not
+          # run at all", and those must not be conflated.
+          set +e
+          npx tsc --noEmit >/tmp/web-tsc.log 2>&1
+          TSC_EXIT=$?
+          set -e
+          cat /tmp/web-tsc.log
+
+          # grep -c exits 1 on zero matches, which would kill the step under
+          # pipefail — so absorb it and read the printed count.
+          COUNT=$(grep -cE "error TS[0-9]+" /tmp/web-tsc.log || true)
+          echo "Web tsc: $COUNT error(s) (ceiling: $TSC_CEILING, base: ${{ github.base_ref }})"
+
+          # COULD-NOT-RUN IS A FAILURE, NOT ZERO ERRORS. Without this, a missing
+          # tsc binary or an unreadable tsconfig exits non-zero, matches no
+          # "error TS" lines, counts 0, and sails through a ceiling of 0 — a
+          # green check proving nothing. This is the vacuous-green shape the
+          # Worker step's no-report guard exists to stop, in its tsc form.
+          if [ "$TSC_EXIT" -ne 0 ] && [ "$COUNT" -eq 0 ]; then
+            echo "::error::tsc exited $TSC_EXIT but reported no 'error TS' lines — it could not run."
+            echo "This is a FAILURE, not zero errors. Check the log above:"
+            echo "likely a missing typescript install, a bad tsconfig, or a crash."
+            exit 1
+          fi
+
+          if [ "$COUNT" -gt "$TSC_CEILING" ]; then
+            echo "::error::Web tsc errors ($COUNT) exceed the known ceiling ($TSC_CEILING)."
+            echo "A NEW type error appeared. The known baseline for this base branch"
+            echo "is documented in this workflow; yours is not part of it."
+            exit 1
+          fi
+
+          if [ "$COUNT" -lt "$TSC_CEILING" ]; then
+            echo "::notice::Only $COUNT errors — below the ceiling of $TSC_CEILING."
+            echo "If you fixed some, lower TSC_CEILING in this workflow to lock the gain in."
+          fi
+
   worker:
     name: Worker — typecheck + tests (hard gate)
     runs-on: ubuntu-latest
@@ -95,34 +194,59 @@ jobs:
 
       - name: Tests (failure ceiling)
         working-directory: cloudflare-worker
-        # ⚠ CEILING, NOT A PASS. The Worker suite has 9 KNOWN failures. This
-        # asserts the count has not grown — a new failure fails the job.
+        # ⚠ CEILING, NOT A PASS. Asserts the failure count has not grown — a
+        # new failure fails the job.
         #
-        # All 9 are STALE FIXTURES, not regressions. Verified by dating each
-        # test against the code it tests:
+        # THE 9 STALE FIXTURES ARE FIXED — on develop only. They were never
+        # regressions; all nine had drifted behind deliberate implementation
+        # changes, and each was repaired by correcting the FIXTURE, verified by
+        # negative control (reverting each to its stale form reproduces the
+        # original failure, for the original reason):
         #
-        #   3 · tests/router.test.ts — /valuation/{current,history,inputs} send
-        #       no Bearer and expect 200. Tests written 2026-04-17/04-20; the
+        #   3 · tests/router.test.ts — /valuation/{current,history,inputs} sent
+        #       no Bearer and expected 200. Tests written 2026-04-17/04-20; the
         #       JWT gate (withJwtGate "full") landed 2026-05-11 in a461f17
-        #       "entitlement tokens (Stage 4)". The 401 is correct behavior;
-        #       the tests predate it by three weeks.
+        #       "entitlement tokens (Stage 4)". The 401 was correct; the tests
+        #       predated it by three weeks. Now carry a full-scope token from
+        #       tests/helpers/entitlementToken.ts, so they assert ROUTING again.
         #
-        #   2 · tests/inputs/priceHistory.test.ts — mocks a CoinGecko response.
+        #   2 · tests/inputs/priceHistory.test.ts — mocked a CoinGecko response.
         #       The upstream moved CoinGecko → Binance → Yahoo Finance on
-        #       2026-05-06 (5d452c4, c05de8e "Binance is geo-blocked"). The
-        #       test file has not been touched since it was written.
+        #       2026-05-06 (5d452c4, c05de8e "Binance is geo-blocked"). Now mock
+        #       Yahoo's shape: parallel timestamp/close arrays, epoch SECONDS.
         #
-        #   4 · tests/inputs/stockToFlow.test.ts — its `env` fixture has no
-        #       PRICES_CACHE binding. stockToFlow now derives from BTC price
-        #       history (which reads KV), so kv.get() throws on undefined.
-        #       Same 2026-05-06 root cause.
+        #   4 · tests/inputs/stockToFlow.test.ts — its `env` fixture had no
+        #       PRICES_CACHE binding. stockToFlow derives from BTC price history
+        #       (which reads KV), so kv.get() threw on undefined. Same
+        #       2026-05-06 root cause. Fixture now binds KV per-test and pins
+        #       the derived deviation against an independently-derived golden.
         #
-        # THE CEILING DROPS TO 0 when the fix arc lands. Fixing them is
-        # ~60–80 lines across those 3 files; it needs the Yahoo chart response
-        # shape worked out, which is the real cost. When that ships, set
-        # MAX_FAILURES=0 and delete this comment.
+        # ─── WHY THIS CEILING IS BRANCH-AWARE ───────────────────────────
+        #
+        # The fixes are on a develop-based branch, so they reach main only at
+        # the convergence release. Until then the two trees genuinely differ,
+        # MEASURED 2026-08-03: develop 216 tests / 0 failures; main @ 19a667c
+        # 116 tests / 9 failures (the same nine, unfixed).
+        #
+        # A SINGLE number cannot serve both. Set it to 9 and develop — where
+        # nearly all work happens — can regress nine tests and stay green; set
+        # it to 0 and every PR to main fails on failures nobody introduced. The
+        # arms below are therefore each tree's TRUE baseline, which is strictly
+        # tighter than any single value: neither tree is loosened relative to
+        # one number, and develop is tightened to zero.
+        #
+        # Note this does NOT contradict MIN_TOTAL's "deliberately NOT
+        # branch-conditional" note below. That floor's single value is a
+        # lowest-common-denominator main can actually satisfy (its suite is 116
+        # tests; a floor of 200 is unsatisfiable there, not merely strict). This
+        # ceiling's arms encode a difference that DISAPPEARS at a known event.
+        #
+        # FLIP: when the develop→main convergence release carries these fixture
+        # fixes to main, collapse both arms to a plain MAX_FAILURES: "0" and
+        # delete this section. Verify first, don't assume:
+        #   cd cloudflare-worker && npx vitest run    # on main's tree → 0 failed
         env:
-          MAX_FAILURES: "9"
+          MAX_FAILURES: ${{ github.base_ref == 'main' && '9' || '0' }}
           # ─── COLLECTION FLOOR ───────────────────────────────────────
           #
           # WHY ONLY THIS STEP HAS ONE — the structural reason, which the bare
@@ -349,44 +473,15 @@ jobs:
           echo "Version bumped $VB → $VH."
 
   # ─────────────────────────────────────────────────────────────────────
-  # ADVISORY — non-blocking. See the flip condition on each job.
+  # ADVISORY — non-blocking. One job left; see its flip condition inline.
+  #
+  # Web typecheck USED TO LIVE HERE. It became a ceiling-gated hard gate on
+  # 2026-08-03 and now sits in the HARD GATES section above. Its
+  # `continue-on-error` was at JOB level, which rendered the advisory as a
+  # failing red check — indistinguishable from a real failure, which is
+  # precisely what trains a reader to click past red. Step level would have
+  # been worse: green always, including when a new error appeared.
   # ─────────────────────────────────────────────────────────────────────
-
-  web-typecheck-advisory:
-    name: Web — typecheck (ADVISORY, non-blocking)
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    # ADVISORY ONLY, AND HERE IS THE EXACT CONDITION TO FLIP IT:
-    #
-    # This is non-blocking because main's tree and develop's tree disagree.
-    # `app/web` typecheck has 4 pre-existing errors on develop (the recharts
-    # `payload` quartet — hand-written Tooltip prop types that omit a field
-    # recharts really provides) and 6 on main: the same 4 plus 2 in
-    # src/pages/SwapOperations.tsx (TS2551 adminLoopInQuote, TS2339 adminLoopIn
-    # — calls to API-client methods that don't exist). Those 2 were fixed on
-    # develop by b818779, which deletes the dead panels, and that commit has
-    # NOT shipped to main.
-    #
-    # FLIP WHEN: a develop→main release converges the branches (b818779 reaches
-    # main, removing the 2 SwapOperations errors) AND the 4 recharts
-    # annotations are fixed — one added field per file in CornBitcoinChart,
-    # CornMovingAveragesChart, MovingAveragesChart, PowerLawChart. Then delete
-    # `continue-on-error` and this comment. Do NOT flip it by adding an error
-    # allowlist; scripts/verify-gate.mjs already carries one (WEB_TSC_BASELINE)
-    # and a second copy would drift from it.
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-      - name: Install
-        working-directory: app/web
-        run: npm install
-      - name: Typecheck
-        working-directory: app/web
-        run: |
-          echo "ADVISORY: known baseline is 4 errors on develop, 6 on main."
-          npx tsc --noEmit
 
   web-vitest-advisory:
     name: Web — tests (ADVISORY, non-blocking)
