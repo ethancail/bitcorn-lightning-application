@@ -30,8 +30,11 @@ id = "62c68c41830141cc8b0b6e7cdb193461"
 #                              validation on member-gated endpoints
 #
 #   ─── Stablecoin rail (per spec §5; added 2026-05-21) ─────────────────
-#   BASE_SEPOLIA_RPC_URL              — secret; full Alchemy/Coinbase Node URL
+#   BASE_RPC_URL                      — secret; full Alchemy/Coinbase Node URL
 #                                       with embedded API key
+#                                       (renamed from BASE_SEPOLIA_RPC_URL
+#                                       2026-08-03 — chain-neutral, and matches
+#                                       the app side's long-standing name)
 #   SETTLEMENT_ROUTER_ADDRESS         — env var; deployed SettlementRouter
 #                                       (testnet: 0xF1Bc89974f8520b7f98e7cF0C689a7077aF04c78)
 #   USDC_TOKEN_ADDRESS                — env var; USDC on the target chain
@@ -42,9 +45,33 @@ id = "62c68c41830141cc8b0b6e7cdb193461"
 #   BASE_CHAIN_ID                     — env var; "84532" for Sepolia, "8453"
 #                                       for mainnet
 #
+#   ⚠ THE "env var" vs "secret" LABELS ABOVE DESCRIBE THE VALUE'S NATURE
+#   (public on-chain vs sensitive), NOT THE MECHANISM USED TO SET IT.
+#   All five are set the same way:
+#
+#       wrangler secret put <NAME>
+#
+#   Vars and secrets arrive on the same `env` object at runtime, so
+#   `secret put` works fine for the four that aren't sensitive. Nothing in the
+#   code can tell the difference.
+#
+#   ⚠ CONSEQUENCE — DO NOT UNDO THIS. Because all five are secrets, deploy-day
+#   configuration needs NO `wrangler deploy`. That matters: `wrangler deploy`
+#   ships the WORKING TREE, and that is exactly how unreleased code reached
+#   production accidentally on 2026-07-16. Keeping configuration on
+#   `secret put` keeps `wrangler deploy` off deploy day entirely. A code change
+#   (like the 2026-08-03 rename above) still needs a deploy — but that is a
+#   deliberate, separately-reviewed act, not a side effect of configuring.
+#
+#   ⚠ A [vars] BLOCK WAS CONSIDERED AND REJECTED. Its absence below is a
+#   decision, not an oversight. `[vars]` entries live in this file and are
+#   applied by `wrangler deploy` — which would reintroduce exactly the
+#   working-tree hazard described above, and would additionally put the
+#   chain-selecting BASE_CHAIN_ID under version control where a stale committed
+#   value could silently outrank the intended one. Do not add one.
+#
 #   Local dev: put these in .dev.vars (gitignored) so `wrangler dev` picks them
-#   up automatically. Production: `wrangler secret put` for the RPC URL,
-#   `wrangler deploy` for the rest as env vars.
+#   up automatically.
 #
 # Removed after 2026-04-17 manual-input pivot:
 #   GLASSNODE_API_KEY       — 8 Glassnode metrics now manually entered via the

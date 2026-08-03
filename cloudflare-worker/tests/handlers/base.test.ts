@@ -33,7 +33,7 @@ const ALICE = "0x4842925CF6B6671e8e1A25892bdeA0807b4814fD";
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
-    BASE_SEPOLIA_RPC_URL: "https://mocked.rpc.example/v2/key",
+    BASE_RPC_URL: "https://mocked.rpc.example/v2/key",
     SETTLEMENT_ROUTER_ADDRESS: ROUTER,
     USDC_TOKEN_ADDRESS: USDC,
     SETTLEMENT_ROUTER_DEPLOY_BLOCK: "41851565",
@@ -114,6 +114,49 @@ describe("handleBaseContractInfo", () => {
     const body = (await res.json()) as any;
     expect(body.settlement_router_address).toBeNull();
     expect(body.rpc_status).toBe("unconfigured");
+  });
+
+  it("returns unconfigured when BASE_RPC_URL is absent (router still set)", async () => {
+    // THE PROPERTY THAT HAD TO SURVIVE THE 2026-08-03 BASE_SEPOLIA_RPC_URL →
+    // BASE_RPC_URL rename, and it was previously UNCOVERED.
+    //
+    // `unconfigured` is reachable by three distinct routes and the other two
+    // already had tests:
+    //   - router address unset      → the else at handlers/base.ts:174-176
+    //                                 (the test directly above)
+    //   - fetch throws              → upstream_error, NOT unconfigured
+    //                                 ("degrades gracefully" test above)
+    //   - RPC URL unset             → baseRpc.ts:40 `if (!rpcUrl)` throws
+    //                                 BaseRpcError{kind:"unconfigured"}, caught
+    //                                 at handlers/base.ts:169-171   ← THIS ONE
+    //
+    // Keeping the router address SET is what forces the third route: it makes
+    // handleBaseContractInfo enter its try block and actually attempt an
+    // eth_call, so the refusal has to come from baseRpc's value check. Without
+    // that, this test would silently collapse into the first route and pass for
+    // the wrong reason.
+    const fetchSpy = vi.fn(async () => {
+      throw new Error("fetch must never be called — RPC URL is unset");
+    });
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+
+    const res = await handleBaseContractInfo(makeEnv({ BASE_RPC_URL: undefined }));
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as any;
+    expect(body.rpc_status).toBe("unconfigured");
+    // Distinguishes this from the router-unset route: the static field is still
+    // populated, so we definitely went through the try block.
+    expect(body.settlement_router_address).toBe(ROUTER);
+    // Live fields degrade to null rather than throwing (§5.4).
+    expect(body.current_fee_bps).toBeNull();
+    expect(body.is_paused).toBeNull();
+    expect(body.as_of_block_number).toBeNull();
+    // Distinguishes it from the fetch-throws route: we bailed on the config
+    // check BEFORE any network attempt, so it is not upstream_error and the
+    // upstream was never contacted.
+    expect(body.rpc_status).not.toBe("upstream_error");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

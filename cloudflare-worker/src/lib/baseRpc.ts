@@ -1,6 +1,6 @@
 // Typed helper for forwarding JSON-RPC calls to the upstream BASE RPC.
 //
-// The Worker holds BASE_SEPOLIA_RPC_URL as a secret (URL may include an
+// The Worker holds BASE_RPC_URL as a secret (URL may include an
 // embedded API key — Alchemy's standard pattern). Callers in handlers/base.ts
 // invoke `ethCall` / `ethBlockNumber` etc. rather than hand-building JSON-RPC
 // bodies, so the upstream's auth and error shape stay isolated to this module.
@@ -36,10 +36,13 @@ export class BaseRpcError extends Error {
 let nextId = 1;
 
 async function callRpc<T>(env: Env, method: string, params: unknown[]): Promise<T> {
-  const rpcUrl = env.BASE_SEPOLIA_RPC_URL;
+  const rpcUrl = env.BASE_RPC_URL;
+  // Keyed on the VALUE being falsy, never on the name — this is the sole path to
+  // BaseRpcError{kind:"unconfigured"}, which handleBaseContractInfo maps to
+  // rpc_status="unconfigured". Covered by tests/handlers/base.test.ts.
   if (!rpcUrl) {
     throw new BaseRpcError(
-      "BASE_SEPOLIA_RPC_URL is not configured on this Worker",
+      "BASE_RPC_URL is not configured on this Worker",
       "unconfigured",
       503,
     );

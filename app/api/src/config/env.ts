@@ -117,7 +117,7 @@ export const ENV = {
     // smart account) as the recommended wallet. Verifying its signatures
     // requires calling `isValidSignature` on-chain, which means viem's
     // verifySiweMessage needs a chain RPC client. This duplicates the
-    // Worker's BASE_SEPOLIA_RPC_URL minus a config layer — kept SIWE-only
+    // Worker's BASE_RPC_URL minus a config layer — kept SIWE-only
     // on the API side; operational chain reads still go through the Worker
     // (see deltas-record candidate #11 on Worker-as-source-of-truth).
     //
