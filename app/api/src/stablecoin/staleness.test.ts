@@ -46,3 +46,48 @@ describe("classifyRailStaleness — spec amendment §7 thresholds (3min / 15min)
         expect(classifyRailStaleness(NOW - 60 * 60_000, NOW)).toBe("very_stale");
     });
 });
+
+describe("classifyRailStaleness — never_synced is a distinct state, not extreme staleness", () => {
+    // THE BUG THIS PINS. base_sync_cursor seeds at (0, 0), so a node whose sync
+    // loop has never recorded a success carried asOfAt = 0. `NOW - 0` is a
+    // finite ~1.78e12 ms, so no NaN guard caught it: it classified as very_stale
+    // and the banner rendered "Settlement data is significantly out of date
+    // (cursor age: 29,758,925 min)" in prominent red.
+    //
+    // That fires on a HEALTHY node with no BASE wallet registered — sync.ts
+    // returns `no_wallets` before contacting the Worker, so the cursor never
+    // moves. Which is every subscriber on release day.
+
+    it("classifies the 0 sentinel as never_synced, NOT very_stale", () => {
+        expect(classifyRailStaleness(0, NOW)).toBe("never_synced");
+        expect(classifyRailStaleness(0, NOW)).not.toBe("very_stale");
+    });
+
+    it("reports no age for a never-synced cursor instead of ~56 years", () => {
+        // The absurd number that reached the banner. Asserting 0 exactly, and
+        // additionally asserting it isn't the old value, so a regression that
+        // reinstates the epoch arithmetic fails loudly rather than drifting.
+        expect(railStalenessSeconds(0, NOW)).toBe(0);
+        expect(railStalenessSeconds(0, NOW)).not.toBe(Math.floor(NOW / 1000));
+    });
+
+    it("treats negative timestamps as never_synced too", () => {
+        // Defensive: any non-positive value is a sentinel, not a real instant.
+        expect(classifyRailStaleness(-1, NOW)).toBe("never_synced");
+        expect(railStalenessSeconds(-1, NOW)).toBe(0);
+    });
+
+    it("a real timestamp 1ms after the epoch is NOT never_synced", () => {
+        // Boundary in the other direction: the sentinel must be 0-or-below only,
+        // so a genuine (if absurdly old) timestamp still classifies by age. This
+        // is what keeps the sentinel check from swallowing real data.
+        expect(classifyRailStaleness(1, NOW)).toBe("very_stale");
+        expect(railStalenessSeconds(1, NOW)).toBeGreaterThan(0);
+    });
+
+    it("never_synced does not depend on `now` — it is not an age at all", () => {
+        expect(classifyRailStaleness(0, NOW)).toBe("never_synced");
+        expect(classifyRailStaleness(0, NOW + 10 * 365 * 86_400_000)).toBe("never_synced");
+        expect(classifyRailStaleness(0, 0)).toBe("never_synced");
+    });
+});

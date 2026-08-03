@@ -8,12 +8,13 @@ import path from "path";
 vi.mock("../db", () => ({ db: new Database(":memory:") }));
 
 import {
-    advanceSyncCursor,
     getContractState,
     getSyncCursor,
     getUsdcBalance,
     listActiveBaseWallets,
     upsertContractState,
+    recordSyncAttempt,
+    recordSyncSuccess,
     upsertMemberBaseWallet,
     upsertUsdcBalance,
 } from "./store";
@@ -25,6 +26,7 @@ const BASE_MIGRATIONS = [
     "045_base_usdc_balance_cache.sql",
     "046_base_settlement_event.sql",
     "047_base_contract_state_cache.sql",
+    "053_base_sync_cursor_attempt_success.sql",
 ];
 
 function applyMigration(db: Database.Database, file: string): void {
@@ -76,16 +78,56 @@ describe("member_base_wallet store", () => {
 });
 
 describe("base_sync_cursor store", () => {
-    it("returns the seeded (0, 0) cursor on a fresh db", () => {
+    it("returns the all-zero seeded cursor on a fresh db", () => {
+        // 0 on both timestamps is the never-synced sentinel that
+        // classifyRailStaleness reads (stablecoin/staleness.ts).
         const cursor = getSyncCursor(db);
-        expect(cursor).toEqual({ lastSyncedBlockNumber: 0, lastSyncedAt: 0 });
+        expect(cursor).toEqual({
+            lastSyncedBlockNumber: 0,
+            lastAttemptAt: 0,
+            lastSuccessAt: 0,
+        });
     });
 
-    it("advances and re-reads", () => {
-        advanceSyncCursor(41_852_000, 1_700_000_500_000, db);
+    it("recordSyncSuccess writes the block and BOTH timestamps", () => {
+        recordSyncSuccess(41_852_000, 1_700_000_500_000, db);
         const cursor = getSyncCursor(db);
         expect(cursor.lastSyncedBlockNumber).toBe(41_852_000);
-        expect(cursor.lastSyncedAt).toBe(1_700_000_500_000);
+        expect(cursor.lastSuccessAt).toBe(1_700_000_500_000);
+        expect(cursor.lastAttemptAt).toBe(1_700_000_500_000);
+    });
+
+    it("recordSyncSuccess keeps the legacy last_synced_at alias in lockstep", () => {
+        // Migration 053 keeps last_synced_at for base-rail-ops.ts and raw-SQL
+        // readers. If it silently stopped tracking success, those readers would
+        // report a frozen timestamp with nothing flagging it.
+        recordSyncSuccess(41_852_000, 1_700_000_500_000, db);
+        const row = db
+            .prepare("SELECT last_synced_at FROM base_sync_cursor WHERE id = 1")
+            .get() as { last_synced_at: number };
+        expect(row.last_synced_at).toBe(1_700_000_500_000);
+    });
+
+    it("recordSyncAttempt moves ONLY last_attempt_at — never success", () => {
+        // THE MIGRATION-053 PROPERTY. If attempt bled into success, a node whose
+        // event ingestion is dead would keep reporting "fresh" — the exact
+        // inverted signal the split exists to remove. Asserted on a cursor that
+        // has never succeeded, so a leak shows up as a nonzero success stamp
+        // rather than being masked by an earlier real success.
+        recordSyncAttempt(1_700_000_900_000, db);
+        const cursor = getSyncCursor(db);
+        expect(cursor.lastAttemptAt).toBe(1_700_000_900_000);
+        expect(cursor.lastSuccessAt).toBe(0);
+        expect(cursor.lastSyncedBlockNumber).toBe(0);
+    });
+
+    it("a later attempt does not roll back an earlier success", () => {
+        recordSyncSuccess(41_852_000, 1_700_000_500_000, db);
+        recordSyncAttempt(1_700_009_000_000, db);
+        const cursor = getSyncCursor(db);
+        expect(cursor.lastAttemptAt).toBe(1_700_009_000_000);
+        expect(cursor.lastSuccessAt).toBe(1_700_000_500_000);
+        expect(cursor.lastSyncedBlockNumber).toBe(41_852_000);
     });
 });
 

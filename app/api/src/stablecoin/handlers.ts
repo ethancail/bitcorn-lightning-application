@@ -270,11 +270,16 @@ export function handleContractState(_req: IncomingMessage, res: ServerResponse):
 export function handleSyncCursor(_req: IncomingMessage, res: ServerResponse): void {
     const cursor = getSyncCursor();
     const now = Date.now();
+    // Staleness derives from lastSuccessAt, never lastAttemptAt — see migration
+    // 053. Driving it off the attempt timestamp is what let a node with dead
+    // event ingestion report "fresh".
     const response: SyncCursorResponse = {
         last_synced_block_number: cursor.lastSyncedBlockNumber,
-        last_synced_at: cursor.lastSyncedAt,
-        staleness_seconds: railStalenessSeconds(cursor.lastSyncedAt, now),
-        staleness_label: classifyRailStaleness(cursor.lastSyncedAt, now),
+        last_synced_at: cursor.lastSuccessAt,
+        last_success_at: cursor.lastSuccessAt,
+        last_attempt_at: cursor.lastAttemptAt,
+        staleness_seconds: railStalenessSeconds(cursor.lastSuccessAt, now),
+        staleness_label: classifyRailStaleness(cursor.lastSuccessAt, now),
     };
     res.writeHead(200, JSON_CT);
     res.end(JSON.stringify(response));

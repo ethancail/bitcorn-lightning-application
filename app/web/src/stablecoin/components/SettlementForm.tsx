@@ -26,9 +26,12 @@ import {
   ERC20_ABI,
   SETTLEMENT_ROUTER_ABI,
   USDC_ADDRESS_BY_CHAIN,
-  parseUsdcAmount,
   formatUsdc,
 } from "../contract";
+import { feePreviewUnits, isFeeRateKnown } from "../feePreview";
+import { validateSettlementSubmit } from "../submitGuard";
+import { isRailGated } from "../railAccess";
+import type { SubscriptionStatus } from "../../api/client";
 import { DEFAULT_CHAIN } from "../wagmi";
 import {
   addPendingEntry,
@@ -54,10 +57,6 @@ type FormStep =
 
 const ZERO_BYTES32 = "0x0000000000000000000000000000000000000000000000000000000000000000" as const;
 
-function isAddressLike(s: string): s is `0x${string}` {
-  return /^0x[0-9a-fA-F]{40}$/.test(s.trim());
-}
-
 /**
  * Compute the bytes32 trade reference for the settle() call.
  *
@@ -75,11 +74,21 @@ export default function SettlementForm({
   contractState,
   cursor,
   memberPubkey,
+  subscriptionStatus,
   disabled = false,
   onSubmitted,
   onClose,
 }: {
   contractState: ContractStateResponse | null;
+  /**
+   * Member's subscription status, for the entitlement guard (submitGuard.ts).
+   *
+   * Passed in rather than read via useSubscriptionStatus() here: the Stablecoin
+   * page already holds it for the gate notice, and a second hook instance would
+   * add another 60s poll of a treasury-proxied endpoint for the same answer.
+   * Same per-consumer reasoning as useSubscriptionStatus's own header note.
+   */
+  subscriptionStatus: SubscriptionStatus | null;
   /** Sync-loop cursor (§7 staleness gradient). When `staleness_label`
    *  reaches `very_stale` (>15 min) we render a small inline notice
    *  above the submit button warning that the post-submit Pending row
@@ -115,17 +124,28 @@ export default function SettlementForm({
   // sending so the wallet and this address always agree.
   const usdcAddress = USDC_ADDRESS_BY_CHAIN[DEFAULT_CHAIN.id];
   const routerAddress = contractState?.settlement_router_address as `0x${string}` | undefined;
+  // Is the on-chain fee rate KNOWN, or merely absent? Gated on the state
+  // EXISTING, never on the rate being nonzero — a cached 0 bps is knowledge.
+  // See feePreview.ts for why "unknown" must not be representable as 0.
+  const feeRateKnown = isFeeRateKnown(contractState);
   const feeBps = contractState?.current_fee_bps ?? 0;
+  // Affordance only — the block itself is validateSettlementSubmit's entitlement
+  // check. Derived from the same isRailGated used there, so the button state and
+  // the refusal can't disagree. In practice the page hides this whole panel when
+  // gated (Stablecoin.tsx), so this is the belt to that braces.
+  const railGated = isRailGated(subscriptionStatus);
   const isPaused = contractState?.is_paused ?? false;
 
-  // Fee preview against the input amount. Computed against the cached
-  // feeBps — the on-chain rate at execution wins, per spec §5.
-  const feePreviewUnits = useMemo(() => {
-    const units = parseUsdcAmount(amount);
-    if (units === null || feeBps === 0) return 0n;
-    return (units * BigInt(feeBps)) / 10000n;
-  }, [amount, feeBps]);
-  const feePreviewHuman = formatUsdc(feePreviewUnits);
+  // Fee preview against the input amount. Computed against the cached feeBps —
+  // the on-chain rate at execution wins, per spec §5.
+  //
+  // `null` means "no number to show" (rate unknown, or amount unparseable) and
+  // is deliberately distinct from 0n, a real zero fee — see feePreview.ts.
+  const previewUnits = useMemo(
+    () => feePreviewUnits(contractState, amount),
+    [contractState, amount],
+  );
+  const feePreviewHuman = previewUnits === null ? "—" : formatUsdc(previewUnits);
 
   const reset = useCallback(() => {
     setRecipient("");
@@ -169,37 +189,40 @@ export default function SettlementForm({
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!walletAddress) {
-        setStep({ kind: "validation_error", message: "Connect a wallet first." });
+      // The whole pre-flight chain, in order, including the subscription
+      // entitlement check — see submitGuard.ts. This call sits ABOVE the first
+      // wallet interaction (switchChainAsync, below), so a rejected pre-flight
+      // can never produce a wallet prompt. Same discipline as the inline chain
+      // it replaces; the guards and their messages are unchanged, with
+      // entitlement inserted at the top.
+      const guard = validateSettlementSubmit({
+        subscriptionStatus,
+        walletAddress,
+        usdcAddress,
+        routerAddress,
+        isPaused,
+        recipient,
+        amount,
+        hasPublicClient: publicClient != null,
+        chainId,
+      });
+      if (!guard.ok) {
+        setStep({ kind: "validation_error", message: guard.message });
         return;
       }
-      if (!usdcAddress) {
-        setStep({ kind: "validation_error", message: `USDC address not configured for chain ${chainId}.` });
-        return;
-      }
-      if (!routerAddress) {
-        setStep({ kind: "validation_error", message: "Contract state not loaded yet; try again in a moment." });
-        return;
-      }
-      if (isPaused) {
-        setStep({ kind: "validation_error", message: "Settlements are paused. Try again later." });
-        return;
-      }
-      const recipientTrimmed = recipient.trim();
-      if (!isAddressLike(recipientTrimmed)) {
-        setStep({ kind: "validation_error", message: "Recipient must be a 0x address." });
-        return;
-      }
-      const recipientAddress = recipientTrimmed.toLowerCase() as `0x${string}`;
-      const amountUnits = parseUsdcAmount(amount);
-      if (amountUnits === null || amountUnits === 0n) {
-        setStep({ kind: "validation_error", message: "Amount must be a positive USDC value (up to 6 decimals)." });
-        return;
-      }
-      if (!publicClient) {
-        setStep({ kind: "validation_error", message: "Wallet RPC not available; try refreshing." });
-        return;
-      }
+      // Narrowed values come back FROM the guard, so there is no re-parse and no
+      // second `if (!x) return` here that could silently swallow a submit.
+      const {
+        recipientAddress,
+        amountUnits,
+        usdcAddress: usdc,
+        routerAddress: router,
+        walletAddress: wallet,
+      } = guard;
+      // publicClient is a wagmi hook object, so it can't travel through a pure
+      // function. The guard's hasPublicClient check already proved it non-null,
+      // which is why this is an assertion rather than another branch.
+      const client = publicClient!;
       const tradeRef = computeTradeRef(reference);
 
       try {
@@ -223,24 +246,24 @@ export default function SettlementForm({
         // and falls back to a max gas limit the RPC then rejects
         // ("exceeds max transaction gas limit"). Reading allowance first
         // and skipping the approve when it's already set sidesteps that.
-        const currentAllowance = (await publicClient.readContract({
-          address: usdcAddress,
+        const currentAllowance = (await client.readContract({
+          address: usdc,
           abi: ERC20_ABI,
           functionName: "allowance",
-          args: [walletAddress, routerAddress],
+          args: [wallet, router],
         })) as bigint;
 
         if (currentAllowance < amountUnits) {
           setStep({ kind: "approving" });
           const approveHash = await writeContractAsync({
             chainId: DEFAULT_CHAIN.id,
-            address: usdcAddress,
+            address: usdc,
             abi: ERC20_ABI,
             functionName: "approve",
-            args: [routerAddress, amountUnits],
+            args: [router, amountUnits],
           });
           setStep({ kind: "approving", txHash: approveHash });
-          await publicClient.waitForTransactionReceipt({ hash: approveHash });
+          await client.waitForTransactionReceipt({ hash: approveHash });
         }
 
         setStep({ kind: "settling" });
@@ -263,12 +286,12 @@ export default function SettlementForm({
         const SETTLE_GAS_FLOOR = 250_000n;
         let settleGas = SETTLE_GAS_FLOOR;
         try {
-          const est = await publicClient.estimateContractGas({
-            address: routerAddress,
+          const est = await client.estimateContractGas({
+            address: router,
             abi: SETTLEMENT_ROUTER_ABI,
             functionName: "settle",
             args: [recipientAddress, amountUnits, tradeRef],
-            account: walletAddress,
+            account: wallet,
           });
           const buffered = (est * 125n) / 100n;
           if (buffered > settleGas) settleGas = buffered;
@@ -279,7 +302,7 @@ export default function SettlementForm({
         const settleHash = await writeContractAsync({
           chainId: DEFAULT_CHAIN.id,
           gas: settleGas,
-          address: routerAddress,
+          address: router,
           abi: SETTLEMENT_ROUTER_ABI,
           functionName: "settle",
           args: [recipientAddress, amountUnits, tradeRef],
@@ -319,6 +342,7 @@ export default function SettlementForm({
       recipient,
       reference,
       routerAddress,
+      subscriptionStatus,
       switchChainAsync,
       usdcAddress,
       walletAddress,
@@ -442,11 +466,22 @@ export default function SettlementForm({
           Free-text — hashed via keccak256 and stored as a bytes32 on-chain.
         </span>
       </label>
-      <FeeDisplay
-        feeHuman={feePreviewHuman}
-        feeBps={feeBps}
-        variant="preview"
-      />
+      {feeRateKnown ? (
+        <FeeDisplay
+          feeHuman={feePreviewHuman}
+          feeBps={feeBps}
+          variant="preview"
+        />
+      ) : (
+        // Rate unavailable — say so rather than implying zero. Submission is
+        // already blocked in this state (the !routerAddress guard in
+        // handleSubmit), so this is informational, not a dead end.
+        <div className="stablecoin-fee">
+          <span className="stablecoin-fee-label">Fee Preview:</span>{" "}
+          <span className="stablecoin-fee-value">—</span>{" "}
+          <span className="stablecoin-fee-rate">(rate unavailable — not yet synced)</span>
+        </div>
+      )}
       {step.kind === "validation_error" && (
         <div className="sub-alert sub-alert-amber" style={{ marginTop: 8 }}>
           <span className="sub-alert-icon" aria-hidden>⚠</span>
@@ -476,7 +511,17 @@ export default function SettlementForm({
         </div>
       )}
       <div className="stablecoin-actions" style={{ marginTop: 12 }}>
-        <button type="submit" className="btn btn-primary" disabled={inert || !isConnected || isPaused}>
+        {/* `!routerAddress` mirrors the handleSubmit guard so the affordance
+            matches the behaviour. Without it the button looked live, and
+            clicking it produced "Contract state not loaded yet" — an error for
+            something the UI already knew. The guard in handleSubmit stays: it is
+            the load-bearing check (and the reason a null router can never reach
+            the wallet), this only stops the user from being invited to trip it. */}
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={inert || !isConnected || isPaused || !routerAddress || railGated}
+        >
           {submitting ? "Working…" : "Send USDC"}
         </button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onClose} disabled={submitting}>

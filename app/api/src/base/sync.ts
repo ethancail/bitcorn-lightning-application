@@ -41,9 +41,10 @@ import {
     BaseWorkerError,
 } from "./workerClient";
 import {
-    advanceSyncCursor,
     getSyncCursor,
     listActiveBaseWallets,
+    recordSyncAttempt,
+    recordSyncSuccess,
     upsertContractState,
     upsertSettlementEvent,
     upsertUsdcBalance,
@@ -201,21 +202,38 @@ export async function runOneTick(): Promise<SyncTickResult> {
         // reorg-safe replay guarantee.
         const eventResult = await syncSettledEvents(chainTip, routerDeployBlock, errors);
 
-        // ─── Step 6: cursor maintenance ───
-        // Block advances only on Step 5 progress. Timestamp refreshes on every
-        // successful tick so the UI's staleness signal stays accurate even when
-        // Step 5 has nothing to do (chain hasn't moved past confirmation depth).
+        // ─── Step 6: cursor maintenance (migration 053 semantics) ───
+        //
+        // last_attempt_at records liveness and is written unconditionally here —
+        // we got past every early-return guard, so the loop is alive.
+        //
+        // last_success_at is written ONLY when the Settled stream is provably
+        // current: Step 5 either advanced the high-water mark, or confirmed the
+        // cursor was already at (tip − confirmation depth) with no chunk errors.
+        //
+        // WHY THIS IS STRICTER THAN IT USED TO BE: the previous condition was
+        // `chainTip != null`, i.e. "some chain read worked." That refreshed the
+        // freshness timestamp even when event ingestion was failing every tick,
+        // because a successful /base/balance read alone was enough to set
+        // chainTip. The staleness banner therefore reported "fresh" while the
+        // member's settlement history was frozen — the failure looked healthier
+        // than a misconfiguration. Freshness now means "the settlement stream is
+        // current", which is what the banner actually claims.
+        const cursorNow = Date.now();
+        recordSyncAttempt(cursorNow);
         let cursorAdvancedTo: number | undefined;
         if (eventResult.cursorAdvancedTo != null) {
-            advanceSyncCursor(eventResult.cursorAdvancedTo, Date.now());
+            recordSyncSuccess(eventResult.cursorAdvancedTo, cursorNow);
             cursorAdvancedTo = eventResult.cursorAdvancedTo;
-        } else if (chainTip != null) {
-            // Step 5 didn't advance, but the tick otherwise succeeded enough
-            // to confirm the loop is running. Touch the timestamp without
-            // moving the block.
-            const current = getSyncCursor();
-            advanceSyncCursor(current.lastSyncedBlockNumber, Date.now());
+        } else if (eventResult.upToDate) {
+            // Nothing to fetch — the chain hasn't advanced past (cursor +
+            // confirmation depth) since the last tick. Normal steady state, and
+            // a genuine success: our view IS current. Refresh the timestamp
+            // without moving the block.
+            recordSyncSuccess(getSyncCursor().lastSyncedBlockNumber, cursorNow);
         }
+        // Otherwise: leave last_success_at alone so staleness grows and the
+        // banner tells the truth about the stream being stuck.
 
         return {
             started_at,
@@ -242,6 +260,16 @@ export async function runOneTick(): Promise<SyncTickResult> {
 
 interface EventSyncResult {
     cursorAdvancedTo: number | null;
+    /**
+     * True only when the Settled stream is PROVABLY current: every chunk up to
+     * (tip − confirmation depth) committed this tick, or the cursor was already
+     * at/past that point so there was nothing to fetch.
+     *
+     * False on every error path — no chain tip, cold-start with no deploy block,
+     * or a chunk that threw. Drives last_success_at (migration 053), so a false
+     * here is what lets the staleness banner correctly report a stuck stream.
+     */
+    upToDate: boolean;
     processed: number;
     alreadyIndexed: number;
     decodeErrorsCount: number;
@@ -277,6 +305,7 @@ async function syncSettledEvents(
 ): Promise<EventSyncResult> {
     const out: EventSyncResult = {
         cursorAdvancedTo: null,
+        upToDate: false,
         processed: 0,
         alreadyIndexed: 0,
         decodeErrorsCount: 0,
@@ -317,7 +346,9 @@ async function syncSettledEvents(
 
     if (fromBlock > toBlock) {
         // Steady state: chain hasn't advanced past (cursor + confirmation
-        // depth) since last tick. Normal and frequent.
+        // depth) since last tick. Normal and frequent — and a genuine success:
+        // there is nothing to fetch precisely because our view is current.
+        out.upToDate = true;
         return out;
     }
 
@@ -326,6 +357,7 @@ async function syncSettledEvents(
     // means cold-start backfills work without operator intervention.
     let chunkFrom = fromBlock;
     let lastCommittedTo: number | null = null;
+    let errored = false;
     while (chunkFrom <= toBlock) {
         const chunkTo = Math.min(chunkFrom + MAX_EVENT_RANGE - 1, toBlock);
         out.chunksAttempted += 1;
@@ -367,6 +399,7 @@ async function syncSettledEvents(
             });
             // Stop processing further chunks; cursor reflects last successful
             // chunk only. Next tick retries from chunkFrom.
+            errored = true;
             break;
         }
     }
@@ -374,6 +407,11 @@ async function syncSettledEvents(
     if (lastCommittedTo != null) {
         out.cursorAdvancedTo = lastCommittedTo;
     }
+    // Provably current only if we drained the whole range without a chunk
+    // failing. A partial drain still advances the cursor (progress is real and
+    // kept) but does NOT count as current — the tail is missing, so the
+    // staleness banner should keep climbing until it lands.
+    out.upToDate = !errored && chunkFrom > toBlock;
     return out;
 }
 
