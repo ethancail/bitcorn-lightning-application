@@ -123,21 +123,56 @@ jobs:
         # MAX_FAILURES=0 and delete this comment.
         env:
           MAX_FAILURES: "9"
-          # COLLECTION FLOOR — guards the vacuous pass. A vitest run that
-          # collects ZERO tests still writes a valid report saying
-          # numFailedTests: 0, which a failures-only check happily accepts. So
-          # "the suite didn't run" would read as "the suite passed". This bit me
-          # while negative-controlling this very step.
+          # ─── COLLECTION FLOOR ───────────────────────────────────────
           #
-          # It is not hypothetical: this repo has a recorded incident where the
-          # wrong Node version (22 vs the .nvmrc 20) caused better-sqlite3 to
-          # fail loading and manifested as DROPPED TEST COLLECTION rather than
-          # as failures. A floor catches that class; a failures ceiling cannot.
+          # WHY ONLY THIS STEP HAS ONE — the structural reason, which the bare
+          # number doesn't convey. `vitest run` exits 1 when zero tests are
+          # collected ("No test files found, exiting with code 1" — verified
+          # 2026-08-03). So every OTHER job in this workflow gets
+          # collapse protection free, from the exit code alone.
           #
-          # Set below the current total (216) so legitimately adding tests never
-          # trips it, but high enough that a partial collapse does. Raise it as
-          # the suite grows.
-          MIN_TOTAL: "200"
+          # This step is the exception because it deliberately DISCARDS the exit
+          # code (`|| true` below) in order to tolerate the 9 known failures.
+          # The floor exists solely to replace the protection that trade gave
+          # up. If you add another step that ignores an exit code to apply a
+          # threshold, it needs its own floor. If your step relies on the exit
+          # code, it does not.
+          #
+          # ORIGIN: added in response to negative-control NC6d, where a suite
+          # collecting ZERO tests wrote a perfectly valid report saying
+          # numFailedTests: 0 and sailed through the ceiling — "the suite didn't
+          # run" reading as "the suite passed".
+          #
+          # Refined 2026-08-03 while re-controlling it: whether zero collection
+          # writes a report at all is VITEST-VERSION-DEPENDENT. With this repo's
+          # own vitest it writes none, so the no-report guard above catches that
+          # case, not the floor. Both paths are therefore covered — but the
+          # floor's UNIQUE and demonstrated value is PARTIAL collapse, where
+          # vitest genuinely runs and reports. Measured: collection restricted to
+          # one file reports 43 tests / 0 failures, which the ceiling PASSES
+          # (0 > 9 is false) and only the floor rejects.
+          #
+          # That is also the shape of this repo's real Node-22 incident: dropped
+          # collection, not failures (see .nvmrc and its tracking commit). A
+          # ceiling cannot catch that class. This is why the floor is not
+          # optional.
+          #
+          # VALUE: 100. Measured totals 2026-08-03 — develop @ e8cd2fc: 216
+          # tests (207 pass / 9 fail); main @ e03511b: 116 tests (107 pass /
+          # 9 fail). 100 clears BOTH trees, which matters because the 1.17.20
+          # convergence release is a main-based branch and CI checks out main's
+          # tree. Deliberately NOT branch-conditional: gating main's PRs more
+          # loosely than develop's would invert the risk.
+          #
+          # Chosen over 50 (would let a collapse to ~60 tests pass, missing the
+          # partial-collection case the floor is for) and over 1 (catches only
+          # total zero). 100 fails on any collapse below ~86% of main's suite.
+          #
+          # FLIP: raise to 200 after the develop→main convergence release, when
+          # main carries develop's Worker tests and both trees are 216. Fourth
+          # item on the flip list, alongside the web-tsc advisory, the
+          # web-vitest advisory, and MAX_FAILURES → 0.
+          MIN_TOTAL: "100"
         run: |
           set -o pipefail
           rm -f /tmp/worker-vitest.json
