@@ -83,6 +83,8 @@ Merge path: `feature/*` → `develop` → sideload test on Umbrel → `main`.
 
 ### Umbrel Gotchas (read before releasing)
 
+**The full release procedure is `docs/RELEASE.md`** — nine steps, which are MANUAL vs AUTOMATED, the GHCR verification step that prevents the 0%-install failure below, the `develop`-release footgun (merging without a version bump overwrites the current release's image tags), and an honest untested-rollback section. The gotchas below are the recovery commands; the doc is the procedure.
+
 **Version must match in two files.** Bump `umbrel-app.yml` AND `bitcorn-lightning-node/docker-compose.yml` image tags together. Drift → Umbrel pulls stale images.
 
 **If install fails (flips back to "Install" at 0%):** Docker images likely don't exist on ghcr.io yet. Check `gh run list` for a failed build. Common cause: transient npm 403 errors (e.g. `npm install -g serve` rate-limited). Re-run with `gh run rerun <run-id> --failed`. Always verify the build is green after a version bump.
