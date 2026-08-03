@@ -1,0 +1,424 @@
+name: PR checks
+
+# Pre-merge gate. This repo had NO test gate in CI — the only pre-merge
+# verification was a local Stop hook, which is bypassable (VERIFY_GATE_SKIP=1)
+# and doesn't exist for anyone working from another machine. This repo contains
+# the payment rail; it should not be the one without CI.
+#
+# ⚠ DO NOT "SIMPLIFY" THIS BY CALLING scripts/verify-gate.mjs.
+# That is the obvious-looking move and it produces a green check that verifies
+# NOTHING. The hook decides what to run from `git status --porcelain -- app/api
+# app/web` and exits 0 when the tree is clean (verify-gate.mjs, the
+# `if (!apiDirty && !webDirty) process.exit(0)` line). A CI checkout is always
+# clean, so it would no-op on every PR forever. CI must invoke tsc/vitest
+# directly, as below.
+#
+# ⚠ npm install, NOT npm ci. package-lock.json is gitignored (.gitignore:3), so
+# no lockfile exists on any branch and `npm ci` fails outright. Consequence
+# worth knowing: CI is not reproducible — a dependency publishing a breaking
+# patch inside a declared range can turn this red with no repo change.
+#
+# No push trigger on purpose. This is a PR gate; image publishing is
+# docker-publish.yml's job and stays separate.
+
+on:
+  pull_request:
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # HARD GATES — verified green on BOTH the main and develop trees, so
+  # they cannot break a PR from either base.
+  # ─────────────────────────────────────────────────────────────────────
+
+  api:
+    name: API — typecheck + tests (hard gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        working-directory: app/api
+        run: npm install
+      - name: Typecheck
+        working-directory: app/api
+        run: npx tsc --noEmit
+      - name: Tests
+        working-directory: app/api
+        run: npx vitest run
+
+  web-build:
+    name: Web — production build (hard gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        working-directory: app/web
+        run: npm install
+      - name: Build
+        working-directory: app/web
+        # VITE_BASE_CHAIN_ID is deliberately NOT set here. This proves the
+        # bundle builds without it; docker-publish.yml is where its absence
+        # must fail a release, and it has its own guard for that.
+        run: npx vite build
+
+  worker:
+    name: Worker — typecheck + tests (hard gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        working-directory: cloudflare-worker
+        run: npm install
+
+      - name: Typecheck
+        working-directory: cloudflare-worker
+        # Conditioned on the SCRIPT EXISTING, not on the branch. The
+        # `typecheck` script landed on develop and is absent from main, so a
+        # main-based PR has nothing to run. Skipping with an explanation beats
+        # both a spurious failure and a silent pass.
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.typecheck ? 0 : 1)"; then
+            npm run typecheck
+          else
+            echo "::notice::SKIPPED — no 'typecheck' script in cloudflare-worker/package.json."
+            echo "It exists on develop and is absent from this tree (main-based PR)."
+            echo "This becomes unconditional once a develop→main release converges the branches."
+          fi
+
+      - name: Tests (failure ceiling)
+        working-directory: cloudflare-worker
+        # ⚠ CEILING, NOT A PASS. The Worker suite has 9 KNOWN failures. This
+        # asserts the count has not grown — a new failure fails the job.
+        #
+        # All 9 are STALE FIXTURES, not regressions. Verified by dating each
+        # test against the code it tests:
+        #
+        #   3 · tests/router.test.ts — /valuation/{current,history,inputs} send
+        #       no Bearer and expect 200. Tests written 2026-04-17/04-20; the
+        #       JWT gate (withJwtGate "full") landed 2026-05-11 in a461f17
+        #       "entitlement tokens (Stage 4)". The 401 is correct behavior;
+        #       the tests predate it by three weeks.
+        #
+        #   2 · tests/inputs/priceHistory.test.ts — mocks a CoinGecko response.
+        #       The upstream moved CoinGecko → Binance → Yahoo Finance on
+        #       2026-05-06 (5d452c4, c05de8e "Binance is geo-blocked"). The
+        #       test file has not been touched since it was written.
+        #
+        #   4 · tests/inputs/stockToFlow.test.ts — its `env` fixture has no
+        #       PRICES_CACHE binding. stockToFlow now derives from BTC price
+        #       history (which reads KV), so kv.get() throws on undefined.
+        #       Same 2026-05-06 root cause.
+        #
+        # THE CEILING DROPS TO 0 when the fix arc lands. Fixing them is
+        # ~60–80 lines across those 3 files; it needs the Yahoo chart response
+        # shape worked out, which is the real cost. When that ships, set
+        # MAX_FAILURES=0 and delete this comment.
+        env:
+          MAX_FAILURES: "9"
+          # ─── COLLECTION FLOOR ───────────────────────────────────────
+          #
+          # WHY ONLY THIS STEP HAS ONE — the structural reason, which the bare
+          # number doesn't convey. `vitest run` exits 1 when zero tests are
+          # collected ("No test files found, exiting with code 1" — verified
+          # 2026-08-03). So every OTHER job in this workflow gets
+          # collapse protection free, from the exit code alone.
+          #
+          # This step is the exception because it deliberately DISCARDS the exit
+          # code (`|| true` below) in order to tolerate the 9 known failures.
+          # The floor exists solely to replace the protection that trade gave
+          # up. If you add another step that ignores an exit code to apply a
+          # threshold, it needs its own floor. If your step relies on the exit
+          # code, it does not.
+          #
+          # ORIGIN: added in response to negative-control NC6d, where a suite
+          # collecting ZERO tests wrote a perfectly valid report saying
+          # numFailedTests: 0 and sailed through the ceiling — "the suite didn't
+          # run" reading as "the suite passed".
+          #
+          # Refined 2026-08-03 while re-controlling it: whether zero collection
+          # writes a report at all is VITEST-VERSION-DEPENDENT. With this repo's
+          # own vitest it writes none, so the no-report guard above catches that
+          # case, not the floor. Both paths are therefore covered — but the
+          # floor's UNIQUE and demonstrated value is PARTIAL collapse, where
+          # vitest genuinely runs and reports. Measured: collection restricted to
+          # one file reports 43 tests / 0 failures, which the ceiling PASSES
+          # (0 > 9 is false) and only the floor rejects.
+          #
+          # That is also the shape of this repo's real Node-22 incident: dropped
+          # collection, not failures (see .nvmrc and its tracking commit). A
+          # ceiling cannot catch that class. This is why the floor is not
+          # optional.
+          #
+          # VALUE: 100. Measured totals 2026-08-03 — develop @ e8cd2fc: 216
+          # tests (207 pass / 9 fail); main @ e03511b: 116 tests (107 pass /
+          # 9 fail). 100 clears BOTH trees, which matters because the 1.17.20
+          # convergence release is a main-based branch and CI checks out main's
+          # tree. Deliberately NOT branch-conditional: gating main's PRs more
+          # loosely than develop's would invert the risk.
+          #
+          # Chosen over 50 (would let a collapse to ~60 tests pass, missing the
+          # partial-collection case the floor is for) and over 1 (catches only
+          # total zero). 100 fails on any collapse below ~86% of main's suite.
+          #
+          # FLIP: raise to 200 after the develop→main convergence release, when
+          # main carries develop's Worker tests and both trees are 216. Fourth
+          # item on the flip list, alongside the web-tsc advisory, the
+          # web-vitest advisory, and MAX_FAILURES → 0.
+          MIN_TOTAL: "100"
+        run: |
+          set -o pipefail
+          rm -f /tmp/worker-vitest.json
+          # vitest exits non-zero when tests fail, which is expected here — so
+          # the exit code is deliberately not the signal. The JSON report is.
+          npx vitest run --reporter=json --outputFile=/tmp/worker-vitest.json || true
+
+          # COULD-NOT-RUN IS A FAILURE, NOT A PASS. If vitest crashed before
+          # writing a parseable report, treat it as a hard failure rather than
+          # letting a missing file read as "0 failures".
+          if [ ! -s /tmp/worker-vitest.json ]; then
+            echo "::error::Worker tests produced no JSON report — vitest could not run."
+            echo "This is a failure, not zero failures. Check the step log above."
+            exit 1
+          fi
+
+          FAILED=$(node -e "
+            const r = require('/tmp/worker-vitest.json');
+            if (typeof r.numFailedTests !== 'number') { console.error('unparseable report'); process.exit(3); }
+            console.log(r.numFailedTests);
+          ") || { echo "::error::Worker test report was unparseable."; exit 1; }
+          TOTAL=$(node -e "
+            const r = require('/tmp/worker-vitest.json');
+            if (typeof r.numTotalTests !== 'number') { console.error('unparseable report'); process.exit(3); }
+            console.log(r.numTotalTests);
+          ") || { echo "::error::Worker test report was unparseable."; exit 1; }
+
+          echo "Worker tests: $FAILED failed of $TOTAL (ceiling: $MAX_FAILURES, floor: $MIN_TOTAL)"
+
+          if [ "$TOTAL" -lt "$MIN_TOTAL" ]; then
+            echo "::error::Only $TOTAL tests were collected; expected at least $MIN_TOTAL."
+            echo "The suite did not fully run — this is a FAILURE, not a pass."
+            echo "Likely causes: wrong Node version (see .nvmrc), a broken vitest"
+            echo "config, moved/renamed test files, or a collection-time crash."
+            exit 1
+          fi
+          if [ "$FAILED" -gt "$MAX_FAILURES" ]; then
+            echo "::error::Worker test failures ($FAILED) exceed the known ceiling ($MAX_FAILURES)."
+            echo "A NEW test is failing. The $MAX_FAILURES known ones are stale fixtures"
+            echo "documented in this workflow; yours is not one of them."
+            exit 1
+          fi
+          if [ "$FAILED" -lt "$MAX_FAILURES" ]; then
+            echo "::notice::Only $FAILED failures — below the ceiling of $MAX_FAILURES."
+            echo "If you fixed some, lower MAX_FAILURES in this workflow to lock the gain in."
+          fi
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ASSERTIONS — pure git/YAML. No toolchain, so these are unaffected by
+  # whichever tree the PR is based on.
+  # ─────────────────────────────────────────────────────────────────────
+
+  version-triplet:
+    name: Version triplet agrees
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: umbrel-app.yml version == both compose image tags
+        # Drift here means umbreld offers version X while compose pins the old
+        # tags, so a farmer "updates" to a new version number running the
+        # previous code — with nothing erroring. Static check; runs on every
+        # PR regardless of target branch.
+        run: |
+          MANIFEST=bitcorn-lightning-node/umbrel-app.yml
+          COMPOSE=bitcorn-lightning-node/docker-compose.yml
+          # Same extraction docker-publish.yml uses, so this reads the version
+          # exactly the way the publisher does.
+          V=$(grep '^version:' "$MANIFEST" | sed 's/version: *"\(.*\)"/\1/')
+          API=$(grep -oE 'image: ghcr\.io/[^ ]*/api:[^ ]+' "$COMPOSE" | sed 's/.*://')
+          WEB=$(grep -oE 'image: ghcr\.io/[^ ]*/web:[^ ]+' "$COMPOSE" | sed 's/.*://')
+
+          echo "manifest=$V  api=$API  web=$WEB"
+          for pair in "manifest:$V" "api:$API" "web:$WEB"; do
+            if [ -z "${pair#*:}" ]; then
+              echo "::error::Could not extract ${pair%%:*} version — the file format changed."
+              echo "This check greps for '^version:' and 'image: ghcr.io/.../{api,web}:TAG'."
+              exit 1
+            fi
+          done
+
+          if [ "$V" != "$API" ] || [ "$V" != "$WEB" ]; then
+            echo "::error::Version triplet disagrees."
+            echo "  $MANIFEST         version: \"$V\""
+            echo "  $COMPOSE  api tag: $API"
+            echo "  $COMPOSE  web tag: $WEB"
+            echo ""
+            echo "TO FIX: make all three identical, in the same commit."
+            echo "See docs/RELEASE.md § Step 1."
+            exit 1
+          fi
+          echo "All three agree at $V."
+
+  version-bump:
+    name: Version bumped (PRs to main only)
+    runs-on: ubuntu-latest
+    # Scoped to main. PRs to develop publish nothing and must not require a
+    # bump — requiring one there would make every feature PR bump the version.
+    #
+    # ESCAPE HATCH: the `allow-same-tag-republish` label. CLAUDE.md documents
+    # same-tag republishing as a DELIBERATE technique (§ Umbrel Gotchas,
+    # "Hotfix under same tag"), so it has to remain possible. A label was
+    # chosen over a commit-message marker because it is visible on the PR and
+    # in the merge record, requires a deliberate UI action, doesn't persist
+    # into history where a cherry-pick would carry it, and leaves an auditable
+    # trail: `gh pr list --label allow-same-tag-republish` lists every
+    # intentional republish. That trail is exactly what was missing when this
+    # happened by accident (see the error text below).
+    if: >
+      github.base_ref == 'main' &&
+      !contains(github.event.pull_request.labels.*.name, 'allow-same-tag-republish')
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Needed for `git show BASE:file` — a shallow clone doesn't have the
+          # base commit's blobs.
+          fetch-depth: 0
+      - name: App code changed ⇒ version must change
+        env:
+          # Explicit SHAs, NOT HEAD/HEAD^. On a pull_request event
+          # actions/checkout resolves refs/pull/N/merge, so HEAD is a synthetic
+          # merge commit and HEAD^ is not the PR base.
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          MANIFEST=bitcorn-lightning-node/umbrel-app.yml
+
+          APP_CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- app/api app/web)
+          if [ -z "$APP_CHANGED" ]; then
+            echo "No changes under app/api or app/web — no publish, no bump needed."
+            exit 0
+          fi
+
+          ver_at() { git show "$1:$MANIFEST" | grep '^version:' | sed 's/version: *"\(.*\)"/\1/'; }
+          VB=$(ver_at "$BASE_SHA")
+          VH=$(ver_at "$HEAD_SHA")
+          echo "base=$VB  head=$VH"
+
+          if [ -z "$VB" ] || [ -z "$VH" ]; then
+            echo "::error::Could not read the version from $MANIFEST on one side."
+            echo "Could-not-determine is a failure, not a pass."
+            exit 1
+          fi
+
+          if [ "$VB" = "$VH" ]; then
+            echo "::error::App code changed but the version did not ($VB → $VH)."
+            cat <<'EOF'
+
+          WHY THIS BLOCKS
+          Merging this to main fires docker-publish.yml, which reads the tag from
+          umbrel-app.yml. With the version unchanged it REPUBLISHES the current
+          release's image tags with different content. Nodes already on that
+          version see no update and keep their cached image, while any fresh
+          install or re-pull gets your code under the old tag — two nodes then
+          report the same version while running different code, with nothing
+          distinguishing them.
+
+          This has happened twice, both on 1.17.19: 34c20c2 (PR #224) and
+          f323faf (PR #227), 2026-07-21.
+
+          TO FIX — bump all three, in one commit:
+            1. bitcorn-lightning-node/umbrel-app.yml        version: "X.Y.Z"
+            2. bitcorn-lightning-node/docker-compose.yml    api image tag
+            3. bitcorn-lightning-node/docker-compose.yml    web image tag
+          Add release notes to umbrel-app.yml's releaseNotes while you are there.
+          Full procedure: docs/RELEASE.md
+
+          IF THE REPUBLISH IS DELIBERATE (the documented same-tag hotfix), add the
+          label `allow-same-tag-republish` to this PR. It is recorded on the PR and
+          stays queryable: gh pr list --label allow-same-tag-republish
+          EOF
+            exit 1
+          fi
+          echo "Version bumped $VB → $VH."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # ADVISORY — non-blocking. See the flip condition on each job.
+  # ─────────────────────────────────────────────────────────────────────
+
+  web-typecheck-advisory:
+    name: Web — typecheck (ADVISORY, non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    # ADVISORY ONLY, AND HERE IS THE EXACT CONDITION TO FLIP IT:
+    #
+    # This is non-blocking because main's tree and develop's tree disagree.
+    # `app/web` typecheck has 4 pre-existing errors on develop (the recharts
+    # `payload` quartet — hand-written Tooltip prop types that omit a field
+    # recharts really provides) and 6 on main: the same 4 plus 2 in
+    # src/pages/SwapOperations.tsx (TS2551 adminLoopInQuote, TS2339 adminLoopIn
+    # — calls to API-client methods that don't exist). Those 2 were fixed on
+    # develop by b818779, which deletes the dead panels, and that commit has
+    # NOT shipped to main.
+    #
+    # FLIP WHEN: a develop→main release converges the branches (b818779 reaches
+    # main, removing the 2 SwapOperations errors) AND the 4 recharts
+    # annotations are fixed — one added field per file in CornBitcoinChart,
+    # CornMovingAveragesChart, MovingAveragesChart, PowerLawChart. Then delete
+    # `continue-on-error` and this comment. Do NOT flip it by adding an error
+    # allowlist; scripts/verify-gate.mjs already carries one (WEB_TSC_BASELINE)
+    # and a second copy would drift from it.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        working-directory: app/web
+        run: npm install
+      - name: Typecheck
+        working-directory: app/web
+        run: |
+          echo "ADVISORY: known baseline is 4 errors on develop, 6 on main."
+          npx tsc --noEmit
+
+  web-vitest-advisory:
+    name: Web — tests (ADVISORY, non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    # ADVISORY ONLY, AND HERE IS THE EXACT CONDITION TO FLIP IT:
+    #
+    # This is non-blocking because main's tree has no web test infrastructure
+    # at all: app/web/package.json on main has no `vitest` devDependency and no
+    # `test` script, and there is no app/web/vitest.config.ts. All three arrived
+    # with the develop-side vitest standup, which has NOT shipped to main. So on
+    # a main-based PR this cannot run — not "runs and fails", but "vitest is not
+    # installed". develop's tree runs it clean.
+    #
+    # FLIP WHEN: a develop→main release converges the branches, so main has the
+    # vitest standup. Then delete `continue-on-error` and this comment.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install
+        working-directory: app/web
+        run: npm install
+      - name: Tests
+        working-directory: app/web
+        # Detect-and-explain rather than emitting a confusing red that readers
+        # learn to ignore. Same reasoning as the Worker typecheck skip.
+        run: |
+          if [ ! -f vitest.config.ts ]; then
+            echo "::notice::SKIPPED — no app/web/vitest.config.ts in this tree (main-based PR)."
+            echo "The web vitest standup is on develop and has not shipped to main."
+            exit 0
+          fi
+          npx vitest run
