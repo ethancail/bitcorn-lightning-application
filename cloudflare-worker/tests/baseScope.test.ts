@@ -21,13 +21,13 @@
 // deterministic.
 
 import { beforeAll, describe, expect, it } from "vitest";
-import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import worker from "../src/index";
 import type { Env } from "../src/lib/types";
-
-// A valid `sub`: verifyEntitlementToken requires 66-char lowercase hex.
-const MEMBER_PUBKEY =
-  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
+import {
+  createEntitlementSigner,
+  withAuth,
+  type EntitlementSigner,
+} from "./helpers/entitlementToken";
 
 // The tier → scope mapping this file assumes. Mirrors scopeForTier() in
 // app/api/src/subscription/tokenIssuance.ts:98-101 (`current` → full, every
@@ -80,17 +80,10 @@ const GATED_ENDPOINTS = [
   },
 ];
 
-let privateKey: CryptoKey;
-let publicKeyX: string;
+let signer: EntitlementSigner;
 
-async function tokenWithScope(scope: "full" | "payment"): Promise<string> {
-  return new SignJWT({ scope })
-    .setProtectedHeader({ alg: "EdDSA" })
-    .setIssuer("bitcorn-treasury") // EXPECTED_ISSUER, lib/jwt.ts:65
-    .setSubject(MEMBER_PUBKEY)
-    .setIssuedAt()
-    .setExpirationTime("1h")
-    .sign(privateKey);
+function tokenWithScope(scope: "full" | "payment"): Promise<string> {
+  return signer.token(scope);
 }
 
 function makeEnv(): Env {
@@ -101,25 +94,11 @@ function makeEnv(): Env {
   // no USDC, no RPC URL). A gate-passing request must still fail on the
   // handler's input validation before it could ever want them, which is what
   // keeps these tests network-free.
-  return { SUBSCRIPTION_PUBLIC_KEY: publicKeyX } as Env;
-}
-
-async function withAuth(req: Request, jwt: string): Promise<Request> {
-  const authed = new Request(req, {
-    headers: new Headers(req.headers),
-  });
-  authed.headers.set("Authorization", `Bearer ${jwt}`);
-  return authed;
+  return { SUBSCRIPTION_PUBLIC_KEY: signer.publicKeyX } as Env;
 }
 
 beforeAll(async () => {
-  const pair = await generateKeyPair("EdDSA", {
-    crv: "Ed25519",
-    extractable: true,
-  });
-  privateKey = pair.privateKey as CryptoKey;
-  const jwk = await exportJWK(pair.publicKey);
-  publicKeyX = jwk.x as string;
+  signer = await createEntitlementSigner();
 });
 
 describe("/base/* scope gate — the rail is a subscription benefit", () => {
@@ -130,7 +109,7 @@ describe("/base/* scope gate — the rail is a subscription benefit", () => {
           it(`tier ${row.tier} (scope=${row.scope}) PASSES the gate and reaches the handler`, async () => {
             const jwt = await tokenWithScope(row.scope);
             const res = await worker.fetch(
-              await withAuth(endpoint.request(), jwt),
+              withAuth(endpoint.request(), jwt),
               makeEnv(),
               {} as any,
             );
@@ -146,7 +125,7 @@ describe("/base/* scope gate — the rail is a subscription benefit", () => {
           it(`tier ${row.tier} (scope=${row.scope}) is REFUSED 403 at the gate`, async () => {
             const jwt = await tokenWithScope(row.scope);
             const res = await worker.fetch(
-              await withAuth(endpoint.request(), jwt),
+              withAuth(endpoint.request(), jwt),
               makeEnv(),
               {} as any,
             );
@@ -191,7 +170,7 @@ describe("/base/contract-info stays public", () => {
   it("does not reject a payment-scope Bearer it has no use for", async () => {
     const jwt = await tokenWithScope("payment");
     const res = await worker.fetch(
-      await withAuth(new Request("https://w/base/contract-info"), jwt),
+      withAuth(new Request("https://w/base/contract-info"), jwt),
       makeEnv(),
       {} as any,
     );

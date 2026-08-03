@@ -11,6 +11,25 @@ function mockKV(seed?: Record<string, string>) {
   } as unknown as KVNamespace;
 }
 
+// The upstream is Yahoo Finance's chart endpoint, not CoinGecko — CoinGecko's
+// free tier began rejecting `days=max`, and the Binance fallback returns HTTP
+// 451 from Worker datacenters (src/valuation/inputs/priceHistory.ts:4-18).
+//
+// Yahoo's shape is two PARALLEL ARRAYS under chart.result[0]: `timestamp` and
+// `indicators.quote[0].close`, zipped by index. Timestamps are already epoch
+// SECONDS (CoinGecko's were milliseconds), so the adapter does no unit
+// conversion — it carries them straight through.
+function yahooChart(points: Array<[number, number | null]>): Response {
+  return new Response(JSON.stringify({
+    chart: {
+      result: [{
+        timestamp: points.map(([t]) => t),
+        indicators: { quote: [{ close: points.map(([, c]) => c) }] },
+      }],
+    },
+  }), { status: 200 });
+}
+
 describe("fetchBtcPriceHistory", () => {
   beforeEach(() => {
     vi.spyOn(globalThis, "fetch");
@@ -34,20 +53,18 @@ describe("fetchBtcPriceHistory", () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it("fetches from CoinGecko when cache is missing", async () => {
+  it("fetches from Yahoo when cache is missing", async () => {
     (globalThis.fetch as any).mockResolvedValueOnce(
-      new Response(JSON.stringify({
-        prices: [
-          [1700000000000, 30000],
-          [1700086400000, 30500],
-        ],
-      }), { status: 200 }),
+      yahooChart([
+        [1700000000, 30000],
+        [1700086400, 30500],
+      ]),
     );
     const kv = mockKV();
     const env = { PRICES_CACHE: kv } as unknown as Env;
     const series = await fetchBtcPriceHistory(env);
     expect(series.length).toBe(2);
-    expect(series[0].timestamp).toBe(1700000000); // ms → s
+    expect(series[0].timestamp).toBe(1700000000); // epoch seconds, carried through
     expect(series[0].value).toBe(30000);
   });
 
@@ -64,9 +81,7 @@ describe("fetchBtcPriceHistory", () => {
     const stale = { fetched_at: now - 86400, series: [{ timestamp: 100, value: 50000 }] };
     const kv = mockKV({ [BTC_PRICE_HISTORY_KV_KEY]: JSON.stringify(stale) });
     (globalThis.fetch as any).mockResolvedValueOnce(
-      new Response(JSON.stringify({
-        prices: [[1700000000000, 30000]],
-      }), { status: 200 }),
+      yahooChart([[1700000000, 30000]]),
     );
     const env = { PRICES_CACHE: kv } as unknown as Env;
     const series = await fetchBtcPriceHistory(env);
