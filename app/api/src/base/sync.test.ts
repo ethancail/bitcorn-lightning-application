@@ -216,6 +216,50 @@ describe("runOneTick — failure isolation", () => {
         expect(getSyncCursor().lastSyncedBlockNumber).toBe(0);
     });
 
+    // ─── Chain agreement ──────────────────────────────────────────────────
+    //
+    // The dangerous state this guards is API-on-mainnet + Worker-on-testnet,
+    // which is what updating a node before flipping the Worker produces. It is
+    // worse than an unconfigured Worker: SIWE still succeeds (bundle and API
+    // agree), so the member reaches the send path, where the router comes from
+    // the Worker (testnet) and the USDC address from a bundle-keyed client map
+    // (mainnet, real Circle USDC) — an approve of real USDC to an address with
+    // no code on this chain.
+    //
+    // okContractInfo.chain_id is 84532 and ENV.baseChainId defaults to 84532 in
+    // test, so the mismatch is induced by moving the WORKER's chain, which is
+    // the realistic direction: the node updates first, the Worker lags.
+    it("worker on a different chain: refuses to cache the router, no state touched", async () => {
+        upsertMemberBaseWallet(PUBKEY, WALLET, 1_700_000_000);
+        fetchContractInfo.mockResolvedValue({ ...okContractInfo, chain_id: 8453 });
+
+        const result = await runOneTick();
+        expect(result.skipped_reason).toBe("worker_chain_mismatch");
+        // Distinct from worker_not_configured on purpose — different operator fix.
+        expect(result.skipped_reason).not.toBe("worker_not_configured");
+        expect(result.contract_state_synced).toBe(false);
+        // Never reaches wallet balances, and the cursor cannot advance — which is
+        // what keeps the page on never_synced (quiet) instead of very_stale (red).
+        expect(fetchUsdcBalance).not.toHaveBeenCalled();
+        expect(getSyncCursor().lastSyncedBlockNumber).toBe(0);
+        // The operator-facing diagnostic names BOTH chain ids, so the log says
+        // which way round the mismatch is without a second lookup.
+        expect(result.errors[0]?.error).toContain("8453");
+        expect(result.errors[0]?.error).toContain("84532");
+    });
+
+    it("worker chain_id null (degraded, not mismatched) does NOT trip the chain guard", async () => {
+        // A null chain_id means the Worker did not state its chain, not that it
+        // stated a wrong one. Treating null as a mismatch would convert every
+        // degraded-RPC tick into a chain error and send an operator chasing a
+        // configuration problem that does not exist.
+        upsertMemberBaseWallet(PUBKEY, WALLET, 1_700_000_000);
+        fetchContractInfo.mockResolvedValue({ ...okContractInfo, chain_id: null });
+
+        const result = await runOneTick();
+        expect(result.skipped_reason).not.toBe("worker_chain_mismatch");
+    });
+
     it("all wallets fail AND contract_info fails: cursor stays put", async () => {
         upsertMemberBaseWallet(PUBKEY, WALLET, 1_700_000_000);
         fetchContractInfo.mockRejectedValue(new Error("rpc dead"));

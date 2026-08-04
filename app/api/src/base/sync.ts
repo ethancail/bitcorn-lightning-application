@@ -134,6 +134,59 @@ export async function runOneTick(): Promise<SyncTickResult> {
                     errors: [],
                 };
             }
+            // ─── Chain agreement: refuse to cache another chain's router ──────
+            //
+            // WHY THIS EXISTS, and why it is worth more than the four lines it
+            // costs. Three chain-id sources have to agree: the web bundle's
+            // build-time VITE_BASE_CHAIN_ID, this API's BASE_CHAIN_ID, and the
+            // Worker's BASE_CHAIN_ID. Nothing used to compare the third.
+            //
+            // The dangerous combination is API-on-mainnet + Worker-on-testnet. It
+            // is not hypothetical: it is what you get by updating a node before
+            // flipping the Worker. In that state SIWE registration SUCCEEDS (the
+            // bundle and this API agree), so the member reaches the send path —
+            // where the router address comes from the Worker (testnet) while the
+            // USDC address comes from a client-side map keyed on the bundle's
+            // chain (mainnet, real Circle USDC). The member is then asked to
+            // approve REAL USDC to an address that has no code on this chain.
+            // `approve()` succeeds — ERC-20 does not check the spender has code —
+            // leaving a live allowance against an address nobody controls.
+            //
+            // Refusing here restores fail-closed: no router is cached, so
+            // submitGuard blocks the send path, the cursor stays at 0 →
+            // never_synced → StaleBanner renders nothing, and the page stays
+            // clean rather than alarming. Same downstream shape as
+            // `worker_not_configured` above, deliberately.
+            //
+            // NOTE: this needed no new plumbing. WorkerContractInfoResponse
+            // already carried `chain_id` (base/types.ts) — the Worker has always
+            // sent it and this file has always discarded it. Only the comparison
+            // was missing.
+            //
+            // A client-side check (chain_id on ContractStateResponse) is the
+            // complementary defence and is deliberately NOT done here — it is the
+            // separate arc docker-publish.yml's own comment earmarks.
+            if (info.chain_id != null && info.chain_id !== ENV.baseChainId) {
+                return {
+                    started_at,
+                    finished_at: Date.now(),
+                    skipped_reason: "worker_chain_mismatch",
+                    wallets_attempted: 0,
+                    wallets_succeeded: 0,
+                    wallets_failed: 0,
+                    contract_state_synced: false,
+                    ...zeroEventCounts,
+                    errors: [
+                        {
+                            context: "contract_info",
+                            error:
+                                `Worker chain_id=${info.chain_id} does not match this node's ` +
+                                `BASE_CHAIN_ID=${ENV.baseChainId}; refusing to cache another ` +
+                                `chain's router address.`,
+                        },
+                    ],
+                };
+            }
             if (
                 info.settlement_router_address &&
                 info.current_fee_bps != null &&

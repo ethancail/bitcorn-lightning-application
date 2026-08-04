@@ -85,7 +85,21 @@ export type VerifyOutcome =
               | "nonce_mismatch"
               | "domain_mismatch"
               | "expired"
-              | "chain_id_mismatch";
+              | "chain_id_mismatch"
+              /**
+               * This node cannot verify an ERC-1271 (smart contract account)
+               * signature because it has no BASE RPC endpoint configured. NOT an
+               * authentication failure — the signature was never evaluated.
+               *
+               * Distinct from `signature_invalid` on purpose. Coinbase Smart
+               * Wallet is the DEFAULT connector (web wagmi.ts lists it first with
+               * preference: "smartWalletOnly"), so before this existed the most
+               * common wallet on the most common path produced a 401 telling the
+               * member their signature was invalid — for an omission only the
+               * node operator can fix, and with the accurate diagnostic
+               * discarded.
+               */
+              | "smart_wallet_verification_unavailable";
           detail?: string;
       };
 
@@ -219,9 +233,31 @@ export async function verifySiwe(input: VerifyInput): Promise<VerifyOutcome> {
                 signature: input.signature,
             });
         } catch {
+            // ⚠ NOT `signature_invalid`. Reaching here means the chain client
+            // could not be built AND local recovery could not evaluate the
+            // signature at all — which is what an ERC-1271 smart-wallet
+            // signature does, because local recovery throws on anything that is
+            // not a 65-byte secp256k1 signature (verified: "invalid signature
+            // length"). So this is precisely the "no BASE_RPC_URL + smart wallet"
+            // case, and it is a CONFIGURATION fault, not an authentication one.
+            //
+            // It used to report `signature_invalid`, which told the member their
+            // signature was rejected when it was never examined — on the DEFAULT
+            // wallet path, since the web app lists Coinbase Smart Wallet first
+            // with preference: "smartWalletOnly". handlers.ts maps this reason to
+            // 503 and keeps the var name out of the response body.
+            //
+            // A genuinely bad EOA signature does NOT land here: local recovery
+            // returns false for a well-formed 65-byte signature that doesn't
+            // match, so it falls through to `signature_invalid` below. Both
+            // directions are pinned by tests in siwe.test.ts.
+            //
+            // Residual, accepted: a smart-contract wallet that accepts a
+            // 65-byte signature would be evaluated by local recovery and
+            // reported `signature_invalid`. Rare, and it fails closed.
             return {
                 ok: false,
-                reason: "signature_invalid",
+                reason: "smart_wallet_verification_unavailable",
                 detail:
                     "could not verify signature; chain client and EOA fallback both failed: " +
                     (err instanceof Error ? err.message : String(err)),

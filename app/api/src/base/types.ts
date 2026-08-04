@@ -123,7 +123,18 @@ export interface WorkerEventsResponse {
 export interface SyncTickResult {
     started_at: number;
     finished_at: number;
-    skipped_reason?: "in_progress" | "no_wallets" | "worker_not_configured";
+    skipped_reason?:
+        | "in_progress"
+        | "no_wallets"
+        | "worker_not_configured"
+        /**
+         * The Worker is configured, but for a DIFFERENT chain than this node's
+         * BASE_CHAIN_ID. Deliberately a distinct state from
+         * `worker_not_configured`: they need different operator actions (set the
+         * Worker's vars vs. correct the chain they point at), and conflating them
+         * would send an operator looking for a missing value that is present.
+         */
+        | "worker_chain_mismatch";
     wallets_attempted: number;
     wallets_succeeded: number;
     wallets_failed: number;

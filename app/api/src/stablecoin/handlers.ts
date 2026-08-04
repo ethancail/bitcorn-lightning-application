@@ -173,6 +173,29 @@ export async function handleWalletRegister(req: IncomingMessage, res: ServerResp
     });
 
     if (!outcome.ok) {
+        // A node that cannot verify smart-wallet signatures is UNCONFIGURED, not
+        // rejecting the caller: 503, not 401. The member did nothing wrong and
+        // cannot do anything about it, so telling them their signature was
+        // invalid was both untrue and unactionable.
+        if (outcome.reason === "smart_wallet_verification_unavailable") {
+            // The diagnostic names BASE_RPC_URL, so it goes to the operator's log
+            // and NOT into the response body — this endpoint is reachable before
+            // a wallet is bound, and configuration state is not owed to an
+            // unauthenticated caller.
+            console.error(
+                "[stablecoin] smart-wallet SIWE verification unavailable — set BASE_RPC_URL " +
+                    "on this node (same chain as BASE_CHAIN_ID) to enable ERC-1271 wallets. " +
+                    `detail: ${outcome.detail ?? "(none)"}`,
+            );
+            return jsonError(
+                res,
+                503,
+                outcome.reason,
+                "This node is not set up to verify smart-contract wallets. " +
+                    "An EOA wallet (e.g. MetaMask) will work, or ask the node operator " +
+                    "to finish the stablecoin setup.",
+            );
+        }
         const status = outcome.reason === "signature_invalid" ? 401 : 400;
         return jsonError(res, status, outcome.reason, outcome.detail);
     }

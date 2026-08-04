@@ -85,6 +85,26 @@ export interface SubmitGuardInput {
   hasPublicClient: boolean;
   /** Only for the USDC-misconfiguration message. */
   chainId: number;
+  /**
+   * Has the node's BASE sync loop ever RUN? (cursor.last_attempt_at > 0)
+   *
+   * Sole purpose: tell "not yet" apart from "not going to." A missing router
+   * address means one of two very different things, and the old single message
+   * ("try again in a moment") asserted the transient one for both — so a member
+   * whose node was misconfigured retried forever on our advice.
+   *
+   * Attempt timestamp, NOT success: liveness is not freshness. A loop that has
+   * attempted and never succeeded is being REFUSED (Worker unconfigured, or
+   * configured for another chain), which no amount of waiting fixes.
+   *
+   * Deliberately not plumbed further than this. The API's tick already
+   * distinguishes `worker_not_configured` from `worker_chain_mismatch` in
+   * skipped_reason + errors[], which is where an OPERATOR reads it. The member
+   * cannot act on either, so surfacing which one would leak configuration state
+   * to no purpose — same reasoning as siwe.ts's
+   * smart_wallet_verification_unavailable.
+   */
+  railLoopHasRun: boolean;
 }
 
 /**
@@ -131,10 +151,18 @@ export function validateSettlementSubmit(input: SubmitGuardInput): SubmitGuardRe
     };
   }
   if (!input.routerAddress) {
-    return {
-      ok: false,
-      message: "Contract state not loaded yet; try again in a moment.",
-    };
+    // Two states, deliberately worded differently — see railLoopHasRun.
+    return input.railLoopHasRun
+      ? {
+          ok: false,
+          message:
+            "Settlement is unavailable on this node: its stablecoin connection " +
+            "is not set up correctly. This needs the node operator, not a retry.",
+        }
+      : {
+          ok: false,
+          message: "Contract state not loaded yet; try again in a moment.",
+        };
   }
   if (input.isPaused) {
     return { ok: false, message: "Settlements are paused. Try again later." };
