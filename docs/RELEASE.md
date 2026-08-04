@@ -605,11 +605,31 @@ deliberately not duplicated here — a launch runbook and a release procedure ha
 different lifetimes, and copying the former into the latter guarantees it goes
 stale.
 
-### No test gate runs in CI
-State this plainly to yourself before every merge: **the release pipeline runs no
-tests.** `docker-publish.yml` builds and pushes; it does not invoke `vitest`, `tsc`,
-or any check. A green merge and a green build mean the images compiled, nothing
-more.
+### No test gate runs on the RELEASE path — the PR gate is a different thing
+State this plainly to yourself before every merge: **`docker-publish.yml` runs no
+tests.** It builds and pushes; it does not invoke `vitest`, `tsc`, or any check
+(re-verified 2026-08-04: `grep -niE "vitest|tsc|npm test"` over it returns nothing).
+A green merge and a green build mean the images compiled, nothing more.
+
+⚠ **This section used to be titled "No test gate runs in CI." That is no longer
+true.** `.github/workflows/pr-checks.yml` exists on both `main` and `develop` and
+hard-gates pull requests — API `tsc` + `vitest`, the web production build, and the
+Worker suite under a failure ceiling. The narrower claim above still holds, and it is
+the one that matters here: **a PR gate is not a release gate.** Nothing re-checks
+anything between the merge and the image publish.
+
+⚠ **The gate's thresholds are branch-aware, so a green check does not mean the same
+thing on both trees.** As of PR #244 the arms key on `github.base_ref` —
+`pr-checks.yml:128` (`TSC_CEILING`) and `:249` (`MAX_FAILURES`): PRs based on `main`
+are allowed that tree's real baseline, PRs based on `develop` are held at zero.
+Neither arm tolerates a *new* failure. Read a pass as "no worse than this tree's
+recorded baseline", never as "the tree is clean".
+
+⚠ And the two branches' copies of `pr-checks.yml` **are not the same file.**
+`develop`'s carries the branch-aware arms and a hard web-typecheck gate; `main`'s
+still has a flat `MAX_FAILURES: "9"` and web typecheck as advisory/non-blocking. Read
+the arms in the copy on the branch you are working from rather than assuming this
+paragraph.
 
 Tests exist and are worth running — locally, before you open the PR:
 ```bash
@@ -617,10 +637,44 @@ cd app/api && npx tsc --noEmit && npx vitest run
 cd app/web && npx tsc --noEmit && npx vite build && npx vitest run
 cd cloudflare-worker && npm run typecheck && npm test
 ```
-Known baseline: the Worker suite has 9 pre-existing failures (`/valuation/*` tests
-sending no Bearer and expecting 200). The web `tsc` has 4 pre-existing recharts
-errors. Neither blocks a release; both mean "compare to baseline", not "must be
-zero".
+
+⚠ **Two of those commands cannot run at all on a `main`-based tree,** for reasons
+that are not test failures. On `main`, `app/web` has no `vitest` devDependency, no
+`test` script and no `vitest.config.ts`; and `cloudflare-worker` has no `typecheck`
+script. Both arrived with develop-side work that has not shipped to `main`. **A
+"command not found" is not a red suite** — distinguish could-not-run from failed
+before you conclude anything.
+
+#### The baseline is per-tree. Derive it; do not read a number off this page.
+
+This paragraph has now gone stale twice by recording one number, so it no longer
+records one. **Get the current figures for the branch your PR targets:**
+
+```bash
+cd cloudflare-worker && npx vitest run 2>&1 | grep -E "Test Files|Tests "
+cd app/web && npx tsc --noEmit 2>&1 | grep -c "error TS"
+```
+
+Measured 2026-08-04 for orientation only — re-derive before relying on it:
+
+| Tree | Worker suite | web `tsc` errors |
+|---|---|---|
+| `develop` @ `8cc9901` | 216 pass / **0 fail** (216 total) | **0** |
+| `main` @ `19a667c` | 107 pass / **9 fail** (116 total) | **17** |
+
+`develop` is clean because PR #244 fixed the nine stale Worker fixtures — they were
+`/valuation/*` tests sending no Bearer and expecting 200, written three weeks before
+the JWT gate they now satisfy — and completed the four recharts Tooltip annotations.
+
+`main` still carries both of those, and **11 further `tsc` errors that exist only
+there**: it tracks 10 `app/web/src/**/*.test.ts` files with no `vitest`
+devDependency, so `tsc` adds 10 × TS2307 plus one knock-on TS7006 on top of the 4
+recharts + 2 `SwapOperations` errors. That is why main's number is 17 rather than the
+6 you would measure with vitest's types resolvable. All of it converges at the next
+`develop` → `main` release.
+
+None of it blocks a release. The instruction is "compare against **that tree's**
+baseline", never "must be zero".
 
 ---
 
