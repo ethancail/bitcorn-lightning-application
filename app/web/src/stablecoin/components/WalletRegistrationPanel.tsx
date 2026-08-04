@@ -395,9 +395,16 @@ function UnregisteredView({
         </div>
       )}
       <div className="stablecoin-picker">
+        {/* Label is "Coinbase", not "Coinbase Smart Wallet": the connector now
+            uses preference "all" (wagmi.ts), so this tile leads to a CHOICE
+            between a new passkey wallet and an existing Coinbase Wallet, made in
+            Coinbase's own popup. Naming one branch would misdescribe the tile.
+            Still `recommended` — what changed is that it no longer recommends a
+            single branch. "no seed phrase" is kept because it is the actual
+            selling point; "passkey" is jargon to a farmer and is omitted. */}
         <WalletTile
-          label="Coinbase Smart Wallet"
-          caption="Recommended — no seed phrase, works on any device"
+          label="Coinbase"
+          caption="Create a new wallet with no seed phrase, or use one you already have — you'll choose next"
           disabled={!pickerConnectors.cb || step.kind === "connecting"}
           loading={step.kind === "connecting" && step.connectorId === pickerConnectors.cb?.id}
           recommended
@@ -409,15 +416,25 @@ function UnregisteredView({
           loading={step.kind === "connecting" && step.connectorId === pickerConnectors.mm?.id}
           onClick={() => pickerConnectors.mm && void handleConnectorClick(pickerConnectors.mm.id)}
         />
-        <WalletTile
-          label="Other wallet"
-          caption={isWalletConnectConfigured
-            ? "Scan with any WalletConnect v2-compatible wallet"
-            : "Requires VITE_WALLETCONNECT_PROJECT_ID — not configured for this build"}
-          disabled={!isWalletConnectConfigured || !pickerConnectors.wc || step.kind === "connecting"}
-          loading={step.kind === "connecting" && step.connectorId === pickerConnectors.wc?.id}
-          onClick={() => pickerConnectors.wc && void handleConnectorClick(pickerConnectors.wc.id)}
-        />
+        {/* HIDDEN, not disabled, when WalletConnect has no project id. It used to
+            render a greyed-out button captioned "Requires
+            VITE_WALLETCONNECT_PROJECT_ID — not configured for this build": a
+            build-time variable name shown to a farmer, advertising a capability
+            nobody is going to enable, which invites a support request the
+            operator will decline. Absence is the honest signal.
+
+            Nothing is foreclosed: the walletConnect connector stays in wagmi.ts,
+            already conditional on the same flag. Set the project id and this tile
+            returns with no further change here. */}
+        {isWalletConnectConfigured && (
+          <WalletTile
+            label="Other wallet"
+            caption="Scan with any WalletConnect v2-compatible wallet"
+            disabled={!pickerConnectors.wc || step.kind === "connecting"}
+            loading={step.kind === "connecting" && step.connectorId === pickerConnectors.wc?.id}
+            onClick={() => pickerConnectors.wc && void handleConnectorClick(pickerConnectors.wc.id)}
+          />
+        )}
       </div>
       <p className="stablecoin-network-hint">
         Network: <code>{DEFAULT_CHAIN.name}</code> (chain ID {DEFAULT_CHAIN.id}). Make sure your

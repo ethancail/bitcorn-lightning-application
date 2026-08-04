@@ -35,10 +35,48 @@ export const isWalletConnectConfigured = !!WC_PROJECT_ID;
 const baseConnectors = [
   coinbaseWallet({
     appName: "Bitcorn Lightning",
-    preference: "smartWalletOnly",
+    // "all", NOT "smartWalletOnly" — offer the passkey Smart Wallet AND an
+    // existing Coinbase Wallet (EOA). This is one connector either way
+    // (id: "coinbaseWalletSDK"); the choice is presented inside Coinbase's own
+    // popup at keys.coinbase.com, so the tile list here does not change.
+    //
+    // WHY IT MATTERS RATHER THAN JUST BEING MORE GENEROUS: an EOA verifies
+    // locally, a Smart Wallet needs an ERC-1271 on-chain read. "all" means the
+    // Coinbase tile has a branch that works even if the on-chain read cannot.
+    preference: "all",
   }),
   metaMask(),
 ];
+
+// ⚠ RECORDED RISK — SECURE CONTEXT, and it is untested in a browser.
+//
+// Umbrel serves this app over PLAIN HTTP on a LAN host (umbrel-app.yml `port:
+// 3200`), so the page origin is typically http://umbrel.local:3200 or
+// http://<lan-ip>:3200 — NOT a secure context. Passkeys (WebAuthn) require one,
+// and this repo has already been bitten by exactly that class of thing:
+// navigator.clipboard fails silently on plain HTTP (see CLAUDE.md "Hard-Won
+// Gotchas").
+//
+// THE ANALYSIS, so nobody has to re-derive it: this is probably NOT fatal. The
+// passkey ceremony does not run on this origin — it runs inside the
+// Coinbase-hosted popup at https://keys.coinbase.com/connect (the SDK's default
+// Preference.keysUrl), which is its own HTTPS origin and therefore its own
+// secure context. That keys-popup architecture exists precisely so dapps on
+// arbitrary origins can use passkeys.
+//
+// ⚠ INFERRED FROM THE SDK AND PLATFORM RULES — NOT VERIFIED IN A BROWSER. What
+// could still bite: popup blocking, and postMessage across an insecure opener →
+// secure popup boundary.
+//
+// WHAT TURNS ON IT: if passkey creation does fail here, then "create a new
+// wallet with no seed phrase" is a pitch that does not work for the audience it
+// is aimed at, and the tile's copy and `recommended` badge should change. Note
+// a farmer can still create a Smart Wallet ELSEWHERE (Coinbase's own site,
+// another dapp) and connect it here — the popup handles auth, not just creation
+// — so ERC-1271 verification gets exercised regardless. The code above is
+// correct either way; only the copy depends on the answer.
+//
+// TO SETTLE IT: one manual Coinbase connect from a member node's LAN URL.
 
 const connectors = WC_PROJECT_ID
   ? [

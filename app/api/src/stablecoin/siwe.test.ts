@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { generatePrivateKey } from "viem/accounts";
-import { buildSiweMessage, newNonce, verifySiwe } from "./siwe";
+import { base, baseSepolia } from "viem/chains";
+import { buildSiweMessage, newNonce, resolveSiweChain, siweRpcUrl, verifySiwe } from "./siwe";
 
 // Pre-generated test keypair (do not use for any real wallet). The
 // corresponding address is the EOA we'll sign and verify messages
@@ -14,7 +15,45 @@ const TEST_WALLET = account.address.toLowerCase();
 const MEMBER_PUBKEY = "02" + "ab".repeat(32);
 const DOMAIN = "treasury.example";
 const CHAIN_ID = 84532;
-const BASE_RPC_URL = ""; // empty → EOA fallback path inside verifySiwe
+// Empty = the stock member-node state: no operator-set endpoint. It NO LONGER
+// means "no chain client" — verifySiwe now falls back to the chain's public RPC
+// (siweRpcUrl), which is the whole point of that change. So these tests must
+// control the transport themselves; see the fetch stub below.
+const BASE_RPC_URL = "";
+
+// ⚠ EVERY TEST IN THIS FILE STUBS fetch, AND MUST.
+//
+// Before the public-RPC fallback, an empty BASE_RPC_URL threw before any network
+// call, so this suite was hermetic by accident. Now a client always builds, and
+// viem's verifyMessage really would reach out — VERIFIED: without this stub these
+// tests hit live https://sepolia.base.org (it answered eth_chainId 0x14a34 from
+// the test host). A suite that silently depends on a public endpoint is one
+// outage away from red, and one network policy away from slow.
+//
+// Default: reject, which reproduces "no usable chain read" — the condition the
+// pre-existing tests were written against. Tests that need a working chain read
+// override `rpcHandler`.
+let rpcHandler: (body: string) => unknown;
+
+beforeEach(() => {
+    rpcHandler = () => {
+        throw new Error("no network in tests (default stub)");
+    };
+    vi.stubGlobal("fetch", async (_url: string, init?: { body?: string }) => {
+        const result = rpcHandler(init?.body ?? "");
+        return {
+            ok: true,
+            status: 200,
+            json: async () => ({ jsonrpc: "2.0", id: 1, result }),
+            text: async () => JSON.stringify({ jsonrpc: "2.0", id: 1, result }),
+            headers: new Headers({ "content-type": "application/json" }),
+        };
+    });
+});
+
+afterEach(() => {
+    vi.unstubAllGlobals();
+});
 
 function buildAndSign(opts: {
     memberPubkey?: string;
@@ -246,6 +285,83 @@ describe("verifySiwe — revert paths", () => {
     //     false → the verdict is real → signature_invalid (test above)
     //   - anything not 65 bytes → recovery THROWS ("invalid signature length",
     //     measured) → no verdict exists → smart_wallet_verification_unavailable
+    // ─── The public-RPC fallback ────────────────────────────────────────────
+    //
+    // BASE_RPC_URL cannot ship in the image (it embeds an API key) and members
+    // administer their own nodes, so on a stock node it is unset. Verification
+    // therefore falls back to the chain's own public endpoint, taken from viem's
+    // chain definition rather than a hardcoded string.
+    describe("RPC fallback resolution", () => {
+        it("falls back to the chain's public RPC when BASE_RPC_URL is unset", () => {
+            expect(siweRpcUrl(base, "")).toBe(base.rpcUrls.default.http[0]);
+            expect(siweRpcUrl(baseSepolia, "")).toBe(baseSepolia.rpcUrls.default.http[0]);
+        });
+
+        it("an operator-set endpoint always wins over the fallback", () => {
+            const keyed = "https://base-mainnet.example/v2/SECRET";
+            expect(siweRpcUrl(base, keyed)).toBe(keyed);
+            expect(siweRpcUrl(baseSepolia, keyed)).toBe(keyed);
+        });
+
+        it("the fallback comes from viem, so it cannot drift from the library", () => {
+            // Asserted against viem's own definition rather than a literal: if viem
+            // changes Base's default endpoint, this tracks it instead of going stale.
+            // (Values at time of writing: mainnet.base.org / sepolia.base.org.)
+            expect(siweRpcUrl(base, "")).toMatch(/^https:\/\//);
+            expect(siweRpcUrl(baseSepolia, "")).toMatch(/^https:\/\//);
+        });
+
+        it("resolves only the two supported BASE chains", () => {
+            expect(resolveSiweChain(8453)).toBe(base);
+            expect(resolveSiweChain(84532)).toBe(baseSepolia);
+            expect(resolveSiweChain(1)).toBeUndefined();
+        });
+    });
+
+    it("chain SIWE cannot verify against is its own reason, not a bad signature", async () => {
+        // Operator misconfiguration (BASE_CHAIN_ID pointing off-Base) needs a
+        // different fix from a network failure, so it must not share a reason code.
+        const { message, nonce } = buildAndSign({ chainId: 1 });
+        const signature = await account.signMessage({ message });
+        const outcome = await verifySiwe({
+            message,
+            signature,
+            expectedDomain: DOMAIN,
+            expectedChainId: 1,
+            expectedMemberPubkey: MEMBER_PUBKEY,
+            expectedWalletAddress: TEST_WALLET,
+            expectedNonce: nonce,
+            baseRpcUrl: BASE_RPC_URL,
+        });
+        expect(outcome.ok).toBe(false);
+        if (!outcome.ok) expect(outcome.reason).toBe("siwe_chain_unsupported");
+    });
+
+    it("NEGATIVE CONTROL: smart-wallet signature VERIFIES with BASE_RPC_URL unset", async () => {
+        // This is the whole point of the fallback. Same inputs that previously
+        // returned smart_wallet_verification_unavailable on a stock node — a
+        // contract-shaped signature with no operator-set endpoint — must now reach
+        // the chain and come back verified.
+        //
+        // The chain read is stubbed to answer "valid" so the test asserts OUR
+        // plumbing (a client gets built against the public endpoint and its answer
+        // is honoured), not Base's liveness.
+        rpcHandler = () => `0x${"0".repeat(63)}1`; // ERC-1271/6492: true
+        const { message, nonce } = buildAndSign({});
+        const contractSignature = ("0x" + "ab".repeat(200)) as `0x${string}`;
+        const outcome = await verifySiwe({
+            message,
+            signature: contractSignature,
+            expectedDomain: DOMAIN,
+            expectedChainId: CHAIN_ID,
+            expectedMemberPubkey: MEMBER_PUBKEY,
+            expectedWalletAddress: TEST_WALLET,
+            expectedNonce: nonce,
+            baseRpcUrl: BASE_RPC_URL, // "" — the stock member-node state
+        });
+        expect(outcome.ok).toBe(true);
+    });
+
     it("no BASE RPC + non-EOA-shaped signature: reports config, not a bad signature", async () => {
         const { message, nonce } = buildAndSign({});
         // An ERC-1271/6492-style signature: ABI-encoded, so not the 65 bytes

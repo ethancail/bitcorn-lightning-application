@@ -177,23 +177,50 @@ export async function handleWalletRegister(req: IncomingMessage, res: ServerResp
         // rejecting the caller: 503, not 401. The member did nothing wrong and
         // cannot do anything about it, so telling them their signature was
         // invalid was both untrue and unactionable.
-        if (outcome.reason === "smart_wallet_verification_unavailable") {
-            // The diagnostic names BASE_RPC_URL, so it goes to the operator's log
-            // and NOT into the response body — this endpoint is reachable before
-            // a wallet is bound, and configuration state is not owed to an
-            // unauthenticated caller.
+        // Operator misconfiguration: BASE_CHAIN_ID names a chain we cannot verify
+        // against. Permanent until someone changes it, so the member must NOT be
+        // told to try again — that would be false advice.
+        if (outcome.reason === "siwe_chain_unsupported") {
             console.error(
-                "[stablecoin] smart-wallet SIWE verification unavailable — set BASE_RPC_URL " +
-                    "on this node (same chain as BASE_CHAIN_ID) to enable ERC-1271 wallets. " +
-                    `detail: ${outcome.detail ?? "(none)"}`,
+                "[stablecoin] SIWE verification cannot run — BASE_CHAIN_ID names an " +
+                    "unsupported chain. Set it to 8453 (Base mainnet) or 84532 (Base " +
+                    `Sepolia). detail: ${outcome.detail ?? "(none)"}`,
             );
             return jsonError(
                 res,
                 503,
                 outcome.reason,
-                "This node is not set up to verify smart-contract wallets. " +
-                    "An EOA wallet (e.g. MetaMask) will work, or ask the node operator " +
-                    "to finish the stablecoin setup.",
+                "This node is configured for a network the stablecoin rail does not " +
+                    "support, so wallet registration cannot run. This needs the node " +
+                    "operator.",
+            );
+        }
+        // ⚠ REWORDED because this commit changed the cause. It used to mean
+        // "BASE_RPC_URL is unset", so the copy said "this node is not set up" and
+        // pointed at the operator. Verification now falls back to the chain's
+        // public RPC, so unset is no longer a failure — reaching here means the
+        // chain read itself did not complete (endpoint unreachable, rate-limited,
+        // or erroring). That is transient and not the member's or the operator's
+        // setup, so the copy now says so. Leaving the old text would have been the
+        // same class of mislabel this reason code was introduced to fix.
+        if (outcome.reason === "smart_wallet_verification_unavailable") {
+            // Detail stays in the operator log, not the response body — this
+            // endpoint is reachable before a wallet is bound, and internal state is
+            // not owed to an unauthenticated caller.
+            console.error(
+                "[stablecoin] smart-wallet SIWE verification could not complete — the BASE " +
+                    "chain read failed. Verification uses BASE_RPC_URL when set and the " +
+                    "chain's public RPC otherwise; check egress and rate limits, or set " +
+                    `BASE_RPC_URL to a dedicated endpoint. detail: ${outcome.detail ?? "(none)"}`,
+            );
+            return jsonError(
+                res,
+                503,
+                outcome.reason,
+                "Couldn't check this wallet's signature — verifying a smart-contract " +
+                    "wallet needs a connection to the Base network, and that didn't " +
+                    "complete. Try again in a moment. An EOA wallet (e.g. MetaMask) " +
+                    "doesn't need it.",
             );
         }
         const status = outcome.reason === "signature_invalid" ? 401 : 400;
