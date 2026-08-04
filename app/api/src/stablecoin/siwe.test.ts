@@ -228,4 +228,46 @@ describe("verifySiwe — revert paths", () => {
         expect(outcome.ok).toBe(false);
         if (!outcome.ok) expect(outcome.reason).toBe("signature_invalid");
     });
+
+    // ─── No BASE RPC: EOA verdicts stand, smart wallets are not blamed ─────
+    //
+    // With BASE_RPC_URL empty (as above — the whole file runs that way) the
+    // chain client cannot be built, so verification falls back to local EOA
+    // recovery. Two outcomes have to stay separable, and conflating them fails
+    // in both directions: reporting a real bad signature as a config problem
+    // masks an authentication failure behind a 503, and reporting an
+    // unverifiable smart-wallet signature as `signature_invalid` blames the
+    // member for the operator's omission — on the DEFAULT wallet path, since
+    // Coinbase Smart Wallet is listed first in the web app's connectors.
+    //
+    // What separates them is whether local recovery can produce a VERDICT, not
+    // any inspection of the address (which would need the missing RPC):
+    //   - well-formed 65-byte signature that doesn't match → recovery returns
+    //     false → the verdict is real → signature_invalid (test above)
+    //   - anything not 65 bytes → recovery THROWS ("invalid signature length",
+    //     measured) → no verdict exists → smart_wallet_verification_unavailable
+    it("no BASE RPC + non-EOA-shaped signature: reports config, not a bad signature", async () => {
+        const { message, nonce } = buildAndSign({});
+        // An ERC-1271/6492-style signature: ABI-encoded, so not the 65 bytes
+        // local recovery can evaluate. Recovery throws rather than returning a
+        // verdict, so blaming the signature would be a guess.
+        const contractSignature = ("0x" + "ab".repeat(200)) as `0x${string}`;
+        const outcome = await verifySiwe({
+            message,
+            signature: contractSignature,
+            expectedDomain: DOMAIN,
+            expectedChainId: CHAIN_ID,
+            expectedMemberPubkey: MEMBER_PUBKEY,
+            expectedWalletAddress: TEST_WALLET,
+            expectedNonce: nonce,
+            baseRpcUrl: BASE_RPC_URL,
+        });
+        expect(outcome.ok).toBe(false);
+        if (!outcome.ok) {
+            expect(outcome.reason).toBe("smart_wallet_verification_unavailable");
+            // Not an auth failure — the caller must not be told their signature
+            // was rejected when it was never evaluated.
+            expect(outcome.reason).not.toBe("signature_invalid");
+        }
+    });
 });

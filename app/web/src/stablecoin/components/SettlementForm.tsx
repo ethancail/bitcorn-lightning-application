@@ -205,6 +205,9 @@ export default function SettlementForm({
         amount,
         hasPublicClient: publicClient != null,
         chainId,
+        // Attempt, not success — distinguishes "the loop hasn't run yet" from
+        // "the loop runs and is being refused." See submitGuard's field doc.
+        railLoopHasRun: (cursor?.last_attempt_at ?? 0) > 0,
       });
       if (!guard.ok) {
         setStep({ kind: "validation_error", message: guard.message });
@@ -335,6 +338,7 @@ export default function SettlementForm({
     [
       amount,
       chainId,
+      cursor,
       isPaused,
       memberPubkey,
       onSubmitted,

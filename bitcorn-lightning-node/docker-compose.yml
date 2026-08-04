@@ -48,12 +48,41 @@ services:
       VALUATION_WORKER_URL: "${VALUATION_WORKER_URL:-}"
       # BASE rail (stablecoin) — chain selection + SIWE verification RPC.
       # Set in `.env` next to this file (loaded via exports.sh, same as
-      # VALUATION_SUBMIT_HMAC above). All default to the live Base Sepolia
-      # deployment when unset; mainnet values are set via .env at deploy
-      # day, never hardcoded here (mainnet-preflight runbook §B1/§B2).
-      # env.ts guards BASE_CHAIN_ID: empty/garbage falls back to 84532.
-      # See .env.example in this directory for the template.
-      BASE_CHAIN_ID: "${BASE_CHAIN_ID:-}"
+      # VALUATION_SUBMIT_HMAC above). See .env.example for the template.
+      #
+      # ⚠ THIS BLOCK USED TO SAY "mainnet values are set via .env at deploy day,
+      # never hardcoded here." THAT INSTRUCTION CREATED A FLEET-WIDE BUG, and it
+      # is corrected below rather than deleted, because the reasoning matters.
+      #
+      # It assumed one operator editing one .env. But MEMBERS ADMINISTER THEIR
+      # OWN NODES. A per-node .env edit is not an instruction anyone can deliver
+      # to a fleet, so a var whose mainnet value lives only in .env is a var that
+      # is wrong on every member node. Anything that must be right on every node
+      # has to ship WITH THE CODE. Anything that cannot ship (secrets) must fail
+      # safely and say so — which is the split below.
+      #
+      # BASE_CHAIN_ID — SHIPS MAINNET (8453) BY DEFAULT.
+      #   Which chain member wallet signatures are pinned to (SIWE). It must
+      #   agree with the web bundle's build-time VITE_BASE_CHAIN_ID, which CI
+      #   requires explicitly on main builds. Disagreement means every member
+      #   fails wallet registration with chain_id_mismatch (siwe.ts).
+      #   ⚠ Local dev builds the web image from app/web/Dockerfile, whose
+      #   ARG VITE_BASE_CHAIN_ID still defaults to 84532 — deliberately, so a
+      #   local build never silently produces a mainnet bundle. So a local
+      #   `docker compose up --build` gives bundle=84532 against api=8453 and
+      #   SIWE refuses with chain_id_mismatch. That is the intended failure:
+      #   it fails CLOSED and names itself. For local testnet work set
+      #   BASE_CHAIN_ID=84532 in .env to match.
+      #
+      # BASE_RPC_URL — CANNOT SHIP. It carries an embedded API key, so there is
+      #   no value that is safe to commit. Its absence is PARTIAL degradation,
+      #   not failure: EOA wallets (MetaMask, WalletConnect) still verify via the
+      #   local fallback in siwe.ts; ERC-1271 smart wallets (Coinbase Smart
+      #   Wallet — the DEFAULT connector) cannot be verified without a chain
+      #   read, and are refused with `smart_wallet_verification_unavailable`.
+      #
+      # BASE_CONFIRMATION_DEPTH — safe non-chain-specific default, unchanged.
+      BASE_CHAIN_ID: "${BASE_CHAIN_ID:-8453}"
       BASE_RPC_URL: "${BASE_RPC_URL:-}"
       BASE_CONFIRMATION_DEPTH: "${BASE_CONFIRMATION_DEPTH:-64}"
     depends_on:

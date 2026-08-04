@@ -59,6 +59,9 @@ function validInput(over: Partial<SubmitGuardInput> = {}): SubmitGuardInput {
     amount: "45000.00",
     hasPublicClient: true,
     chainId: 8453,
+    // Loop has not run: the "try again in a moment" wording is only correct in
+    // this state. The operator-attention wording is asserted separately below.
+    railLoopHasRun: false,
     ...over,
   };
 }
@@ -174,10 +177,40 @@ describe("validateSettlementSubmit — guard ORDER", () => {
       amount: "0",
       hasPublicClient: false,
       chainId: 8453,
+      railLoopHasRun: false,
     });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("unreachable");
     expect(result.message).toMatch(/active membership/i);
+  });
+
+  // ─── A missing router means two different things ───────────────────────
+  //
+  // The single old message ("try again in a moment") asserted transience for
+  // both, so a member whose node was misconfigured retried forever on our
+  // advice. The sync loop having ATTEMPTED is what separates them: a loop that
+  // has run and still produced no contract state is being refused (Worker
+  // unconfigured, or configured for another chain), which waiting cannot fix.
+  it("missing router BEFORE the sync loop has run: transient wording", () => {
+    const result = validateSettlementSubmit(
+      validInput({ routerAddress: undefined, railLoopHasRun: false }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.message).toMatch(/try again in a moment/i);
+    expect(result.message).not.toMatch(/operator/i);
+  });
+
+  it("missing router AFTER the sync loop has run: operator wording, no retry advice", () => {
+    const result = validateSettlementSubmit(
+      validInput({ routerAddress: undefined, railLoopHasRun: true }),
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error("unreachable");
+    expect(result.message).toMatch(/node operator/i);
+    // The whole point: it must stop telling them to wait.
+    expect(result.message).not.toMatch(/try again/i);
+    expect(result.message).not.toMatch(/in a moment/i);
   });
 
   it("an ENTITLED member still gets the original guards, in the original order", () => {
