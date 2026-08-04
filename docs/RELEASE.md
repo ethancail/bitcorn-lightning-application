@@ -13,6 +13,11 @@ path** — see [Rollback](#rollback-untested).
 Facts verified against the tree at `18f99b3` (2026-08-03). Line numbers move;
 the file paths don't.
 
+Two claims here are **not** tree-derived and cannot be: step 4's automatic refresh
+and step 6's pending-update behaviour come from observing a live node on 2026-08-03.
+Both are labelled with what that observation does and does not cover — the repo
+cannot tell you how `umbreld` behaves at runtime.
+
 ---
 
 ## The nine steps
@@ -23,9 +28,9 @@ the file paths don't.
 | 2 | `release/vX.Y.Z` → PR → merge to `main` | **MANUAL** |
 | 3 | CI builds and pushes both images | AUTOMATED |
 | **3a** | **Verify the images actually reached GHCR** | **MANUAL — do not skip** |
-| 4 | Umbrel host's app-store clone pulls `main` | **MANUAL** |
+| 4 | Umbrel host's app-store clone refreshes from `main` | AUTOMATED |
 | 5 | `umbreld` sees the higher version, offers the update | AUTOMATED |
-| 6 | User clicks Update | **MANUAL (the farmer)** |
+| 6 | User clicks Update | **MANUAL (the farmer) — ⚠ [the real gap](#updates-reach-nodes-automatically-they-apply-only-when-someone-clicks)** |
 | 7 | `umbreld` re-serializes compose, pulls the pinned tags | AUTOMATED |
 | 8 | `exports.sh` sources the operator `.env`; compose starts | AUTOMATED |
 | 9 | API boots; migrations run | AUTOMATED |
@@ -100,12 +105,20 @@ unsupported on a `main` build.
 
 ### Step 3a — VERIFY THE IMAGES REACHED GHCR · MANUAL — do not skip
 
-**This is the step that prevents `CLAUDE.md`'s "install fails at 0%".** The causal
+**This is the step that catches `CLAUDE.md`'s "install fails at 0%".** The causal
 chain: if a farmer clicks Update before the images exist on ghcr.io, `umbreld`
 tries to pull a tag that isn't there, the install flips back to "Install" at 0%,
 and the node is left in a broken half-state requiring the recovery in
-[Gotchas](#gotchas). Confirming the build is green **before** anyone can click is
-the whole mitigation.
+[Gotchas](#gotchas).
+
+⚠ **This step detects that condition; it no longer prevents it.** It used to be
+described as prevention, on the assumption that step 4 was a manual gate you held
+shut until the build was green. Step 4 is automated (see below) and fires on its own
+within minutes of the merge, so **the update becomes clickable whether or not the
+images exist, and you cannot hold it back.** Run this immediately after merging and
+be ready to fix forward — a rerun, or the force-pull recovery in
+[Gotchas](#half-installed-after-an-early-user-click) — rather than treating a green
+check here as having closed the window.
 
 ```bash
 gh run list --branch main --limit 5
@@ -124,11 +137,11 @@ docker manifest inspect ghcr.io/ethancail/bitcorn-lightning-application/api:X.Y.
 docker manifest inspect ghcr.io/ethancail/bitcorn-lightning-application/web:X.Y.Z >/dev/null && echo WEB OK
 ```
 
-**Do not proceed to step 4 until both print OK.** Step 4 is what makes the update
-visible to farmers; until then, nobody can click it, and that ordering is the only
-thing standing between a failed build and a broken node.
+Both must print OK. If either does not, you are already in the window where a
+farmer can click a broken update — go to step 3a's fix-forward path above, and do
+not wait on step 4, which is not waiting on you.
 
-### Step 4 — App-store clone pulls `main` · MANUAL
+### Step 4 — App-store clone refreshes from `main` · AUTOMATED
 
 The Umbrel host holds a git clone of this repo as a community app store:
 
@@ -136,30 +149,61 @@ The Umbrel host holds a git clone of this repo as a community app store:
 /home/umbrel/umbrel/app-stores/ethancail-bitcorn-lightning-application-github-020f9ee0/
 ```
 
-It tracks `main`. Refreshing it is what surfaces the new manifest version to
-`umbreld`:
+It tracks `main`, and it is a **grafted (shallow) checkout** — `git log` there shows
+truncated history, and anything needing full history will not work in it. Refreshing
+it is what surfaces the new manifest version to `umbreld`.
+
+**This refresh happens without operator action.** This step used to be documented as
+MANUAL with the cadence unknown; that was the largest hole in this doc, because
+whether a release reached nodes at all depended on it. It is now observed.
+
+**Observed 2026-08-03:** minutes after PR #242 merged to `main`, the clone on the
+treasury node was already at `19a667c`, with
+`bitcorn-lightning-node/umbrel-app.yml` reading `1.17.20`, and **no manual
+`git pull` had been run** `[RELAYED — Ethan's terminal, 2026-08-03]`.
+
+⚠ **What that observation does and does not establish.** It is one data point, taken
+minutes after one merge, on one node — the treasury. Read it for exactly that much:
+
+- **Established:** the clone advances on its own. The manual `git pull` this step
+  used to require is **not** required.
+- **NOT established — the interval.** "Minutes" is the observed latency of a single
+  refresh, not a bound on the next one.
+- **NOT established — timer or event-driven.** Nobody has read the mechanism. A
+  scheduled fetch, a webhook, and a fetch triggered by opening the app store in the
+  UI would all look identical from this one observation.
+- **NOT established — that member nodes behave identically.** Only the treasury was
+  observed. Members run the same `umbreld`, so the same behaviour is *expected*;
+  expected is not observed.
+
+Forcing it is still safe, and is still how you make the refresh immediate rather
+than eventual:
 
 ```bash
 cd ~/umbrel/app-stores/ethancail-bitcorn-lightning-application-github-020f9ee0
 sudo git pull
 ```
 
-> **OPEN QUESTION — refresh cadence.** The clone tracks `main` (confirmed). Whether
-> `umbreld` also pulls it automatically on a timer, or whether the manual `git pull`
-> above is strictly required, is **unconfirmed**. Treat the manual pull as required
-> until resolved — doing it when it wasn't needed is harmless; skipping it when it
-> was needed means farmers never see the update.
->
-> To resolve: on the Umbrel host, note `git -C <clone> rev-parse HEAD`, push a
-> commit to `main`, and poll that same command without pulling to see whether it
-> advances on its own. `systemctl cat umbreld` and `sudo journalctl -u umbreld |
-> grep -i "app-store\|git"` would show a scheduled fetch if one exists.
+**Verify the state rather than trusting the paragraph above.** On the node, compare
+the clone's HEAD and its advertised version against `main`:
 
-**Verify before moving on:**
 ```bash
-grep '^version:' ~/umbrel/app-stores/ethancail-.../bitcorn-lightning-node/umbrel-app.yml
+STORE=~/umbrel/app-stores/ethancail-bitcorn-lightning-application-github-020f9ee0
+
+# What the clone is at, and what it is advertising to umbreld
+sudo git -C "$STORE" rev-parse HEAD
+grep '^version:' "$STORE"/bitcorn-lightning-node/umbrel-app.yml
+
+# What main is actually at. Ask the remote — the clone is shallow, so its own log
+# is not a reliable comparison. Uses the URL rather than a remote name, so it also
+# runs from your dev machine.
+git ls-remote https://github.com/ethancail/bitcorn-lightning-application refs/heads/main
 ```
-Shows the new version.
+
+HEAD matching the `ls-remote` hash, and the version matching the release you just
+merged, means the refresh has landed. If HEAD is behind, either it has not fired yet
+or it does not fire on this node — `sudo git pull`, and **record which**, because
+that is the observation this step is still missing.
 
 ### Step 5 — `umbreld` offers the update · AUTOMATED
 
@@ -169,8 +213,41 @@ knows nothing about whether the images exist. Hence step 3a.
 
 ### Step 6 — Farmer clicks Update · MANUAL (not you)
 
-You do not control the timing. Assume it can happen the instant step 4 completes,
-which is why step 3a comes first.
+You do not control the timing. Assume it can happen within minutes of the merge,
+because step 4 puts it there on its own.
+
+#### Updates reach nodes automatically. They apply only when someone clicks.
+
+⚠ **This is the real gap in the update path.** It is larger than the step-4 refresh
+cadence question it replaced, and it points the opposite way from what that question
+assumed. The worry used to be that a release might never reach a node. Releases do
+reach nodes, on their own. What they do not do is **install**.
+
+`umbreld` renders a pending-update tile and waits. Indefinitely. Nothing expires,
+nothing escalates, nothing forces.
+
+**Observed 2026-08-03:** the treasury node was sitting on a pending update tile for
+`1.17.20` that the operator had not clicked. The version `main` offered and the
+version the node was running had already diverged, and nothing anywhere reported
+that they had.
+
+What follows from that:
+
+- **"Released" is not "running."** The two diverge by however long an operator waits
+  before clicking. For the treasury that is one person. For a fleet of member nodes
+  it is every farmer, independently, with no coordination between them.
+- **A release can sit unapplied indefinitely** — including one carrying a security or
+  money-affecting fix. Shipping it is not deploying it.
+- **You cannot see the divergence.** There is currently **no way to know what version
+  a member node is actually running.** No telemetry, no version report, no check-in.
+  The treasury knows its own version and nothing else's, so fleet version state is
+  not merely stale — it is unobserved.
+- **No mechanism exists to prompt or to verify.** Not "the existing one is
+  unreliable" — there is none.
+
+⚠ **Launch consideration, recorded as a gap and nothing more.** Whether to change
+any of this, and how, is an unmade design decision. Nothing here proposes or implies
+a chosen direction; do not read one out of it.
 
 ### Step 7 — `umbreld` re-serializes compose and pulls · AUTOMATED
 
@@ -551,6 +628,8 @@ zero".
 
 | Question | Status | How to resolve |
 |---|---|---|
-| Does the Umbrel app-store clone auto-pull on a timer, or is the manual `git pull` required? | Clone tracks `main` — **confirmed**. Refresh cadence — **unconfirmed** | Note `git -C <clone> rev-parse HEAD`, push to `main`, poll without pulling. Also `systemctl cat umbreld` and `journalctl -u umbreld \| grep -i "app-store\|git"` |
+| ~~Is the manual `git pull` of the app-store clone required, or does it refresh on its own?~~ | **CLOSED 2026-08-03 — it refreshes on its own.** Was the largest hole in this doc; the manual pull is not required. See [step 4](#step-4--app-store-clone-refreshes-from-main--automated) | Resolved by observation, not by test — one data point, minutes after PR #242, on the treasury node |
+| What is the refresh interval, is it timer- or event-driven, and do member nodes behave the same? | **Unknown** — the residual of the row above. Does not block a release: the refresh is no longer the bottleneck (the [update click](#updates-reach-nodes-automatically-they-apply-only-when-someone-clicks) is) | `systemctl cat umbreld`; `journalctl -u umbreld \| grep -i "app-store\|git"`; and repeat the step-4 HEAD comparison on a **member** node after a release |
+| How do you know what version a member node is actually running? | **You cannot.** No telemetry, no version report, no check-in exists. Named as a launch consideration under [step 6](#updates-reach-nodes-automatically-they-apply-only-when-someone-clicks) | Not a question to resolve by investigation — it is an unmade design decision |
 | Does `umbreld` overwrite a hand-edited deployed compose file on restart, or only on update? | **Unknown** — blocks any reliable downgrade | Edit a harmless value in the deployed compose, `apps.restart.mutate`, check whether the edit survives |
 | Will `umbreld` re-offer an update to a manually downgraded node? | **Unknown** | Falls out of the above |
