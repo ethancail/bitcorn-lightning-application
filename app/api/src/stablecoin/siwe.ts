@@ -98,8 +98,23 @@ export type VerifyOutcome =
                * member their signature was invalid — for an omission only the
                * node operator can fix, and with the accurate diagnostic
                * discarded.
+               *
+               * ⚠ ITS CAUSE CHANGED. It used to mean "BASE_RPC_URL is unset,"
+               * which was a per-node configuration gap. Verification now falls
+               * back to the chain's public RPC (see siweRpcUrl), so unset is no
+               * longer a failure. What remains is: the chain read did not
+               * complete — the endpoint was unreachable, rate-limited, or
+               * erroring. Transient, not a setup problem, and the member-facing
+               * copy in handlers.ts says so.
                */
-              | "smart_wallet_verification_unavailable";
+              | "smart_wallet_verification_unavailable"
+              /**
+               * BASE_CHAIN_ID names a chain SIWE cannot verify against. Split out
+               * from the above because the operator fix is different — correct the
+               * chain id, not the RPC — and because it is permanent rather than
+               * transient, so "try again" would be false advice.
+               */
+              | "siwe_chain_unsupported";
           detail?: string;
       };
 
@@ -215,14 +230,65 @@ export async function verifySiwe(input: VerifyInput): Promise<VerifyOutcome> {
     // ERC-1271 smart contract account; verifying its signatures means
     // calling isValidSignature on-chain. For EOA wallets (MetaMask, etc.)
     // the client is still used but only for the ERC-6492 fallback path.
+    // Chain first, as a named outcome. An unsupported chainId is an operator
+    // misconfiguration (BASE_CHAIN_ID set to something that is not Base), and it
+    // needs a different fix from "the network read failed" — so it must not share
+    // a reason code with it. Previously it threw and was reported as the
+    // smart-wallet-unavailable case, which pointed the operator at the wrong var.
+    const chain = resolveSiweChain(input.expectedChainId);
+    if (!chain) {
+        return {
+            ok: false,
+            reason: "siwe_chain_unsupported",
+            detail:
+                `chainId ${input.expectedChainId} is not a supported BASE chain ` +
+                `(expected ${base.id} or ${baseSepolia.id}) — check BASE_CHAIN_ID`,
+        };
+    }
+
+    // Hoisted so the negative-path liveness probe below can reuse the same client
+    // (and therefore the same endpoint) that produced the ambiguous result.
+    //
+    // ⚠ CONSTRUCTION MUST NOT THROW — it is outside the try, so anything thrown
+    // here escapes verifySiwe instead of becoming an outcome. It cannot today: the
+    // chain is already resolved above, siweRpcUrl cannot throw, and viem's
+    // createPublicClient accepts even a malformed url (VERIFIED: "not-a-url",
+    // "ftp://x" and "   " all construct; the failure surfaces at call time, which
+    // IS inside the try). If you add a throwing step to makePublicClient, move the
+    // call back inside the try and give the liveness probe its own client.
+    const client = makePublicClient(chain, input.baseRpcUrl);
     let valid: boolean;
     try {
-        const client = makePublicClient(input.baseRpcUrl, input.expectedChainId);
         valid = await client.verifyMessage({
             address: parsed.address as Hex,
             message: input.message,
             signature: input.signature,
         });
+        if (!valid) {
+            // ⚠ A `false` FROM viem IS AMBIGUOUS — and confirming liveness here is
+            // what makes the public-RPC fallback safe to ship.
+            //
+            // MEASURED: verifyMessage SWALLOWS transport failures and returns false
+            // rather than throwing (forced fetch rejection → `RETURNED: false`).
+            // Now that a client ALWAYS builds — which is exactly what the fallback
+            // guarantees — a bare false conflates two different things:
+            //     the signature genuinely does not match
+            //     the chain read failed, so nothing was checked
+            //
+            // Left unhandled, the fallback would have REINTRODUCED the mislabel
+            // PR #246 removed, by a different route: an RPC outage telling the
+            // member their signature was rejected when it was never evaluated. The
+            // old code was right only by accident — an unset URL threw before any
+            // read was attempted.
+            //
+            // getChainId throws on transport failure where verifyMessage does not
+            // (both measured), so it disambiguates. Throwing here deliberately
+            // routes into the catch below, which attempts LOCAL recovery — so a
+            // 65-byte EOA signature still gets a definitive local verdict instead
+            // of being written off as unverifiable. Costs one round-trip, and only
+            // on the negative path; a successful verification never reaches it.
+            await client.getChainId();
+        }
     } catch (err) {
         // Fall back to EOA-only recovery if the chain client isn't usable.
         // Preserves MetaMask flows during a brief BASE-RPC outage.
@@ -233,19 +299,26 @@ export async function verifySiwe(input: VerifyInput): Promise<VerifyOutcome> {
                 signature: input.signature,
             });
         } catch {
-            // ⚠ NOT `signature_invalid`. Reaching here means the chain client
-            // could not be built AND local recovery could not evaluate the
-            // signature at all — which is what an ERC-1271 smart-wallet
-            // signature does, because local recovery throws on anything that is
-            // not a 65-byte secp256k1 signature (verified: "invalid signature
-            // length"). So this is precisely the "no BASE_RPC_URL + smart wallet"
-            // case, and it is a CONFIGURATION fault, not an authentication one.
+            // ⚠ NOT `signature_invalid`. Reaching here means the on-chain read
+            // FAILED AND local recovery could not evaluate the signature at all —
+            // which is what an ERC-1271 smart-wallet signature does, because local
+            // recovery throws on anything that is not a 65-byte secp256k1
+            // signature (verified: "invalid signature length"). The signature was
+            // never examined, so blaming it would be a guess.
             //
-            // It used to report `signature_invalid`, which told the member their
-            // signature was rejected when it was never examined — on the DEFAULT
-            // wallet path, since the web app lists Coinbase Smart Wallet first
-            // with preference: "smartWalletOnly". handlers.ts maps this reason to
-            // 503 and keeps the var name out of the response body.
+            // ⚠ THE CAUSE HERE IS NARROWER THAN IT USED TO BE. This was the
+            // "BASE_RPC_URL is unset" path — a per-node configuration gap that hit
+            // every stock member node. Verification now falls back to the chain's
+            // public RPC (siweRpcUrl), so unset is no longer a failure, and an
+            // unsupported chain id returns `siwe_chain_unsupported` before we get
+            // here. What is left is a genuine chain-read failure: endpoint
+            // unreachable, rate-limited, or erroring. Transient, so handlers.ts
+            // now says "try again" rather than "this node is not set up."
+            //
+            // It originally reported `signature_invalid`, which told the member
+            // their signature was rejected when it was never examined — on the
+            // DEFAULT wallet path. handlers.ts maps this reason to 503 and keeps
+            // configuration detail out of the response body.
             //
             // A genuinely bad EOA signature does NOT land here: local recovery
             // returns false for a well-formed 65-byte signature that doesn't
@@ -294,24 +367,73 @@ function toChecksumAddress(addr: string): Hex {
 }
 
 /**
- * Build a viem public client for the configured BASE chain. Cached
- * per-(url, chainId) so we don't reinstantiate on every verification.
+ * The two chains SIWE verification supports. Resolved BEFORE any client is
+ * built so an unsupported chainId is a named early return rather than a throw
+ * used for control flow — see `siwe_chain_unsupported`.
+ */
+export function resolveSiweChain(chainId: number): typeof base | typeof baseSepolia | undefined {
+    if (chainId === base.id) return base;
+    if (chainId === baseSepolia.id) return baseSepolia;
+    return undefined;
+}
+
+/**
+ * The endpoint SIWE verification will actually use for a given chain.
+ *
+ * ⚠ FALLS BACK TO THE CHAIN'S PUBLIC RPC WHEN BASE_RPC_URL IS UNSET, and that
+ * is the point: without it, ERC-1271 (smart-contract wallet) verification is
+ * impossible on a stock member node. BASE_RPC_URL cannot ship in the image — it
+ * embeds an API key — and members administer their own nodes, so "the operator
+ * will set it" is not available for a fleet.
+ *
+ * Why a public endpoint is acceptable HERE specifically:
+ *   - Volume is one eth_call per wallet registration, ever. `verifySiwe` has a
+ *     single call site, pinned by a test in siwe.test.ts. If that ever changes,
+ *     rate limits start mattering and this decision needs revisiting.
+ *   - It is not a new trusted party for this application: the web bundle already
+ *     reads through the same endpoint on every Stablecoin page load (wagmi.ts
+ *     uses `http()` with no URL, which resolves to exactly this value).
+ *   - For Base that endpoint is Coinbase-operated — the same trust root as the
+ *     Coinbase Smart Wallet being verified.
+ *
+ * The residual risk, stated rather than hidden: the RPC is trusted to answer
+ * isValidSignature truthfully. A malicious endpoint could forge a positive and
+ * let someone bind a wallet they do not control. That mis-attributes balance and
+ * history display; it is not fund theft, because the rail is non-custodial and
+ * settlements are signed by the wallet itself. An operator wanting a smaller
+ * trusted set sets BASE_RPC_URL.
+ *
+ * Taken from viem's own chain definition rather than a hardcoded string, so it
+ * tracks the library instead of drifting from it.
+ *
+ * ⚠ THIS IS EXPLICIT, NOT LOAD-BEARING ALONE — worth knowing before anyone
+ * "simplifies" it away or over-credits it. VERIFIED: viem's own `http("")` and
+ * `http(undefined)` ALREADY resolve to `chain.rpcUrls.default.http[0]`, so the
+ * single change that actually unblocked stock member nodes was deleting the
+ * `if (!rpcUrl) throw` that used to sit above — not this function. It is kept
+ * because (a) relying on viem's coercion of an empty string is an implicit
+ * dependency on undocumented behaviour, and (b) the client cache needs a concrete
+ * url to key on, and `84532:` is not one. Its own unit tests pin it directly;
+ * the end-to-end negative control is pinned by restoring that throw.
+ */
+export function siweRpcUrl(chain: typeof base | typeof baseSepolia, configured: string): string {
+    return configured || chain.rpcUrls.default.http[0];
+}
+
+/**
+ * Build a viem public client for the given BASE chain.
+ *
+ * Cache is keyed on the RESOLVED url, not the configured one. Keying on the raw
+ * input would give an unset-config caller and an explicitly-set-to-public caller
+ * two different keys for one identical endpoint.
  */
 const clientCache = new Map<string, PublicClient>();
-function makePublicClient(rpcUrl: string, chainId: number): PublicClient {
-    const key = `${chainId}:${rpcUrl}`;
+function makePublicClient(chain: typeof base | typeof baseSepolia, rpcUrl: string): PublicClient {
+    const url = siweRpcUrl(chain, rpcUrl);
+    const key = `${chain.id}:${url}`;
     const cached = clientCache.get(key);
     if (cached) return cached;
-    if (!rpcUrl) {
-        throw new Error("BASE_RPC_URL is not configured; cannot verify smart-wallet signatures");
-    }
-    const chain = chainId === base.id ? base : chainId === baseSepolia.id ? baseSepolia : undefined;
-    if (!chain) {
-        throw new Error(
-            `unsupported chainId for SIWE verification: ${chainId} (expected ${base.id} or ${baseSepolia.id})`,
-        );
-    }
-    const client = createPublicClient({ chain, transport: http(rpcUrl) }) as PublicClient;
+    const client = createPublicClient({ chain, transport: http(url) }) as PublicClient;
     clientCache.set(key, client);
     return client;
 }
