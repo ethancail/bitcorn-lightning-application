@@ -48,35 +48,53 @@ const baseConnectors = [
   metaMask(),
 ];
 
-// ⚠ RECORDED RISK — SECURE CONTEXT, and it is untested in a browser.
+// ⚠ SECURE CONTEXT: MEASURED, NOT INFERRED — Coinbase cannot connect over plain HTTP.
 //
-// Umbrel serves this app over PLAIN HTTP on a LAN host (umbrel-app.yml `port:
-// 3200`), so the page origin is typically http://umbrel.local:3200 or
-// http://<lan-ip>:3200 — NOT a secure context. Passkeys (WebAuthn) require one,
-// and this repo has already been bitten by exactly that class of thing:
-// navigator.clipboard fails silently on plain HTTP (see CLAUDE.md "Hard-Won
-// Gotchas").
+// 2026-08-04, Chrome 151, plain-HTTP non-localhost origin (LAN + Tailscale IP):
+// window.isSecureContext === false, and BOTH crypto.subtle and crypto.randomUUID
+// are undefined. Control: crypto.getRandomValues stays defined, so this is the
+// secure-context gate and not a broken crypto stack. Same server at localhost
+// reports isSecureContext true with all three present — so TESTING AT LOCALHOST
+// GIVES A FALSE PASS.
 //
-// THE ANALYSIS, so nobody has to re-derive it: this is probably NOT fatal. The
-// passkey ceremony does not run on this origin — it runs inside the
-// Coinbase-hosted popup at https://keys.coinbase.com/connect (the SDK's default
-// Preference.keysUrl), which is its own HTTPS origin and therefore its own
-// secure context. That keys-popup architecture exists precisely so dapps on
-// arbitrary origins can use passkeys.
+// This SDK calls both gated APIs unguarded from the DAPP origin (15 sites) and has
+// no isSecureContext check, so it fails with an opaque TypeError rather than a
+// diagnosable refusal. Driving the real SDK: createCoinbaseWalletSDK and
+// getProvider() both succeed, then request({method:"eth_requestAccounts"}) throws
+// `TypeError: crypto.randomUUID is not a function` at CoinbaseWalletProvider.request
+// — before any popup opens.
 //
-// ⚠ INFERRED FROM THE SDK AND PLATFORM RULES — NOT VERIFIED IN A BROWSER. What
-// could still bite: popup blocking, and postMessage across an insecure opener →
-// secure popup boundary.
+// HOW THAT STRING REACHED A FARMER: WalletRegistrationPanel's connect catch is
+// `e.detail ?? e.shortMessage ?? e.message`, so the raw TypeError message rendered
+// straight into the red alert. That is the surface the gate protects.
 //
-// WHAT TURNS ON IT: if passkey creation does fail here, then "create a new
-// wallet with no seed phrase" is a pitch that does not work for the audience it
-// is aimed at, and the tile's copy and `recommended` badge should change. Note
-// a farmer can still create a Smart Wallet ELSEWHERE (Coinbase's own site,
-// another dapp) and connect it here — the popup handles auth, not just creation
-// — so ERC-1271 verification gets exercised regardless. The code above is
-// correct either way; only the copy depends on the answer.
+// preference "all" does NOT rescue it: both signer types need the same crypto in
+// this origin (scw via util/cipher.js, walletlink via WalletLinkCipher.js), and
+// sign/util.js shows those are the only two. It stays "all" because it is correct
+// for the HTTPS case.
 //
-// TO SETTLE IT: one manual Coinbase connect from a member node's LAN URL.
+// THE RECONNECT PATH IS ALSO REACHABLE, AND IS ALREADY HARMLESS — worth writing
+// down because whoever finds it next will want to guard it. WagmiProvider defaults
+// reconnectOnMount to true and RailScope does not override it, so on every member
+// page load wagmi retries the connector persisted in localStorage; for Coinbase
+// that calls isAuthorized() -> getAccounts() -> provider.request() -> the same
+// throw, with no click at all. But it is swallowed four layers deep: the
+// connector's own try/catch in isAuthorized returns false, and wagmi's reconnect
+// wraps getProvider and connect in .catch(). The observable effect is a persisted
+// session silently failing to reconnect — correct behaviour on an insecure origin.
+// DO NOT set reconnectOnMount={false} to "fix" it: that would break legitimate
+// HTTPS reconnection in exchange for nothing.
+//
+// An earlier note here reasoned that the keys.coinbase.com popup is its own HTTPS
+// origin so plain HTTP might be survivable. That was right about the passkey
+// ceremony (navigator.credentials: 0 dapp-side call sites) and wrong about the
+// outcome — the encrypted dapp<->popup channel and the popup's window id need
+// secure-context crypto HERE.
+//
+// Umbrel serves this app over plain HTTP on a LAN host (umbrel-app.yml port 3200),
+// so this is the stock member-node condition. UPSTREAM FIX IS HTTPS FOR THE MEMBER
+// UI; until then the picker gates the Coinbase tile on window.isSecureContext
+// (secureContext.ts) and MetaMask carries the recommendation.
 
 const connectors = WC_PROJECT_ID
   ? [
