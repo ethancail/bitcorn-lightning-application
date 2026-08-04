@@ -26,6 +26,7 @@ import {
   type WalletStatusResponse,
 } from "../client";
 import { DEFAULT_CHAIN, isWalletConnectConfigured } from "../wagmi";
+import { detectSecureContext, walletAvailability } from "../secureContext";
 
 type ViewState =
   | { kind: "loading" }
@@ -258,6 +259,11 @@ function UnregisteredView({
   const { disconnectAsync } = useDisconnect();
   const { signMessageAsync } = useSignMessage();
 
+  // Which tiles work here, and which one gets the badge. Read once per mount:
+  // window.isSecureContext cannot change without a navigation, so there is nothing
+  // to subscribe to.
+  const availability = useMemo(() => walletAvailability(detectSecureContext()), []);
+
   // Map wagmi's connector list back to our three picker tiles.
   const pickerConnectors = useMemo(() => {
     const cb = connectors.find((c) => c.id === "coinbaseWalletSDK" || c.id === "coinbaseWallet" || c.type === "coinbaseWallet");
@@ -395,25 +401,33 @@ function UnregisteredView({
         </div>
       )}
       <div className="stablecoin-picker">
-        {/* Label is "Coinbase", not "Coinbase Smart Wallet": the connector now
-            uses preference "all" (wagmi.ts), so this tile leads to a CHOICE
-            between a new passkey wallet and an existing Coinbase Wallet, made in
-            Coinbase's own popup. Naming one branch would misdescribe the tile.
-            Still `recommended` — what changed is that it no longer recommends a
-            single branch. "no seed phrase" is kept because it is the actual
-            selling point; "passkey" is jargon to a farmer and is omitted. */}
+        {/* Label is "Coinbase", not "Coinbase Smart Wallet": the connector uses
+            preference "all" (wagmi.ts), so this tile leads to a CHOICE between a
+            new passkey wallet and an existing Coinbase Wallet, made in Coinbase's
+            own popup. Naming one branch would misdescribe the tile.
+
+            Enabled state, badge and caption all come from walletAvailability() —
+            on a plain-HTTP origin the Coinbase SDK cannot connect at all, so the
+            tile is DISABLED WITH A REASON and the badge moves to MetaMask. Copy
+            and the hidden-vs-disabled reasoning live in secureContext.ts. */}
         <WalletTile
           label="Coinbase"
-          caption="Create a new wallet with no seed phrase, or use one you already have — you'll choose next"
-          disabled={!pickerConnectors.cb || step.kind === "connecting"}
+          caption={availability.coinbase.caption}
+          disabled={
+            !availability.coinbase.enabled ||
+            !pickerConnectors.cb ||
+            step.kind === "connecting"
+          }
           loading={step.kind === "connecting" && step.connectorId === pickerConnectors.cb?.id}
-          recommended
+          recommended={availability.coinbase.recommended}
           onClick={() => pickerConnectors.cb && void handleConnectorClick(pickerConnectors.cb.id)}
         />
         <WalletTile
           label="MetaMask"
+          caption={availability.metamask.caption}
           disabled={!pickerConnectors.mm || step.kind === "connecting"}
           loading={step.kind === "connecting" && step.connectorId === pickerConnectors.mm?.id}
+          recommended={availability.metamask.recommended}
           onClick={() => pickerConnectors.mm && void handleConnectorClick(pickerConnectors.mm.id)}
         />
         {/* HIDDEN, not disabled, when WalletConnect has no project id. It used to
