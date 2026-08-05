@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.0"
+version: "1.18.1"
 port: 3200
 
 description: >
@@ -27,14 +27,19 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  v1.18.0: The BitCorn stablecoin rail arrives — settle invoices in USDC on
+  v1.18.1: Wallet registration now lives on the Stablecoin page itself, where
+  the v1.18.0 notes said to look for it — previously it was tucked in Settings.
+  If you already registered a wallet, nothing changes and you don't need to do
+  it again.
+
+  The BitCorn stablecoin rail arrives — settle invoices in USDC on
   Base, alongside Lightning. It is not switched on yet, and that is
   deliberate. After updating you'll find a new Stablecoin page that is present
   but not yet working: you can register a wallet today, but settling stays
   unavailable until we deploy the contract and turn the rail on. A page
   showing "not configured" means the rail isn't live yet — not that your node
-  is broken. You will not need to update again when it goes live; nodes that
-  have already updated pick it up on their own.
+  is broken. You will not need to update again when the rail is switched on;
+  nodes that have already updated pick it up on their own.
 
   Your Lightning node, channels, routing and existing payments are unchanged —
   the rail sits alongside them and takes nothing away.
