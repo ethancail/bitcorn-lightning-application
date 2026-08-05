@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.17.20"
+version: "1.18.0"
 port: 3200
 
 description: >
@@ -27,6 +27,64 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.0: The BitCorn stablecoin rail arrives — settle invoices in USDC on
+  Base, alongside Lightning. It is not switched on yet, and that is
+  deliberate. After updating you'll find a new Stablecoin page that is present
+  but not yet working: you can register a wallet today, but settling stays
+  unavailable until we deploy the contract and turn the rail on. A page
+  showing "not configured" means the rail isn't live yet — not that your node
+  is broken. You will not need to update again when it goes live; nodes that
+  have already updated pick it up on their own.
+
+  Your Lightning node, channels, routing and existing payments are unchanged —
+  the rail sits alongside them and takes nothing away.
+
+  What you can do now, if your subscription is current: open Stablecoin and
+  register the Base wallet you want settlements paid into. That is the one
+  step that has to happen per member, and doing it early means you are ready
+  the moment the rail is switched on.
+
+  Wallets: use MetaMask, as a browser extension or the mobile app. The
+  Coinbase tile is visible but disabled and says why — connecting it needs a
+  secure https:// address for your node, and umbrelOS does not provide one
+  yet. That is a platform gap rather than something wrong with Bitcorn, it
+  will begin working on its own if that changes, and we are not promising a
+  date. MetaMask works over your node's normal connection today.
+
+  When the rail is live: you will send and receive USDC settlements against
+  invoices, with a history of what settled and when. Settlements carry a 0.25%
+  fee, and it matters who pays it — the fee comes out of the amount received
+  rather than being added on top. On a 1,000 USDC invoice the sender is
+  debited 1,000 and the recipient receives 997.50, so as the seller you bear
+  the fee. Sent rows show the full amount, received rows show what actually
+  landed, and a detail view reconciles gross, fee and net to the last decimal
+  so it can be checked against BaseScan. Fees are off until activation, and
+  the page never states a rate it cannot read from the chain.
+
+  The rail needs a current subscription. If yours has lapsed the Stablecoin
+  page shows a notice explaining what is gone and how to restore it; your
+  funds and your Lightning node are unaffected either way.
+
+  Also in this release, and these you will notice immediately. The Renew and
+  Open-a-channel buttons in the subscription panel now work — both were dead.
+  Money-facing screens no longer show "nothing here" when the real problem is
+  that data could not be loaded: you are told the difference, and stale
+  figures carry their age, on both member and treasury dashboards. Merchant
+  dashboards get the same clear next-step block farmers already had. Liquidity
+  advice reads in plain language instead of internal jargon, and member-facing
+  wording throughout has been rewritten for farmers and merchants rather than
+  developers. Two advisor bugs are fixed: opening your recommendations no
+  longer advances the channel-depletion counter as though liquidity had
+  actually drained, and old channel classifications age out after 30 days
+  instead of piling up. Swap Operations drops several panels that never did
+  anything and gains a guard so a Loop Out cannot be fired twice. On the
+  treasury side, Reserve Risk displays at full precision with a corrected
+  range label. Behind the scenes the retired cluster-rebalance engine and an
+  unused node-to-node stub are gone, along with their leftover settings.
+
+  New database tables are created automatically on first boot; there is
+  nothing to configure.
+
   v1.17.20: Treasury-side reporting only — member nodes, channels, routing,
   payments, and the subscription rail are untouched. Subscription revenue
   reporting for the treasury, plus a correction to how expected recurring
