@@ -5,7 +5,7 @@
  */
 
 import { getNodeInfo } from "../api/read";
-import { classifyTreasuryChannel, persistClassification } from "./channelClassifier";
+import { classifyTreasuryChannel, persistClassification, pruneClassifications } from "./channelClassifier";
 import { ENV } from "../config/env";
 
 // ─── State ───────────────────────────────────────────────────────────────────
@@ -26,10 +26,15 @@ function runOnce(): void {
 
     persistClassification(classification);
 
+    // Retention: drop classification rows older than the window (idempotent;
+    // one tiny DELETE per 15-min run). See pruneClassifications for rationale.
+    const pruned = pruneClassifications();
+
     if (ENV.debug) {
       console.log(
         `[member-advisor] ${classification.state} (${(classification.memberLocalPct * 100).toFixed(1)}% local, ` +
-        `urgency: ${classification.urgency}, consecutive: ${classification.consecutiveNonHealthyRuns})`
+        `urgency: ${classification.urgency}, consecutive: ${classification.consecutiveNonHealthyRuns})` +
+        (pruned > 0 ? ` — pruned ${pruned} old rows` : "")
       );
     }
   } catch (err: any) {

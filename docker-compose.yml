@@ -12,6 +12,14 @@ services:
       TREASURY_PUBKEY: 02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca
       COINBASE_APP_ID: 1cebd598-0a9d-4567-8603-8ef051fd1101
       COINBASE_WORKER_URL: "https://bitcorn-onramp.ethancail.workers.dev"
+      # BASE rail (stablecoin) — chain selection + SIWE verification RPC.
+      # All default to the live Base Sepolia deployment when unset; mainnet
+      # values are set via .env at deploy day, never hardcoded here
+      # (mainnet-preflight runbook §B1/§B2). env.ts guards BASE_CHAIN_ID:
+      # empty/garbage falls back to 84532.
+      BASE_CHAIN_ID: "${BASE_CHAIN_ID:-}"
+      BASE_RPC_URL: "${BASE_RPC_URL:-}"
+      BASE_CONFIRMATION_DEPTH: "${BASE_CONFIRMATION_DEPTH:-64}"
     networks:
       - umbrel
 

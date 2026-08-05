@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   api,
@@ -11,6 +11,16 @@ import {
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
 import { useSubscriptionStatus } from "../components/useSubscriptionStatus";
+import ErrorState from "../components/ErrorState";
+import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
+import StaleMarker from "../components/StaleMarker";
+import {
+  INITIAL_FRESHNESS,
+  freshnessStatus,
+  recordFailure,
+  recordSuccess,
+  type FreshnessState,
+} from "../components/freshness";
 
 const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
 
@@ -226,12 +236,12 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
             <input
               className="form-input"
               type="text"
-              placeholder="host:port — needed if not already connected to the hub"
+              placeholder="e.g. 203.0.113.5:9735 — ask your operator"
               value={socket}
               onChange={(e) => setSocket(e.target.value)}
             />
             <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 4 }}>
-              Enter the hub's address to connect, or leave blank if already peered.
+              Enter the hub's address to connect, or leave blank if already connected.
             </div>
           </div>
         )}
@@ -250,9 +260,9 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
           <label className="form-label">Confirmation Speed</label>
           <div style={{ display: "flex", gap: 6 }}>
             {([
-              { label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~155 sats" },
-              { label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~770 sats" },
-              { label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,300 sats" },
+              { label: "Economy", rate: undefined, desc: "cheapest", time: "1–3 hours", cost: "~155 sats" },
+              { label: "Normal", rate: 5, desc: "balanced", time: "~30 min", cost: "~770 sats" },
+              { label: "Priority", rate: 15, desc: "fastest", time: "~10 min", cost: "~2,300 sats" },
             ] as const).map((opt) => (
               <button
                 key={opt.label}
@@ -288,40 +298,12 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
         </button>
       </div>
 
-      {/* Hub pubkey for reference */}
-      <div
-        style={{
-          borderTop: "1px solid var(--border)",
-          paddingTop: 16,
-        }}
-      >
-        <div
-          style={{
-            fontSize: "0.75rem",
-            color: "var(--text-3)",
-            fontFamily: "var(--mono)",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            marginBottom: 8,
-          }}
-        >
-          Hub Public Key
-        </div>
-        <div
-          style={{
-            background: "var(--bg-3)",
-            border: "1px solid var(--border)",
-            borderRadius: 6,
-            padding: "8px 12px",
-            fontFamily: "var(--mono)",
-            fontSize: "0.75rem",
-            wordBreak: "break-all",
-            color: "var(--text-1)",
-            lineHeight: 1.6,
-          }}
-        >
-          {hubPubkey}
-        </div>
+      {/* Protocol reference — demoted per U2 (vocabulary record 2026-07-09) */}
+      <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+        <TechnicalDetails>
+          <TechRow label="Hub node ID">{hubPubkey}</TechRow>
+          <TechRow label="Fee rates">Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB</TechRow>
+        </TechnicalDetails>
       </div>
     </div>
   );
@@ -332,29 +314,40 @@ export default function MemberDashboard() {
   const [searchParams] = useSearchParams();
   const upgradeCapacity = parseInt(searchParams.get("upgrade_capacity") ?? "", 10) || undefined;
   const [stats, setStats] = useState<MemberStats | null>(null);
+  const [statsError, setStatsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
   const [usdRate, setUsdRate] = useState<number | null>(null);
   const [pendingTreasuryChannel, setPendingTreasuryChannel] = useState(false);
   const [balances, setBalances] = useState<NodeBalances | null>(null);
+  const [balFresh, setBalFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
   const [fundLoading, setFundLoading] = useState(false);
   const [fundError, setFundError] = useState<string | null>(null);
   const subStatus = useSubscriptionStatus();
 
-  useEffect(() => {
-    api
+  // U24 H2: a failed stats fetch must be distinguishable from "no channel" —
+  // otherwise the Connect-to-Hub onboarding form renders for a member who HAS
+  // a channel ("my channel is gone" illusion). loadStats records the error;
+  // the poll self-heals (success clears it). A poll failure with last-good
+  // stats on screen keeps them (keep-last-good; the balances strip below has
+  // the explicit staleness marker).
+  const loadStats = useCallback(() => {
+    return api
       .getMemberStats()
       .then((d) => {
         setStats(d);
-        setLoading(false);
+        setStatsError(null);
       })
-      .catch(() => setLoading(false));
+      .catch((e: any) => setStatsError(e?.detail ?? e?.message ?? "fetch failed"));
+  }, []);
 
+  useEffect(() => {
+    void loadStats().finally(() => setLoading(false));
     const id = setInterval(() => {
-      api.getMemberStats().then(setStats).catch(() => {});
+      api.getMemberStats().then((d) => { setStats(d); setStatsError(null); }).catch(() => {});
     }, 15_000);
     return () => clearInterval(id);
-  }, []);
+  }, [loadStats]);
 
   // Check for pending treasury channel (survives page reload)
   useEffect(() => {
@@ -382,12 +375,20 @@ export default function MemberDashboard() {
     api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
   }, []);
 
-  // Balance polling (replaces <NodeBalancePanel />)
+  // Balance polling (replaces <NodeBalancePanel />).
+  // U24 H8: poll results feed the freshness tracker — on repeated failures
+  // the strip keeps the last-good numbers with a staleness marker instead of
+  // clearing to "—" (which is indistinguishable from loading).
   useEffect(() => {
-    api.getNodeBalances().then(setBalances).catch(() => {});
-    const id = setInterval(() => {
-      api.getNodeBalances().then(setBalances).catch(() => {});
-    }, 60_000);
+    const tick = () =>
+      api.getNodeBalances()
+        .then((b) => {
+          setBalances(b);
+          setBalFresh((s) => recordSuccess(s, Date.now()));
+        })
+        .catch(() => setBalFresh(recordFailure));
+    tick();
+    const id = setInterval(tick, 60_000);
     return () => clearInterval(id);
   }, []);
 
@@ -423,7 +424,12 @@ export default function MemberDashboard() {
   const remotePct = ch ? Math.round((ch.remote_sats / ch.capacity_sats) * 100) : 0;
 
   const hasChannel = !loading && ch != null;
-  const noChannel = !loading && ch == null;
+  // U24 H2: three distinct states — stats failed to load (statsUnavailable,
+  // only reachable when the initial fetch failed and no poll has recovered),
+  // genuinely no channel (stats loaded, treasury_channel null), and has-channel.
+  const statsUnavailable = !loading && stats == null;
+  const noChannel = !loading && stats != null && ch == null;
+  const balStatus = freshnessStatus(balFresh, balances != null);
 
   return (
     <div>
@@ -438,7 +444,7 @@ export default function MemberDashboard() {
       <div className="dashboard-top-strip fade-in">
         <div className="bal-group">
           <div className="bal-item">
-            <span className="bal-label">On-chain</span>
+            <span className="bal-label">Bitcoin</span>
             <span className="bal-value">
               {balances ? balances.onchain_sats.toLocaleString() : "—"}
               <span className="unit">sats</span>
@@ -469,6 +475,19 @@ export default function MemberDashboard() {
         {fundError && <div className="fund-error">{fundError}</div>}
       </div>
 
+      {/* U24 H8: Tier C — the strip above keeps last-good numbers; these
+          lines say when they can no longer be confirmed. */}
+      {balStatus === "stale" && (
+        <div style={{ marginTop: 6, marginBottom: 10 }}>
+          <StaleMarker state={balFresh} nowMs={Date.now()} noun="Balances" />
+        </div>
+      )}
+      {balStatus === "unavailable" && (
+        <div style={{ marginTop: 6, marginBottom: 10, fontSize: "0.75rem", color: "var(--red)", fontFamily: "var(--mono)" }} role="status">
+          Couldn't load balances — retrying automatically. Your funds are unaffected.
+        </div>
+      )}
+
       <BitcoinPriceGraph />
 
 
@@ -482,6 +501,24 @@ export default function MemberDashboard() {
           <span className={`badge ${badge.cls}`}>{badge.text}</span>
         )}
       </div>
+
+      {/* U24 H2: stats fetch failed and nothing loaded yet — error state, NOT
+          the Connect-to-Hub onboarding form. */}
+      {statsUnavailable && (
+        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <span className="panel-title"><span className="icon">◈</span>Your Channel</span>
+          </div>
+          <div className="panel-body">
+            <ErrorState
+              bare
+              message="Couldn't load your dashboard. Your channel and funds are unaffected — this is a display problem."
+              detail={statsError ?? undefined}
+              onRetry={() => void loadStats()}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Channel — pending opening, connect CTA, or earnings panel */}
       {noChannel && pendingTreasuryChannel && (
@@ -538,7 +575,7 @@ export default function MemberDashboard() {
         // Merchant: outbound capacity (local%) — depletes as they spend, green when high
         // Farmer: earnings accumulated (local%) — fills up like a grain bin, amber→green→amber→red as it fills
         // Unknown: raw local/remote split
-        const gaugeLabel = isMerchant ? "Outbound capacity" : isFarmer ? "Earnings accumulated" : "Channel balance";
+        const gaugeLabel = isMerchant ? "Room to send" : isFarmer ? "Earnings accumulated" : "Channel balance";
         const gaugePct = isMerchant ? localPct : isFarmer ? localPct : localPct;
         const gaugeRemaining = isMerchant
           ? `${localPct}% — ${ch!.local_sats.toLocaleString()} sats available to send`
@@ -645,6 +682,30 @@ export default function MemberDashboard() {
                   </div>
                 )}
 
+                {/* Merchant: top-up action (F1) — mirrors the farmer block below.
+                    "Top Up" per decisions/2026-07-09-ui-vocabulary-canonical-terms.md
+                    (Knot 2: merchant Loop In). Gated on the advisor's own loop_in
+                    recommendation — the same computed signal that builds refillUrl —
+                    rather than an invented balance threshold; it also makes the
+                    advisor alert above actionable. Unknown-role members see neither
+                    role's CTA (unchanged). */}
+                {isMerchant && rec?.action === "loop_in" && (
+                  <div className="member-action">
+                    <button
+                      className="btn btn-primary"
+                      style={{ width: "100%" }}
+                      onClick={() => navigate(refillUrl)}
+                    >
+                      Top Up →
+                    </button>
+                    <div className="caption">
+                      {rec?.suggestedAmountSats
+                        ? `Bitcorn recommends ${rec.suggestedAmountSats.toLocaleString()} sats — pre-filled for you.`
+                        : "Add funds from your Bitcoin balance to keep paying."}
+                    </div>
+                  </div>
+                )}
+
                 {/* Farmer: withdraw action */}
                 {isFarmer && ch!.local_sats >= 250_000 && (
                   <div className="member-action">
@@ -653,7 +714,7 @@ export default function MemberDashboard() {
                       style={{ width: "100%" }}
                       onClick={() => navigate(cashOutUrl)}
                     >
-                      Cash Out Earnings →
+                      Withdraw Earnings →
                     </button>
                     <div className="caption">
                       Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
@@ -676,11 +737,11 @@ export default function MemberDashboard() {
                       <span style={{ fontFamily: "var(--mono)" }}>{ch!.capacity_sats.toLocaleString()} sats</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Your balance (outbound)</span>
+                      <span>Your side</span>
                       <span style={{ fontFamily: "var(--mono)" }}>{ch!.local_sats.toLocaleString()} sats</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Receiving capacity (inbound)</span>
+                      <span>Room to receive</span>
                       <span style={{ fontFamily: "var(--mono)" }}>{ch!.remote_sats.toLocaleString()} sats</span>
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>

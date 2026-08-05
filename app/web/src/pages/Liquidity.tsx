@@ -7,11 +7,13 @@ import LiquidityLane from "../components/liquidity/LiquidityLane";
 import ExternalUnclassifiedSection from "../components/liquidity/ExternalUnclassifiedSection";
 import { buildLiquidityPeers, computeKpis, type ChannelData } from "../components/liquidity/transform";
 import type { LiquidityPeer } from "../components/liquidity/types";
+import ErrorState from "../components/ErrorState";
 
 export default function Liquidity() {
   const [peers, setPeers] = useState<LiquidityPeer[]>([]);
   const [treasuryAlias, setTreasuryAlias] = useState("Treasury");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedPubkey, setSelectedPubkey] = useState<string | null>(null);
   const [pulseKey, setPulseKey] = useState(0);
@@ -19,13 +21,21 @@ export default function Liquidity() {
 
   const fetchData = useCallback(async () => {
     rowRefs.current.clear();
-    const [channelsResp, contacts, nodeInfo] = await Promise.all([
-      fetch(`${API_BASE}/api/channels`).then((r) => r.json()) as Promise<ChannelData[]>,
-      api.getContacts().catch(() => [] as Contact[]),
-      api.getNode().catch(() => null),
-    ]);
-    if (nodeInfo?.alias) setTreasuryAlias(nodeInfo.alias);
-    setPeers(buildLiquidityPeers(channelsResp, contacts));
+    try {
+      const [channelsResp, contacts, nodeInfo] = await Promise.all([
+        fetch(`${API_BASE}/api/channels`).then((r) => r.json()) as Promise<ChannelData[]>,
+        api.getContacts().catch(() => [] as Contact[]),
+        api.getNode().catch(() => null),
+      ]);
+      if (nodeInfo?.alias) setTreasuryAlias(nodeInfo.alias);
+      setPeers(buildLiquidityPeers(channelsResp, contacts));
+      setLoadError(null);
+    } catch (e: any) {
+      // U24 H6: the channels fetch had NO catch — an API hiccup rendered the
+      // capital-monitoring page as "No active channels." Capture the failure
+      // so the render can distinguish fetch-failed from genuinely-empty.
+      setLoadError(e?.detail ?? e?.message ?? "fetch failed");
+    }
   }, []);
 
   useEffect(() => {
@@ -65,10 +75,33 @@ export default function Liquidity() {
     );
   }
 
+  // U24 H6: fetch failed and nothing loaded — error, not a fake-empty book.
+  if (loadError !== null && peers.length === 0) {
+    return (
+      <div className="liq-page fade-in">
+        <div className="liq-page-header">
+          <h1 className="liq-page-title">Liquidity</h1>
+        </div>
+        <ErrorState
+          message="Couldn't load channel liquidity."
+          detail={loadError}
+          onRetry={() => void handleRefresh()}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="liq-page fade-in">
       <div className="liq-page-header">
         <h1 className="liq-page-title">Liquidity</h1>
+        {/* Keep-last-good: a failed refresh keeps the previous book on screen
+           with an explicit marker instead of failing silently. */}
+        {loadError !== null && peers.length > 0 && (
+          <span style={{ fontSize: "0.75rem", color: "var(--amber)", fontFamily: "var(--mono)" }} role="status">
+            ⚠ Refresh failed — showing previous data
+          </span>
+        )}
         <button
           type="button"
           className="btn btn-ghost"

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type DayValues, type ManualMetricKey } from "../../api/client";
+import ErrorState from "../ErrorState";
 
 // Same metric metadata as the existing flat form. We intentionally re-declare
 // rather than import from ValuationInput.tsx so this component has zero
@@ -39,6 +40,15 @@ export default function DayForm({ date, onSaved }: Props) {
   const [inputs, setInputs] = useState<Record<ManualMetricKey, string>>(() =>
     METRICS.reduce((acc, m) => ({ ...acc, [m.key]: "" }), {} as Record<ManualMetricKey, string>),
   );
+  // U24 M2: a failed day-load must never present an empty EDITABLE form — the
+  // operator can't see the existing values they'd be overwriting, and these
+  // inputs size real auto-buys. dayLoading/loadError gate the form render;
+  // on either, no inputs (and therefore no save path) are reachable.
+  const [dayLoading, setDayLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Bumping this re-runs the load effect (with its state resets and
+  // cancellation) — used as the Retry action on a failed load.
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<{ kind: "success" | "error" | "partial"; msg: string } | null>(null);
 
@@ -59,21 +69,28 @@ export default function DayForm({ date, onSaved }: Props) {
   // already navigated to a new date.
   useEffect(() => {
     let cancelled = false;
+    // Reset to loading on every date change so a failed load for the NEW date
+    // can't leave the PREVIOUS date's values sitting in the inputs.
+    setDayLoading(true);
+    setLoadError(null);
+    setDay(null);
     api.getValuationDay(date)
       .then((d) => {
         if (cancelled) return;
         applyDay(d);
+        setDayLoading(false);
       })
-      .catch((err) => {
+      .catch((err: any) => {
         if (cancelled) return;
-        console.error("[DayForm]", err);
+        setLoadError(err?.detail ?? err?.message ?? "fetch failed");
+        setDayLoading(false);
       });
     return () => {
       cancelled = true;
     };
     // applyDay is recreated every render but only consumes setters which are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date]);
+  }, [date, reloadNonce]);
 
   // Post-submit refresh. Fire-and-forget; if the user has already navigated
   // away the cancel-aware effect above will overwrite anyway when this resolves.
@@ -138,6 +155,29 @@ export default function DayForm({ date, onSaved }: Props) {
     if (!confirm(`Delete ${m.label} for ${date}?`)) return;
     submit({ delete: [m.key] });
   };
+
+  // U24 M2: never render the editable form on a pending/failed load — with no
+  // inputs mounted, the save path is unreachable, closing the silent-overwrite
+  // risk entirely.
+  if (dayLoading) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {[1, 2, 3, 4].map((i) => (
+          <div key={i} className="loading-shimmer" style={{ height: 44, borderRadius: 6 }} />
+        ))}
+      </div>
+    );
+  }
+  if (loadError !== null) {
+    return (
+      <ErrorState
+        bare
+        message={`Couldn't load the entries for ${date}. Editing is disabled until they load — otherwise you could overwrite values you can't see.`}
+        detail={loadError}
+        onRetry={() => setReloadNonce((n) => n + 1)}
+      />
+    );
+  }
 
   return (
     <div>

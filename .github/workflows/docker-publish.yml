@@ -105,6 +105,62 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Fail the release BEFORE building rather than shipping a testnet-pinned
+      # bundle to production.
+      #
+      # WHAT GOES WRONG WITHOUT THIS. VITE_BASE_CHAIN_ID is baked at build time
+      # and every default in the chain points at Base Sepolia: this workflow's
+      # `|| '84532'` below, app/web/Dockerfile's `ARG VITE_BASE_CHAIN_ID=84532`,
+      # and wagmi.ts's `DEFAULT_CHAIN_ID === base.id ? base : baseSepolia`, which
+      # resolves ANY value that isn't exactly 8453 to Sepolia. So forgetting the
+      # deploy-day step "set the repo variable" produces a green build and a
+      # bundle that silently settles on the wrong network.
+      #
+      # The failure is user-visible and money-adjacent: the router address comes
+      # from the API's cache (mainnet), but the bundle forces the wallet onto
+      # Sepolia and approves Sepolia USDC. The member gets a real wallet prompt
+      # built from mismatched config. It reverts rather than misdirecting funds,
+      # but it spends gas and asks someone to sign a transaction that cannot work.
+      #
+      # Scope note: this guards the BUILD-TIME variable only. There is still no
+      # RUNTIME cross-check that the bundle's chain matches the chain the Worker
+      # and cache are actually on — that needs a chain_id field on
+      # /api/stablecoin/contract-state, which the response does not carry today.
+      # Deliberately left as a separate arc.
+      - name: Require VITE_BASE_CHAIN_ID on main builds
+        if: github.ref == 'refs/heads/main'
+        env:
+          CHAIN_ID: ${{ vars.VITE_BASE_CHAIN_ID }}
+        run: |
+          if [ -z "$CHAIN_ID" ]; then
+            echo "::error::VITE_BASE_CHAIN_ID repo variable is not set."
+            echo "A main-branch build must state its chain explicitly — the"
+            echo "fallback is Base Sepolia (84532), which would ship a"
+            echo "testnet-pinned bundle to production."
+            echo "Set it under Settings → Secrets and variables → Actions → Variables:"
+            echo "  8453  = Base mainnet"
+            echo "  84532 = Base Sepolia"
+            exit 1
+          fi
+          # Compare on the whitespace-stripped value, matching wagmi.ts's own
+          # coercion: it does Number(RAW) === base.id, and Number() ignores
+          # surrounding whitespace, so "8453 " really does resolve to mainnet
+          # there. Rejecting it here would fail a build over a value that
+          # actually works — a guard that cries wolf stops being trusted.
+          TRIMMED="$(printf '%s' "$CHAIN_ID" | tr -d '[:space:]')"
+          case "$TRIMMED" in
+            8453|84532) ;;
+            *)
+              echo "::error::VITE_BASE_CHAIN_ID='$CHAIN_ID' is not a supported chain."
+              echo "wagmi.ts resolves any value whose Number() isn't 8453 to Base"
+              echo "Sepolia, so a wrong value here fails OPEN to testnet rather"
+              echo "than erroring at runtime."
+              echo "Expected 8453 (Base mainnet) or 84532 (Base Sepolia)."
+              exit 1
+              ;;
+          esac
+          echo "VITE_BASE_CHAIN_ID=$TRIMMED"
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -123,3 +179,9 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # VITE_BASE_CHAIN_ID is baked into the bundle at build time
+          # (mainnet-preflight runbook §B1b). Reads the repo Actions variable
+          # when set — deploy-day flip = set the variable + rebuild, no code
+          # change — and falls back to Base Sepolia (84532) when unset.
+          build-args: |
+            VITE_BASE_CHAIN_ID=${{ vars.VITE_BASE_CHAIN_ID || '84532' }}

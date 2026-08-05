@@ -73,15 +73,46 @@ Frontend deps: `react`, `react-dom`, `react-router-dom`, `recharts`, `date-fns`,
 
 ## Branching & Deployment
 
-- `main` — production; pushes trigger Docker image builds via GitHub Actions
+- `main` — production; pushes trigger Docker image builds via GitHub Actions (only for paths in `docker-publish.yml`'s `paths:` filter)
 - `develop` — integration branch
-- `feature/*` — feature branches off `develop`
+- `feature/*` — feature branches
 
-Merge path: `feature/*` → `develop` → sideload test on Umbrel → `main`.
+**Name the direction. The two are not symmetric and confusing them has caused real misreadings:**
 
-**Back-merge is required arc closure, not an afterthought.** After merging a release to `main`, immediately back-merge `main` → `develop` as the closing step of the arc; never defer it. The back-merge happens BEFORE the implementation deltas are placed via Cowork — both are part of arc closure, not optional. (Deferring it has caused `develop` to silently drift multiple releases behind `main` more than once.)
+- **Promotion** — `feature/*` → `main`, or `develop` → `main`. Moves code toward production. Triggers a build.
+- **Back-merge** — `main` → `develop`. Returns released code to the integration branch. Ships nothing.
+
+"Merge to main" is a promotion; "merge main" is a back-merge. Say which.
+
+### Two promotion paths, chosen by change size. Both are legitimate.
+
+**Small, single-purpose change → `feature/*` → `main`,** shipped immediately as its own release. This is most work, and it does not need `develop`.
+
+**Large multi-commit work that must accumulate before shipping → `feature/*` → `develop` → `main`,** promoted as one release. The stablecoin rail is the live example.
+
+⚠ **NEVER PROMOTE APP CODE TO `main` WITHOUT A VERSION BUMP.** The build fires on any push to `main` touching `docker-publish.yml`'s filtered paths, and the published image tag is read from `umbrel-app.yml`'s version — so *any* promotion that changes `app/api/**` or `app/web/**` while leaving the version alone **republishes the current release's tags with different content.** This is not specific to `develop`.
+
+The consequence is quiet and does not heal: nodes already on that version see no update — the version string didn't change, so `umbreld` has nothing to offer — and keep their cached image, while any fresh install or re-pull gets the new content under the same tag. Two nodes then report the same version while running different code, and **nothing on either node distinguishes them.** It is the same mechanism as the same-tag hotfix in § Umbrel Gotchas below, which is deliberate; the hazard is doing it by accident and not knowing it happened.
+
+**It has already happened.** `1.17.19` has been published three times, from three different trees, all builds succeeding: `887d814` (the actual v1.17.19 release, 2026-06-18), then `34c20c2` (PR #224, 2026-07-21) and `f323faf` (PR #227, 2026-07-21) — both of which changed `app/api/**` and `app/web/**` with no bump. So `1.17.19` does not uniquely identify a build, and a node reporting it could be running any of the three. Re-derive rather than trusting this paragraph: walk `git log --first-parent --merges main` and, for each merge, check `git diff <m>^1 <m> --name-only` for `app/` paths against whether `umbrel-app.yml`'s version changed in that same merge.
+
+`develop` → `main` is the case most likely to forget, not the only case that can: a large accumulated merge doesn't carry a bump the way a single-commit release branch naturally does. Put the version-bump commit on `develop` BEFORE promoting — one build, correct tag, nothing overwritten. See `docs/RELEASE.md` § Releasing from `develop`.
+
+**Back-merge is required arc closure, not an afterthought.** After merging a release to `main` — by EITHER promotion path — immediately back-merge `main` → `develop` as the closing step of the arc; never defer it. The back-merge happens BEFORE the implementation deltas are placed via Cowork — both are part of arc closure, not optional. (Deferring it has caused `develop` to silently drift multiple releases behind `main` more than once.)
+
+**This rule is load-bearing on the DIRECT path specifically** — which is easy to miss, since the direct path never touches `develop` on the way out. Most releases since 2026-03-06 went straight to `main`; `develop` is nonetheless not behind, because the back-merge is being done every time. Verify rather than trust this sentence: `git rev-list --left-right --count origin/main...origin/develop` (left number is what `main` has that `develop` lacks — it should be 0), and `git log --merges --oneline develop | grep -i "main into develop"` for the record of them. Do not scope this rule to the `develop` path.
+
+### ⚠ OPEN QUESTION — the sideload test gate went missing
+
+The previous convention read `feature/* → develop → sideload test on Umbrel → main`. That **sideload test on a real Umbrel node is the only pre-production verification step documented anywhere in this repo**, and the direct path dropped it silently — nobody decided to retire it; it stopped happening when the path changed.
+
+**Undecided — do not assume either way:** whether to reinstate it for the direct path, require it on both, or deliberately retire it. Recorded here so the gate stays on the record instead of vanishing with the old text.
+
+Note what its absence leaves in place: **no test gate runs in CI** (see `docs/RELEASE.md` § What this doc does NOT cover), so on the direct path the only pre-merge verification is the local `verify-gate` Stop hook — which is bypassable via `VERIFY_GATE_SKIP=1` and does not exist for anyone working from another machine.
 
 ### Umbrel Gotchas (read before releasing)
+
+**The full release procedure is `docs/RELEASE.md`** — nine steps, which are MANUAL vs AUTOMATED, the GHCR verification step that prevents the 0%-install failure below, the `develop`-release footgun (merging without a version bump overwrites the current release's image tags), and an honest untested-rollback section. The gotchas below are the recovery commands; the doc is the procedure.
 
 **Version must match in two files.** Bump `umbrel-app.yml` AND `bitcorn-lightning-node/docker-compose.yml` image tags together. Drift → Umbrel pulls stale images.
 

@@ -2,6 +2,16 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { api, fmtSats } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
+import ErrorState from "../components/ErrorState";
+import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
+import {
+  INITIAL_FRESHNESS,
+  ageLabel,
+  freshnessStatus,
+  recordFailure,
+  recordSuccess,
+  type FreshnessState,
+} from "../components/freshness";
 
 // ─── State machine ──────────────────────────────────────────────────────────
 type Stage = "loading" | "form" | "quoting" | "quoted" | "initiating" | "tracking";
@@ -33,20 +43,32 @@ function isTerminal(status: string): boolean {
   return status === "completed" || status === "failed" || status === "expired";
 }
 
+// Plain-language status per the 2026-07-09 vocabulary record (U1/U2; Knot 2
+// updated: this operation is "Top Up"). Protocol-register originals live in
+// statusTechnical — demoted into the Technical details expander, not deleted.
 function statusText(status: string, amount: number, failureReason: string | null): string {
   switch (status) {
     case "initiated":
-      return "Publishing on-chain HTLC...";
+      return "Starting your top up...";
     case "executing":
-      return "Waiting for Lightning payment from Loop server...";
+      return "Moving funds into your channel...";
     case "confirming":
       return "Almost there — settling...";
     case "completed":
-      return `Refill complete. ${amount.toLocaleString()} sats added to your channel.`;
+      return `Top up complete. ${amount.toLocaleString()} sats added to your channel.`;
     case "failed":
-      return `Refill failed${failureReason ? `: ${failureReason}` : ""}`;
+      return `Top up failed${failureReason ? `: ${failureReason}` : ""}`;
     default:
       return status;
+  }
+}
+
+function statusTechnical(status: string): string {
+  switch (status) {
+    case "initiated": return "Publishing on-chain HTLC";
+    case "executing": return "Waiting for Lightning payment from Loop server";
+    case "confirming": return "Settling swap";
+    default: return status;
   }
 }
 
@@ -106,6 +128,13 @@ export default function RefillChannel() {
   // ─── History state ────────────────────────────────────────────────────
   const [history, setHistory] = useState<SwapRequest[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  // BTC/USD for the fee $ estimate — same source + null→sats-only degrade as
+  // the dashboard (Knot 3, vocabulary record 2026-07-09).
+  const [usdRate, setUsdRate] = useState<number | null>(null);
+  // U24 H5: tracking-poll freshness — after 3 consecutive failed polls the
+  // tracking panel says it can't confirm status instead of spinning silently.
+  const [pollFresh, setPollFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
   const [expandedSwapId, setExpandedSwapId] = useState<string | null>(null);
   const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[] } | null>(null);
 
@@ -170,14 +199,20 @@ export default function RefillChannel() {
     }
     init();
     loadHistory();
+    api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toUsd = (sats: number) =>
+    usdRate ? `$${((sats / 100_000_000) * usdRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null;
 
   function loadHistory() {
     setHistoryLoading(true);
     api
       .getSwapHistory(10)
-      .then((r) => setHistory(r.swaps.filter((s) => s.swap_type === "loop_in")))
-      .catch(() => setHistory([]))
+      .then((r) => { setHistory(r.swaps.filter((s) => s.swap_type === "loop_in")); setHistoryError(null); })
+      // U24 H4: keep last-good rows on failure — never clear to [] (which
+      // rendered as "No top ups yet" while a swap could be in flight).
+      .catch((e: any) => setHistoryError(e?.detail ?? e?.message ?? "fetch failed"))
       .finally(() => setHistoryLoading(false));
   }
 
@@ -210,17 +245,19 @@ export default function RefillChannel() {
   // ─── Poll tracking status ─────────────────────────────────────────────
   useEffect(() => {
     if (stage === "tracking" && trackingId) {
+      setPollFresh(INITIAL_FRESHNESS);
       const poll = () => {
         api
           .getSwap(trackingId)
           .then((detail) => {
+            setPollFresh((s) => recordSuccess(s, Date.now()));
             setTrackingSwap(detail.swap_request);
             if (isTerminal(detail.swap_request.status)) {
               if (pollRef.current) clearInterval(pollRef.current);
               loadHistory();
             }
           })
-          .catch(() => {});
+          .catch(() => setPollFresh(recordFailure));
       };
       poll();
       pollRef.current = setInterval(poll, 15_000);
@@ -259,7 +296,7 @@ export default function RefillChannel() {
     setError(null);
     setWarning(null);
     if (amount < 100_000) {
-      setError("Minimum refill is 100,000 sats");
+      setError("Minimum top up is 100,000 sats");
       return;
     }
     if (maxRefill != null && amount > maxRefill) {
@@ -297,7 +334,7 @@ export default function RefillChannel() {
       setTrackingSwap(resp.swap_request);
       setStage("tracking");
     } catch (e: any) {
-      setError(e.message ?? "Failed to initiate refill");
+      setError(e.message ?? "Failed to start the top up");
       setStage("quoted");
     }
   }
@@ -332,9 +369,9 @@ export default function RefillChannel() {
     return (
       <div>
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ marginBottom: 4 }}>Refill Channel</h1>
+          <h1 style={{ marginBottom: 4 }}>Top Up</h1>
           <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-            Add outbound capacity from your on-chain wallet
+            Move funds from your Bitcoin balance into your channel so you can send
           </p>
         </div>
         <div className="panel">
@@ -353,9 +390,9 @@ export default function RefillChannel() {
   return (
     <div>
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ marginBottom: 4 }}>Refill Channel</h1>
+        <h1 style={{ marginBottom: 4 }}>Top Up</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Add outbound capacity from your on-chain wallet
+          Move funds from your Bitcoin balance into your channel so you can send
         </p>
       </div>
 
@@ -364,7 +401,7 @@ export default function RefillChannel() {
         <div className="panel fade-in">
           <div className="panel-header">
             <span className="panel-title">
-              <span className="icon">↙</span>Refill Amount
+              <span className="icon">↙</span>Top Up Amount
             </span>
           </div>
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -397,7 +434,7 @@ export default function RefillChannel() {
                     fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6,
                     fontStyle: "italic",
                   }}>
-                    Advisor recommended {Number(advisorAmount).toLocaleString()} sats — tap Max or adjust as needed.
+                    Bitcorn recommends {Number(advisorAmount).toLocaleString()} sats — tap Max or adjust.
                   </p>
                 )}
               </div>
@@ -416,7 +453,7 @@ export default function RefillChannel() {
                     fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase",
                     letterSpacing: "0.06em", color: "var(--text-3)",
                   }}>
-                    On-chain Balance
+                    Bitcoin Balance
                   </div>
                   <div style={{
                     fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600,
@@ -434,7 +471,7 @@ export default function RefillChannel() {
                       fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase",
                       letterSpacing: "0.06em", color: "var(--text-3)",
                     }}>
-                      Max Refill
+                      Most you can add
                     </div>
                     <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
                       {maxRefill.toLocaleString()} sats
@@ -450,7 +487,7 @@ export default function RefillChannel() {
                 <span className="alert-icon">!</span>
                 <div className="alert-body">
                   <div className="alert-msg">
-                    Insufficient on-chain balance. You need at least 60,000 sats (amount + reserve + fees) to refill.
+                    Not enough in your Bitcoin balance — you need at least 60,000 sats to cover this plus fees.
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <button
@@ -533,7 +570,7 @@ export default function RefillChannel() {
               </p>
               {amount > 0 && amount < 100_000 && (
                 <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
-                  Minimum refill is 100,000 sats
+                  Minimum top up is 100,000 sats
                 </div>
               )}
             </div>
@@ -549,7 +586,7 @@ export default function RefillChannel() {
                 fontFamily: "var(--mono)",
                 color: "var(--text-2)",
               }}>
-                After refill: <span style={{ color: pctColor(channelPct) }}>{channelPct}%</span>
+                After top up: <span style={{ color: pctColor(channelPct) }}>{channelPct}%</span>
                 {" → "}
                 <span style={{ color: pctColor(Math.min(projectedPct, 100)), fontWeight: 600 }}>
                   {Math.min(projectedPct, 100)}%
@@ -559,7 +596,7 @@ export default function RefillChannel() {
 
             {projectedPct != null && projectedPct > 100 && (
               <div className="alert warning" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
-                Amount exceeds channel remote capacity. The swap may partially fill or fail.
+                That's more than your channel can hold right now. Try a smaller amount.
               </div>
             )}
 
@@ -592,7 +629,7 @@ export default function RefillChannel() {
         <div className="panel fade-in">
           <div className="panel-header">
             <span className="panel-title">
-              <span className="icon">≡</span>Refill Quote
+              <span className="icon">≡</span>Top Up Quote
             </span>
             {countdown && (
               <span className={`badge ${countdown === "Expired" ? "badge-red" : "badge-amber"}`}>
@@ -621,12 +658,11 @@ export default function RefillChannel() {
                       <div className="stat-value" style={{ fontSize: "1.125rem" }}>
                         ~{fmtSats(totalFee)}
                       </div>
-                      <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)", marginTop: 4 }}>
-                        {swapFee > 0 && <span>Swap: {fmtSats(swapFee)}</span>}
-                        {swapFee > 0 && minerFee > 0 && <span> + </span>}
-                        {minerFee > 0 && <span>Miner: {fmtSats(minerFee)}</span>}
-                        {htlcFee > 0 && <span> + HTLC: {fmtSats(htlcFee)}</span>}
-                      </div>
+                      {toUsd(totalFee) && (
+                        <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", marginTop: 4 }}>
+                          (~{toUsd(totalFee)})
+                        </div>
+                      )}
                     </div>
                     <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
                       <div className="stat-label">Added to Channel</div>
@@ -635,6 +671,12 @@ export default function RefillChannel() {
                       </div>
                     </div>
                   </div>
+                  {/* Protocol fee breakdown — demoted per U2/Knot 3 */}
+                  <TechnicalDetails>
+                    {swapFee > 0 && <TechRow label="Swap service fee">{fmtSats(swapFee)}</TechRow>}
+                    {minerFee > 0 && <TechRow label="Bitcoin network (miner) fee">{fmtSats(minerFee)}</TechRow>}
+                    {htlcFee > 0 && <TechRow label="HTLC publish fee">{fmtSats(htlcFee)}</TechRow>}
+                  </TechnicalDetails>
                 </div>
               );
             })()}
@@ -650,7 +692,7 @@ export default function RefillChannel() {
                 fontFamily: "var(--mono)",
                 color: "var(--text-2)",
               }}>
-                After refill: <span style={{ color: pctColor(channelPct) }}>{channelPct}%</span>
+                After top up: <span style={{ color: pctColor(channelPct) }}>{channelPct}%</span>
                 {" → "}
                 <span style={{ color: pctColor(Math.min(projectedPct, 100)), fontWeight: 600 }}>
                   {Math.min(projectedPct, 100)}%
@@ -676,7 +718,7 @@ export default function RefillChannel() {
                 onClick={handleConfirm}
                 disabled={stage === "initiating" || countdown === "Expired" || !quoteResp.policy_check.ok}
               >
-                {stage === "initiating" ? "Processing..." : "Confirm Refill"}
+                {stage === "initiating" ? "Processing..." : "Confirm Top Up"}
               </button>
               <button className="btn btn-outline" onClick={handleReset} disabled={stage === "initiating"}>
                 Cancel
@@ -691,7 +733,7 @@ export default function RefillChannel() {
         <div className="panel fade-in">
           <div className="panel-header">
             <span className="panel-title">
-              <span className="icon">◎</span>Refill Status
+              <span className="icon">◎</span>Top Up Status
             </span>
             <span className={`badge ${statusBadge(trackingSwap.status).cls}`}>
               {statusBadge(trackingSwap.status).label}
@@ -730,6 +772,28 @@ export default function RefillChannel() {
               )}
             </div>
 
+            {!isTerminal(trackingSwap.status) && (
+              <TechnicalDetails>
+                <TechRow label="Protocol status">
+                  {trackingSwap.status} — {statusTechnical(trackingSwap.status)}
+                </TechRow>
+              </TechnicalDetails>
+            )}
+
+            {/* U24 H5: status polls failing — say so instead of spinning silently. */}
+            {!isTerminal(trackingSwap.status) && freshnessStatus(pollFresh, true) === "stale" && (
+              <div className="alert warning" style={{ marginBottom: 0 }}>
+                <span className="alert-icon">⚠</span>
+                <div className="alert-body">
+                  <div className="alert-msg">
+                    Can't confirm the status right now — last update{" "}
+                    {pollFresh.lastSuccessAt != null ? ageLabel(pollFresh.lastSuccessAt, Date.now()) : "unavailable since this page loaded"}.
+                    Retrying automatically; your funds are safe either way.
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Stuck swap warning */}
             {isStuck && (
               <div className="alert warning" style={{ marginBottom: 0 }}>
@@ -744,18 +808,18 @@ export default function RefillChannel() {
 
             {isTerminal(trackingSwap.status) && (
               <button className="btn btn-outline" onClick={handleReset} style={{ alignSelf: "flex-start" }}>
-                {trackingSwap.status === "failed" ? "Start New Refill" : "New Refill"}
+                {trackingSwap.status === "failed" ? "Start New Top Up" : "New Top Up"}
               </button>
             )}
           </div>
         </div>
       )}
 
-      {/* ─── Recent Refills ───────────────────────────────────────────── */}
+      {/* ─── Recent Top Ups ───────────────────────────────────────────── */}
       <div className="panel fade-in" style={{ marginTop: 20 }}>
         <div className="panel-header">
           <span className="panel-title">
-            <span className="icon">↙</span>Recent Refills
+            <span className="icon">↙</span>Recent Top Ups
           </span>
           {!historyLoading && history.length > 0 && (
             <span className="badge badge-muted">{history.length}</span>
@@ -768,8 +832,15 @@ export default function RefillChannel() {
                 <div key={i} className="loading-shimmer" style={{ height: 40, borderRadius: 6 }} />
               ))}
             </div>
+          ) : historyError !== null && history.length === 0 ? (
+            <ErrorState
+              bare
+              message="Couldn't load your top up history."
+              detail={historyError}
+              onRetry={loadHistory}
+            />
           ) : history.length === 0 ? (
-            <div className="empty-state">No refills yet</div>
+            <div className="empty-state">No top ups yet</div>
           ) : (
             <div className="table-scroll">
               <table className="data-table">

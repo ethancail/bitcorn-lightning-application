@@ -62,17 +62,6 @@ export const ENV = {
     // Minimum minutes between two successful automated rebalances
     rebalanceCooldownMinutes: Number(process.env.REBALANCE_COOLDOWN_MINUTES ?? "30"),
 
-    // --- Cluster rebalance engine v1 (LEGACY — gated off by default; retained for code reference) ---
-    // Set to "true" to enable the cluster-based rebalance engine (fee steering +
-    // circular rebalance + topology monitor). Not part of steady-state operation
-    // under the role-based rebalancing model — see `docs/ARCHITECTURE.md`
-    // § Liquidity Management.
-    clusterRebalanceEnabled: process.env.CLUSTER_REBALANCE_ENABLED === "true",
-    // Interval between cluster rebalance runs in milliseconds (default: 15 min)
-    clusterRebalanceIntervalMs: Number(
-        process.env.CLUSTER_REBALANCE_INTERVAL_MS ?? "900000"
-    ),
-
     // --- Loop (submarine swaps via Bitcorn's litd sidecar in remote-LND mode) ---
     // litd runs Loop as an integrated subserver, connected to LND remotely.
     // ARM64-compatible (standalone loopd images have broken ARM builds).
@@ -101,6 +90,40 @@ export const ENV = {
     // Cloudflare Worker URL that generates Coinbase Onramp session tokens.
     // If unset, GET /api/coinbase/onramp-url returns coinbase_not_configured.
     coinbaseWorkerUrl: process.env.COINBASE_WORKER_URL || "",
+
+    // --- BASE chain selection (SIWE wallet binding) ---
+    // Numeric chainId the SIWE challenge/verify flow pins member wallet
+    // signatures to. Default: Base Sepolia (84532) — the current live
+    // deployment. Base mainnet (8453) is flipped via env at deploy day,
+    // never baked in code (mainnet-preflight runbook §B1). Guarded parse:
+    // unset, empty (compose ${VAR:-} interpolation yields ""), or garbage
+    // all fall back to 84532 — Number("") is 0 and Number("abc") is NaN;
+    // neither may reach SIWE verification.
+    baseChainId: (() => {
+        const n = Number(process.env.BASE_CHAIN_ID);
+        return Number.isInteger(n) && n > 0 ? n : 84532;
+    })(),
+
+    // --- BASE sync loop (spec §7) ---
+    // Number of blocks to wait before considering a Settled event safely
+    // committed for event-sync purposes. Spec §7.4 + T7 recommend 64 blocks
+    // (~2 minutes at BASE's 2-second block time). Testnet dev can override
+    // to a lower value (e.g. 12) for faster iteration; production should
+    // use the default 64.
+    baseConfirmationDepth: Number(process.env.BASE_CONFIRMATION_DEPTH ?? "64"),
+
+    // --- BASE RPC for SIWE verification (spec amendment 2026-05-26 §2) ---
+    // The SIWE wallet-binding flow uses Coinbase Smart Wallet (ERC-1271
+    // smart account) as the recommended wallet. Verifying its signatures
+    // requires calling `isValidSignature` on-chain, which means viem's
+    // verifySiweMessage needs a chain RPC client. This duplicates the
+    // Worker's BASE_RPC_URL minus a config layer — kept SIWE-only
+    // on the API side; operational chain reads still go through the Worker
+    // (see deltas-record candidate #11 on Worker-as-source-of-truth).
+    //
+    // Local dev: set to the same Alchemy URL the Worker uses. Production:
+    // set via docker-compose env when the rail ships to mainnet.
+    baseRpcUrl: process.env.BASE_RPC_URL || "",
 
     // --- Valuation manual input (treasury → Worker HMAC-signed submissions) ---
     // Base URL of the Cloudflare Worker that accepts POST /valuation/manual.

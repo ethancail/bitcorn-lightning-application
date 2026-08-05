@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type CalendarSummary } from "../../api/client";
+import ErrorState from "../ErrorState";
 
 interface Props {
   year: number;
@@ -27,16 +28,27 @@ const DOW_LABELS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
 export default function MonthGrid({ year, month, onSelectDay, onPrevMonth, onNextMonth, onZoomToYear }: Props) {
   const [summary, setSummary] = useState<CalendarSummary | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const todayUtc = new Date().toISOString().slice(0, 10);
 
-  useEffect(() => {
+  // U24 M1: a failed calendar load must NEVER render as an all-empty grid —
+  // the operator could re-enter valuation data over entries they can't see,
+  // and these inputs size real auto-buys. Clearing summary at load start also
+  // stops a failed month-switch from showing the PREVIOUS month's numbers.
+  const load = useCallback(() => {
     const from = `${year}-${pad2(month + 1)}-01`;
     const lastDay = new Date(year, month + 1, 0).getDate();
     const to = `${year}-${pad2(month + 1)}-${pad2(lastDay)}`;
+    setSummary(null);
+    setLoadError(null);
     api.getValuationCalendar(from, to)
       .then(setSummary)
-      .catch((err) => console.error("[MonthGrid]", err));
+      .catch((err: any) => setLoadError(err?.detail ?? err?.message ?? "fetch failed"));
   }, [year, month]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const cells = useMemo(() => {
     const firstDow = new Date(year, month, 1).getDay();
@@ -66,6 +78,17 @@ export default function MonthGrid({ year, month, onSelectDay, onPrevMonth, onNex
         </button>
         <button onClick={onNextMonth} style={{ background: "none", border: "1px solid var(--border)", padding: "4px 10px", cursor: "pointer", color: "var(--text-2)" }}>Next →</button>
       </div>
+      {loadError !== null ? (
+        <ErrorState
+          bare
+          message="Couldn't load this month's entries. What's shown as empty may not be — don't re-enter values until the calendar loads."
+          detail={loadError}
+          onRetry={load}
+        />
+      ) : summary === null ? (
+        <div className="loading-shimmer" style={{ height: 220, borderRadius: 6 }} />
+      ) : (
+      <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4, marginBottom: 4 }}>
         {DOW_LABELS.map((d) => (
           <div key={d} style={{ textAlign: "center", fontSize: "0.75rem", color: "var(--text-3)" }}>{d}</div>
@@ -102,6 +125,8 @@ export default function MonthGrid({ year, month, onSelectDay, onPrevMonth, onNex
           </button>
         ))}
       </div>
+      </>
+      )}
     </div>
   );
 }

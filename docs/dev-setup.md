@@ -463,4 +463,4 @@ This local setup is for the bulk of day-to-day work — most code changes can be
 - Testing the actual Umbrel update flow before a release (the manifest version bump → Umbrel detects → user clicks update path)
 - Validating cross-machine integration that local Polar can't simulate
 
-The release path itself remains: tag a version, bump the production community app store manifest, farmers see the update.
+The release path itself is unchanged by any of this, and it is **not** tagging — this repo has zero git tags. A release is: bump the version in three places in one commit (`umbrel-app.yml` plus both image tags in `bitcorn-lightning-node/docker-compose.yml`), merge to `main`, CI builds and pushes the images, then refresh the Umbrel host's app-store clone so farmers see the update. Full procedure, with the verification step that prevents a half-installed node: **[docs/RELEASE.md](RELEASE.md)**.

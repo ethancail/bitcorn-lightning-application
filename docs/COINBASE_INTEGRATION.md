@@ -32,25 +32,38 @@ FundNodePanel (browser)
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/` | Coinbase Onramp — accepts `{ address }` → returns `{ sessionToken }` |
-| GET | `/prices` | Commodity prices (gold, corn, soybeans, wheat), cached 24h in KV |
+| GET | `/prices` | Live commodity futures prices (gold, corn, soybeans, wheat), cached 10 min in KV |
 | GET | `/prices/corn-history` | Historical monthly corn PRICE RECEIVED from USDA NASS (2014+), cached 24h in KV |
+| GET | `/recommended-peers` | Curated external peer list |
+| GET | `/treasury-info` | Treasury node connection info (member auto-connect) |
+| GET | `/valuation/current` | Latest composite Z-score + zone |
+| GET | `/valuation/history` | Daily composite history series |
+| GET | `/valuation/inputs` | Per-input snapshot map |
+| POST | `/valuation/manual` | Treasury-signed manual metric entries (HMAC) |
+| GET | `/valuation/manual/day` | All 8 metric values for a date |
+| GET | `/valuation/manual/calendar` | Per-day completeness summary across a range |
+| POST | `/valuation/refresh` | Manually trigger the valuation engine cron (HMAC) |
+| GET | `/base/contract-info` | Stablecoin rail — public: SettlementRouter address + live state |
+| POST | `/base/contract-state` | Stablecoin rail — payment-scope: allowlisted ABI read wrapper |
+| GET | `/base/balance` | Stablecoin rail — payment-scope: convenience ERC-20 `balanceOf` |
+| POST | `/base/events` | Stablecoin rail — payment-scope: allowlisted `eth_getLogs` wrapper |
 
 ### Secrets (stored in Cloudflare, never in git)
 
 - `CDP_KEY_NAME`
 - `CDP_PRIVATE_KEY` — SEC1 format (`-----BEGIN EC PRIVATE KEY-----`); Worker converts to PKCS#8 for the Web Crypto API via `sec1ToPkcs8Pem()`
 - `USDA_NASS_KEY`
-- `GOLD_API_KEY`
 
 ### Price Sources
 
-| Commodity | API | Key | Free Tier |
-|-----------|-----|-----|-----------|
-| Bitcoin | Coinbase Spot | No | Unlimited |
-| Gold | goldapi.io | `GOLD_API_KEY` | 100 req/month |
-| Corn, Soybeans, Wheat | USDA NASS QuickStats | `USDA_NASS_KEY` | Unlimited |
+| Commodity | API | Key | Notes |
+|-----------|-----|-----|-------|
+| Bitcoin | Coinbase Spot (client-side, not via Worker) | No | Spot price |
+| Gold | TradingView futures scanner (`COMEX:GC1!`) | No | ~10-min-delayed front-month futures |
+| Corn, Soybeans, Wheat | TradingView futures scanner (`CBOT:ZC1!`/`ZS1!`/`ZW1!`) | No | ~10-min-delayed front-month futures |
+| Corn (historical only) | USDA NASS QuickStats via `/prices/corn-history` | `USDA_NASS_KEY` | Monthly PRICE RECEIVED, 2014+ |
 
-KV namespace `PRICES_CACHE` caches the combined JSON for 24 hours to minimize upstream API calls.
+The live `/prices` surface is the TradingView **futures scanner** (`scanner.tradingview.com/futures/scan`) — an undocumented public endpoint with no API key, no SLA, and no versioning. Prices are front-month continuous futures contracts (not spot), delayed ~10 minutes upstream. KV namespace `PRICES_CACHE` caches the live response for 10 minutes (matched to the upstream delay) plus a 24-hour last-known-good fallback; corn history is cached 24 hours. See `cloudflare-worker/src/handlers/prices.ts` for the operational-risk notes.
 
 ## Environment Variables
 
@@ -97,7 +110,6 @@ npx wrangler deploy          # redeploy code changes
 npx wrangler secret put CDP_KEY_NAME
 npx wrangler secret put CDP_PRIVATE_KEY
 npx wrangler secret put USDA_NASS_KEY
-npx wrangler secret put GOLD_API_KEY
 
 # Live Worker logs:
 npx wrangler tail

@@ -84,6 +84,24 @@ function fmt(sats: number): string {
   return sats.toLocaleString();
 }
 
+/**
+ * Human phrase for how long the channel has stayed non-healthy.
+ *
+ * consecutiveNonHealthyRuns advances once per 15-minute scheduler run (the
+ * only persist site — see advisorScheduler.ts and the 2026-07-09 counter
+ * fix), so runs ≈ runs × 15 minutes of sustained state. Members shouldn't
+ * read "N consecutive runs" (scheduler jargon); they get a duration. The
+ * "more than a day" cap keeps legacy inflated counters (rows written before
+ * the counter fix) from rendering absurd durations.
+ */
+export function describeSustainedRuns(runs: number): string {
+  const minutes = runs * 15;
+  if (minutes <= 60) return `about ${minutes} minutes`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `about ${hours} hour${hours === 1 ? "" : "s"}`;
+  return "more than a day";
+}
+
 const LOOP_PROTOCOL_MIN = 250_000;
 
 // ─── Role: UNKNOWN ──────────────────────────────────────────────────────────
@@ -116,12 +134,14 @@ function recommendUnknown(
     action: "set_role",
     suggestedAmountSats: null,
     projectedMemberLocalPct: null,
+    // Member-facing copy per decisions/2026-07-09-ui-vocabulary-canonical-terms.md
+    // (F2 pass): plain language, no "outbound capacity" on member surfaces.
     reason: highLocal
-      ? `Your channel is ${localPctDisplay}% on your side. If you are a merchant, this means you have ` +
-        `outbound capacity to send. If you are a farmer, this means your channel is filling up. ` +
+      ? `Your channel is ${localPctDisplay}% on your side. If you are a merchant, that means ` +
+        `plenty of room to send. If you are a farmer, your channel is filling up. ` +
         `Set your channel role in Settings for accurate recommendations.`
-      : `Your channel is ${localPctDisplay}% on your side. If you are a merchant, your outbound ` +
-        `capacity is getting low. If you are a farmer, you have room to receive. ` +
+      : `Your channel is ${localPctDisplay}% on your side. If you are a merchant, your room ` +
+        `to send is getting low. If you are a farmer, you have room to receive. ` +
         `Set your channel role in Settings for accurate recommendations.`,
     urgency: c.urgency,
     loopAvailable: false,
@@ -149,10 +169,10 @@ function recommendMerchant(
     const reason = undersized
       ? `Your channel (${fmt(c.capacitySat)} sats) is below the recommended merchant ` +
         `minimum of ${fmt(cfg.merchantRecommendedCapacitySat)} sats. Open a larger channel ` +
-        `to avoid frequent outbound depletion.`
-      : `Your channel has depleted repeatedly (${c.consecutiveNonHealthyRuns} consecutive runs). ` +
-        `This suggests the channel is too small for your payment needs. ` +
-        `Open a larger channel instead of repeatedly topping up.`;
+        `to avoid running low on sending balance so often.`
+      : `Your sending balance has stayed low for ${describeSustainedRuns(c.consecutiveNonHealthyRuns)}. ` +
+        `This usually means the channel is too small for your payment volume. ` +
+        `Consider opening a larger channel instead of topping up repeatedly.`;
     return {
       action: "channel_upgrade",
       suggestedAmountSats: cfg.merchantRecommendedCapacitySat,
@@ -172,7 +192,7 @@ function recommendMerchant(
       action: "none",
       suggestedAmountSats: null,
       projectedMemberLocalPct: null,
-      reason: "Outbound capacity is healthy — ready to send payments.",
+      reason: "Your sending balance is healthy — ready to pay.",
       urgency: "none",
       loopAvailable: loop.loopDaemonRunning,
       generatedAt: now,
@@ -182,8 +202,8 @@ function recommendMerchant(
   // ── Low outbound (local < 30%) → Loop In ──────────────────────────────
   const depleted = localPct < 0.15;
   const stateLabel = depleted
-    ? "Outbound capacity nearly exhausted"
-    : "Your channel is running low on outbound capacity";
+    ? "You're almost out of sending balance"
+    : "Your sending balance is running low";
 
   const targetSat = Math.round(c.capacitySat * cfg.targetMidPct);
   let amount = targetSat - c.memberLocalSat;
@@ -203,9 +223,10 @@ function recommendMerchant(
       action: "loop_in",
       suggestedAmountSats: amount,
       projectedMemberLocalPct: Math.round(projectedPct * 10000) / 100,
+      // "Top Up" = the canonical merchant name for Loop In (Knot 2).
       reason:
-        `${stateLabel}. Loop In restores your ability to keep sending payments ` +
-        `by adding Lightning liquidity to your node.`,
+        `${stateLabel}. Top up to keep paying — it moves funds from your ` +
+        `Bitcoin balance into your channel.`,
       urgency: depleted ? "high" : c.urgency,
       loopAvailable: true,
       generatedAt: now,
@@ -215,14 +236,14 @@ function recommendMerchant(
   // Loop In not available — manual recovery
   const noLoopReason = !loop.loopDaemonRunning
     ? "Loop is not installed on this node."
-    : "Loop In is not available.";
+    : "Top Up is currently unavailable.";
 
   return {
     action: "manual_recovery",
     suggestedAmountSats: null,
     projectedMemberLocalPct: null,
     reason:
-      `${stateLabel}. To restore outbound capacity, install Loop and use Loop In, ` +
+      `${stateLabel}. To restore your ability to pay, install Loop and use Top Up, ` +
       `or open a new channel. ${noLoopReason}`,
     urgency: depleted ? "high" : c.urgency,
     loopAvailable: false,
@@ -249,10 +270,10 @@ function recommendFarmer(
     const reason = undersized
       ? `Your channel (${fmt(c.capacitySat)} sats) is below the recommended farmer ` +
         `minimum of ${fmt(cfg.farmerRecommendedCapacitySat)} sats. Open a larger channel ` +
-        `to receive larger or more frequent earnings with less liquidity pressure.`
-      : `Your channel has filled up repeatedly (${c.consecutiveNonHealthyRuns} consecutive runs). ` +
-        `This suggests the channel is too small for your earnings flow. ` +
-        `Open a larger channel instead of frequently withdrawing.`;
+        `to receive larger or more frequent earnings without filling up.`
+      : `Your channel has been full or nearly full for ${describeSustainedRuns(c.consecutiveNonHealthyRuns)}. ` +
+        `This usually means it's too small for your earnings flow. ` +
+        `Consider opening a larger channel instead of withdrawing frequently.`;
     return {
       action: "channel_upgrade",
       suggestedAmountSats: cfg.farmerRecommendedCapacitySat,
@@ -272,7 +293,7 @@ function recommendFarmer(
       action: "none",
       suggestedAmountSats: null,
       projectedMemberLocalPct: null,
-      reason: "Receiving capacity is healthy — ready to earn.",
+      reason: "You have room to receive — ready to earn.",
       urgency: "none",
       loopAvailable: loop.loopDaemonRunning,
       generatedAt: now,
@@ -282,8 +303,8 @@ function recommendFarmer(
   // ── Getting full / full (local > 70%) → Loop Out ──────────────────────
   const full = localPct >= 0.85;
   const stateLabel = full
-    ? "Receiving capacity is critically low"
-    : "Receiving capacity is getting low";
+    ? "Your channel is nearly full — almost no room left to receive"
+    : "Your channel is filling up";
 
   const targetSat = Math.round(c.capacitySat * cfg.targetMidPct);
   let amount = c.memberLocalSat - targetSat;
@@ -303,8 +324,8 @@ function recommendFarmer(
         suggestedAmountSats: null,
         projectedMemberLocalPct: null,
         reason:
-          `${stateLabel}, but available balance is too small for a Loop Out. ` +
-          "Send a payment to free up receiving capacity.",
+          `${stateLabel}, but your balance is too small to withdraw. ` +
+          "Send a payment to make room to receive.",
         urgency: full ? "high" : c.urgency,
         loopAvailable: true,
         generatedAt: now,
@@ -318,9 +339,10 @@ function recommendFarmer(
       action: "loop_out",
       suggestedAmountSats: amount,
       projectedMemberLocalPct: Math.round(projectedPct * 10000) / 100,
+      // "Withdraw" = the canonical farmer name for Loop Out (Knot 2).
       reason:
-        `${stateLabel}. Loop Out withdraws Lightning balance to your Bitcoin wallet ` +
-        `and restores your ability to receive earnings.`,
+        `${stateLabel}. Withdraw to move earnings to your Bitcoin balance ` +
+        `and make room to receive more.`,
       urgency: full ? "high" : c.urgency,
       loopAvailable: true,
       generatedAt: now,
@@ -330,15 +352,15 @@ function recommendFarmer(
   // Loop Out not available — manual recovery
   const noLoopReason = !loop.loopDaemonRunning
     ? "Loop is not installed on this node."
-    : "Loop Out is not available.";
+    : "Withdrawals are currently unavailable.";
 
   return {
     action: "manual_recovery",
     suggestedAmountSats: null,
     projectedMemberLocalPct: null,
     reason:
-      `${stateLabel}. Withdraw earnings via the Withdraw Bitcoin page or ` +
-      `send a payment to free up capacity. ${noLoopReason}`,
+      `${stateLabel}. Withdraw earnings from the Withdraw page, or ` +
+      `send a payment to make room. ${noLoopReason}`,
     urgency: full ? "high" : c.urgency,
     loopAvailable: false,
     generatedAt: now,

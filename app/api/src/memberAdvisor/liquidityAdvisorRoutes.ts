@@ -5,7 +5,6 @@
 
 import {
   classifyTreasuryChannel,
-  persistClassification,
   getClassificationHistory,
   type ChannelClassification,
 } from "./channelClassifier";
@@ -26,7 +25,17 @@ export interface LiquidityHistoryResponse {
 
 // ─── Route handlers ──────────────────────────────────────────────────────────
 
-/** GET /api/liquidity/status — current classification + recommendation. */
+/** GET /api/liquidity/status — current classification + recommendation.
+ *
+ *  READ-ONLY by design (counter-defect fix, 2026-07-09): this handler computes
+ *  a fresh classification for display but does NOT persist it. Persisting here
+ *  made every poll of this endpoint advance consecutiveNonHealthyRuns — the
+ *  member shell polls every 15s, so the "3 consecutive runs" escalation to
+ *  channel_upgrade (designed for the 15-MINUTE scheduler cadence, i.e. ~45 min
+ *  of sustained depletion — see advisorScheduler.ts header) fired within ~45
+ *  seconds, giving depleted members wrong open-a-bigger-channel advice. The
+ *  15-min scheduler (advisorScheduler.ts runOnce) is the ONLY persist site.
+ */
 export async function getLiquidityStatus(): Promise<LiquidityStatusResponse> {
   const classification = classifyTreasuryChannel();
   const loopAvailability = await checkLoopAvailability();
@@ -38,9 +47,6 @@ export async function getLiquidityStatus(): Promise<LiquidityStatusResponse> {
       loopAvailability,
     };
   }
-
-  // Persist this classification run
-  persistClassification(classification);
 
   const recommendation = computeRecommendation(classification, loopAvailability);
 

@@ -62,10 +62,10 @@ The sync loop:
 | Port | Purpose |
 |------|---------|
 | 3101 | User/Admin API (JWT, Umbrel-aware) |
-| 3109 | Node-to-Node API (HMAC only, never proxied) — **stub only, unimplemented** |
+| 3109 | Node-to-Node API — **reserved, no implementation** |
 | 3200 | Web UI |
 
-Do not reuse ports 3001 or 3009. Do not expose port 3109 via Umbrel app-proxy. **Port 3109 has only stub code in `ports.ts`, `hmac.ts`, `node-api.ts` — never bound, never exposed.** No N2N infrastructure exists; member liquidity coordination does not use 3109.
+Do not reuse ports 3001 or 3009. Do not expose port 3109 via Umbrel app-proxy. **Port 3109 is reserved in `ports.ts` but has no implementation — the stub files (`hmac.ts`, `node-api.ts`) were removed 2026-05; the longer-term fate of the reservation itself is an open decision.** No N2N infrastructure exists; member liquidity coordination does not use 3109.
 
 ## Database
 
@@ -161,12 +161,13 @@ Farmers accumulate sats on their local side as they receive payments for commodi
 
 `src/memberLiquidity/` — operator-approved keysend push from treasury to member. Used for **initial channel provisioning** (before the member has accumulated transaction flow that would naturally fill their side) and **edge-case maintenance** (e.g., bootstrapping a merchant who can't yet run Loop In). It is **not** part of steady-state rebalancing.
 
-- **Detection**: `liquidityDetector` reads cluster data (only when the cluster engine is enabled — see Cluster Rebalance Engine below); per-cluster config in `member_liquidity_config`; member-local < 30% → suggested Top Up to 60%.
+- **Detection**: historically driven by the cluster engine's `liquidityDetector.detectLiquidityOpportunities()`; that function was removed alongside the cluster engine (2026-05). The treasury-push recommendation surface (`/api/member-liquidity/recommendations` etc.) is retained but currently operates on empty inputs — see the latent-finding note below.
 - **Estimate**: `liquidityAdvisor` computes the keysend push estimate (60s TTL, ~0 routing fee).
 - **Execution**: `liquidityExecutor.executePush()` calls `keysendPush()` to the member after **explicit operator approval** via the Member Liquidity page. No automatic execution.
 - **Single action type**: `treasury_push_topup`.
 - **Schema**: migration 026 (4 tables: recommendations, estimates, outcomes, config).
 - **Future direction**: invoice-based push is preferred per spec but requires N2N infrastructure (port 3109) that doesn't exist.
+- **Latent finding (flagged for future investigation):** `liquidityAdvisor` + `liquidityExecutor` still `SELECT` from `rebalance_clusters` / `rebalance_cluster_channels` (migrations 023–025, retained per the 2026-05 dormant-subsystem removal decision option a). The cluster engine was the only writer; with it removed, the tables are read but always empty. The treasury-push approve flow appears functional but has no data path feeding it. Triggers for investigation: this surface needing to function operationally, or the next dormant-subsystem audit.
 
 ### Treasury Loop Out (external-inbound maintenance + edge cases)
 
@@ -184,17 +185,15 @@ Mechanical details (apply to both treasury-side and member-side Loop Out):
 
 See `docs/LOOP_SETUP.md` for setup, configuration, and gotchas. The optional automated scheduler (`REBALANCE_SCHEDULER_ENABLED=true`) targets critical treasury channels (>85% local) and is an operator opt-in for the external-inbound-maintenance case; off by default.
 
-### Cluster Rebalance Engine v1 (legacy — gated off by default)
+### Cluster Rebalance Engine v1 (removed 2026-05)
 
-`src/rebalance/` was the original three-lever rebalancing architecture (fee steering + circular rebalance + topology monitor) operating on per-peer clusters every 15 min. It is **no longer the active rebalancing model** — steady-state rebalancing is member-driven and role-based via the Member Liquidity Advisor above. The cluster engine remains in the codebase, gated off by default (`CLUSTER_REBALANCE_ENABLED=false`), pending a removal pass.
+`src/rebalance/` housed the original three-lever rebalancing architecture (fee steering + circular rebalance + topology monitor) operating on per-peer clusters every 15 min. It was superseded by the member-driven role-based model (Member Liquidity Advisor above) and removed in 2026-05 — see `decisions/2026-05-28-dormant-subsystems-disposition.md` (D2 + D2b) in the bitcorn-research repo. The eight modules (`clusterState`, `feeSteering`, `pairSelector`, `cycleEnumerator`, `cycleScorer`, `rebalanceExecutor`, `topologyMonitor`, `rebalanceScheduler`) and the `GET /api/member-liquidity/clusters` endpoint that read from them are gone. The `CLUSTER_REBALANCE_ENABLED` env var is no longer read.
 
-When enabled, the engine populates the cluster tables (migrations 023–025) and produces the recommendations consumed by the Treasury Push approve flow above. With it disabled, treasury push recommendations would need to come from a different source if used at all.
-
-Modules: `clusterState`, `feeSteering`, `pairSelector`, `cycleEnumerator`, `cycleScorer`, `rebalanceExecutor`, `topologyMonitor`, `rebalanceScheduler`. Provisioned via `seeds/001_initial_clusters.sql` (also legacy).
+The associated tables (migrations 023–025) and `seeds/001_initial_clusters.sql` are **retained**: retained `memberLiquidity` treasury-push code still `SELECT`s from `rebalance_clusters` / `rebalance_cluster_channels` (see latent-finding note in the Treasury Push section above). A drop migration was deliberately not part of the removal PR.
 
 ### Keysend Status
 
-Keysend push as a *rebalancing tool* is **disabled** — it permanently transfers sats rather than rebalancing the channel. Keysend remains the execution mechanism for treasury push (see above) and for the keysend-feature pre-flight check on member onboarding. The `member_keysend_status` table tracks peers that reject keysend so treasury push attempts can skip them with a 24h backoff. The `MEMBER_KEYSEND_DISABLED` alert (warning severity) surfaces this on the treasury dashboard.
+Keysend push as a *rebalancing tool* was disabled at v1.3.5 — it permanently transfers sats in a hub-and-spoke topology rather than rebalancing the channel. The corresponding module (`lightning/rebalance-keysend.ts`) was removed in 2026-05. Keysend remains the execution mechanism for treasury push (see above) and for the keysend-feature pre-flight check on member onboarding via the retained `keysendPush()` primitive in `lightning/lnd.ts`. The `member_keysend_status` table tracks peers that reject keysend so treasury push attempts can skip them with a 24h backoff. The `MEMBER_KEYSEND_DISABLED` alert (warning severity) surfaces this on the treasury dashboard.
 
 ## Lane Model
 
@@ -211,6 +210,20 @@ Treasury Channels page renders four sections (Merchant Lanes / Farmer Lanes / Ex
 - **Network payments are invoice-based** (BOLT11). Two modes: Request Payment (create invoice + QR) and Pay Invoice (paste, decode, confirm, pay).
 - **Settlement sync**: 15s sync loop matches pending receives in `network_payments` against `payments_inbound`. Auto-settles invoices.
 - **Dual recording**: outbound network payments recorded in both `network_payments` and `payments_outbound` for rate limiting compatibility.
+
+## Stablecoin Rail (BASE/USDC)
+
+A parallel, non-custodial member-to-member settlement rail on BASE (Ethereum L2) using USDC, alongside the Lightning rail. Authoritative spec: `bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md` (plus the 2026-05-26 frontend-UX amendment). The `SettlementRouter` contract lives in the separate `bitcorn-stablecoin-rail` repo with its own test/audit gates. This section stays at flow level — the spec is normative for detail.
+
+**Non-custodial by construction.** The member's own wallet (Coinbase Smart Wallet, MetaMask, or WalletConnect) signs `approve` → `settle` against the SettlementRouter — an atomic pass-through contract that never holds funds. No key custody, no server relay: the API and Worker only read chain state; neither can move member funds.
+
+Three layers:
+
+- **Browser ↔ BASE**: the wallet transacts with the chain directly. The member-only Stablecoin page drives registration + settlement; wagmi is scoped to the rail via `RailScope` so the rest of the UI takes no wagmi dependency.
+- **Worker = authenticated read-only RPC proxy**: public `/base/contract-info` plus allowlisted payment-scope reads (`/base/contract-state`, `/base/balance`, `/base/events`). RPC URL and contract addresses are Worker secrets; no write methods are proxied.
+- **API = sync + identity**: a 60s sync loop ingests `Settled` events through the Worker (64-block confirmation depth, singleton cursor, idempotent `UNIQUE(tx_hash, log_index)` indexing), caches wallet balances + router governance state, and derives the staleness signals behind the UI banners. Wallet↔member binding uses SIWE (EIP-4361; single-use nonce; EOA and ERC-1271 smart-wallet verification). Trust model matches the subscription endpoints: local-node-pubkey identity + CORS, not bearer roles.
+
+**Deployment status: pre-mainnet.** The rail currently runs against Base Sepolia (testnet). SettlementRouter v1 is deployed and smoke-tested there; v2 (blast-radius caps) lives on a feature branch of `bitcorn-stablecoin-rail`, rehearsal-deployed on Sepolia — not merged to main and not on mainnet. Mainnet is gated on third-party audit + regulatory memos, plus repointing the testnet-pinned chain configuration (API `readChainId()`, frontend `VITE_BASE_CHAIN_ID`, Worker secrets).
 
 ## Configuration
 
@@ -248,10 +261,13 @@ The full per-version changelog lives in `git log`. Snapshot of capabilities curr
 
 **Charts & commodities**
 - Bitcoin Power Law Trend (log scale, percentile bands, 2042 projection)
-- Price ticker strip: BTC + gold + corn + soybeans + wheat (cached 24h in CF KV)
+- Price ticker strip: BTC (client-side Coinbase spot) + gold + corn + soybeans + wheat (~10-min-delayed front-month futures via Worker `/prices`, KV-cached 10 min)
 - BTC Moving Averages (50/100/200-day)
 - Corn-Bitcoin ratio (bushels per BTC, USDA monthly interpolated to daily)
 - Corn Moving Averages
+
+**Stablecoin rail (pre-mainnet — Base Sepolia)**
+- Member-to-member USDC settlements via non-custodial SettlementRouter: wallet-signed, SIWE-bound registration, 60s event sync (see § Stablecoin Rail above)
 
 **Other**
 - Coinbase Onramp via Cloudflare Worker session token (see `docs/COINBASE_INTEGRATION.md`)

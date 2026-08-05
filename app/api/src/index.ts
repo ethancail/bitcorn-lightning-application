@@ -30,7 +30,6 @@ import {
   getOutcomes as getLiquidityOutcomes,
   getOutcomeById as getLiquidityOutcomeById,
 } from "./memberLiquidity/liquidityRoutes";
-import { getAllClusterStates } from "./rebalance/clusterState";
 import { assertDailyLossCapNotExceeded, DailyLossCapError } from "./utils/loss-cap";
 import {
   getTreasuryFeePolicy,
@@ -76,7 +75,6 @@ import { postManualInputToWorker, postRefreshToWorker } from "./valuation/worker
 import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
-import { startClusterRebalanceScheduler } from "./rebalance/rebalanceScheduler";
 import { startScheduler, runTick, ensureWithdrawAddress } from "./autoBuy/scheduler";
 import {
   getActiveAlerts,
@@ -176,6 +174,17 @@ import {
   getCachedToken,
 } from "./subscription/tokenRefresh";
 import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
+import { startBaseSyncLoop } from "./base/sync";
+import {
+  handleBalance as handleStablecoinBalance,
+  handleChallenge as handleStablecoinChallenge,
+  handleContractState as handleStablecoinContractState,
+  handleSettlements as handleStablecoinSettlements,
+  handleSyncCursor as handleStablecoinSyncCursor,
+  handleWalletRegister as handleStablecoinWalletRegister,
+  handleWalletStatus as handleStablecoinWalletStatus,
+  handleWalletUnregister as handleStablecoinWalletUnregister,
+} from "./stablecoin/handlers";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
   verifyEntitlementToken,
@@ -1570,6 +1579,37 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ─── Stablecoin rail (spec §8 + 2026-05-26 amendment) ─────────────────
+  // All routes scoped under /api/stablecoin/*. Member identity is the local
+  // node's pubkey via getNodeInfo(); same trust model as the subscription
+  // endpoints above (local-network-only via CORS restriction at the top
+  // of this file). More specific routes (/wallet/challenge) must come
+  // before /wallet — the raw-http if/else chain matches by exact pathname.
+  if (req.method === "POST" && req.url === "/api/stablecoin/wallet/challenge") {
+    return handleStablecoinChallenge(req, res);
+  }
+  if (req.method === "POST" && req.url === "/api/stablecoin/wallet") {
+    return handleStablecoinWalletRegister(req, res);
+  }
+  if (req.method === "GET" && req.url === "/api/stablecoin/wallet") {
+    return handleStablecoinWalletStatus(req, res);
+  }
+  if (req.method === "DELETE" && req.url === "/api/stablecoin/wallet") {
+    return handleStablecoinWalletUnregister(req, res);
+  }
+  if (req.method === "GET" && req.url === "/api/stablecoin/balance") {
+    return handleStablecoinBalance(req, res);
+  }
+  if (req.method === "GET" && req.url === "/api/stablecoin/contract-state") {
+    return handleStablecoinContractState(req, res);
+  }
+  if (req.method === "GET" && req.url === "/api/stablecoin/sync-cursor") {
+    return handleStablecoinSyncCursor(req, res);
+  }
+  if (req.method === "GET" && req.url?.startsWith("/api/stablecoin/settlements")) {
+    return handleStablecoinSettlements(req, res);
+  }
+
   // Treasury connection info proxied from Cloudflare Worker.
   // Worker-side: public — no Bearer required, wrapper attaches one if
   // cached anyway (harmless on public endpoints).
@@ -2574,38 +2614,6 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ─── Member liquidity endpoints (treasury-only) ────────────────────────────
-
-  if (req.method === "GET" && req.url === "/api/member-liquidity/clusters") {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const states = getAllClusterStates();
-      const clusters = states.map((s) => ({
-        clusterId: s.clusterId,
-        label: s.label,
-        peerPubkey: s.peerPubkey,
-        policyRole: s.policyRole,
-        totalCapacitySats: s.totalCapacitySats,
-        localBalanceSats: s.localBalanceSats,
-        remoteBalanceSats: s.remoteBalanceSats,
-        localPct: s.localPct,
-        targetMinPct: s.targetMinPct,
-        targetMidPct: s.targetMidPct,
-        targetMaxPct: s.targetMaxPct,
-        deviationDirection: s.deviationDirection,
-        deviationPct: s.deviationPct,
-        channelCount: s.channels.length,
-        activeChannelCount: s.channels.filter((c) => c.active).length,
-      }));
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ clusters }));
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
 
   if (req.method === "GET" && req.url === "/api/member-liquidity/recommendations") {
     try {
@@ -4310,10 +4318,6 @@ server.listen(PORTS.userApi, () => {
   // Loop Out rebalance scheduler — requires REBALANCE_SCHEDULER_ENABLED=true
   // and the loopd sidecar to be running (included in the Bitcorn app stack).
   startRebalanceScheduler();
-  // Cluster-based rebalance engine v1 (legacy) — fee steering + circular rebalance
-  // + topology monitoring. Gated off by default (CLUSTER_REBALANCE_ENABLED=false);
-  // not part of steady-state rebalancing. Retained pending a removal pass.
-  startClusterRebalanceScheduler();
   // Member liquidity advisor — classifies treasury channel health on member nodes.
   // Runs on all nodes but only acts on non-treasury nodes.
   startMemberAdvisorScheduler();
@@ -4341,4 +4345,15 @@ server.listen(PORTS.userApi, () => {
   // nodes early-out inside the function. Logs a WARN with the operator
   // runbook if drift is detected.
   startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null);
+  // BASE sync loop — polls the Worker /base/* endpoints at 60s cadence to
+  // refresh per-wallet USDC balances and the SettlementRouter governance
+  // state. No-op until at least one member registers a BASE wallet (the
+  // §8.1 UI; pending separate work). Gated on COINBASE_WORKER_URL being
+  // configured, since the loop can't run without Worker access.
+  // Spec: bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md §7
+  if (ENV.coinbaseWorkerUrl) {
+    startBaseSyncLoop({ runImmediately: false });
+  } else {
+    console.warn("[base/sync] COINBASE_WORKER_URL not configured; BASE sync loop disabled");
+  }
 });

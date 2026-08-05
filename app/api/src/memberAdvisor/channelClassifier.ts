@@ -175,6 +175,22 @@ export function persistClassification(c: ChannelClassification): void {
   );
 }
 
+/** Retention for classification rows. The table previously grew unbounded
+ *  (no DELETE existed anywhere; the pre-fix read-path persist compounded it
+ *  to tens of thousands of rows on dev nodes). 30 days at the scheduler's
+ *  15-minute cadence is ~2,880 rows per channel — far more than the history
+ *  endpoint's default 20-row window needs, tiny on disk. Called from the
+ *  advisor scheduler after each persist. */
+const CLASSIFICATION_RETENTION_DAYS = 30;
+
+export function pruneClassifications(retentionDays: number = CLASSIFICATION_RETENTION_DAYS): number {
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  const result = db
+    .prepare(`DELETE FROM member_channel_classifications WHERE classified_at < ?`)
+    .run(cutoff);
+  return result.changes;
+}
+
 export function getClassificationHistory(channelId: string, limit = 20): ChannelClassification[] {
   const rows = db
     .prepare(

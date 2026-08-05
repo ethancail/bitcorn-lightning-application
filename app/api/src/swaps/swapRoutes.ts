@@ -20,6 +20,8 @@ import {
   checkMemberLoopInPolicy,
 } from "./swapPolicy";
 import { isLoopAvailable } from "./loopProvider";
+import { validateOnchainAddress } from "../utils/btc-address";
+import { ENV } from "../config/env";
 
 type Res = ServerResponse;
 
@@ -86,6 +88,11 @@ export async function handleMemberLoopOut(req: IncomingMessage, res: Res): Promi
 
   if (!swapRequestId) return json(res, 400, { error: "swap_request_id_required" });
   if (!destinationAddress) return json(res, 400, { error: "destination_address_required" });
+
+  const memberDestCheck = validateOnchainAddress(destinationAddress, ENV.bitcoinNetwork);
+  if (!memberDestCheck.ok) {
+    return json(res, 400, { error: "invalid_destination_address", detail: memberDestCheck.detail });
+  }
 
   const existing = getSwapRequest(swapRequestId);
   if (!existing) return json(res, 404, { error: "swap_request_not_found" });
@@ -233,6 +240,15 @@ export async function handleAdminLoopOut(req: IncomingMessage, res: Res): Promis
   const destinationAddress = body.destination_address as string | undefined;
 
   if (!swapRequestId) return json(res, 400, { error: "swap_request_id_required" });
+
+  // A wrong custom destination is an irreversible-loss path — validate
+  // checksum + network before anything reaches loopd.
+  if (destinationAddress) {
+    const destCheck = validateOnchainAddress(destinationAddress, ENV.bitcoinNetwork);
+    if (!destCheck.ok) {
+      return json(res, 400, { error: "invalid_destination_address", detail: destCheck.detail });
+    }
+  }
 
   const existing = getSwapRequest(swapRequestId);
   if (!existing) return json(res, 404, { error: "swap_request_not_found" });

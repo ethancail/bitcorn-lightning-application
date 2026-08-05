@@ -156,7 +156,14 @@ function CBTooltip({
   payload,
 }: {
   active?: boolean;
-  payload?: Array<{ dataKey: string; value: number | null; color: string }>;
+  // `payload` is the original datum recharts attaches to each entry; it is
+  // provided at runtime and read below, so the annotation has to declare it.
+  payload?: Array<{
+    dataKey: string;
+    value: number | null;
+    color: string;
+    payload: ChartPoint;
+  }>;
 }) {
   if (!active || !payload?.length) return null;
   const point = payload[0]?.payload as ChartPoint | undefined;

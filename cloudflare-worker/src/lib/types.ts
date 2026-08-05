@@ -29,6 +29,36 @@ export interface Env {
   // distribution gap (operators can't SSH into customer-owned Umbrels
   // to set the env var per-member).
   TREASURY_API_URL?: string;
+
+  // ─── Stablecoin rail (BASE/USDC) per spec §5 ─────────────────────────
+  // Set per-environment via `wrangler secret put` (RPC URL is secret since
+  // it embeds an API key with Alchemy/Coinbase; contract addresses are
+  // technically public on-chain but kept here for single-source-of-truth
+  // distribution to member nodes via /base/contract-info).
+  //
+  //   BASE_RPC_URL                      — upstream JSON-RPC endpoint
+  //   SETTLEMENT_ROUTER_ADDRESS         — deployed SettlementRouter (0x...)
+  //   USDC_TOKEN_ADDRESS                — USDC contract on the target chain
+  //   SETTLEMENT_ROUTER_DEPLOY_BLOCK    — block where the router was deployed
+  //                                       (used by §7 sync loop's starting cursor)
+  //   BASE_CHAIN_ID                     — "84532" for Sepolia, "8453" for mainnet
+  //
+  // BASE_RPC_URL is deliberately chain-NEUTRAL. It was BASE_SEPOLIA_RPC_URL until
+  // 2026-08-03; nothing ever derived chain behaviour from the name (the chain
+  // comes from BASE_CHAIN_ID, read at handlers/base.ts), so a Sepolia-specific
+  // name on a value that must also carry mainnet was purely misleading. It also
+  // now matches the app side, which has always called this BASE_RPC_URL
+  // (app/api/src/config/env.ts).
+  //
+  // Unset → /base/contract-info returns rpc_status="unconfigured" and the
+  // /base/contract-state + /base/balance endpoints return 503. v1 testnet
+  // surfaces only the Sepolia deployment; mainnet promotion is a separate
+  // wrangler-secret rotation after the §12.3 audit + memos gate clears.
+  BASE_RPC_URL?: string;
+  SETTLEMENT_ROUTER_ADDRESS?: string;
+  USDC_TOKEN_ADDRESS?: string;
+  SETTLEMENT_ROUTER_DEPLOY_BLOCK?: string;
+  BASE_CHAIN_ID?: string;
 }
 
 export type CommodityPrice = {

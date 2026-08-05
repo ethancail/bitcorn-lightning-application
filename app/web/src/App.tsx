@@ -1,8 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type RecommendedPeer, type PendingChannel, type AutoBuyAlertBadge, resolveContactName, truncPubkey } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -20,6 +20,7 @@ import ValuationInput from "./pages/ValuationInput";
 import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
+import ErrorState from "./components/ErrorState";
 import ProfilePanel from "./components/ProfilePanel";
 import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
 import {
@@ -30,6 +31,10 @@ import {
 } from "./components/subscriptionBanner";
 import { useAutoPayConfig } from "./components/useAutoPayConfig";
 import SubscriptionPayments from "./pages/SubscriptionPayments";
+import Stablecoin from "./pages/Stablecoin";
+import WalletRegistrationPanel from "./stablecoin/components/WalletRegistrationPanel";
+import { RailScope } from "./stablecoin/RailScope";
+import { isRailGated } from "./stablecoin/railAccess";
 import AdminMembers from "./pages/AdminMembers";
 import Liquidity from "./pages/Liquidity";
 
@@ -92,12 +97,12 @@ initTheme();
 // they have a channel to the hub. MemberDashboard handles the no-channel
 // state contextually with a "Connect to Hub" CTA.
 
-type AppStatus = "loading" | "treasury_setup" | "treasury" | "node";
+type AppStatus = "loading" | "treasury_setup" | "treasury" | "node" | "unreachable";
 
-function useAppStatus(): AppStatus {
+function useAppStatus(): { status: AppStatus; retry: () => void } {
   const [status, setStatus] = useState<AppStatus>("loading");
 
-  useEffect(() => {
+  const check = useCallback(() => {
     api
       .getNode()
       .then((node) => {
@@ -128,10 +133,25 @@ function useAppStatus(): AppStatus {
           setStatus("node");
         }
       })
-      .catch(() => setStatus("node"));
+      // U24 shell fix: this used to fall back to the member shell, so a
+      // treasury operator with a down API got a member UI full of fake-empty
+      // panels. Surface the outage as its own screen instead.
+      .catch(() => setStatus("unreachable"));
   }, []);
 
-  return status;
+  useEffect(() => {
+    check();
+  }, [check]);
+
+  // Auto-retry while unreachable — self-heals when the API comes back
+  // (e.g. container restarting) without requiring a manual click.
+  useEffect(() => {
+    if (status !== "unreachable") return;
+    const id = setInterval(check, 15_000);
+    return () => clearInterval(id);
+  }, [status, check]);
+
+  return { status, retry: check };
 }
 
 // ─── Shared Topbar ────────────────────────────────────────────────────────
@@ -391,10 +411,26 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
   const autoBuyBadge = useAutoBuyBadge();
   const subStatus = useSubscriptionStatus();
   const isMerchant = channelRole === "merchant";
-  const liquidityLabel = isMerchant ? "Refill Channel" : "Cash Out";
+  // Canonical operation names per decisions/2026-07-09-ui-vocabulary-canonical-terms.md
+  // (Knot 2, updated: "Withdraw" = farmer Loop Out; "Top Up" = merchant Loop In).
+  const liquidityLabel = isMerchant ? "Top Up" : "Withdraw";
   const liquidityIcon = isMerchant ? "↙" : "↗";
   const liquidityRoute = isMerchant ? "/refill" : "/cashout";
 
+  // ⚠ COSMETIC ONLY — THIS GATES NOTHING.
+  //
+  // Hiding the nav entry is tidiness, not enforcement. `/stablecoin` stays
+  // mounted as a route (see the Routes block below) and is directly navigable by
+  // URL, bookmark, or back button, so a gated member can always reach the page.
+  // The ONLY enforcement is the Worker's `full`-scope gate on
+  // /base/{contract-state,balance,events} — without it this line is decoration.
+  //
+  // The route is deliberately NOT gated alongside this. Redirecting a gated
+  // member to /dashboard would silently swallow the explanation: the Stablecoin
+  // page itself renders the "subscription required" notice (railGateNoticeFor),
+  // and a redirect would mean the one member who most needs that message is the
+  // only one who never sees it. Hide the entry, keep the door, explain inside.
+  const railGated = isRailGated(subStatus);
   const navItems = [
     { to: "/dashboard", icon: "▤", label: "My Dashboard" },
     { to: "/charts", icon: "⟠", label: "Charts" },
@@ -402,6 +438,9 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
     { to: "/channels", icon: "◈", label: "My Channels" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
     { to: "/payments", icon: "↗", label: "My Payments" },
+    // Fails OPEN while subStatus is still null (first 60s of the poll) so the
+    // entry never blinks out for a healthy paying member — railAccess.ts.
+    ...(railGated ? [] : [{ to: "/stablecoin", icon: "◇", label: "Stablecoin" }]),
   ];
 
   return (
@@ -503,29 +542,45 @@ function MemberShell() {
     };
   }, []);
 
+  // RailScope wraps the entire MemberShell so the wagmi WagmiProvider's
+  // connection state survives nav between /settings (where wallet is
+  // registered) and /stablecoin (where it's used to sign settlements).
+  // Without this, each route's local RailScope would create a separate
+  // wagmi context and the connection would have to round-trip through
+  // localStorage on every navigation — a noticeable flicker. Treasury
+  // shell does not need this; treasury operator doesn't register a BASE
+  // wallet at v1.
   return (
-    <div className="app-shell">
-      <Topbar node={node} role="MEMBER" onMenuToggle={() => setMenuOpen((v) => !v)} />
-      <div className={`sidebar-overlay ${menuOpen ? "visible" : ""}`} onClick={() => setMenuOpen(false)} />
-      <MemberSidebar open={menuOpen} onClose={() => setMenuOpen(false)} channelRole={channelRole} />
-      <main className="main-content">
-        <Routes>
-          <Route path="/dashboard" element={<MemberDashboard />} />
-          <Route path="/charts" element={<Charts />} />
-          <Route path="/contacts" element={<Contacts />} />
-          <Route path="/channels" element={<ChannelsPage />} />
-          <Route path="/payments" element={<Payments title="My Payments" />} />
-          <Route path="/auto-buy" element={<AutoBuy />} />
-          <Route path="/deposit" element={<DepositBitcoin />} />
-          <Route path="/cashout" element={<WithdrawBitcoin />} />
-          <Route path="/refill" element={<RefillChannel />} />
-          <Route path="/withdraw" element={<WithdrawBitcoin />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/subscription/payments" element={<SubscriptionPayments />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Routes>
-      </main>
-    </div>
+    <RailScope>
+      <div className="app-shell">
+        <Topbar node={node} role="MEMBER" onMenuToggle={() => setMenuOpen((v) => !v)} />
+        <div className={`sidebar-overlay ${menuOpen ? "visible" : ""}`} onClick={() => setMenuOpen(false)} />
+        <MemberSidebar open={menuOpen} onClose={() => setMenuOpen(false)} channelRole={channelRole} />
+        <main className="main-content">
+          <Routes>
+            <Route path="/dashboard" element={<MemberDashboard />} />
+            <Route path="/charts" element={<Charts />} />
+            <Route path="/contacts" element={<Contacts />} />
+            <Route path="/channels" element={<ChannelsPage />} />
+            <Route path="/payments" element={<Payments title="My Payments" />} />
+            <Route path="/auto-buy" element={<AutoBuy />} />
+            <Route path="/deposit" element={<DepositBitcoin />} />
+            <Route path="/cashout" element={<WithdrawBitcoin />} />
+            <Route path="/refill" element={<RefillChannel />} />
+            <Route path="/withdraw" element={<WithdrawBitcoin />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/subscription/payments" element={<SubscriptionPayments />} />
+            {/* Intentionally NOT gated — the nav entry above is hidden for a
+                gated member, but the route stays so a typed URL or bookmark
+                lands on the page's "subscription required" notice instead of a
+                silent redirect to /dashboard. Enforcement lives in the Worker's
+                full-scope gate, not here. */}
+            <Route path="/stablecoin" element={<Stablecoin />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </RailScope>
   );
 }
 
@@ -684,6 +739,13 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           state. The treasury operator inspects subscription state via
           the admin debug path (Stage 5b admin view). */}
       {!isTreasury && <SubscriptionPanel />}
+
+      {/* Stablecoin Wallet — member nodes only. Treasury operator
+          doesn't register a wallet (settles flow through member-to-member
+          relationships, not via the treasury's own BASE wallet). The
+          panel itself queries /api/stablecoin/wallet which derives the
+          member identity from the local LND pubkey. */}
+      {!isTreasury && <WalletRegistrationPanel />}
 
       <div className="settings-section-label">Personal</div>
 
@@ -1209,262 +1271,6 @@ function CapitalPolicyPanel() {
 
 // ─── Page stubs ────────────────────────────────────────────────────────────
 
-function RecommendedPeersPanel() {
-  const [peers, setPeers] = useState<RecommendedPeer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [openingId, setOpeningId] = useState<string | null>(null);
-  const [result, setResult] = useState<{ peerId: string; txid: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [selectedSize, setSelectedSize] = useState<Record<string, number>>({});
-
-  const PRESETS = [1_000_000, 5_000_000, 10_000_000];
-
-  useEffect(() => {
-    api.getRecommendedPeers()
-      .then((p) => {
-        setPeers(p);
-        // Default each peer to its recommended size
-        const defaults: Record<string, number> = {};
-        for (const peer of p) defaults[peer.id] = peer.recommended_channel_size_sat;
-        setSelectedSize(defaults);
-      })
-      .catch(() => setPeers([]))
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function handleOpen(peer: RecommendedPeer) {
-    const amount = selectedSize[peer.id] ?? peer.recommended_channel_size_sat;
-    setOpeningId(peer.id);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await api.openRecommendedChannel(peer.id, amount);
-      setResult({ peerId: peer.id, txid: res.funding_txid ?? "submitted" });
-      api.getRecommendedPeers().then(setPeers).catch(() => {});
-    } catch (e: any) {
-      setError(e.message ?? "Failed to open channel");
-    } finally {
-      setOpeningId(null);
-    }
-  }
-
-  const visiblePeers = showAdvanced ? peers : peers.filter((p) => !p.advanced);
-
-  if (loading) {
-    return (
-      <div className="panel fade-in" style={{ marginTop: 16 }}>
-        <div className="panel-header">
-          <span className="panel-title"><span className="icon">⟐</span>Treasury-Approved External Peers</span>
-        </div>
-        <div className="panel-body">
-          <div className="loading-shimmer" style={{ height: 60, borderRadius: 6 }} />
-        </div>
-      </div>
-    );
-  }
-
-  if (peers.length === 0) return null;
-
-  return (
-    <div id="recommended-peers-panel" className="panel fade-in" style={{ marginTop: 16 }}>
-      <div className="panel-header">
-        <span className="panel-title"><span className="icon">⟐</span>Treasury-Approved External Peers</span>
-        <span className="badge badge-muted">optional</span>
-      </div>
-      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ fontSize: "0.8125rem", color: "var(--text-3)", marginBottom: 4 }}>
-          These are curated external routing peers vetted by the treasury operator.
-          Your hub channel is your primary connection — external peers are optional
-          and may improve routing diversity.
-        </div>
-
-        {error && (
-          <div className="alert critical" style={{ marginBottom: 0 }}>
-            <span className="alert-icon">✕</span>
-            <div className="alert-body"><div className="alert-msg">{error}</div></div>
-          </div>
-        )}
-
-        {visiblePeers.map((peer) => {
-          const hasChannel = peer.has_channel && peer.channels.length > 0;
-          const isOpening = openingId === peer.id;
-          const justOpened = result?.peerId === peer.id;
-
-          return (
-            <div
-              key={peer.id}
-              style={{
-                background: "var(--bg-3)",
-                border: "1px solid var(--border)",
-                borderRadius: 8,
-                padding: "12px 16px",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontWeight: 600, fontSize: "0.9375rem" }}>{peer.label}</span>
-                  {peer.advanced && <span className="badge badge-muted" style={{ fontSize: "0.625rem" }}>advanced</span>}
-                  {peer.connected && <span className="badge badge-green" style={{ fontSize: "0.625rem" }}>connected</span>}
-                  {hasChannel && <span className="badge badge-blue" style={{ fontSize: "0.625rem" }}>channel open</span>}
-                </div>
-              </div>
-              <div style={{ fontSize: "0.8125rem", color: "var(--text-2)", marginBottom: 8 }}>
-                {peer.description}
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "0.75rem", color: "var(--text-3)", marginBottom: 10 }}>
-                <div style={{ fontFamily: "var(--mono)" }}>
-                  {truncPubkey(peer.pubkey)} @ {peer.socket}
-                </div>
-                <div>
-                  Recommended size: {peer.recommended_channel_size_sat.toLocaleString()} sats
-                </div>
-              </div>
-
-              {/* Existing channels */}
-              {hasChannel && peer.channels.map((ch) => {
-                const localPct = ch.capacity_sat > 0 ? (ch.local_balance_sat / ch.capacity_sat) * 100 : 0;
-                const chUndersized = classifyCapacity(ch.capacity_sat, false) === "undersized";
-                const chUpgradeSize = peer.recommended_channel_size_sat > ch.capacity_sat
-                  ? peer.recommended_channel_size_sat
-                  : recommendedUpgradeSize(ch.capacity_sat, false);
-                return (
-                  <div key={ch.channel_id} style={{ marginBottom: 8 }}>
-                    {chUndersized && (
-                      <div style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        fontSize: "0.6875rem", color: "var(--yellow)", fontFamily: "var(--mono)",
-                        marginBottom: 4, padding: "4px 8px", background: "var(--yellow-glow)", borderRadius: 4,
-                      }}>
-                        <span>⚠ Current channel undersized ({ch.capacity_sat.toLocaleString()} sats) — open a {chUpgradeSize.toLocaleString()} sat channel</span>
-                      </div>
-                    )}
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-3)", marginBottom: 4 }}>
-                      <span>Local {localPct.toFixed(0)}%</span>
-                      <span>{ch.capacity_sat.toLocaleString()} sats</span>
-                    </div>
-                    <div style={{ height: 6, borderRadius: 3, background: "var(--bg-2)", overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${localPct}%`, background: "var(--green)", borderRadius: 3 }} />
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Show open form for undersized existing channels too */}
-              {hasChannel && peer.channels.some((ch) => classifyCapacity(ch.capacity_sat, false) === "undersized") && !justOpened && (() => {
-                const chUpgradeSize = peer.recommended_channel_size_sat > (peer.channels[0]?.capacity_sat ?? 0)
-                  ? peer.recommended_channel_size_sat
-                  : recommendedUpgradeSize(peer.channels[0]?.capacity_sat ?? 0, false);
-                return (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
-                    <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Open upgraded channel (sats)</div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      {PRESETS.map((preset) => (
-                        <button
-                          key={preset}
-                          className={`btn ${(selectedSize[peer.id] ?? chUpgradeSize) === preset ? "btn-primary" : "btn-outline"}`}
-                          style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto" }}
-                          onClick={() => setSelectedSize((s) => ({ ...s, [peer.id]: preset }))}
-                        >
-                          {preset >= 1_000_000
-                            ? `${(preset / 1_000_000).toFixed(preset % 1_000_000 === 0 ? 0 : 1)}M`
-                            : `${(preset / 1_000).toFixed(0)}k`}
-                          {preset === chUpgradeSize ? " ★" : ""}
-                        </button>
-                      ))}
-                    </div>
-                    <input
-                      type="number"
-                      className="form-input"
-                      style={{ fontSize: "0.8125rem" }}
-                      min={100000}
-                      step={100000}
-                      value={selectedSize[peer.id] ?? chUpgradeSize}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10);
-                        if (!isNaN(val)) setSelectedSize((s) => ({ ...s, [peer.id]: val }));
-                      }}
-                    />
-                    <button
-                      className="btn btn-primary"
-                      style={{ width: "100%" }}
-                      onClick={() => handleOpen(peer)}
-                      disabled={isOpening || (selectedSize[peer.id] ?? 0) < 100_000}
-                    >
-                      {isOpening ? "Opening channel…" : `Open ${(selectedSize[peer.id] ?? chUpgradeSize).toLocaleString()} sat channel`}
-                    </button>
-                  </div>
-                );
-              })()}
-
-              {justOpened ? (
-                <div className="alert healthy" style={{ marginBottom: 0, padding: "6px 10px" }}>
-                  <span className="alert-icon">✓</span>
-                  <div className="alert-body">
-                    <div className="alert-msg" style={{ fontSize: "0.8125rem" }}>
-                      Channel opening submitted{result.txid !== "submitted" ? ` — ${result.txid.slice(0, 16)}...` : ""}
-                    </div>
-                  </div>
-                </div>
-              ) : !hasChannel ? (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>Channel size (sats)</div>
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {PRESETS.map((preset) => (
-                      <button
-                        key={preset}
-                        className={`btn ${(selectedSize[peer.id] ?? peer.recommended_channel_size_sat) === preset ? "btn-primary" : "btn-outline"}`}
-                        style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto" }}
-                        onClick={() => setSelectedSize((s) => ({ ...s, [peer.id]: preset }))}
-                      >
-                        {preset === peer.recommended_channel_size_sat
-                          ? `${(preset / 1_000_000).toFixed(preset % 1_000_000 === 0 ? 0 : 1)}M ★`
-                          : preset >= 1_000_000
-                            ? `${(preset / 1_000_000).toFixed(preset % 1_000_000 === 0 ? 0 : 1)}M`
-                            : `${(preset / 1_000).toFixed(0)}k`}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="number"
-                    className="form-input"
-                    style={{ fontSize: "0.8125rem" }}
-                    min={100000}
-                    step={100000}
-                    value={selectedSize[peer.id] ?? peer.recommended_channel_size_sat}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value, 10);
-                      if (!isNaN(val)) setSelectedSize((s) => ({ ...s, [peer.id]: val }));
-                    }}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    style={{ width: "100%" }}
-                    onClick={() => handleOpen(peer)}
-                    disabled={isOpening || (selectedSize[peer.id] ?? 0) < 100_000}
-                  >
-                    {isOpening ? "Opening channel…" : `Open ${(selectedSize[peer.id] ?? peer.recommended_channel_size_sat).toLocaleString()} sat channel`}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          );
-        })}
-
-        {peers.some((p) => p.advanced) && (
-          <button
-            className="btn btn-ghost"
-            style={{ fontSize: "0.75rem" }}
-            onClick={() => setShowAdvanced(!showAdvanced)}
-          >
-            {showAdvanced ? "Hide advanced peers" : "Show advanced peers"}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Capacity classification ──────────────────────────────────────────────
 // Treasury channels carry all member traffic (forced routing), need more capacity.
 // External peers are supplementary routing — lower thresholds.
@@ -1506,6 +1312,7 @@ function ChannelsPage() {
     }>
   >([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [health, setHealth] = useState<ChannelLiquidityHealth[]>([]);
   const [expandedHint, setExpandedHint] = useState<string | null>(null);
@@ -1529,8 +1336,14 @@ function ChannelsPage() {
       setContacts(ct);
       setHealth(lh);
       setClosingPubkeys(new Set(pend.filter((p: PendingChannel) => p.status === "closing").map((p: PendingChannel) => p.peer_pubkey)));
+      setLoadError(null);
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch((e: any) => {
+      // U24 H3: a failed channels fetch must not render as "No channels
+      // found." — capture it for the error branch below.
+      setLoadError(e?.detail ?? e?.message ?? "fetch failed");
+      setLoading(false);
+    });
   }, []);
 
   function refreshChannels() {
@@ -1542,7 +1355,8 @@ function ChannelsPage() {
     ]).then(([ch, ct, lh, pend]) => {
       setChannels(ch); setContacts(ct); setHealth(lh);
       setClosingPubkeys(new Set(pend.filter((p: PendingChannel) => p.status === "closing").map((p: PendingChannel) => p.peer_pubkey)));
-    });
+      setLoadError(null);
+    }).catch((e: any) => setLoadError(e?.detail ?? e?.message ?? "fetch failed"));
   }
 
   async function handleCloseChannel() {
@@ -1620,7 +1434,7 @@ function ChannelsPage() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Channels</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          {nodeRole === "treasury" ? "Channel lifecycle management" : "Active LND channel list"}
+          {nodeRole === "treasury" ? "Channel lifecycle management" : "Your channel to the Bitcorn hub"}
         </p>
       </div>
 
@@ -2073,6 +1887,18 @@ function ChannelsPage() {
               </div>
             ))}
           </div>
+        ) : loadError !== null && channels.length === 0 ? (
+          /* U24 H3: fetch failed with nothing loaded — error, not fake-empty.
+             This branch is shared with the treasury shell's empty-fallback,
+             which benefits incidentally; the treasury lane tables are Batch B. */
+          <div className="panel-body">
+            <ErrorState
+              bare
+              message="Couldn't load your channels. Your channels and funds are unaffected — this is a display problem."
+              detail={loadError}
+              onRetry={refreshChannels}
+            />
+          </div>
         ) : channels.length === 0 ? (
           <div className="empty-state">No channels found.</div>
         ) : (
@@ -2092,7 +1918,7 @@ function ChannelsPage() {
                       {resolveContactName(c.peer_pubkey, contacts)}
                     </span>
                     {capStatus === "undersized" && (
-                      <span className="badge badge-red">undersized</span>
+                      <span className="badge badge-red">Too small</span>
                     )}
                     {c.active ? (
                       <span className="badge badge-green">active</span>
@@ -2112,12 +1938,12 @@ function ChannelsPage() {
                   <div className="channel-balance-labels">
                     <span className="channel-label-local">
                       <span className="channel-dot" style={{ background: "var(--green)" }} />
-                      Local: {c.local_balance_sat.toLocaleString()}
+                      Your side: {c.local_balance_sat.toLocaleString()}
                       <span className="channel-pct">({localPct.toFixed(0)}%)</span>
                     </span>
                     <span className="channel-label-remote">
                       <span className="channel-dot" style={{ background: "var(--red)" }} />
-                      Remote: {c.remote_balance_sat.toLocaleString()}
+                      Their side: {c.remote_balance_sat.toLocaleString()}
                       <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
                     </span>
                   </div>
@@ -2164,25 +1990,20 @@ function ChannelsPage() {
                             <span style={{ color: "var(--text-3)" }}>Recommended: </span>
                             <span style={{ fontFamily: "var(--mono)", color: "var(--amber)" }}>{upgradeSize.toLocaleString()} sats</span>
                           </div>
-                          <div style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
-                            {isTreasury
-                              ? "Treasury channels carry all routed payments. Open a larger channel to increase routing capacity."
-                              : "Open a larger channel alongside this one to improve routing diversity."}
-                          </div>
-                          <button
-                            className="btn btn-outline btn-sm"
-                            style={{ alignSelf: "flex-start", marginTop: 4 }}
-                            onClick={() => {
-                              if (isTreasury) {
-                                navigate(`/dashboard?upgrade_capacity=${upgradeSize}`);
-                              } else {
-                                const el = document.getElementById("recommended-peers-panel");
-                                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
-                              }
-                            }}
-                          >
-                            {isTreasury ? "Upgrade Treasury Channel →" : "View Recommended Peers →"}
-                          </button>
+                          {isTreasury && (
+                            <>
+                              <div style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
+                                Treasury channels carry all routed payments. Open a larger channel to increase routing capacity.
+                              </div>
+                              <button
+                                className="btn btn-outline btn-sm"
+                                style={{ alignSelf: "flex-start", marginTop: 4 }}
+                                onClick={() => navigate(`/dashboard?upgrade_capacity=${upgradeSize}`)}
+                              >
+                                Upgrade Treasury Channel →
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -2569,8 +2390,43 @@ function LiquidityPage() {
 
 // ─── Root router ──────────────────────────────────────────────────────────
 
+// U24 shell fix — full-screen state for "the browser can't reach the API at
+// all." Mirrors the INITIALIZING… splash's minimal styling; reassures about
+// funds and self-heals via useAppStatus's 15s auto-retry.
+function ApiUnreachableScreen({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 16,
+        background: "var(--bg)",
+        padding: 24,
+      }}
+    >
+      <div style={{ fontFamily: "var(--mono)", color: "var(--red)", fontSize: "0.875rem", letterSpacing: "0.1em" }}>
+        CAN'T REACH YOUR BITCORN NODE
+      </div>
+      <div style={{ color: "var(--text-3)", fontSize: "0.8125rem", maxWidth: 420, textAlign: "center", fontFamily: "var(--sans)", lineHeight: 1.5 }}>
+        The app can't reach the Bitcorn API. Your node and funds are unaffected —
+        this is a connection problem. Retrying automatically every 15 seconds.
+      </div>
+      <button className="btn btn-outline btn-sm" onClick={onRetry}>
+        Try again
+      </button>
+    </div>
+  );
+}
+
 function Root() {
-  const status = useAppStatus();
+  const { status, retry } = useAppStatus();
+
+  if (status === "unreachable") {
+    return <ApiUnreachableScreen onRetry={retry} />;
+  }
 
   if (status === "loading") {
     return (
