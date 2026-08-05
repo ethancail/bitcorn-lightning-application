@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "viem/accounts";
 import { generatePrivateKey } from "viem/accounts";
 import { base, baseSepolia } from "viem/chains";
-import { buildSiweMessage, newNonce, resolveSiweChain, siweRpcUrl, verifySiwe } from "./siwe";
+import {
+    buildSiweMessage,
+    isEoaShapedSignature,
+    newNonce,
+    resolveSiweChain,
+    siweRpcUrl,
+    verifySiwe,
+} from "./siwe";
 
 // Pre-generated test keypair (do not use for any real wallet). The
 // corresponding address is the EOA we'll sign and verify messages
@@ -35,11 +42,18 @@ const BASE_RPC_URL = "";
 // override `rpcHandler`.
 let rpcHandler: (body: string) => unknown;
 
+// Counts every fetch the stub sees. The EOA path's load-bearing assertion is a
+// COUNT, not an outcome — see the zero-network test below for why an outcome
+// assertion cannot detect this regression.
+let fetchCalls: number;
+
 beforeEach(() => {
+    fetchCalls = 0;
     rpcHandler = () => {
         throw new Error("no network in tests (default stub)");
     };
     vi.stubGlobal("fetch", async (_url: string, init?: { body?: string }) => {
+        fetchCalls += 1;
         const result = rpcHandler(init?.body ?? "");
         return {
             ok: true,
@@ -102,7 +116,109 @@ describe("buildSiweMessage", () => {
     });
 });
 
+describe("isEoaShapedSignature — the router's discriminator", () => {
+    it("accepts exactly 65 bytes and nothing else", async () => {
+        const sig = await account.signMessage({ message: "any" });
+        expect(isEoaShapedSignature(sig)).toBe(true);
+        // 64 bytes (EIP-2098 compact) and 66 bytes are both NOT the r‖s‖v shape
+        // local recovery can evaluate — measured: it throws "invalid signature
+        // length" on each.
+        expect(isEoaShapedSignature(("0x" + "11".repeat(64)) as `0x${string}`)).toBe(false);
+        expect(isEoaShapedSignature(("0x" + "11".repeat(66)) as `0x${string}`)).toBe(false);
+        expect(isEoaShapedSignature(("0x" + "ab".repeat(200)) as `0x${string}`)).toBe(false);
+    });
+
+    it("is a shape test only — a malformed 65-byte signature still routes EOA", () => {
+        // Deliberate: shape decides the ROUTE, validity decides the OUTCOME. This
+        // is why the router is an explicit length check rather than a try/catch
+        // around recovery — see the test that pins its reason code below.
+        expect(isEoaShapedSignature(("0x" + "00".repeat(65)) as `0x${string}`)).toBe(true);
+    });
+});
+
 describe("verifySiwe — happy path (EOA wallet)", () => {
+    // ⚠ THE LOAD-BEARING TEST FOR THIS PATH, and it asserts a COUNT on purpose.
+    //
+    // The obvious test — "EOA verification succeeds with fetch stubbed to throw"
+    // — is VACUOUS here. It passes both before and after this router existed,
+    // because viem's verifyHash catches the transport failure and retries with
+    // local ECDSA recovery, which succeeds. So it can never go red-to-green and
+    // proves nothing about whether the network was used.
+    //
+    // What the router actually changed is the MECHANISM, so only a mechanism
+    // assertion can see it: zero fetch invocations. Before the router this was 1
+    // with a working endpoint and 4 with a failing one (viem retries three
+    // times), and the retry backoff cost this very test ~1.1s of wall clock.
+    it("issues ZERO network requests — EOA verification is purely local", async () => {
+        const { message, nonce } = buildAndSign({});
+        const signature = await account.signMessage({ message });
+
+        const outcome = await verifySiwe({
+            message,
+            signature,
+            expectedDomain: DOMAIN,
+            expectedChainId: CHAIN_ID,
+            expectedMemberPubkey: MEMBER_PUBKEY,
+            expectedWalletAddress: TEST_WALLET,
+            expectedNonce: nonce,
+            baseRpcUrl: BASE_RPC_URL,
+        });
+
+        expect(outcome.ok).toBe(true);
+        expect(fetchCalls).toBe(0);
+    });
+
+    it("rejects a wrong-address EOA signature without touching the network", async () => {
+        // The failure path is local too — a rejection needs no round-trip either.
+        const { message, nonce } = buildAndSign({});
+        const otherAccount = privateKeyToAccount(generatePrivateKey());
+        const badSignature = await otherAccount.signMessage({ message });
+
+        const outcome = await verifySiwe({
+            message,
+            signature: badSignature,
+            expectedDomain: DOMAIN,
+            expectedChainId: CHAIN_ID,
+            expectedMemberPubkey: MEMBER_PUBKEY,
+            expectedWalletAddress: TEST_WALLET,
+            expectedNonce: nonce,
+            baseRpcUrl: BASE_RPC_URL,
+        });
+
+        expect(outcome.ok).toBe(false);
+        if (!outcome.ok) expect(outcome.reason).toBe("signature_invalid");
+        expect(fetchCalls).toBe(0);
+    });
+
+    it("a malformed 65-byte signature is signature_invalid, NOT unavailable", async () => {
+        // 65 bytes of zeros: the right SHAPE, so it routes to local recovery, but
+        // recovery THROWS (measured: "expected valid r") rather than returning
+        // false. That throw must map to signature_invalid — the signature is the
+        // problem and no network was involved, so a 503 "try again" would be both
+        // wrong and unactionable. This is the case a throw-based router would
+        // have misfiled as a contract signature.
+        const { message, nonce } = buildAndSign({});
+        const malformed = ("0x" + "00".repeat(65)) as `0x${string}`;
+
+        const outcome = await verifySiwe({
+            message,
+            signature: malformed,
+            expectedDomain: DOMAIN,
+            expectedChainId: CHAIN_ID,
+            expectedMemberPubkey: MEMBER_PUBKEY,
+            expectedWalletAddress: TEST_WALLET,
+            expectedNonce: nonce,
+            baseRpcUrl: BASE_RPC_URL,
+        });
+
+        expect(outcome.ok).toBe(false);
+        if (!outcome.ok) {
+            expect(outcome.reason).toBe("signature_invalid");
+            expect(outcome.reason).not.toBe("smart_wallet_verification_unavailable");
+        }
+        expect(fetchCalls).toBe(0);
+    });
+
     it("accepts a correctly-signed message with matching expectations", async () => {
         const issuedAt = Date.now();
         const { message, nonce } = buildAndSign({ issuedAtMs: issuedAt });
@@ -360,6 +476,10 @@ describe("verifySiwe — revert paths", () => {
             baseRpcUrl: BASE_RPC_URL, // "" — the stock member-node state
         });
         expect(outcome.ok).toBe(true);
+        // The mirror of the EOA path's zero-fetch assertion: a contract signature
+        // MUST reach the chain. Together the two pin the router in both
+        // directions — neither path can silently adopt the other's behaviour.
+        expect(fetchCalls).toBeGreaterThan(0);
     });
 
     it("no BASE RPC + non-EOA-shaped signature: reports config, not a bad signature", async () => {
@@ -385,5 +505,8 @@ describe("verifySiwe — revert paths", () => {
             // was rejected when it was never evaluated.
             expect(outcome.reason).not.toBe("signature_invalid");
         }
+        // It genuinely tried the chain — this reason is only honest if a read was
+        // actually attempted and failed.
+        expect(fetchCalls).toBeGreaterThan(0);
     });
 });

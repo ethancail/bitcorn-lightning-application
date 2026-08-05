@@ -25,7 +25,9 @@ import {
     createPublicClient,
     getAddress,
     http,
-    verifyMessage as verifyMessageRpc,
+    isHex,
+    size,
+    verifyMessage as verifyMessageLocal,
     type Hex,
     type PublicClient,
 } from "viem";
@@ -106,6 +108,11 @@ export type VerifyOutcome =
                * complete — the endpoint was unreachable, rate-limited, or
                * erroring. Transient, not a setup problem, and the member-facing
                * copy in handlers.ts says so.
+               *
+               * ⚠ REACHABLE FROM THE CONTRACT BRANCH ONLY. Since the shape
+               * router landed, an EOA-shaped signature is verified locally and
+               * touches no network, so it can never produce this reason. If you
+               * see it, the signature was not 65 bytes.
                */
               | "smart_wallet_verification_unavailable"
               /**
@@ -137,9 +144,12 @@ export interface VerifyInput {
     expectedNonce: string;
     /**
      * BASE RPC URL for verifying smart-wallet (ERC-1271 / ERC-6492) signatures
-     * such as Coinbase Smart Wallet. Empty string disables smart-wallet
-     * verification — caller still gets EOA verification via plain
-     * verifyMessage. Production callers should always pass a URL.
+     * such as Coinbase Smart Wallet.
+     *
+     * Empty string is the stock member-node state and is NOT a failure: it
+     * resolves to the chain's public RPC (see siweRpcUrl). It is also irrelevant
+     * to an EOA signature, which is verified locally and reaches no endpoint at
+     * all — so this field only ever matters on the contract branch.
      */
     baseRpcUrl: string;
 }
@@ -147,14 +157,17 @@ export interface VerifyInput {
 /**
  * Verify a signed SIWE message against an issued challenge.
  *
- * Five checks, in order:
+ * Seven checks, in this order — the signature is LAST on purpose, so the cheap
+ * structural rejections never pay for cryptography or a network read:
  *   1. Parse the message (well-formed EIP-4361)
- *   2. Signature recovers to message.address
+ *   2. message.domain and chainId match what the API issued
  *   3. message.address matches the stored wallet_address
  *   4. message.nonce matches the stored nonce
- *   5. message.domain and chainId match what the API issued
- *   6. message.expirationTime > now
- *   7. The Lightning pubkey resource in the message matches the stored member_pubkey
+ *   5. message.expirationTime > now
+ *   6. The Lightning pubkey resource in the message matches the stored member_pubkey
+ *   7. Signature verifies for message.address — locally for an EOA-shaped
+ *      signature, on-chain (ERC-1271) otherwise. Exactly one of those two paths
+ *      runs per signature and its rejection is final; see the shape router.
  *
  * Any failure short-circuits to a structured `ok: false` with a `reason`
  * code the caller maps to an HTTP status / error body.
@@ -225,12 +238,16 @@ export async function verifySiwe(input: VerifyInput): Promise<VerifyOutcome> {
     }
 
     // 7. Signature verification (last because cryptographic — most expensive)
-    // viem's verifySiweMessage requires a public client because Coinbase
-    // Smart Wallet (the recommended wallet per spec amendment §1) is an
-    // ERC-1271 smart contract account; verifying its signatures means
-    // calling isValidSignature on-chain. For EOA wallets (MetaMask, etc.)
-    // the client is still used but only for the ERC-6492 fallback path.
-    // Chain first, as a named outcome. An unsupported chainId is an operator
+    //
+    // ONE VERIFICATION PATH PER SIGNATURE, SELECTED BY SHAPE. A REJECTION FROM
+    // THAT PATH IS FINAL. There is no fall-back-and-try-again anywhere below,
+    // and that is the security property this section exists to hold.
+    //
+    // Chain first, as a named outcome — BEFORE the shape router, deliberately.
+    // An unsupported chainId blocks registration for EVERY wallet type, because
+    // it means BASE_CHAIN_ID names a chain this node cannot verify against at
+    // all; letting an EOA through on a misconfigured node would bind wallets
+    // against the wrong network. An unsupported chainId is an operator
     // misconfiguration (BASE_CHAIN_ID set to something that is not Base), and it
     // needs a different fix from "the network read failed" — so it must not share
     // a reason code with it. Previously it threw and was reported as the
@@ -246,99 +263,116 @@ export async function verifySiwe(input: VerifyInput): Promise<VerifyOutcome> {
         };
     }
 
-    // Hoisted so the negative-path liveness probe below can reuse the same client
-    // (and therefore the same endpoint) that produced the ambiguous result.
+    // ── THE SHAPE ROUTER ────────────────────────────────────────────────────
     //
-    // ⚠ CONSTRUCTION MUST NOT THROW — it is outside the try, so anything thrown
-    // here escapes verifySiwe instead of becoming an outcome. It cannot today: the
-    // chain is already resolved above, siweRpcUrl cannot throw, and viem's
-    // createPublicClient accepts even a malformed url (VERIFIED: "not-a-url",
-    // "ftp://x" and "   " all construct; the failure surfaces at call time, which
-    // IS inside the try). If you add a throwing step to makePublicClient, move the
-    // call back inside the try and give the liveness probe its own client.
-    const client = makePublicClient(chain, input.baseRpcUrl);
-    let valid: boolean;
-    try {
-        valid = await client.verifyMessage({
-            address: parsed.address as Hex,
-            message: input.message,
-            signature: input.signature,
-        });
-        if (!valid) {
-            // ⚠ A `false` FROM viem IS AMBIGUOUS — and confirming liveness here is
-            // what makes the public-RPC fallback safe to ship.
-            //
-            // MEASURED: verifyMessage SWALLOWS transport failures and returns false
-            // rather than throwing (forced fetch rejection → `RETURNED: false`).
-            // Now that a client ALWAYS builds — which is exactly what the fallback
-            // guarantees — a bare false conflates two different things:
-            //     the signature genuinely does not match
-            //     the chain read failed, so nothing was checked
-            //
-            // Left unhandled, the fallback would have REINTRODUCED the mislabel
-            // PR #246 removed, by a different route: an RPC outage telling the
-            // member their signature was rejected when it was never evaluated. The
-            // old code was right only by accident — an unset URL threw before any
-            // read was attempted.
-            //
-            // getChainId throws on transport failure where verifyMessage does not
-            // (both measured), so it disambiguates. Throwing here deliberately
-            // routes into the catch below, which attempts LOCAL recovery — so a
-            // 65-byte EOA signature still gets a definitive local verdict instead
-            // of being written off as unverifiable. Costs one round-trip, and only
-            // on the negative path; a successful verification never reaches it.
-            await client.getChainId();
-        }
-    } catch (err) {
-        // Fall back to EOA-only recovery if the chain client isn't usable.
-        // Preserves MetaMask flows during a brief BASE-RPC outage.
+    // An EOA signature is verified LOCALLY, with no network access of any kind.
+    // The chain is reached only for a signature that genuinely needs ERC-1271.
+    // MetaMask/EOA is the only wallet path that works on a stock member node
+    // (Coinbase is blocked by secure context — see app/web/src/stablecoin/
+    // wagmi.ts), so every farmer registering a wallet goes through the EOA
+    // branch, and it must not depend on a public RPC with no SLA.
+    //
+    // ⚠ WHY ROUTING IS ALSO A SECURITY IMPROVEMENT, NOT JUST A LATENCY ONE.
+    // viem's verifyHash runs in mode 'auto', which calls the ERC-6492 validator
+    // on-chain and then, in an OUTER CATCH, retries with local ECDSA recovery
+    // and returns true if that matches. That catch is reached on an explicit
+    // on-chain REJECTION as well as on transport failure — verifyErc6492 turns
+    // `hexToBool(data) === false` into a thrown VerificationError. So before
+    // this router, a signature the chain had explicitly rejected could still be
+    // accepted by local recovery: two chances, and the weaker one decided.
+    // The router removes that by construction. Only non-65-byte signatures now
+    // reach viem, and local recovery THROWS on those (measured: "invalid
+    // signature length"), so viem's outer catch can no longer produce an accept.
+    //
+    // ⚠ REJECTED ALTERNATIVE — DO NOT RE-PROPOSE. On the EOA branch, when local
+    // recovery returns false, fall through to the chain, on the theory that a
+    // false might mean "65-byte contract signature" rather than "bad signature."
+    // Rejected: it reintroduces sequential verification on the exact path this
+    // arc cleans up, adds a round-trip to the EOA failure path, and buys back
+    // only the currently-unreachable 65-byte-contract-wallet case documented on
+    // isEoaShapedSignature. One path with a final rejection is worth more than
+    // that coverage.
+    if (isEoaShapedSignature(input.signature)) {
+        // EOA branch — NO client is built and no fetch is issued. That is the
+        // property under test: siwe.test.ts asserts zero fetch invocations here.
+        let valid: boolean;
         try {
-            valid = await verifyMessageRpc({
+            valid = await verifyMessageLocal({
                 address: parsed.address as Hex,
                 message: input.message,
                 signature: input.signature,
             });
         } catch {
-            // ⚠ NOT `signature_invalid`. Reaching here means the on-chain read
-            // FAILED AND local recovery could not evaluate the signature at all —
-            // which is what an ERC-1271 smart-wallet signature does, because local
-            // recovery throws on anything that is not a 65-byte secp256k1
-            // signature (verified: "invalid signature length"). The signature was
-            // never examined, so blaming it would be a guess.
-            //
-            // ⚠ THE CAUSE HERE IS NARROWER THAN IT USED TO BE. This was the
-            // "BASE_RPC_URL is unset" path — a per-node configuration gap that hit
-            // every stock member node. Verification now falls back to the chain's
-            // public RPC (siweRpcUrl), so unset is no longer a failure, and an
-            // unsupported chain id returns `siwe_chain_unsupported` before we get
-            // here. What is left is a genuine chain-read failure: endpoint
-            // unreachable, rate-limited, or erroring. Transient, so handlers.ts
-            // now says "try again" rather than "this node is not set up."
-            //
-            // It originally reported `signature_invalid`, which told the member
-            // their signature was rejected when it was never examined — on the
-            // DEFAULT wallet path. handlers.ts maps this reason to 503 and keeps
-            // configuration detail out of the response body.
-            //
-            // A genuinely bad EOA signature does NOT land here: local recovery
-            // returns false for a well-formed 65-byte signature that doesn't
-            // match, so it falls through to `signature_invalid` below. Both
-            // directions are pinned by tests in siwe.test.ts.
-            //
-            // Residual, accepted: a smart-contract wallet that accepts a
-            // 65-byte signature would be evaluated by local recovery and
-            // reported `signature_invalid`. Rare, and it fails closed.
+            // A 65-byte signature recovery cannot evaluate — malformed r, an
+            // invalid v byte, or a point not on the curve (all measured to throw
+            // rather than return false). That IS a bad signature, so it is
+            // `signature_invalid` and NOT the unavailable reason: nothing about
+            // the network was involved in reaching this line. Routing it to 503
+            // would tell the member to try again at something that can only fail.
+            return { ok: false, reason: "signature_invalid" };
+        }
+        if (!valid) {
+            return { ok: false, reason: "signature_invalid" };
+        }
+    } else {
+        // Contract branch — ERC-1271 / ERC-6492, which is inherently a chain read.
+        //
+        // ⚠ CONSTRUCTION MUST NOT THROW — it is outside the try, so anything
+        // thrown here escapes verifySiwe instead of becoming an outcome. It
+        // cannot today: the chain is already resolved above, siweRpcUrl cannot
+        // throw, and viem's createPublicClient accepts even a malformed url
+        // (VERIFIED: "not-a-url", "ftp://x" and "   " all construct; the failure
+        // surfaces at call time, which IS inside the try). If you add a throwing
+        // step to makePublicClient, move the call inside the try and give the
+        // liveness probe its own client.
+        const client = makePublicClient(chain, input.baseRpcUrl);
+        let valid: boolean;
+        try {
+            valid = await client.verifyMessage({
+                address: parsed.address as Hex,
+                message: input.message,
+                signature: input.signature,
+            });
+        } catch (err) {
+            // Nothing was evaluated — not an authentication failure.
             return {
                 ok: false,
                 reason: "smart_wallet_verification_unavailable",
                 detail:
-                    "could not verify signature; chain client and EOA fallback both failed: " +
+                    "chain read for ERC-1271 verification failed: " +
                     (err instanceof Error ? err.message : String(err)),
             };
         }
-    }
-    if (!valid) {
-        return { ok: false, reason: "signature_invalid" };
+        if (!valid) {
+            // ⚠ A `false` FROM viem IS AMBIGUOUS, and only on this branch.
+            //
+            // MEASURED: verifyMessage SWALLOWS transport failures and returns
+            // false rather than throwing (forced fetch rejection → false). The
+            // mechanism: getCallError wraps ANY error — transport included — as
+            // CallExecutionError, verifyErc6492 converts that to
+            // VerificationError, and verifyHash maps VerificationError to false.
+            // So a bare false conflates two different things:
+            //     the contract said this signature is not valid
+            //     the chain read failed, so nothing was checked
+            //
+            // getChainId THROWS on transport failure where verifyMessage does not
+            // (both measured), so it disambiguates. The mapping is now direct
+            // rather than routed through a catch: probe throws ⇒ unavailable,
+            // probe answers ⇒ the contract genuinely rejected the signature.
+            // Costs one round-trip, and only on the negative path.
+            try {
+                await client.getChainId();
+            } catch (err) {
+                return {
+                    ok: false,
+                    reason: "smart_wallet_verification_unavailable",
+                    detail:
+                        "chain read for ERC-1271 verification failed: " +
+                        (err instanceof Error ? err.message : String(err)),
+                };
+            }
+            return { ok: false, reason: "signature_invalid" };
+        }
     }
 
     return {
@@ -352,6 +386,44 @@ export async function verifySiwe(input: VerifyInput): Promise<VerifyOutcome> {
 /** Generate a fresh SIWE nonce. Delegates to viem's helper (alphanumeric, ≥ 8 chars). */
 export function newNonce(): string {
     return generateSiweNonce();
+}
+
+/**
+ * Is this signature shaped like a raw secp256k1 EOA signature (r‖s‖v, 65 bytes)?
+ *
+ * The discriminator for the one-path-per-signature router in `verifySiwe`. An
+ * explicit length test, NOT a try/catch around local recovery — even though
+ * recovery does throw on non-65-byte input and would therefore "work" as a
+ * router. The reason is that a throw cannot distinguish two cases that need
+ * different outcomes:
+ *
+ *   not 65 bytes          → a contract signature; needs the chain; a 503 if the
+ *                           chain cannot be reached
+ *   65 bytes, malformed   → a BAD signature (invalid r, bad v byte, point not on
+ *                           the curve — all measured to throw); a 401, and no
+ *                           network involvement is warranted
+ *
+ * Routing on the throw would file the second case as the first. Being explicit
+ * also makes the predicate greppable and unit-testable on its own.
+ *
+ * ⚠ RESIDUAL, ACCEPTED — and the position changed with this arc, so read this
+ * rather than assuming the old one. A contract wallet whose signature happens to
+ * be exactly 65 bytes — the concrete instance is a 1-of-1 Gnosis Safe, whose
+ * `signatures` blob for a single ECDSA owner is r‖s‖v — routes to LOCAL recovery
+ * by shape. Recovery yields the owner EOA, which is not the Safe's address, so it
+ * is rejected as `signature_invalid`. It is now rejected ALWAYS, regardless of
+ * RPC health, where previously a healthy RPC would have verified it on-chain and
+ * accepted it. Fails closed: the failure direction is refusal, never a wrong
+ * accept.
+ *
+ * Accepted because no such signature can currently arrive: the picker offers
+ * Coinbase (blocked by secure context on every stock node) and MetaMask, and
+ * WalletConnect — the usual route for a Safe — is unconfigured. A 2-of-3 Safe,
+ * including the treasury's own, produces ~130 bytes and routes to the chain
+ * branch correctly. Revisit if WalletConnect is ever configured.
+ */
+export function isEoaShapedSignature(signature: Hex): boolean {
+    return isHex(signature) && size(signature) === 65;
 }
 
 // -----------------------------------------------------------------------
