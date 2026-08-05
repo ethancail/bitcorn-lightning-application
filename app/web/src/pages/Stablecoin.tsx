@@ -41,24 +41,11 @@ import RailErrorBanner from "../stablecoin/components/RailErrorBanner";
 import StaleBanner from "../stablecoin/components/StaleBanner";
 import SettlementForm from "../stablecoin/components/SettlementForm";
 import SettlementHistoryList from "../stablecoin/components/SettlementHistoryList";
+import WalletRegistrationPanel from "../stablecoin/components/WalletRegistrationPanel";
 import { basescanAddressUrl } from "../stablecoin/contract";
+import { hasRegisteredWallet, isAwaitingFirstSync } from "../stablecoin/walletStatusView";
 
 const POLL_INTERVAL_MS = 15_000;
-
-// How long after registration we treat a missing /balance response as
-// "the sync loop hasn't gotten to it yet" rather than as a generic empty
-// state. The sync loop's tick interval is on the order of 30s, plus an
-// RPC round-trip — being conservative here avoids showing "Syncing…"
-// indefinitely for a wallet that's genuinely uncached for some other
-// reason. (Item 31c)
-const FIRST_SYNC_WINDOW_MS = 5 * 60 * 1000;
-
-function isAwaitingFirstSync(walletStatus: WalletStatusResponse | null): boolean {
-  if (!walletStatus?.wallet_address || !walletStatus.is_active) return false;
-  const registeredAt = walletStatus.registered_at;
-  if (!registeredAt) return false;
-  return Date.now() - registeredAt < FIRST_SYNC_WINDOW_MS;
-}
 
 // MemberShell wraps with RailScope (WagmiProvider + QueryClientProvider)
 // — see App.tsx note. This page assumes those providers are in scope.
@@ -146,7 +133,7 @@ export default function Stablecoin() {
   }, [fetchAll]);
 
   const memberPubkey = node?.pubkey ?? null;
-  const hasWallet = walletStatus?.wallet_address && walletStatus.is_active;
+  const hasWallet = hasRegisteredWallet(walletStatus);
   const chainId = parseInt(import.meta.env.VITE_BASE_CHAIN_ID ?? "84532", 10);
 
   // Subscription gate (railAccess.ts). Renders a "subscription required" notice
@@ -199,42 +186,58 @@ export default function Stablecoin() {
         <StaleBanner cursor={cursor} />
       )}
 
-      {/* ─── Panel 1: Wallet Status ───────────────────────────────── */}
-      <section className="panel ops">
-        <header className="panel-header">
-          <div className="panel-title">
-            <span className="icon">◇</span>
-            <h2>Wallet</h2>
-          </div>
-        </header>
-        <div className="panel-body">
-          {!initialLoadDone ? (
-            <p className="stablecoin-loading">Loading…</p>
-          ) : !hasWallet ? (
-            <div className="stablecoin-no-wallet">
-              <p>
-                You haven't registered a BASE wallet yet. Stablecoin settlements need a wallet
-                to send from and to receive into.
-              </p>
-              <Link to="/settings" className="btn btn-primary">
-                Connect a wallet in Settings
-              </Link>
+      {/* ─── Wallet registration ──────────────────────────────────────
+          Registration lives HERE, on the page that needs it, not on
+          Settings. It is the one action every member must take before the
+          rail does anything, and it used to sit a navigation away behind a
+          "Connect a wallet in Settings" link — a dead end for anyone
+          following the v1.18.0 release notes, which tell members to open
+          Stablecoin and register a wallet.
+
+          The panel owns every wallet state itself (loading / unregistered /
+          registered-with-Disconnect-and-Replace / fetch error), so it is
+          mounted unconditionally rather than only when unregistered — that
+          is also what keeps the registered-state management on this page
+          instead of bouncing back to Settings.
+
+          Rendered as a top-level sibling, NOT nested inside a panel: it
+          renders its own `section.panel.ops`, and nesting would double the
+          border and padding.
+
+          The panel is NOT gated on this page's `initialLoadDone`: it fetches
+          /wallet itself and renders its own loading state, so gating it would
+          stack two spinners for one wait. The intro paragraph IS gated on it,
+          and that asymmetry is the point — `hasWallet` is false while the
+          page's first fetch is still in flight, so an ungated intro would
+          flash "Register a wallet to get started" at a member who already has
+          one. Same reasoning as the nav entry failing OPEN in App.tsx. */}
+      {initialLoadDone && !hasWallet && (
+        <p className="stablecoin-register-intro">
+          <strong>Register a wallet to get started.</strong> Stablecoin settlements need a
+          BASE wallet to send from and receive into. Choose one below — you'll be asked to
+          sign a message proving you control it. Nothing moves on-chain, and Bitcorn never
+          holds your funds.
+        </p>
+      )}
+      <WalletRegistrationPanel />
+
+      {/* ─── Panel 1: USDC balance ─────────────────────────────────────
+          Balance only. The address, its BaseScan link, and the manage
+          actions all live in the registration panel above now; keeping them
+          here as well would show the same address twice on one screen. The
+          "Manage wallet" link that used to close this panel pointed at
+          Settings, which after the move would have been a round trip back
+          to this page. */}
+      {hasWallet && (
+        <section className="panel ops">
+          <header className="panel-header">
+            <div className="panel-title">
+              <span className="icon">◇</span>
+              <h2>Balance</h2>
             </div>
-          ) : (
+          </header>
+          <div className="panel-body">
             <div className="stablecoin-wallet-status">
-              <div className="stablecoin-wallet-row">
-                <div className="stablecoin-label">ADDRESS</div>
-                <a
-                  className="stablecoin-row-link stablecoin-extlink"
-                  href={basescanAddressUrl(chainId, walletStatus!.wallet_address!)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="View on BaseScan"
-                >
-                  <code className="stablecoin-address">{walletStatus!.wallet_address}</code>
-                  <span className="stablecoin-extlink-icon" aria-hidden>↗</span>
-                </a>
-              </div>
               <div className="stablecoin-wallet-row">
                 <div className="stablecoin-label">USDC BALANCE</div>
                 <div className="stablecoin-balance">
@@ -263,13 +266,10 @@ export default function Stablecoin() {
                   )}
                 </div>
               </div>
-              <div className="stablecoin-actions" style={{ marginTop: 12 }}>
-                <Link to="/settings" className="btn btn-outline btn-sm">Manage wallet</Link>
-              </div>
             </div>
-          )}
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
       {/* ─── Panel 2: Send USDC ─────────────────────────────────────
           Hidden entirely when gated, rather than rendered disabled. A greyed-out

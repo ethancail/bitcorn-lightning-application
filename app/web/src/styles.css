@@ -3145,11 +3145,18 @@ input[type="number"] {
   background: color-mix(in srgb, var(--yellow) 4%, transparent);
 }
 
-.stablecoin-no-wallet {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: flex-start;
+/* Framing above the registration panel, shown only to a member with no wallet.
+   Replaces .stablecoin-no-wallet, which styled the old copy-plus-"Connect a
+   wallet in Settings"-button block as a flex column; that block is gone now that
+   the registration panel renders on this page, so the rule was repurposed rather
+   than left orphaned. Prose, not a container — the panel below it is its own
+   section and carries its own spacing (.stablecoin-wallet-panel). */
+.stablecoin-register-intro {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--text-2);
+  max-width: 62ch;
+  margin: 0 0 12px;
 }
 
 /* Wallet registration / picker ─────────────────────────────── */

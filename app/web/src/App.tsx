@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, NavLink, Link, useNavigate } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
 import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
@@ -32,7 +32,6 @@ import {
 import { useAutoPayConfig } from "./components/useAutoPayConfig";
 import SubscriptionPayments from "./pages/SubscriptionPayments";
 import Stablecoin from "./pages/Stablecoin";
-import WalletRegistrationPanel from "./stablecoin/components/WalletRegistrationPanel";
 import { RailScope } from "./stablecoin/RailScope";
 import { isRailGated } from "./stablecoin/railAccess";
 import AdminMembers from "./pages/AdminMembers";
@@ -740,12 +739,48 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           the admin debug path (Stage 5b admin view). */}
       {!isTreasury && <SubscriptionPanel />}
 
-      {/* Stablecoin Wallet — member nodes only. Treasury operator
-          doesn't register a wallet (settles flow through member-to-member
-          relationships, not via the treasury's own BASE wallet). The
-          panel itself queries /api/stablecoin/wallet which derives the
-          member identity from the local LND pubkey. */}
-      {!isTreasury && <WalletRegistrationPanel />}
+      {/* Stablecoin Wallet — a POINTER now. The registration panel itself moved
+          to pages/Stablecoin.tsx, where the wallet is actually used; this stays
+          because Settings is where a farmer looks for account setup, and because
+          every member who read the v1.18.0 release notes was told to register a
+          wallet on the Stablecoin page. Landing on nothing here would read as a
+          missing feature.
+
+          ⚠ `!isTreasury` IS THE ENTIRE PROTECTION FOR THIS ELEMENT. Do not
+          remove it. SettingsPage is shared by both shells — the treasury shell
+          renders it as <SettingsPage isTreasury /> — so this prop is the only
+          thing keeping a rail surface off the treasury's Settings page. Deleting
+          one word leaks it.
+
+          This element is WEAKER in that respect than the panel it replaced, and
+          the asymmetry is worth knowing. The panel is now protected structurally,
+          three times over: the treasury shell has no Stablecoin nav entry, no
+          /stablecoin route, and no RailScope — and without RailScope the panel
+          cannot even render, it THROWS. (VERIFIED in the installed library, not
+          assumed: WalletRegistrationPanel calls useAccount, which calls useConfig
+          — wagmi/dist/esm/hooks/useAccount.js:7 — which throws
+          WagmiProviderNotFoundError when the context is missing,
+          wagmi/dist/esm/hooks/useConfig.js:9.) A leaked panel would fail loudly.
+          A leaked pointer fails quietly: it would render a link to a route the
+          treasury shell does not have, which its catch-all redirects to
+          /dashboard. Cosmetic, silent, and nobody would notice. Hence this note
+          rather than a bare gate. */}
+      {!isTreasury && (
+        <div className="panel" style={{ marginTop: 16 }}>
+          <div className="panel-header">
+            <span className="panel-title"><span className="icon">◇</span>Stablecoin Wallet</span>
+          </div>
+          <div className="panel-body">
+            <p style={{ color: "var(--text-2)", fontSize: "0.875rem", marginBottom: 12 }}>
+              Wallet setup now lives on the Stablecoin page, alongside the settlements it's
+              used for — connect, replace, or disconnect your BASE wallet there.
+            </p>
+            <Link to="/stablecoin" className="btn btn-outline btn-sm">
+              Go to Stablecoin
+            </Link>
+          </div>
+        </div>
+      )}
 
       <div className="settings-section-label">Personal</div>
 
