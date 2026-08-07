@@ -24,8 +24,50 @@ import type { Scope } from "../../src/lib/jwt";
 export const MEMBER_PUBKEY =
   "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
 
-// EXPECTED_ISSUER, src/lib/jwt.ts:65.
-const ISSUER = "bitcorn-treasury";
+// EXPECTED_ISSUER, src/lib/jwt.ts:65. Exported so a test asserting the
+// wrong-issuer rejection can say "not this" rather than hardcoding a second
+// copy of the string that would not move if the Worker's expectation did.
+export const ISSUER = "bitcorn-treasury";
+
+/** Default token lifetime, matching the original `.setExpirationTime("1h")`. */
+const DEFAULT_TTL_SECONDS = 3600;
+
+/**
+ * Claim overrides for minting a token the gate should REJECT.
+ *
+ * Added 2026-08-07 for tests/valuationScope.test.ts. Every field is optional
+ * and every default reproduces exactly what `token(scope)` already produced, so
+ * this is additive — no existing caller changes behavior.
+ *
+ * `iat`/`exp` are absolute epoch SECONDS rather than jose's relative strings,
+ * because an expired-token test has to clear the Worker's `clockTolerance:
+ * "60s"` (src/lib/jwt.ts:121) deliberately, and a relative string makes the
+ * margin hard to see. Use EXPIRED_EXP for that.
+ */
+export interface TokenOverrides {
+  scope?: Scope;
+  /** Epoch seconds. Default: now. */
+  iat?: number;
+  /** Epoch seconds. Default: iat + 3600. Set in the past to mint an expired token. */
+  exp?: number;
+  /** Default: ISSUER. Any other value trips the gate's issuer check. */
+  issuer?: string;
+  /** Default: MEMBER_PUBKEY. A non-66-hex value trips the gate's `sub` check. */
+  subject?: string;
+}
+
+export function nowSeconds(): number {
+  return Math.floor(Date.now() / 1000);
+}
+
+/**
+ * An `exp` comfortably outside the gate's 60s clock tolerance. One hour in the
+ * past, not 61 seconds: a test that sits exactly at the boundary would be
+ * testing the tolerance, which is a different property with its own reasons.
+ */
+export function expiredExp(): number {
+  return nowSeconds() - DEFAULT_TTL_SECONDS;
+}
 
 export interface EntitlementSigner {
   /**
@@ -36,6 +78,14 @@ export interface EntitlementSigner {
   publicKeyX: string;
   /** Mints a token the Worker's gate accepts at the given scope. */
   token(scope: Scope): Promise<string>;
+  /**
+   * Mints a token with arbitrary claims, for the rejection paths. Signed with
+   * the SAME key as `token()`, so a test using this isolates the claim it
+   * varied — a wrong-issuer token still carries a valid signature, and the gate
+   * must reject it for the issuer rather than incidentally for the signature.
+   * (For the bad-signature path, mint from a SECOND signer instead.)
+   */
+  tokenWith(overrides?: TokenOverrides): Promise<string>;
 }
 
 /**
@@ -50,16 +100,28 @@ export async function createEntitlementSigner(): Promise<EntitlementSigner> {
   const jwk = await exportJWK(pair.publicKey);
   const publicKeyX = jwk.x as string;
 
+  // Both public methods delegate here. Defined as a closure rather than a
+  // method calling `this.tokenWith(...)` so a destructured `const { token } =
+  // signer` still works.
+  function sign(overrides: TokenOverrides = {}): Promise<string> {
+    const iat = overrides.iat ?? nowSeconds();
+    const exp = overrides.exp ?? iat + DEFAULT_TTL_SECONDS;
+    return new SignJWT({ scope: overrides.scope ?? "full" })
+      .setProtectedHeader({ alg: "EdDSA" })
+      .setIssuer(overrides.issuer ?? ISSUER)
+      .setSubject(overrides.subject ?? MEMBER_PUBKEY)
+      .setIssuedAt(iat)
+      .setExpirationTime(exp)
+      .sign(pair.privateKey as CryptoKey);
+  }
+
   return {
     publicKeyX,
     token(scope: Scope): Promise<string> {
-      return new SignJWT({ scope })
-        .setProtectedHeader({ alg: "EdDSA" })
-        .setIssuer(ISSUER)
-        .setSubject(MEMBER_PUBKEY)
-        .setIssuedAt()
-        .setExpirationTime("1h")
-        .sign(pair.privateKey as CryptoKey);
+      return sign({ scope });
+    },
+    tokenWith(overrides: TokenOverrides = {}): Promise<string> {
+      return sign(overrides);
     },
   };
 }
