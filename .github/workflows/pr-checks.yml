@@ -26,10 +26,15 @@ on:
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────
-  # HARD GATES — verified passing on BOTH the main and develop trees, so
-  # they cannot break a PR from either base. Two of them (Worker tests,
-  # web typecheck) pass under a documented per-tree THRESHOLD rather than
-  # at zero; each carries the measurement and the flip event inline.
+  # HARD GATES — every job in this workflow is now one; there is no advisory
+  # section left. Verified passing on BOTH the main and develop trees, which
+  # since v1.18.0 (2026-08-05) are the same commit.
+  #
+  # All four thresholds are STRICT as of 2026-08-07: web tsc ceiling 0, Worker
+  # failure ceiling 0, Worker collection floor 200, api collection floor 300.
+  # The two ceilings were branch-aware (main '17'/'9' vs develop '0') while the
+  # trees differed; convergence turned those arms into pure slack, so they were
+  # collapsed. Each carries its measurement and its history inline.
   # ─────────────────────────────────────────────────────────────────────
 
   api:
@@ -46,9 +51,68 @@ jobs:
       - name: Typecheck
         working-directory: app/api
         run: npx tsc --noEmit
-      - name: Tests
+      - name: Tests (collection floor)
         working-directory: app/api
-        run: npx vitest run
+        # ⚠ FLOOR, NOT A CEILING. This suite must pass at ZERO failures, and the
+        # exit code below enforces that — unlike the Worker step, nothing here
+        # discards it. The floor is about COLLECTION, a different failure.
+        #
+        # WHY THIS STEP NEEDS ONE — the exit code does not cover it. `vitest run`
+        # exits 1 on ZERO collection ("No test files found, exiting with code 1",
+        # re-verified 2026-08-07), so total collapse is caught for free. PARTIAL
+        # collapse is not: measured 2026-08-07 in this very workspace,
+        # restricting collection to one directory reported "Tests  60 passed
+        # (60)" and exited 0 — 60 of 336, green, with nothing to distinguish it
+        # from a full pass.
+        #
+        # That is the shape of this repo's real Node-22 incident: dropped
+        # collection, not failures (see .nvmrc). The api suite is the LARGEST in
+        # the repo — 336 tests across 24 files, measured 2026-08-07 — so it had
+        # the most to lose and, until this floor, the least protection: the
+        # Worker job carried the only one, and its own note claimed every other
+        # job got collapse protection free from the exit code. True for total
+        # collapse, false for partial. This closes that gap.
+        #
+        # VALUE: 300 against a measured 336, leaving 36 tests of headroom for
+        # legitimate removals while rejecting any collapse below ~89% of the
+        # suite. Removing 37+ api tests on purpose means lowering this number in
+        # the same commit. Not branch-conditional, for the same reason the
+        # Worker floor is not: gating main's PRs more loosely than develop's
+        # would invert the risk.
+        env:
+          MIN_TOTAL: "300"
+        run: |
+          set -o pipefail
+          rm -f /tmp/api-vitest.json
+          # Exit code NOT discarded: a failing test fails this job here and now,
+          # before the floor is ever consulted. The JSON report is read only for
+          # the collection count.
+          npx vitest run --reporter=json --outputFile=/tmp/api-vitest.json
+
+          # COULD-NOT-RUN IS A FAILURE, NOT A PASS. If vitest exited 0 but wrote
+          # no parseable report, a missing file must not read as "0 collected"
+          # and then as some other job's problem.
+          if [ ! -s /tmp/api-vitest.json ]; then
+            echo "::error::API tests produced no JSON report — vitest could not run."
+            echo "This is a failure, not zero failures. Check the step log above."
+            exit 1
+          fi
+
+          TOTAL=$(node -e "
+            const r = require('/tmp/api-vitest.json');
+            if (typeof r.numTotalTests !== 'number') { console.error('unparseable report'); process.exit(3); }
+            console.log(r.numTotalTests);
+          ") || { echo "::error::API test report was unparseable."; exit 1; }
+
+          echo "API tests: $TOTAL collected (floor: $MIN_TOTAL)"
+
+          if [ "$TOTAL" -lt "$MIN_TOTAL" ]; then
+            echo "::error::Only $TOTAL tests were collected; expected at least $MIN_TOTAL."
+            echo "The suite did not fully run — this is a FAILURE, not a pass."
+            echo "Likely causes: wrong Node version (see .nvmrc), a broken vitest"
+            echo "config, moved/renamed test files, or a collection-time crash."
+            exit 1
+          fi
 
   web-build:
     name: Web — production build (hard gate)
@@ -81,51 +145,41 @@ jobs:
         run: npm install
       - name: Typecheck (error ceiling)
         working-directory: app/web
-        # ⚠ CEILING, NOT A PASS. Was advisory until 2026-08-03. It is now a real
-        # gate that tolerates N known errors and goes red the moment an N+1th
-        # appears — the same shape as the Worker failure ceiling above.
+        # ⚠ CEILING, NOT A PASS — though the ceiling is now 0, so on this tree
+        # the two coincide. Kept in ceiling FORM rather than reduced to a bare
+        # `tsc --noEmit` because the could-not-run guard below is the part that
+        # carries the weight, and because a future known-bad baseline should
+        # raise a number rather than re-add machinery.
         #
         # WHY A COUNT AND NOT AN ALLOWLIST: scripts/verify-gate.mjs already
         # carries a list of specific (file, TS-code) pairs (WEB_TSC_BASELINE). A
         # second copy here would drift from it. A number cannot drift that way.
         # It IS blunter — a new error appearing while an old one is fixed nets
         # zero and slips through — which is the accepted trade, and the reason
-        # the ceiling should be driven to 0 rather than maintained.
+        # the ceiling was driven to 0 rather than maintained.
         #
-        # ─── MEASURED BASELINES, 2026-08-03 ─────────────────────────────
+        # ─── HISTORY ────────────────────────────────────────────────────
         #
-        # develop: 0 errors. Was 4 (the recharts `payload` quartet — hand-written
-        #   Tooltip prop types omitting a field recharts really provides). Fixed
-        #   in this same change by completing the annotation: one added
-        #   `payload: ChartPoint` field in each of CornBitcoinChart,
-        #   CornMovingAveragesChart, MovingAveragesChart, PowerLawChart.
+        # Advisory until 2026-08-03, then a BRANCH-AWARE ceiling
+        # (main '17' / develop '0') because the two trees genuinely differed.
+        # main @ 19a667c measured 17, not the 6 recorded earlier: CI installs
+        # from main's own package.json, which had NO vitest devDependency, while
+        # main still TRACKED 10 app/web/src/**/*.test.ts files — so tsc added
+        # 10 × TS2307 "Cannot find module 'vitest'" plus 1 knock-on TS7006 on top
+        # of the known 6 (4 recharts `payload` + 2 src/pages/SwapOperations.tsx
+        # TS2551/TS2339 for API-client methods deleted on develop by b818779).
+        # That gap was the same class of miss as the .nvmrc incident: an audit
+        # scoped to what a job MEASURES can miss what its environment PROVIDES.
         #
-        # main @ 19a667c: 17 errors. NOT 6 — that figure, recorded earlier, is
-        #   what you measure with vitest's types resolvable. CI installs from
-        #   main's own package.json, which has NO vitest devDependency, while
-        #   main still TRACKS 10 app/web/src/**/*.test.ts files. So tsc adds
-        #   10 × TS2307 "Cannot find module 'vitest'" plus 1 knock-on TS7006 on
-        #   top of the known 6 (4 recharts + 2 src/pages/SwapOperations.tsx:
-        #   TS2551 adminLoopInQuote, TS2339 adminLoopIn — API-client methods that
-        #   do not exist, deleted on develop by b818779, unshipped to main).
-        #   Re-measure, don't trust this number:
-        #     cd app/web && npm install && npx tsc --noEmit 2>&1 | grep -c "error TS"
-        #
-        # This is the same class of miss as the .nvmrc incident: an audit scoped
-        # to what a job MEASURES can miss what the job's environment actually
-        # PROVIDES.
-        #
-        # Branch-aware for the same reason MAX_FAILURES is — see the long note on
-        # the Worker step. One number would have to be 17, letting develop (where
-        # nearly all work happens) absorb 17 new errors silently.
-        #
-        # FLIP: after the develop→main convergence release — which carries
-        # b818779 (removing the SwapOperations pair), the recharts annotations,
-        # AND the vitest devDependency (removing all 11 TS2307/TS7006) — collapse
-        # both arms to a plain TSC_CEILING: "0" and delete this section. Verify
-        # on main's tree first; do not assume.
+        # FLIPPED TO A FLAT "0" on 2026-08-07. The condition was met: v1.18.0
+        # converged develop→main on 2026-08-05 and has held through v1.18.1, so
+        # main now carries the vitest devDependency, vitest.config.ts, the
+        # recharts annotations and b818779 — all 11 main-only errors gone with
+        # them. Verified on the converged tree rather than assumed:
+        #   cd app/web && npx tsc --noEmit 2>&1 | grep -c "error TS"   → 0
+        # Re-measure with that command; do not trust this number.
         env:
-          TSC_CEILING: ${{ github.base_ref == 'main' && '17' || '0' }}
+          TSC_CEILING: "0"
         run: |
           # Exit code deliberately captured, NOT relied on as the signal: tsc
           # exits non-zero for "your code has type errors" AND for "I could not
@@ -139,7 +193,14 @@ jobs:
           # grep -c exits 1 on zero matches, which would kill the step under
           # pipefail — so absorb it and read the printed count.
           COUNT=$(grep -cE "error TS[0-9]+" /tmp/web-tsc.log || true)
-          echo "Web tsc: $COUNT error(s) (ceiling: $TSC_CEILING, base: ${{ github.base_ref }})"
+          # This line used to also print the PR's base ref, to show which ceiling
+          # arm applied. Dropped with the flip on 2026-08-07: there are no arms
+          # now, and it was this file's only workflow expression interpolated
+          # straight into a run block. Do not re-add one — expressions are
+          # substituted into the whole run string before bash sees it, INCLUDING
+          # inside comments like this one, so naming it literally here would put
+          # it back.
+          echo "Web tsc: $COUNT error(s) (ceiling: $TSC_CEILING)"
 
           # COULD-NOT-RUN IS A FAILURE, NOT ZERO ERRORS. Without this, a missing
           # tsc binary or an unreadable tsconfig exits non-zero, matches no
@@ -154,12 +215,15 @@ jobs:
           fi
 
           if [ "$COUNT" -gt "$TSC_CEILING" ]; then
-            echo "::error::Web tsc errors ($COUNT) exceed the known ceiling ($TSC_CEILING)."
-            echo "A NEW type error appeared. The known baseline for this base branch"
-            echo "is documented in this workflow; yours is not part of it."
+            echo "::error::Web tsc errors ($COUNT) exceed the ceiling ($TSC_CEILING)."
+            echo "The ceiling is 0: this tree typechecks clean, so every error here"
+            echo "is a NEW one. Fix it rather than raising the ceiling."
             exit 1
           fi
 
+          # ⚠ UNREACHABLE while TSC_CEILING is 0 — nothing is below zero. Kept
+          # (2026-08-07) because it is the branch that tells a future maintainer
+          # to lock in a gain if the ceiling is ever raised off 0 again.
           if [ "$COUNT" -lt "$TSC_CEILING" ]; then
             echo "::notice::Only $COUNT errors — below the ceiling of $TSC_CEILING."
             echo "If you fixed some, lower TSC_CEILING in this workflow to lock the gain in."
@@ -180,9 +244,16 @@ jobs:
       - name: Typecheck
         working-directory: cloudflare-worker
         # Conditioned on the SCRIPT EXISTING, not on the branch. The
-        # `typecheck` script landed on develop and is absent from main, so a
-        # main-based PR has nothing to run. Skipping with an explanation beats
+        # `typecheck` script landed on develop and was absent from main, so a
+        # main-based PR had nothing to run. Skipping with an explanation beats
         # both a spurious failure and a silent pass.
+        #
+        # ⚠ THE SKIP BRANCH IS UNREACHABLE as of 2026-08-07: v1.18.0 put the
+        # `typecheck` script on main (cloudflare-worker/package.json), so no
+        # branch this workflow runs on lacks it. Kept rather than deleted —
+        # removing it is a separate change with its own reasoning, and the
+        # condition still guards the genuinely different case of someone
+        # renaming or dropping the script.
         run: |
           if node -e "process.exit(require('./package.json').scripts?.typecheck ? 0 : 1)"; then
             npm run typecheck
@@ -194,10 +265,24 @@ jobs:
 
       - name: Tests (failure ceiling)
         working-directory: cloudflare-worker
-        # ⚠ CEILING, NOT A PASS. Asserts the failure count has not grown — a
-        # new failure fails the job.
+        # ⚠ CEILING, NOT A PASS — though the ceiling is now 0, so on this tree
+        # the two coincide. Asserts the failure count has not grown; a new
+        # failure fails the job. Kept in ceiling FORM rather than reduced to a
+        # bare `vitest run` because the could-not-run guard and the collection
+        # floor below are the load-bearing parts, and a future known-bad
+        # baseline should raise a number rather than re-add machinery.
         #
-        # THE 9 STALE FIXTURES ARE FIXED — on develop only. They were never
+        # FLIPPED TO A FLAT "0" on 2026-08-07, replacing the branch-aware arms
+        # (main '9' / develop '0'). The condition below was met: v1.18.0
+        # converged develop→main on 2026-08-05 and has held through v1.18.1, so
+        # main now carries the fixture fixes. Verified on the converged tree
+        # rather than assumed:
+        #   cd cloudflare-worker && npx vitest run   → 0 failed of 216
+        #
+        # ─── HISTORY: THE 9 STALE FIXTURES ──────────────────────────────
+        #
+        # THE 9 STALE FIXTURES ARE FIXED — on develop first, and on main since
+        # the convergence release above. They were never
         # regressions; all nine had drifted behind deliberate implementation
         # changes, and each was repaired by correcting the FIXTURE, verified by
         # negative control (reverting each to its stale form reproduces the
@@ -221,32 +306,27 @@ jobs:
         #       2026-05-06 root cause. Fixture now binds KV per-test and pins
         #       the derived deviation against an independently-derived golden.
         #
-        # ─── WHY THIS CEILING IS BRANCH-AWARE ───────────────────────────
+        # ─── HISTORY: WHY THIS CEILING WAS BRANCH-AWARE ─────────────────
         #
-        # The fixes are on a develop-based branch, so they reach main only at
-        # the convergence release. Until then the two trees genuinely differ,
-        # MEASURED 2026-08-03: develop 216 tests / 0 failures; main @ 19a667c
-        # 116 tests / 9 failures (the same nine, unfixed).
+        # The fixes landed on a develop-based branch, so they reached main only
+        # at the convergence release. Until then the two trees genuinely
+        # differed, MEASURED 2026-08-03: develop 216 tests / 0 failures; main @
+        # 19a667c 116 tests / 9 failures (the same nine, unfixed).
         #
-        # A SINGLE number cannot serve both. Set it to 9 and develop — where
-        # nearly all work happens — can regress nine tests and stay green; set
-        # it to 0 and every PR to main fails on failures nobody introduced. The
-        # arms below are therefore each tree's TRUE baseline, which is strictly
-        # tighter than any single value: neither tree is loosened relative to
-        # one number, and develop is tightened to zero.
+        # A SINGLE number could not serve both. Set to 9, develop — where
+        # nearly all work happens — could regress nine tests and stay green; set
+        # to 0 and every PR to main failed on failures nobody introduced. The
+        # arms were therefore each tree's TRUE baseline, strictly tighter than
+        # any single value.
         #
-        # Note this does NOT contradict MIN_TOTAL's "deliberately NOT
-        # branch-conditional" note below. That floor's single value is a
-        # lowest-common-denominator main can actually satisfy (its suite is 116
-        # tests; a floor of 200 is unsatisfiable there, not merely strict). This
-        # ceiling's arms encode a difference that DISAPPEARS at a known event.
-        #
-        # FLIP: when the develop→main convergence release carries these fixture
-        # fixes to main, collapse both arms to a plain MAX_FAILURES: "0" and
-        # delete this section. Verify first, don't assume:
-        #   cd cloudflare-worker && npx vitest run    # on main's tree → 0 failed
+        # The lesson that outlived the arms: a branch-conditional threshold does
+        # not break when its premise dies, it silently becomes SLACK. These arms
+        # kept evaluating after v1.18.0 made both trees identical — main-based
+        # PRs were simply allowed 9 free failures against a tree that had 0.
+        # If you add a branch-conditional threshold, write its retirement
+        # condition next to it, as the FLIP notes here did.
         env:
-          MAX_FAILURES: ${{ github.base_ref == 'main' && '9' || '0' }}
+          MAX_FAILURES: "0"
           # ─── COLLECTION FLOOR ───────────────────────────────────────
           #
           # WHY ONLY THIS STEP HAS ONE — the structural reason, which the bare
@@ -281,22 +361,26 @@ jobs:
           # ceiling cannot catch that class. This is why the floor is not
           # optional.
           #
-          # VALUE: 100. Measured totals 2026-08-03 — develop @ e8cd2fc: 216
-          # tests (207 pass / 9 fail); main @ e03511b: 116 tests (107 pass /
-          # 9 fail). 100 clears BOTH trees, which matters because the 1.17.20
-          # convergence release is a main-based branch and CI checks out main's
-          # tree. Deliberately NOT branch-conditional: gating main's PRs more
-          # loosely than develop's would invert the risk.
+          # VALUE: 200, raised from 100 on 2026-08-07. Deliberately NOT
+          # branch-conditional: gating main's PRs more loosely than develop's
+          # would invert the risk. That is also why this number never rotted the
+          # way the two ceilings above did — a single value has no premise that
+          # can quietly expire.
           #
+          # Was 100 while the trees differed: main's suite was 116 tests, so a
+          # floor of 200 was unsatisfiable there, not merely strict, and 100 was
+          # the lowest common denominator both trees could clear. v1.18.0
+          # converged them on 2026-08-05 and both are now 216, so the floor rises
+          # to where it was always headed. Verified before raising, not assumed:
+          #   cd cloudflare-worker && npx vitest run   → 216 collected
+          #
+          # 200 against 216 leaves 16 tests of headroom — deliberately tight,
+          # since the point is to catch dropped collection. Removing 17+ Worker
+          # tests on purpose means lowering this number in the same commit.
           # Chosen over 50 (would let a collapse to ~60 tests pass, missing the
           # partial-collection case the floor is for) and over 1 (catches only
-          # total zero). 100 fails on any collapse below ~86% of main's suite.
-          #
-          # FLIP: raise to 200 after the develop→main convergence release, when
-          # main carries develop's Worker tests and both trees are 216. Fourth
-          # item on the flip list, alongside the web-tsc advisory, the
-          # web-vitest advisory, and MAX_FAILURES → 0.
-          MIN_TOTAL: "100"
+          # total zero).
+          MIN_TOTAL: "200"
         run: |
           set -o pipefail
           rm -f /tmp/worker-vitest.json
@@ -334,11 +418,15 @@ jobs:
             exit 1
           fi
           if [ "$FAILED" -gt "$MAX_FAILURES" ]; then
-            echo "::error::Worker test failures ($FAILED) exceed the known ceiling ($MAX_FAILURES)."
-            echo "A NEW test is failing. The $MAX_FAILURES known ones are stale fixtures"
-            echo "documented in this workflow; yours is not one of them."
+            echo "::error::Worker test failures ($FAILED) exceed the ceiling ($MAX_FAILURES)."
+            echo "The ceiling is 0: this suite passes clean, so every failure here is"
+            echo "a NEW one. The 9 stale fixtures this ceiling used to tolerate were"
+            echo "fixed and shipped to main in v1.18.0; yours is not one of them."
             exit 1
           fi
+          # ⚠ UNREACHABLE while MAX_FAILURES is 0 — nothing is below zero. Kept
+          # (2026-08-07) for the same reason as the tsc one above: it is the
+          # branch that says "lock the gain in" if the ceiling ever rises off 0.
           if [ "$FAILED" -lt "$MAX_FAILURES" ]; then
             echo "::notice::Only $FAILED failures — below the ceiling of $MAX_FAILURES."
             echo "If you fixed some, lower MAX_FAILURES in this workflow to lock the gain in."
@@ -473,31 +561,39 @@ jobs:
           echo "Version bumped $VB → $VH."
 
   # ─────────────────────────────────────────────────────────────────────
-  # ADVISORY — non-blocking. One job left; see its flip condition inline.
+  # THIS SECTION WAS "ADVISORY — non-blocking". IT IS NOW EMPTY OF ADVISORIES.
   #
-  # Web typecheck USED TO LIVE HERE. It became a ceiling-gated hard gate on
-  # 2026-08-03 and now sits in the HARD GATES section above. Its
-  # `continue-on-error` was at JOB level, which rendered the advisory as a
-  # failing red check — indistinguishable from a real failure, which is
-  # precisely what trains a reader to click past red. Step level would have
-  # been worse: green always, including when a new error appeared.
+  # Web typecheck left on 2026-08-03, promoted to a ceiling-gated hard gate.
+  # Web vitest left on 2026-08-07, promoted once v1.18.0 put the vitest standup
+  # on main. Both now sit in the HARD GATES section above.
+  #
+  # Kept as a marker rather than deleted, because the reasoning below is the
+  # thing to read BEFORE adding an advisory job here again: `continue-on-error`
+  # at JOB level renders as a failing red check, indistinguishable from a real
+  # failure, which is precisely what trains a reader to click past red. At STEP
+  # level it is worse — green always, including when a new failure appears.
+  # There is no placement that makes an advisory job honest, so treat one as a
+  # temporary state with a written retirement condition, never a resting state.
   # ─────────────────────────────────────────────────────────────────────
 
-  web-vitest-advisory:
-    name: Web — tests (ADVISORY, non-blocking)
+  web-vitest:
+    name: Web — tests (hard gate)
     runs-on: ubuntu-latest
-    continue-on-error: true
-    # ADVISORY ONLY, AND HERE IS THE EXACT CONDITION TO FLIP IT:
+    # PROMOTED FROM ADVISORY on 2026-08-07. It was non-blocking because main's
+    # tree had no web test infrastructure at all — no `vitest` devDependency, no
+    # `test` script, no app/web/vitest.config.ts — so on a main-based PR it
+    # could not run at all ("vitest is not installed", not "tests failed").
+    # v1.18.0 converged develop→main on 2026-08-05 and carried the vitest
+    # standup, so main now has all three. Verified before promoting:
+    #   git show origin/main:app/web/package.json   → "vitest": "^2.1.9"
+    #   git ls-tree origin/main -- app/web/vitest.config.ts   → present
     #
-    # This is non-blocking because main's tree has no web test infrastructure
-    # at all: app/web/package.json on main has no `vitest` devDependency and no
-    # `test` script, and there is no app/web/vitest.config.ts. All three arrived
-    # with the develop-side vitest standup, which has NOT shipped to main. So on
-    # a main-based PR this cannot run — not "runs and fails", but "vitest is not
-    # installed". develop's tree runs it clean.
-    #
-    # FLIP WHEN: a develop→main release converges the branches, so main has the
-    # vitest standup. Then delete `continue-on-error` and this comment.
+    # Its `continue-on-error` was at JOB level, which rendered the advisory as a
+    # failing red check — indistinguishable from a real failure, which is
+    # precisely what trains a reader to click past red. Step level would have
+    # been worse: green always, including when a new failure appeared. Neither
+    # is a good resting state, which is why advisory was always meant to be
+    # temporary.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -510,6 +606,15 @@ jobs:
         working-directory: app/web
         # Detect-and-explain rather than emitting a confusing red that readers
         # learn to ignore. Same reasoning as the Worker typecheck skip.
+        #
+        # ⚠ THE SKIP BRANCH IS UNREACHABLE as of 2026-08-07: v1.18.0 put
+        # app/web/vitest.config.ts on main, so no branch this workflow runs on
+        # lacks it. Kept rather than deleted — removing it is a separate change
+        # with its own reasoning (it is also the guard that would fire if the
+        # config were ever moved or renamed, which is not the same thing as the
+        # main-based-PR case it was written for). If you delete it, make sure a
+        # missing config still FAILS rather than silently collecting nothing;
+        # the collection floor on the api job explains why that matters.
         run: |
           if [ ! -f vitest.config.ts ]; then
             echo "::notice::SKIPPED — no app/web/vitest.config.ts in this tree (main-based PR)."
