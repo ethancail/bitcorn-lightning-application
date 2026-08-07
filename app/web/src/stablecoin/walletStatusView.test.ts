@@ -100,19 +100,59 @@ describe("isAwaitingFirstSync", () => {
         expect(isAwaitingFirstSync(status({ registered_at: 0 }), registeredAt)).toBe(false);
     });
 
-    it("DOCUMENTS a gap: a future registered_at reads as awaiting sync", () => {
-        // Clock skew between the API host and the browser makes `now -
-        // registeredAt` negative, which is < the window, so this returns true.
-        // Asserting the ACTUAL behaviour rather than the desired one, and saying
-        // so in the name — a test titled "is false for a future timestamp" that
-        // asserted true would be worse than no test.
+    it("is false for a future registered_at — a lagging browser clock must not pin 'Syncing…'", () => {
+        // This WAS a documented gap ("DOCUMENTS a gap: a future registered_at
+        // reads as awaiting sync"), closed 2026-08-07.
         //
-        // Left as-is rather than fixed: the visible consequence is a "Syncing…"
-        // label that persists until the clocks converge, on a surface that
-        // already tolerates a stale balance, and the fix (clamping elapsed at 0)
-        // belongs with whoever decides how much clock skew this app tolerates
-        // generally. Out of scope for a component move.
+        // The gap: `registered_at` is minted by Date.now() on the API host
+        // (app/api/src/stablecoin/handlers.ts:231) and returned unmodified, while
+        // `now` defaults to the BROWSER's clock — so the subtraction crosses two
+        // machines. A browser running behind the node made `now - registeredAt`
+        // negative, and a negative number is < the window, so this returned true
+        // and the balance cell pinned on "Syncing…" for skew + 5 minutes.
+        //
+        // Not merely cosmetic, which is why it was worth closing: an absent
+        // balance also means a stalled sync loop or an unreachable BASE RPC, and
+        // a false "Syncing…" read as reassurance over a real outage.
+        //
+        // Fixed by clamping elapsed at zero, which is what this rail already does
+        // in app/api/src/stablecoin/staleness.ts:44-46 and in
+        // app/web/src/components/freshness.ts:54.
         const now = registeredAt - 60_000;
-        expect(isAwaitingFirstSync(status({ registered_at: registeredAt }), now)).toBe(true);
+        expect(isAwaitingFirstSync(status({ registered_at: registeredAt }), now)).toBe(false);
+    });
+
+    it("DOCUMENTS a gap: a browser clock running AHEAD expires the window early", () => {
+        // The OTHER skew direction, and the one the 2026-08-07 fix does NOT
+        // close. Asserting the ACTUAL behaviour, not the desired one — same
+        // convention as the browser-behind test above carried while ITS gap was
+        // open. The prefix retires when the gap closes, not before.
+        //
+        // Direction: the browser's clock is AHEAD of the API host's. `now -
+        // registered_at` is then inflated by the skew, so the 5-minute window
+        // reads as already elapsed while the sync loop is genuinely still
+        // working. The member sees "—" instead of "Syncing…" during a real first
+        // sync — the inverse of the browser-behind symptom, and the milder one
+        // (an unhelpful placeholder, not a false reassurance over an outage).
+        //
+        // Why `elapsed >= 0` cannot address it: the clamp only rejects NEGATIVE
+        // elapsed. Here elapsed is positive and too large, so the guard never
+        // engages. This test therefore passes identically with and without the
+        // fix — deliberately, since it pins a defect the fix does not touch.
+        //
+        // The skew-immune fix, out of scope here: have the API return a
+        // server-computed `registered_seconds_ago` alongside `registered_at`, the
+        // way handleBalance already returns `staleness_seconds` (computed at
+        // app/api/src/stablecoin/handlers.ts:290 via railStalenessSeconds, where
+        // both operands are the API host's clock). The predicate would then
+        // compare a server-measured elapsed against the window and be same-clock
+        // on both operands, closing BOTH directions at once. That touches
+        // stablecoin/types.ts, handlers.ts, the web client.ts response type, and
+        // this predicate's signature — a wider change than a guard, and someone's
+        // decision rather than a bug fix. This test is what keeps it findable.
+        const REAL_ELAPSED_MS = 60_000; // one minute has genuinely passed
+        const BROWSER_AHEAD_MS = 10 * 60_000; // browser clock runs ten minutes fast
+        const now = registeredAt + REAL_ELAPSED_MS + BROWSER_AHEAD_MS;
+        expect(isAwaitingFirstSync(status({ registered_at: registeredAt }), now)).toBe(false);
     });
 });

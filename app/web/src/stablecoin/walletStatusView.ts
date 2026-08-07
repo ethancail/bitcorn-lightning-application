@@ -55,6 +55,18 @@ export function hasRegisteredWallet(status: WalletStatusResponse | null): boolea
  * `now` is injectable so this is testable without freezing the clock; callers
  * in the app omit it. Requires a registered wallet — an unregistered member is
  * never "awaiting first sync", they are awaiting registration.
+ *
+ * ⚠ This subtraction CROSSES TWO CLOCKS. `registered_at` is minted by Date.now()
+ * on the API host (app/api/src/stablecoin/handlers.ts:231) and returned
+ * unmodified; `now` defaults to the browser's clock. They can disagree, so
+ * elapsed is clamped at zero: a browser running behind the node would otherwise
+ * produce a negative elapsed, which is < the window, pinning "Syncing…" for
+ * skew + 5 minutes over what may be a genuinely stalled sync. Same discipline as
+ * app/api/src/stablecoin/staleness.ts:44-46 and components/freshness.ts:54.
+ *
+ * The clamp only closes the browser-behind direction. Browser-AHEAD inflates
+ * elapsed and expires the window early — see the `DOCUMENTS a gap:` test in
+ * walletStatusView.test.ts for why that needs a server-computed elapsed instead.
  */
 export function isAwaitingFirstSync(
     status: WalletStatusResponse | null,
@@ -63,5 +75,6 @@ export function isAwaitingFirstSync(
     if (!hasRegisteredWallet(status)) return false;
     const registeredAt = status?.registered_at;
     if (!registeredAt) return false;
-    return now - registeredAt < FIRST_SYNC_WINDOW_MS;
+    const elapsed = now - registeredAt;
+    return elapsed >= 0 && elapsed < FIRST_SYNC_WINDOW_MS;
 }
