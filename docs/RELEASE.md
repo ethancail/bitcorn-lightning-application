@@ -75,8 +75,10 @@ from `main`. See [Releasing from `develop`](#releasing-from-develop) before doin
 the `develop` variant — it has a footgun the normal path doesn't.
 
 **Verify before moving on:** the PR's diff contains the three version strings and
-nothing you didn't intend. **No test gate runs in CI** — see [Scope](#what-this-doc-does-not-cover).
-A green merge means "merged", not "tests passed".
+nothing you didn't intend. **A PR gate runs, but nothing gates the merge** — see
+[Scope](#what-this-doc-does-not-cover). `pr-checks.yml` reports on the PR; `main`
+is not a protected branch, so no check can block the merge, and nothing re-checks
+anything afterwards. A green merge means "merged", not "tests passed".
 
 ### Step 3 — CI builds and pushes both images · AUTOMATED
 
@@ -613,23 +615,49 @@ A green merge and a green build mean the images compiled, nothing more.
 
 ⚠ **This section used to be titled "No test gate runs in CI." That is no longer
 true.** `.github/workflows/pr-checks.yml` exists on both `main` and `develop` and
-hard-gates pull requests — API `tsc` + `vitest`, the web production build, and the
-Worker suite under a failure ceiling. The narrower claim above still holds, and it is
-the one that matters here: **a PR gate is not a release gate.** Nothing re-checks
-anything between the merge and the image publish.
+runs on pull requests. The narrower claim above still holds, and it is the one that
+matters here: **a PR gate is not a release gate.** Nothing re-checks anything
+between the merge and the image publish.
 
-⚠ **The gate's thresholds are branch-aware, so a green check does not mean the same
-thing on both trees.** As of PR #244 the arms key on `github.base_ref` —
-`pr-checks.yml:128` (`TSC_CEILING`) and `:249` (`MAX_FAILURES`): PRs based on `main`
-are allowed that tree's real baseline, PRs based on `develop` are held at zero.
-Neither arm tolerates a *new* failure. Read a pass as "no worse than this tree's
-recorded baseline", never as "the tree is clean".
+Do not read the job list off this page — it has been rewritten twice already. Ask
+the file:
 
-⚠ And the two branches' copies of `pr-checks.yml` **are not the same file.**
-`develop`'s carries the branch-aware arms and a hard web-typecheck gate; `main`'s
-still has a flat `MAX_FAILURES: "9"` and web typecheck as advisory/non-blocking. Read
-the arms in the copy on the branch you are working from rather than assuming this
-paragraph.
+```bash
+grep -nE "^  [a-z-]+:$|    name:|continue-on-error" .github/workflows/pr-checks.yml
+```
+
+⚠ **A green check does not mean a merge is blocked.** `main` is not a protected
+branch, so none of these jobs is a *required* status check: the gate reports, it
+does not prevent. This flips with a settings toggle and nothing in the repo records
+it, so re-check rather than trusting this paragraph:
+
+```bash
+gh api repos/ethancail/bitcorn-lightning-application/branches/main/protection
+# HTTP 404 "Branch not protected" = nothing is required
+```
+
+⚠ **The thresholds went fully strict in PR #255 (2026-08-07)** — two ceilings at
+zero, two collection floors. They were branch-aware between PRs #244 and #255,
+keyed on `github.base_ref`, because the two trees genuinely differed then. v1.18.0
+converged the branches and those arms became pure slack — a `main`-based PR was
+still being allowed a tree's worth of errors that no longer existed — so they were
+collapsed. Read the current values from the file, never from here:
+
+```bash
+grep -nE "TSC_CEILING:|MAX_FAILURES:|MIN_TOTAL:" .github/workflows/pr-checks.yml
+```
+
+A floor is not a ceiling. `MIN_TOTAL` asserts enough tests were **collected**,
+which is the failure a passing exit code cannot catch — see the note below on why
+the numbers here kept rotting.
+
+⚠ **Check whether the two branches' copies agree; do not assume either way.** They
+have diverged before, which is why this warning exists, and they are identical as
+of 2026-08-07. One command settles it:
+
+```bash
+git diff origin/main origin/develop -- .github/workflows/pr-checks.yml   # empty = identical
+```
 
 Tests exist and are worth running — locally, before you open the PR:
 ```bash
@@ -638,43 +666,50 @@ cd app/web && npx tsc --noEmit && npx vite build && npx vitest run
 cd cloudflare-worker && npm run typecheck && npm test
 ```
 
-⚠ **Two of those commands cannot run at all on a `main`-based tree,** for reasons
-that are not test failures. On `main`, `app/web` has no `vitest` devDependency, no
-`test` script and no `vitest.config.ts`; and `cloudflare-worker` has no `typecheck`
-script. Both arrived with develop-side work that has not shipped to `main`. **A
-"command not found" is not a red suite** — distinguish could-not-run from failed
-before you conclude anything.
+⚠ **Distinguish could-not-run from failed.** All of those commands run on both
+trees today — `main` gained the web vitest standup (`vitest` devDependency, `test`
+script, `vitest.config.ts`) and the Worker `typecheck` script at v1.18.0. Until
+then, two of them did not exist on `main` at all, and **a "command not found" is
+not a red suite.** The specific instance is gone; keep the habit, because it is
+exactly how the tsc discrepancy below went unnoticed for weeks.
 
-#### The baseline is per-tree. Derive it; do not read a number off this page.
+#### Derive the numbers. Do not read them off this page.
 
-This paragraph has now gone stale twice by recording one number, so it no longer
-records one. **Get the current figures for the branch your PR targets:**
+This section has gone stale three times by recording values — twice as a single
+number, once as a per-tree table. It no longer records any. **Get the current
+figures:**
 
 ```bash
 cd cloudflare-worker && npx vitest run 2>&1 | grep -E "Test Files|Tests "
-cd app/web && npx tsc --noEmit 2>&1 | grep -c "error TS"
+cd app/api          && npx vitest run 2>&1 | grep -E "Test Files|Tests "
+cd app/web          && npx vitest run 2>&1 | grep -E "Test Files|Tests "
+cd app/web          && npx tsc --noEmit  2>&1 | grep -c "error TS"
 ```
 
-Measured 2026-08-04 for orientation only — re-derive before relying on it:
+The instruction is now simply **"must be clean"**. The older "compare against *that
+tree's* baseline, never must be zero" was correct only while the two trees differed
+and the thresholds tolerated a per-tree backlog; both of those ended at v1.18.0 and
+PR #255.
 
-| Tree | Worker suite | web `tsc` errors |
-|---|---|---|
-| `develop` @ `8cc9901` | 216 pass / **0 fail** (216 total) | **0** |
-| `main` @ `19a667c` | 107 pass / **9 fail** (116 total) | **17** |
+What is worth carrying forward is *why* the numbers here kept rotting, because it
+was a different mechanism each time:
 
-`develop` is clean because PR #244 fixed the nine stale Worker fixtures — they were
-`/valuation/*` tests sending no Bearer and expecting 200, written three weeks before
-the JWT gate they now satisfy — and completed the four recharts Tooltip annotations.
+- **A recorded count is stale the moment anyone adds a test.** Store the command
+  that answers it, not the answer. This is the general rule in CLAUDE.md § STATE.md
+  — volatile state is a query, not a fact.
+- **A threshold conditioned on a branch does not break when its premise dies — it
+  silently becomes slack.** The `main` arms went on allowing a backlog of tsc errors
+  and Worker failures after convergence had removed every one of them, and nothing
+  went red to say so. If you add a branch-conditional threshold, write its
+  retirement condition beside it, as those arms did.
+- **`main`'s tsc count was once far higher than what you would measure locally** —
+  CI installed from `main`'s own `package.json`, which then carried no `vitest`
+  devDependency, while `main` still tracked the test files, so `tsc` added a
+  TS2307 per file plus a knock-on TS7006. An audit scoped to what a job *measures*
+  can miss what its environment *provides*.
 
-`main` still carries both of those, and **11 further `tsc` errors that exist only
-there**: it tracks 10 `app/web/src/**/*.test.ts` files with no `vitest`
-devDependency, so `tsc` adds 10 × TS2307 plus one knock-on TS7006 on top of the 4
-recharts + 2 `SwapOperations` errors. That is why main's number is 17 rather than the
-6 you would measure with vitest's types resolvable. All of it converges at the next
-`develop` → `main` release.
-
-None of it blocks a release. The instruction is "compare against **that tree's**
-baseline", never "must be zero".
+None of it blocks a release, and per the branch-protection note above, none of it
+blocks a merge either.
 
 ---
 
