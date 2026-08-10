@@ -66,6 +66,9 @@
       "Bash(npm run deploy:*)"
     ]
   },
+  "worktree": {
+    "baseRef": "head"
+  },
   "hooks": {
     "SessionStart": [
       {
