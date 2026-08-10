@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.1"
+version: "1.18.2"
 port: 3200
 
 description: >
@@ -27,6 +27,16 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.2: Internal improvements — nothing you need to do. Adds treasury-side
+  revenue reporting for the stablecoin rail, more test coverage, and fixes a
+  display quirk where the USDC balance could sit on "Syncing…" if your computer's
+  clock was running behind your node's.
+
+  Worth knowing: the stablecoin rail is now switched on. If your subscription is
+  current, you can register a Base wallet on the Stablecoin page and settle
+  invoices in USDC today. Settlement fees are 0.25%, taken out of the amount
+  received — so a $10,000 invoice pays out $9,975 to the seller.
+
   v1.18.1: Wallet registration now lives on the Stablecoin page itself, where
   the v1.18.0 notes said to look for it — previously it was tucked in Settings.
   If you already registered a wallet, nothing changes and you don't need to do

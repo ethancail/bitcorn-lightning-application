@@ -185,6 +185,7 @@ import {
   handleWalletStatus as handleStablecoinWalletStatus,
   handleWalletUnregister as handleStablecoinWalletUnregister,
 } from "./stablecoin/handlers";
+import { handleRailFeeRevenue } from "./stablecoin/feeRevenue";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
   verifyEntitlementToken,
@@ -1191,6 +1192,28 @@ const server = http.createServer(async (req, res) => {
       console.error("[admin] subscription revenue failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "subscription_revenue_failed" }));
+    }
+    return;
+  }
+
+  // Treasury-only: rail fee revenue, aggregated from base_settlement_event.
+  // Lives here rather than under /api/stablecoin/* because that block is
+  // deliberately un-role-gated (see its comment) — a treasury-only route there
+  // would break its stated trust model. Same assertTreasury shape as the
+  // subscription-revenue read above.
+  if (req.method === "GET" && req.url === "/api/admin/rail/fee-revenue") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      return handleRailFeeRevenue(req, res);
+    } catch (err: any) {
+      console.error("[admin] rail fee revenue failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "rail_fee_revenue_failed" }));
     }
     return;
   }
@@ -4347,12 +4370,20 @@ server.listen(PORTS.userApi, () => {
   startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null);
   // BASE sync loop — polls the Worker /base/* endpoints at 60s cadence to
   // refresh per-wallet USDC balances and the SettlementRouter governance
-  // state. No-op until at least one member registers a BASE wallet (the
-  // §8.1 UI; pending separate work). Gated on COINBASE_WORKER_URL being
-  // configured, since the loop can't run without Worker access.
+  // state. No-op on a MEMBER node until it registers a BASE wallet; the
+  // TREASURY proceeds with zero wallets because it syncs as the fleet's
+  // indexer (see the guard in base/sync.ts for the full reasoning + cost).
+  // Gated on COINBASE_WORKER_URL being configured, since the loop can't run
+  // without Worker access.
   // Spec: bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md §7
   if (ENV.coinbaseWorkerUrl) {
-    startBaseSyncLoop({ runImmediately: false });
+    // Thunk, not a value: node_role is written by the LND sync from the
+    // unawaited IIFE above and defaults to 'external' until then, so it must be
+    // re-read each tick. Same shape as startKeypairSyncCheck just above.
+    startBaseSyncLoop({
+      getNodeRole: () => getNodeInfo()?.node_role ?? null,
+      runImmediately: false,
+    });
   } else {
     console.warn("[base/sync] COINBASE_WORKER_URL not configured; BASE sync loop disabled");
   }
