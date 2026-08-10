@@ -8,7 +8,14 @@
 // agent's claim that things pass.
 //
 // DECISION TABLE (degrade-gracefully is the design priority):
-//   no uncommitted app/api|app/web changes .......... exit 0 (instant, no checks)
+//   no uncommitted changes under WATCHED_PATHS ...... exit 0 (instant, no checks)
+//                                                     + says so: this branch used
+//                                                     to be the only silent one,
+//                                                     and silence here reads as a
+//                                                     pass. It cannot tell "clean
+//                                                     tree" from "work happened
+//                                                     somewhere this gate does not
+//                                                     watch" — so it claims neither.
 //   changes + checks pass ........................... exit 0
 //   changes + checks RAN and FAILED ................. exit 2 (blocks; failure fed back)
 //   changes + a runner COULD NOT RUN ................ exit 0 + loud warning (broken
@@ -40,6 +47,13 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CMD_TIMEOUT_MS = 150_000;
+
+// The only paths this gate watches. Single source of truth on purpose: the
+// `git status` pathspec below and the nothing-to-verify message both read from
+// here, so the message can never advertise a scope the check doesn't have.
+// Everything else — cloudflare-worker/, .github/, docs/, root files, and every
+// other repo on the machine — is OUTSIDE this gate.
+const WATCHED_PATHS = ["app/api", "app/web"];
 
 // Pre-existing tsc baseline on main: [file-as-tsc-prints-it, TS code].
 const WEB_TSC_BASELINE = [
@@ -121,7 +135,7 @@ const main = async () => {
     hook = JSON.parse((await readStdin()) || "{}");
   } catch {}
 
-  const status = run("git", ["status", "--porcelain", "--", "app/api", "app/web"], ROOT);
+  const status = run("git", ["status", "--porcelain", "--", ...WATCHED_PATHS], ROOT);
   if (status.error || status.status !== 0) {
     console.error("[verify-gate] WARN: git status failed — allowing stop (cannot determine changes).");
     process.exit(0);
@@ -129,7 +143,19 @@ const main = async () => {
   const lines = status.stdout.split("\n").filter((l) => l.trim());
   const apiDirty = lines.some((l) => l.includes("app/api/"));
   const webDirty = lines.some((l) => l.includes("app/web/"));
-  if (!apiDirty && !webDirty) process.exit(0); // nothing to verify — never block
+  if (!apiDirty && !webDirty) {
+    // Never block — but never claim a pass either. This branch cannot tell a
+    // genuinely clean turn from one whose work landed outside WATCHED_PATHS
+    // (another repo, or cloudflare-worker/ | .github/ | docs/ in this one), so
+    // it states the scope instead of implying coverage it doesn't have.
+    // Scoping verification to the work rather than to a path is a separate
+    // change; this one only stops the gap from being invisible.
+    console.log(
+      `[verify-gate] nothing to verify — ${WATCHED_PATHS.join(", ")} clean in ${path.basename(ROOT)}\n` +
+        "[verify-gate] NOT checked: everything else in this repo, and all other repos",
+    );
+    process.exit(0);
+  }
 
   const t0 = Date.now();
   const results = [];
