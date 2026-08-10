@@ -4347,12 +4347,20 @@ server.listen(PORTS.userApi, () => {
   startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null);
   // BASE sync loop — polls the Worker /base/* endpoints at 60s cadence to
   // refresh per-wallet USDC balances and the SettlementRouter governance
-  // state. No-op until at least one member registers a BASE wallet (the
-  // §8.1 UI; pending separate work). Gated on COINBASE_WORKER_URL being
-  // configured, since the loop can't run without Worker access.
+  // state. No-op on a MEMBER node until it registers a BASE wallet; the
+  // TREASURY proceeds with zero wallets because it syncs as the fleet's
+  // indexer (see the guard in base/sync.ts for the full reasoning + cost).
+  // Gated on COINBASE_WORKER_URL being configured, since the loop can't run
+  // without Worker access.
   // Spec: bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md §7
   if (ENV.coinbaseWorkerUrl) {
-    startBaseSyncLoop({ runImmediately: false });
+    // Thunk, not a value: node_role is written by the LND sync from the
+    // unawaited IIFE above and defaults to 'external' until then, so it must be
+    // re-read each tick. Same shape as startKeypairSyncCheck just above.
+    startBaseSyncLoop({
+      getNodeRole: () => getNodeInfo()?.node_role ?? null,
+      runImmediately: false,
+    });
   } else {
     console.warn("[base/sync] COINBASE_WORKER_URL not configured; BASE sync loop disabled");
   }

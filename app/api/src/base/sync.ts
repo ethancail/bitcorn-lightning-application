@@ -67,8 +67,17 @@ let intervalHandle: NodeJS.Timeout | null = null;
  * Execute one sync tick. Safe to call directly (for tests) or via the
  * scheduler. Returns a structured result for logging and (in the future)
  * surfacing through an admin /api/base/sync-status endpoint.
+ *
+ * @param getNodeRole Reads this node's `node_role` — see the wallet guard
+ *   below for why the treasury needs it, and why it is a FUNCTION rather than
+ *   a value. Injected rather than imported so this module keeps depending only
+ *   on ./workerClient, ./store, ./types and ../config/env; the shape matches
+ *   `startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null)`
+ *   (index.ts:4347), which solves the same problem for the same reason.
  */
-export async function runOneTick(): Promise<SyncTickResult> {
+export async function runOneTick(
+    getNodeRole: () => string | null,
+): Promise<SyncTickResult> {
     const started_at = Date.now();
     const errors: SyncTickResult["errors"] = [];
 
@@ -99,8 +108,64 @@ export async function runOneTick(): Promise<SyncTickResult> {
         // No-op when no wallets are registered. Avoids hitting the Worker
         // (and incurring its rate-limit budget) on member nodes that have
         // never registered a BASE address.
+        //
+        // ─── …EXCEPT ON THE TREASURY. Added 2026-08-10. ──────────────────
+        //
+        // WHY: the treasury syncs as the fleet's INDEXER, not as a rail
+        // participant. Those two reasons coincided while the rail was
+        // member-only — you synced because you had a wallet to watch — and
+        // diverged the moment treasury fee revenue became a thing. The Worker's
+        // /base/events returns EVERY Settled log on the router (topic0 filter
+        // only, handlers/base.ts) and this loop persists every one of them with
+        // no wallet filter, so the treasury's base_settlement_event is the
+        // fleet-wide record. Wallet-scoping happens at READ time
+        // (handleSettlements), never at ingest.
+        //
+        // Without this branch the treasury ingests nothing, forever: it has
+        // never registered a BASE wallet, so the guard fired on every tick
+        // since the rail went live (2026-08-07) — cursor never_synced,
+        // base_settlement_event empty, and every rail surface on the treasury
+        // reading as an honest-looking but false zero.
+        //
+        // COST, measured rather than estimated: 2 Worker requests per 60s tick
+        // in steady state (contract-info + feeRecipient; /base/events returns
+        // early at fromBlock > toBlock), 3 when the chain has advanced. That is
+        // BELOW what a single member node with one wallet already spends (3-4),
+        // so letting one treasury through does not move the budget this guard
+        // exists to protect. Cold start is bounded too: the cursor anchors on
+        // the router deploy block, not 0 (syncSettledEvents), and the chunk
+        // loop drains within a single tick.
+        //
+        // ⚠ REJECTED ALTERNATIVE — DO NOT RE-PROPOSE. "Proceed if the node has
+        // wallets OR a router is configured", so the condition describes work
+        // available instead of naming a role. It is circular: the router
+        // address comes FROM the Worker, so evaluating it needs either a Worker
+        // call (spending exactly the budget this guard protects) or
+        // base_contract_state_cache — which only a SUCCESSFUL SYNC populates.
+        // A fresh member node's cache is empty, so the guard fires, so the
+        // cache never populates, so the guard fires forever.
+        //
+        // ⚠ WHY getNodeRole IS A FUNCTION AND NOT A VALUE. node_role is not
+        // known at boot. Migration 010 defaults the column to 'external', and
+        // the value is written into lnd_node_info by the LND sync
+        // (lightning/persist.ts) — from a fire-and-forget async IIFE
+        // (index.ts:229) that nothing awaits, racing startBaseSyncLoop
+        // (index.ts:4355). A treasury node whose LND is slow or unreachable at
+        // boot therefore genuinely reads as 'external' for a while. Capturing
+        // the role once would freeze that: the treasury would skip forever and
+        // look exactly like the bug this change fixes. Reading per tick makes
+        // it SELF-HEALING — an early tick skips, a later tick proceeds — which
+        // is pinned by the role-changes-between-ticks test in sync.test.ts.
+        //
+        // The general shape, because it keeps recurring: a value that looks
+        // static is often produced by an independent async writer, and code
+        // that snapshots it inherits whatever was true at snapshot time. Don't
+        // capture the value — capture the way to ask. (Same shape as the
+        // registered_at clock-skew fix in walletStatusView.ts, where a
+        // server-minted timestamp was compared against the browser's clock.)
         const wallets = listActiveBaseWallets();
-        if (wallets.length === 0) {
+        const isTreasury = getNodeRole() === "treasury";
+        if (wallets.length === 0 && !isTreasury) {
             return {
                 started_at,
                 finished_at: Date.now(),
@@ -471,11 +536,20 @@ async function syncSettledEvents(
 /**
  * Start the periodic sync loop. Idempotent — calling twice is a no-op.
  *
+ * @param getNodeRole REQUIRED. Reads this node's `node_role` fresh on every
+ *   tick — see runOneTick's wallet guard for why it must not be captured as a
+ *   value. Deliberately has no default: a default would make this module import
+ *   the api/ layer, and the injection point is what keeps the guard testable
+ *   without an lnd_node_info table.
  * @param intervalMs Tick interval. Defaults to 60s per spec §7.1.
  * @param runImmediately If true, runs one tick on startup before the first
  *   interval delay. Matches the LND sync loop's "kick on boot" pattern.
  */
-export function startBaseSyncLoop(opts: { intervalMs?: number; runImmediately?: boolean } = {}): void {
+export function startBaseSyncLoop(opts: {
+    getNodeRole: () => string | null;
+    intervalMs?: number;
+    runImmediately?: boolean;
+}): void {
     if (intervalHandle != null) {
         console.warn("[base/sync] startBaseSyncLoop called twice; ignoring second call");
         return;
@@ -486,7 +560,7 @@ export function startBaseSyncLoop(opts: { intervalMs?: number; runImmediately?: 
     console.log(`[base/sync] starting loop (interval=${intervalMs}ms, run_immediately=${runImmediately})`);
 
     const tick = () => {
-        runOneTick()
+        runOneTick(opts.getNodeRole)
             .then((result) => {
                 if (result.skipped_reason) {
                     // Quiet log — these are expected steady states.
