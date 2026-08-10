@@ -22,7 +22,9 @@
 //   B. verify-gate.mjs (Stop hook) — copies the real script into a throwaway
 //      fixture git repo in a temp dir and drives its documented decision
 //      table with a stub `npx` on PATH (no real tsc/vitest needed):
-//        1. clean tree            → exit 0, runners never invoked
+//        1. clean tree            → exit 0, runners never invoked, AND says so
+//           (the "says so" half exists because silence on this path is
+//           indistinguishable from a pass — see verify-gate's decision table)
 //        2. dirty + test failure  → exit 2 (blocks)
 //        3. dirty + all green     → exit 0
 //        4. baseline-only tsc errors → exit 0 (allowlist honored)
@@ -282,6 +284,18 @@ try {
   let r = runGate();
   check("gate 1: clean tree exits 0", r.status === 0, r.out);
   check("gate 1: no runner invoked on clean tree", !fs.existsSync(STUB_LOG));
+  // The nothing-to-verify path is the ONLY branch that used to exit 0 without
+  // printing, which made "I checked nothing" look exactly like "I checked and
+  // it passed" — that is how work in a sibling repo, and work in this repo
+  // outside the watched paths, reached a green-looking stop unverified.
+  // Assert NON-SILENCE plus the log prefix, deliberately not the wording:
+  // pinning the phrasing would make legitimate rewordings fail red, while
+  // pinning silence catches the actual regression.
+  check(
+    "gate 1: clean tree ANNOUNCES that nothing was verified",
+    r.out.trim() !== "" && r.out.includes("[verify-gate]"),
+    `expected output on the nothing-to-verify path, got: ${JSON.stringify(r.out)}`,
+  );
 
   // 2. dirty + failing vitest → exit 2, blocks with clear message
   r = runGate({ dirty: "api", env: { STUB_VITEST_OUT: OUT.vitestFail, STUB_VITEST_EXIT: "1" } });
