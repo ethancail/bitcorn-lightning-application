@@ -56,6 +56,13 @@ const WALLET = "0x4842925cf6b6671e8e1a25892bdea0807b4814fd";
 const ROUTER = "0xf1bc89974f8520b7f98e7cf0c689a7077af04c78";
 const FEE_RECIPIENT = "0xfeeefeeefeeefeeefeeefeeefeeefeeefeeefeee";
 
+// Role thunks for runOneTick's required getNodeRole param. Every pre-existing
+// test in this file registers a wallet and asserts member-shaped behaviour, so
+// they all pass `asMember` — which preserves exactly the semantics they had
+// before the guard became role-scoped.
+const asTreasury = () => "treasury";
+const asMember = () => "member";
+
 const okContractInfo = {
     chain_id: 84532,
     settlement_router_address: ROUTER,
@@ -109,7 +116,7 @@ afterEach(() => {
 
 describe("runOneTick — happy paths", () => {
     it("is a no-op when no wallets are registered", async () => {
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         expect(result.skipped_reason).toBe("no_wallets");
         expect(fetchContractInfo).not.toHaveBeenCalled();
     });
@@ -120,7 +127,7 @@ describe("runOneTick — happy paths", () => {
         fetchFeeRecipient.mockResolvedValue(FEE_RECIPIENT);
         fetchUsdcBalance.mockResolvedValue(okBalance());
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
 
         expect(result.skipped_reason).toBeUndefined();
         expect(result.wallets_attempted).toBe(1);
@@ -157,7 +164,7 @@ describe("runOneTick — failure isolation", () => {
             return Promise.resolve(okBalance());
         });
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         expect(result.wallets_attempted).toBe(2);
         expect(result.wallets_succeeded).toBe(1);
         expect(result.wallets_failed).toBe(1);
@@ -176,7 +183,7 @@ describe("runOneTick — failure isolation", () => {
         fetchContractInfo.mockRejectedValue(new Error("worker down"));
         fetchUsdcBalance.mockResolvedValue(okBalance(41_851_999));
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         expect(result.contract_state_synced).toBe(false);
         expect(result.wallets_succeeded).toBe(1);
         // v2: cursor cannot advance when cold-start has no deploy_block from
@@ -210,7 +217,7 @@ describe("runOneTick — failure isolation", () => {
         upsertMemberBaseWallet(PUBKEY, WALLET, 1_700_000_000);
         fetchContractInfo.mockResolvedValue({ ...okContractInfo, rpc_status: "unconfigured" });
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         expect(result.skipped_reason).toBe("worker_not_configured");
         expect(fetchUsdcBalance).not.toHaveBeenCalled();
         expect(getSyncCursor().lastSyncedBlockNumber).toBe(0);
@@ -233,7 +240,7 @@ describe("runOneTick — failure isolation", () => {
         upsertMemberBaseWallet(PUBKEY, WALLET, 1_700_000_000);
         fetchContractInfo.mockResolvedValue({ ...okContractInfo, chain_id: 8453 });
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         expect(result.skipped_reason).toBe("worker_chain_mismatch");
         // Distinct from worker_not_configured on purpose — different operator fix.
         expect(result.skipped_reason).not.toBe("worker_not_configured");
@@ -256,7 +263,7 @@ describe("runOneTick — failure isolation", () => {
         upsertMemberBaseWallet(PUBKEY, WALLET, 1_700_000_000);
         fetchContractInfo.mockResolvedValue({ ...okContractInfo, chain_id: null });
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         expect(result.skipped_reason).not.toBe("worker_chain_mismatch");
     });
 
@@ -265,7 +272,7 @@ describe("runOneTick — failure isolation", () => {
         fetchContractInfo.mockRejectedValue(new Error("rpc dead"));
         fetchUsdcBalance.mockRejectedValue(new Error("rpc dead"));
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         expect(result.wallets_failed).toBe(1);
         expect(result.contract_state_synced).toBe(false);
         expect(result.cursor_advanced_to).toBeUndefined();
@@ -286,8 +293,8 @@ describe("runOneTick — concurrency", () => {
         fetchFeeRecipient.mockResolvedValue(FEE_RECIPIENT);
         fetchUsdcBalance.mockResolvedValue(okBalance());
 
-        const firstTick = runOneTick();
-        const secondTick = await runOneTick();
+        const firstTick = runOneTick(asMember);
+        const secondTick = await runOneTick(asMember);
 
         expect(secondTick.skipped_reason).toBe("in_progress");
         expect(secondTick.wallets_attempted).toBe(0);
@@ -307,7 +314,7 @@ describe("runOneTick — staleness anchor", () => {
         fetchUsdcBalance.mockResolvedValue(okBalance());
 
         const before = Date.now();
-        await runOneTick();
+        await runOneTick(asMember);
         const after = Date.now();
 
         const balance = getUsdcBalance(WALLET)!;
@@ -359,7 +366,7 @@ describe("runOneTick — Step 5 event sync (happy paths)", () => {
         fetchUsdcBalance.mockResolvedValue(okBalance());
         fetchSettledEvents.mockResolvedValue(okEventsResponse({ logs: [settledLogFixture] }));
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
 
         expect(result.events_processed).toBe(1);
         expect(result.events_already_indexed).toBe(0);
@@ -384,7 +391,7 @@ describe("runOneTick — Step 5 event sync (happy paths)", () => {
         fetchFeeRecipient.mockResolvedValue(FEE_RECIPIENT);
         fetchUsdcBalance.mockResolvedValue(okBalance());
 
-        await runOneTick();
+        await runOneTick(asMember);
 
         expect(fetchSettledEvents).toHaveBeenCalledTimes(1);
         const [fromBlock, toBlock] = fetchSettledEvents.mock.calls[0];
@@ -399,7 +406,7 @@ describe("runOneTick — Step 5 event sync (happy paths)", () => {
         fetchUsdcBalance.mockResolvedValue(okBalance());
         fetchSettledEvents.mockResolvedValue(okEventsResponse({ logs: [settledLogFixture] }));
 
-        const first = await runOneTick();
+        const first = await runOneTick(asMember);
         expect(first.events_processed).toBe(1);
         expect(first.events_already_indexed).toBe(0);
 
@@ -409,7 +416,7 @@ describe("runOneTick — Step 5 event sync (happy paths)", () => {
         memDb.exec("UPDATE base_sync_cursor SET last_synced_block_number = 0 WHERE id = 1");
         __resetTickFlagForTests();
 
-        const second = await runOneTick();
+        const second = await runOneTick(asMember);
         expect(second.events_processed).toBe(0); // UNIQUE constraint skipped
         expect(second.events_already_indexed).toBe(1);
         expect(countSettlementEvents()).toBe(1); // still just one
@@ -425,7 +432,7 @@ describe("runOneTick — Step 5 event sync (happy paths)", () => {
         fetchFeeRecipient.mockResolvedValue(FEE_RECIPIENT);
         fetchUsdcBalance.mockResolvedValue(okBalance());
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         // Range is empty (fromBlock=to_block+1=41_851_937 > toBlock=41_851_936)
         expect(fetchSettledEvents).not.toHaveBeenCalled();
         expect(result.event_chunks_attempted).toBe(0);
@@ -452,7 +459,7 @@ describe("runOneTick — Step 5 chunking", () => {
         fetchUsdcBalance.mockResolvedValue(okBalance(bigTip));
         fetchSettledEvents.mockResolvedValue(okEventsResponse());
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         expect(result.event_chunks_attempted).toBe(3); // 10k + 10k + 371 = 20371
         expect(result.cursor_advanced_to).toBe(bigTip - 64);
 
@@ -477,7 +484,7 @@ describe("runOneTick — Step 5 chunking", () => {
             return okEventsResponse();
         });
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         expect(result.event_chunks_attempted).toBe(2); // tried chunk 2, broke out before 3
         expect(result.cursor_advanced_to).toBe(41_861_565); // last successful chunk's toBlock
         expect(result.errors.some((e) => e.context.startsWith("event_sync:"))).toBe(true);
@@ -507,7 +514,7 @@ describe("runOneTick — Step 5 chunking", () => {
         fetchUsdcBalance.mockResolvedValue(okBalance(bigTip));
         fetchSettledEvents.mockRejectedValue(new Error("eth_getLogs upstream error"));
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
 
         // The tick was otherwise healthy: contract state cached, wallet polled.
         // Without the split, those successes alone would have masked the failure.
@@ -538,10 +545,135 @@ describe("runOneTick — Step 5 decode_errors handling", () => {
             ],
         }));
 
-        const result = await runOneTick();
+        const result = await runOneTick(asMember);
         expect(result.events_processed).toBe(1);          // good log written
         expect(result.decode_errors_count).toBe(2);       // surfaced for operator
         expect(result.cursor_advanced_to).toBe(EXPECTED_EVENT_SYNC_TO_BLOCK); // still advances
         expect(countSettlementEvents()).toBe(1);
+    });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// The role-scoped wallet guard (2026-08-10).
+//
+// The treasury syncs as the fleet's INDEXER, not as a rail participant, so it
+// must proceed with zero registered wallets. Members must NOT — the guard's
+// original purpose (sparing the Worker's rate-limit budget on nodes with no
+// rail involvement) survives only if they stay excluded, which is what the
+// member test below is for.
+//
+// Role is injected as a THUNK, not a value. node_role is written into
+// lnd_node_info by the LND sync (lightning/persist.ts) from an unawaited async
+// IIFE (index.ts:229) that races startBaseSyncLoop (index.ts:4355), and
+// migration 010 defaults the column to 'external'. A treasury node whose LND is
+// slow at boot therefore reads as not-treasury for a while, and capturing the
+// role once would freeze that forever. The per-tick read is what makes it
+// self-healing — pinned by the changes-between-ticks test at the end.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("runOneTick — role-scoped wallet guard", () => {
+    it("TREASURY with zero wallets PROCEEDS past the guard", async () => {
+        fetchContractInfo.mockResolvedValue(okContractInfo);
+        fetchFeeRecipient.mockResolvedValue(FEE_RECIPIENT);
+
+        const result = await runOneTick(asTreasury);
+
+        // Asserted positively — not merely "skipped_reason !== 'no_wallets'",
+        // which a different early return would also satisfy.
+        expect(result.skipped_reason).toBeUndefined();
+        expect(fetchContractInfo).toHaveBeenCalled();
+        // Zero wallets is not a failure, it is the expected treasury shape.
+        expect(result.wallets_attempted).toBe(0);
+        expect(result.wallets_failed).toBe(0);
+    });
+
+    it("MEMBER with zero wallets is STILL guarded — the original purpose survives", async () => {
+        // THE TEST THAT MATTERS. Role-scoping is only correct if members remain
+        // excluded; if this ever goes green-by-accident the change has become a
+        // blanket removal of the guard and every member node starts spending
+        // Worker budget it has no use for.
+        const result = await runOneTick(asMember);
+
+        expect(result.skipped_reason).toBe("no_wallets");
+        expect(fetchContractInfo).not.toHaveBeenCalled();
+    });
+
+    it("an UNKNOWN/absent role is treated as not-treasury — fail closed", async () => {
+        // getNodeRole returns null before the LND sync has written the row.
+        // Anything that is not exactly "treasury" must be guarded, matching
+        // utils/role.ts:2's `role !== "treasury"`.
+        const result = await runOneTick(() => null);
+
+        expect(result.skipped_reason).toBe("no_wallets");
+        expect(fetchContractInfo).not.toHaveBeenCalled();
+    });
+
+    it("MEMBER with a wallet still syncs — role-scoping did not narrow the guard", async () => {
+        upsertMemberBaseWallet(PUBKEY, WALLET, 1_700_000_000);
+        fetchContractInfo.mockResolvedValue(okContractInfo);
+        fetchFeeRecipient.mockResolvedValue(FEE_RECIPIENT);
+        fetchUsdcBalance.mockResolvedValue(okBalance());
+
+        const result = await runOneTick(asMember);
+
+        expect(result.skipped_reason).toBeUndefined();
+        expect(result.wallets_succeeded).toBe(1);
+    });
+
+    it("treasury with zero wallets runs the WALLET-INDEPENDENT steps", async () => {
+        // Observable effects, not "the function returned". These three are
+        // exactly what the fee-revenue surface depends on.
+        fetchContractInfo.mockResolvedValue(okContractInfo);
+        fetchFeeRecipient.mockResolvedValue(FEE_RECIPIENT);
+        fetchSettledEvents.mockResolvedValue(okEventsResponse({ logs: [settledLogFixture] }));
+
+        const result = await runOneTick(asTreasury);
+
+        // 1. Contract-state cache WRITTEN (row in base_contract_state_cache).
+        const state = getContractState();
+        expect(state?.settlementRouterAddress).toBe(ROUTER);
+        expect(state?.feeRecipientAddress).toBe(FEE_RECIPIENT);
+        expect(result.contract_state_synced).toBe(true);
+
+        // 2. Event ingestion ATTEMPTED and committed — the row is in the table.
+        expect(fetchSettledEvents).toHaveBeenCalled();
+        expect(result.events_processed).toBe(1);
+        expect(countSettlementEvents()).toBe(1);
+
+        // 3. Cursor ADVANCED.
+        expect(result.cursor_advanced_to).toBe(EXPECTED_EVENT_SYNC_TO_BLOCK);
+        expect(getSyncCursor().lastSyncedBlockNumber).toBe(EXPECTED_EVENT_SYNC_TO_BLOCK);
+
+        // And no balance work happened, because there are no wallets to poll.
+        expect(fetchUsdcBalance).not.toHaveBeenCalled();
+    });
+
+    it("SELF-HEALS when the role changes between ticks — the reason it is a thunk", async () => {
+        // The boot race, reproduced. node_role defaults to 'external'
+        // (migration 010) and is written later by the LND sync from an
+        // unawaited IIFE, so the first tick of a treasury node can genuinely
+        // read as not-treasury.
+        //
+        // A captured role would freeze the first reading and the treasury would
+        // skip forever — indistinguishable from the bug this change fixes. This
+        // test is the only thing standing between that and a refactor that
+        // hoists getNodeRole() out of the tick: every other test here passes a
+        // constant thunk and would stay green.
+        let role = "external";
+        const changingRole = () => role;
+
+        fetchContractInfo.mockResolvedValue(okContractInfo);
+        fetchFeeRecipient.mockResolvedValue(FEE_RECIPIENT);
+
+        const early = await runOneTick(changingRole);
+        expect(early.skipped_reason).toBe("no_wallets");
+        expect(fetchContractInfo).not.toHaveBeenCalled();
+
+        // LND sync lands; the row now says treasury. Nothing else changes.
+        role = "treasury";
+
+        const later = await runOneTick(changingRole);
+        expect(later.skipped_reason).toBeUndefined();
+        expect(fetchContractInfo).toHaveBeenCalled();
     });
 });
