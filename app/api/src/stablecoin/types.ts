@@ -165,3 +165,45 @@ export interface SettlementsResponse {
     /** Page cursor — next page would query `?before_block=<this>`. Null if no more. */
     next_before_block: number | null;
 }
+
+// ─── GET /api/admin/rail/fee-revenue (treasury-only) ─────────────────────
+
+/** One aggregation bucket. See stablecoin/feeRevenue.ts for what it means. */
+export interface RailFeeTotals {
+    /** Exact sum in USDC base units, decimal string. This is the contract. */
+    fee_units_raw: string;
+    /** Truncated to 2dp by formatUsdcUnits — display only, never arithmetic. */
+    fee_human: string;
+    gross_units_raw: string;
+    gross_human: string;
+    settlement_count: number;
+}
+
+export interface RailFeeWindowTotals extends RailFeeTotals {
+    /** Inclusive block range actually counted, stated so no reader has to
+     *  trust the word "24h" — the window is block-keyed, not time-keyed. */
+    from_block: number;
+    to_block: number;
+}
+
+export interface RailFeeRevenueResponse {
+    all_time: RailFeeTotals;
+    last_24h: RailFeeWindowTotals;
+    /** Deliberately in the same payload as the numbers: a figure is only a
+     *  fact when the cursor is fresh. */
+    freshness: {
+        last_synced_block_number: number;
+        /** 0 is the never-synced sentinel, not a timestamp. */
+        last_success_at: number;
+        staleness_seconds: number;
+        staleness_label: RailStalenessLabel;
+    };
+    /** Fees were DELIVERED, not merely accrued — the Settled event is emitted
+     *  after the fee transfer and SafeERC20 reverts on failure. Sweeps are not
+     *  tracked, so this is cumulative delivery, not a balance. */
+    basis: "delivered";
+    /** CURRENT fee recipient. Does NOT describe historical attribution. */
+    fee_recipient_address: string | null;
+    currency: "USDC";
+    decimals: number;
+}

@@ -313,3 +313,56 @@ export function getContractState(database: Db = defaultDb): BaseContractStateCac
         asOfAt: row.as_of_at,
     };
 }
+
+// -----------------------------------------------------------------------
+// base_settlement_event — fee aggregation (treasury fee-revenue read)
+// -----------------------------------------------------------------------
+
+/** One aggregation bucket, exact in USDC base units. */
+export interface SettlementFeeTotals {
+    feeUnits: bigint;
+    grossUnits: bigint;
+    settlementCount: number;
+}
+
+/**
+ * Sum fees and gross across settlements, optionally restricted to
+ * `block_number >= fromBlock`.
+ *
+ * ⚠ THE SUMMING IS DELIBERATELY IN JS, NOT SQL. Do NOT "optimize" this into
+ * `SELECT SUM(fee_units) …`. `fee_units` and `amount_units` are TEXT columns
+ * (migration 046, so a uint256 can't overflow an int64 and so the stored form
+ * matches the TS bigint representation). SQLite's SUM() over TEXT coerces each
+ * value to REAL — an IEEE-754 double — which is exact only up to 2^53. A single
+ * settlement can't reach that, but a running total can, and the failure is
+ * silent: no error, no warning, just a number that quietly stops being right
+ * once it gets big enough. Reading strings and folding them with BigInt is
+ * exact at any magnitude.
+ *
+ * Returns bigints; formatting happens exactly once, at the handler edge.
+ */
+export function sumSettlementFees(
+    fromBlock?: number,
+    database: Db = defaultDb,
+): SettlementFeeTotals {
+    const rows = (
+        fromBlock == null
+            ? database
+                  .prepare(`SELECT fee_units, amount_units FROM base_settlement_event`)
+                  .all()
+            : database
+                  .prepare(
+                      `SELECT fee_units, amount_units FROM base_settlement_event
+                       WHERE block_number >= ?`,
+                  )
+                  .all(fromBlock)
+    ) as Array<{ fee_units: string; amount_units: string }>;
+
+    let feeUnits = 0n;
+    let grossUnits = 0n;
+    for (const r of rows) {
+        feeUnits += BigInt(r.fee_units);
+        grossUnits += BigInt(r.amount_units);
+    }
+    return { feeUnits, grossUnits, settlementCount: rows.length };
+}

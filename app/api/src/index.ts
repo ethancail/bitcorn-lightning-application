@@ -185,6 +185,7 @@ import {
   handleWalletStatus as handleStablecoinWalletStatus,
   handleWalletUnregister as handleStablecoinWalletUnregister,
 } from "./stablecoin/handlers";
+import { handleRailFeeRevenue } from "./stablecoin/feeRevenue";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
   verifyEntitlementToken,
@@ -1191,6 +1192,28 @@ const server = http.createServer(async (req, res) => {
       console.error("[admin] subscription revenue failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "subscription_revenue_failed" }));
+    }
+    return;
+  }
+
+  // Treasury-only: rail fee revenue, aggregated from base_settlement_event.
+  // Lives here rather than under /api/stablecoin/* because that block is
+  // deliberately un-role-gated (see its comment) — a treasury-only route there
+  // would break its stated trust model. Same assertTreasury shape as the
+  // subscription-revenue read above.
+  if (req.method === "GET" && req.url === "/api/admin/rail/fee-revenue") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      return handleRailFeeRevenue(req, res);
+    } catch (err: any) {
+      console.error("[admin] rail fee revenue failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "rail_fee_revenue_failed" }));
     }
     return;
   }

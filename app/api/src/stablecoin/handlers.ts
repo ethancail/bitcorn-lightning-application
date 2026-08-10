@@ -91,7 +91,16 @@ function readChainId(): number {
     return ENV.baseChainId;
 }
 
-function formatUsdcUnits(units: bigint, decimals: number): string {
+/**
+ * ⚠ TRUNCATES to 2dp — it does not round. `slice(0, 2)` below. A fee of 9999
+ * base units ($0.009999) formats to "0.00", which at the launch fee of 25 bps
+ * is every settlement under $4.
+ *
+ * Exported (2026-08-10) for the treasury fee-revenue read rather than copied:
+ * a second implementation would drift, and the two would disagree about
+ * sub-cent amounts — the exact case that matters here.
+ */
+export function formatUsdcUnits(units: bigint, decimals: number): string {
     if (decimals === 0) return units.toString();
     const divisor = 10n ** BigInt(decimals);
     const whole = units / divisor;
