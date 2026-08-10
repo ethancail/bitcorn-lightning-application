@@ -77,6 +77,8 @@ export const api = {
   getAdminMembers: () => apiFetch<AdminMembersResponse>("/api/admin/members"),
   getAdminSubscriptionRevenue: () =>
     apiFetch<SubscriptionRevenueResponse>("/api/admin/subscription/revenue"),
+  getAdminRailFeeRevenue: () =>
+    apiFetch<RailFeeRevenueResponse>("/api/admin/rail/fee-revenue"),
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   getNodePreflight: () => apiFetch<PreflightResult>("/api/node/preflight"),
@@ -791,6 +793,44 @@ export type MemberRevenueRow = {
   payment_count: number;
   window_sats: number;
   window_payment_count: number;
+};
+
+/** One aggregate bucket of the rail fee-revenue read. */
+export type RailFeeTotals = {
+  /** Exact sum in USDC base units, decimal string. The contract. */
+  fee_units_raw: string;
+  /** `fee_units_raw` truncated to 2dp. Display only — never do arithmetic on it. */
+  fee_human: string;
+  gross_units_raw: string;
+  gross_human: string;
+  settlement_count: number;
+};
+
+export type RailFeeWindowTotals = RailFeeTotals & {
+  /** Inclusive block range actually counted. Stated so a reader never has to
+   *  trust the word "24h" — see the API handler's note on block-keyed windows. */
+  from_block: number;
+  to_block: number;
+};
+
+export type RailFeeRevenueResponse = {
+  all_time: RailFeeTotals;
+  last_24h: RailFeeWindowTotals;
+  /** Travels with the numbers on purpose: a figure is only a fact when the
+   *  cursor is fresh. See deriveRailFeeView in components/railFeeRevenueView.ts. */
+  freshness: {
+    last_synced_block_number: number;
+    /** 0 is the never-synced sentinel, not a timestamp. */
+    last_success_at: number;
+    staleness_seconds: number;
+    staleness_label: "never_synced" | "fresh" | "stale" | "very_stale";
+  };
+  /** What the figures mean — see the handler for why this wording is exact. */
+  basis: "delivered";
+  /** CURRENT fee recipient. Does NOT describe historical attribution. */
+  fee_recipient_address: string | null;
+  currency: "USDC";
+  decimals: number;
 };
 
 export type SubscriptionRevenueResponse = {

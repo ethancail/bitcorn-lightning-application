@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { api, type TreasuryMetrics, type TreasuryAlert, type NodeBalances } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import SubscriptionRevenuePanel from "../components/SubscriptionRevenuePanel";
+import RailFeeRevenuePanel from "../components/RailFeeRevenuePanel";
 import ValuationInputAlertBanner from "../components/ValuationInputAlertBanner";
 import StaleMarker from "../components/StaleMarker";
 import {
@@ -278,6 +279,14 @@ export default function Dashboard() {
 
       {/* ── Subscription Revenue (on-chain member subscriptions) ── */}
       <SubscriptionRevenuePanel />
+
+      {/* ── Stablecoin Fee Revenue (rail fees, USDC) ──
+          Deliberately its own panel and NOT folded into the sats hero above:
+          USDC is dollar-denominated, and converting it through a live BTC price
+          would invent a number. See RailFeeRevenuePanel's header for why a
+          treasury-operator revenue view does not contradict the decision to
+          keep rail PARTICIPATION surfaces off the treasury shell. */}
+      <RailFeeRevenuePanel />
     </div>
   );
 }
