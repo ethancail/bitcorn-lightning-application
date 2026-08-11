@@ -1,3 +1,26 @@
+// CORS: `Authorization` is deliberately absent from Allow-Headers below, and
+// the gate's rejection responses (lib/jwt.ts) carry no CORS headers at all.
+//
+// Examined 2026-08-11 and left as-is, because neither is reachable. Every
+// caller of this Worker is server-to-server: the member node's API process —
+// via `workerFetch`, plus a small number of documented direct-fetch bootstrap
+// exceptions that are also server-side — and CLI smoke tests. Nothing in the
+// web bundle holds this Worker's URL — no VITE_* var carries it — so no
+// browser ever preflights here, and CORS headers only matter to a browser.
+//
+// THIS CHANGES the day anything calls this Worker from a browser. The named
+// route to that today is hosted wallet registration on an HTTPS origin (a
+// parked decision — bitcorn-research BACKLOG.md §1). If you are implementing
+// that, you are crossing a line someone already examined: a request carrying
+// `Authorization` is never a simple request, so the preflight must list it or
+// the real request is never sent — and a 401 arriving without
+// Access-Control-Allow-Origin is unreadable to the caller.
+//
+// The fix at that point: add "Authorization" here, and spread CORS_HEADERS
+// into the rejection construction in lib/jwt.ts and the 404 catch-all in
+// index.ts. Note that nothing would catch a regression afterward — no test
+// asserts headers on a 401/403/404/503; today's assertions are status-and-body
+// only.
 export const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
