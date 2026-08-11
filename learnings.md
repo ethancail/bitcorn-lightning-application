@@ -24,6 +24,84 @@ has stopped working.
 
 ---
 
+## 2026-08-11
+
+### A scar recorded in one instruction surface is invisible to every session that doesn't load it
+
+**Scar:** Unresolved merge and cherry-pick hunks have been committed in this repo before. That fact
+lived in exactly one place — `.claude/skills/build-with-verification/SKILL.md:34` — and nowhere else:
+`grep -in "conflict\|marker\|cherry-pick" learnings.md` returned zero hits, and no CI job checked for
+one. Meanwhile the failure it describes is fleet-wide: migrations are filename-keyed and run at API
+startup on every member node, and `app/api/src/db/migrate.ts:46-57` swallows only "duplicate column" /
+"already exists", so a marker's SQLite syntax error rethrows and crashes the boot — and because the
+applied-insert runs only *after* `db.exec` succeeds, it rethrows again on every restart. It does not
+self-heal.
+
+**Lesson:** A scar is only as reachable as the surface holding it. A skill file is loaded by sessions
+that invoke that skill and by no others, so a lesson parked there alone enforces nothing everywhere
+else. Finding a known failure recorded in exactly one surface *is* the finding: it is evidence that
+nobody ever asked what would make it fire mechanically. Ask that first, and treat the lone record as an
+unfinished promotion rather than as coverage.
+
+**Disposition:** `[PROMOTED → .github/workflows/pr-checks.yml, conflict-markers job (5ccb1fb)]` ·
+behavioural proofs in `scripts/test-hooks.mjs` § C (aa5e957)
+
+### A verification artifact that is discarded takes its own lesson with it
+
+**Scar:** PR #255 flipped four CI thresholds to strict and proved each could FAIL — a harness extracted
+the real `run:` text out of the YAML and executed it under `bash -e` against stubbed violating counts,
+19/19 cases. That harness was never committed: `git show 100374f --stat` is one file, the workflow
+itself, and no test file exists in any ref. Its result survives only as prose in `217e08f`'s message.
+So the lesson it established — that a green CI run cannot prove a threshold change, because green is
+exactly what a vacuous gate looks like — became the one thing that could not be re-checked, and the
+next arc rebuilt the mechanism from nothing.
+
+**Lesson:** Scratch verification and committed verification are different artifacts, and only the
+second is still verification a month later. A negative control that existed once, in a session, is an
+anecdote about the past; the same control committed is a claim that stays true or goes red on its own.
+If proving a gate can fail was worth doing, it was worth committing — and if it feels too rough to
+commit, that roughness is what the next person inherits either way.
+
+**Disposition:** `[PROMOTED → scripts/test-hooks.mjs § C (aa5e957)]` — 20 cases, extraction-from-source
+rather than transcription, plus a `--workflow` override so the suite can be pointed at a deliberately
+weakened copy and shown to go red.
+
+### Verification code fails like code — and when it fails it must report, not abort
+
+**Scar:** Two in one arc. (1) Running the new suite against a tree where the gate does not yet exist
+crashed it: the variant builder's locator returned `runIdx -1`, indexing threw a `TypeError`, and the
+run died before printing its summary — so "the gate is absent" surfaced as a stack trace instead of as
+failing cases. (2) The proof scripts shipped two bugs of their own, both caught only by running them: a
+bash-syntax-error contrast that exited **0** and therefore contrasted nothing, and a "is this a bash
+diagnostic" regex that matched the gate's own explanatory prose about a SQLite *syntax error*.
+
+**Lesson:** The harness is not a privileged observer — it is more code, with the same defect rate and
+no test of its own. Two consequences worth holding separately. A suite must FAIL on a broken subject,
+never crash on one: an abort skips the summary, which is could-not-run wearing a different mask and
+reads as "something went wrong over there" rather than "this is red." And a proof must itself be run
+against a case it is supposed to reject before its green means anything, because an assertion written
+to demonstrate something is exactly as likely to be wrong as the code it examines.
+
+**Disposition:** `[PROMOTED → scripts/test-hooks.mjs (aa5e957)]` — the locator now throws a sentence,
+and `mustThrow` takes a thunk so variant-build failures surface as failed cases instead of killing the
+run.
+
+### A discriminating fixture has to sit ON the boundary being mutated
+
+**Scar:** The sabotage that weakens the gate's comparison from `-gt 0` to `-gt 1` can only flip a case
+whose count is exactly 1. The `.sql` fixture was nearly written as a realistic full conflict hunk —
+three marker lines — which stays red under that mutation (`3 -gt 1` is still true), passes, and proves
+nothing about the boundary it was meant to test. It carries exactly one marker on purpose.
+
+**Lesson:** A mutation test proves only what its fixtures can distinguish, and a fixture sitting
+comfortably past the boundary survives the mutation and reports green — which reads identically to "the
+mutation was caught." Pick the fixture from the mutation you intend to apply, not from realism. Then
+keep a stronger fixture beside it deliberately, so a *total* break can be told apart from a *partial*
+one: here the three-marker case staying red is the only thing showing the sabotaged copy was not simply
+broken everywhere.
+
+**Disposition:** `[PROMOTED → code comment at the C2 fixture in scripts/test-hooks.mjs (aa5e957)]`
+
 ## 2026-07-29
 
 ### A green test proves the assertion holds — never that it holds for the stated reason
