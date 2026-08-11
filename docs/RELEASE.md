@@ -384,9 +384,11 @@ farmers "update" to a new version number running the previous code. Nothing erro
 
 ### Bumping only the compose file triggers no build
 `bitcorn-lightning-node/docker-compose.yml` is **not** in CI's `paths:` filter.
-**Prevents:** a release where you bumped the pins, saw no CI run, and concluded CI
-was broken — when in fact the workflow correctly never fired. `umbrel-app.yml` must
-be in the same commit to trigger the build.
+**Prevents:** a release where you bumped the pins, saw no image published, and
+concluded the build was broken — when in fact the workflow correctly never fired.
+`umbrel-app.yml` must be in the same commit to trigger the build. Note the PR gate
+still runs on such a PR, so green checks are **not** evidence that a build fired —
+only GHCR is (step 3a).
 
 ### `latest` is not a pointer to the current release
 `latest` is re-pointed by **any** push to `main` whose changed files match one of
@@ -581,8 +583,14 @@ being untested.
 ## What this doc does NOT cover
 
 ### The Cloudflare Worker is a separate artifact — decoupled in BOTH directions
-`cloudflare-worker/` is deployed by hand with `wrangler deploy`. It has **no CI, no
-version number, and no coupling to the app release cycle.**
+`cloudflare-worker/` is deployed by hand with `wrangler deploy`. It has **no deploy
+CI, no version number, and no coupling to the app release cycle.**
+
+"No *deploy* CI" is the precise claim, and the qualifier is load-bearing: Worker
+code **is** test-gated on pull requests. This line read "no CI" until 2026-08-11,
+which was true of publishing and false of testing — the same conflation that
+retitled § No test gate runs on the RELEASE path below. Take the gate list from
+that section's query, not from here.
 
 - **A Worker change does not reach nodes via an app release.** Merging
   `cloudflare-worker/**` to `main` ships nothing — that path is not in CI's `paths:`
