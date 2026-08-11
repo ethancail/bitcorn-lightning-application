@@ -108,11 +108,13 @@ The consequence is quiet and does not heal: nodes already on that version see no
 
 ### ⚠ OPEN QUESTION — the sideload test gate went missing
 
-The previous convention read `feature/* → develop → sideload test on Umbrel → main`. That **sideload test on a real Umbrel node is the only pre-production verification step documented anywhere in this repo**, and the direct path dropped it silently — nobody decided to retire it; it stopped happening when the path changed.
+The previous convention read `feature/* → develop → sideload test on Umbrel → main`. That **sideload test on a real Umbrel node is the only verification this repo has ever had that installs the app on real hardware**, and the direct path dropped it silently — nobody decided to retire it; it stopped happening when the path changed.
 
 **Undecided — do not assume either way:** whether to reinstate it for the direct path, require it on both, or deliberately retire it. Recorded here so the gate stays on the record instead of vanishing with the old text.
 
-Note what its absence leaves in place: **no test gate runs in CI** (see `docs/RELEASE.md` § What this doc does NOT cover), so on the direct path the only pre-merge verification is the local `verify-gate` Stop hook — which is bypassable via `VERIFY_GATE_SKIP=1` and does not exist for anyone working from another machine.
+Note what its absence leaves in place — and note that this changed under the section without answering it. **CI now hard-gates every PR** (`.github/workflows/pr-checks.yml`); don't trust a job list written here, read it: `grep -n '^    name:' .github/workflows/pr-checks.yml` for what runs, `gh run list --workflow=pr-checks.yml` for whether it's passing. Two of those gates enforce hazards this file documents by hand above — version agreement across the two files, and the app-code-without-a-bump footgun.
+
+**None of them install anything.** Every job runs on a GitHub runner with no Umbrel and no LND, so the install failures in § Umbrel Gotchas below — flipping back to "Install" at 0%, the ~50% port-conflict reset, a half-installed app, images missing from ghcr.io — remain reachable only by installing a real release on a real node. That is the gap the missing sideload test used to cover, and CI does not narrow it. Two residual caveats: the workflow triggers on `pull_request` only, so it gates PRs rather than pushes (fine while direct pushes to `main` stay forbidden, load-bearing on that), and the local `verify-gate` Stop hook — bypassable via `VERIFY_GATE_SKIP=1`, and absent for anyone working from another machine — is still the only check between a commit and opening the PR.
 
 ### Umbrel Gotchas (read before releasing)
 
