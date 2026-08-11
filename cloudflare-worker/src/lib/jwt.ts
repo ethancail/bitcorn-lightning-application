@@ -197,6 +197,8 @@ export async function withJwtGate(
     return await handler(verified);
   } catch (err: any) {
     if (err instanceof WorkerJwtError) {
+      // No CORS headers here, deliberately — see lib/cors.ts for why this is
+      // unreachable and what makes it reachable again.
       return new Response(
         JSON.stringify({ error: err.reason, detail: err.message }),
         {
