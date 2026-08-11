@@ -568,8 +568,19 @@ jobs:
           #    is.
           # 2. `grep` exits 1 on NO MATCH, which here is the CLEAN case — the
           #    inverse of the usual reading.
-          # Under `set -e` either would kill this job for the wrong reason, and
-          # inside a pipeline under `set -o pipefail` it would do so silently.
+          # Under `set -e` either would kill this job for the wrong reason. A
+          # bare pipeline would be worse, and the mechanism is worth naming
+          # exactly, because this step has NO `shell:` key: that absence selects
+          # `bash -e` — errexit only, NO pipefail. (Writing `shell: bash` would
+          # select the STRICTER `bash --noprofile --norc -eo pipefail`; omitting
+          # it is what buys the weaker shell. Confirmed in run 31541635531's log:
+          # `shell: /usr/bin/bash -e {0}`.)
+          #
+          # Without pipefail a pipeline reports only its LAST command's status.
+          # So `git diff --check … | grep -c …` would return GREP's exit code,
+          # the could-not-run guard below would never see git's, and a git that
+          # failed to run would be indistinguishable from a clean tree — the
+          # exact vacuous green this job exists to prevent.
           # Hence `set +e` around each invocation with the code taken by hand.
           # Do not "simplify" these back into a bare pipeline.
           set +e

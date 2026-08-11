@@ -35,7 +35,7 @@
 //      Exit codes come from spawnSync .status directly — no pipes to mask them.
 //   C. the conflict-markers job in .github/workflows/pr-checks.yml — EXTRACTS
 //      the real `run:` script text out of the YAML and executes it under
-//      GitHub's own shell (bash --noprofile --norc -eo pipefail) with LC_ALL=C,
+//      GitHub's own shell for that step (/usr/bin/bash -e) with LC_ALL=C,
 //      against throwaway fixture git repos:
 //        1. clean tree                        → exit 0
 //        2. marker in a .sql                  → exit 1, naming that file:line
@@ -457,9 +457,25 @@ console.log(`workflow: ${WORKFLOW_PATH}`);
 
 const CTMP = fs.mkdtempSync(path.join(os.tmpdir(), "bitcorn-marker-tests-"));
 try {
-  // GitHub runs `run:` blocks under exactly this shell. The permissive `bash x.sh`
-  // a developer reaches for is MORE forgiving, so a green there does not transfer.
-  const CI_SHELL = ["--noprofile", "--norc", "-eo", "pipefail"];
+  // ⚠ THE SHELL IS SELECTED BY THE ABSENCE OF A KEY, WHICH IS EASY TO GET
+  // BACKWARDS — it was, here, until run 31541635531's log settled it:
+  //
+  //     shell: /usr/bin/bash -e {0}
+  //
+  // A `run:` step with NO `shell:` key gets `bash -e` — errexit only, NO
+  // pipefail. A step that EXPLICITLY writes `shell: bash` gets
+  // `bash --noprofile --norc -eo pipefail`. So writing the key makes the shell
+  // STRICTER, and omitting it is what selects the weaker one. The
+  // conflict-markers job omits it, so `bash -e` is what its script actually
+  // runs under and what this harness must reproduce.
+  //
+  // Checking the workflow for a `shell:` override and finding none is therefore
+  // only half the question; the other half is which shell that absence buys.
+  // Verifying under the stricter shell is a false comfort: it passes scripts CI
+  // would also pass, while proving nothing about the pipefail-free semantics the
+  // job is actually exposed to.
+  const CI_SHELL_BIN = "/usr/bin/bash";
+  const CI_SHELL_ARGS = ["-e"];
   const REAL_GIT = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).stdout.trim();
   const gitEnvC = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" };
 
@@ -502,7 +518,7 @@ try {
     if (!GATE_SCRIPT) return { status: null, stdout: "", stderr: "extraction failed" };
     const sp = path.join(CTMP, `gate-${++seq}.sh`);
     fs.writeFileSync(sp, GATE_SCRIPT);
-    const r = spawnSync("bash", [...CI_SHELL, sp], {
+    const r = spawnSync(CI_SHELL_BIN, [...CI_SHELL_ARGS, sp], {
       cwd: repoDir,
       encoding: "utf8",
       timeout: 60_000,
