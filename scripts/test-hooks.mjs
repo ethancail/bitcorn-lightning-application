@@ -169,8 +169,21 @@ if (Array.isArray(deny)) {
     "npx wrangler@latest deploy",
     "npx wrangler secret put COINBASE_KEY",
     "wrangler secret put X",
+    // rollback is publish-class: it republishes a prior Worker version to
+    // production, which every member node picks up on its ~60s sync tick. It
+    // takes -y, so it is fully non-interactive and needs a mechanical block,
+    // not a prompt. Only the top-level spelling exists in wrangler 3.114.17
+    // (`wrangler versions` has no rollback subcommand; `wrangler deployments`
+    // has only list/status) — verified via --help, not assumed.
+    "wrangler rollback",
+    "wrangler rollback -y",
+    "npx wrangler rollback",
+    "npx wrangler rollback 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d -y",
+    "npx wrangler rollback -y -m 'revert bad deploy'",
+    "npx wrangler@latest rollback -y", // version-pinned npx bypasses the bare `wrangler` rules
     "npm run deploy",
     "cd cloudflare-worker && npx wrangler deploy", // guardrail bypass via compound
+    "cd cloudflare-worker && npx wrangler rollback -y", // same bypass, rollback
   ];
 
   const MUST_ALLOW = [
@@ -196,6 +209,18 @@ if (Array.isArray(deny)) {
     "npm run build",
     "npm run dev",
     "npx wrangler dev",
+    // Reading rollback eligibility must stay legal — these are how you find out
+    // WHICH version you would roll back to, and blocking them would make the
+    // deny rule above cost more than it protects.
+    "npx wrangler deployments list",
+    "npx wrangler deployments status",
+    "npx wrangler versions list",
+    "npx wrangler versions view 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    // KNOWN AND ACCEPTED over-block, asserted nowhere because it would fail:
+    // `wrangler rollback --help` IS denied, because `Bash(wrangler rollback:*)`
+    // is a prefix rule and cannot carve out a flag. This is not a new cost —
+    // `wrangler deploy --help` has always been denied by the same shape — and
+    // the read-only commands above cover the actual inspection need.
     "npx wrangler kv key delete commodity_prices --namespace-id=x", // documented maintenance op
     "npx tsc --noEmit",
     "npx vitest run",
