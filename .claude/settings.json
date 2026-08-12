@@ -71,6 +71,9 @@
       "Bash(npx wrangler@* deploy*)",
       "Bash(npx wrangler@* rollback*)",
       "Bash(npx wrangler@* secret*)",
+      "Bash(npx wrangler@* delete*)",
+      "Bash(npx wrangler@* publish*)",
+      "Bash(npx wrangler@* versions upload*)",
       "Bash(npm run deploy)",
       "Bash(npm run deploy:*)"
     ]

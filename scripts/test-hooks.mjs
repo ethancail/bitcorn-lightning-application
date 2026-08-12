@@ -209,9 +209,44 @@ if (Array.isArray(deny)) {
     // `npx wrangler@* rollback:*`, which the literal-colon trap would kill),
     // this case goes red and says so.
     "npx wrangler@latest versions rollback -y",
+    // ---- @<spec> publish-class gap closure: delete / publish / versions upload
+    // ⚠ ANY version spec bypasses the bare rules above, not just @latest. Those
+    // are `:*` prefix rules anchored on the literal "npx wrangler ", so
+    // "npx wrangler@3.114.17 delete" matches none of them. Each of the three
+    // verbs below was measured UNCOVERED by isolation probe against the
+    // pre-change deny list (zero coverers, not one) before a rule was added —
+    // leave-one-out would have been blind to a second coverer if one existed.
+    // By contrast `versions deploy` was reported as a gap and measured ALREADY
+    // COVERED by `npx wrangler@* deploy*`, so it got no rule of its own; the
+    // guard on that subsumption lives at the versions-rollback case above.
+    //
+    // delete is DESTRUCTIVE — it removes a Worker from Cloudflare outright.
+    "npx wrangler@latest delete",
+    "npx wrangler@3.114.17 delete", // a pinned spec — not an @latest quirk
+    "npx wrangler@latest delete --name bitcorn-commodity-prices",
+    // `publish` is NEITHER DEAD NOR FORWARD COVERAGE — do not downgrade this
+    // comment to "speculative". In wrangler 3.114.17 it is a LIVE alias of
+    // `wrangler deploy`, carrying metadata { deprecated: true, hidden: true },
+    // and it is registered in the command tree: wrangler-dist/cli.js has
+    // `command: "wrangler publish"` → publishAlias = createAlias({ aliasOf:
+    // "wrangler deploy" }). `hidden: true` is precisely why it does NOT appear
+    // in `wrangler --help`'s command list, which makes absence from that list
+    // worthless as evidence either way. Verified by reading the registration,
+    // NOT by an exit code — an unknown subcommand can exit 0 and print the
+    // parent help. Re-derive after any wrangler major bump: publish is slated
+    // for removal in the next major, at which point these become forward
+    // coverage and the comment above should say so.
+    "npx wrangler@latest publish",
+    "npx wrangler@3.114.17 publish",
+    // `versions upload` is step 1 of the two-step publish (upload, then
+    // `versions deploy`). Guarding only step 2 would let a version be staged
+    // unguarded, so both halves are denied.
+    "npx wrangler@latest versions upload",
+    "npx wrangler@latest versions upload --tag canary",
     "npm run deploy",
     "cd cloudflare-worker && npx wrangler deploy", // guardrail bypass via compound
     "cd cloudflare-worker && npx wrangler rollback -y", // same bypass, rollback
+    "cd cloudflare-worker && npx wrangler@latest delete", // same bypass, @spec delete
   ];
 
   const MUST_ALLOW = [
@@ -244,11 +279,37 @@ if (Array.isArray(deny)) {
     "npx wrangler deployments status",
     "npx wrangler versions list",
     "npx wrangler versions view 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+    // The @<spec> rules must not blanket-block version-pinned wrangler — only
+    // the publish-class verbs. These are the read-only siblings closest to the
+    // three new rules ("versions upload" vs "versions list"/"view"), so they are
+    // where an over-broad pattern would show up first.
+    "npx wrangler@latest dev",
+    "npx wrangler@latest versions list",
+    "npx wrangler@latest versions view 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
     // KNOWN AND ACCEPTED over-block, asserted nowhere because it would fail:
     // `wrangler rollback --help` IS denied, because `Bash(wrangler rollback:*)`
     // is a prefix rule and cannot carve out a flag. This is not a new cost —
     // `wrangler deploy --help` has always been denied by the same shape — and
     // the read-only commands above cover the actual inspection need.
+    //
+    // SECOND KNOWN AND ACCEPTED over-block, same reason (no assertion below,
+    // because asserting it would fail): every `npx wrangler@* <verb>*` rule has
+    // a wildcard that spans spaces, so it also matches that verb appearing as a
+    // SUBcommand. Consequences, measured:
+    //   - `npx wrangler@<spec> kv key delete ...` is denied by the new
+    //     `@* delete*` rule, even though the UNPINNED documented form on the
+    //     line below stays allowed and is what CLAUDE.md actually prescribes.
+    //   - `npx wrangler@<spec> deployments list/status` is denied by the
+    //     PRE-EXISTING `@* deploy*` rule — this one predates the delete rule and
+    //     is not new here.
+    // This is unavoidable with the available matcher, not an oversight: the spec
+    // wildcard is what closes the "any spec bypasses" hole, and there is no
+    // non-space wildcard to bound it with. Narrowing to a literal
+    // `npx wrangler@latest delete*` would drop the over-block AND reopen
+    // `npx wrangler@3.114.17 delete`, which is the exact bypass being closed.
+    // Deliberate trade: over-block fails LOUDLY at a permission prompt and is
+    // recoverable by dropping the version pin; under-block deletes a Worker
+    // silently. Cost is bounded — nothing instructs an agent to pin a version.
     "npx wrangler kv key delete commodity_prices --namespace-id=x", // documented maintenance op
     "npx tsc --noEmit",
     "npx vitest run",
