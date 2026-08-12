@@ -52,6 +52,13 @@
 //       12. extractor rejects a TRUNCATED run block — truncation is non-empty
 //           AND contains "diff --check", so only the sentinel assertion catches
 //           it. That is what makes the sentinel real rather than decorative.
+//       13. the job declares NO `shell:` key (C0b) — the shell above is
+//           HARDCODED, and the absence of that key is what makes `/usr/bin/bash
+//           -e` the right thing to hardcode. If a `shell:` key ever appears, CI
+//           becomes STRICTER (it gains pipefail) while this harness stays weaker
+//           — i.e. the harness silently becomes LOOSER THAN CI, the fail-open
+//           direction. Nothing else here pins that premise: the extractor checks
+//           the script's shape and never the shell.
 //      WHY EXTRACTION AND NOT A COPY OF THE BASH: a transcription tests the
 //      transcription, and keeps passing forever after the YAML changes. Same
 //      reason pr-checks.yml's own header refuses to let CI call verify-gate.mjs.
@@ -607,6 +614,71 @@ function extractConflictMarkerScript(workflowPath) {
   return script;
 }
 
+// Finds a `shell:` declaration that would apply to the conflict-markers job —
+// step-level, job-level `defaults.run.shell`, or workflow-level `defaults.run.
+// shell`. Returns {found:false} when the job runs on GitHub's default shell.
+//
+// WHY THIS EXISTS: runGate below spawns a HARDCODED shell (CI_SHELL_BIN /
+// CI_SHELL_ARGS). That is only correct while this job declares no `shell:` — the
+// ABSENCE of the key is what selects `/usr/bin/bash -e`. Nothing else in this
+// file pins that premise: the extractor above validates the script's shape and
+// never looks at the shell, so a `shell:` key could appear and the harness would
+// keep silently spawning the weaker shell.
+//
+// DELIBERATELY SCOPED TO conflict-markers, NOT every job: the extractor reads
+// exactly one job (hardcoded `  conflict-markers:` above) and this harness never
+// executes any other job's `run:` text. Asserting about jobs it does not run
+// would be speculative — it would go red for a workflow change that cannot
+// affect anything this file measures. Widen this only if the harness starts
+// extracting another job.
+function findApplicableShellKey(workflowPath) {
+  const lines = fs.readFileSync(workflowPath, "utf8").split("\n");
+
+  // Scan a [start,end) region for a `shell:` key, SKIPPING any block-scalar body
+  // so that a bash comment mentioning `shell:` inside a run: block — this
+  // workflow has one — cannot false-positive.
+  function scan(start, end, where) {
+    for (let i = start; i < end; i++) {
+      const runM = lines[i].match(/^(\s*)(run|if|name):\s*[|>]-?\s*$/);
+      if (runM) {
+        const bodyIndent = runM[1].length + 2;
+        let j = i + 1;
+        for (; j < end; j++) {
+          if (lines[j].trim() === "") continue;
+          if (lines[j].search(/\S/) < bodyIndent) break;
+        }
+        i = j - 1;
+        continue;
+      }
+      const m = lines[i].match(/^\s*shell:\s*(\S.*?)\s*$/);
+      if (m) return { found: true, value: m[1], line: i + 1, where };
+    }
+    return null;
+  }
+
+  const regionEnd = (startIdx, topIndentRe) => {
+    for (let i = startIdx + 1; i < lines.length; i++) {
+      if (topIndentRe.test(lines[i])) return i;
+    }
+    return lines.length;
+  };
+
+  // 1. workflow-level defaults (column 0) — applies to every job.
+  const defIdx = lines.findIndex((l) => /^defaults:\s*$/.test(l));
+  if (defIdx >= 0) {
+    const hit = scan(defIdx + 1, regionEnd(defIdx, /^\S/), "workflow-level defaults");
+    if (hit) return hit;
+  }
+
+  // 2. the conflict-markers job itself (job defaults + its steps).
+  const jobIdx = lines.findIndex((l) => /^ {2}conflict-markers:\s*$/.test(l));
+  if (jobIdx < 0) return { found: false, missingJob: true };
+  const hit = scan(jobIdx + 1, regionEnd(jobIdx, /^ {2}\S/), "conflict-markers job");
+  if (hit) return hit;
+
+  return { found: false };
+}
+
 console.log("\n=== C. conflict-marker CI gate tests ===");
 console.log(`workflow: ${WORKFLOW_PATH}`);
 
@@ -668,6 +740,49 @@ try {
     GATE_SCRIPT !== null,
     extractErr,
   );
+
+  // C0b pins the premise the two constants above rest on. Without it the shell
+  // is hardcoded against a workflow fact nothing checks.
+  const shellKey = findApplicableShellKey(WORKFLOW_PATH);
+  check(
+    "C0b: conflict-markers declares no `shell:` — the premise CI_SHELL_BIN/CI_SHELL_ARGS rest on",
+    !shellKey.found,
+    shellKey.found
+      ? [
+          `${WORKFLOW_PATH}:${shellKey.line} now declares  shell: ${shellKey.value}`,
+          `(found in: ${shellKey.where})`,
+          "",
+          "WHAT CHANGED. A `run:` step with NO `shell:` key runs under",
+          "    /usr/bin/bash -e                        errexit only, NO pipefail",
+          "and a step that names `shell: bash` runs under",
+          "    bash --noprofile --norc -eo pipefail    STRICTER — adds pipefail",
+          "",
+          "WHY THAT IS URGENT AND NOT YAML PEDANTRY. CI is now the STRICTER of the",
+          "two, while this harness still spawns the weaker shell — so THE HARNESS",
+          "HAS BECOME LOOSER THAN CI. That is the fail-OPEN direction. A gate",
+          "script whose pipeline masks a mid-pipeline failure now passes here and",
+          "fails in CI: this suite reports green while the real gate goes red, and",
+          "nothing in the green run hints at it. The opposite skew (harness",
+          "stricter) merely produces visible false failures; this one is silent,",
+          "which is the whole reason the shell is pinned rather than inherited.",
+          "",
+          "TO FIX — update BOTH constants in this file to match the new CI shell:",
+          `    CI_SHELL_BIN   is currently ${JSON.stringify(CI_SHELL_BIN)}`,
+          `    CI_SHELL_ARGS  is currently ${JSON.stringify(CI_SHELL_ARGS)}`,
+          "  For `shell: bash` those become:",
+          '    CI_SHELL_BIN   = "bash"',
+          '    CI_SHELL_ARGS  = ["--noprofile", "--norc", "-eo", "pipefail"]',
+          "  For any other value, read GitHub's shell table and reproduce it exactly.",
+          "",
+          "Then re-run this suite. Do NOT make this check pass by deleting it, and",
+          "do NOT relax it to accept any shell: the point is that the harness and",
+          "CI agree, not that the workflow looks a particular way.",
+        ].join("\n")
+      : "",
+  );
+  if (shellKey.missingJob) {
+    check("C0b: conflict-markers job exists in the workflow", false, `no '  conflict-markers:' job in ${WORKFLOW_PATH}`);
+  }
 
   function runGate(repoDir, pathPrefix = null) {
     if (!GATE_SCRIPT) return { status: null, stdout: "", stderr: "extraction failed" };
