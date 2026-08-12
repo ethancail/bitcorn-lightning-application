@@ -172,15 +172,43 @@ if (Array.isArray(deny)) {
     // rollback is publish-class: it republishes a prior Worker version to
     // production, which every member node picks up on its ~60s sync tick. It
     // takes -y, so it is fully non-interactive and needs a mechanical block,
-    // not a prompt. Only the top-level spelling exists in wrangler 3.114.17
-    // (`wrangler versions` has no rollback subcommand; `wrangler deployments`
-    // has only list/status) — verified via --help, not assumed.
+    // not a prompt. The top-level spelling below is the one that exists in
+    // wrangler 3.114.17 — verified via --help, not assumed.
     "wrangler rollback",
     "wrangler rollback -y",
     "npx wrangler rollback",
     "npx wrangler rollback 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d -y",
     "npx wrangler rollback -y -m 'revert bad deploy'",
     "npx wrangler@latest rollback -y", // version-pinned npx bypasses the bare `wrangler` rules
+    // FORWARD COVERAGE — NOT DEAD WEIGHT, DO NOT DELETE. `wrangler versions
+    // rollback` does NOT exist in wrangler 3.114.17: `wrangler versions`
+    // offers only view/list/upload/deploy/secret, and `wrangler deployments`
+    // only list/status (both checked via --help). It is denied anyway because
+    // the failure it would prevent is SILENT — after a wrangler v4 bump the
+    // subcommand may exist, an agent runs it, it succeeds, and nothing
+    // surfaces that a publish-class command went unguarded. The rule costs
+    // nothing while the subcommand is absent, and `versions upload` /
+    // `versions deploy` are already denied, so it is consistent with this
+    // block rather than speculative.
+    //   Note what these cases do and don't assert: they prove the RULES match
+    //   these command strings. They make no claim that the subcommand is real
+    //   today, so they stay honest either side of a version bump.
+    //   DELIBERATELY NO `Bash(npx wrangler@* versions rollback*)` RULE — do not
+    //   add one. The existing `Bash(npx wrangler@* rollback*)` already subsumes
+    //   the versions form: its `@*` wildcard spans arbitrary text, so
+    //   `wrangler@` + `latest versions` + ` rollback` matches. Proven by
+    //   isolation probe (deny list reduced to that one rule still blocks the
+    //   last case below), not by reading glob semantics. A dedicated rule was
+    //   written, measured as redundant, and removed.
+    "wrangler versions rollback",
+    "wrangler versions rollback -y",
+    "npx wrangler versions rollback",
+    "npx wrangler versions rollback 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d -y",
+    // Regression guard on the SUBSUMPTION above, not on a versions-specific
+    // rule: if someone narrows `npx wrangler@* rollback*` (say to
+    // `npx wrangler@* rollback:*`, which the literal-colon trap would kill),
+    // this case goes red and says so.
+    "npx wrangler@latest versions rollback -y",
     "npm run deploy",
     "cd cloudflare-worker && npx wrangler deploy", // guardrail bypass via compound
     "cd cloudflare-worker && npx wrangler rollback -y", // same bypass, rollback
