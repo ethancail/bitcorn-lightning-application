@@ -224,25 +224,66 @@ if (Array.isArray(deny)) {
     "npx wrangler@latest delete",
     "npx wrangler@3.114.17 delete", // a pinned spec — not an @latest quirk
     "npx wrangler@latest delete --name bitcorn-commodity-prices",
-    // `publish` is NEITHER DEAD NOR FORWARD COVERAGE — do not downgrade this
-    // comment to "speculative". In wrangler 3.114.17 it is a LIVE alias of
-    // `wrangler deploy`, carrying metadata { deprecated: true, hidden: true },
-    // and it is registered in the command tree: wrangler-dist/cli.js has
-    // `command: "wrangler publish"` → publishAlias = createAlias({ aliasOf:
-    // "wrangler deploy" }). `hidden: true` is precisely why it does NOT appear
-    // in `wrangler --help`'s command list, which makes absence from that list
-    // worthless as evidence either way. Verified by reading the registration,
-    // NOT by an exit code — an unknown subcommand can exit 0 and print the
-    // parent help. Re-derive after any wrangler major bump: publish is slated
-    // for removal in the next major, at which point these become forward
-    // coverage and the comment above should say so.
+    // `publish` IS A LIVE GAP FOR PINNED 3.x SPECS — NOT DEAD, NOT FORWARD
+    // COVERAGE. DO NOT DELETE THESE AS DEAD WEIGHT. The verb straddles a major
+    // version boundary, so its status depends entirely on the @<spec>:
+    //   - wrangler 3.x (3.114.17, the version this repo pins in
+    //     cloudflare-worker/package.json): `publish` EXISTS and WORKS. It is a
+    //     live alias registered in the command tree — wrangler-dist/cli.js has
+    //     `command: "wrangler publish"` → publishAlias = createAlias({ aliasOf:
+    //     "wrangler deploy" }) — carrying metadata { deprecated: true,
+    //     hidden: true }. So `npx wrangler@3.114.17 publish` deploys a Worker
+    //     TODAY. That is the gap these rules close.
+    //   - wrangler 4.x: removed. 3.x's own deprecation string says so —
+    //     "`wrangler publish` is deprecated and will be removed in the next
+    //     major version" — and `npm view wrangler@latest version` is already
+    //     4.122.0, so a bare `@latest` resolves past it.
+    // Net: the rules guard pinned-3.x invocations now and cost nothing once
+    // everything is on v4. There is no version at which deleting them is
+    // correct while any 3.x spec is still reachable.
+    //   ⚠ `hidden: true` is also why `publish` is absent from `wrangler --help`'s
+    // command list — so that absence is worthless as evidence, in EITHER
+    // direction. Existence was verified by reading the registration, NOT by an
+    // exit code (an unknown subcommand can exit 0 and print the parent help)
+    // and NOT by the help listing. Both cheap tests fail here, in opposite
+    // directions.
     "npx wrangler@latest publish",
-    "npx wrangler@3.114.17 publish",
+    "npx wrangler@3.114.17 publish", // the spec that WORKS today
+    // ARGUMENT FORM — this case exists to keep `@* publish*` load-bearing, and
+    // it is not decoration. The two bare cases above are matched by BOTH the
+    // bare `@* publish` rule and the starred `@* publish*` rule, so with only
+    // those two cases each publish rule measured 0-red in isolation: they masked
+    // each other, and the suite would have stayed green if the starred rule were
+    // deleted. It is the starred rule alone that catches an argument form, and
+    // `publish` takes "exactly the same arguments" as `deploy` (per 3.x's own
+    // deprecation string), so `--env production` is a realistic invocation, not
+    // a synthetic one. Measured: with `@* publish*` removed, this exact string
+    // is UNCOVERED while the bare forms stay blocked.
+    "npx wrangler@3.114.17 publish --env production",
     // `versions upload` is step 1 of the two-step publish (upload, then
     // `versions deploy`). Guarding only step 2 would let a version be staged
     // unguarded, so both halves are denied.
     "npx wrangler@latest versions upload",
     "npx wrangler@latest versions upload --tag canary",
+    // ---- DELIBERATELY REDUNDANT rules, for block symmetry -------------------
+    // `Bash(npx wrangler@* delete)` and `Bash(npx wrangler@* publish)` (bare, no
+    // trailing `*`) are in the deny list ON PURPOSE and are NOT load-bearing:
+    // each is fully subsumed by its starred sibling `@* delete*` / `@* publish*`,
+    // which matches the bare invocation and every argument form. Run isolation on
+    // either bare rule and it blocks nothing that its sibling did not already
+    // block — that result is EXPECTED, not a defect, and this note is the reason
+    // it costs nothing to leave in place. A measured-redundant rule with no note
+    // is indistinguishable from a mistake. Rationale for keeping them: every verb
+    // in the bare `wrangler`/`npx wrangler` blocks above carries a pair, so one
+    // verb spelled differently invites someone to "correct" it.
+    //   ⚠ The pair in those bare blocks is `<verb>` + `<verb>:*`. DO NOT carry the
+    // `:*` half into the `@*` block — `Bash(npx wrangler@* delete:*)` matches
+    // NOTHING. Because that rule already contains a mid-pattern `*`, the `:` stops
+    // desugaring to a word boundary and is matched as a LITERAL colon, so it fires
+    // only on a nonexistent `wrangler@x delete:foo`. Measured with this file's own
+    // matcher against `@latest delete`, `@latest delete --name x` and
+    // `@3.114.17 delete`: zero matches for all three. The bare spelling used here
+    // is the working half of that pair; the starred sibling carries the coverage.
     "npm run deploy",
     "cd cloudflare-worker && npx wrangler deploy", // guardrail bypass via compound
     "cd cloudflare-worker && npx wrangler rollback -y", // same bypass, rollback
