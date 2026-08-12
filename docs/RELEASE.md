@@ -730,3 +730,4 @@ blocks a merge either.
 | How do you know what version a member node is actually running? | **You cannot.** No telemetry, no version report, no check-in exists. Named as a launch consideration under [step 6](#updates-reach-nodes-automatically-they-apply-only-when-someone-clicks) | Not a question to resolve by investigation — it is an unmade design decision |
 | Does `umbreld` overwrite a hand-edited deployed compose file on restart, or only on update? | **Unknown** — blocks any reliable downgrade | Edit a harmless value in the deployed compose, `apps.restart.mutate`, check whether the edit survives |
 | Will `umbreld` re-offer an update to a manually downgraded node? | **Unknown** | Falls out of the above |
+
