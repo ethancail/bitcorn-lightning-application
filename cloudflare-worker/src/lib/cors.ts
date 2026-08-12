@@ -2,11 +2,19 @@
 // the gate's rejection responses (lib/jwt.ts) carry no CORS headers at all.
 //
 // Examined 2026-08-11 and left as-is, because neither is reachable. Every
-// caller of this Worker is server-to-server: the member node's API process —
-// via `workerFetch`, plus a small number of documented direct-fetch bootstrap
-// exceptions that are also server-side — and CLI smoke tests. Nothing in the
-// web bundle holds this Worker's URL — no VITE_* var carries it — so no
-// browser ever preflights here, and CORS headers only matter to a browser.
+// caller of this Worker runs server-side — the load-bearing property, and
+// the only one the conclusion rests on. The set: the member node's API
+// process (via `workerFetch`, plus direct-fetch sites that bypass it), CLI
+// smoke tests, and repo tooling (scripts/state-snapshot.mjs reads
+// /treasury-info on a full run). Those bypasses are neither uniformly
+// documented nor all bootstrap — some sanctioned, like a bootstrap
+// discovery that would be circular through the wrapper; some undocumented,
+// on live request paths. Nothing in the web bundle holds this Worker's
+// URL — no VITE_* var carries it — so no browser ever preflights here,
+// and CORS headers only matter to a browser. Which sites, under which
+// predicate, is answered by method rather than by a number in
+// bitcorn-research/investigations/2026-08-12-worker-direct-fetch-
+// predicates-and-cors-adjudication.md.
 //
 // THIS CHANGES the day anything calls this Worker from a browser. The named
 // route to that today is hosted wallet registration on an HTTPS origin (a
