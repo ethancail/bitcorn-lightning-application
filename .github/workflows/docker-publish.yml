@@ -19,11 +19,31 @@ jobs:
   get-version:
     name: Read app version
     runs-on: ubuntu-latest
+    # contents: write is required by the tag step below and by nothing else.
+    # The repo default is read-only — verified, not assumed:
+    #   gh api repos/ethancail/bitcorn-lightning-application/actions/permissions/workflow
+    #   → {"default_workflow_permissions":"read", ...}
+    # and this job previously declared no permissions block at all, so it ran
+    # read-only. Scoped to THIS job deliberately: build-api and build-web keep
+    # contents: read. Nothing that pushes an image needs write access to the repo.
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # The tag assert below reads refs/tags, and the default fetch-depth: 1
+          # fetches NO tags — the assert would then find nothing and pass on every
+          # duplicate. Same precedent and same reason as pr-checks.yml's
+          # version-bump job (fetch-depth: 0 for `git show BASE:file`), and it does
+          # not depend on which v4.x the floating major tag resolves to.
+          #
+          # This line is load-bearing for a gate in a DIFFERENT step, so that step
+          # does not trust it: it checks for itself that tags are present before
+          # concluding anything from their absence.
+          fetch-depth: 0
 
       - name: Read version from umbrel-app.yml
         id: version
@@ -31,6 +51,128 @@ jobs:
           VERSION=$(grep '^version:' bitcorn-lightning-node/umbrel-app.yml | sed 's/version: *"\(.*\)"/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Building version: $VERSION"
+
+      # ── RELEASE TAG ──────────────────────────────────────────────────────
+      # WHY IT LIVES IN THIS JOB. get-version is the sole common ancestor of
+      # build-api and build-web (both `needs: get-version`), so a failure here
+      # leaves BOTH un-started and nothing is pushed. In-build-job placement fails
+      # OPEN, and this workflow already contains the proof: the
+      # VITE_BASE_CHAIN_ID guard sits inside build-web, so when it trips,
+      # build-api is concurrently pushing api:<version> and re-pointing
+      # api:latest — the two build jobs have no dependency on each other.
+      #
+      # NO `if:` CONDITION, ON PURPOSE. The trigger is already `branches: [main]`,
+      # so a job- or step-level condition would add nothing except a way for this
+      # gate to be skipped — and GitHub reports a skipped job as SUCCESS to a
+      # required check. Do not add one.
+      #
+      # DELIBERATELY LABEL-AGNOSTIC. pr-checks.yml's version-bump job has an
+      # `allow-same-tag-republish` escape hatch; this step does NOT read it and
+      # cannot: a push event carries no PR labels
+      # (github.event.pull_request is null here), so there is nothing to read.
+      # The documented same-tag hotfix stays available via delete-the-tag-then-
+      # rerun, printed in the failure text below. Do not "fix" this by plumbing
+      # the label in.
+      - name: Assert the release tag does not exist
+        env:
+          # Passed through env rather than interpolated into the run: body.
+          # Workflow expressions are substituted into the whole run string before
+          # bash sees it — including inside comments — which is why pr-checks.yml
+          # dropped its only inline expression (see its web tsc step).
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # COULD-NOT-DETERMINE IS A FAILURE, NOT A PASS. `set -u` does NOT cover
+          # this: env: always DEFINES the variable, so a failed grep yields an
+          # empty string, not an unset one — measured, and it renders "Tag v".
+          # Without this guard an unreadable manifest would tag literally "v" and
+          # publish images tagged with the empty string.
+          if [ -z "${VERSION:-}" ]; then
+            echo "::error::Could not read the version from bitcorn-lightning-node/umbrel-app.yml."
+            echo "Expected a line matching '^version:'. This is a failure, not a pass."
+            exit 1
+          fi
+
+          # The rev-parse below is only meaningful if tags are actually in this
+          # checkout. fetch-depth: 0 supplies them, but that is one line in a
+          # different step — if it regresses, this assert finds nothing and passes
+          # on EVERY duplicate. A blind check returns "no evidence" structurally,
+          # which is indistinguishable from a real pass.
+          if [ "$(git tag --list | wc -l)" -eq 0 ]; then
+            echo "::error::No tags present in the checkout — the duplicate-tag check would be blind."
+            echo "Expected 200+ annotated tags. Check get-version's checkout fetch-depth."
+            exit 1
+          fi
+
+          # The image tags are BARE (1.18.2); all existing version tags are
+          # v-PREFIXED (v1.18.2). The `v` is added here and nowhere else.
+          TAG="v$VERSION"
+
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            EXISTING_SHA=$(git rev-list -n1 "$TAG")
+            EXISTING_DATE=$(git for-each-ref "refs/tags/$TAG" --format='%(taggerdate:iso)')
+            echo "::error::Tag $TAG already exists — refusing to publish."
+            cat <<EOF
+
+          ❌ Tag $TAG already exists — refusing to publish.
+             Existing tag points at: $EXISTING_SHA ($EXISTING_DATE)
+
+          A release must carry a new version. This build was triggered by a merge
+          to main that touched a published path without bumping the version
+          triplet, so publishing now would republish $TAG's image tags with
+          different content under the same tag. That is the incident this gate
+          exists to prevent — see docs/RELEASE.md.
+
+          NO IMAGES WERE PUSHED. Two ways forward:
+
+          1. INTENDED RELEASE — bump the version triplet (umbrel-app.yml +
+             both docker-compose.yml image tags) and re-merge.
+
+          2. DELIBERATE SAME-TAG REPUBLISH — the documented hotfix technique.
+             Delete the tag first, then re-run; the tag is recreated at the new
+             commit so it keeps identifying what actually shipped:
+
+                 git push origin :refs/tags/$TAG
+                 git tag -d $TAG
+                 gh run rerun $GITHUB_RUN_ID
+          EOF
+            exit 1
+          fi
+
+          echo "$TAG does not exist yet — safe to publish."
+
+      - name: Create and push the release tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+
+          # A GitHub runner has NO committer identity, and `git tag -a` writes a
+          # tagger record — without this it exits 128 with "Committer identity
+          # unknown" and creates nothing (verified against an isolated config).
+          # Sourced from the API, not from memory:
+          #   gh api 'users/github-actions[bot]' --jq '{id, login}'
+          #   → {"id":41898282,"login":"github-actions[bot]"}
+          # The API publishes no email for the bot (email: null), so the address
+          # is CONSTRUCTED as <id>+<login>@users.noreply.github.com — the form
+          # that attributes the tag to the Actions app in the GitHub UI.
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # -F - reads the message from stdin, which keeps the multi-line body out
+          # of an argument and off this file's indentation.
+          git tag -a "$TAG" -F - <<EOF
+          $TAG
+
+          Created by CI on merge to main.
+          Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Commit: $GITHUB_SHA
+          EOF
+
+          git push origin "$TAG"
+          echo "Pushed $TAG at $GITHUB_SHA"
 
   build-api:
     name: Build API image

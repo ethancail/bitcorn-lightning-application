@@ -63,6 +63,10 @@ Frontend deps: `react`, `react-dom`, `react-router-dom`, `recharts`, `date-fns`,
 
 **Verification stop-gate:** a committed Stop hook runs `scripts/verify-gate.mjs` at every turn end — with uncommitted `app/api`/`app/web` changes it runs that side's tsc + vitest and blocks completion on real failures (known-baseline tsc errors are allowlisted; a broken runner warns instead of blocking; clean/read-only sessions are never gated). Escape hatch: `VERIFY_GATE_SKIP=1`. Details in the script header.
 
+**Parallel sessions (worktrees):** `claude --worktree <name>` creates an isolated checkout at `.claude/worktrees/<name>/` on branch `worktree-<name>` — already gitignored by the existing `.claude/*` rule. `.worktreeinclude` copies in the gitignored files a fresh checkout can't regenerate (the four `.env.dev.*` files, `cloudflare-worker/.dev.vars`); dependencies are NOT copied — install per worktree, and note `better-sqlite3` compiles native bindings each time.
+
+⚠ **`worktree.baseRef` is set to `"head"`, which makes branch hygiene load-bearing.** The default `"fresh"` branches from the *remote default branch* — predictable, and wrong here: it starts every worktree from `main`, so accumulated `develop` work is silently absent. That bit us for real: a worktree created while on `develop` landed two commits behind, on `main`, carrying a stale copy of the very script being fixed. `"head"` branches from your current local `HEAD` instead — correct when you're on a current `develop`, and **faithfully wrong when you're on a stale one.** This repo's standing rule is that branch position is a query, never a remembered fact, and `"head"` puts that rule directly in the path of worktree creation. So: **launch worktrees from a freshly-pulled `develop`, then run `git log --oneline -1` inside the new worktree before doing any work.** Inside a worktree, `"head"` resolves to *that* worktree's HEAD, not the main checkout's. (Set in `.claude/settings.json`, which is strict JSON and takes no comments — hence this note.)
+
 ## STATE.md — Generated Ground Truth
 
 `scripts/state-snapshot.mjs` generates `STATE.md` (repo root, gitignored) from actual current reality: git state for this repo + the sibling stablecoin-rail checkout, a features inventory (API routes, pages, migrations/tables), and — when configured — Base chain and deployment reads. A committed SessionStart hook (`.claude/settings.json`) auto-runs the fast tier each session (`--fast`: local sections refreshed, chain/deployment carried over with their timestamp) and surfaces STATE.md into context.
@@ -104,11 +108,13 @@ The consequence is quiet and does not heal: nodes already on that version see no
 
 ### ⚠ OPEN QUESTION — the sideload test gate went missing
 
-The previous convention read `feature/* → develop → sideload test on Umbrel → main`. That **sideload test on a real Umbrel node is the only pre-production verification step documented anywhere in this repo**, and the direct path dropped it silently — nobody decided to retire it; it stopped happening when the path changed.
+The previous convention read `feature/* → develop → sideload test on Umbrel → main`. That **sideload test on a real Umbrel node is the only verification this repo has ever had that installs the app on real hardware**, and the direct path dropped it silently — nobody decided to retire it; it stopped happening when the path changed.
 
 **Undecided — do not assume either way:** whether to reinstate it for the direct path, require it on both, or deliberately retire it. Recorded here so the gate stays on the record instead of vanishing with the old text.
 
-Note what its absence leaves in place: **no test gate runs in CI** (see `docs/RELEASE.md` § What this doc does NOT cover), so on the direct path the only pre-merge verification is the local `verify-gate` Stop hook — which is bypassable via `VERIFY_GATE_SKIP=1` and does not exist for anyone working from another machine.
+Note what its absence leaves in place — and note that this changed under the section without answering it. **CI now hard-gates every PR** (`.github/workflows/pr-checks.yml`); don't trust a job list written here, read it: `grep -n '^    name:' .github/workflows/pr-checks.yml` for what runs, `gh run list --workflow=pr-checks.yml` for whether it's passing. Two of those gates enforce hazards this file documents by hand above — version agreement across the two files, and the app-code-without-a-bump footgun.
+
+**None of them install anything.** Every job runs on a GitHub runner with no Umbrel and no LND, so the install failures in § Umbrel Gotchas below — flipping back to "Install" at 0%, the ~50% port-conflict reset, a half-installed app, images missing from ghcr.io — remain reachable only by installing a real release on a real node. That is the gap the missing sideload test used to cover, and CI does not narrow it. Two residual caveats: the workflow triggers on `pull_request` only, so it gates PRs rather than pushes (fine while direct pushes to `main` stay forbidden, load-bearing on that), and the local `verify-gate` Stop hook — bypassable via `VERIFY_GATE_SKIP=1`, and absent for anyone working from another machine — is still the only check between a commit and opening the PR.
 
 ### Umbrel Gotchas (read before releasing)
 

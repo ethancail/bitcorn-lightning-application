@@ -1,9 +1,24 @@
 # RELEASE — how a version reaches farmers' nodes
 
-The procedure below has been identical across all 26 releases. It has never been
-written down until now, and the one doc that described it was wrong (it claimed
-releases are cut by tagging; there are **zero** git tags in this repo — `git tag |
-wc -l` → `0`).
+The procedure below has been identical across every release. It has never been
+written down until now. **How many releases that is, and which commit published
+each, is recorded in `docs/release-history.md`** — reconstructed from build
+evidence rather than from memory or branch names. Read the count there; do not
+record one here, because a number written on this page is stale the next time
+anything ships.
+
+**Releases now carry a git tag, created by CI.** That is new, and it reverses what
+this page used to say: until 2026-08-11 the repo had no tags at all, and this
+paragraph asserted a count of zero. Tags were then backfilled by hand for every
+historical version, and step 2.5 below makes the pipeline create them going
+forward. Ask the remote for the count rather than trusting a number here:
+
+```bash
+git ls-remote --tags origin | grep -v '\^{}' | wc -l
+```
+
+Provenance of the backfilled set, and the version → publishing-commit mapping:
+`docs/release-history.md`.
 
 **Read this end to end before your first release.** Steps 1–2 are reversible.
 From step 3 onward you are publishing immutable-by-convention image tags and
@@ -20,14 +35,15 @@ cannot tell you how `umbreld` behaves at runtime.
 
 ---
 
-## The nine steps
+## The steps
 
 | # | Step | Who |
 |---|---|---|
 | 1 | Bump three places in one commit | **MANUAL** |
 | 2 | `release/vX.Y.Z` → PR → merge to `main` | **MANUAL** |
+| **2.5** | **CI tags the release — before either image is pushed** | AUTOMATED |
 | 3 | CI builds and pushes both images | AUTOMATED |
-| **3a** | **Verify the images actually reached GHCR** | **MANUAL — do not skip** |
+| **3a** | **Verify the images and the tag actually landed** | **MANUAL — do not skip** |
 | 4 | Umbrel host's app-store clone refreshes from `main` | AUTOMATED |
 | 5 | `umbreld` sees the higher version, offers the update | AUTOMATED |
 | 6 | User clicks Update | **MANUAL (the farmer) — ⚠ [the real gap](#updates-reach-nodes-automatically-they-apply-only-when-someone-clicks)** |
@@ -75,10 +91,69 @@ from `main`. See [Releasing from `develop`](#releasing-from-develop) before doin
 the `develop` variant — it has a footgun the normal path doesn't.
 
 **Verify before moving on:** the PR's diff contains the three version strings and
-nothing you didn't intend. **A PR gate runs, but nothing gates the merge** — see
-[Scope](#what-this-doc-does-not-cover). `pr-checks.yml` reports on the PR; `main`
-is not a protected branch, so no check can block the merge, and nothing re-checks
-anything afterwards. A green merge means "merged", not "tests passed".
+nothing you didn't intend. **`pr-checks.yml`'s jobs are required status checks, so
+the gate now blocks the merge** — which it did not always do. Do not take that from
+this page, and do not take the list of what is required from here either; both are
+settings that change without touching the repo. Ask, per
+[Scope](#what-this-doc-does-not-cover):
+
+```bash
+gh api repos/ethancail/bitcorn-lightning-application/rulesets
+gh api repos/ethancail/bitcorn-lightning-application/branches/main/protection
+```
+
+**⚠ A green merge still does not mean the release is verified.** Nothing re-checks
+anything between the merge and the image publish — a PR gate is not a release gate,
+and `docker-publish.yml` runs no tests. See
+[No test gate runs on the RELEASE path](#no-test-gate-runs-on-the-release-path--the-pr-gate-is-a-different-thing).
+
+### Step 2.5 — CI tags the release, BEFORE either image is pushed · AUTOMATED
+
+The push to `main` fires `docker-publish.yml`, and the **first** thing it does — in
+`get-version`, before `build-api` or `build-web` start — is assert that
+`v<version>` does not already exist, then create and push it.
+
+**The ordering is the mechanism, not a detail.** `get-version` is the sole common
+ancestor of both build jobs (each declares `needs: get-version`), so a failure there
+leaves **both un-started and nothing published**. That is what makes a duplicate
+version stop the release instead of being discovered afterwards. Placing the same
+check inside a build job would fail *open*: the `VITE_BASE_CHAIN_ID` guard lives in
+`build-web`, and when it trips, `build-api` is concurrently pushing its image and
+re-pointing `latest`, because the two build jobs do not depend on each other.
+
+What the tag step will refuse:
+
+- **A version whose tag already exists** — the republish incident this repo has
+  already had twice. It prints two remedies: bump the triplet, or (for the
+  deliberate same-tag hotfix) delete the tag and re-run.
+- **A manifest it cannot read.** An unreadable `umbrel-app.yml` used to yield an
+  empty version string and publish images tagged with the empty string. It is now a
+  hard failure. Could-not-determine is a failure, not a pass.
+- **A checkout with no tags at all**, which would make the duplicate check blind
+  and pass on everything. The step verifies it can see tags before concluding
+  anything from their absence.
+
+⚠ **THE TAG-FIRST RESIDUAL — the accepted cost of this ordering.** Because the tag
+is pushed *before* the builds, a build that fails afterwards leaves a tag pointing
+at a commit whose images never published. The tag then names a version that is not
+installable.
+
+The remedy is the same delete-and-re-run the failure text prints for a deliberate
+republish — **one mechanism covers both cases**:
+
+```bash
+git push origin :refs/tags/vX.Y.Z
+git tag -d vX.Y.Z
+gh run rerun <run-id>
+```
+
+This is deliberate. Tagging *last* would avoid the dangling tag and fail **open**:
+the images would already be published by the time anything noticed the version was
+a duplicate, which is the failure that matters. A tag that over-promises is
+recoverable in three commands; an overwritten image tag is not recoverable at all.
+
+**Note the tag prefix.** Image tags are bare (`1.18.3`); git tags are `v`-prefixed
+(`v1.18.3`). The workflow adds the `v` in one place and nowhere else.
 
 ### Step 3 — CI builds and pushes both images · AUTOMATED
 
@@ -105,7 +180,7 @@ Both images build for `linux/amd64,linux/arm64`. The web build additionally bake
 (Base Sepolia) — a guard fails the build if the repo variable is unset or
 unsupported on a `main` build.
 
-### Step 3a — VERIFY THE IMAGES REACHED GHCR · MANUAL — do not skip
+### Step 3a — VERIFY THE IMAGES AND THE TAG LANDED · MANUAL — do not skip
 
 **This is the step that catches `CLAUDE.md`'s "install fails at 0%".** The causal
 chain: if a farmer clicks Update before the images exist on ghcr.io, `umbreld`
@@ -142,6 +217,20 @@ docker manifest inspect ghcr.io/ethancail/bitcorn-lightning-application/web:X.Y.
 Both must print OK. If either does not, you are already in the window where a
 farmer can click a broken update — go to step 3a's fix-forward path above, and do
 not wait on step 4, which is not waiting on you.
+
+**Then confirm the tag reached `origin` and points where you think it does.** The
+images and the tag can disagree: [step 2.5](#step-25--ci-tags-the-release-before-either-image-is-pushed--automated)
+pushes the tag first, so a failed build leaves the tag present and the images
+absent. Checking only the images would miss that, and checking only the tag would
+miss the reverse.
+
+```bash
+git ls-remote --tags origin "refs/tags/vX.Y.Z"     # the tag exists on origin
+git fetch origin --tags && git rev-list -n1 vX.Y.Z # ...and points at the merge commit
+```
+
+If the tag is present but a build failed, use the delete-and-re-run in step 2.5
+rather than leaving a tag that names an uninstallable version.
 
 ### Step 4 — App-store clone refreshes from `main` · AUTOMATED
 
@@ -328,22 +417,37 @@ exercised recently.
 
 ### ⚠ THE FOOTGUN: merging `develop` → `main` without a version bump
 
-`main` currently sits at `1.17.19`. `develop` carries the same version string,
-because a bump only happens as part of a release commit.
+`develop` normally carries the **same** version string as `main`, because a bump
+only happens as part of a release commit. Check rather than assume — the two can
+also differ, and which it is changes what happens next:
 
-So merging `develop` → `main` as-is **fires the build on the existing version
-string** and overwrites the `1.17.19` image tags with entirely different content.
-The damage is quiet:
+```bash
+git show origin/main:bitcorn-lightning-node/umbrel-app.yml    | grep '^version:'
+git show origin/develop:bitcorn-lightning-node/umbrel-app.yml | grep '^version:'
+```
 
-- Nodes already on `1.17.19` see **no update** — the version didn't change, so
+When they match, merging `develop` → `main` as-is **fires the build on the existing
+version string** `X.Y.Z` and overwrites its image tags with entirely different
+content. The damage is quiet:
+
+- Nodes already on `X.Y.Z` see **no update** — the version didn't change, so
   `umbreld` has nothing to offer. They keep running the old code.
 - Any **fresh install** or any **re-pull** (force-pull recovery, container
   recreate, a new farmer onboarding) gets the *new* code under the *old* tag.
-- The fleet silently splits into two populations both reporting `1.17.19`.
+- The fleet silently splits into two populations both reporting `X.Y.Z`.
 
 There is no way to distinguish them afterwards from the version string alone, and
-the overwritten tag cannot be recovered — the previous `1.17.19` images are gone
+the overwritten tag cannot be recovered — the previous `X.Y.Z` images are gone
 from that tag.
+
+**Two gates now catch this, and neither existed when it happened.**
+[Step 2.5](#step-25--ci-tags-the-release-before-either-image-is-pushed--automated)
+refuses to publish when `vX.Y.Z` already exists, and `pr-checks.yml`'s
+`Version bumped` job fails a PR to `main` that changes `app/api`/`app/web` without
+a bump. Note the residual gap rather than trusting them completely: that PR check
+exits early when **no** `app/` files changed, so a merge touching only
+`umbrel-app.yml` or `docker-publish.yml` still publishes without it objecting.
+Step 2.5 is what covers that case.
 
 ### THE FIX — required ordering, not a suggestion
 
@@ -384,9 +488,11 @@ farmers "update" to a new version number running the previous code. Nothing erro
 
 ### Bumping only the compose file triggers no build
 `bitcorn-lightning-node/docker-compose.yml` is **not** in CI's `paths:` filter.
-**Prevents:** a release where you bumped the pins, saw no CI run, and concluded CI
-was broken — when in fact the workflow correctly never fired. `umbrel-app.yml` must
-be in the same commit to trigger the build.
+**Prevents:** a release where you bumped the pins, saw no image published, and
+concluded the build was broken — when in fact the workflow correctly never fired.
+`umbrel-app.yml` must be in the same commit to trigger the build. Note the PR gate
+still runs on such a PR, so green checks are **not** evidence that a build fired —
+only GHCR is (step 3a).
 
 ### `latest` is not a pointer to the current release
 `latest` is re-pointed by **any** push to `main` whose changed files match one of
@@ -533,7 +639,8 @@ it has been exercised.
 
 **Prefer this.** Ship `X.Y.Z+1` containing the revert. It uses the tested path
 end to end, farmers get a normal update prompt, and the fleet converges on one
-known build. Slower, but it is the only route with 26 successful runs behind it.
+known build. Slower, but it is the only route with every past release behind it —
+`docs/release-history.md` has the run tally and the version → commit mapping.
 
 ### The untested downgrade, if you cannot wait
 
@@ -581,8 +688,14 @@ being untested.
 ## What this doc does NOT cover
 
 ### The Cloudflare Worker is a separate artifact — decoupled in BOTH directions
-`cloudflare-worker/` is deployed by hand with `wrangler deploy`. It has **no CI, no
-version number, and no coupling to the app release cycle.**
+`cloudflare-worker/` is deployed by hand with `wrangler deploy`. It has **no deploy
+CI, no version number, and no coupling to the app release cycle.**
+
+"No *deploy* CI" is the precise claim, and the qualifier is load-bearing: Worker
+code **is** test-gated on pull requests. This line read "no CI" until 2026-08-11,
+which was true of publishing and false of testing — the same conflation that
+retitled § No test gate runs on the RELEASE path below. Take the gate list from
+that section's query, not from here.
 
 - **A Worker change does not reach nodes via an app release.** Merging
   `cloudflare-worker/**` to `main` ships nothing — that path is not in CI's `paths:`
@@ -626,15 +739,26 @@ the file:
 grep -nE "^  [a-z-]+:$|    name:|continue-on-error" .github/workflows/pr-checks.yml
 ```
 
-⚠ **A green check does not mean a merge is blocked.** `main` is not a protected
-branch, so none of these jobs is a *required* status check: the gate reports, it
-does not prevent. This flips with a settings toggle and nothing in the repo records
-it, so re-check rather than trusting this paragraph:
+⚠ **These jobs ARE required status checks on `main` — the gate now prevents, not
+just reports.** That is a reversal: this paragraph used to say the opposite, and it
+was correct when written.
+
+**Do not read the answer off this page, and do not read the list of required jobs
+off it either.** This flips with a settings toggle and nothing in the repo records
+it — which is exactly how the previous version of this paragraph went wrong, and it
+will happen again to whatever is written here. Ask both endpoints:
 
 ```bash
+gh api repos/ethancail/bitcorn-lightning-application/rulesets
 gh api repos/ethancail/bitcorn-lightning-application/branches/main/protection
-# HTTP 404 "Branch not protected" = nothing is required
 ```
+
+**Both, not either.** A repo can carry legacy branch protection and rulesets at the
+same time, and they are served separately — so a `404 Branch not protected` from the
+second command means only that *legacy* protection is absent. Reading that 404 as
+"nothing is required" is the specific mistake this section used to make, while
+required checks were in force via a ruleset the command never consulted. Either
+endpoint returning enforcement means checks are required.
 
 ⚠ **The thresholds went fully strict in PR #255 (2026-08-07)** — two ceilings at
 zero, two collection floors. They were branch-aware between PRs #244 and #255,
@@ -708,8 +832,10 @@ was a different mechanism each time:
   TS2307 per file plus a knock-on TS7006. An audit scoped to what a job *measures*
   can miss what its environment *provides*.
 
-None of it blocks a release, and per the branch-protection note above, none of it
-blocks a merge either.
+None of it blocks a release — `docker-publish.yml` runs no tests, and nothing
+re-checks between the merge and the publish. It does now block a *merge*, per the
+branch-protection note above; confirm with the two `gh api` commands there rather
+than from this sentence.
 
 ---
 

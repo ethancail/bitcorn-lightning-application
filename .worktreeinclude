@@ -1,0 +1,60 @@
+# .worktreeinclude — per-machine files Claude Code copies into each new git
+# worktree it creates: `claude --worktree`, subagent worktrees (`isolation:
+# worktree`), and desktop parallel sessions. Uses .gitignore syntax.
+#
+# HOW IT WORKS: a file is copied only if it matches a pattern here AND is
+# gitignored. Tracked files are never duplicated, so listing one is a no-op —
+# `.claude/settings.json` and `.claude/skills/**` already arrive with the
+# checkout because they are committed.
+#
+# NOT processed when a `WorktreeCreate` hook replaces the default git logic;
+# that hook would have to copy these itself. This repo has no such hook.
+#
+# THE TEST FOR ADDING A LINE: is this per-machine INPUT that a worktree cannot
+# regenerate and cannot work without? Generated output does not belong here —
+# see the exclusions at the bottom, every one of which is deliberate.
+
+# Local-dev env files — required to BOOT the API. The root `dev:treasury`,
+# `dev:memberA`, `dev:memberB` scripts wrap these via `dotenv -e`.
+# NOT required for `npm test` or either build: no vitest config loads dotenv,
+# and neither app/api nor app/web has its own .env — so a worktree that only
+# runs tsc/vitest works without them.
+# A glob rather than four literals, so a new member env file is picked up for
+# free. `.env.dev.example` is tracked, so this line never duplicates it.
+.env.dev.*
+
+# Cloudflare Worker local-dev secrets — `wrangler dev` only. Not read by the
+# Worker's own vitest suite, which gets its bindings from miniflare.
+cloudflare-worker/.dev.vars
+
+
+# ─── DELIBERATELY ABSENT — please don't "helpfully" add these ──────────────
+#
+# STATE.md
+#   Generated, not input. The SessionStart hook regenerates it inside each
+#   worktree on the first session, and state-snapshot writes to the worktree's
+#   own root. Copying it would seed a brand-new worktree with ANOTHER
+#   checkout's branch and HEAD — the precise stale-reference failure CLAUDE.md
+#   already has a standing rule about ("volatile state is a query, not a
+#   fact"). An absent STATE.md is obviously absent; a wrong one is not.
+#
+# state-snapshot.config.json
+#   Hand-written Tier 2 config (chain RPC, router/Safe addresses, deploy
+#   health URLs) — genuinely input, unlike STATE.md. It does not exist on this
+#   machine, so there is nothing to copy and a worktree loses nothing today.
+#   Left out deliberately, not overlooked. Worth revisiting if Tier 2 is ever
+#   configured, since a worktree would then silently drop to the
+#   "not configured" placeholder.
+#
+# .claude/settings.local.json
+#   Permission approvals are ALREADY shared and copying them would make things
+#   worse. Claude Code saves "Yes, don't ask again" to the MAIN checkout's
+#   settings.local.json and applies it in the main checkout and every worktree
+#   of the repository (Claude Code docs, "What worktrees share with the main
+#   checkout"; needs v2.1.211+). A copy here would fork a second, divergent
+#   rule set that stops receiving new approvals.
+#
+# node_modules/ · app/api/dist/ · app/web/dist/ · app/web/.vite
+#   Built per worktree, never copied. `better-sqlite3` compiles native
+#   bindings, and a copied dist/ or .vite would be a stale cache that can pass
+#   a build without containing the worktree's code. Install in the worktree.

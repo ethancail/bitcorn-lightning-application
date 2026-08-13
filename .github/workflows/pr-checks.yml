@@ -477,6 +477,182 @@ jobs:
           fi
           echo "All three agree at $V."
 
+  conflict-markers:
+    name: No conflict markers
+    runs-on: ubuntu-latest
+    # An unresolved merge/cherry-pick hunk in a NON-TypeScript file passes every
+    # other job in this workflow. Markers in .ts break tsc or the vite build, so
+    # the coverage that exists today is an ACCIDENT OF THE TOOLCHAIN, not a
+    # designed gate — .sql, .yml, .md and everything else are unguarded. This job
+    # is the designed one.
+    #
+    # WHY THIS IS NOT COSMETIC. Migrations are filename-keyed and run at API
+    # startup on every member node (app/api/src/index.ts:225 → runMigrations()).
+    # A marker in a .sql throws a SQLite syntax error, which matches NEITHER
+    # swallow condition in app/api/src/db/migrate.ts:46-57 ("duplicate column" /
+    # "already exists"), so it rethrows and crashes the API at boot. And because
+    # the applied-insert runs only AFTER db.exec succeeds, the migration is never
+    # recorded as applied — so it rethrows again on the next restart, and the one
+    # after that. IT DOES NOT SELF-HEAL.
+    #
+    # WHOLE-TREE, NOT A DIFF OF THE PR — the option that was measured and
+    # rejected. `git diff --check` examines ADDED lines only, so a merge-base
+    # diff-scan is blind to markers already committed: verified against a fixture
+    # carrying six marker lines present on both sides, which reported nothing and
+    # exited 0. Diffing against the EMPTY TREE presents every line as added, which
+    # is what makes this fail closed. It also needs no history, which is why the
+    # checkout below can stay at the default fetch-depth: 1 — a merge-base scan
+    # would have required fetch-depth: 0 like version-bump.
+    env:
+      # The filter below greps for git's literal English "leftover conflict
+      # marker". That string goes through gettext, so on a runner with a
+      # localized locale git prints the translated wording, the filter matches
+      # ZERO lines, and this gate goes green having detected nothing. Pinning the
+      # locale removes that failure mode at the source. The canary in the step
+      # below is what would CATCH it if this line were ever removed.
+      LC_ALL: C
+    steps:
+      - uses: actions/checkout@v4
+      - name: Detector canary, then whole-tree scan
+        run: |
+          # ── SUBJECT: HEAD, NOT THE WORKING TREE ─────────────────────────
+          # This scans COMMITTED content. On a pull_request event
+          # actions/checkout resolves refs/pull/N/merge, so HEAD is the synthetic
+          # merge commit — the tree that merging this PR would produce, which is
+          # exactly the right subject.
+          #
+          # Do NOT "fix" this to scan the working tree. In a fresh CI checkout the
+          # worktree and HEAD are identical, so the change would look like a
+          # harmless no-op here while silently reintroducing the
+          # pre-existing-marker blindness that ruled out a diff-scan above.
+          set -eu
+
+          # Derived, not hardcoded. This is the well-known 4b825dc…4904, but
+          # sourced from git itself rather than copied in as a magic constant.
+          EMPTY_TREE=$(git hash-object -t tree /dev/null)
+
+          WORK=$(mktemp -d)
+          trap 'rm -rf "$WORK"' EXIT
+
+          # ── KNOWN-POSITIVE CANARY ───────────────────────────────────────
+          # A gate reporting "0 markers" is indistinguishable from a gate that
+          # CANNOT DETECT markers at all. So before trusting the scan, prove the
+          # detector fires on a planted marker in this environment. That upgrades
+          # a green from "no markers found" to "detector proven live, and no
+          # markers found" — and it keeps holding if a future git rewords the
+          # message, with nobody having to remember to re-check.
+          #
+          # printf, NOT a heredoc: a heredoc terminator must sit at column 0,
+          # which is impossible inside this indented YAML block scalar without
+          # coupling the script to its own indentation.
+          #
+          # The fixture lives under mktemp -d, OUTSIDE the repo, so the scan below
+          # cannot see it. (It could not anyway — that scan reads HEAD, not the
+          # filesystem — but the fixture stays out of the tree regardless.)
+          CANARY="$WORK/canary.txt"
+          printf '%s\n' \
+            'a context line, so the fixture is not markers alone' \
+            '<<<<<<< HEAD' \
+            'ours' \
+            '=======' \
+            'theirs' \
+            '>>>>>>> feature/other' \
+            > "$CANARY"
+
+          # ── TWO EXIT-CODE INVERSIONS, BOTH DELIBERATE ───────────────────
+          # 1. `git diff --check` exits 2 when it finds ANYTHING — including
+          #    plain trailing whitespace, which this tree has and which is NOT
+          #    this gate's business (measure with:
+          #    git diff --check "$(git hash-object -t tree /dev/null)" HEAD).
+          #    Its exit code therefore cannot be the signal; the FILTERED OUTPUT
+          #    is.
+          # 2. `grep` exits 1 on NO MATCH, which here is the CLEAN case — the
+          #    inverse of the usual reading.
+          # Under `set -e` either would kill this job for the wrong reason. A
+          # bare pipeline would be worse, and the mechanism is worth naming
+          # exactly, because this step has NO `shell:` key: that absence selects
+          # `bash -e` — errexit only, NO pipefail. (Writing `shell: bash` would
+          # select the STRICTER `bash --noprofile --norc -eo pipefail`; omitting
+          # it is what buys the weaker shell. Confirmed in run 31541635531's log:
+          # `shell: /usr/bin/bash -e {0}`.)
+          #
+          # Without pipefail a pipeline reports only its LAST command's status.
+          # So `git diff --check … | grep -c …` would return GREP's exit code,
+          # the could-not-run guard below would never see git's, and a git that
+          # failed to run would be indistinguishable from a clean tree — the
+          # exact vacuous green this job exists to prevent.
+          # Hence `set +e` around each invocation with the code taken by hand.
+          # Do not "simplify" these back into a bare pipeline.
+          set +e
+          git diff --no-index --check /dev/null "$CANARY" > "$WORK/canary.out" 2>&1
+          CANARY_HITS=$(grep -c "leftover conflict marker" "$WORK/canary.out")
+          set -e
+
+          if [ "$CANARY_HITS" -ne 3 ]; then
+            echo "::error::The conflict-marker detector FAILED ITS OWN CANARY."
+            echo "A fixture with three planted markers produced $CANARY_HITS detection(s); expected 3."
+            echo "This gate cannot report on the tree, because it cannot detect"
+            echo "markers at all — a 'pass' here would prove nothing."
+            echo "Likely causes: git reworded 'leftover conflict marker', or the"
+            echo "LC_ALL=C pin on this job was removed and the message is localized."
+            echo "--- canary detector output ---"
+            cat "$WORK/canary.out"
+            exit 1
+          fi
+          echo "Canary: $CANARY_HITS/3 planted markers detected — the detector is live here."
+
+          # ── THE ACTUAL SCAN ─────────────────────────────────────────────
+          set +e
+          git diff --check "$EMPTY_TREE" HEAD > "$WORK/tree.out" 2>&1
+          SCAN_EXIT=$?
+          set -e
+
+          # COULD-NOT-RUN IS A FAILURE, NOT ZERO MARKERS. 0 = found nothing at
+          # all; 2 = found something (whitespace and/or markers). Any other code
+          # is git failing to run, which must never read as a clean tree.
+          if [ "$SCAN_EXIT" -ne 0 ] && [ "$SCAN_EXIT" -ne 2 ]; then
+            echo "::error::git diff --check exited $SCAN_EXIT — it could not run."
+            echo "This is a FAILURE, not zero markers. Output below:"
+            cat "$WORK/tree.out"
+            exit 1
+          fi
+
+          set +e
+          COUNT=$(grep -c "leftover conflict marker" "$WORK/tree.out")
+          FILTER_EXIT=$?
+          set -e
+
+          # grep -c prints 0 and exits 1 when nothing matched — the clean case.
+          # Above 1 means grep itself failed: could-not-run again, not clean.
+          if [ "$FILTER_EXIT" -gt 1 ]; then
+            echo "::error::The marker filter (grep) exited $FILTER_EXIT — it could not run."
+            echo "This is a FAILURE, not zero markers."
+            exit 1
+          fi
+
+          echo "Leftover conflict markers in the committed tree: $COUNT"
+
+          if [ "$COUNT" -gt 0 ]; then
+            echo "::error::$COUNT leftover conflict marker line(s) are committed in this tree."
+            grep "leftover conflict marker" "$WORK/tree.out"
+            echo ""
+            echo "WHY THIS BLOCKS"
+            echo "Migrations are filename-keyed and run at API startup on every"
+            echo "member node (app/api/src/index.ts:225). A marker in a .sql throws a"
+            echo "SQLite syntax error, which matches NEITHER swallow condition in"
+            echo "app/api/src/db/migrate.ts:46-57, so it rethrows and crashes the API"
+            echo "at boot. The applied-insert runs only after db.exec succeeds, so the"
+            echo "migration is never recorded and it rethrows on every restart."
+            echo "It does not self-heal."
+            echo ""
+            echo "TO FIX: resolve the hunk — keep one side and delete all three"
+            echo "marker lines that git names above — then commit."
+            exit 1
+          fi
+
+          echo "No leftover conflict markers."
+          # END conflict-marker gate
+
   version-bump:
     name: Version bumped (PRs to main only)
     runs-on: ubuntu-latest
