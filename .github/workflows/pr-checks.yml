@@ -780,21 +780,163 @@ jobs:
         run: npm install
       - name: Tests
         working-directory: app/web
-        # Detect-and-explain rather than emitting a confusing red that readers
-        # learn to ignore. Same reasoning as the Worker typecheck skip.
+        # TWO GUARDS DOING DIFFERENT JOBS. The config assert catches "the test
+        # environment is gone"; the collection floor catches "the suite ran, but
+        # only part of it". Neither substitutes for the other — each was measured
+        # on 2026-08-14 catching a case the other passes. Both replaced a bare
+        # `npx vitest run` that had no assertion beyond vitest's exit code.
         #
-        # ⚠ THE SKIP BRANCH IS UNREACHABLE as of 2026-08-07: v1.18.0 put
-        # app/web/vitest.config.ts on main, so no branch this workflow runs on
-        # lacks it. Kept rather than deleted — removing it is a separate change
-        # with its own reasoning (it is also the guard that would fire if the
-        # config were ever moved or renamed, which is not the same thing as the
-        # main-based-PR case it was written for). If you delete it, make sure a
-        # missing config still FAILS rather than silently collecting nothing;
-        # the collection floor on the api job explains why that matters.
+        # ─── 1. CONFIG ASSERT — WAS AN `exit 0` SKIP UNTIL 2026-08-14 ────
+        #
+        # SUPERSEDED REASONING, KEPT ON THE RECORD (written 2026-08-07, when
+        # this branch printed a ::notice:: and exited 0):
+        #
+        #   "Detect-and-explain rather than emitting a confusing red that readers
+        #    learn to ignore. Same reasoning as the Worker typecheck skip."
+        #
+        #   "⚠ THE SKIP BRANCH IS UNREACHABLE as of 2026-08-07: v1.18.0 put
+        #    app/web/vitest.config.ts on main, so no branch this workflow runs on
+        #    lacks it. Kept rather than deleted … If you delete it, make sure a
+        #    missing config still FAILS rather than silently collecting nothing;
+        #    the collection floor on the api job explains why that matters."
+        #
+        # That last sentence called this fix a year early. Heed it: the assert
+        # below is the "still FAILS" half, the floor is the "collecting nothing"
+        # half, and neither may be softened back into a skip.
+        #
+        # WHY THE SKIP WAS WRONG — MEASURED, not reasoned. The justification was
+        # that main's tree had "no web test infrastructure at all — no vitest
+        # devDependency, no test script, no app/web/vitest.config.ts" and so
+        # "could not run at all". Two of those three are present on this tree,
+        # and THE THIRD IS NOT REQUIRED: vitest collects without a config,
+        # falling back to vite.config.ts plus its own defaults. Renaming
+        # app/web/vitest.config.ts away and running this body with the skip
+        # removed, on 2026-08-14 under Node v20.20.2:
+        #
+        #   Test Files  2 failed | 18 passed (20)
+        #        Tests  17 failed | 240 passed (257)      → vitest exited 1
+        #
+        # All 20 files and all 257 tests were still COLLECTED. The 17 failures
+        # are `localStorage is not defined` (16, src/stablecoin/pendingStore.test.ts)
+        # and `window is not defined` (1, src/stablecoin/secureContext.test.ts),
+        # because the fallback environment is `node`, not the `jsdom` this repo's
+        # config sets — visible in the run summary as `environment 5ms` against
+        # ~30s with jsdom.
+        #
+        # So the skip was never covering a case where nothing could run. It was
+        # CONVERTING A LIVE RED INTO A GREEN. Hence an assert, not a skip — and
+        # hence this branch must NOT be called unreachable: it is reached by
+        # exactly the event it now catches, the config being moved, renamed or
+        # deleted. The 2026-08-07 note called it unreachable because it was
+        # thinking only of the main-based-PR case, which convergence did retire.
+        #
+        # ─── 2. COLLECTION FLOOR ─────────────────────────────────────────
+        #
+        # WHY THIS STEP NEEDS ONE — the exit code does not cover it. `vitest run`
+        # exits 1 on ZERO collection, so total collapse is caught for free.
+        # PARTIAL collapse is not: the suite genuinely runs, reports 0 failures,
+        # exits 0, and nothing distinguishes it from a full pass. That is the
+        # shape of this repo's real Node-22 incident — dropped collection, not
+        # failures (see .nvmrc). The api job's floor comment carries the full
+        # argument and the measurement that killed the "every other job gets
+        # collapse protection free from the exit code" claim.
+        #
+        # VALUE: 230 against a measured 257 = 89.5%, which is API'S RATIO
+        # (300/336 = 89.29%) applied to web's own measured N. api is the matched
+        # precedent, not worker: this step, like api's, keeps vitest's EXIT CODE
+        # LIVE as the failure signal. worker's tighter 92.59% (200/216) exists
+        # because worker discards its exit code with `|| true` to apply a failure
+        # ceiling, so its floor has to cover what the exit code covers here.
+        # Match the precedent whose exit-code posture you share.
+        #
+        # MEASUREMENT PROVENANCE: 257 tests across 20 files, measured 2026-08-14
+        # under Node v20.20.2 from a clean `npm install` in a fresh worktree —
+        # NOT carried forward from a prior report. Corroborated independently by
+        # CI run 31732161503 (2026-08-13), which logged the same 20/257.
+        # Re-measure rather than trusting this number:
+        #   cd app/web && npx vitest run
+        #
+        # HEADROOM: 27 tests. At the measured distribution (min 3, max 28,
+        # median 11, mean 12.85 tests/file) that is 4 whole files taking the
+        # smallest first — but NOT the largest: src/stablecoin/submitGuard.test.ts
+        # alone is 28 tests, so deliberately deleting it requires lowering this
+        # number in the SAME COMMIT. web's spread is far wider than api's
+        # (max is 2.18x the mean, 9.3x the min), so "headroom in files" is a
+        # range here, not a number.
+        #
+        # ⚠ THIS NUMBER IS INSTRUCTION-SHAPED, AND IT ROTS IN ONE DIRECTION.
+        # It is an integer in a file that nothing keeps current. Every test ADDED
+        # widens the gap between floor and reality, so the protection weakens
+        # monotonically with nobody editing anything and nothing going red. The
+        # only thing holding it current is a person reading this comment while
+        # removing a test. That is a real limitation, not a nitpick: as written,
+        # 230 against a suite that has grown to 400 would permit a 42% collapse.
+        #
+        # ⚠ AND IT STRUCTURALLY CANNOT SEE A FILE THE INCLUDE PATTERN NEVER
+        # MATCHED. app/web/vitest.config.ts pins `include: ["src/**/*.test.ts"]`,
+        # which EXCLUDES `.test.tsx`. An uncollected file contributes nothing to
+        # numTotalTests and nothing to this expectation, so a component test
+        # written as `.test.tsx` is silently absent and this floor stays green.
+        # Measured 2026-08-14: disk 20 == collected 20 (`git ls-files
+        # 'app/web/src/**/*.test.ts' | wc -l` → 20, `…*.test.tsx` → 0), so the
+        # gap is LATENT, not live. Broadening the include is a separate backlog
+        # item and deliberately not done here.
+        #
+        # ⚠ IF YOU REACH FOR A FILE-BASED FLOOR INSTEAD, READ THIS FIRST.
+        # `numTotalTestSuites` IS NOT A FILE COUNT — vitest counts describe
+        # blocks there. Measured 2026-08-14 on this 20-file suite:
+        # numTotalTestSuites = 83, testResults.length = 20. Keying a floor on
+        # numTotalTestSuites is wrong by ~4x IN THE PERMISSIVE DIRECTION: a
+        # plausible-looking floor of 18 against a reported 83 would pass a 78%
+        # file-level collapse. The file count is testResults.length.
+        env:
+          MIN_TOTAL: "230"
         run: |
+          set -o pipefail
+
+          # Fires BEFORE vitest is invoked, on purpose: a missing config means
+          # the suite would run under the wrong environment, which is a failure
+          # to state rather than a condition to tolerate or to discover from 17
+          # confusing assertion errors.
           if [ ! -f vitest.config.ts ]; then
-            echo "::notice::SKIPPED — no app/web/vitest.config.ts in this tree (main-based PR)."
-            echo "The web vitest standup is on develop and has not shipped to main."
-            exit 0
+            echo "::error::app/web/vitest.config.ts is missing — this is a FAILURE, not a skip."
+            echo "vitest still COLLECTS without it, falling back to vite.config.ts"
+            echo "defaults, but under the 'node' environment instead of jsdom."
+            echo "Measured 2026-08-14: 17 of 257 tests then fail with"
+            echo "'localStorage is not defined' / 'window is not defined'."
+            echo "TO FIX: restore app/web/vitest.config.ts. Do not soften this"
+            echo "check back into a skip — see the comment above this step."
+            exit 1
           fi
-          npx vitest run
+
+          rm -f /tmp/web-vitest.json
+          # Exit code NOT discarded: a failing test fails this job here and now,
+          # before the floor is ever consulted. The JSON report is read only for
+          # the collection count. (worker discards its exit code with `|| true`
+          # solely to apply a failure ceiling; this step, like api's, does not.)
+          npx vitest run --reporter=json --outputFile=/tmp/web-vitest.json
+
+          # COULD-NOT-RUN IS A FAILURE, NOT A PASS. If vitest exited 0 but wrote
+          # no parseable report, a missing file must not read as "0 collected"
+          # and then as some other job's problem.
+          if [ ! -s /tmp/web-vitest.json ]; then
+            echo "::error::Web tests produced no JSON report — vitest could not run."
+            echo "This is a failure, not zero failures. Check the step log above."
+            exit 1
+          fi
+
+          TOTAL=$(node -e "
+            const r = require('/tmp/web-vitest.json');
+            if (typeof r.numTotalTests !== 'number') { console.error('unparseable report'); process.exit(3); }
+            console.log(r.numTotalTests);
+          ") || { echo "::error::Web test report was unparseable."; exit 1; }
+
+          echo "Web tests: $TOTAL collected (floor: $MIN_TOTAL)"
+
+          if [ "$TOTAL" -lt "$MIN_TOTAL" ]; then
+            echo "::error::Only $TOTAL tests were collected; expected at least $MIN_TOTAL."
+            echo "The suite did not fully run — this is a FAILURE, not a pass."
+            echo "Likely causes: wrong Node version (see .nvmrc), a broken vitest"
+            echo "config, moved/renamed test files, or a collection-time crash."
+            exit 1
+          fi
