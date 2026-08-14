@@ -243,24 +243,57 @@ jobs:
 
       - name: Typecheck
         working-directory: cloudflare-worker
-        # Conditioned on the SCRIPT EXISTING, not on the branch. The
-        # `typecheck` script landed on develop and was absent from main, so a
-        # main-based PR had nothing to run. Skipping with an explanation beats
-        # both a spurious failure and a silent pass.
+        # Conditioned on the SCRIPT EXISTING, not on the branch — and a missing
+        # script is now a FAILURE rather than a skip.
         #
-        # ⚠ THE SKIP BRANCH IS UNREACHABLE as of 2026-08-07: v1.18.0 put the
-        # `typecheck` script on main (cloudflare-worker/package.json), so no
-        # branch this workflow runs on lacks it. Kept rather than deleted —
-        # removing it is a separate change with its own reasoning, and the
-        # condition still guards the genuinely different case of someone
-        # renaming or dropping the script.
+        # SUPERSEDED REASONING, KEPT ON THE RECORD (written 2026-08-03/08-07,
+        # when the else branch printed a ::notice:: and let the step exit 0):
+        #
+        #   "The `typecheck` script landed on develop and was absent from main, so
+        #    a main-based PR had nothing to run. Skipping with an explanation
+        #    beats both a spurious failure and a silent pass."
+        #
+        #   "⚠ THE SKIP BRANCH IS UNREACHABLE as of 2026-08-07: v1.18.0 put the
+        #    `typecheck` script on main (cloudflare-worker/package.json), so no
+        #    branch this workflow runs on lacks it. Kept rather than deleted …
+        #    the condition still guards the genuinely different case of someone
+        #    renaming or dropping the script."
+        #
+        # FLIPPED TO A HARD FAILURE 2026-08-14. The superseded note above got the
+        # diagnosis right and the remedy wrong: the case it names — someone
+        # renaming or dropping the script — is real and still reachable, but
+        # GUARDING it means FAILING on it. A skip does not guard a case, it
+        # tolerates it. Measured before flipping, by deleting the `typecheck` key
+        # from cloudflare-worker/package.json and executing this step body
+        # verbatim under /usr/bin/bash -e: the probe fell through and the step
+        # exited 0 with tsc never invoked. That is a required check
+        # ("Worker — typecheck + tests (hard gate)", pinned in ruleset 20756755)
+        # reporting success having typechecked nothing.
+        #
+        # WHY IT MATTERED BEYOND THIS STEP: web-vitest's config skip cited this
+        # one as its precedent, in as many words — "Same reasoning as the Worker
+        # typecheck skip." Leaving this branch a skip would have left a live
+        # in-repo precedent for the pattern that arc removed.
+        #
+        # ⚠ WHAT THIS DOES NOT CLOSE. A `typecheck` script that EXISTS but does
+        # nothing still passes: `"typecheck": "true"`, an `echo`, or a tsconfig
+        # with `files: []` all satisfy the probe and exit 0 with nothing checked.
+        # Closing that needs an assertion that tsc actually ran and looked at
+        # files — a different mechanism from an existence probe, deliberately not
+        # attempted here. Note that app/api and app/web call `npx tsc --noEmit`
+        # directly; this step is the only typecheck in the repo behind an npm
+        # script, and that indirection is exactly what hides the no-op case.
         run: |
           if node -e "process.exit(require('./package.json').scripts?.typecheck ? 0 : 1)"; then
             npm run typecheck
           else
-            echo "::notice::SKIPPED — no 'typecheck' script in cloudflare-worker/package.json."
-            echo "It exists on develop and is absent from this tree (main-based PR)."
-            echo "This becomes unconditional once a develop→main release converges the branches."
+            echo "::error::No 'typecheck' script in cloudflare-worker/package.json — this is a FAILURE, not a skip."
+            echo "This job is a required check; exiting 0 here would report success"
+            echo "having typechecked nothing. The script is present on both main and"
+            echo "develop (v1.18.0 converged them), so its absence means it was"
+            echo "renamed or dropped rather than never having shipped."
+            echo "TO FIX: restore \"typecheck\": \"tsc --noEmit\" to the scripts block."
+            exit 1
           fi
 
       - name: Tests (failure ceiling)
