@@ -10,34 +10,119 @@ import {
   type LndFaultKind,
 } from "./lndHealth";
 
-// ─── Fixtures modelled on real ln-service / gRPC error shapes ────────────────
+// ─── Fixtures ────────────────────────────────────────────────────────────────
 //
-// ln-service throws array-shaped errors: [status, 'CodeString', {err}] — see
-// payFromNode.ts:109-112. The underlying gRPC error carries a numeric .code
-// and a .details string. Phase 1 confirmed both reach the catch site at
-// index.ts:248 and are discarded.
+// ln-service throws array-shaped errors: [status, 'ReasonString', {err}] — see
+// payFromNode.ts:109-112. The gRPC error sits at err[2].err and carries .code
+// and .details. NOTE the top-level err.code / err.details / err.message are all
+// UNDEFINED on these shapes, which is why grpcStatusCode() traverses into the
+// nested .err (and why index.ts:248's `err?.code` logs an empty string —
+// reported, out of scope).
+//
+// ══ PROVENANCE ══════════════════════════════════════════════════════════════
+// The REAL_* fixtures below are VERBATIM captures from a live Polar regtest
+// node, 2026-08-18:
+//     LND 0.20.0-beta  commit b9ea7070c20ad2ca8514a47d9b4d560a501f0487
+//     polarlightning/lnd:0.20.0-beta, container polar-n1-Treasury
+//
+// ⚠ THE KEY OBSERVED FACT: this version returns gRPC 2 UNKNOWN for EVERY
+// credential fault. It never returns 7 PERMISSION_DENIED or 16 UNAUTHENTICATED.
+// auth and permission are separable ONLY by the details TEXT. That is why
+// classifyLndError deliberately leaves gRPC 2 unmapped in its numeric switch
+// and falls through to the text rules — on this version the text rules are the
+// only thing that separates the two kinds.
+//
+// The FORWARD_COMPAT_* fixtures carry proper 7/16 codes. Those branches were
+// NOT observed on 0.20.0-beta and are retained for versions that do emit them.
+// They are the only coverage those branches have.
+//
+// ⚠ Version limit: this repo does not pin LND (Umbrel owns that container), so
+// the treasury and member-node versions are UNKNOWN. These strings are
+// established for 0.20.0-beta only — not confirmed against production LND.
+// Re-derive with the harness noted in the commit message.
+// ════════════════════════════════════════════════════════════════════════════
 
-/** gRPC 16 UNAUTHENTICATED — the credential is not recognised. */
-const AUTH_ARRAY = [
-  503,
-  "UnexpectedErrorGettingWalletInfo",
+/** Faithfully reproduce the observed ln-service array shape. */
+function lnServiceError(reason: string, code: number, statusWord: string, details: string) {
+  const inner = Object.assign(new Error(`${code} ${statusWord}: ${details}`), {
+    code,
+    details,
+    // Plain object, not a Map: grpc-js's Metadata has a toJSON that serialises
+    // to exactly this, so lndFaultDetail() produces a string byte-identical to
+    // the observed capture.
+    metadata: { "content-type": ["application/grpc"] },
+  });
+  return [503, reason, { err: inner }];
+}
+
+// ── REAL captures, LND 0.20.0-beta ──
+
+/** CASE 2 — under-scoped macaroon (info:read + onchain:read, no offchain:read),
+ *  getChannels refused. gRPC 2, discriminated by text. */
+const REAL_UNDERSCOPED_OFFCHAIN = lnServiceError(
+  "UnexpectedGetChannelsError", 2, "UNKNOWN", "permission denied",
+);
+
+/** CASE 3a — Farmer1's admin macaroon presented to Treasury. */
+const REAL_FOREIGN_MACAROON = lnServiceError(
+  "GetWalletInfoErr", 2, "UNKNOWN",
+  "verification failed: signature mismatch after caveat verification",
+);
+
+/** CASE 3b — a well-formed macaroon with one signature byte flipped.
+ *  Observed BYTE-IDENTICAL to 3a: a foreign and a mutated macaroon both fail
+ *  the same HMAC check, so they are indistinguishable at the error level. */
+const REAL_MUTATED_SIGNATURE = lnServiceError(
+  "GetWalletInfoErr", 2, "UNKNOWN",
+  "verification failed: signature mismatch after caveat verification",
+);
+
+/** CASE 3c — bytes that are not a macaroon at all. A genuinely DISTINCT
+ *  signature from 3a/3b: decode failure, not signature failure. */
+const REAL_NOT_A_MACAROON = lnServiceError(
+  "GetWalletInfoErr", 2, "UNKNOWN",
+  "cannot determine data format of binary-encoded macaroon",
+);
+
+/** CASE 4 — closed port. The ONLY observed fault carrying a mapped numeric
+ *  code, so it resolves via the numeric switch and the CONNECTIVITY_RE text
+ *  tokens are never consulted for it. */
+const REAL_CLOSED_PORT = lnServiceError(
+  "UnexpectedErrorWhenGettingChainBalance", 14, "UNAVAILABLE",
+  "No connection established. Last error: Error: connect ECONNREFUSED 127.0.0.1:10999. Resolution note: ",
+);
+
+/** Residual exposure, measured: gRPC 2 with wording no rule recognises falls
+ *  to `malformed`. A version that words these differently would report the
+ *  wrong KIND (the raw detail is still preserved). Documented, not fixed. */
+const REAL_SHAPE_UNRECOGNISED_TEXT = lnServiceError(
+  "SomeFutureError", 2, "UNKNOWN", "some future wording nobody has seen",
+);
+
+// ── FORWARD-COMPAT: proper codes, NOT observed on 0.20.0-beta ──
+
+const FORWARD_COMPAT_AUTH_16 = [
+  503, "UnexpectedErrorGettingWalletInfo",
   { err: { code: 16, details: "invalid auth: invalid macaroon" } },
 ];
+const FORWARD_COMPAT_PERMISSION_7 = [
+  503, "UnexpectedErrorGettingChannels",
+  { err: { code: 7, details: "permission denied" } },
+];
+
+// ── Aliases kept so the existing discrimination suite reads unchanged. The
+//    auth/permission pair now points at REAL captures. ──
+const AUTH_ARRAY = REAL_FOREIGN_MACAROON;
+const PERMISSION_ARRAY = REAL_UNDERSCOPED_OFFCHAIN;
 const AUTH_PLAIN = Object.assign(new Error("verification failed"), { code: 16 });
 const AUTH_TEXT_ONLY = new Error(
   "cannot determine data format of binary-encoded macaroon",
 );
-
-/** gRPC 7 PERMISSION_DENIED — recognised, but not allowed this method. */
-const PERMISSION_ARRAY = [
-  503,
-  "UnexpectedErrorGettingChannels",
-  { err: { code: 7, details: "permission denied" } },
-];
 const PERMISSION_PLAIN = Object.assign(new Error("permission denied"), { code: 7 });
 const PERMISSION_TEXT_ONLY = new Error("permission denied");
 
-/** Connectivity. */
+/** Connectivity — synthetic variants exercising CONNECTIVITY_RE text tokens,
+ *  which the real capture does NOT reach (it carries code 14). */
 const CONN_ARRAY = [503, "FailedToConnect", {}];
 const CONN_PLAIN = Object.assign(
   new Error("14 UNAVAILABLE: No connection established"),
@@ -88,8 +173,12 @@ describe("grpcStatusCode — pulls the numeric status out of every shape", () =>
   });
 
   it("reads a code nested under .err inside an ln-service array", () => {
-    expect(grpcStatusCode(AUTH_ARRAY)).toBe(16);
-    expect(grpcStatusCode(PERMISSION_ARRAY)).toBe(7);
+    // Real 0.20.0-beta captures both carry gRPC 2 — see PROVENANCE.
+    expect(grpcStatusCode(AUTH_ARRAY)).toBe(2);
+    expect(grpcStatusCode(PERMISSION_ARRAY)).toBe(2);
+    // Forward-compat shapes carry the proper codes.
+    expect(grpcStatusCode(FORWARD_COMPAT_AUTH_16)).toBe(16);
+    expect(grpcStatusCode(FORWARD_COMPAT_PERMISSION_7)).toBe(7);
   });
 
   it("returns null when no numeric code is present", () => {
@@ -97,6 +186,26 @@ describe("grpcStatusCode — pulls the numeric status out of every shape", () =>
     expect(grpcStatusCode(CONN_ARRAY)).toBeNull();
     expect(grpcStatusCode(null)).toBeNull();
     expect(grpcStatusCode("a string")).toBeNull();
+  });
+
+  // REGRESSION — proven necessary by the 0.20.0-beta captures. On the real
+  // shape the top-level err.code/.details/.message are ALL undefined; the
+  // values live only at err[2].err.*. A grpcStatusCode() that read the top
+  // level would return null for every real fault and every credential error
+  // would fall to the text rules with no numeric signal at all. (This is also
+  // exactly why index.ts:248's `err?.code` logs an empty string — reported,
+  // out of scope.)
+  it("extracts from err[2].err on the real shape, where the top level is undefined", () => {
+    const real: any = REAL_UNDERSCOPED_OFFCHAIN;
+    expect(real.code).toBeUndefined();
+    expect(real.details).toBeUndefined();
+    expect(real.message).toBeUndefined();
+    expect(real[2].err.code).toBe(2);
+    expect(grpcStatusCode(real)).toBe(2);
+  });
+
+  it("extracts code 14 from the real closed-port capture", () => {
+    expect(grpcStatusCode(REAL_CLOSED_PORT)).toBe(14);
   });
 });
 
@@ -106,8 +215,12 @@ describe("lndFaultDetail — never throws, always yields something readable", ()
   it("flattens an ln-service array including the nested err payload", () => {
     const d = lndFaultDetail(PERMISSION_ARRAY);
     expect(d).toContain("503");
-    expect(d).toContain("UnexpectedErrorGettingChannels");
+    expect(d).toContain("UnexpectedGetChannelsError"); // observed reason string
     expect(d).toContain("permission denied");
+    // Byte-identical to the 0.20.0-beta capture.
+    expect(d).toBe(
+      '503 UnexpectedGetChannelsError {"err":{"code":2,"details":"permission denied","metadata":{"content-type":["application/grpc"]}}}',
+    );
   });
 
   it("handles Error, string, null and undefined", () => {
@@ -259,6 +372,105 @@ describe("classifyLndError — malformed", () => {
   });
 });
 
+// ─── REAL CAPTURES — LND 0.20.0-beta, Polar regtest, 2026-08-18 ─────────────
+//
+// These assert against VERBATIM observed values. See the PROVENANCE block at the
+// top of this file. Every one of these resolves through the TEXT rules, not the
+// numeric switch, because 0.20.0-beta reports gRPC 2 UNKNOWN for all of them.
+
+describe("real captures (LND 0.20.0-beta): observed strings classify correctly", () => {
+  it("case 2 — under-scoped macaroon, getChannels refused -> permission", () => {
+    expect(classifyLndError(REAL_UNDERSCOPED_OFFCHAIN)).toBe("permission");
+    expect(grpcStatusCode(REAL_UNDERSCOPED_OFFCHAIN)).toBe(2);
+    expect(lndFaultDetail(REAL_UNDERSCOPED_OFFCHAIN)).toContain("permission denied");
+  });
+
+  it("case 3a — foreign macaroon (baked on another node) -> auth", () => {
+    expect(classifyLndError(REAL_FOREIGN_MACAROON)).toBe("auth");
+    expect(grpcStatusCode(REAL_FOREIGN_MACAROON)).toBe(2);
+    expect(lndFaultDetail(REAL_FOREIGN_MACAROON)).toContain(
+      "verification failed: signature mismatch after caveat verification",
+    );
+  });
+
+  it("case 3b — mutated signature byte -> auth (same string as 3a)", () => {
+    expect(classifyLndError(REAL_MUTATED_SIGNATURE)).toBe("auth");
+    // Observed identical: both fail the same HMAC check.
+    expect(lndFaultDetail(REAL_MUTATED_SIGNATURE)).toBe(
+      lndFaultDetail(REAL_FOREIGN_MACAROON),
+    );
+  });
+
+  it("case 3c — not a macaroon at all -> auth, via a DISTINCT string", () => {
+    expect(classifyLndError(REAL_NOT_A_MACAROON)).toBe("auth");
+    expect(lndFaultDetail(REAL_NOT_A_MACAROON)).toContain(
+      "cannot determine data format of binary-encoded macaroon",
+    );
+    // Distinct signature from the signature-mismatch cases.
+    expect(lndFaultDetail(REAL_NOT_A_MACAROON)).not.toBe(
+      lndFaultDetail(REAL_FOREIGN_MACAROON),
+    );
+  });
+
+  it("case 4 — closed port -> connectivity, via the NUMERIC path (code 14)", () => {
+    expect(classifyLndError(REAL_CLOSED_PORT)).toBe("connectivity");
+    expect(grpcStatusCode(REAL_CLOSED_PORT)).toBe(14);
+  });
+
+  // The whole point, on real values: same gRPC code, different kind.
+  it("separates auth from permission on IDENTICAL gRPC code 2", () => {
+    expect(grpcStatusCode(REAL_FOREIGN_MACAROON)).toBe(2);
+    expect(grpcStatusCode(REAL_UNDERSCOPED_OFFCHAIN)).toBe(2);
+    expect(classifyLndError(REAL_FOREIGN_MACAROON)).toBe("auth");
+    expect(classifyLndError(REAL_UNDERSCOPED_OFFCHAIN)).toBe("permission");
+    expect(classifyLndError(REAL_FOREIGN_MACAROON)).not.toBe(
+      classifyLndError(REAL_UNDERSCOPED_OFFCHAIN),
+    );
+  });
+
+  it("all four real fault kinds are simultaneously distinct", () => {
+    expect([
+      classifyLndError(REAL_CLOSED_PORT),
+      classifyLndError(REAL_FOREIGN_MACAROON),
+      classifyLndError(REAL_UNDERSCOPED_OFFCHAIN),
+      classifyLndError(REAL_SHAPE_UNRECOGNISED_TEXT),
+    ]).toEqual(["connectivity", "auth", "permission", "malformed"]);
+  });
+});
+
+describe("residual exposure (documented, not fixed)", () => {
+  // gRPC 2 with unrecognised wording -> malformed. A version phrasing these
+  // differently would report the wrong KIND. The raw detail is still preserved,
+  // so the fault stays diagnosable. This test pins the behaviour so a change
+  // to it is deliberate rather than accidental.
+  it("gRPC 2 with wording no rule recognises falls to malformed", () => {
+    expect(classifyLndError(REAL_SHAPE_UNRECOGNISED_TEXT)).toBe("malformed");
+    expect(lndFaultDetail(REAL_SHAPE_UNRECOGNISED_TEXT)).toContain(
+      "some future wording nobody has seen",
+    );
+  });
+});
+
+describe("forward-compat: proper gRPC codes NOT observed on 0.20.0-beta", () => {
+  // These branches are unexercised by any real capture. Retained because a
+  // different LND version may emit them, and this is their only coverage.
+  it("gRPC 16 UNAUTHENTICATED -> auth", () => {
+    expect(classifyLndError(FORWARD_COMPAT_AUTH_16)).toBe("auth");
+    expect(grpcStatusCode(FORWARD_COMPAT_AUTH_16)).toBe(16);
+  });
+
+  it("gRPC 7 PERMISSION_DENIED -> permission", () => {
+    expect(classifyLndError(FORWARD_COMPAT_PERMISSION_7)).toBe("permission");
+    expect(grpcStatusCode(FORWARD_COMPAT_PERMISSION_7)).toBe(7);
+  });
+
+  it("the numeric branches stay distinct from each other", () => {
+    expect(classifyLndError(FORWARD_COMPAT_AUTH_16)).not.toBe(
+      classifyLndError(FORWARD_COMPAT_PERMISSION_7),
+    );
+  });
+});
+
 // ─── DONE-WHEN 1 — working credential ───────────────────────────────────────
 
 describe("done-when 1: working credential reports ok for all three scopes", () => {
@@ -340,9 +552,10 @@ describe("done-when 3: a rejected macaroon reports auth, distinctly", () => {
       "onchain:read": "auth",
     });
     // The discriminating data is PRESERVED, not discarded as at index.ts:248.
+    // Real 0.20.0-beta values: code 2, discriminated by the details text.
     for (const s of report.scopes) {
-      expect(s.code).toBe(16);
-      expect(s.detail).toContain("invalid auth");
+      expect(s.code).toBe(2);
+      expect(s.detail).toContain("verification failed: signature mismatch");
     }
   });
 
@@ -363,9 +576,17 @@ describe("done-when 3: a rejected macaroon reports auth, distinctly", () => {
     expect(a.kind).toBe("auth");
     expect(p.kind).toBe("permission");
     expect(a.kind).not.toBe(p.kind);
-    expect(a.code).toBe(16);
-    expect(p.code).toBe(7);
-    expect(a.code).not.toBe(p.code);
+
+    // ⚠ THE HEADLINE FINDING, as an assertion. On LND 0.20.0-beta both faults
+    // carry the SAME gRPC code (2 UNKNOWN). The numeric status therefore does
+    // NOT separate them — only the details text does. This assertion used to
+    // read `expect(a.code).not.toBe(p.code)` against synthetic 16/7 fixtures,
+    // which is FALSE on real data. Inverting it is the point: the kinds differ
+    // while the codes are identical.
+    expect(a.code).toBe(2);
+    expect(p.code).toBe(2);
+    expect(a.code).toBe(p.code);
+    expect(a.detail).not.toBe(p.detail);
   });
 });
 
@@ -410,7 +631,7 @@ describe("done-when 4: partial permission is visible AS partial", () => {
     expect(report.probe_calls_attempted).toBe(3);         // all three ran
 
     const offchain = report.scopes.find((s) => s.scope === "offchain:read")!;
-    expect(offchain.code).toBe(7);
+    expect(offchain.code).toBe(2); // real 0.20.0-beta value, not 7
     expect(offchain.detail).toContain("permission denied");
   });
 

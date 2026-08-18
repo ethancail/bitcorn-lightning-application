@@ -150,6 +150,30 @@ export function grpcStatusCode(err: unknown): number | null {
 // macaroon" — contains the word "macaroon", so it MUST be matched as a
 // connect/file problem before any macaroon-text auth rule runs. Getting that
 // order wrong reports a missing file as a rejected credential.
+//
+// ⚠ OBSERVED ON REAL LND (regtest, 0.20.0-beta commit b9ea7070, 2026-08-18):
+// THIS VERSION RETURNS gRPC 2 UNKNOWN FOR EVERY CREDENTIAL FAULT. It emits
+// neither 7 PERMISSION_DENIED nor 16 UNAUTHENTICATED. Observed details:
+//   under-scoped macaroon, getChannels : code 2, "permission denied"
+//   foreign macaroon                   : code 2, "verification failed: signature
+//                                        mismatch after caveat verification"
+//   mutated signature byte             : code 2, IDENTICAL string to the above
+//   not a macaroon at all              : code 2, "cannot determine data format
+//                                        of binary-encoded macaroon"
+//   closed port                        : code 14, ECONNREFUSED text
+//
+// So on this version THE TEXT RULES BELOW ARE THE ONLY THING SEPARATING auth
+// FROM permission, and the numeric 7/16 branches are unexercised — retained
+// for versions that do emit them. Every observed string matched these patterns
+// UNCHANGED; no regex was adjusted as a result of the regtest. Leaving gRPC 2
+// unmapped in the numeric switch is what makes this work.
+//
+// ⚠ Residual exposure: gRPC 2 with wording none of these patterns recognise
+// falls to `malformed` — wrong KIND, though `detail` is still preserved. A
+// different LND version wording these differently would land there. This repo
+// does not pin LND (Umbrel owns that container), so the treasury and
+// member-node versions are UNKNOWN and these strings are NOT confirmed against
+// production LND. Re-derive with the harness recorded in the commit message.
 
 /** The app's own pre-flight failures (lnd.ts:67, lnd.ts:89). Checked FIRST. */
 const APP_OWN_RE = /LND files not available|Failed to initialize LND client/i;
