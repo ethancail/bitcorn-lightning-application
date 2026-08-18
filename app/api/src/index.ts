@@ -188,6 +188,10 @@ import {
 import { handleRailFeeRevenue } from "./stablecoin/feeRevenue";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
+  isAdminMemberQuery,
+  ADMIN_QUERY_REJECTION,
+} from "./subscription/adminQueryGuard";
+import {
   verifyEntitlementToken,
   extractBearerToken,
   JwtVerificationError,
@@ -535,16 +539,18 @@ const server = http.createServer(async (req, res) => {
       if (isTreasury) {
         // ── Treasury path: compute response locally ──
         let lookupPubkey: string;
-        if (queryPubkey) {
-          // Admin debug — requires treasury role (we are on treasury
-          // here, so this passes; assertTreasury kept as belt-and-
-          // suspenders against future role-config drift).
-          try { assertTreasury(node?.node_role); } catch (err: any) {
-            res.writeHead(403, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: err?.message }));
-            return;
-          }
-          lookupPubkey = queryPubkey.toLowerCase();
+        if (isAdminMemberQuery(queryPubkey)) {
+          // Refused before any auth runs, mirroring the member side below.
+          // This was an "admin debug" read gated by assertTreasury ONLY — a
+          // NODE-ROLE check ("am I the treasury?"), which passes for every
+          // caller on the treasury — so the lookup pubkey was the caller's
+          // choice and any unauthenticated caller could read any member's
+          // subscription state. A node-role check is not caller auth.
+          // See subscription/adminQueryGuard.ts for why refusing beats
+          // authenticating here, and why no allowlist replaces it.
+          res.writeHead(ADMIN_QUERY_REJECTION.status, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(ADMIN_QUERY_REJECTION.body));
+          return;
         } else {
           const bearer = extractBearerToken(req.headers["authorization"] ?? null);
           if (!bearer) {
@@ -706,16 +712,17 @@ const server = http.createServer(async (req, res) => {
       if (isTreasury) {
         // ── Treasury path: compute response locally ──
         let lookupPubkey: string;
-        if (queryPubkey) {
-          // Admin debug — treasury-only. Same gate as /status's admin
-          // path; uses the future Stage 5b admin Subscriptions view's
-          // entry point. Belt-and-suspenders against role-config drift.
-          try { assertTreasury(node?.node_role); } catch (err: any) {
-            res.writeHead(403, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: err?.message }));
-            return;
-          }
-          lookupPubkey = queryPubkey.toLowerCase();
+        if (isAdminMemberQuery(queryPubkey)) {
+          // Refused before any auth runs — same decision as /status above and
+          // as the member side below. Was gated by assertTreasury ONLY (a
+          // node-role check, an unconditional pass on the treasury), which
+          // exposed any member's full payment ledger to an unauthenticated
+          // caller. The Stage 5b admin Subscriptions view this once anticipated
+          // must obtain the data through an authenticated /api/admin/* route,
+          // not by re-opening this query. See subscription/adminQueryGuard.ts.
+          res.writeHead(ADMIN_QUERY_REJECTION.status, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(ADMIN_QUERY_REJECTION.body));
+          return;
         } else {
           const bearer = extractBearerToken(req.headers["authorization"] ?? null);
           if (!bearer) {

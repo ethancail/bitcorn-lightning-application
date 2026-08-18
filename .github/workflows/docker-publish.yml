@@ -45,6 +45,88 @@ jobs:
           # concluding anything from their absence.
           fetch-depth: 0
 
+      # ── RELEASE PRECONDITION: THE BUNDLE'S CHAIN ────────────────────────
+      # RELOCATED HERE FROM build-web ON 2026-08-14, and placed ahead of BOTH
+      # tag steps below on purpose.
+      #
+      # WHY IT MOVED. In build-web this guard FAILED OPEN. It correctly failed
+      # its own job, but build-api has no dependency on build-web — both are
+      # only `needs: get-version` — so when it tripped, build-api was
+      # concurrently pushing api:<version> and re-pointing api:latest. The
+      # release then half-shipped: api images published, web images absent,
+      # docker-compose pinning a web:<version> that does not exist, which is the
+      # ~0%-install failure in CLAUDE.md § Umbrel Gotchas. get-version is the
+      # sole common ancestor of both build jobs, so a failure here leaves BOTH
+      # un-started and nothing is pushed. This is the same placement argument the
+      # RELEASE TAG note below makes; that note cited THIS guard as its proof,
+      # and the guard had been left where it was.
+      #
+      # WHY BEFORE THE TAG STEPS, NOT AFTER. get-version creates and pushes
+      # v<version>. After the tag steps, a guard trip would leave the tag pushed
+      # to origin with no images built, and recovery would require deleting a
+      # published tag (the assert below would refuse a plain re-run). Before
+      # them, a trip means fix-the-variable-and-rerun with nothing to undo.
+      #
+      # NO `if:` CONDITION — DROPPED 2026-08-14. It carried
+      # `if: github.ref == 'refs/heads/main'`, which is always true: this
+      # workflow's only trigger is `push: branches: [main]`. It could therefore
+      # only ever subtract, per the rule stated in the RELEASE TAG note below —
+      # "a job- or step-level condition would add nothing except a way for this
+      # gate to be skipped". The step name keeps the words "on main builds"
+      # because that is still what it describes; there is no other kind of build.
+      #
+      # WHAT GOES WRONG WITHOUT THIS. VITE_BASE_CHAIN_ID is baked at build time
+      # and every default in the chain points at Base Sepolia: build-web's
+      # `|| '84532'` below, app/web/Dockerfile's `ARG VITE_BASE_CHAIN_ID=84532`,
+      # and wagmi.ts's `DEFAULT_CHAIN_ID === base.id ? base : baseSepolia`, which
+      # resolves ANY value that isn't exactly 8453 to Sepolia. So forgetting the
+      # deploy-day step "set the repo variable" produces a green build and a
+      # bundle that silently settles on the wrong network.
+      #
+      # The failure is user-visible and money-adjacent: the router address comes
+      # from the API's cache (mainnet), but the bundle forces the wallet onto
+      # Sepolia and approves Sepolia USDC. The member gets a real wallet prompt
+      # built from mismatched config. It reverts rather than misdirecting funds,
+      # but it spends gas and asks someone to sign a transaction that cannot work.
+      #
+      # Scope note: this guards the BUILD-TIME variable only. There is still no
+      # RUNTIME cross-check that the bundle's chain matches the chain the Worker
+      # and cache are actually on — that needs a chain_id field on
+      # /api/stablecoin/contract-state, which the response does not carry today.
+      # Deliberately left as a separate arc.
+      - name: Require VITE_BASE_CHAIN_ID on main builds
+        env:
+          CHAIN_ID: ${{ vars.VITE_BASE_CHAIN_ID }}
+        run: |
+          if [ -z "$CHAIN_ID" ]; then
+            echo "::error::VITE_BASE_CHAIN_ID repo variable is not set."
+            echo "A main-branch build must state its chain explicitly — the"
+            echo "fallback is Base Sepolia (84532), which would ship a"
+            echo "testnet-pinned bundle to production."
+            echo "Set it under Settings → Secrets and variables → Actions → Variables:"
+            echo "  8453  = Base mainnet"
+            echo "  84532 = Base Sepolia"
+            exit 1
+          fi
+          # Compare on the whitespace-stripped value, matching wagmi.ts's own
+          # coercion: it does Number(RAW) === base.id, and Number() ignores
+          # surrounding whitespace, so "8453 " really does resolve to mainnet
+          # there. Rejecting it here would fail a build over a value that
+          # actually works — a guard that cries wolf stops being trusted.
+          TRIMMED="$(printf '%s' "$CHAIN_ID" | tr -d '[:space:]')"
+          case "$TRIMMED" in
+            8453|84532) ;;
+            *)
+              echo "::error::VITE_BASE_CHAIN_ID='$CHAIN_ID' is not a supported chain."
+              echo "wagmi.ts resolves any value whose Number() isn't 8453 to Base"
+              echo "Sepolia, so a wrong value here fails OPEN to testnet rather"
+              echo "than erroring at runtime."
+              echo "Expected 8453 (Base mainnet) or 84532 (Base Sepolia)."
+              exit 1
+              ;;
+          esac
+          echo "VITE_BASE_CHAIN_ID=$TRIMMED"
+
       - name: Read version from umbrel-app.yml
         id: version
         run: |
@@ -56,10 +138,18 @@ jobs:
       # WHY IT LIVES IN THIS JOB. get-version is the sole common ancestor of
       # build-api and build-web (both `needs: get-version`), so a failure here
       # leaves BOTH un-started and nothing is pushed. In-build-job placement fails
-      # OPEN, and this workflow already contains the proof: the
-      # VITE_BASE_CHAIN_ID guard sits inside build-web, so when it trips,
-      # build-api is concurrently pushing api:<version> and re-pointing
-      # api:latest — the two build jobs have no dependency on each other.
+      # OPEN.
+      #
+      # ⚠ THE PROOF THIS NOTE USED TO CITE IS NOW HISTORICAL. It read: "this
+      # workflow already contains the proof: the VITE_BASE_CHAIN_ID guard sits
+      # inside build-web, so when it trips, build-api is concurrently pushing
+      # api:<version> and re-pointing api:latest — the two build jobs have no
+      # dependency on each other." That was true and unaddressed until
+      # 2026-08-14, when the guard was moved into this job for exactly the reason
+      # stated here; it now sits ABOVE these tag steps. The argument stands, the
+      # example no longer does — do not read it as describing a live condition.
+      # The build jobs still have no dependency on each other, so any NEW gate
+      # belongs in this job for the same reason.
       #
       # NO `if:` CONDITION, ON PURPOSE. The trigger is already `branches: [main]`,
       # so a job- or step-level condition would add nothing except a way for this
@@ -247,62 +337,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Fail the release BEFORE building rather than shipping a testnet-pinned
-      # bundle to production.
-      #
-      # WHAT GOES WRONG WITHOUT THIS. VITE_BASE_CHAIN_ID is baked at build time
-      # and every default in the chain points at Base Sepolia: this workflow's
-      # `|| '84532'` below, app/web/Dockerfile's `ARG VITE_BASE_CHAIN_ID=84532`,
-      # and wagmi.ts's `DEFAULT_CHAIN_ID === base.id ? base : baseSepolia`, which
-      # resolves ANY value that isn't exactly 8453 to Sepolia. So forgetting the
-      # deploy-day step "set the repo variable" produces a green build and a
-      # bundle that silently settles on the wrong network.
-      #
-      # The failure is user-visible and money-adjacent: the router address comes
-      # from the API's cache (mainnet), but the bundle forces the wallet onto
-      # Sepolia and approves Sepolia USDC. The member gets a real wallet prompt
-      # built from mismatched config. It reverts rather than misdirecting funds,
-      # but it spends gas and asks someone to sign a transaction that cannot work.
-      #
-      # Scope note: this guards the BUILD-TIME variable only. There is still no
-      # RUNTIME cross-check that the bundle's chain matches the chain the Worker
-      # and cache are actually on — that needs a chain_id field on
-      # /api/stablecoin/contract-state, which the response does not carry today.
-      # Deliberately left as a separate arc.
-      - name: Require VITE_BASE_CHAIN_ID on main builds
-        if: github.ref == 'refs/heads/main'
-        env:
-          CHAIN_ID: ${{ vars.VITE_BASE_CHAIN_ID }}
-        run: |
-          if [ -z "$CHAIN_ID" ]; then
-            echo "::error::VITE_BASE_CHAIN_ID repo variable is not set."
-            echo "A main-branch build must state its chain explicitly — the"
-            echo "fallback is Base Sepolia (84532), which would ship a"
-            echo "testnet-pinned bundle to production."
-            echo "Set it under Settings → Secrets and variables → Actions → Variables:"
-            echo "  8453  = Base mainnet"
-            echo "  84532 = Base Sepolia"
-            exit 1
-          fi
-          # Compare on the whitespace-stripped value, matching wagmi.ts's own
-          # coercion: it does Number(RAW) === base.id, and Number() ignores
-          # surrounding whitespace, so "8453 " really does resolve to mainnet
-          # there. Rejecting it here would fail a build over a value that
-          # actually works — a guard that cries wolf stops being trusted.
-          TRIMMED="$(printf '%s' "$CHAIN_ID" | tr -d '[:space:]')"
-          case "$TRIMMED" in
-            8453|84532) ;;
-            *)
-              echo "::error::VITE_BASE_CHAIN_ID='$CHAIN_ID' is not a supported chain."
-              echo "wagmi.ts resolves any value whose Number() isn't 8453 to Base"
-              echo "Sepolia, so a wrong value here fails OPEN to testnet rather"
-              echo "than erroring at runtime."
-              echo "Expected 8453 (Base mainnet) or 84532 (Base Sepolia)."
-              exit 1
-              ;;
-          esac
-          echo "VITE_BASE_CHAIN_ID=$TRIMMED"
-
+      # ⚠ THE VITE_BASE_CHAIN_ID GUARD USED TO LIVE HERE. It moved to
+      # get-version on 2026-08-14 — see the step there and the RELEASE TAG note
+      # above it. It is NOT gone, and it must not be re-added here: in this job
+      # it failed OPEN, because build-api has no dependency on build-web and was
+      # concurrently pushing api:<version> and re-pointing api:latest while this
+      # guard tripped. The build-args below still consume the variable.
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
