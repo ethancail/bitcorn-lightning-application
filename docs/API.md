@@ -129,6 +129,61 @@ Treasury-operator-approved push flow used for initial channel provisioning or ed
 | POST | `/api/member-liquidity/reject` | Reject recommendation |
 | GET | `/api/member-liquidity/outcomes` | Top-up history |
 
+**LND credential/connectivity probe**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/node/lnd-probe` | Per-scope LND fault report. Treasury-only (403 elsewhere) |
+
+Report-only: it changes no behaviour and moves no capital. It gives the fault
+classifier in `app/api/src/lightning/lndHealth.ts` a consumer — before it, no LND
+credential, permission or connectivity fault was observable anywhere in the app,
+because `isLndAvailable()` only checks that the two files EXIST (a present-but-wrong,
+revoked or under-scoped macaroon reads as available) and the 15s sync loop discarded
+the resulting `err.code`/`err.details` into a `console.warn`.
+
+Probes three read-only scopes independently — `info:read`, `offchain:read`,
+`onchain:read` — and reports **one result per scope with no aggregate verdict**. The
+absence is deliberate: the dangerous state is PARTIAL (`onchain:read` alive,
+`offchain:read` lost), where `/api/node/balances` still returns 200 with one live
+number and one silently-frozen one. Any rollup hides exactly that case, so a consumer
+computes its own.
+
+Each scope reports one `kind` — `ok` · `files_absent` · `connectivity` · `auth` ·
+`permission` · `malformed` — plus the raw gRPC `code` and `detail`, which are
+preserved rather than discarded so an unrecognised fault stays diagnosable. On LND
+0.20.0-beta every credential fault arrives as gRPC 2 UNKNOWN, so `auth` and
+`permission` are separated only by the detail text.
+
+Each probe is bound by a 3s deadline (`lightning/lndProbeRoute.ts`). Without it a
+wedged-but-connected LND would hang the request, since neither the LND client nor the
+classifier carries a timeout. A timed-out probe reports `connectivity` with
+`ETIMEDOUT` in `detail` — no seventh kind — so a caller distinguishing "wedged" from
+"refused" must read `detail`, not `kind`.
+
+```
+GET /api/node/lnd-probe
+{ "checked_at": 1755634800000, "files_present": true, "probe_calls_attempted": 3,
+  "scopes": [
+    { "scope": "info:read",     "kind": "ok",         "code": null, "detail": "" },
+    { "scope": "offchain:read", "kind": "permission", "code": 2,    "detail": "…permission denied…" },
+    { "scope": "onchain:read",  "kind": "ok",         "code": null, "detail": "" } ] }
+```
+
+⚠ **Ships with NO caller authentication, by decision.** The 403 is
+`assertTreasury(node_role)` — a *node-role* check ("am I the treasury node?"), which
+passes for every caller once this node is the treasury. It is not caller
+authentication. Port 3101 is published on `0.0.0.0`, so on the treasury node anything
+that can route there can read this; the disclosure is named and accepted in
+`bitcorn-research/decisions/2026-08-19-lnd-health-endpoint-unauthenticated-treasury-only.md`,
+which also records the obligation to move the endpoint behind caller auth once that
+mechanism lands.
+
+⚠ Because `node_role` is itself derived from a successful `getLndInfo()`, a treasury
+node that has never completed a first LND sync has no `lnd_node_info` row and this
+endpoint returns 403 — the total pre-existing-fault case is not readable. Pre-existing
+mechanism, not introduced here.
+
 ## Error Handling
 
 - **400:** Bad request (invalid body or parameters)
