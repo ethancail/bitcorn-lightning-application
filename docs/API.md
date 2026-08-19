@@ -150,11 +150,36 @@ drifts.
 order the route's field list declares — not alphabetical, and not the order
 they appear in your JSON. Numeric fields are normalised through `Number()`, so
 `250000` and `"250000"` produce the same value. Text fields are hashed exactly
-as sent, with no trimming.
+as sent, with no trimming. Boolean fields mirror the route's own `=== true`
+test, so they hash as `true`/`false` — and the *string* `"true"` hashes as
+`false`, because that is what the route acts on.
+
+### Optional fields: absent and empty are different requests
+
+| Case | Contributes | Example |
+|---|---|---|
+| **Absent** — key missing, `undefined`, or `null` | **nothing at all** | `{channel_id:"111"}` → `channel_id=111` |
+| **Present**, any value incl. empty | always a token | `{channel_id:"111",is_force_close:false}` → `channel_id=111&is_force_close=false` |
+
+Consequences worth knowing before you write a caller:
+
+- **Omitting a field and sending it empty produce different confirmations.**
+  A UI must hash **exactly what it sends**; it cannot omit a field from the
+  hash while including it in the body.
+- **Adding an optional field invalidates a confirmation computed without it.**
+  That is deliberate — it is what stops a confirmation for a cooperative close
+  being reused for a force close, or a fee ceiling being raised after the fact.
+- **Adding an optional field to a route does not break existing callers** who
+  never sent it, since absent contributes nothing.
+- **An optional *number* that arrives empty is refused** (400), not hashed —
+  `Number("")` is `0`, and hashing that would read an empty field as a
+  deliberate zero. An optional *text* field may legitimately be empty and
+  hashes as the bare `name=`.
+- **Required fields never take part in this**: absent or empty is always a 400.
 
 **Shell idiom** — build the body, derive the value from it, send both. `jq -rj`
 matters: `-j` suppresses the trailing newline, and hashing one would give a
-value the server rejects.
+value the server rejects. Optional fields need the conditional form shown below.
 
 ```bash
 # POST /api/pay
@@ -165,11 +190,34 @@ curl -sS -X POST http://localhost:3101/api/pay \
 ```
 
 ```bash
-# POST /api/treasury/rebalance/circular   (fields: outgoing_channel, incoming_channel, tokens)
+# POST /api/treasury/rebalance/circular
+#   fields: outgoing_channel, incoming_channel, tokens, max_fee_sats (optional)
+# max_fee_sats is in the hash because the principal RETURNS to this node — the
+# routing fee is the only thing that actually leaves, so it is this route's
+# amount field. `tokens` is the field that does not go anywhere.
 BODY='{"outgoing_channel":"842391119757312","incoming_channel":"901234567890123","tokens":250000,"max_fee_sats":500}'
 CONFIRM=$(jq -rj '"outgoing_channel=" + .outgoing_channel
                 + "&incoming_channel=" + .incoming_channel
-                + "&tokens=" + (.tokens|tostring)' <<<"$BODY" | sha256sum | cut -d' ' -f1)
+                + "&tokens=" + (.tokens|tostring)
+                + (if .max_fee_sats == null then ""
+                   else "&max_fee_sats=" + (.max_fee_sats|tostring) end)' <<<"$BODY" | sha256sum | cut -d' ' -f1)
+# with max_fee_sats:500 -> 344efd60efa374ae42d6fb189567fafcefbd00120fa5cf568b635be66d6b19d3
+# omitted entirely      -> 933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342
+```
+
+```bash
+# POST /api/treasury/rotation/execute
+#   fields: channel_id, is_force_close (optional boolean)
+# is_force_close is in the hash because it changes WHAT HAPPENS, not just the
+# cost: a force close pays on-chain fees now and timelocks the balance.
+BODY='{"channel_id":"842391119757312","is_force_close":true}'
+CONFIRM=$(jq -rj '"channel_id=" + .channel_id
+                + (if .is_force_close == null then ""
+                   else "&is_force_close=" + (if .is_force_close == true then "true" else "false" end) end)' \
+          <<<"$BODY" | sha256sum | cut -d' ' -f1)
+# absent -> 0dafc2024c1ae41d5a774d5b660d7dfb91bd1abf6507c4e5aa205d6b366c7a59
+# true   -> 24857f591516de3f6b6ee5bac4e1b1477acee42ca29b042d001488afbccf1115
+# false  -> c18ba191fb7e4cdcebc8b59d66e33a6ec00f6280769fd093f8d41ce8e5f7816f
 ```
 
 ```bash
@@ -186,9 +234,15 @@ CONFIRM=$(jq -rj '"peer_pubkey=" + .peer_pubkey
                 + "&capacity_sats=" + (.capacity_sats|tostring)' <<<"$BODY" | sha256sum | cut -d' ' -f1)
 ```
 
-Note that `max_fee_sats` and `max_swap_fee_sats` above are **not** part of the
-hash — only the fields the route's entry declares are. Sending extra body fields
-is fine and does not change the value.
+Only the fields a route's entry declares are hashed. `max_swap_fee_sats` above
+is **not** one of them, and neither is `fee_rate` on any open/close route — a
+cost modifier on a spend already bounded by `capacity_sats`, and the field most
+likely to be omitted on purpose. Sending extra body fields is fine and does not
+change the value.
+
+The hex values commented above are produced by these exact recipes and are
+pinned as tests (`action-confirmation.route.test.ts`), so this documentation
+cannot drift from the implementation without the suite going red.
 
 **Responses**
 

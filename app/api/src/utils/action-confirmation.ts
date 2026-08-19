@@ -46,14 +46,23 @@ export const CONFIRMATION_MISMATCH = {
  * the routes themselves do (`Number(parsed.capacity_sats)`). `text` fields are
  * hashed as they arrived, with NO trimming: trimming would map " " to "" and
  * reopen the empty-collapse hole this module exists partly to close.
+ *
+ * `boolean` mirrors the route's own test rather than the literal value. Every
+ * boolean flag here is read as `parsed.x === true`, so `"true"` (a string) and
+ * `1` both mean FALSE to the route — and the hash says `false` for them too.
+ * Hashing the literal would bind a value the route does not act on.
  */
-export type FieldKind = "text" | "number";
+export type FieldKind = "text" | "number" | "boolean";
 
 export type Field = {
   name: string;
   from: "body" | "path";
   kind: FieldKind;
-  /** Optional fields are hashed only when present; presence is itself covered. */
+  /**
+   * See CANONICAL FORM below. In short: ABSENT contributes no token at all,
+   * PRESENT always contributes one — so omitting a field and sending it empty
+   * are different requests with different confirmations.
+   */
   optional?: boolean;
 };
 
@@ -102,8 +111,16 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     method: "POST",
     match: { kind: "exact", url: "/api/treasury/rotation/execute" },
     shape: 1,
-    fields: [{ name: "channel_id", from: "body", kind: "text" }],
-    note: "Closes channel_id. The channel identity IS the consequence; force/fee are modifiers.",
+    fields: [
+      { name: "channel_id", from: "body", kind: "text" },
+      { name: "is_force_close", from: "body", kind: "boolean", optional: true },
+    ],
+    note:
+      "Closes channel_id. is_force_close is in the hash because it changes WHAT " +
+      "HAPPENS, not merely what it costs: a force close pays on-chain fees now and " +
+      "locks the balance behind a timelock. Same channel, materially different act. " +
+      "fee_rate is deliberately NOT here — a cost modifier on a spend already " +
+      "bounded elsewhere, and the field most likely to be omitted on purpose.",
   },
   {
     method: "POST",
@@ -123,8 +140,20 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
       { name: "outgoing_channel", from: "body", kind: "text" },
       { name: "incoming_channel", from: "body", kind: "text" },
       { name: "tokens", from: "body", kind: "number" },
+      { name: "max_fee_sats", from: "body", kind: "number", optional: true },
     ],
-    note: "Moves `tokens` out of outgoing_channel and back in via incoming_channel.",
+    note:
+      "The principal returns to the same node, so the ROUTING FEE is the only " +
+      "thing that actually leaves — max_fee_sats is this route's amount field, and " +
+      "`tokens` is the field that does not go anywhere. Hashing tokens alone was " +
+      "the weakest classification in the set.\n" +
+      "Optional, not required, because the route already accepts its absence: " +
+      "`Number.isFinite(max_fee_sats) ? max_fee_sats : 0` defaults it to a ZERO " +
+      "fee ceiling — the most restrictive value, not the most permissive. Making " +
+      "it required would change which requests the route accepts, which is a " +
+      "validation change rather than a confirmation one. Omitting it cannot be " +
+      "used to raise the cap: adding the field changes the canonical form, so a " +
+      "replay that introduces it gets a 409.",
   },
   {
     method: "POST",
@@ -332,6 +361,51 @@ export type DeriveResult = { ok: true; value: string; canonical: string } | Deri
  */
 const UNSAFE = /[&=\r\n]/;
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CANONICAL FORM — the rule every caller must implement identically
+//
+// The canonical string is `name=value` tokens joined by `&`, in the order the
+// route's `fields` array declares. Not alphabetical, and not the order the keys
+// happen to appear in the caller's JSON.
+//
+// ── ABSENT vs PRESENT-AND-EMPTY are DIFFERENT REQUESTS. ────────────────────
+//
+//   ABSENT  — key missing, or explicitly `undefined` / `null`
+//             → contributes NO TOKEN AT ALL. The field vanishes from the string.
+//   PRESENT — any other value, INCLUDING the empty string
+//             → always contributes a token; an empty text value yields the
+//               bare `name=`.
+//
+//   { channel_id: "111" }                     -> "channel_id=111"
+//   { channel_id: "111", is_force_close: "" } -> "channel_id=111&is_force_close=false"
+//   { channel_id: "111", is_force_close: false } -> same as the line above
+//
+// Why the distinction is drawn here and not elsewhere: an earlier version
+// treated present-and-empty as absent for optional fields, which made the two
+// hash IDENTICALLY. That is the empty-collapse family of bug — the same shape
+// as sync.ts:15 — and it hides a caller sending a field it thinks is being
+// verified. Absent and empty are now distinguishable and each is deterministic.
+//
+// ── Required fields do not participate in this at all. ─────────────────────
+// Absent OR empty on a required field is a REFUSAL (400), never a hash. There
+// is no input for which a required field silently contributes nothing.
+//
+// ── Empty is never coerced into a value. ───────────────────────────────────
+// An optional NUMBER that arrives empty is refused rather than hashed, because
+// `Number("")` is 0 and `String(0)` is "0" — hashing that would let
+// `max_fee_sats: ""` read as a deliberate zero. Optional TEXT may legitimately
+// be empty, so it hashes as the empty token instead.
+//
+// ⚠ A UI must hash EXACTLY WHAT IT SENDS. Sending `is_force_close: false`
+// explicitly is a different request from omitting it, and produces a different
+// confirmation. Both are valid; they are simply not interchangeable.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Absent = contributes nothing. Everything else = contributes a token. */
+function isAbsent(raw: unknown): boolean {
+  return raw === undefined || raw === null;
+}
+
 function pathSegment(m: Matcher, url: string): string | null {
   if (m.kind !== "wrap") return null;
   return url.slice(m.prefix.length, url.length - m.suffix.length);
@@ -353,28 +427,35 @@ export function deriveConfirmation(
   for (const f of route.fields) {
     const raw = f.from === "path" ? pathSegment(route.match, ctx.url) : bag[f.name];
 
-    if (raw === undefined || raw === null || raw === "") {
+    // ABSENT: an optional field contributes no token; a required one refuses.
+    if (isAbsent(raw)) {
       if (f.optional) continue;
       return { ok: false, reason: "missing_field", field: f.name };
     }
 
+    // PRESENT from here on — the field WILL contribute a token, or the whole
+    // derivation refuses. It can no longer silently vanish.
     let normalised: string;
-    if (f.kind === "number") {
+    if (f.kind === "boolean") {
+      // Mirrors the route's own `parsed.x === true` test, not the literal value.
+      normalised = raw === true ? "true" : "false";
+    } else if (f.kind === "number") {
+      // Refuse empty BEFORE coercion: Number("") is 0, and hashing "0" would
+      // turn an empty field into a deliberate-looking zero.
+      if (raw === "") return { ok: false, reason: "bad_number", field: f.name };
       const n = Number(raw);
       if (!Number.isFinite(n)) return { ok: false, reason: "bad_number", field: f.name };
       normalised = String(n);
     } else {
       if (typeof raw !== "string") return { ok: false, reason: "missing_field", field: f.name };
       normalised = raw;
+      // A REQUIRED text field that arrived empty is still missing. An OPTIONAL
+      // one is a legitimate empty value and hashes as the bare `name=` token.
+      if (normalised === "" && !f.optional) {
+        return { ok: false, reason: "missing_field", field: f.name };
+      }
     }
 
-    // Empty AFTER normalisation is still missing. Guarding both here and above
-    // is deliberate: `String(Number(""))` is "0", not "", so the pre-check is
-    // what actually catches an empty numeric field.
-    if (normalised === "") {
-      if (f.optional) continue;
-      return { ok: false, reason: "missing_field", field: f.name };
-    }
     if (UNSAFE.test(normalised)) return { ok: false, reason: "unsafe_value", field: f.name };
 
     parts.push(`${f.name}=${normalised}`);

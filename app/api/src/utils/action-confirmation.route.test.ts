@@ -185,13 +185,16 @@ describe("the body survives the gate", () => {
 // value is correct, the DOC changed meaning — update both together.
 // ─────────────────────────────────────────────────────────────────────────────
 describe("the documented shell idiom clears the gate", () => {
-  const cases: Array<[url: string, body: unknown, shellComputed: string]> = [
+  const cases: Array<[label: string, url: string, body: unknown, shellComputed: string]> = [
     [
+      "/api/pay",
       "/api/pay",
       { payment_request: "lnbc1pjxyzqqdq" },
       "ffd020f4084283dc2475e82ded9b66533f581c60d220d8e11dd1cfd44bef85b4",
     ],
+    // ── optional NUMBER: both branches of the jq conditional in docs/API.md
     [
+      "circular WITH max_fee_sats",
       "/api/treasury/rebalance/circular",
       {
         outgoing_channel: "842391119757312",
@@ -199,14 +202,43 @@ describe("the documented shell idiom clears the gate", () => {
         tokens: 250000,
         max_fee_sats: 500,
       },
-      "933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342",
+      "344efd60efa374ae42d6fb189567fafcefbd00120fa5cf568b635be66d6b19d3",
     ],
     [
+      "circular WITHOUT max_fee_sats (absent branch)",
+      "/api/treasury/rebalance/circular",
+      { outgoing_channel: "842391119757312", incoming_channel: "901234567890123", tokens: 250000 },
+      // Unchanged from before max_fee_sats joined the field list — the
+      // backwards-compatibility half of "absent contributes nothing".
+      "933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342",
+    ],
+    // ── optional BOOLEAN: all three states must be distinct and pinned
+    [
+      "rotation, is_force_close ABSENT",
+      "/api/treasury/rotation/execute",
+      { channel_id: "842391119757312" },
+      "0dafc2024c1ae41d5a774d5b660d7dfb91bd1abf6507c4e5aa205d6b366c7a59",
+    ],
+    [
+      "rotation, is_force_close TRUE",
+      "/api/treasury/rotation/execute",
+      { channel_id: "842391119757312", is_force_close: true },
+      "24857f591516de3f6b6ee5bac4e1b1477acee42ca29b042d001488afbccf1115",
+    ],
+    [
+      "rotation, is_force_close FALSE",
+      "/api/treasury/rotation/execute",
+      { channel_id: "842391119757312", is_force_close: false },
+      "c18ba191fb7e4cdcebc8b59d66e33a6ec00f6280769fd093f8d41ce8e5f7816f",
+    ],
+    [
+      "/api/treasury/rebalance/loop-out",
       "/api/treasury/rebalance/loop-out",
       { channel_id: "842391119757312", amount_sats: 500000, max_swap_fee_sats: 5000 },
       "344e53cf307436abaa5c6850fd24395616e1eedac488910b5bdbcfe1a80d0898",
     ],
     [
+      "/api/treasury/expansion/execute",
       "/api/treasury/expansion/execute",
       {
         peer_pubkey: "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca",
@@ -216,13 +248,55 @@ describe("the documented shell idiom clears the gate", () => {
     ],
   ];
 
-  for (const [url, body, shellComputed] of cases) {
-    it(`${url}: the bash-computed value is accepted`, async () => {
+  it("a confirmation computed WITHOUT an optional field is refused once the field appears", async () => {
+    // The whole reason absent and present are distinguishable. Without this,
+    // a caller could compute a confirmation over a cheap request and then add
+    // is_force_close, turning a cooperative close into a force close.
+    const r = await call(
+      "POST",
+      "/api/treasury/rotation/execute",
+      { channel_id: "842391119757312", is_force_close: true },
+      { [CONFIRMATION_HEADER]: "0dafc2024c1ae41d5a774d5b660d7dfb91bd1abf6507c4e5aa205d6b366c7a59" }
+    );
+    expect(r.status).toBe(409);
+  });
+
+  it("and likewise for max_fee_sats: the fee ceiling cannot be raised after the fact", async () => {
+    const r = await call(
+      "POST",
+      "/api/treasury/rebalance/circular",
+      {
+        outgoing_channel: "842391119757312",
+        incoming_channel: "901234567890123",
+        tokens: 250000,
+        max_fee_sats: 999999,
+      },
+      { [CONFIRMATION_HEADER]: "933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342" }
+    );
+    expect(r.status).toBe(409);
+  });
+
+  it("the three rotation confirmations are all DIFFERENT", () => {
+    // Pinning three values proves nothing if two of them are the same value.
+    const rotation = cases.filter(([, url]) => url === "/api/treasury/rotation/execute").map(([, , , h]) => h);
+    expect(rotation).toHaveLength(3);
+    expect(new Set(rotation).size).toBe(3);
+  });
+
+  it("a force-close confirmation does NOT authorise a cooperative close, or vice versa", () => {
+    // The point of putting is_force_close in the hash, stated as a behaviour.
+    const [, , , trueHash] = cases.find(([l]) => l === "rotation, is_force_close TRUE")!;
+    const [, , , falseHash] = cases.find(([l]) => l === "rotation, is_force_close FALSE")!;
+    expect(trueHash).not.toBe(falseHash);
+  });
+
+  for (const [label, url, body, shellComputed] of cases) {
+    it(`${label}: the bash-computed value is accepted`, async () => {
       const r = await call("POST", url, body, { [CONFIRMATION_HEADER]: shellComputed });
       expect(isConfirmError(r), `shell idiom for ${url} was refused: ${r.raw}`).toBe(false);
     });
 
-    it(`${url}: and it is REJECTED once a parameter changes`, async () => {
+    it(`${label}: and it is REJECTED once a parameter changes`, async () => {
       // Without this half, a gate that accepted everything would pass above.
       const tampered = { ...(body as Record<string, unknown>), __unused: 1 };
       const first = Object.keys(body as object)[0];

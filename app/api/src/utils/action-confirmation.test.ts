@@ -164,7 +164,175 @@ describe("empty is rejected on BOTH sides", () => {
       url: "/api/treasury/expansion/execute",
       body: { peer_pubkey: "02ab", capacity_sats: "" },
     });
-    expect(d).toEqual({ ok: false, reason: "missing_field", field: "capacity_sats" });
+    expect(d).toEqual({ ok: false, reason: "bad_number", field: "capacity_sats" });
+  });
+
+  it("an empty OPTIONAL numeric field is refused too, not silently hashed as 0", () => {
+    // max_fee_sats is this route's outflow amount. `Number("")` is 0, so a lax
+    // rule would let an empty field read as a deliberate zero fee ceiling.
+    const rr = route("POST", "/api/treasury/rebalance/circular");
+    const d = deriveConfirmation(rr, {
+      url: "/api/treasury/rebalance/circular",
+      body: { outgoing_channel: "111", incoming_channel: "222", tokens: 1, max_fee_sats: "" },
+    });
+    expect(d).toEqual({ ok: false, reason: "bad_number", field: "max_fee_sats" });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OPTIONAL-FIELD CANONICALISATION, PINNED BY EXACT STRING.
+//
+// These assert the canonical form ITSELF, not merely that two cases differ.
+// "they differ" is satisfied by any rule at all, including a wrong one that
+// changes next month — and the way that surfaces in production is a 409 on a
+// legitimate treasury command, which reads exactly like tampering. If the rule
+// is ever changed, these fail loudly and immediately, next to the comment block
+// that states it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("absent vs present-and-empty", () => {
+  const canonicalOf = (r: ReturnType<typeof route>, body: unknown, url?: string) => {
+    const d = deriveConfirmation(r, { url: url ?? (r.match.kind === "exact" ? r.match.url : ""), body });
+    return d.ok ? d.canonical : `REFUSED:${d.reason}`;
+  };
+
+  describe("optional BOOLEAN (is_force_close on rotation/execute)", () => {
+    const r = route("POST", "/api/treasury/rotation/execute");
+
+    it("ABSENT contributes NO TOKEN — exact string", () => {
+      expect(canonicalOf(r, { channel_id: "842391119757312" })).toBe("channel_id=842391119757312");
+    });
+
+    it("explicit null is ABSENT — exact string, same as omitting", () => {
+      expect(canonicalOf(r, { channel_id: "842391119757312", is_force_close: null })).toBe(
+        "channel_id=842391119757312"
+      );
+    });
+
+    it("PRESENT false contributes a token — exact string", () => {
+      expect(canonicalOf(r, { channel_id: "842391119757312", is_force_close: false })).toBe(
+        "channel_id=842391119757312&is_force_close=false"
+      );
+    });
+
+    it("PRESENT true contributes a token — exact string", () => {
+      expect(canonicalOf(r, { channel_id: "842391119757312", is_force_close: true })).toBe(
+        "channel_id=842391119757312&is_force_close=true"
+      );
+    });
+
+    // index.ts does `parsed.is_force_close === true`, so ONLY the boolean true
+    // is a force close. The hash must bind what the route acts on, not what was
+    // typed — otherwise a confirmation could commit to "true" while the route
+    // performs a cooperative close, and the two would disagree about what was
+    // authorised. Table-driven because a single case is thin cover for the
+    // property that separates a force close from a coop close.
+    it.each([
+      ["the STRING \"true\"", "true"],
+      ["the number 1", 1],
+      ["the string \"1\"", "1"],
+      ["an empty string", ""],
+      ["the STRING \"false\"", "false"],
+    ])("mirrors `=== true`: %s hashes as false", (_label, value) => {
+      expect(canonicalOf(r, { channel_id: "1", is_force_close: value })).toBe("channel_id=1&is_force_close=false");
+    });
+
+    it("and ONLY the boolean true hashes as true", () => {
+      expect(canonicalOf(r, { channel_id: "1", is_force_close: true })).toBe("channel_id=1&is_force_close=true");
+    });
+
+    it("and therefore absent and present-false are DIFFERENT confirmations", () => {
+      const absent = deriveConfirmation(r, { url: "/api/treasury/rotation/execute", body: { channel_id: "1" } });
+      const present = deriveConfirmation(r, {
+        url: "/api/treasury/rotation/execute",
+        body: { channel_id: "1", is_force_close: false },
+      });
+      expect(absent.ok && present.ok).toBe(true);
+      if (!absent.ok || !present.ok) return;
+      expect(absent.value).not.toBe(present.value);
+    });
+  });
+
+  describe("optional NUMBER (max_fee_sats on rebalance/circular)", () => {
+    const r = route("POST", "/api/treasury/rebalance/circular");
+    const base = { outgoing_channel: "111", incoming_channel: "222", tokens: 250000 };
+
+    it("ABSENT contributes NO TOKEN — exact string", () => {
+      expect(canonicalOf(r, base)).toBe("outgoing_channel=111&incoming_channel=222&tokens=250000");
+    });
+
+    it("PRESENT contributes a token in FIELD-LIST order — exact string", () => {
+      expect(canonicalOf(r, { ...base, max_fee_sats: 500 })).toBe(
+        "outgoing_channel=111&incoming_channel=222&tokens=250000&max_fee_sats=500"
+      );
+    });
+
+    it("PRESENT zero is a real value, not an absence — exact string", () => {
+      // 0 is the route's own default AND its most restrictive ceiling. It must
+      // still hash as a supplied value, or a caller could send max_fee_sats: 0
+      // under a confirmation computed without it.
+      expect(canonicalOf(r, { ...base, max_fee_sats: 0 })).toBe(
+        "outgoing_channel=111&incoming_channel=222&tokens=250000&max_fee_sats=0"
+      );
+    });
+
+    it("PRESENT-and-EMPTY is REFUSED, never coerced to 0", () => {
+      expect(canonicalOf(r, { ...base, max_fee_sats: "" })).toBe("REFUSED:bad_number");
+    });
+  });
+
+  describe("optional TEXT (partner_socket on member/open-channel)", () => {
+    const r = route("POST", "/api/member/open-channel");
+
+    it("ABSENT contributes NO TOKEN — exact string", () => {
+      expect(canonicalOf(r, { capacity_sats: 1_000_000 })).toBe("capacity_sats=1000000");
+    });
+
+    it("PRESENT-and-EMPTY contributes a BARE token — exact string", () => {
+      // Text may legitimately be empty, so unlike a number it is hashed rather
+      // than refused — as the empty token, distinct from absent.
+      expect(canonicalOf(r, { capacity_sats: 1_000_000, partner_socket: "" })).toBe(
+        "capacity_sats=1000000&partner_socket="
+      );
+    });
+
+    it("PRESENT with a value — exact string", () => {
+      expect(canonicalOf(r, { capacity_sats: 1_000_000, partner_socket: "1.2.3.4:9735" })).toBe(
+        "capacity_sats=1000000&partner_socket=1.2.3.4:9735"
+      );
+    });
+
+    it("all three cases hash to three DIFFERENT values", () => {
+      const vals = [
+        { capacity_sats: 1_000_000 },
+        { capacity_sats: 1_000_000, partner_socket: "" },
+        { capacity_sats: 1_000_000, partner_socket: "1.2.3.4:9735" },
+      ].map((b) => {
+        const d = deriveConfirmation(r, { url: "/api/member/open-channel", body: b });
+        return d.ok ? d.value : "refused";
+      });
+      expect(new Set(vals).size).toBe(3);
+    });
+  });
+
+  it("REQUIRED fields never take part in this: absent and empty both refuse", () => {
+    const r = route("POST", "/api/pay");
+    expect(canonicalOf(r, {})).toBe("REFUSED:missing_field");
+    expect(canonicalOf(r, { payment_request: "" })).toBe("REFUSED:missing_field");
+    expect(canonicalOf(r, { payment_request: null })).toBe("REFUSED:missing_field");
+  });
+
+  it("adding an optional field does not change existing callers' values", () => {
+    // The backwards-compatibility property of "absent contributes nothing":
+    // callers who never sent is_force_close keep the confirmation they had
+    // before it was added to the field list.
+    const r = route("POST", "/api/treasury/rotation/execute");
+    const d = deriveConfirmation(r, {
+      url: "/api/treasury/rotation/execute",
+      body: { channel_id: "842391119757312" },
+    });
+    expect(d.ok).toBe(true);
+    if (!d.ok) return;
+    expect(d.value).toBe(sha("channel_id=842391119757312"));
   });
 });
 
