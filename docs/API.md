@@ -77,6 +77,52 @@ Member-facing surface of the BASE/USDC rail (**pre-mainnet** — currently runs 
 | GET | `/api/treasury/liquidity-health` | Per-channel health + recommendations |
 | GET | `/api/treasury/capital-policy` | Current capital guardrails |
 | POST | `/api/treasury/capital-policy` | Update guardrails (partial body) |
+| GET | `/api/treasury/alerts` | Operator alert list, computed on read |
+
+**Alerts** (`GET /api/treasury/alerts`)
+
+Computed on read — nothing is persisted. Each entry is
+`{ type, severity: "info" \| "warning" \| "critical", message, data, at }`. Polled every
+60s by the treasury Dashboard, which renders only `critical` and `warning`, so an
+`info` alert is not shown in the alert list.
+
+Types: `ROTATION_CANDIDATES_PRESENT` · `DAILY_LOSS_CAP_EXCEEDED` ·
+`DAILY_LOSS_CAP_NEAR` · `DAILY_EXPANSION_LIMIT_REACHED` · `DAILY_DEPLOY_LIMIT_NEAR` ·
+`ONCHAIN_RESERVE_BREACHED` · `ONCHAIN_RESERVE_NEAR` · `SCHEDULER_SIMULATION_MODE` ·
+`LOOP_OUT_AVAILABLE` · `LOOP_NOT_INSTALLED` · `MEMBER_KEYSEND_DISABLED` ·
+`VALUATION_MANUAL_STALE` · **`LND_FAULT`** · **`ONCHAIN_RESERVE_CHECK_SKIPPED`**
+
+The last two are emitted when the on-chain reserve check cannot complete. Before they
+existed, an LND fault made `ONCHAIN_RESERVE_BREACHED` / `_NEAR` silently vanish,
+leaving this array **byte-identical to a comfortably-funded treasury** — a capital
+guardrail that read healthy because it was silent, not because it passed.
+
+**`ONCHAIN_RESERVE_CHECK_SKIPPED`** — always `critical`. Emitted whenever the reserve
+check did not run, whatever the cause. It is deliberately a separate type from
+`LND_FAULT`: the fault is *why* the check is missing, this is *what that costs*, and a
+consumer must be able to tell "reserve is fine" from "nobody checked". `data.reason` is
+`lnd_fault` (a scope reported a fault), `transient` (the follow-up probe found nothing),
+or `probe_failed` (the probe itself threw). There are now three observable states where
+there were two: breached, passing, and could-not-tell.
+
+**`LND_FAULT`** — emitted only when a scope actually reports a fault. Runs the same
+three-scope probe as `/api/node/lnd-probe` (all of `info:read`, `offchain:read`,
+`onchain:read`, not just the `onchain:read` the reserve call used — one scope cannot
+distinguish a narrowed credential from a broken one). `data.kinds` lists the distinct
+fault kinds and `data.scopes` carries the full per-scope report **including the healthy
+scopes**, so a partial fault stays legible. Severity is the worst among faulted scopes:
+`auth` / `permission` / `files_absent` → `critical`; `malformed` / `connectivity` →
+`warning`. That single severity is a display priority forced by the alert shape — no
+kind is collapsed.
+
+⚠ A **wedged-but-connected** LND surfaces as `connectivity`/`warning`, which
+under-weights it: a permanently wedged LND is as serious as a broken credential. The
+distinction is readable in `data.scopes[].detail` (`ETIMEDOUT` for wedged,
+`ECONNREFUSED` for refused). The remedy is a distinct seventh fault kind, deferred.
+
+⚠ The probe is deadline-bound (3s), but `getLndChainBalance()` — the reserve call
+itself, which runs *before* this path — still carries no deadline, so a wedged LND can
+still hang this endpoint. Pre-existing, not addressed by these alert types.
 
 **Expansion**
 
