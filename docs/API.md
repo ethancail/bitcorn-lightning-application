@@ -1,6 +1,6 @@
 # API Reference
 
-Base URL is the API container (see `docker-compose.yml`). All responses are JSON unless noted. CORS allows `*` for configured methods (`GET`, `POST`, `PATCH`, `DELETE`, `OPTIONS`).
+Base URL is the API container (see `docker-compose.yml`). All responses are JSON unless noted. CORS allows `*` for configured methods (`GET`, `POST`, `PATCH`, `DELETE`, `OPTIONS`); allowed request headers are `Content-Type` and `x-bitcorn-confirm` (see Per-Action Confirmation below).
 
 ## Access Rules
 
@@ -129,10 +129,88 @@ Treasury-operator-approved push flow used for initial channel provisioning or ed
 | POST | `/api/member-liquidity/reject` | Reject recommendation |
 | GET | `/api/member-liquidity/outcomes` | Top-up history |
 
+## Per-Action Confirmation (capital-moving routes)
+
+Routes that move funds require an `x-bitcorn-confirm` header carrying a value
+derived from **that same request's own consequential caller-supplied fields**.
+The server recomputes it from what actually arrived and compares.
+
+This proves PARAMETER KNOWLEDGE, not identity. It stops a blind scanner, a
+replay carrying different parameters, and a mis-click. It does **not** stop an
+in-page script or a determined caller on the tailnet — those are the
+capital-guardrail layer's problem, not this one. There is no login, no stored
+credential, and treasury reads stay open.
+
+The route table and per-route field lists live in
+`app/api/src/utils/action-confirmation.ts` and are the authority; the coverage
+test re-derives which routes need this from the source and fails if the table
+drifts.
+
+**Value:** `sha256_hex` of the fields joined as `name=value&name=value`, in the
+order the route's field list declares — not alphabetical, and not the order
+they appear in your JSON. Numeric fields are normalised through `Number()`, so
+`250000` and `"250000"` produce the same value. Text fields are hashed exactly
+as sent, with no trimming.
+
+**Shell idiom** — build the body, derive the value from it, send both. `jq -rj`
+matters: `-j` suppresses the trailing newline, and hashing one would give a
+value the server rejects.
+
+```bash
+# POST /api/pay
+BODY='{"payment_request":"lnbc1..."}'
+CONFIRM=$(jq -rj '"payment_request=" + .payment_request' <<<"$BODY" | sha256sum | cut -d' ' -f1)
+curl -sS -X POST http://localhost:3101/api/pay \
+  -H 'Content-Type: application/json' -H "x-bitcorn-confirm: $CONFIRM" -d "$BODY"
+```
+
+```bash
+# POST /api/treasury/rebalance/circular   (fields: outgoing_channel, incoming_channel, tokens)
+BODY='{"outgoing_channel":"842391119757312","incoming_channel":"901234567890123","tokens":250000,"max_fee_sats":500}'
+CONFIRM=$(jq -rj '"outgoing_channel=" + .outgoing_channel
+                + "&incoming_channel=" + .incoming_channel
+                + "&tokens=" + (.tokens|tostring)' <<<"$BODY" | sha256sum | cut -d' ' -f1)
+```
+
+```bash
+# POST /api/treasury/rebalance/loop-out   (fields: channel_id, amount_sats)
+BODY='{"channel_id":"842391119757312","amount_sats":500000,"max_swap_fee_sats":5000}'
+CONFIRM=$(jq -rj '"channel_id=" + .channel_id
+                + "&amount_sats=" + (.amount_sats|tostring)' <<<"$BODY" | sha256sum | cut -d' ' -f1)
+```
+
+```bash
+# POST /api/treasury/expansion/execute    (fields: peer_pubkey, capacity_sats)
+BODY='{"peer_pubkey":"02b759...","capacity_sats":2000000}'
+CONFIRM=$(jq -rj '"peer_pubkey=" + .peer_pubkey
+                + "&capacity_sats=" + (.capacity_sats|tostring)' <<<"$BODY" | sha256sum | cut -d' ' -f1)
+```
+
+Note that `max_fee_sats` and `max_swap_fee_sats` above are **not** part of the
+hash — only the fields the route's entry declares are. Sending extra body fields
+is fine and does not change the value.
+
+**Responses**
+
+- **400 `confirmation_required`** — header absent or empty, or a declared field
+  is missing/empty so no value can be derived. Empty is rejected on both sides:
+  an empty header never matches anything.
+- **409 `confirmation_mismatch`** — a value arrived but does not match the
+  parameters in this request. This is what a replay with changed parameters gets.
+
+**Default-require.** Classification is default-require on mutations with a
+derived exempt list, not opt-in on the capital routes. A mutation route that
+matches neither table is refused with 400 `confirmation_required` rather than
+waved through, so a newly added route fails closed until someone classifies it.
+
+Reads (`GET`/`HEAD`), `OPTIONS` preflight, and `/health` are untouched.
+
 ## Error Handling
 
-- **400:** Bad request (invalid body or parameters)
+- **400:** Bad request (invalid body or parameters), or `confirmation_required`
 - **403:** Forbidden (not treasury, or membership not active for pay)
+- **409:** `confirmation_mismatch` — see Per-Action Confirmation above
+- **413:** Request body over the 1 MiB gate limit on a confirmed route
 - **429:** Rate limit or capital policy violation
 - **500:** Server or LND error
 - **502:** Upstream (Cloudflare Worker or Loop) down
