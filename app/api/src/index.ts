@@ -225,36 +225,49 @@ import {
 } from "./swaps/swapRoutes";
 import { startSwapPoller } from "./swaps/swapPoller";
 
-initDb();
-runMigrations();
+// Boot-only side effects. These used to run at module scope, so merely
+// importing this file opened the DB, applied migrations, reached for LND and
+// left a live 15s interval running — which is why no test could import it.
+// They now run only from main(), behind the require.main guard at the bottom
+// of this file. Order of effects is unchanged.
+function bootSideEffects(): void {
+  initDb();
+  runMigrations();
 
-persistNodeInfo().catch(err => {
-  console.warn("[lnd] unable to persist node info:", err.message);
-});
+  persistNodeInfo().catch(err => {
+    console.warn("[lnd] unable to persist node info:", err.message);
+  });
 
-(async () => {
-  try {
-    await syncLndState();
-    // Subscription detection runs after LND sync resolves so the
-    // address-set / channel-state it joins on is fresh. No-op (with a
-    // skipped_reason) when the operator hasn't acknowledged the
-    // first-run gate yet — see app/api/src/subscription/firstRunGate.ts.
-    await scanSubscriptionDeposits();
-    console.log("[lnd] initial sync complete");
-  } catch (err: any) {
-    console.warn("[lnd] initial sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "");
-  }
+  (async () => {
+    try {
+      await syncLndState();
+      // Subscription detection runs after LND sync resolves so the
+      // address-set / channel-state it joins on is fresh. No-op (with a
+      // skipped_reason) when the operator hasn't acknowledged the
+      // first-run gate yet — see app/api/src/subscription/firstRunGate.ts.
+      await scanSubscriptionDeposits();
+      console.log("[lnd] initial sync complete");
+    } catch (err: any) {
+      console.warn("[lnd] initial sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "");
+    }
 
-  setInterval(() => {
-    syncLndState()
-      .then(() => scanSubscriptionDeposits())
-      .catch(err =>
-        console.warn("[lnd] periodic sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "")
-      );
-  }, 15000);
-})();
+    setInterval(() => {
+      syncLndState()
+        .then(() => scanSubscriptionDeposits())
+        .catch(err =>
+          console.warn("[lnd] periodic sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "")
+        );
+    }, 15000);
+  })();
+}
 
-const server = http.createServer(async (req, res) => {
+// The request handler, extracted from the http.createServer() call it used to
+// be an anonymous argument to. Exported so tests can drive routes directly
+// without booting a listener. The body below is unchanged by that extraction.
+export async function handleRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
   // CORS — allow private/local network origins (Umbrel, Tailscale, LAN, localhost)
   // Umbrel apps are only reachable on local/private networks, not the public internet.
   const origin = req.headers.origin;
@@ -4316,7 +4329,7 @@ const server = http.createServer(async (req, res) => {
   // ✅ 404 MUST BE LAST
   res.writeHead(404);
   res.end();
-});
+}
 
 
 // Startup re-assert of the member's public alias (member-naming spec §4).
@@ -4340,58 +4353,78 @@ async function reassertMemberAlias(): Promise<void> {
   }
 }
 
-server.listen(PORTS.userApi, () => {
-  console.log(`[api] listening on port ${PORTS.userApi}`);
-  // Re-assert the member's stored alias once LND is reachable (~5s, matching
-  // the member advisor's startup delay). Member-scoped inside the function.
-  setTimeout(() => { void reassertMemberAlias(); }, 5000);
-  // Loop Out rebalance scheduler — requires REBALANCE_SCHEDULER_ENABLED=true
-  // and the loopd sidecar to be running (included in the Bitcorn app stack).
-  startRebalanceScheduler();
-  // Member liquidity advisor — classifies treasury channel health on member nodes.
-  // Runs on all nodes but only acts on non-treasury nodes.
-  startMemberAdvisorScheduler();
-  // Swap poller — monitors in-flight Loop swaps and updates status every 15s.
-  startSwapPoller();
-  // Coinbase Auto-Buy scheduler — 15-min tick that runs the 5-step state
-  // machine. Gated by autobuy_config.enabled and ENV.autoBuyEnabled.
-  startScheduler(db);
-  // Subscription Tier 3 scheduler — close-due close (DRY-RUN by default
-  // per spec §10 step 7; promotes to live in Stage 6 after a ≥60-day
-  // observation window).
-  startTier3Scheduler();
-  // Subscription entitlement-token refresh — every node (treasury and
-  // members) refreshes its local JWT every ~12h. Treasury self-mints
-  // full-scope; members mint full (current tier) or payment (any other
-  // subscriber tier — prepay or any lapsed state).
-  startTokenRefreshScheduler();
-  // Subscription auto-pay scheduler — member-node-local renewal. Runs on all
-  // nodes but acts only on members; observes the member's own tier with the
-  // browser closed and fires pay-from-node when a member who opted in is
-  // observed in a recoverable-lapsed state. Off by default per member (opt-in).
-  startAutoPayScheduler();
-  // Treasury-side: best-effort check that the Worker's published
-  // SUBSCRIPTION_PUBLIC_KEY matches the local Ed25519 keypair. Member
-  // nodes early-out inside the function. Logs a WARN with the operator
-  // runbook if drift is detected.
-  startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null);
-  // BASE sync loop — polls the Worker /base/* endpoints at 60s cadence to
-  // refresh per-wallet USDC balances and the SettlementRouter governance
-  // state. No-op on a MEMBER node until it registers a BASE wallet; the
-  // TREASURY proceeds with zero wallets because it syncs as the fleet's
-  // indexer (see the guard in base/sync.ts for the full reasoning + cost).
-  // Gated on COINBASE_WORKER_URL being configured, since the loop can't run
-  // without Worker access.
-  // Spec: bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md §7
-  if (ENV.coinbaseWorkerUrl) {
-    // Thunk, not a value: node_role is written by the LND sync from the
-    // unawaited IIFE above and defaults to 'external' until then, so it must be
-    // re-read each tick. Same shape as startKeypairSyncCheck just above.
-    startBaseSyncLoop({
-      getNodeRole: () => getNodeInfo()?.node_role ?? null,
-      runImmediately: false,
-    });
-  } else {
-    console.warn("[base/sync] COINBASE_WORKER_URL not configured; BASE sync loop disabled");
-  }
-});
+// Process entrypoint. Everything with a side effect lives in here, so that
+// importing this module (a test, a tool) is inert and only running it boots.
+function main(): void {
+  bootSideEffects();
+
+  const server = http.createServer(handleRequest);
+
+  server.listen(PORTS.userApi, () => {
+    console.log(`[api] listening on port ${PORTS.userApi}`);
+    // Re-assert the member's stored alias once LND is reachable (~5s, matching
+    // the member advisor's startup delay). Member-scoped inside the function.
+    setTimeout(() => { void reassertMemberAlias(); }, 5000);
+    // Loop Out rebalance scheduler — requires REBALANCE_SCHEDULER_ENABLED=true
+    // and the loopd sidecar to be running (included in the Bitcorn app stack).
+    startRebalanceScheduler();
+    // Member liquidity advisor — classifies treasury channel health on member nodes.
+    // Runs on all nodes but only acts on non-treasury nodes.
+    startMemberAdvisorScheduler();
+    // Swap poller — monitors in-flight Loop swaps and updates status every 15s.
+    startSwapPoller();
+    // Coinbase Auto-Buy scheduler — 15-min tick that runs the 5-step state
+    // machine. Gated by autobuy_config.enabled and ENV.autoBuyEnabled.
+    startScheduler(db);
+    // Subscription Tier 3 scheduler — close-due close (DRY-RUN by default
+    // per spec §10 step 7; promotes to live in Stage 6 after a ≥60-day
+    // observation window).
+    startTier3Scheduler();
+    // Subscription entitlement-token refresh — every node (treasury and
+    // members) refreshes its local JWT every ~12h. Treasury self-mints
+    // full-scope; members mint full (current tier) or payment (any other
+    // subscriber tier — prepay or any lapsed state).
+    startTokenRefreshScheduler();
+    // Subscription auto-pay scheduler — member-node-local renewal. Runs on all
+    // nodes but acts only on members; observes the member's own tier with the
+    // browser closed and fires pay-from-node when a member who opted in is
+    // observed in a recoverable-lapsed state. Off by default per member (opt-in).
+    startAutoPayScheduler();
+    // Treasury-side: best-effort check that the Worker's published
+    // SUBSCRIPTION_PUBLIC_KEY matches the local Ed25519 keypair. Member
+    // nodes early-out inside the function. Logs a WARN with the operator
+    // runbook if drift is detected.
+    startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null);
+    // BASE sync loop — polls the Worker /base/* endpoints at 60s cadence to
+    // refresh per-wallet USDC balances and the SettlementRouter governance
+    // state. No-op on a MEMBER node until it registers a BASE wallet; the
+    // TREASURY proceeds with zero wallets because it syncs as the fleet's
+    // indexer (see the guard in base/sync.ts for the full reasoning + cost).
+    // Gated on COINBASE_WORKER_URL being configured, since the loop can't run
+    // without Worker access.
+    // Spec: bitcorn-research/specs/2026-05-20-stablecoin-settlement-rail-v1.md §7
+    if (ENV.coinbaseWorkerUrl) {
+      // Thunk, not a value: node_role is written by the LND sync from the
+      // unawaited IIFE above and defaults to 'external' until then, so it must be
+      // re-read each tick. Same shape as startKeypairSyncCheck just above.
+      startBaseSyncLoop({
+        getNodeRole: () => getNodeInfo()?.node_role ?? null,
+        runImmediately: false,
+      });
+    } else {
+      console.warn("[base/sync] COINBASE_WORKER_URL not configured; BASE sync loop disabled");
+    }
+  });
+}
+
+// CommonJS entrypoint guard (tsconfig module=CommonJS, package.json
+// type=commonjs, Dockerfile CMD ["node", "dist/index.js"]). True only when
+// this file is the process entrypoint; false on any import, including under
+// vitest, where require/module exist but require.main is undefined.
+// CommonJS entrypoint guard (tsconfig module=CommonJS, package.json
+// type=commonjs, Dockerfile CMD ["node", "dist/index.js"]). True only when
+// this file is the process entrypoint; false on any import, including under
+// vitest, where require/module exist but require.main is undefined.
+if (require.main === module) {
+  main();
+}
