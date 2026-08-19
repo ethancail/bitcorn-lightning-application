@@ -35,8 +35,9 @@ services:
       LOOP_TLS_CERT_PATH: "/loop-data/.lit/tls.cert"
       LOOP_MACAROON_PATH: "/loop-data/.loop/mainnet/loop.macaroon"
       # Valuation manual-input submission — shared HMAC with the Cloudflare Worker.
-      # Set this in a `.env` file next to docker-compose.yml (auto-read by Docker
-      # Compose; gitignored repo-wide). Generate a fresh secret per install with:
+      # Set this in a `.env` file next to docker-compose.yml (loaded via
+      # exports.sh, not compose's env_file; gitignored repo-wide). Generate a
+      # fresh secret per install with:
       #   openssl rand -hex 32
       # Put the SAME value on the Worker via:
       #   cd cloudflare-worker && npx wrangler secret put VALUATION_SUBMIT_HMAC
