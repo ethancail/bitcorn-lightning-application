@@ -12,7 +12,17 @@ export function deriveNodeRole(
   pubkey: string,
   hasTreasuryChannel: boolean
 ): NodeRole {
-  if (pubkey === ENV.treasuryPubkey) return "treasury";
+  // Both sides must be non-empty before comparing, mirroring the treasury
+  // check in index.ts (GET /api/subscription/status). TREASURY_PUBKEY
+  // defaults to "" when unset and the caller passes `public_key ?? ""`, so an
+  // unguarded `===` makes "" === "" true — classifying a node with no
+  // identity and no configuration as the treasury. That is the one
+  // misclassification that GRANTS privilege: assertTreasury() throws on every
+  // other role. Falling through yields member/external, matching the
+  // "external" default in migration 010 and persistNodeInfo().
+  const isTreasury =
+    !!pubkey && !!ENV.treasuryPubkey && pubkey === ENV.treasuryPubkey;
+  if (isTreasury) return "treasury";
   if (hasTreasuryChannel) return "member";
   return "external";
 }
