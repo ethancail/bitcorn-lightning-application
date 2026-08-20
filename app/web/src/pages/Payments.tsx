@@ -19,6 +19,11 @@ import {
 import RoutingDeniedNotice from "../components/RoutingDeniedNotice";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
+import ActionConfirmModal, {
+  useActionConfirm,
+} from "../components/actionConfirm/ActionConfirmModal";
+import { summarizePayInvoice } from "../components/actionConfirm/confirmAction";
+import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 
 type Tab = "request" | "pay";
 
@@ -525,6 +530,22 @@ function PayInvoiceForm({
     }, 300);
   }, [bolt11]);
 
+  // Confirmation step for the outflow. The x-bitcorn-confirm header is NOT
+  // built here — apiFetch derives it from the serialized body. This is only the
+  // human gate: show the amount and destination, require the amount typed.
+  const confirm = useActionConfirm();
+
+  const openPayConfirm = () => {
+    if (!decoded) return;
+    confirm.open(
+      summarizePayInvoice({
+        amountSats: decoded.tokens,
+        destination: resolveContactName(decoded.destination, contacts) || decoded.destination,
+        memo: decoded.description || undefined,
+      }),
+    );
+  };
+
   const handlePay = async () => {
     if (!decoded) return;
     setPaying(true);
@@ -536,10 +557,14 @@ function PayInvoiceForm({
       setResult(res);
       if (res.ok) onPaid();
     } catch (err: any) {
-      // /api/network/pay returns 402 both for subscription routing
-      // denial AND for ordinary failed payments — is402SubscriptionDenied
-      // checks the error code, not just the status, so only a genuine
-      // denial surfaces the remediation notice.
+      // A confirmation failure is RETHROWN so the modal renders it — the
+      // operator is looking at the modal, and a 409 in particular needs the
+      // "this is a bug" framing rather than this page's generic error line.
+      // Everything else keeps its existing treatment: /api/network/pay returns
+      // 402 both for subscription routing denial AND for ordinary failed
+      // payments, and is402SubscriptionDenied checks the error CODE, not just
+      // the status, so only a genuine denial surfaces the remediation notice.
+      if (classifyConfirmError(err)) throw err;
       if (is402SubscriptionDenied(err)) {
         setDeniedPayload(extract402Payload(err));
       } else {
@@ -766,11 +791,13 @@ function PayInvoiceForm({
 
       <button
         className="btn btn-primary"
-        onClick={handlePay}
+        onClick={openPayConfirm}
         disabled={!decoded || paying || isOverHard}
       >
         {paying ? "Paying..." : "Confirm & Pay"}
       </button>
+
+      <ActionConfirmModal controller={confirm} onConfirm={handlePay} />
     </div>
   );
 }

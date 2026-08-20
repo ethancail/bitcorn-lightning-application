@@ -1,4 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
+import ActionConfirmModal, {
+  useActionConfirm,
+} from "../components/actionConfirm/ActionConfirmModal";
+import { summarizeApproveLiquidity } from "../components/actionConfirm/confirmAction";
+import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 import {
   api,
   type LiquidityCluster,
@@ -108,6 +113,21 @@ function EstimateModal({
     return () => clearInterval(id);
   }, [estimate]);
 
+  // This dialog already previews the estimate; the confirmation modal is the
+  // final gate and adds the typed amount. Stacked deliberately rather than
+  // folding the challenge inline — the challenge logic lives in one place.
+  const confirm = useActionConfirm();
+
+  function openApproveConfirm() {
+    if (!estimate) return;
+    confirm.open(
+      summarizeApproveLiquidity({
+        recommendationId: rec.recommendationId,
+        amountSats: estimate.amountSats,
+      }),
+    );
+  }
+
   async function handleApprove() {
     if (!estimate) return;
     setApproving(true);
@@ -116,8 +136,9 @@ function EstimateModal({
       await api.approveLiquidity(rec.recommendationId, estimate.estimateId);
       onApproved();
     } catch (e: any) {
-      setError(e.message ?? "Approve failed");
       setApproving(false);
+      if (classifyConfirmError(e)) throw e;
+      setError(e.message ?? "Approve failed");
     }
   }
 
@@ -267,12 +288,13 @@ function EstimateModal({
           </button>
           <button
             className="btn btn-primary"
-            onClick={handleApprove}
+            onClick={openApproveConfirm}
             disabled={loading || !estimate || expired || approving || rejecting}
           >
             {approving ? "Pushing..." : "Approve & Push"}
           </button>
         </div>
+        <ActionConfirmModal controller={confirm} onConfirm={handleApprove} />
       </div>
     </div>
   );
