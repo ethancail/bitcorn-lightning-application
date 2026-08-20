@@ -231,6 +231,35 @@ describe("the documented shell idiom clears the gate", () => {
       { channel_id: "842391119757312", is_force_close: false },
       "c18ba191fb7e4cdcebc8b59d66e33a6ec00f6280769fd093f8d41ce8e5f7816f",
     ],
+    // ── dry_run: the preview/execute distinction, both branches pinned
+    [
+      "circular, dry_run TRUE",
+      "/api/treasury/rebalance/circular",
+      { outgoing_channel: "842391119757312", incoming_channel: "901234567890123", tokens: 250000, dry_run: true },
+      "b921ea90378cbe9f215bbb1dd5a960c53cec8b2f5ae6bb450e5746a5c0923726",
+    ],
+    [
+      "rotation, dry_run TRUE",
+      "/api/treasury/rotation/execute",
+      { channel_id: "842391119757312", dry_run: true },
+      "865610b782bddee0fd6f1772d2b5c3053766357fe4b15d421c3ef0ebaad577ae",
+    ],
+    [
+      "rotation, is_force_close AND dry_run both true",
+      "/api/treasury/rotation/execute",
+      { channel_id: "842391119757312", is_force_close: true, dry_run: true },
+      "1bea03555187896bad168a67b9bc009ec9c02e48999e24eb02c8dd86b77a3a31",
+    ],
+    [
+      "expansion, dry_run TRUE",
+      "/api/treasury/expansion/execute",
+      {
+        peer_pubkey: "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca",
+        capacity_sats: 2000000,
+        dry_run: true,
+      },
+      "9de7c20a804ed9c62070bc17aa96791c3a20c31b7f9e7140bc4588b5fb254618",
+    ],
     [
       "/api/treasury/rebalance/loop-out",
       "/api/treasury/rebalance/loop-out",
@@ -247,6 +276,67 @@ describe("the documented shell idiom clears the gate", () => {
       "08fd5898f57826759cb81ecb19b3b5b52395f4b0b4323e24e03e7d34a1696aec",
     ],
   ];
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // dry_run at ROUTE level. The unit tests prove the derivation; these prove the
+  // gate actually refuses the flip on the wire, which is the claim that matters.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe("a preview confirmation cannot execute, and vice versa", () => {
+    const FLIPS: Array<[label: string, url: string, body: Record<string, unknown>, realHash: string]> = [
+      [
+        "rotation/execute",
+        "/api/treasury/rotation/execute",
+        { channel_id: "842391119757312" },
+        "0dafc2024c1ae41d5a774d5b660d7dfb91bd1abf6507c4e5aa205d6b366c7a59",
+      ],
+      [
+        "expansion/execute",
+        "/api/treasury/expansion/execute",
+        {
+          peer_pubkey: "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca",
+          capacity_sats: 2000000,
+        },
+        "08fd5898f57826759cb81ecb19b3b5b52395f4b0b4323e24e03e7d34a1696aec",
+      ],
+      [
+        "rebalance/circular",
+        "/api/treasury/rebalance/circular",
+        { outgoing_channel: "842391119757312", incoming_channel: "901234567890123", tokens: 250000 },
+        "933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342",
+      ],
+    ];
+
+    for (const [label, url, body, realHash] of FLIPS) {
+      it(`${label}: the pre-dry_run confirmation still clears the gate (nothing broke)`, async () => {
+        const r = await call("POST", url, body, { [CONFIRMATION_HEADER]: realHash });
+        expect(isConfirmError(r), `previously-valid confirmation refused: ${r.raw}`).toBe(false);
+      });
+
+      it(`${label}: that same confirmation is REFUSED once dry_run: true is added`, async () => {
+        const r = await call("POST", url, { ...body, dry_run: true }, { [CONFIRMATION_HEADER]: realHash });
+        expect(r.status).toBe(409);
+      });
+
+      it(`${label}: and a preview confirmation is REFUSED for the real act`, async () => {
+        const previewBody = { ...body, dry_run: true };
+        const previewHash = sha(
+          Object.entries(previewBody)
+            .map(([k, v]) => `${k}=${typeof v === "boolean" ? String(v) : v}`)
+            .join("&")
+        );
+
+        // POSITIVE HALF FIRST. A 409 below would arrive just as readily if
+        // previewHash were garbage, which would make the refusal prove nothing
+        // about dry_run. Establish that this value IS a working confirmation for
+        // the preview before showing it fails for the real act.
+        const preview = await call("POST", url, previewBody, { [CONFIRMATION_HEADER]: previewHash });
+        expect(isConfirmError(preview), `preview hash was not even valid for the preview: ${preview.raw}`).toBe(false);
+
+        const real = await call("POST", url, body, { [CONFIRMATION_HEADER]: previewHash });
+        expect(real.status).toBe(409);
+      });
+    }
+  });
 
   it("a confirmation computed WITHOUT an optional field is refused once the field appears", async () => {
     // The whole reason absent and present are distinguishable. Without this,
@@ -276,11 +366,19 @@ describe("the documented shell idiom clears the gate", () => {
     expect(r.status).toBe(409);
   });
 
-  it("the three rotation confirmations are all DIFFERENT", () => {
-    // Pinning three values proves nothing if two of them are the same value.
+  it("EVERY pinned confirmation is distinct", () => {
+    // Pinning N values proves nothing if two of them are the same value. Count
+    // derived from the table, not hardcoded — an earlier version asserted
+    // `toHaveLength(3)` and went red the moment dry_run cases were added, which
+    // is a maintenance failure rather than a real finding.
+    const hashes = cases.map(([, , , h]) => h);
+    expect(new Set(hashes).size).toBe(hashes.length);
+  });
+
+  it("the rotation variants differ from each other", () => {
     const rotation = cases.filter(([, url]) => url === "/api/treasury/rotation/execute").map(([, , , h]) => h);
-    expect(rotation).toHaveLength(3);
-    expect(new Set(rotation).size).toBe(3);
+    expect(rotation.length).toBeGreaterThanOrEqual(4); // absent / true / false / dry_run
+    expect(new Set(rotation).size).toBe(rotation.length);
   });
 
   it("a force-close confirmation does NOT authorise a cooperative close, or vice versa", () => {

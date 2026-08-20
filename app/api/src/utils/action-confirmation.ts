@@ -83,6 +83,35 @@ export type ConfirmedRoute = {
   note: string;
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// DRY-RUN — why `dry_run` is hashed on the three routes that accept it
+//
+// expansion/execute, rotation/execute and rebalance/circular each read
+// `parsed.dry_run === true` and, when it is set, return a preview WITHOUT
+// moving anything. Nothing else in the body distinguishes a preview from the
+// real act — so before this field was hashed, a confirmation computed for
+// `{channel_id, dry_run: true}` was BYTE-IDENTICAL to one for `{channel_id}`,
+// which closes the channel for real.
+//
+// That is squarely inside the threat this mechanism claims to cover: a replay
+// carrying different parameters. It is also the largest such flip available
+// anywhere in the route table — preview versus execute — which is why it is
+// worth the field rather than being waved off as a modifier.
+//
+// All three sites test it IDENTICALLY (`=== true`, at index.ts:2172, :2328 and
+// :2636, each gating `if (isDryRun)` / `if (!isDryRun)`). That was checked, not
+// assumed; had they diverged, the divergence would be the bug to fix rather
+// than something for this map to paper over.
+//
+// Hashed as a `boolean`, so it mirrors what the route DOES: only the literal
+// `true` is a preview, and `"true"` / `1` hash as `false` exactly as the route
+// treats them.
+//
+// Because absent contributes nothing, adding this field changed NO existing
+// confirmation. Asserted directly in action-confirmation.test.ts rather than
+// argued here.
+// ═══════════════════════════════════════════════════════════════════════════
+
 /**
  * The twelve capital-moving routes that take a confirmation.
  *
@@ -104,8 +133,13 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     fields: [
       { name: "peer_pubkey", from: "body", kind: "text" },
       { name: "capacity_sats", from: "body", kind: "number" },
+      { name: "dry_run", from: "body", kind: "boolean", optional: true },
     ],
-    note: "Opens a channel to peer_pubkey for capacity_sats. Both are the consequence.",
+    note:
+      "Opens a channel to peer_pubkey for capacity_sats. Both are the consequence.\n" +
+      "dry_run is hashed for the reason given at DRY-RUN below: preview and execute " +
+      "are the largest difference this route has, and nothing else in the body " +
+      "distinguishes them.",
   },
   {
     method: "POST",
@@ -114,6 +148,7 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     fields: [
       { name: "channel_id", from: "body", kind: "text" },
       { name: "is_force_close", from: "body", kind: "boolean", optional: true },
+      { name: "dry_run", from: "body", kind: "boolean", optional: true },
     ],
     note:
       "Closes channel_id. is_force_close is in the hash because it changes WHAT " +
@@ -141,6 +176,7 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
       { name: "incoming_channel", from: "body", kind: "text" },
       { name: "tokens", from: "body", kind: "number" },
       { name: "max_fee_sats", from: "body", kind: "number", optional: true },
+      { name: "dry_run", from: "body", kind: "boolean", optional: true },
     ],
     note:
       "The principal returns to the same node, so the ROUTING FEE is the only " +

@@ -321,6 +321,74 @@ describe("absent vs present-and-empty", () => {
     expect(canonicalOf(r, { payment_request: null })).toBe("REFUSED:missing_field");
   });
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // dry_run. Before it was hashed, a confirmation for a PREVIEW was
+  // byte-identical to one for the real act — the largest parameter flip in the
+  // table. These assert both halves: that adding the field broke nothing, and
+  // that it actually binds.
+  // ───────────────────────────────────────────────────────────────────────────
+  describe("optional BOOLEAN dry_run, on all three routes that accept it", () => {
+    const ROUTES: Array<[url: string, body: Record<string, unknown>, canonicalWithout: string]> = [
+      [
+        "/api/treasury/expansion/execute",
+        { peer_pubkey: "02ab", capacity_sats: 2000000 },
+        "peer_pubkey=02ab&capacity_sats=2000000",
+      ],
+      [
+        "/api/treasury/rotation/execute",
+        { channel_id: "842391119757312" },
+        "channel_id=842391119757312",
+      ],
+      [
+        "/api/treasury/rebalance/circular",
+        { outgoing_channel: "111", incoming_channel: "222", tokens: 250000 },
+        "outgoing_channel=111&incoming_channel=222&tokens=250000",
+      ],
+    ];
+
+    for (const [url, body, canonicalWithout] of ROUTES) {
+      const r = route("POST", url);
+
+      it(`${url}: ABSENT dry_run leaves the canonical string UNCHANGED — exact`, () => {
+        // The byte-identical claim, asserted rather than assumed: this string is
+        // what the route hashed before dry_run joined its field list.
+        expect(canonicalOf(r, body, url)).toBe(canonicalWithout);
+      });
+
+      it(`${url}: and therefore the pre-existing confirmation still verifies`, () => {
+        expect(verifyConfirmation(r, { url, body }, sha(canonicalWithout))).toEqual({ ok: true });
+      });
+
+      it(`${url}: dry_run TRUE appends a token — exact`, () => {
+        expect(canonicalOf(r, { ...body, dry_run: true }, url)).toBe(`${canonicalWithout}&dry_run=true`);
+      });
+
+      it(`${url}: dry_run FALSE appends a token too — present is present`, () => {
+        expect(canonicalOf(r, { ...body, dry_run: false }, url)).toBe(`${canonicalWithout}&dry_run=false`);
+      });
+
+      it(`${url}: mirrors the route's \`=== true\`: "true" hashes as false`, () => {
+        expect(canonicalOf(r, { ...body, dry_run: "true" }, url)).toBe(`${canonicalWithout}&dry_run=false`);
+      });
+
+      it(`${url}: a PREVIEW confirmation does not verify the real act`, () => {
+        const previewHash = sha(`${canonicalWithout}&dry_run=true`);
+        const v = verifyConfirmation(r, { url, body }, previewHash);
+        expect(v.ok).toBe(false);
+        if (v.ok) return;
+        expect(v.status).toBe(409);
+      });
+
+      it(`${url}: and the real act's confirmation does not verify a preview`, () => {
+        const realHash = sha(canonicalWithout);
+        const v = verifyConfirmation(r, { url, body: { ...body, dry_run: true } }, realHash);
+        expect(v.ok).toBe(false);
+        if (v.ok) return;
+        expect(v.status).toBe(409);
+      });
+    }
+  });
+
   it("adding an optional field does not change existing callers' values", () => {
     // The backwards-compatibility property of "absent contributes nothing":
     // callers who never sent is_force_close keep the confirmation they had

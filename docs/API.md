@@ -200,24 +200,60 @@ CONFIRM=$(jq -rj '"outgoing_channel=" + .outgoing_channel
                 + "&incoming_channel=" + .incoming_channel
                 + "&tokens=" + (.tokens|tostring)
                 + (if .max_fee_sats == null then ""
-                   else "&max_fee_sats=" + (.max_fee_sats|tostring) end)' <<<"$BODY" | sha256sum | cut -d' ' -f1)
-# with max_fee_sats:500 -> 344efd60efa374ae42d6fb189567fafcefbd00120fa5cf568b635be66d6b19d3
-# omitted entirely      -> 933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342
+                   else "&max_fee_sats=" + (.max_fee_sats|tostring) end)
+                + (if .dry_run == null then ""
+                   else "&dry_run=" + (if .dry_run == true then "true" else "false" end) end)' \
+          <<<"$BODY" | sha256sum | cut -d' ' -f1)
+# with max_fee_sats:500      -> 344efd60efa374ae42d6fb189567fafcefbd00120fa5cf568b635be66d6b19d3
+# both omitted               -> 933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342
+# tokens only + dry_run:true -> b921ea90378cbe9f215bbb1dd5a960c53cec8b2f5ae6bb450e5746a5c0923726
 ```
+
+### `dry_run` is hashed on the three routes that accept it
+
+`expansion/execute`, `rotation/execute` and `rebalance/circular` return a
+preview instead of acting when `dry_run` is `true`. Nothing else in the body
+distinguishes a preview from the real thing, so `dry_run` is part of the hash on
+all three: **a confirmation computed for a preview will not execute, and one
+computed for the real act will not preview.** Both directions return 409.
+
+It is optional and hashed last, so a caller that never sends it is unaffected —
+the confirmations from before this field existed are byte-identical.
+
+Being a boolean, it mirrors the route's own `=== true` test: only the literal
+`true` is a preview, and `"true"` or `1` hash as `false`, exactly as the route
+treats them.
 
 ```bash
 # POST /api/treasury/rotation/execute
-#   fields: channel_id, is_force_close (optional boolean)
+#   fields: channel_id, is_force_close (optional boolean), dry_run (optional boolean)
 # is_force_close is in the hash because it changes WHAT HAPPENS, not just the
 # cost: a force close pays on-chain fees now and timelocks the balance.
 BODY='{"channel_id":"842391119757312","is_force_close":true}'
 CONFIRM=$(jq -rj '"channel_id=" + .channel_id
                 + (if .is_force_close == null then ""
-                   else "&is_force_close=" + (if .is_force_close == true then "true" else "false" end) end)' \
+                   else "&is_force_close=" + (if .is_force_close == true then "true" else "false" end) end)
+                + (if .dry_run == null then ""
+                   else "&dry_run=" + (if .dry_run == true then "true" else "false" end) end)' \
           <<<"$BODY" | sha256sum | cut -d' ' -f1)
-# absent -> 0dafc2024c1ae41d5a774d5b660d7dfb91bd1abf6507c4e5aa205d6b366c7a59
-# true   -> 24857f591516de3f6b6ee5bac4e1b1477acee42ca29b042d001488afbccf1115
-# false  -> c18ba191fb7e4cdcebc8b59d66e33a6ec00f6280769fd093f8d41ce8e5f7816f
+# both absent                    -> 0dafc2024c1ae41d5a774d5b660d7dfb91bd1abf6507c4e5aa205d6b366c7a59
+# is_force_close:true            -> 24857f591516de3f6b6ee5bac4e1b1477acee42ca29b042d001488afbccf1115
+# is_force_close:false           -> c18ba191fb7e4cdcebc8b59d66e33a6ec00f6280769fd093f8d41ce8e5f7816f
+# dry_run:true                   -> 865610b782bddee0fd6f1772d2b5c3053766357fe4b15d421c3ef0ebaad577ae
+# is_force_close+dry_run both t. -> 1bea03555187896bad168a67b9bc009ec9c02e48999e24eb02c8dd86b77a3a31
+```
+
+```bash
+# POST /api/treasury/expansion/execute
+#   fields: peer_pubkey, capacity_sats, dry_run (optional boolean)
+BODY='{"peer_pubkey":"02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca","capacity_sats":2000000}'
+CONFIRM=$(jq -rj '"peer_pubkey=" + .peer_pubkey
+                + "&capacity_sats=" + (.capacity_sats|tostring)
+                + (if .dry_run == null then ""
+                   else "&dry_run=" + (if .dry_run == true then "true" else "false" end) end)' \
+          <<<"$BODY" | sha256sum | cut -d' ' -f1)
+# dry_run absent -> 08fd5898f57826759cb81ecb19b3b5b52395f4b0b4323e24e03e7d34a1696aec
+# dry_run:true   -> 9de7c20a804ed9c62070bc17aa96791c3a20c31b7f9e7140bc4588b5fb254618
 ```
 
 ```bash
@@ -225,13 +261,6 @@ CONFIRM=$(jq -rj '"channel_id=" + .channel_id
 BODY='{"channel_id":"842391119757312","amount_sats":500000,"max_swap_fee_sats":5000}'
 CONFIRM=$(jq -rj '"channel_id=" + .channel_id
                 + "&amount_sats=" + (.amount_sats|tostring)' <<<"$BODY" | sha256sum | cut -d' ' -f1)
-```
-
-```bash
-# POST /api/treasury/expansion/execute    (fields: peer_pubkey, capacity_sats)
-BODY='{"peer_pubkey":"02b759...","capacity_sats":2000000}'
-CONFIRM=$(jq -rj '"peer_pubkey=" + .peer_pubkey
-                + "&capacity_sats=" + (.capacity_sats|tostring)' <<<"$BODY" | sha256sum | cut -d' ' -f1)
 ```
 
 Only the fields a route's entry declares are hashed. `max_swap_fee_sats` above
