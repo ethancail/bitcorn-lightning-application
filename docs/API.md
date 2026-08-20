@@ -77,6 +77,107 @@ Member-facing surface of the BASE/USDC rail (**pre-mainnet** — currently runs 
 | GET | `/api/treasury/liquidity-health` | Per-channel health + recommendations |
 | GET | `/api/treasury/capital-policy` | Current capital guardrails |
 | POST | `/api/treasury/capital-policy` | Update guardrails (partial body) |
+| GET | `/api/treasury/alerts` | Operator alert list, computed on read |
+
+**Alerts** (`GET /api/treasury/alerts`)
+
+Computed on read — nothing is persisted. Each entry is
+`{ type, severity: "info" \| "warning" \| "critical", message, data, at }`. Polled every
+60s by the treasury Dashboard, which renders only `critical` and `warning`, so an
+`info` alert is not shown in the alert list.
+
+Types: `ROTATION_CANDIDATES_PRESENT` · `DAILY_LOSS_CAP_EXCEEDED` ·
+`DAILY_LOSS_CAP_NEAR` · `DAILY_EXPANSION_LIMIT_REACHED` · `DAILY_DEPLOY_LIMIT_NEAR` ·
+`ONCHAIN_RESERVE_BREACHED` · `ONCHAIN_RESERVE_NEAR` · `SCHEDULER_SIMULATION_MODE` ·
+`LOOP_OUT_AVAILABLE` · `LOOP_NOT_INSTALLED` · `MEMBER_KEYSEND_DISABLED` ·
+`VALUATION_MANUAL_STALE` · **`LND_FAULT`** · **`ONCHAIN_RESERVE_CHECK_SKIPPED`**
+
+The last two are emitted when the on-chain reserve check cannot complete. Before they
+existed, an LND fault made `ONCHAIN_RESERVE_BREACHED` / `_NEAR` silently vanish,
+leaving this array **byte-identical to a comfortably-funded treasury** — a capital
+guardrail that read healthy because it was silent, not because it passed.
+
+**`ONCHAIN_RESERVE_CHECK_SKIPPED`** — always `critical`. Emitted whenever the reserve
+check did not run, whatever the cause. It is deliberately a separate type from
+`LND_FAULT`: the fault is *why* the check is missing, this is *what that costs*, and a
+consumer must be able to tell "reserve is fine" from "nobody checked". `data.reason` is
+`lnd_fault` (a scope reported a fault), `transient` (the follow-up probe found nothing),
+or `probe_failed` (the probe itself threw). There are now three observable states where
+there were two: breached, passing, and could-not-tell.
+
+**`LND_FAULT`** — emitted only when a scope actually reports a fault. Runs the same
+three-scope probe as `/api/node/lnd-probe` (all of `info:read`, `offchain:read`,
+`onchain:read`, not just the `onchain:read` the reserve call used — one scope cannot
+distinguish a narrowed credential from a broken one). `data.kinds` lists the distinct
+fault kinds and `data.scopes` carries the full per-scope report **including the healthy
+scopes**, so a partial fault stays legible. Severity is the worst among faulted scopes:
+`auth` / `permission` / `files_absent` → `critical`; `malformed` / `connectivity` →
+`warning`. That single severity is a display priority forced by the alert shape — no
+kind is collapsed.
+
+⚠ A **wedged-but-connected** LND surfaces as `connectivity`/`warning`, which
+under-weights it: a permanently wedged LND is as serious as a broken credential. The
+distinction is readable in `data.scopes[].detail` (`ETIMEDOUT` for wedged,
+`ECONNREFUSED` for refused). The remedy is a distinct seventh fault kind, deferred.
+
+⚠ The probe is deadline-bound (3s), but `getLndChainBalance()` — the reserve call
+itself, which runs *before* this path — still carries no deadline, so a wedged LND can
+still hang this endpoint. Pre-existing, not addressed by these alert types.
+
+**LND credential/connectivity probe**
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/node/lnd-probe` | Per-scope LND fault report. Treasury-only (403 elsewhere) |
+
+Report-only: it changes no behaviour and moves no capital. It gives the fault
+classifier in `app/api/src/lightning/lndHealth.ts` a consumer — before it, no LND
+credential, permission or connectivity fault was observable anywhere in the app,
+because `isLndAvailable()` only checks that the two files EXIST (a present-but-wrong,
+revoked or under-scoped macaroon reads as available) and the 15s sync loop discarded
+the resulting `err.code`/`err.details` into a `console.warn`.
+
+Probes three read-only scopes independently — `info:read`, `offchain:read`,
+`onchain:read` — and reports **one result per scope with no aggregate verdict**. The
+absence is deliberate: the dangerous state is PARTIAL (`onchain:read` alive,
+`offchain:read` lost), where `/api/node/balances` still returns 200 with one live
+number and one silently-frozen one. Any rollup hides exactly that case, so a consumer
+computes its own.
+
+Each scope reports one `kind` — `ok` · `files_absent` · `connectivity` · `auth` ·
+`permission` · `malformed` — plus the raw gRPC `code` and `detail`, which are
+preserved rather than discarded so an unrecognised fault stays diagnosable. On LND
+0.20.0-beta every credential fault arrives as gRPC 2 UNKNOWN, so `auth` and
+`permission` are separated only by the detail text.
+
+Each probe is bound by a 3s deadline (`lightning/lndProbeRoute.ts`). Without it a
+wedged-but-connected LND would hang the request, since neither the LND client nor the
+classifier carries a timeout. A timed-out probe reports `connectivity` with
+`ETIMEDOUT` in `detail` — no seventh kind — so a caller distinguishing "wedged" from
+"refused" must read `detail`, not `kind`.
+
+```
+GET /api/node/lnd-probe
+{ "checked_at": 1755634800000, "files_present": true, "probe_calls_attempted": 3,
+  "scopes": [
+    { "scope": "info:read",     "kind": "ok",         "code": null, "detail": "" },
+    { "scope": "offchain:read", "kind": "permission", "code": 2,    "detail": "…permission denied…" },
+    { "scope": "onchain:read",  "kind": "ok",         "code": null, "detail": "" } ] }
+```
+
+⚠ **Ships with NO caller authentication, by decision.** The 403 is
+`assertTreasury(node_role)` — a *node-role* check ("am I the treasury node?"), which
+passes for every caller once this node is the treasury. It is not caller
+authentication. Port 3101 is published on `0.0.0.0`, so on the treasury node anything
+that can route there can read this; the disclosure is named and accepted in
+`bitcorn-research/decisions/2026-08-19-lnd-health-endpoint-unauthenticated-treasury-only.md`,
+which also records the obligation to move the endpoint behind caller auth once that
+mechanism lands.
+
+⚠ Because `node_role` is itself derived from a successful `getLndInfo()`, a treasury
+node that has never completed a first LND sync has no `lnd_node_info` row and this
+endpoint returns 403 — the total pre-existing-fault case is not readable. Pre-existing
+mechanism, not introduced here.
 
 **Expansion**
 

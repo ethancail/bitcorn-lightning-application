@@ -4,6 +4,8 @@ import { getRotationCandidates } from "./treasury-rotation";
 import { getLiquidityHealth } from "./treasury-liquidity-health";
 import { getDailyLossSats } from "../utils/loss-cap";
 import { getLndChainBalance } from "../lightning/lnd";
+import { runTimeoutBoundLndProbe } from "../lightning/lndProbeRoute";
+import { lndFaultAlerts } from "./lndFaultAlerts";
 import { isLoopAvailable } from "../lightning/loop";
 import { ENV } from "../config/env";
 import { MANUAL_METRIC_KEYS, listLatestPerMetric } from "../valuation/manualInputStore";
@@ -138,7 +140,57 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
       });
     }
   } catch {
-    // LND unavailable — skip reserve check
+    // ⚠ THIS USED TO BE `catch { /* LND unavailable — skip reserve check */ }`,
+    // and the silence was two defects, both measured against that code:
+    //
+    //   (a) An LND fault produced no alert at all. The classifier in
+    //       lightning/lndHealth.ts can separate auth from permission on
+    //       identical gRPC 2 UNKNOWN; this surface emitted nothing for either.
+    //   (b) ONCHAIN_RESERVE_BREACHED / _NEAR above simply vanished, leaving the
+    //       returned array BYTE-IDENTICAL to a comfortably-funded treasury. A
+    //       capital guardrail read healthy because it was silent, not because it
+    //       passed. That is the more dangerous of the two.
+    //
+    // So: BOTH signals. The probe covers all THREE read-only scopes rather than
+    // re-classifying the single onchain:read error above, because one scope
+    // cannot distinguish a narrowed credential from a broken one — which is the
+    // classifier's whole purpose.
+    //
+    // Report-only. Nothing here moves capital or gates a decision; alerts are
+    // rendered by the treasury Dashboard and read by nothing else.
+    //
+    // The probe is deadline-bound (LND_PROBE_TIMEOUT_MS, 3s), so it cannot hang
+    // the 60s dashboard poll. Note that getLndChainBalance() above and
+    // isLoopAvailable() below still carry NO deadline — pre-existing, tracked
+    // separately, and not addressed here.
+    try {
+      const report = await runTimeoutBoundLndProbe(now);
+      alerts.push(
+        ...lndFaultAlerts(report, now, {
+          minOnchainReserveSats: policy.min_onchain_reserve_sats,
+        }),
+      );
+    } catch (probeErr: any) {
+      // The producer is not supposed to throw — runLndHealthProbe turns every
+      // outcome into a result. But its module resolution CAN fail (measured
+      // once in this arc), and on a surface polled every 60s a throw here would
+      // turn "some alerts" into a 500 with none. The guardrail still did not
+      // run, so that much is still reported.
+      console.warn("[treasury-alerts] LND probe failed:", probeErr?.message ?? probeErr);
+      alerts.push({
+        type: "ONCHAIN_RESERVE_CHECK_SKIPPED",
+        severity: "critical",
+        message:
+          `On-chain reserve check DID NOT RUN and the follow-up LND probe itself failed. ` +
+          `The ${policy.min_onchain_reserve_sats} sat floor is unverified; this is not a passing check.`,
+        data: {
+          min_reserve_sats: policy.min_onchain_reserve_sats,
+          reason: "probe_failed",
+          probe_error: probeErr?.message ?? String(probeErr),
+        },
+        at: now,
+      });
+    }
   }
 
   // --- Scheduler simulation mode ---

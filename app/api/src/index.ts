@@ -53,6 +53,7 @@ import {
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
 import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, getLndChainFeeRate, updateNodeAlias, clearNodeAlias } from "./lightning/lnd";
+import { runTimeoutBoundLndProbe } from "./lightning/lndProbeRoute";
 import { normalizeAlias, validateAliasFormat, isAliasBlocked, lndDefaultAlias } from "./profile/aliasValidation";
 import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow } from "./profile/profileStore";
 import { ENV } from "./config/env";
@@ -2979,6 +2980,58 @@ async function dispatchRequest(
     } catch (err: any) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "preflight_check_failed" }));
+    }
+    return;
+  }
+
+  // LND credential/connectivity probe — per-scope, REPORT-ONLY, TREASURY-ONLY.
+  // Gives the fault classifier in lightning/lndHealth.ts a consumer; before
+  // this, no LND credential, permission or connectivity fault was observable
+  // anywhere in the app.
+  //
+  // ⚠ SHIPS WITH NO CALLER AUTHENTICATION, BY DECISION. The check below is
+  // assertTreasury(node_role) — a NODE-ROLE check ("am I the treasury node?"),
+  // which passes for EVERY caller once this node is the treasury. It is not
+  // caller authentication and must not be read as any. Port 3101 is published
+  // on 0.0.0.0 (bitcorn-lightning-node/docker-compose.yml:5-6), so on the
+  // treasury node anything that can route here can read this. What it discloses
+  // — that an LND scope is faulted, and the raw fault text — is accepted
+  // disclosure, recorded with its rationale in the bitcorn-research decision
+  // record 2026-08-19-lnd-health-endpoint-unauthenticated-treasury-only.md.
+  //
+  // FLIP OBLIGATION: when caller authentication lands, this endpoint moves
+  // behind it. The role check is deliberately INLINE here rather than inside
+  // the handler module so that grepping this file for the route literal and
+  // reading upward shows what actually gates the branch.
+  //
+  // Member nodes get 403 rather than a missing route: registered-and-refusing,
+  // because a route absent at registration has no mechanism here (dispatch is a
+  // flat if-sequence in one function) and the only startup-time trigger would be
+  // node_role, which is 'external' until the first LND sync lands.
+  //
+  // The response is the classifier's LndHealthReport verbatim — no translation
+  // layer, and deliberately NO aggregate verdict under any name, because a
+  // rollup is what hides the dangerous case (onchain:read alive, offchain:read
+  // lost). HTTP 200 means "the probe ran, here is what it found", whatever the
+  // kinds are; making the status depend on the kinds would reintroduce the
+  // aggregate through the status line. 403 = not the treasury node.
+  if (req.method === "GET" && req.url === "/api/node/lnd-probe") {
+    const node = getNodeInfo();
+    try {
+      assertTreasury(node?.node_role);
+    } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "treasury_required", detail: err?.message }));
+      return;
+    }
+    try {
+      const report = await runTimeoutBoundLndProbe(Date.now());
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(report));
+    } catch (err: any) {
+      console.error("[lnd-probe] probe failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "lnd_probe_failed" }));
     }
     return;
   }
