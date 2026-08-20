@@ -193,6 +193,13 @@ import {
   ADMIN_QUERY_REJECTION,
 } from "./subscription/adminQueryGuard";
 import {
+  CONFIRMATION_HEADER,
+  classifyMutation,
+  findConfirmedRoute,
+  verifyConfirmation,
+} from "./utils/action-confirmation";
+import { readRawBody, withReplayableBody } from "./utils/request-replay";
+import {
   verifyEntitlementToken,
   extractBearerToken,
   JwtVerificationError,
@@ -262,13 +269,18 @@ function bootSideEffects(): void {
   })();
 }
 
-// The request handler, extracted from the http.createServer() call it used to
-// be an anonymous argument to. Exported so tests can drive routes directly
-// without booting a listener. The body below is unchanged by that extraction.
-export async function handleRequest(
+// CORS, split out of the request handler so the confirmation gate can run
+// AFTER the headers are set. That ordering is load-bearing: a 400/409 from the
+// gate is a response the dashboard has to be able to READ, and without
+// Access-Control-Allow-Origin the browser hands the page an opaque failure
+// instead of the refusal reason.
+//
+// Returns true when the request is fully handled (preflight) and dispatch must
+// not run.
+function applyCorsAndPreflight(
   req: http.IncomingMessage,
   res: http.ServerResponse
-): Promise<void> {
+): boolean {
   // CORS — allow private/local network origins (Umbrel, Tailscale, LAN, localhost)
   // Umbrel apps are only reachable on local/private networks, not the public internet.
   const origin = req.headers.origin;
@@ -291,15 +303,95 @@ export async function handleRequest(
     // Public origins get no Access-Control-Allow-Origin → browser blocks them
   }
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  // CONFIRMATION_HEADER must be listed or the browser blocks the very request
+  // the gate exists to check — the preflight would fail before it is sent.
+  res.setHeader("Access-Control-Allow-Headers", `Content-Type,${CONFIRMATION_HEADER}`);
 
   // Handle preflight
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
+    return true;
+  }
+  return false;
+}
+
+// Per-action confirmation gate + dispatch.
+//
+// Exported so tests can drive routes directly without booting a listener.
+// Everything from /health down lives in dispatchRequest and is unchanged; this
+// wrapper is the only thing between the socket and that chain.
+export async function handleRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
+  if (applyCorsAndPreflight(req, res)) return;
+
+  const method = req.method ?? "";
+  const url = req.url ?? "";
+
+  // Reads pass through untouched — no buffering, no classification.
+  if (method === "GET" || method === "HEAD") return dispatchRequest(req, res);
+
+  const verdict = classifyMutation(method, url);
+
+  // DEFAULT-REQUIRE. A mutation matching neither table is refused rather than
+  // waved through, so adding a route to the dispatch chain without classifying
+  // it fails closed instead of shipping unguarded. /lnd/sync and friends are in
+  // EXEMPT_MUTATIONS precisely so this does not catch them.
+  if (verdict === "unknown") {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        error: "confirmation_required",
+        detail: `${method} ${url} is not classified in action-confirmation.ts; refusing rather than guessing`,
+      })
+    );
     return;
   }
-  
+
+  if (verdict === "exempt") return dispatchRequest(req, res);
+
+  const route = findConfirmedRoute(method, url)!;
+
+  // The gate needs the body, and the body is a stream read once — so buffer it
+  // here and hand dispatch a stand-in that replays it. Only confirmed routes
+  // are buffered; every other path keeps the original request object.
+  let raw: Buffer;
+  try {
+    raw = await readRawBody(req);
+  } catch {
+    res.writeHead(413, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "body_too_large" }));
+    return;
+  }
+
+  let parsedBody: unknown = null;
+  if (raw.length > 0) {
+    try {
+      parsedBody = JSON.parse(raw.toString("utf8"));
+    } catch {
+      // Leave it null: deriveConfirmation reports not_an_object, which surfaces
+      // as confirmation_required. The route's own parser reports the malformed
+      // body if the caller retries with a valid confirmation.
+      parsedBody = null;
+    }
+  }
+
+  const verdictC = verifyConfirmation(route, { url, body: parsedBody }, req.headers[CONFIRMATION_HEADER]);
+  if (!verdictC.ok) {
+    res.writeHead(verdictC.status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: verdictC.error, detail: verdictC.detail }));
+    return;
+  }
+
+  return dispatchRequest(withReplayableBody(req, raw), res);
+}
+
+async function dispatchRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
   if (req.url === "/health") {
     try {
       db.prepare("SELECT 1").get();

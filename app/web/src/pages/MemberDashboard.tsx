@@ -12,6 +12,11 @@ import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
 import { useSubscriptionStatus } from "../components/useSubscriptionStatus";
 import ErrorState from "../components/ErrorState";
+import ActionConfirmModal, {
+  useActionConfirm,
+} from "../components/actionConfirm/ActionConfirmModal";
+import { summarizeOpenMemberChannel } from "../components/actionConfirm/confirmAction";
+import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import StaleMarker from "../components/StaleMarker";
 import {
@@ -66,6 +71,23 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
   const hubSocket = treasuryInfo?.socket || null;
   const hasAutoSocket = !!hubSocket;
 
+  // Human confirmation for the on-chain funding. apiFetch derives
+  // x-bitcorn-confirm from the serialized body; nothing is hashed here.
+  const confirm = useActionConfirm();
+
+  function openChannelConfirm() {
+    const partnerSocket = hasAutoSocket && !isPeered ? hubSocket : socket.trim() || undefined;
+    confirm.open(
+      summarizeOpenMemberChannel({
+        capacitySats: capacity,
+        partnerSocket: partnerSocket || undefined,
+        // TreasuryInfo carries pubkey + socket only, no alias — the summary's
+        // default label ("Bitcorn treasury hub") is the honest name here.
+        hubLabel: undefined,
+      }),
+    );
+  }
+
   async function handleOpen() {
     setSubmitting(true);
     setError(null);
@@ -78,6 +100,8 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
       });
       setSuccess(res.funding_txid ?? "submitted");
     } catch (e: any) {
+      // Confirmation failures go to the modal the operator is looking at.
+      if (classifyConfirmError(e)) throw e;
       setError(e.message ?? "Failed to open channel");
     } finally {
       setSubmitting(false);
@@ -291,11 +315,13 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
 
         <button
           className="btn btn-primary"
-          onClick={handleOpen}
+          onClick={openChannelConfirm}
           disabled={submitting || capacity < 100_000}
         >
           {submitting ? "Connecting…" : "Open Channel →"}
         </button>
+
+        <ActionConfirmModal controller={confirm} onConfirm={handleOpen} />
       </div>
 
       {/* Protocol reference — demoted per U2 (vocabulary record 2026-07-09) */}
