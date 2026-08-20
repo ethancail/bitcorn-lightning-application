@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.5"
+version: "1.18.6"
 port: 3200
 
 description: >
@@ -27,6 +27,13 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.6: One change you'll notice. Actions that move money — sending a
+  payment, opening a channel, withdrawing to your own Bitcoin address, refilling
+  a channel — now ask you to confirm the amount before they run. Type the number
+  shown, then press the button to go ahead, and it proceeds as before. Nothing
+  else changes: your Lightning node, channels, routing, subscription and
+  stablecoin settings are all untouched.
+
   v1.18.5: Internal improvements — nothing you need to do, and nothing about your
   node changes. This release is entirely internal structure: the API's startup
   code and its request handling were separated so more of it can be covered by
