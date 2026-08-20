@@ -4,6 +4,11 @@ import { api, fmtSats } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
+import ActionConfirmModal, {
+  useActionConfirm,
+} from "../components/actionConfirm/ActionConfirmModal";
+import { summarizeLoopOut } from "../components/actionConfirm/confirmAction";
+import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
   ageLabel,
@@ -307,6 +312,22 @@ export default function WithdrawBitcoin() {
   }
 
   // ─── Confirm withdrawal ───────────────────────────────────────────────
+  // The destination address is the field a mistake ruins irrecoverably, so the
+  // modal shows it and requires the amount typed. apiFetch derives the
+  // x-bitcorn-confirm header from the serialized body.
+  const confirm = useActionConfirm();
+
+  function openWithdrawConfirm() {
+    if (!quoteResp || !address) return;
+    confirm.open(
+      summarizeLoopOut({
+        amountSats: quoteResp.quote.amount_sat,
+        destinationAddress: address,
+        feeSats: quoteResp.quote.total_fee_sat,
+      }),
+    );
+  }
+
   async function handleConfirm() {
     if (!quoteResp || !address) return;
     setError(null);
@@ -320,8 +341,9 @@ export default function WithdrawBitcoin() {
       setTrackingSwap(resp.swap_request);
       setStage("tracking");
     } catch (e: any) {
-      setError(e.message ?? "Failed to initiate withdrawal");
       setStage("quoted");
+      if (classifyConfirmError(e)) throw e;
+      setError(e.message ?? "Failed to initiate withdrawal");
     }
   }
 
@@ -627,7 +649,7 @@ export default function WithdrawBitcoin() {
               <button
                 className="btn btn-primary"
                 style={{ flex: 1 }}
-                onClick={handleConfirm}
+                onClick={openWithdrawConfirm}
                 disabled={stage === "initiating" || countdown === "Expired" || !quoteResp.policy_check.ok}
               >
                 {stage === "initiating" ? "Processing..." : "Confirm Withdrawal"}
@@ -636,6 +658,8 @@ export default function WithdrawBitcoin() {
                 Cancel
               </button>
             </div>
+
+            <ActionConfirmModal controller={confirm} onConfirm={handleConfirm} />
           </div>
         </div>
       )}

@@ -21,6 +21,16 @@ import AutoBuy from "./pages/AutoBuy";
 import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
 import ErrorState from "./components/ErrorState";
+import ActionConfirmModal, {
+  useActionConfirm,
+} from "./components/actionConfirm/ActionConfirmModal";
+import {
+  challengePrompt,
+  challengeSatisfied,
+  summarizeCloseChannel,
+  summarizeTreasuryOpenChannel,
+} from "./components/actionConfirm/confirmAction";
+import { classifyConfirmError } from "./components/actionConfirm/confirmErrors";
 import ProfilePanel from "./components/ProfilePanel";
 import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
 import {
@@ -1354,6 +1364,10 @@ function ChannelsPage() {
   const [nodeRole, setNodeRole] = useState<string | null>(null);
   const [closingChannel, setClosingChannel] = useState<string | null>(null);
   const [closeConfirm, setCloseConfirm] = useState<{ channelId: string; peerName: string; capacity: number } | null>(null);
+  // Typed challenge for the close. The existing dialog already carries the peer,
+  // capacity and fee-rate picker, so only this gate was missing — and the
+  // challenge logic is shared with the generic modal rather than re-derived.
+  const [closeTyped, setCloseTyped] = useState("");
   const [closeFeeRate, setCloseFeeRate] = useState<number | undefined>(undefined); // Economy default (LND estimator)
   const [closeError, setCloseError] = useState<string | null>(null);
   const [closeResult, setCloseResult] = useState<{ channelId: string; txid: string | null } | null>(null);
@@ -1407,7 +1421,10 @@ function ChannelsPage() {
       setCloseResult({ channelId, txid: res.closing_txid });
       setTimeout(refreshChannels, 3000);
     } catch (e: any) {
-      setCloseError(e.message ?? "Failed to close channel");
+      // A 409 here means this dashboard and the API disagree about the action;
+      // classifyConfirmError supplies wording that does not invite a retry.
+      const cf = classifyConfirmError(e);
+      setCloseError(cf ? cf.title + " \u2014 " + cf.detail : (e.message ?? "Failed to close channel"));
     } finally {
       setClosingChannel(null);
     }
@@ -1458,9 +1475,28 @@ function ChannelsPage() {
                 })}
               </div>
             </div>
+            <div style={{ marginTop: 14 }}>
+              <label htmlFor="close-channel-challenge" style={{ display: "block", marginBottom: 6, fontSize: "0.8125rem" }}>
+                {challengePrompt(summarizeCloseChannel({ channelId: closeConfirm.channelId }).challenge)}
+              </label>
+              <input
+                id="close-channel-challenge"
+                type="text"
+                autoComplete="off"
+                value={closeTyped}
+                onChange={(e) => setCloseTyped(e.target.value)}
+                style={{ width: "100%" }}
+              />
+            </div>
             <div className="dialog-actions">
-              <button className="btn btn-ghost" onClick={() => { setCloseConfirm(null); setCloseFeeRate(undefined); }}>Cancel</button>
-              <button className="btn btn-danger" onClick={handleCloseChannel}>Close Channel</button>
+              <button className="btn btn-ghost" onClick={() => { setCloseConfirm(null); setCloseFeeRate(undefined); setCloseTyped(""); }}>Cancel</button>
+              <button
+                className="btn btn-danger"
+                disabled={!challengeSatisfied(summarizeCloseChannel({ channelId: closeConfirm.channelId }).challenge, closeTyped)}
+                onClick={() => { setCloseTyped(""); handleCloseChannel(); }}
+              >
+                Close Channel
+              </button>
             </div>
           </div>
         </div>
@@ -2093,6 +2129,18 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
     return () => clearInterval(id);
   }, []);
 
+  // Confirmation step for the treasury channel open (on-chain funding).
+  const openConfirm = useActionConfirm();
+
+  function openChannelConfirm() {
+    if (!activePubkey) { setError(useManual ? "Peer pubkey is required" : "Select a contact"); return; }
+    if (capacity < 100_000) { setError("Minimum 100,000 sats"); return; }
+    setError(null);
+    openConfirm.open(
+      summarizeTreasuryOpenChannel({ peerPubkey: activePubkey, capacitySats: capacity }),
+    );
+  }
+
   async function handleOpen() {
     if (!activePubkey) { setError(useManual ? "Peer pubkey is required" : "Select a contact"); return; }
     if (capacity < 100_000) { setError("Minimum 100,000 sats"); return; }
@@ -2110,6 +2158,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
       api.getPendingChannels().then(setPending).catch(() => {});
       onChannelOpened();
     } catch (e: any) {
+      if (classifyConfirmError(e)) throw e;
       setError(e.message ?? "Failed to open channel");
     } finally {
       setOpening(false);
@@ -2401,7 +2450,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
             <button
               className="btn btn-primary"
               style={{ flex: 1 }}
-              onClick={handleOpen}
+              onClick={openChannelConfirm}
               disabled={opening || !activePubkey}
             >
               {opening
@@ -2412,6 +2461,8 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
               Cancel
             </button>
           </div>
+
+          <ActionConfirmModal controller={openConfirm} onConfirm={handleOpen} />
         </div>
       )}
     </div>

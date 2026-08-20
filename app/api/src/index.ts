@@ -53,6 +53,7 @@ import {
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
 import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, getLndChainFeeRate, updateNodeAlias, clearNodeAlias } from "./lightning/lnd";
+import { runTimeoutBoundLndProbe } from "./lightning/lndProbeRoute";
 import { normalizeAlias, validateAliasFormat, isAliasBlocked, lndDefaultAlias } from "./profile/aliasValidation";
 import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow } from "./profile/profileStore";
 import { ENV } from "./config/env";
@@ -192,6 +193,13 @@ import {
   ADMIN_QUERY_REJECTION,
 } from "./subscription/adminQueryGuard";
 import {
+  CONFIRMATION_HEADER,
+  classifyMutation,
+  findConfirmedRoute,
+  verifyConfirmation,
+} from "./utils/action-confirmation";
+import { readRawBody, withReplayableBody } from "./utils/request-replay";
+import {
   verifyEntitlementToken,
   extractBearerToken,
   JwtVerificationError,
@@ -261,13 +269,18 @@ function bootSideEffects(): void {
   })();
 }
 
-// The request handler, extracted from the http.createServer() call it used to
-// be an anonymous argument to. Exported so tests can drive routes directly
-// without booting a listener. The body below is unchanged by that extraction.
-export async function handleRequest(
+// CORS, split out of the request handler so the confirmation gate can run
+// AFTER the headers are set. That ordering is load-bearing: a 400/409 from the
+// gate is a response the dashboard has to be able to READ, and without
+// Access-Control-Allow-Origin the browser hands the page an opaque failure
+// instead of the refusal reason.
+//
+// Returns true when the request is fully handled (preflight) and dispatch must
+// not run.
+function applyCorsAndPreflight(
   req: http.IncomingMessage,
   res: http.ServerResponse
-): Promise<void> {
+): boolean {
   // CORS — allow private/local network origins (Umbrel, Tailscale, LAN, localhost)
   // Umbrel apps are only reachable on local/private networks, not the public internet.
   const origin = req.headers.origin;
@@ -290,15 +303,95 @@ export async function handleRequest(
     // Public origins get no Access-Control-Allow-Origin → browser blocks them
   }
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  // CONFIRMATION_HEADER must be listed or the browser blocks the very request
+  // the gate exists to check — the preflight would fail before it is sent.
+  res.setHeader("Access-Control-Allow-Headers", `Content-Type,${CONFIRMATION_HEADER}`);
 
   // Handle preflight
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
+    return true;
+  }
+  return false;
+}
+
+// Per-action confirmation gate + dispatch.
+//
+// Exported so tests can drive routes directly without booting a listener.
+// Everything from /health down lives in dispatchRequest and is unchanged; this
+// wrapper is the only thing between the socket and that chain.
+export async function handleRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
+  if (applyCorsAndPreflight(req, res)) return;
+
+  const method = req.method ?? "";
+  const url = req.url ?? "";
+
+  // Reads pass through untouched — no buffering, no classification.
+  if (method === "GET" || method === "HEAD") return dispatchRequest(req, res);
+
+  const verdict = classifyMutation(method, url);
+
+  // DEFAULT-REQUIRE. A mutation matching neither table is refused rather than
+  // waved through, so adding a route to the dispatch chain without classifying
+  // it fails closed instead of shipping unguarded. /lnd/sync and friends are in
+  // EXEMPT_MUTATIONS precisely so this does not catch them.
+  if (verdict === "unknown") {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        error: "confirmation_required",
+        detail: `${method} ${url} is not classified in action-confirmation.ts; refusing rather than guessing`,
+      })
+    );
     return;
   }
-  
+
+  if (verdict === "exempt") return dispatchRequest(req, res);
+
+  const route = findConfirmedRoute(method, url)!;
+
+  // The gate needs the body, and the body is a stream read once — so buffer it
+  // here and hand dispatch a stand-in that replays it. Only confirmed routes
+  // are buffered; every other path keeps the original request object.
+  let raw: Buffer;
+  try {
+    raw = await readRawBody(req);
+  } catch {
+    res.writeHead(413, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "body_too_large" }));
+    return;
+  }
+
+  let parsedBody: unknown = null;
+  if (raw.length > 0) {
+    try {
+      parsedBody = JSON.parse(raw.toString("utf8"));
+    } catch {
+      // Leave it null: deriveConfirmation reports not_an_object, which surfaces
+      // as confirmation_required. The route's own parser reports the malformed
+      // body if the caller retries with a valid confirmation.
+      parsedBody = null;
+    }
+  }
+
+  const verdictC = verifyConfirmation(route, { url, body: parsedBody }, req.headers[CONFIRMATION_HEADER]);
+  if (!verdictC.ok) {
+    res.writeHead(verdictC.status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: verdictC.error, detail: verdictC.detail }));
+    return;
+  }
+
+  return dispatchRequest(withReplayableBody(req, raw), res);
+}
+
+async function dispatchRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse
+): Promise<void> {
   if (req.url === "/health") {
     try {
       db.prepare("SELECT 1").get();
@@ -2887,6 +2980,58 @@ export async function handleRequest(
     } catch (err: any) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "preflight_check_failed" }));
+    }
+    return;
+  }
+
+  // LND credential/connectivity probe — per-scope, REPORT-ONLY, TREASURY-ONLY.
+  // Gives the fault classifier in lightning/lndHealth.ts a consumer; before
+  // this, no LND credential, permission or connectivity fault was observable
+  // anywhere in the app.
+  //
+  // ⚠ SHIPS WITH NO CALLER AUTHENTICATION, BY DECISION. The check below is
+  // assertTreasury(node_role) — a NODE-ROLE check ("am I the treasury node?"),
+  // which passes for EVERY caller once this node is the treasury. It is not
+  // caller authentication and must not be read as any. Port 3101 is published
+  // on 0.0.0.0 (bitcorn-lightning-node/docker-compose.yml:5-6), so on the
+  // treasury node anything that can route here can read this. What it discloses
+  // — that an LND scope is faulted, and the raw fault text — is accepted
+  // disclosure, recorded with its rationale in the bitcorn-research decision
+  // record 2026-08-19-lnd-health-endpoint-unauthenticated-treasury-only.md.
+  //
+  // FLIP OBLIGATION: when caller authentication lands, this endpoint moves
+  // behind it. The role check is deliberately INLINE here rather than inside
+  // the handler module so that grepping this file for the route literal and
+  // reading upward shows what actually gates the branch.
+  //
+  // Member nodes get 403 rather than a missing route: registered-and-refusing,
+  // because a route absent at registration has no mechanism here (dispatch is a
+  // flat if-sequence in one function) and the only startup-time trigger would be
+  // node_role, which is 'external' until the first LND sync lands.
+  //
+  // The response is the classifier's LndHealthReport verbatim — no translation
+  // layer, and deliberately NO aggregate verdict under any name, because a
+  // rollup is what hides the dangerous case (onchain:read alive, offchain:read
+  // lost). HTTP 200 means "the probe ran, here is what it found", whatever the
+  // kinds are; making the status depend on the kinds would reintroduce the
+  // aggregate through the status line. 403 = not the treasury node.
+  if (req.method === "GET" && req.url === "/api/node/lnd-probe") {
+    const node = getNodeInfo();
+    try {
+      assertTreasury(node?.node_role);
+    } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "treasury_required", detail: err?.message }));
+      return;
+    }
+    try {
+      const report = await runTimeoutBoundLndProbe(Date.now());
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(report));
+    } catch (err: any) {
+      console.error("[lnd-probe] probe failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message ?? "lnd_probe_failed" }));
     }
     return;
   }

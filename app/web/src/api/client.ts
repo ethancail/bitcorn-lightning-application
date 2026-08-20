@@ -1,4 +1,9 @@
 import { API_BASE } from "../config/api";
+import {
+  CONFIRMATION_HEADER,
+  confirmationFor,
+  findUiConfirmedRoute,
+} from "./actionConfirmation";
 
 export async function checkHealth(): Promise<{ status: string }> {
   const res = await fetch(`${API_BASE}/health`);
@@ -8,11 +13,57 @@ export async function checkHealth(): Promise<{ status: string }> {
 
 // ─── Core fetch helper ────────────────────────────────────────────────────
 
+/**
+ * THE SINGLE PLACE the confirmation header is attached.
+ *
+ * It is derived from `options.body` — the exact string about to be sent — so the
+ * hash and the request cannot describe different things. No caller passes a
+ * confirmation and none may start: see api/actionConfirmation.ts for why a
+ * per-form override reintroduces the whole bug class.
+ *
+ * A derivation failure is left alone rather than thrown here. The body is
+ * malformed or missing a field the route needs, so the server would reject it
+ * anyway — and it does so with the specific reason, which beats a client-side
+ * guess. The request goes out unconfirmed and comes back 400.
+ */
+function confirmationValueFor(path: string, options?: RequestInit): string | null {
+  const method = (options?.method ?? "GET").toUpperCase();
+  const route = findUiConfirmedRoute(method, path);
+  if (!route) return null;
+  const body = typeof options?.body === "string" ? options.body : null;
+  const derived = confirmationFor(route, path, body);
+  return derived.ok ? derived.value : null;
+}
+
+/**
+ * Build the request init, with the confirmation set on a Headers instance
+ * AFTER the caller's options are spread.
+ *
+ * ⚠ WHY THIS IS STATEMENTS AND NOT AN OBJECT LITERAL. The original was
+ * `{ headers: {...merged}, ...options }`, where `...options` re-spread the
+ * caller's own `headers` key and clobbered the merged object outright. That was
+ * harmless only by luck: the two callers that pass headers (autobuy config and
+ * credentials) pass the same Content-Type and are on exempt routes.
+ *
+ * Reordering the literal fixes it but leaves the hazard live — anyone can
+ * reorder it back, and a mutation test proved the reordering passes the whole
+ * suite, because no caller passes headers on a capital route TODAY. So the
+ * merge is done here as assignment to a Headers object instead: there is no key
+ * order left to get wrong, and a caller's headers can no longer replace the
+ * confirmation no matter how this is edited.
+ */
+function buildInit(path: string, options?: RequestInit): RequestInit {
+  const init: RequestInit = { ...options };
+  const headers = new Headers(options?.headers as HeadersInit | undefined);
+  if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+  const confirmation = confirmationValueFor(path, options);
+  if (confirmation) headers.set(CONFIRMATION_HEADER, confirmation);
+  init.headers = headers;
+  return init;
+}
+
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    ...options,
-  });
+  const res = await fetch(`${API_BASE}${path}`, buildInit(path, options));
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     const message = err.detail

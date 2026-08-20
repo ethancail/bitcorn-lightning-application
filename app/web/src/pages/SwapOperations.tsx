@@ -3,6 +3,12 @@ import { api, fmtSats, resolveContactName, type Contact } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 import { API_BASE } from "../config/api";
 import ErrorState from "../components/ErrorState";
+// Reusing the pure challenge helpers rather than the generic modal: this dialog
+// is already stronger than the generic one (chunked address + verify checkbox),
+// so swapping it out would lose those. Only the typed-amount gate was missing,
+// and that logic stays in one place.
+import { challengeSatisfied, challengePrompt } from "../components/actionConfirm/confirmAction";
+import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
   ageLabel,
@@ -220,6 +226,7 @@ function LoopOutTab({
   const [destinationAddress, setDestinationAddress] = useState("");
   const [destTouched, setDestTouched] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [typedAmount, setTypedAmount] = useState("");
   const [destVerified, setDestVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -302,13 +309,20 @@ function LoopOutTab({
       setTrackingId(resp.swap_request.id);
       setTrackingSwap(resp.swap_request);
       setPhase("tracking");
-    } catch (e: any) { setError(e.message ?? "Failed to execute"); setPhase("quoted"); }
+    } catch (e: any) {
+      setPhase("quoted");
+      // A confirmation refusal gets its own wording. A 409 here means the
+      // dashboard and API disagree about this action, so the copy must not
+      // read as a transient glitch the operator should retry.
+      const cf = classifyConfirmError(e);
+      setError(cf ? cf.title + " \u2014 " + cf.detail : (e.message ?? "Failed to execute"));
+    }
   }
 
   function handleReset() {
     setPhase("form"); setQuoteResp(null); setTrackingId(null); setTrackingSwap(null);
     setError(null); setCountdown("");
-    setConfirmOpen(false); setDestVerified(false); setDestTouched(false);
+    setConfirmOpen(false); setDestVerified(false); setDestTouched(false); setTypedAmount("");
     if (pollRef.current) clearInterval(pollRef.current);
     if (countdownRef.current) clearInterval(countdownRef.current);
   }
@@ -412,12 +426,26 @@ function LoopOutTab({
                 </label>
               </div>
             </div>
+            <div style={{ marginTop: 14 }}>
+              <label htmlFor="swapops-typed-amount" style={{ display: "block", marginBottom: 6, fontSize: "0.8125rem" }}>
+                {challengePrompt({ kind: "amount", sats: q.amount_sat })}
+              </label>
+              <input
+                id="swapops-typed-amount"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={typedAmount}
+                onChange={(e) => setTypedAmount(e.target.value)}
+                style={{ width: "100%", fontVariantNumeric: "tabular-nums" }}
+              />
+            </div>
             <div className="dialog-actions">
-              <button className="btn btn-ghost" onClick={() => setConfirmOpen(false)}>Cancel</button>
+              <button className="btn btn-ghost" onClick={() => { setConfirmOpen(false); setTypedAmount(""); }}>Cancel</button>
               <button
                 className="btn btn-danger"
-                disabled={!destVerified}
-                onClick={() => { setConfirmOpen(false); handleExecute(); }}
+                disabled={!destVerified || !challengeSatisfied({ kind: "amount", sats: q.amount_sat }, typedAmount)}
+                onClick={() => { setConfirmOpen(false); setTypedAmount(""); handleExecute(); }}
               >
                 Execute Loop Out
               </button>

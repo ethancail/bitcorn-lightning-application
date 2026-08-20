@@ -4,6 +4,11 @@ import { api, fmtSats } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
+import ActionConfirmModal, {
+  useActionConfirm,
+} from "../components/actionConfirm/ActionConfirmModal";
+import { summarizeLoopIn } from "../components/actionConfirm/confirmAction";
+import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
   ageLabel,
@@ -322,6 +327,18 @@ export default function RefillChannel() {
   }
 
   // ─── Confirm refill ───────────────────────────────────────────────────
+  const confirm = useActionConfirm();
+
+  function openRefillConfirm() {
+    if (!quoteResp) return;
+    confirm.open(
+      summarizeLoopIn({
+        amountSats: quoteResp.quote.amount_sat,
+        feeSats: quoteResp.quote.total_fee_sat,
+      }),
+    );
+  }
+
   async function handleConfirm() {
     if (!quoteResp) return;
     setError(null);
@@ -334,8 +351,9 @@ export default function RefillChannel() {
       setTrackingSwap(resp.swap_request);
       setStage("tracking");
     } catch (e: any) {
-      setError(e.message ?? "Failed to start the top up");
       setStage("quoted");
+      if (classifyConfirmError(e)) throw e;
+      setError(e.message ?? "Failed to start the top up");
     }
   }
 
@@ -715,7 +733,7 @@ export default function RefillChannel() {
               <button
                 className="btn btn-primary"
                 style={{ flex: 1 }}
-                onClick={handleConfirm}
+                onClick={openRefillConfirm}
                 disabled={stage === "initiating" || countdown === "Expired" || !quoteResp.policy_check.ok}
               >
                 {stage === "initiating" ? "Processing..." : "Confirm Top Up"}
@@ -724,6 +742,8 @@ export default function RefillChannel() {
                 Cancel
               </button>
             </div>
+
+            <ActionConfirmModal controller={confirm} onConfirm={handleConfirm} />
           </div>
         </div>
       )}
