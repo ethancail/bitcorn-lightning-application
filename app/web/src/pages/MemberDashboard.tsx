@@ -19,6 +19,7 @@ import { summarizeOpenMemberChannel } from "../components/actionConfirm/confirmA
 import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import StaleMarker from "../components/StaleMarker";
+import { channelStalenessNotice } from "../components/channelStaleness";
 import {
   INITIAL_FRESHNESS,
   freshnessStatus,
@@ -660,6 +661,34 @@ export default function MemberDashboard() {
                   </div>
                   {toUsd(heroSats) && <div className="usd">{toUsd(heroSats)}</div>}
                 </div>
+
+                {/* U24 / cert-expiry arc: these numbers come from SQLite via
+                    /api/member/stats, which answers 200 even when LND is
+                    unreachable — so components/freshness.ts (poll-outcome
+                    driven) can never mark them. This is DATA-AGE driven, and it
+                    sits directly under the number it describes. Renders nothing
+                    on a healthy node. */}
+                {(() => {
+                  const notice = channelStalenessNotice(
+                    ch!.freshness,
+                    stats?.lnd_live_read_ok ?? true,
+                    Date.now(),
+                  );
+                  if (!notice) return null;
+                  return (
+                    <div
+                      className={`alert ${notice.severity === "critical" ? "critical" : "warning"}`}
+                      style={{ marginBottom: 0 }}
+                    >
+                      <span className="alert-icon" aria-hidden>
+                        {notice.severity === "critical" ? "✕" : "⚠"}
+                      </span>
+                      <div className="alert-body">
+                        <div className="alert-msg">{notice.text}</div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Capacity gauge — role-aware color, ARIA progressbar */}
                 <div
