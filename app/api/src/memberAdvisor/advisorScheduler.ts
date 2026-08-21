@@ -7,6 +7,10 @@
 import { getNodeInfo } from "../api/read";
 import { classifyTreasuryChannel, persistClassification, pruneClassifications } from "./channelClassifier";
 import { ENV } from "../config/env";
+import {
+  maybeCheckCertExpiry,
+  resetCertExpiryCheckState,
+} from "../lightning/certExpiryCheck";
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -44,15 +48,36 @@ function runOnce(): void {
 
 // ─── Start / stop ────────────────────────────────────────────────────────────
 
+/**
+ * One scheduler tick: the member-only classification, plus the role-agnostic
+ * cert-expiry check.
+ *
+ * ⚠ THE CERT CHECK IS CALLED BESIDE runOnce(), NOT INSIDE IT. runOnce returns
+ * early for treasury nodes (see its guard above), and a certificate expires the
+ * same way on every role — placing the check inside would have silently skipped
+ * the treasury. Its own day-scale rate limit means it does real work on roughly
+ * one tick in 96; the rest are a timestamp comparison.
+ *
+ * maybeCheckCertExpiry never throws (every filesystem and parse outcome is a
+ * result), and runOnce has its own try/catch, so neither can stop the other.
+ */
+function tick(): void {
+  runOnce();
+  maybeCheckCertExpiry(Date.now());
+}
+
 export function startMemberAdvisorScheduler(): void {
-  // Run on all nodes — the runOnce() guard skips treasury/external.
-  // This way, if a node transitions to member role dynamically, it picks up.
-  console.log("[member-advisor] starting scheduler (15-min interval, member nodes only)");
+  // Run on all nodes — the runOnce() guard skips treasury/external, and the
+  // cert check deliberately applies to every role.
+  console.log(
+    "[member-advisor] starting scheduler (15-min interval; channel classification " +
+      "on member nodes, TLS cert-expiry check on all roles once a day)",
+  );
 
   // Run once on startup (after a short delay to let sync complete)
-  setTimeout(runOnce, 5_000);
+  setTimeout(tick, 5_000);
 
-  intervalHandle = setInterval(runOnce, 900_000); // 15 minutes
+  intervalHandle = setInterval(tick, 900_000); // 15 minutes
 }
 
 export function stopMemberAdvisorScheduler(): void {
@@ -60,4 +85,7 @@ export function stopMemberAdvisorScheduler(): void {
     clearInterval(intervalHandle);
     intervalHandle = null;
   }
+  // A stopped scheduler leaves no state behind, so a restart re-checks the cert
+  // immediately rather than inheriting a stale rate-limit timestamp.
+  resetCertExpiryCheckState();
 }
