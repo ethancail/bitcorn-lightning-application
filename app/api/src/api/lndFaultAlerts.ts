@@ -60,6 +60,7 @@
 
 import type { LndFaultKind, LndHealthReport } from "../lightning/lndHealth";
 import type { AlertSeverity, TreasuryAlert } from "./treasury-alerts";
+import type { CertInspection } from "../lightning/certExpiry";
 
 /** Alert type emitted when at least one scope reports a non-ok kind. */
 export const LND_FAULT_ALERT = "LND_FAULT";
@@ -108,6 +109,50 @@ function worstSeverity(kinds: LndFaultKind[]): AlertSeverity {
 }
 
 /**
+ * Pure. An expired TLS certificate turns a `connectivity` fault from transient
+ * into permanent, so it changes the severity — and the CLASSIFIER IS NOT THE
+ * PLACE TO FIX THAT.
+ *
+ * WHY HERE AND NOT IN classifyLndError. An expired cert arrives as gRPC 14
+ * UNAVAILABLE, which the classifier resolves at its NUMERIC switch
+ * (lndHealth.ts:231-232) and returns from before the error TEXT is ever read —
+ * so `certificate has expired` is never examined. Making the classifier read it
+ * would mean inverting its documented numeric-wins-over-text invariant
+ * (lndHealth.ts:200-204) for one gRPC code, and separating the cases by wording
+ * would bind us to LND's exact strings on a dependency this repo does not pin.
+ *
+ * The alert PRODUCER is the right seam because it is where severity is decided,
+ * and because the disk fact is available here without any LND call at all.
+ * SEVERITY_BY_KIND above justifies `connectivity -> warning` on transience —
+ * "a restarting LND, a container bounce, a brief network blip all land here and
+ * clear themselves". A lapsed cert is precisely the case where that reasoning
+ * does not hold, and notAfter in the past is precisely the proof that it does
+ * not. So the map stays correct and this composes on top of it.
+ *
+ * ⚠ Requires `connectivity` among the faulted kinds. An expired cert with no
+ * connectivity fault is not a thing this can observe (the calls would be
+ * failing), and escalating on the cert alone would fire on a healthy node whose
+ * cert simply happens to be old — a false critical.
+ */
+function certEscalation(
+  kinds: LndFaultKind[],
+  certExpiry: CertInspection | null | undefined,
+): { severity: AlertSeverity; note: string } | null {
+  if (!kinds.includes("connectivity")) return null;
+  if (!certExpiry || !certExpiry.ok || !certExpiry.isExpired) return null;
+
+  const on = new Date(certExpiry.notAfterMs).toISOString().slice(0, 10);
+  const days = Math.abs(certExpiry.daysRemaining);
+  return {
+    severity: "critical",
+    note:
+      ` — NOT TRANSIENT: LND's TLS certificate EXPIRED on ${on} ` +
+      `(${days} day${days === 1 ? "" : "s"} ago), so this will not clear on its own. ` +
+      `Restart the Lightning app so LND issues a new certificate.`,
+  };
+}
+
+/**
  * Pure. Build the alerts for a reserve check that could not run.
  *
  * Called ONLY from treasury-alerts.ts's reserve catch site, so the skipped
@@ -125,7 +170,17 @@ function worstSeverity(kinds: LndFaultKind[]): AlertSeverity {
 export function lndFaultAlerts(
   report: LndHealthReport,
   nowMs: number,
-  opts: { minOnchainReserveSats: number },
+  opts: {
+    minOnchainReserveSats: number;
+    /**
+     * The local tls.cert's validity window, if the caller could read it.
+     * OPTIONAL, and absent means "no escalation" — so every existing caller and
+     * every existing test keeps its current severities unchanged. See
+     * certEscalation above for why this fact lives here rather than in the
+     * classifier.
+     */
+    certExpiry?: CertInspection | null;
+  },
 ): TreasuryAlert[] {
   const faulted = report.scopes.filter((s) => s.kind !== "ok");
   const kinds = [...new Set(faulted.map((s) => s.kind))].sort();
@@ -152,15 +207,37 @@ export function lndFaultAlerts(
 
   // ── The fault itself, carrying the KIND per scope. ──
   if (faulted.length > 0) {
+    const base = worstSeverity(faulted.map((s) => s.kind));
+    const escalation = certEscalation(kinds, opts.certExpiry);
+    // max(), not override: an `auth` fault is already critical and must not be
+    // walked back by a cert that happens to be fine.
+    const severity =
+      escalation && SEVERITY_RANK[escalation.severity] > SEVERITY_RANK[base]
+        ? escalation.severity
+        : base;
+
     alerts.push({
       type: LND_FAULT_ALERT,
-      severity: worstSeverity(faulted.map((s) => s.kind)),
+      severity,
       message:
         `LND fault: ` +
         faulted.map((s) => `${s.scope} ${s.kind}`).join(", ") +
-        (report.files_present ? "" : " (tls.cert and/or macaroon absent on disk)"),
+        (report.files_present ? "" : " (tls.cert and/or macaroon absent on disk)") +
+        (escalation ? escalation.note : ""),
       data: {
         kinds,
+        // Present only when the caller supplied it. `null` distinguishes
+        // "read the cert, it is fine" from "did not look".
+        cert_expiry:
+          opts.certExpiry === undefined
+            ? undefined
+            : opts.certExpiry && opts.certExpiry.ok
+              ? {
+                  not_after_ms: opts.certExpiry.notAfterMs,
+                  days_remaining: opts.certExpiry.daysRemaining,
+                  is_expired: opts.certExpiry.isExpired,
+                }
+              : null,
         // All three scopes, not just the faulted ones — the partial case is
         // only legible if the healthy scopes are visible alongside the broken.
         scopes: report.scopes,

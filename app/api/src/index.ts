@@ -53,6 +53,12 @@ import {
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
 import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, getLndChainFeeRate, updateNodeAlias, clearNodeAlias } from "./lightning/lnd";
+// Shared error unwrapper. ln-service throws [503, 'Name', {err}] ARRAYS whose
+// top-level .message/.code/.details are all undefined, so `err.message` at a
+// catch site prints nothing — and String(err) on the array yields
+// "503,Name,[object Object]". lndFaultDetail flattens it properly.
+import { lndFaultDetail } from "./lightning/lndHealth";
+import { channelDataFreshness } from "./api/memberStatsFreshness";
 import { runTimeoutBoundLndProbe } from "./lightning/lndProbeRoute";
 import { normalizeAlias, validateAliasFormat, isAliasBlocked, lndDefaultAlias } from "./profile/aliasValidation";
 import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow } from "./profile/profileStore";
@@ -449,7 +455,12 @@ async function dispatchRequest(
         lightning_sats,
         total_sats: onchain_sats + lightning_sats,
       }));
-    } catch {
+    } catch (err) {
+      // Was a bare `catch {`: the 500 went out and NOTHING was logged, so
+      // during the 2026-08-17 cert expiry the API logs showed only the sync
+      // loop's failures and nothing at all from the three endpoints actually
+      // returning 500. Response shape is unchanged; this adds the missing line.
+      console.warn("[node/balances] failed:", lndFaultDetail(err));
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "failed_to_fetch_balances" }));
     }
@@ -1790,7 +1801,8 @@ async function dispatchRequest(
       const data = getChannels();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(data));
-    } catch {
+    } catch (err) {
+      console.warn("[channels] failed:", lndFaultDetail(err));
       res.writeHead(500);
       res.end(JSON.stringify({ error: "failed_to_fetch_channels" }));
     }
@@ -1807,7 +1819,8 @@ async function dispatchRequest(
       }));
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(all));
-    } catch {
+    } catch (err) {
+      console.warn("[channels/pending] failed:", lndFaultDetail(err));
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "failed_to_fetch_pending" }));
     }
@@ -3041,27 +3054,44 @@ async function dispatchRequest(
       const node = getNodeInfo();
       const hubPubkey = ENV.treasuryPubkey;
 
+      // ⚠ THESE TWO LIVE READS ARE WHY THIS ENDPOINT LAUNDERED A FROZEN
+      // BALANCE. Both were `catch {}` marked "non-fatal", which is honest about
+      // intent (a peer or keysend probe should not 500 the dashboard) and wrong
+      // about consequence: when LND is unreachable BOTH fail, both are
+      // swallowed, and the handler still answers 200 with SQLite-sourced channel
+      // numbers. The poll succeeds, so nothing downstream can tell. Staying
+      // non-fatal is correct; being silent was not.
       let isPeeredToHub = false;
+      let lndLiveReadOk = true;
       if (hubPubkey) {
         try {
           const { peers } = await getLndPeers();
           isPeeredToHub = peers.some((p: any) => p.public_key === hubPubkey);
-        } catch {
-          // non-fatal — direct peer check best-effort
+        } catch (err) {
+          // Still non-fatal. But recorded, and logged with the shared
+          // unwrapper — ln-service throws [503, 'Name', {err}] arrays whose
+          // top-level .message is undefined, so `err.message` here would print
+          // nothing useful.
+          lndLiveReadOk = false;
+          console.warn("[member-stats] live peer check failed:", lndFaultDetail(err));
         }
       }
 
       let keysendEnabled = false;
       try {
         keysendEnabled = await isKeysendEnabled();
-      } catch {
-        // non-fatal — keysend check best-effort
+      } catch (err) {
+        lndLiveReadOk = false;
+        console.warn("[member-stats] live keysend check failed:", lndFaultDetail(err));
       }
 
+      // updated_at is selected so the numbers can carry their own age. Without
+      // it these balances are indistinguishable from live ones no matter how
+      // long the sync loop has been failing.
       const treasuryChannel = hubPubkey
         ? (db
             .prepare(
-              "SELECT channel_id, local_balance_sat, remote_balance_sat, capacity_sat, active FROM lnd_channels WHERE peer_pubkey = ? LIMIT 1"
+              "SELECT channel_id, local_balance_sat, remote_balance_sat, capacity_sat, active, updated_at FROM lnd_channels WHERE peer_pubkey = ? LIMIT 1"
             )
             .get(hubPubkey) as
             | {
@@ -3070,6 +3100,7 @@ async function dispatchRequest(
                 remote_balance_sat: number;
                 capacity_sat: number;
                 active: number;
+                updated_at: number;
               }
             | undefined)
         : undefined;
@@ -3098,6 +3129,10 @@ async function dispatchRequest(
         node_role: node?.node_role ?? "external",
         is_peered_to_hub: isPeeredToHub,
         keysend_enabled: keysendEnabled,
+        // Whether BOTH live LND reads above succeeded. false means these
+        // channel numbers are SQLite-sourced and LND could not be reached this
+        // request — the state that previously looked identical to healthy.
+        lnd_live_read_ok: lndLiveReadOk,
         treasury_channel: treasuryChannel
           ? {
               channel_id: treasuryChannel.channel_id,
@@ -3105,6 +3140,9 @@ async function dispatchRequest(
               remote_sats: treasuryChannel.remote_balance_sat,
               capacity_sats: treasuryChannel.capacity_sat,
               is_active: Boolean(treasuryChannel.active),
+              // Provenance travels WITH the numbers it describes, rather than
+              // as a sibling field a consumer has to remember to join.
+              freshness: channelDataFreshness(treasuryChannel.updated_at, Date.now()),
             }
           : null,
         forwarded_fees: {

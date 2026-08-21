@@ -30,9 +30,12 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { ENV } from "../config/env";
+import { LND_DIR, TLS_CERT_PATH } from "./lndPaths";
 
-const LND_DIR = process.env.LND_DIR ?? "/lnd";
-const TLS_CERT_PATH = path.join(LND_DIR, "tls.cert");
+// LND_DIR / TLS_CERT_PATH live in ./lndPaths.ts so the expiry inspector shares
+// ONE definition with this client rather than re-deriving the path. Re-exported
+// here because callers already reach for it via this module.
+export { TLS_CERT_PATH } from "./lndPaths";
 const MACAROON_PATH = path.join(
   LND_DIR,
   "data",
@@ -43,6 +46,43 @@ const MACAROON_PATH = path.join(
 );
 
 let lndClient: ReturnType<typeof authenticatedLndGrpc> | null = null;
+
+/**
+ * sha256 (hex) of the tls.cert BYTES the current `lndClient` was built from.
+ * The rebuild precondition, and deliberately a content hash rather than an
+ * mtime: mtime moves without content moving (a touch, a backup restore, a
+ * container remount), and rebuilding on those would reintroduce exactly the
+ * spin this design exists to prevent. Pinned by a test.
+ */
+let lndClientCertHash: string | null = null;
+
+/** Rebuilds only — the first construction is not a rebuild. */
+let lndClientRebuildCount = 0;
+
+/**
+ * How many times the memoized client has been REPLACED because the cert bytes
+ * changed. Exposed so the no-spin property is observable rather than asserted:
+ * a permanent credential fault must leave this at 0 no matter how many LND
+ * calls fail. See lnd.certRebuild.test.ts.
+ */
+export function getLndClientRebuildCount(): number {
+  return lndClientRebuildCount;
+}
+
+/**
+ * Drop the memoized client so the next getLndClient() constructs a fresh one.
+ *
+ * This is the MECHANISM. The POLICY lives in getLndClient()'s cert-hash gate,
+ * and this helper is deliberately NOT wired to any error path — that is the
+ * whole safety property. Invalidating on failure is the design this arc
+ * rejected: it retries past a permanent auth/permission fault and so hides it,
+ * which is the documented failure mode wearing a fix's clothes. Kept exported
+ * as the seam for an explicit, deliberate reset.
+ */
+export function invalidateLndClient(): void {
+  lndClient = null;
+  lndClientCertHash = null;
+}
 
 /**
  * Checks if LND files are available (TLS cert and readonly macaroon)
@@ -67,22 +107,42 @@ export function getLndClient() {
     throw new Error("LND files not available: missing TLS cert or readonly macaroon");
   }
 
-  if (lndClient) {
-    return lndClient;
-  }
-
   try {
-    const cert = fs.readFileSync(TLS_CERT_PATH).toString("base64");
+    // Read + hash BEFORE the memo check: the whole point is that a cert
+    // regenerated underneath a live process must be noticed. /lnd is a live
+    // bind mount, so the new bytes are visible the moment LND writes them.
+    //
+    // Cost, stated rather than assumed: one small readFileSync + sha256 per
+    // call, where isLndAvailable() above already performs two existsSync
+    // syscalls — same order of magnitude on the same hot path.
+    const certBytes = fs.readFileSync(TLS_CERT_PATH);
+    const certHash = crypto.createHash("sha256").update(certBytes).digest("hex");
+
+    if (lndClient && lndClientCertHash === certHash) {
+      return lndClient;
+    }
+
+    const isRebuild = lndClient !== null;
     const macaroon = fs.readFileSync(MACAROON_PATH).toString("base64");
 
     lndClient = authenticatedLndGrpc({
-      cert,
+      cert: certBytes.toString("base64"),
       macaroon,
       socket: ENV.lndGrpcHost,
       tls: {
         rejectUnauthorized: false,
       },
     });
+    lndClientCertHash = certHash;
+
+    if (isRebuild) {
+      lndClientRebuildCount += 1;
+      console.warn(
+        `[lnd] tls.cert changed on disk — rebuilt the LND client ` +
+          `(rebuild #${lndClientRebuildCount}). This is the expected recovery ` +
+          `path after LND regenerates its certificate.`,
+      );
+    }
 
     return lndClient;
   } catch (err) {
