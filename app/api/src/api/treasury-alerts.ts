@@ -6,6 +6,7 @@ import { getDailyLossSats } from "../utils/loss-cap";
 import { getLndChainBalance } from "../lightning/lnd";
 import { runTimeoutBoundLndProbe } from "../lightning/lndProbeRoute";
 import { lndFaultAlerts } from "./lndFaultAlerts";
+import { readLocalCertExpiry } from "../lightning/readCertExpiry";
 import { isLoopAvailable } from "../lightning/loop";
 import { ENV } from "../config/env";
 import { MANUAL_METRIC_KEYS, listLatestPerMetric } from "../valuation/manualInputStore";
@@ -165,9 +166,14 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     // separately, and not addressed here.
     try {
       const report = await runTimeoutBoundLndProbe(now);
+      // The cert is read from LOCAL DISK — no LND call, so it still answers
+      // when every gRPC call is failing. That is the whole point: it is what
+      // separates a permanently-lapsed cert from a transient blip, both of
+      // which the classifier necessarily reports as `connectivity`.
       alerts.push(
         ...lndFaultAlerts(report, now, {
           minOnchainReserveSats: policy.min_onchain_reserve_sats,
+          certExpiry: readLocalCertExpiry(now),
         }),
       );
     } catch (probeErr: any) {

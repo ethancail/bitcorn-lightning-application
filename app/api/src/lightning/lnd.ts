@@ -30,19 +30,12 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { ENV } from "../config/env";
+import { LND_DIR, TLS_CERT_PATH } from "./lndPaths";
 
-const LND_DIR = process.env.LND_DIR ?? "/lnd";
-
-/**
- * Path to LND's self-signed TLS certificate.
- *
- * EXPORTED so the cert-expiry inspector (./certExpiry.ts) reads the same path
- * this client is built from, rather than re-deriving it. A second `path.join`
- * elsewhere would be a silent drift risk the day LND_DIR or the filename
- * changes — and the expiry check is only meaningful if it inspects the very
- * bytes the client uses.
- */
-export const TLS_CERT_PATH = path.join(LND_DIR, "tls.cert");
+// LND_DIR / TLS_CERT_PATH live in ./lndPaths.ts so the expiry inspector shares
+// ONE definition with this client rather than re-deriving the path. Re-exported
+// here because callers already reach for it via this module.
+export { TLS_CERT_PATH } from "./lndPaths";
 const MACAROON_PATH = path.join(
   LND_DIR,
   "data",
