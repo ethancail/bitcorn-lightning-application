@@ -656,12 +656,31 @@ export type MemberStats = {
   node_role: string;
   is_peered_to_hub: boolean;
   keysend_enabled: boolean;
+  /**
+   * Whether the endpoint's two live LND reads succeeded this request. false
+   * means the channel numbers below came from SQLite while LND was
+   * unreachable — a state that used to be indistinguishable from healthy,
+   * because both live reads were swallowed as "non-fatal" and the endpoint
+   * still answered 200.
+   */
+  lnd_live_read_ok: boolean;
   treasury_channel: null | {
     channel_id: string;
     local_sats: number;
     remote_sats: number;
     capacity_sats: number;
     is_active: boolean;
+    /**
+     * How old these numbers are. DATA-AGE driven, not poll-outcome driven:
+     * this endpoint returns 200 even when LND is down, so components/freshness.ts
+     * (which counts failed polls) can never mark it. Derived from
+     * lnd_channels.updated_at via the API's base/staleness.ts thresholds.
+     */
+    freshness: {
+      updated_at_ms: number | null;
+      age_seconds: number | null;
+      staleness: "fresh" | "stale" | "very_stale" | "never_synced";
+    };
   };
   forwarded_fees: {
     total_sats: number;

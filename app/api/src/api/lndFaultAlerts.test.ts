@@ -420,3 +420,121 @@ describe("purity", () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAIR 3 — cert-expiry severity composition.
+//
+// The severity STRINGS are branched on downstream (Dashboard.tsx renders only
+// "critical" and "warning"), so these assert the VALUE, not merely that some
+// carrier changed.
+//
+// The half that matters is (b), the future-notAfter control. Without it this
+// seam could blanket-escalate EVERY connectivity fault to critical and (a)
+// would still pass — which would fire on every container bounce and teach the
+// operator to ignore criticals, the exact alert-fatigue failure that
+// SEVERITY_BY_KIND's reasoning exists to avoid.
+// ═══════════════════════════════════════════════════════════════════════════
+
+type ProducedAlerts = ReturnType<typeof lndFaultAlerts>;
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** Shaped like certExpiry.ts's CertFacts, built inline so this file stays pure. */
+function certFacts(notAfterMs: number, nowMs: number) {
+  return {
+    ok: true as const,
+    notBeforeMs: notAfterMs - 400 * DAY,
+    notAfterMs,
+    daysRemaining: Math.floor((notAfterMs - nowMs) / DAY),
+    isExpired: nowMs >= notAfterMs,
+    subject: "CN=fixture",
+  };
+}
+
+const EXPIRED_CERT = certFacts(NOW - 4 * DAY, NOW); // lapsed 4 days ago
+const VALID_CERT = certFacts(NOW + 200 * DAY, NOW); // 200 days of runway
+
+const sevOf = (alerts: ProducedAlerts) =>
+  alerts.find((a) => a.type === LND_FAULT_ALERT)!.severity;
+const msgOf = (alerts: ProducedAlerts) =>
+  alerts.find((a) => a.type === LND_FAULT_ALERT)!.message;
+
+describe("PAIR 3 — an expired cert makes a connectivity fault critical", () => {
+  // ── (a) the escalation ──
+  it("connectivity + a notAfter in the PAST is critical", async () => {
+    const report = await reportFrom({ onchain: throws(CONNECTIVITY_FAULT) });
+    const alerts = lndFaultAlerts(report, NOW, { ...OPTS, certExpiry: EXPIRED_CERT });
+    expect(sevOf(alerts)).toBe("critical");
+  });
+
+  // ── (b) THE CONTROL — proves the seam did not blanket-escalate ──
+  it("connectivity + a notAfter in the FUTURE stays warning", async () => {
+    const report = await reportFrom({ onchain: throws(CONNECTIVITY_FAULT) });
+    const valid = lndFaultAlerts(report, NOW, { ...OPTS, certExpiry: VALID_CERT });
+
+    expect(sevOf(valid)).toBe("warning");
+    // The inequality, so neither half can be a constant.
+    const expired = lndFaultAlerts(report, NOW, { ...OPTS, certExpiry: EXPIRED_CERT });
+    expect(sevOf(valid)).not.toBe(sevOf(expired));
+  });
+
+  it("omitting certExpiry leaves connectivity at warning — every existing caller unaffected", async () => {
+    const report = await reportFrom({ onchain: throws(CONNECTIVITY_FAULT) });
+    expect(sevOf(lndFaultAlerts(report, NOW, OPTS))).toBe("warning");
+  });
+
+  it("an unreadable cert does not escalate — 'could not tell' is not 'expired'", async () => {
+    const report = await reportFrom({ onchain: throws(CONNECTIVITY_FAULT) });
+    const alerts = lndFaultAlerts(report, NOW, {
+      ...OPTS,
+      certExpiry: { ok: false as const, reason: "could not parse certificate" },
+    });
+    expect(sevOf(alerts)).toBe("warning");
+  });
+
+  it("an expired cert alone, with NO connectivity fault, does not escalate", async () => {
+    // A healthy node whose cert is merely old must not produce a false critical.
+    const report = await reportFrom({ offchain: throws(PERMISSION_FAULT) });
+    const alerts = lndFaultAlerts(report, NOW, { ...OPTS, certExpiry: EXPIRED_CERT });
+    // permission is critical on its own merits; what matters is that the cert
+    // note was NOT attached, because no connectivity fault was observed.
+    expect(msgOf(alerts)).not.toMatch(/NOT TRANSIENT/);
+  });
+
+  it("says NOT TRANSIENT and names the date, so nobody is sent to check their internet", async () => {
+    const report = await reportFrom({ onchain: throws(CONNECTIVITY_FAULT) });
+    const msg = msgOf(lndFaultAlerts(report, NOW, { ...OPTS, certExpiry: EXPIRED_CERT }));
+
+    expect(msg).toMatch(/NOT TRANSIENT/);
+    expect(msg).toMatch(/certificate EXPIRED on \d{4}-\d{2}-\d{2}/);
+    expect(msg).toMatch(/restart the lightning app/i);
+    // Copy constraint, same shape as confirmMachine.test.ts:153-154.
+    expect(msg).not.toMatch(/ask your (node )?operator/i);
+    expect(msg).not.toMatch(/contact your (node )?operator/i);
+  });
+
+  it("an expired cert does NOT walk back an already-critical credential fault", async () => {
+    const report = await reportFrom({ info: throws(AUTH_FAULT) });
+    expect(sevOf(lndFaultAlerts(report, NOW, { ...OPTS, certExpiry: VALID_CERT }))).toBe("critical");
+    expect(sevOf(lndFaultAlerts(report, NOW, { ...OPTS, certExpiry: EXPIRED_CERT }))).toBe("critical");
+  });
+
+  it("carries the cert facts in data, and null when the cert was unreadable", async () => {
+    const report = await reportFrom({ onchain: throws(CONNECTIVITY_FAULT) });
+
+    const withCert = lndFaultAlerts(report, NOW, { ...OPTS, certExpiry: EXPIRED_CERT })
+      .find((a) => a.type === LND_FAULT_ALERT)!;
+    expect((withCert.data as Record<string, unknown>).cert_expiry).toEqual({
+      not_after_ms: EXPIRED_CERT.notAfterMs,
+      days_remaining: -4,
+      is_expired: true,
+    });
+
+    const unreadable = lndFaultAlerts(report, NOW, {
+      ...OPTS,
+      certExpiry: { ok: false as const, reason: "x" },
+    }).find((a) => a.type === LND_FAULT_ALERT)!;
+    // null = "we looked and could not read it"; undefined = "we did not look".
+    expect((unreadable.data as Record<string, unknown>).cert_expiry).toBeNull();
+  });
+});

@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.6"
+version: "1.18.7"
 port: 3200
 
 description: >
@@ -27,6 +27,15 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.7: Two changes you'll notice. Your node now checks its Lightning
+  connection certificate and warns ahead of time when it's getting close to
+  expiring — this certificate is renewed automatically when your Lightning app
+  restarts, and until now nothing told you it was due. Second, when your channel
+  balance figures are older than they should be, the dashboard now says so
+  instead of showing a stale number as if it were current. Your Lightning node,
+  channels, routing, payments, subscription and stablecoin settings are all
+  untouched.
+
   v1.18.6: One change you'll notice. Actions that move money — sending a
   payment, opening a channel, withdrawing to your own Bitcoin address, refilling
   a channel — now ask you to confirm the amount before they run. Type the number
