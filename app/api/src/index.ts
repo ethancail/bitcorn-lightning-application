@@ -53,6 +53,11 @@ import {
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
 import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, getLndChainFeeRate, updateNodeAlias, clearNodeAlias } from "./lightning/lnd";
+// Two route handlers in this file call ln-service DIRECTLY off getLndClient()'s
+// handle instead of through an lnd.ts wrapper (POST /api/pay's decode, and the
+// gossip alias lookup in POST /api/contacts/sync-peers). Those two bypass the
+// wrappers' deadlines, so they bind their own.
+import { withDeadline, LND_GOSSIP_CALL_TIMEOUT_MS } from "./lightning/callDeadline";
 // Shared error unwrapper. ln-service throws [503, 'Name', {err}] ARRAYS whose
 // top-level .message/.code/.details are all undefined, so `err.message` at a
 // catch site prints nothing — and String(err) on the array yields
@@ -2899,7 +2904,15 @@ async function dispatchRequest(
           const { lnd: lndClient } = getLndClient();
           let decodedRequest: { id: string; destination: string; tokens: number } | null = null;
           try {
-            decodedRequest = await decodePaymentRequest({ lnd: lndClient, request: payment_request });
+            // Raw ln-service call off getLndClient()'s handle, so it does not
+            // inherit an lnd.ts wrapper's deadline and binds its own. Bounded
+            // rather than held: the decode commits nothing, and a decode that
+            // times out means no payment was attempted.
+            decodedRequest = await withDeadline(
+              "pay:decodePaymentRequest",
+              () => decodePaymentRequest({ lnd: lndClient, request: payment_request }),
+              LND_GOSSIP_CALL_TIMEOUT_MS,
+            );
           } catch (decodeErr) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "invalid_payment_request" }));
@@ -3680,7 +3693,14 @@ async function dispatchRequest(
         let name = `${peer_pubkey.slice(0, 8)}…${peer_pubkey.slice(-6)}`;
         try {
           const { lnd } = getLndClient();
-          const nodeInfo = await getNode({ lnd, public_key: peer_pubkey, is_omitting_channels: true });
+          // Raw ln-service gossip read; binds its own deadline for the same
+          // reason as the decode above. ⚠ PER PEER — this sits inside the
+          // contact loop, so the route's exposure is peers × the deadline.
+          const nodeInfo = await withDeadline(
+            "syncPeers:getNode",
+            () => getNode({ lnd, public_key: peer_pubkey, is_omitting_channels: true }),
+            LND_GOSSIP_CALL_TIMEOUT_MS,
+          );
           if (nodeInfo.alias && nodeInfo.alias.trim()) {
             name = nodeInfo.alias.trim();
           }
