@@ -196,6 +196,21 @@ describe("CONTROL 2 — a slow-but-healthy LND still returns normally", () => {
     });
   });
 
+  it("⚠ a call resolving 1ms INSIDE the real 3s deadline still succeeds", async () => {
+    // The done-when at the actual production number rather than a scaled proxy.
+    // This is the self-inflicted-outage case: if the deadline fired at or just
+    // before its nominal value, healthy-but-loaded nodes would start failing,
+    // and on a fleet that updates by farmer click a bad number cannot be
+    // recalled. Fake timers so this costs no wall clock.
+    vi.useFakeTimers();
+    rpc.latencyMs = LND_FAST_CALL_TIMEOUT_MS - 1;
+
+    const p = lnd.getLndChainBalance();
+    await vi.advanceTimersByTimeAsync(LND_FAST_CALL_TIMEOUT_MS - 1);
+
+    await expect(p).resolves.toEqual({ chain_balance: 123 });
+  });
+
   it("the wrapper does not change what a healthy call returns", async () => {
     // Guards the green-control mechanism "it resolved, so the assertion passed":
     // the VALUE has to survive the wrapper, not just the promise.
