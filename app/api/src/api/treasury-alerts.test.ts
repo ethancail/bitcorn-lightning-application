@@ -358,17 +358,56 @@ describe("the producer's deadline protects the probe", () => {
     expect(fault.severity).toBe("critical"); // permission outranks connectivity
   }, 20_000);
 
-  it("⚠ RESIDUAL HAZARD, PINNED NOT FIXED: a wedged reserve call still hangs the poll", async () => {
-    // getLndChainBalance() at :121 has no deadline, so a wedged-but-connected
-    // LND hangs there and never reaches the catch site or the producer. This
-    // arc's timeout does NOT close that; fixing :121 (and isLoopAvailable() at
-    // :162) is a separate, pre-existing item. Pinned so it is visible rather
-    // than mistaken for solved.
+  it("the producer itself imposes no deadline on the reserve call", async () => {
+    // ─── THIS CASE USED TO READ "RESIDUAL HAZARD, PINNED NOT FIXED" ──────────
+    //
+    // It was written when getLndChainBalance() had no deadline anywhere, so a
+    // wedged-but-connected LND hung here forever and never reached the catch
+    // site. That is no longer true: lnd.ts now bounds getLndChainBalance at
+    // LND_FAST_CALL_TIMEOUT_MS (3s), so in production the wedge becomes a
+    // rejection and the case below ("a timed-out reserve call…") shows what the
+    // producer then does with it.
+    //
+    // ⚠ THE ASSERTION IS UNCHANGED AND STILL TRUE, WHICH IS EXACTLY WHY THE
+    // COMMENT HAD TO CHANGE. This file mocks ../lightning/lnd wholesale, so the
+    // real wrapper — and its deadline — is not in play here at all; and even in
+    // production 3s is longer than this 600ms race. A test that keeps passing
+    // while its explanation goes stale is worse than one that fails.
+    //
+    // What it still legitimately pins: getTreasuryAlerts() has no deadline of
+    // its OWN. The bound lives one layer down, in the lnd.ts wrapper, and is
+    // proven in lightning/lnd.deadlines.test.ts against a mocked ln-service.
+    // (The old comment's ":121" / ":162" line references were stale too — the
+    // calls are at treasury-alerts.ts:124 and :220.)
     s.chainBalanceHangs = true;
 
     const call = getTreasuryAlerts().then(() => "settled" as const);
     const race = new Promise<"hung">((r) => globalThis.setTimeout(() => r("hung"), 600));
     expect(await Promise.race([call, race])).toBe("hung");
+  }, 20_000);
+
+  it("a timed-out reserve call becomes a critical alert, not a hang", async () => {
+    // The done-when for this endpoint, at the producer level: once lnd.ts turns
+    // a wedge into an ETIMEDOUT rejection, the reserve check's catch site is
+    // reached and the guardrail's failure is REPORTED rather than silent.
+    //
+    // The error shape is the one lnd.ts's withDeadline actually constructs, so
+    // this exercises the same string CONNECTIVITY_RE keys on rather than an
+    // invented stand-in.
+    s.chainBalanceThrows = new Error(
+      "ETIMEDOUT: getLndChainBalance exceeded 3000ms deadline",
+    );
+
+    const alerts = await getTreasuryAlerts();
+    const types_ = types(alerts);
+
+    expect(types_).toContain("ONCHAIN_RESERVE_CHECK_SKIPPED");
+    const skipped = alerts.find((a) => a.type === "ONCHAIN_RESERVE_CHECK_SKIPPED")!;
+    expect(skipped.severity).toBe("critical");
+
+    // And the fault itself is classified rather than discarded.
+    const fault = alerts.find((a) => a.type === "LND_FAULT")!;
+    expect(fault.data.kinds).toContain("connectivity");
   }, 20_000);
 });
 

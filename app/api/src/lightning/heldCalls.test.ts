@@ -143,6 +143,14 @@ describe("the six outcome-ambiguous calls carry no deadline", () => {
   it("pay.ts imports no deadline helper at all", () => {
     // pay.ts's only LND call is held, so the module has no business importing
     // the wrapper. Catches the drive-by "while I was in there" edit.
-    expect(fs.readFileSync(PAY_TS, "utf8")).not.toContain("callDeadline");
+    //
+    // ⚠ MATCHES THE IMPORT, NOT THE WORD. The first version asserted the source
+    // did not contain "callDeadline" anywhere, and immediately failed when the
+    // held-call comment was added — a comment POINTING AT callDeadline.ts is the
+    // thing we want, and an assertion that forbids naming the module forbids
+    // documenting the decision. Assert the import and the call instead.
+    const src = fs.readFileSync(PAY_TS, "utf8");
+    expect(src).not.toMatch(/from\s+["'][^"']*callDeadline["']/);
+    expect(src).not.toContain("withDeadline(");
   });
 });
