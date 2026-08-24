@@ -1,6 +1,10 @@
 import { db } from "../db";
 import { decodePaymentRequest } from "ln-service";
 import { createLndInvoice, getLndClient } from "./lnd";
+// decodePaymentRequest is called directly off getLndClient()'s handle rather
+// than through an lnd.ts wrapper, so it binds its own deadline. Decode consults
+// the gossip graph to resolve routing hints, hence the gossip class.
+import { withDeadline, LND_GOSSIP_CALL_TIMEOUT_MS } from "./callDeadline";
 import { payInvoice } from "./pay";
 import { insertOutboundPayment } from "./persist-payments";
 import { assertRateLimit } from "../utils/rate-limit";
@@ -90,7 +94,11 @@ export interface DecodedInvoice {
 
 export async function decodeInvoice(paymentRequest: string): Promise<DecodedInvoice> {
   const { lnd } = getLndClient();
-  const decoded = await decodePaymentRequest({ lnd, request: paymentRequest });
+  const decoded = await withDeadline(
+    "decodeInvoice",
+    () => decodePaymentRequest({ lnd, request: paymentRequest }),
+    LND_GOSSIP_CALL_TIMEOUT_MS,
+  );
   return {
     id: decoded.id,
     destination: decoded.destination,
@@ -117,7 +125,16 @@ export async function payNetworkInvoice(
   paymentRequest: string
 ): Promise<PaymentResult> {
   const { lnd } = getLndClient();
-  const decoded = await decodePaymentRequest({ lnd, request: paymentRequest });
+  // ⚠ THE DECODE IS BOUNDED; THE PAYMENT IT PRECEDES IS NOT. payInvoice() below
+  // goes through pay.ts, whose payViaPaymentRequest is held unbounded. Bounding
+  // the decode is safe precisely because it commits nothing — it is a read of
+  // the request plus the gossip graph, and failing it means no payment was
+  // attempted at all.
+  const decoded = await withDeadline(
+    "payNetworkInvoice:decode",
+    () => decodePaymentRequest({ lnd, request: paymentRequest }),
+    LND_GOSSIP_CALL_TIMEOUT_MS,
+  );
   const { id: paymentHash, destination, tokens, description } = decoded;
 
   assertRateLimit(tokens);

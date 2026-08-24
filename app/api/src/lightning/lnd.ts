@@ -31,6 +31,11 @@ import fs from "fs";
 import path from "path";
 import { ENV } from "../config/env";
 import { LND_DIR, TLS_CERT_PATH } from "./lndPaths";
+import {
+  withDeadline,
+  LND_FAST_CALL_TIMEOUT_MS,
+  LND_GOSSIP_CALL_TIMEOUT_MS,
+} from "./callDeadline";
 
 // LND_DIR / TLS_CERT_PATH live in ./lndPaths.ts so the expiry inspector shares
 // ONE definition with this client rather than re-deriving the path. Re-exported
@@ -165,7 +170,11 @@ export async function getLndInfo(): Promise<{
   const { lnd } = getLndClient();
 
   try {
-    const walletInfo = await getWalletInfo({ lnd });
+    const walletInfo = await withDeadline(
+      "getLndInfo",
+      () => getWalletInfo({ lnd }),
+      LND_FAST_CALL_TIMEOUT_MS,
+    );
 
     if (ENV.debug) {
       console.log("[lnd] wallet info:", walletInfo);
@@ -205,7 +214,11 @@ export async function getLndInfo(): Promise<{
  */
 export async function updateNodeAlias(alias: string): Promise<void> {
   const { lnd } = getLndClient();
-  await updateAlias({ lnd, alias });
+  await withDeadline(
+    "updateNodeAlias",
+    () => updateAlias({ lnd, alias }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -229,7 +242,11 @@ function isNoNewValuesError(err: unknown): boolean {
  */
 export async function clearNodeAlias(): Promise<string> {
   const { lnd } = getLndClient();
-  const info = await getWalletInfo({ lnd });
+  const info = await withDeadline(
+    "clearNodeAlias:read",
+    () => getWalletInfo({ lnd }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
   if (!info.public_key) {
     throw new Error("LND wallet info missing public_key; cannot compute default alias");
   }
@@ -240,7 +257,11 @@ export async function clearNodeAlias(): Promise<string> {
     return defaultAlias; // already at the default — nothing to broadcast.
   }
   try {
-    await updateAlias({ lnd, alias: defaultAlias });
+    await withDeadline(
+      "clearNodeAlias:write",
+      () => updateAlias({ lnd, alias: defaultAlias }),
+      LND_FAST_CALL_TIMEOUT_MS,
+    );
   } catch (err) {
     if (!isNoNewValuesError(err)) throw err;
   }
@@ -255,7 +276,11 @@ export async function clearNodeAlias(): Promise<string> {
  */
 export async function isKeysendEnabled(): Promise<boolean> {
   const { lnd } = getLndClient();
-  const info = await getWalletInfo({ lnd });
+  const info = await withDeadline(
+    "isKeysendEnabled",
+    () => getWalletInfo({ lnd }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
   if (!info.features || !Array.isArray(info.features)) return false;
   const keysendBit = info.features.find((f) => f.bit === 55);
   return !!keysendBit?.is_known;
@@ -266,7 +291,11 @@ export async function isKeysendEnabled(): Promise<boolean> {
  */
 export async function getLndPeers() {
   const { lnd } = getLndClient();
-  return getPeers({ lnd });
+  return withDeadline(
+    "getLndPeers",
+    () => getPeers({ lnd }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -274,7 +303,11 @@ export async function getLndPeers() {
  */
 export async function getLndChannels() {
   const { lnd } = getLndClient();
-  return getChannels({ lnd });
+  return withDeadline(
+    "getLndChannels",
+    () => getChannels({ lnd }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -282,11 +315,21 @@ export async function getLndChannels() {
  */
 export async function getLndInvoices() {
   const { lnd } = getLndClient();
-  return getInvoices({ lnd });
+  return withDeadline(
+    "getLndInvoices",
+    () => getInvoices({ lnd }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
  * Gets LND forwarding history (routing revenue).
+ *
+ * ⚠ THE DEADLINE BOUNDS ONE PAGE, NOT THE OPERATION. syncForwardingHistory()
+ * calls this in a do/while until the pagination token runs out, so the sync
+ * tick's exposure here is pages × deadline, with no bound on the page count.
+ * Bounding the WALK is a per-tick budget, deliberately deferred — see
+ * callDeadline.ts's composition note and lightning/syncTiming.ts.
  */
 export async function getLndForwards(options?: {
   after?: string;
@@ -295,7 +338,11 @@ export async function getLndForwards(options?: {
   token?: string;
 }) {
   const { lnd } = getLndClient();
-  return getForwards({ lnd, ...options });
+  return withDeadline(
+    "getLndForwards",
+    () => getForwards({ lnd, ...options }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -303,7 +350,11 @@ export async function getLndForwards(options?: {
  */
 export async function getLndChainBalance() {
   const { lnd } = getLndClient();
-  return getChainBalance({ lnd });
+  return withDeadline(
+    "getLndChainBalance",
+    () => getChainBalance({ lnd }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -311,7 +362,11 @@ export async function getLndChainBalance() {
  */
 export async function getLndIdentity() {
   const { lnd } = getLndClient();
-  return getIdentity({ lnd });
+  return withDeadline(
+    "getLndIdentity",
+    () => getIdentity({ lnd }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -319,7 +374,11 @@ export async function getLndIdentity() {
  */
 export async function createLndInvoice(tokens: number, description?: string) {
   const { lnd } = getLndClient();
-  return createInvoice({ lnd, tokens, description });
+  return withDeadline(
+    "createLndInvoice",
+    () => createInvoice({ lnd, tokens, description }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -335,11 +394,21 @@ export async function getLndRouteToDestination(options: {
   total_mtokens?: string;
 }) {
   const { lnd } = getLndClient();
-  return getRouteToDestination({ lnd, ...options });
+  return withDeadline(
+    "getLndRouteToDestination",
+    () => getRouteToDestination({ lnd, ...options }),
+    LND_GOSSIP_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
  * Pays via a pre-built route (e.g. circular rebalance).
+ *
+ * ⚠ HELD — NO DEADLINE, DELIBERATELY. In HELD_UNBOUNDED_CALLS (callDeadline.ts).
+ * A deadline cannot cancel the call, so giving up on an in-flight payment leaves
+ * the outcome UNKNOWN: the HTLC may already have settled. Retrying is a double
+ * spend, not retrying is a lost payment, and nothing local can tell which.
+ * Slow is better than ambiguous here. Pinned by heldCalls.test.ts.
  */
 export type LndRoute = Awaited<ReturnType<typeof getLndRouteToDestination>>["route"];
 
@@ -354,12 +423,22 @@ export async function payLndViaRoutes(id: string, routes: LndRoute[]) {
  */
 export async function getLndPendingChannels() {
   const { lnd } = getLndClient();
-  return getPendingChannels({ lnd });
+  return withDeadline(
+    "getLndPendingChannels",
+    () => getPendingChannels({ lnd }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
  * Cooperatively (or force) closes a channel by its funding outpoint.
  * Returns the closing transaction ID once broadcast.
+ *
+ * ⚠ HELD — NO DEADLINE, DELIBERATELY. In HELD_UNBOUNDED_CALLS (callDeadline.ts).
+ * A close broadcasts an on-chain transaction and a deadline cannot cancel it, so
+ * timing out would leave us unsure whether the channel is closing. A cooperative
+ * close also legitimately takes as long as the peer takes to respond.
+ * Pinned by heldCalls.test.ts.
  */
 export async function closeTreasuryChannel(
   transactionId: string,
@@ -382,12 +461,22 @@ export async function closeTreasuryChannel(
 export async function connectToPeer(publicKey: string, socket?: string) {
   const { lnd } = getLndClient();
   if (socket) {
-    await addPeer({ lnd, public_key: publicKey, socket });
+    await withDeadline(
+      "connectToPeer",
+      () => addPeer({ lnd, public_key: publicKey, socket }),
+      LND_FAST_CALL_TIMEOUT_MS,
+    );
   }
 }
 
 /**
  * Opens a channel from treasury to a peer.
+ *
+ * ⚠ HELD — NO DEADLINE, DELIBERATELY. In HELD_UNBOUNDED_CALLS (callDeadline.ts).
+ * An open commits the funding transaction. A deadline cannot cancel it, so
+ * timing out would leave capital committed with the caller believing it failed —
+ * and the expansion-execution row would record a failure against a channel that
+ * is in fact opening. Pinned by heldCalls.test.ts.
  */
 export async function openTreasuryChannel(
   peerPubkey: string,
@@ -416,7 +505,11 @@ export async function openTreasuryChannel(
  */
 export async function getLndPendingChainBalance() {
   const { lnd } = getLndClient();
-  return getPendingChainBalance({ lnd });
+  return withDeadline(
+    "getLndPendingChainBalance",
+    () => getPendingChainBalance({ lnd }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -424,7 +517,11 @@ export async function getLndPendingChainBalance() {
  */
 export async function getLndChainTransactions() {
   const { lnd } = getLndClient();
-  return getChainTransactions({ lnd });
+  return withDeadline(
+    "getLndChainTransactions",
+    () => getChainTransactions({ lnd }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -433,7 +530,11 @@ export async function getLndChainTransactions() {
  */
 export async function createLndChainAddress(): Promise<{ address: string }> {
   const { lnd } = getLndClient();
-  return createChainAddress({ lnd, format: "p2wpkh" });
+  return withDeadline(
+    "createLndChainAddress",
+    () => createChainAddress({ lnd, format: "p2wpkh" }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -445,6 +546,14 @@ export async function createLndChainAddress(): Promise<{ address: string }> {
  * Returns the broadcast transaction's id (the txid). Defaults to a
  * 6-block confirmation target (subscription deadlines are day-scale —
  * see the implementation deltas — so next-block fees are waste).
+ *
+ * ⚠ HELD — NO DEADLINE, DELIBERATELY. In HELD_UNBOUNDED_CALLS (callDeadline.ts).
+ * This is the sharpest case of the six: it broadcasts a member's subscription
+ * payment. A deadline cannot cancel the broadcast, so timing out would release
+ * payFromNode.ts's send lock with the transaction possibly already on the wire,
+ * and the next tick would pay again. payFromNode.ts:183-187 accepts double-send
+ * risk only across an API restart — a rare event; a routine timeout would make
+ * it routine. Pinned by heldCalls.test.ts.
  */
 export async function sendLndToChainAddress(
   address: string,
@@ -471,7 +580,11 @@ export async function getLndChainFeeRate(
   confirmationTarget = 6,
 ): Promise<{ tokens_per_vbyte: number }> {
   const { lnd } = getLndClient();
-  return getChainFeeRate({ lnd, confirmation_target: confirmationTarget });
+  return withDeadline(
+    "getLndChainFeeRate",
+    () => getChainFeeRate({ lnd, confirmation_target: confirmationTarget }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -482,7 +595,11 @@ export async function getLndChainFeeRate(
  */
 export async function getLndUtxos(args: { min_confirmations?: number } = {}) {
   const { lnd } = getLndClient();
-  return getUtxos({ lnd, ...args });
+  return withDeadline(
+    "getLndUtxos",
+    () => getUtxos({ lnd, ...args }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
 }
 
 /**
@@ -492,7 +609,11 @@ export async function getLndUtxos(args: { min_confirmations?: number } = {}) {
  */
 export async function lndSignMessage(message: string): Promise<string> {
   const { lnd } = getLndClient();
-  const { signature } = await signMessage({ lnd, message });
+  const { signature } = await withDeadline(
+    "lndSignMessage",
+    () => signMessage({ lnd, message }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
   return signature;
 }
 
@@ -507,7 +628,11 @@ export async function lndVerifyMessage(
   signature: string,
 ): Promise<string> {
   const { lnd } = getLndClient();
-  const { signed_by } = await verifyMessage({ lnd, message, signature });
+  const { signed_by } = await withDeadline(
+    "lndVerifyMessage",
+    () => verifyMessage({ lnd, message, signature }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
   return signed_by;
 }
 
@@ -536,14 +661,22 @@ export async function probeRouteToLoopServer(
   }
   const servers = ENV.loopServerPubkeys;
 
+  // ⚠ THE DEADLINE IS PER SERVER, NOT PER PROBE. This loops over every
+  // configured Loop server, so the worst case is servers.length × the gossip
+  // deadline, not one deadline. Same composition caveat as the paginated reads
+  // and the sync tick — see callDeadline.ts's header.
   for (const serverPubkey of servers) {
     try {
-      const result = await getRouteToDestination({
-        lnd,
-        destination: merchantPubkey,
-        tokens: amountSat,
-        start: serverPubkey,
-      });
+      const result = await withDeadline(
+        "probeRouteToLoopServer",
+        () => getRouteToDestination({
+          lnd,
+          destination: merchantPubkey,
+          tokens: amountSat,
+          start: serverPubkey,
+        }),
+        LND_GOSSIP_CALL_TIMEOUT_MS,
+      );
       if (result?.route) {
         return { routable: true, serverPubkey };
       }
@@ -568,6 +701,12 @@ export async function probeRouteToLoopServer(
  * @param tokens - Amount in sats to push
  * @param maxFee - Maximum routing fee in sats (usually 0 for direct peer)
  * @param outgoingChannel - Optional: force payment through this channel
+ *
+ * ⚠ HELD — NO DEADLINE, DELIBERATELY. In HELD_UNBOUNDED_CALLS (callDeadline.ts).
+ * Keysend push permanently transfers sats. A deadline cannot cancel the payment,
+ * so timing out leaves the treasury unsure whether the push landed — and the
+ * member_liquidity_recommendations row would be marked failed against a transfer
+ * that succeeded. Pinned by heldCalls.test.ts.
  */
 export async function keysendPush(options: {
   destination: string;

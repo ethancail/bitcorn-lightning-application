@@ -161,9 +161,17 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     // rendered by the treasury Dashboard and read by nothing else.
     //
     // The probe is deadline-bound (LND_PROBE_TIMEOUT_MS, 3s), so it cannot hang
-    // the 60s dashboard poll. Note that getLndChainBalance() above and
-    // isLoopAvailable() below still carry NO deadline — pre-existing, tracked
-    // separately, and not addressed here.
+    // the 60s dashboard poll. getLndChainBalance() above is now bound too, at
+    // the same 3s, inside its lnd.ts wrapper — so reaching this catch site is
+    // the EXPECTED outcome of a wedged LND rather than an unreachable one.
+    //
+    // ⚠ THIS COMMENT USED TO SAY isLoopAvailable() BELOW CARRIED NO DEADLINE.
+    // That was never true. It has always passed a 5s gRPC deadline
+    // (lightning/loop.ts:130, `rpcCall("GetInfo", {}, 5_000)`), and loop.ts
+    // bounds every RPC it makes via a real `{ deadline: Date }` call option —
+    // 30s by default, 60s for swap initiation. Unlike the Promise.race used on
+    // the LND side, a gRPC deadline actually cancels the call. The Loop half of
+    // this surface was never at risk; only the LND half was.
     try {
       const report = await runTimeoutBoundLndProbe(now);
       // The cert is read from LOCAL DISK — no LND call, so it still answers
