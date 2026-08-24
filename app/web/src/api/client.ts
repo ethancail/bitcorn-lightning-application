@@ -664,6 +664,28 @@ export type MemberStats = {
    * still answered 200.
    */
   lnd_live_read_ok: boolean;
+  /**
+   * The LND TLS certificate's expiry, read from local disk THIS request.
+   *
+   * It rides this endpoint precisely because this endpoint survives an LND
+   * fault: an expired cert is detected exactly when every gRPC call is
+   * failing, so a warning about it is useless on a surface that fails with
+   * LND. The cert itself needs no LND either — /lnd is a live bind mount.
+   *
+   * `level` is "unknown" when the cert could not be read, and that is kept
+   * DISTINCT from "ok" on the wire on purpose: "the cert is fine" and "we
+   * could not read the cert" are different claims. Whether a farmer is SHOWN
+   * "unknown" is a UI decision and lives in components/certExpiryNotice.ts.
+   *
+   * null means the API's own read threw — not that the cert is fine.
+   */
+  cert_expiry: null | {
+    level: "ok" | "expiring_soon" | "expired" | "unknown";
+    /** Farmer-readable sentence. null when level is "ok" — nothing to say. */
+    message: string | null;
+    /** null when the cert could not be read. */
+    not_after_ms: number | null;
+  };
   treasury_channel: null | {
     channel_id: string;
     local_sats: number;

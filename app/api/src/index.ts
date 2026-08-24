@@ -59,6 +59,8 @@ import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChai
 // "503,Name,[object Object]". lndFaultDetail flattens it properly.
 import { lndFaultDetail } from "./lightning/lndHealth";
 import { channelDataFreshness } from "./api/memberStatsFreshness";
+import { readLocalCertExpiry } from "./lightning/readCertExpiry";
+import { certExpiryLevel, certExpiryMessage } from "./lightning/certExpiry";
 import { runTimeoutBoundLndProbe } from "./lightning/lndProbeRoute";
 import { normalizeAlias, validateAliasFormat, isAliasBlocked, lndDefaultAlias } from "./profile/aliasValidation";
 import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow } from "./profile/profileStore";
@@ -3123,6 +3125,51 @@ async function dispatchRequest(
         )
         .get(cutoff30d) as { total: number };
 
+      // ── The LND TLS certificate's expiry, read from local disk. ──
+      //
+      // WHY THIS FIELD RIDES THIS ENDPOINT AND NOT ANOTHER. An expired cert is
+      // detected precisely when every gRPC call is failing, so a warning about
+      // it is useless on a surface that fails with LND. This route survives
+      // that state — its two live reads are swallowed into lnd_live_read_ok
+      // above and everything else is SQLite — and the cert itself needs no LND
+      // at all (readCertExpiry.ts reads /lnd/tls.cert, a live bind mount). So
+      // the fact and its carrier are both available during the fault. Pinned by
+      // api/memberStatsCertExpiry.http.test.ts, which asserts one body carrying
+      // lnd_live_read_ok:false AND a non-null cert_expiry together.
+      //
+      // ⚠ COMPUTED PER REQUEST, deliberately. maybeCheckCertExpiry() is
+      // rate-limited to once a day and retains no outcome, so calling it here
+      // would return nulls on ~95 of every 96 calls. Reading directly also
+      // sidesteps a live defect: certExpiryMessage's nowMs parameter is
+      // accepted but never read (certExpiry.ts:157-180), so a message rendered
+      // from a cached inspection would carry a daysRemaining frozen at check
+      // time. A fresh read makes that unreachable rather than worked around.
+      // Cost is one readFileSync + one X509 parse — the same order as the two
+      // existsSync calls isLndAvailable() already makes on the LND hot path.
+      //
+      // ⚠ `unknown` TRAVELS TRUTHFULLY. It is NOT folded into `ok` or into
+      // null: "the cert is fine" and "we could not read the cert" are different
+      // claims, and collapsing them is the silent-failure pattern this arc
+      // exists to remove (certExpiry.ts:124-130). Whether a farmer is SHOWN
+      // `unknown` is a UI policy and lives in the web helper, not here.
+      //
+      // null means the computation itself threw. readLocalCertExpiry turns
+      // every filesystem and parse outcome into a result rather than an
+      // exception, so this is the residual "something we did not anticipate"
+      // case — and it must not take the rest of the dashboard down with it.
+      let certExpiry: { level: string; message: string | null; not_after_ms: number | null } | null;
+      try {
+        const inspection = readLocalCertExpiry(Date.now());
+        certExpiry = {
+          level: certExpiryLevel(inspection),
+          message: certExpiryMessage(inspection, Date.now()),
+          not_after_ms: inspection.ok ? inspection.notAfterMs : null,
+        };
+      } catch (err) {
+        console.warn("[member-stats] cert expiry read failed:", lndFaultDetail(err));
+        certExpiry = null;
+      }
+
       const result = {
         hub_pubkey: hubPubkey || null,
         membership_status: node?.membership_status ?? "unsynced",
@@ -3133,6 +3180,8 @@ async function dispatchRequest(
         // channel numbers are SQLite-sourced and LND could not be reached this
         // request — the state that previously looked identical to healthy.
         lnd_live_read_ok: lndLiveReadOk,
+        // Read from disk this request, independent of the two live reads above.
+        cert_expiry: certExpiry,
         treasury_channel: treasuryChannel
           ? {
               channel_id: treasuryChannel.channel_id,
