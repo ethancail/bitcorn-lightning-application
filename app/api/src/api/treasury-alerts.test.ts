@@ -40,12 +40,39 @@ const s = vi.hoisted(() => ({
   keysendDisabled: [] as any[],
   latestPerMetric: [] as any[],
   metricKeys: [] as string[],
+  // Channel-data freshness fixture, as an AGE in ms rather than an absolute
+  // timestamp: Date.now() is real in this suite, so a pinned absolute would
+  // drift into staleness as the file's slower cases run. Defaults describe a
+  // HEALTHY, SYNCED treasury.
+  channelAgeMs: 5_000 as number,
+  channelRowCount: 3 as number,
+  /** null = no lnd_node_info row at all, i.e. never synced. */
+  nodeInfoAgeMs: 5_000 as number | null,
 }));
 
+// ⚠ THE CHANNEL-DATA READS ARE ANSWERED SPECIFICALLY, NOT BY THE `{ v: 0 }`
+// CATCH-ALL. getTreasuryAlerts() now also ages lnd_channels against
+// lnd_node_info (CHANNEL_DATA_STALE). Under the blanket `{ v: 0 }` those reads
+// return no channel rows and no node-info timestamp, which is a NEVER-SYNCED
+// node — so every "quiet treasury" case below would carry a staleness alert and
+// the empty-list assertions would fail. That is the classifier being right about
+// a fixture that was not describing a quiet treasury at all: a quiet treasury
+// has synced. The fixture now says so.
 vi.mock("../db", () => ({
   db: {
-    prepare: () => ({
-      get: () => ({ v: 0 }),
+    prepare: (sql: string) => ({
+      get: () => {
+        if (sql.includes("MAX(updated_at)") && sql.includes("lnd_channels")) {
+          return {
+            latest: s.channelRowCount === 0 ? null : Date.now() - s.channelAgeMs,
+            n: s.channelRowCount,
+          };
+        }
+        if (sql.includes("FROM lnd_node_info")) {
+          return { updated_at: s.nodeInfoAgeMs == null ? null : Date.now() - s.nodeInfoAgeMs };
+        }
+        return { v: 0 };
+      },
       all: () => s.keysendDisabled,
       run: () => undefined,
     }),
@@ -153,6 +180,9 @@ beforeEach(() => {
   s.keysendDisabled = [];
   s.latestPerMetric = [];
   s.metricKeys = [];
+  s.channelAgeMs = 5_000;
+  s.channelRowCount = 3;
+  s.nodeInfoAgeMs = 5_000;
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -445,5 +475,66 @@ describe("report-only: existing behaviour is unaffected", () => {
       expect(Object.keys(a).sort()).toEqual(["at", "data", "message", "severity", "type"]);
       expect(["info", "warning", "critical"]).toContain(a.severity);
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHANNEL_DATA_STALE — WIRING, not classification.
+//
+// channelDataStaleness.test.ts proves the classifier is correct. This proves it
+// is ATTACHED: that getTreasuryAlerts() actually calls it, that its two db reads
+// are the ones the classifier expects, and that its alert reaches the returned
+// array. A correct classifier nothing calls is the failure unit tests cannot
+// see — the same reason action-confirmation.route.test.ts exists beside
+// action-confirmation.test.ts.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("channel data staleness reaches the alerts surface", () => {
+  const find = (alerts: any[]) => alerts.find((a) => a.type === "CHANNEL_DATA_STALE");
+
+  it("(ii) PERMITS: fresh channel data produces NO staleness alert", async () => {
+    // The default fixture is a healthy synced treasury. If this ever fires, the
+    // alert is noise on every dashboard poll and will be tuned out.
+    expect(find(await getTreasuryAlerts())).toBeUndefined();
+  });
+
+  it("(i) FIRES: stale channel rows produce the alert", async () => {
+    s.channelAgeMs = 10 * 60 * 1000;
+    const a = find(await getTreasuryAlerts());
+    expect(a, "no CHANNEL_DATA_STALE alert on 10-minute-old rows").toBeDefined();
+    expect(a.severity).toBe("warning");
+    expect(a.data.channel_data_age_seconds).toBeGreaterThanOrEqual(600);
+    expect(a.data.blocks_expansion).toBe(false);
+  });
+
+  it("(i) FIRES: empty table with no node info reports never_synced", async () => {
+    s.channelRowCount = 0;
+    s.nodeInfoAgeMs = null;
+    const a = find(await getTreasuryAlerts());
+    expect(a).toBeDefined();
+    expect(a.data.node_info_staleness).toBe("never_synced");
+    expect(a.data.indistinguishable_cases).toEqual([
+      "never_synced",
+      "genuinely_zero_channels",
+    ]);
+  });
+
+  it("(ii) PERMITS: empty table with FRESH node info stays quiet", async () => {
+    // A genuinely channel-less treasury that is syncing fine. The discriminator
+    // that makes this distinguishable from never_synced is the whole reason the
+    // classifier reads lnd_node_info at all.
+    s.channelRowCount = 0;
+    s.nodeInfoAgeMs = 5_000;
+    expect(find(await getTreasuryAlerts())).toBeUndefined();
+  });
+
+  it("does not disturb the other alerts on the surface", async () => {
+    // Report-only means additive. A breached reserve must still be reported
+    // alongside, with its own type, when both conditions hold at once.
+    s.chainBalance = 1;
+    s.channelAgeMs = 45 * 60 * 1000;
+    const alerts = await getTreasuryAlerts();
+    expect(find(alerts)?.severity).toBe("critical");
+    expect(alerts.some((a) => a.type === "ONCHAIN_RESERVE_BREACHED")).toBe(true);
   });
 });

@@ -10,6 +10,7 @@ import { readLocalCertExpiry } from "../lightning/readCertExpiry";
 import { isLoopAvailable } from "../lightning/loop";
 import { ENV } from "../config/env";
 import { MANUAL_METRIC_KEYS, listLatestPerMetric } from "../valuation/manualInputStore";
+import { channelDataStalenessAlert } from "./channelDataStaleness";
 
 export type AlertSeverity = "info" | "warning" | "critical";
 
@@ -45,10 +46,48 @@ function getExpansionsTodayCount(): number {
   return row?.v ?? 0;
 }
 
+/**
+ * Age of the cached channel data the capital guardrails read.
+ *
+ * Two statements rather than a join: lnd_node_info is a singleton and the
+ * channel aggregate has to survive an empty table, which an inner join would
+ * turn into no row at all — collapsing exactly the case this needs to report.
+ */
+function readChannelDataAges(): {
+  latestChannelUpdatedAt: number | null;
+  channelRowCount: number;
+  nodeInfoUpdatedAt: number | null;
+} {
+  const ch = db
+    .prepare(
+      `SELECT MAX(updated_at) AS latest, COUNT(*) AS n FROM lnd_channels`,
+    )
+    .get() as { latest: number | null; n: number } | undefined;
+
+  const ni = db
+    .prepare(`SELECT updated_at FROM lnd_node_info WHERE id = 1`)
+    .get() as { updated_at: number | null } | undefined;
+
+  return {
+    latestChannelUpdatedAt: ch?.latest ?? null,
+    channelRowCount: ch?.n ?? 0,
+    nodeInfoUpdatedAt: ni?.updated_at ?? null,
+  };
+}
+
 export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   const now = Date.now();
   const alerts: TreasuryAlert[] = [];
   const policy = getCapitalPolicy();
+
+  // --- Channel data staleness (REPORT-ONLY; nothing below refuses on it) ---
+  // assertCanExpand() computes deployed capacity from lnd_channels with no age
+  // predicate, and stale rows under-count, which makes its deploy-ratio and
+  // per-peer checks EASIER to pass. Same shape as ONCHAIN_RESERVE_CHECK_SKIPPED
+  // below: the point is that a guardrail reading zeros should not be
+  // indistinguishable from one that passed.
+  const staleness = channelDataStalenessAlert({ ...readChannelDataAges(), nowMs: now });
+  if (staleness) alerts.push(staleness);
 
   // --- Rotation candidates ---
   const candidates = getRotationCandidates();
