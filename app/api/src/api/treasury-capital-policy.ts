@@ -16,11 +16,25 @@ import { db } from "../db";
 // FLOOR on one. Both ends are enforced on all eight regardless, because the
 // non-safety end is still a fat-finger guard.
 //
-// ⚠ ZERO IS DELIBERATELY LEGAL EVERYWHERE. On every field except the reserve, a
-// zero HALTS the thing it governs — no pending opens, no expansions per day, no
-// fee budget. That is a freeze, which is the safe direction, and it is a real
-// operator choice. Rejecting it would be this validator inventing a policy
-// nobody asked for, and would remove the only kill switch reachable from the UI.
+// ⚠ ZERO IS LEGAL ON SIX FIELDS AND REJECTED ON TWO, AND THE SPLIT IS THE WHOLE
+// POINT. On the six, a zero HALTS the thing it governs — no pending opens, no
+// expansions per day, no fee budget. That is a freeze, the safest setting the
+// field has, and a real operator choice; rejecting it would remove the only kill
+// switch reachable from the UI.
+//
+// On `min_onchain_reserve_sats` and `peer_cooldown_minutes` a zero does the
+// OPPOSITE — it turns the protection OFF. Zero reserve is no reserve requirement
+// at all. Zero cooldown is no wait between opens to the same peer, and
+// assertCanExpand guards that entire check behind `peer_cooldown_minutes > 0`
+// (utils/capital-guardrails.ts), so a stored zero does not shorten the cooldown,
+// it SKIPS it. A uniform floor of 0 across all eight looks consistent and is
+// exactly wrong on these two, which is why they carry `zeroDisablesProtection`
+// below rather than a different `min`.
+//
+// ⚠ NO POSITIVE FLOOR IS BEING SET HERE. The rule is "not zero" and nothing
+// more: 1 is legal on both. Choosing a real minimum reserve or a real minimum
+// cooldown is a separate decision and is deliberately still open — encoding a
+// guess as a `min` would settle it silently.
 //
 // ⚠ ONLY ONE CEILING IS DERIVED RATHER THAN CHOSEN. max_deploy_ratio_ppm is
 // parts-per-million, and assertCanExpand computes `totalCapital * ppm / 1e6`, so
@@ -36,49 +50,102 @@ import { db } from "../db";
 // that floor is the freeze value rather than a dangerous one.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const CAPITAL_POLICY_BOUNDS = {
-  /** Floor carries the safety weight here: negative removes the reserve. Ceiling = 1 BTC. */
-  min_onchain_reserve_sats: { min: 0, max: 100_000_000 },
+export type CapitalPolicyBound = {
+  min: number;
+  max: number;
+  /**
+   * Present ONLY on fields where zero disables the protection rather than
+   * freezing it. Exactly 0 is refused; every other value in [min, max] stays
+   * legal, so 1 is permitted. This is the whole special case, declared on the
+   * two entries it applies to instead of branching in the validator — the table
+   * stays the one readable answer to "what does this field permit".
+   */
+  zeroDisablesProtection?: true;
+};
+
+export const CAPITAL_POLICY_BOUNDS: Record<string, CapitalPolicyBound> & {
+  readonly [K in
+    | "min_onchain_reserve_sats"
+    | "max_deploy_ratio_ppm"
+    | "max_pending_opens"
+    | "max_peer_capacity_sats"
+    | "peer_cooldown_minutes"
+    | "max_expansions_per_day"
+    | "max_daily_deploy_sats"
+    | "max_daily_loss_sats"]: CapitalPolicyBound;
+} = {
+  // ── REJECTS ZERO: zero turns the protection off, it does not freeze it.
+  /** Zero = no reserve requirement at all. Ceiling = 1 BTC. No positive floor is set. */
+  min_onchain_reserve_sats: { min: 0, max: 100_000_000, zeroDisablesProtection: true },
+  /** Zero = no wait between opens to the same peer — assertCanExpand SKIPS the check. 30 days. */
+  peer_cooldown_minutes: { min: 0, max: 43_200, zeroDisablesProtection: true },
+
+  // ── ZERO IS A FREEZE: the safest setting each of these has.
   /** DERIVED, not chosen: ppm, so 1_000_000 = 100%. Above it the ratio check cannot bind. */
   max_deploy_ratio_ppm: { min: 0, max: 1_000_000 },
   /** Concurrent funding transactions in flight. 100 is far past any real treasury. */
   max_pending_opens: { min: 0, max: 100 },
   /** A peer may hold several channels, so LND's per-channel max is not the bound. 1 BTC. */
   max_peer_capacity_sats: { min: 0, max: 100_000_000 },
-  /** 30 days. Zero disables the cooldown, which assertCanExpand tests for explicitly. */
-  peer_cooldown_minutes: { min: 0, max: 43_200 },
   /** Channel opens per rolling 24h. */
   max_expansions_per_day: { min: 0, max: 100 },
   /** Total capacity deployed per rolling 24h. 1 BTC. */
   max_daily_deploy_sats: { min: 0, max: 100_000_000 },
   /** REBALANCE FEES per rolling 24h — not capital, spend. 0.01 BTC is already far past sane. */
   max_daily_loss_sats: { min: 0, max: 1_000_000 },
-} as const;
+};
 
-export type CapitalPolicyField = keyof typeof CAPITAL_POLICY_BOUNDS;
+export type CapitalPolicyField = keyof CapitalPolicyPatch;
 
 /**
- * Thrown when a capital policy write is out of range.
+ * Why a capital policy write was refused.
  *
- * Carries the field and both bounds as data rather than only in the message, so
- * the route can surface a structured 400 without parsing prose.
+ * ⚠ THIS EXISTS BECAUSE `min` ALONE CANNOT DESCRIBE THE PERMITTED SET. Both
+ * zero-rejecting fields have `min: 0`, so a payload carrying only {min, max}
+ * would tell the operator the range is 0–43200 and then refuse 43200's
+ * neighbour at the bottom — a payload that reports `min: 0` while rejecting 0 is
+ * a lie. The permitted set is `[min, max]` MINUS `{0}` when `zeroPermitted` is
+ * false, and both halves travel so a caller never has to infer the second.
+ */
+export type CapitalPolicyRejectionReason = "out_of_range" | "zero_disables_protection";
+
+/**
+ * Thrown when a capital policy write is refused.
+ *
+ * Carries the field, both bounds, the reason and whether zero is permitted as
+ * DATA rather than only in the message, so the route can surface a structured
+ * 400 without parsing prose.
  */
 export class CapitalPolicyValidationError extends Error {
   readonly field: CapitalPolicyField;
   readonly value: unknown;
   readonly min: number;
   readonly max: number;
+  readonly reason: CapitalPolicyRejectionReason;
+  /** False on the two fields where zero disables the protection. */
+  readonly zeroPermitted: boolean;
 
-  constructor(field: CapitalPolicyField, value: unknown, min: number, max: number) {
+  constructor(
+    field: CapitalPolicyField,
+    value: unknown,
+    bound: CapitalPolicyBound,
+    reason: CapitalPolicyRejectionReason,
+  ) {
+    const zeroPermitted = bound.zeroDisablesProtection !== true;
     super(
-      `Invalid ${field}: ${String(value)} is outside the permitted range ${min}–${max}. ` +
-        `Nothing was written.`,
+      reason === "zero_disables_protection"
+        ? `Invalid ${field}: zero is not permitted — it disables the protection rather than ` +
+            `tightening it. Any value from 1 to ${bound.max} is accepted. Nothing was written.`
+        : `Invalid ${field}: ${String(value)} is outside the permitted range ${bound.min}–${bound.max}` +
+            `${zeroPermitted ? "" : " (excluding zero)"}. Nothing was written.`,
     );
     this.name = "CapitalPolicyValidationError";
     this.field = field;
     this.value = value;
-    this.min = min;
-    this.max = max;
+    this.min = bound.min;
+    this.max = bound.max;
+    this.reason = reason;
+    this.zeroPermitted = zeroPermitted;
   }
 }
 
@@ -106,12 +173,18 @@ export function validateCapitalPolicyPatch(patch: CapitalPolicyPatch): void {
     const value = patch[field];
     if (value === undefined || value === null) continue;
 
-    const { min, max } = CAPITAL_POLICY_BOUNDS[field];
+    const bound = CAPITAL_POLICY_BOUNDS[field];
     if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value)) {
-      throw new CapitalPolicyValidationError(field, value, min, max);
+      throw new CapitalPolicyValidationError(field, value, bound, "out_of_range");
     }
-    if (value < min || value > max) {
-      throw new CapitalPolicyValidationError(field, value, min, max);
+    if (value < bound.min || value > bound.max) {
+      throw new CapitalPolicyValidationError(field, value, bound, "out_of_range");
+    }
+    // The one special case, and it reads off the table rather than naming
+    // fields here — adding or removing a zero-rejecting field is an edit to
+    // CAPITAL_POLICY_BOUNDS alone.
+    if (value === 0 && bound.zeroDisablesProtection) {
+      throw new CapitalPolicyValidationError(field, value, bound, "zero_disables_protection");
     }
   }
 }

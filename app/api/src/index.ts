@@ -2109,14 +2109,23 @@ async function dispatchRequest(
           // refused and nothing was written — the opposite of what happened.
           // The bounds travel in the body so the UI can say which field and
           // what range without parsing the message.
+          //
+          // ⚠ `zero_permitted` IS NOT OPTIONAL DECORATION. Both zero-rejecting
+          // fields carry min: 0, so {min, max} alone would advertise a range
+          // that includes a value the server refuses. The permitted set is
+          // [min, max] MINUS {0} when zero_permitted is false; `reason` says
+          // which of the two refusals happened. Dropping either field makes this
+          // payload untrue rather than merely terse.
           if (err instanceof CapitalPolicyValidationError) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(
               JSON.stringify({
                 error: "capital_policy_out_of_range",
                 field: err.field,
+                reason: err.reason,
                 min: err.min,
                 max: err.max,
+                zero_permitted: err.zeroPermitted,
                 detail: err.message,
               }),
             );

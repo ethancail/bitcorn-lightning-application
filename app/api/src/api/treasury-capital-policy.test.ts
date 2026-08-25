@@ -155,6 +155,61 @@ describe("setCapitalPolicy refuses out-of-range writes", () => {
     expect(s.writes).toEqual([]);
   });
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // ZERO ON THE TWO PROTECTION FIELDS
+  //
+  // Six fields treat zero as a freeze — the safest setting they have. These two
+  // are the opposite: zero turns the protection OFF. A zero reserve is no
+  // reserve requirement at all, and a zero cooldown removes the wait between
+  // opens to the same peer (assertCanExpand guards that whole check behind
+  // `peer_cooldown_minutes > 0`). A uniform floor of 0 across all eight looks
+  // consistent and is not.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  it("rejects min_onchain_reserve_sats EXACTLY ZERO and writes nothing", () => {
+    expect(() => setCapitalPolicy({ min_onchain_reserve_sats: 0 })).toThrow();
+    expect(s.writes, "a rejected patch must not reach the UPDATE").toEqual([]);
+    expect(s.row.min_onchain_reserve_sats).toBe(300_000);
+  });
+
+  it("rejects peer_cooldown_minutes EXACTLY ZERO and writes nothing", () => {
+    expect(() => setCapitalPolicy({ peer_cooldown_minutes: 0 })).toThrow();
+    expect(s.writes).toEqual([]);
+    expect(s.row.peer_cooldown_minutes).toBe(720);
+  });
+
+  it("reports the rejection as zero-specific, not as an ordinary range miss", () => {
+    // The payload must not tell the operator the permitted range is 0–43200 and
+    // then refuse 0. A caller has to be able to tell "you are outside the range"
+    // from "zero specifically is not permitted" without parsing prose.
+    try {
+      setCapitalPolicy({ peer_cooldown_minutes: 0 });
+      throw new Error("expected a rejection");
+    } catch (err: any) {
+      expect(err.name).toBe("CapitalPolicyValidationError");
+      expect(err.reason).toBe("zero_disables_protection");
+      expect(err.zeroPermitted).toBe(false);
+      expect(err.message).toMatch(/zero/i);
+    }
+  });
+
+  it("still reports an ordinary out-of-range miss as out_of_range", () => {
+    // The discriminator only means something if the other kind still exists.
+    try {
+      setCapitalPolicy({ peer_cooldown_minutes: 999_999 });
+      throw new Error("expected a rejection");
+    } catch (err: any) {
+      expect(err.reason).toBe("out_of_range");
+      expect(err.zeroPermitted).toBe(false); // this field never permits zero
+    }
+  });
+
+  it("a freeze field's zero rejection reason is not reachable at all", () => {
+    // max_pending_opens: 0 must simply succeed. If it ever throws, the flag has
+    // spread; if it throws with zero_disables_protection, it spread by table.
+    expect(() => setCapitalPolicy({ max_pending_opens: 0 })).not.toThrow();
+  });
+
   it("rejects a rejected field without applying the OTHER fields in the same patch", () => {
     // Partial application would leave the operator with a policy they never
     // asked for and a rejection saying it did not happen.
@@ -219,14 +274,61 @@ describe("setCapitalPolicy permits legitimate writes", () => {
     // Zero is a legitimate operator choice on these: it halts expansion rather
     // than loosening anything. Rejecting it would be the validator inventing a
     // policy nobody asked for.
+    //
+    // ⚠ THIS TEST WAS INVERTED, NOT EXTENDED. It used to include
+    // `peer_cooldown_minutes: 0` and assert it stored. That was written when the
+    // bounds table gave all eight fields min:0, and it pinned exactly the
+    // behaviour the disposition later reversed: on peer_cooldown_minutes a zero
+    // does NOT freeze anything, it turns the cooldown OFF — assertCanExpand
+    // guards the whole check behind `policy.peer_cooldown_minutes > 0`, so a
+    // stored zero means no wait at all between opens to the same peer. It sat in
+    // a list of "freeze" values while being the opposite of one. The field moved
+    // to the rejects-zero block below; the six that genuinely freeze stay here.
     const out = setCapitalPolicy({
       max_pending_opens: 0,
       max_expansions_per_day: 0,
-      peer_cooldown_minutes: 0,
+      max_deploy_ratio_ppm: 0,
+      max_peer_capacity_sats: 0,
+      max_daily_deploy_sats: 0,
+      max_daily_loss_sats: 0,
     });
     expect(s.writes.length).toBe(1);
     expect(out.max_pending_opens).toBe(0);
-    expect(out.peer_cooldown_minutes).toBe(0);
+    expect(out.max_expansions_per_day).toBe(0);
+    expect(out.max_deploy_ratio_ppm).toBe(0);
+    expect(out.max_peer_capacity_sats).toBe(0);
+    expect(out.max_daily_deploy_sats).toBe(0);
+    expect(out.max_daily_loss_sats).toBe(0);
+  });
+
+  it("permits zero on EACH of the six freeze fields individually", () => {
+    // The regression this guards: a validator that rejects zero on the two
+    // protection fields and lets the rejection spread to the other six. Asserted
+    // field-by-field rather than as one patch, so a single spread field names
+    // itself instead of failing the whole batch anonymously.
+    const FREEZE_FIELDS = [
+      "max_deploy_ratio_ppm",
+      "max_pending_opens",
+      "max_peer_capacity_sats",
+      "max_expansions_per_day",
+      "max_daily_deploy_sats",
+      "max_daily_loss_sats",
+    ] as const;
+    for (const field of FREEZE_FIELDS) {
+      s.writes = [];
+      const out = setCapitalPolicy({ [field]: 0 } as any);
+      expect(s.writes.length, `${field}: zero was rejected but it is a freeze field`).toBe(1);
+      expect(out[field], `${field}: zero did not store`).toBe(0);
+    }
+  });
+
+  it("permits the smallest positive value on both protection fields", () => {
+    // NO POSITIVE FLOOR IS BEING INVENTED. The rule is "not zero" — 1 must work.
+    // Choosing a real minimum reserve or cooldown is a separate, open decision.
+    const out = setCapitalPolicy({ min_onchain_reserve_sats: 1, peer_cooldown_minutes: 1 });
+    expect(s.writes.length).toBe(1);
+    expect(out.min_onchain_reserve_sats).toBe(1);
+    expect(out.peer_cooldown_minutes).toBe(1);
   });
 
   it("permits max_deploy_ratio_ppm at exactly 1_000_000 (100%)", () => {
