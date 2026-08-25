@@ -203,7 +203,7 @@ RUN set -eu; \
       EM="$(od -An -tx1 -j18 -N2 "$BIN" | tr -s ' ' | sed 's/^ //;s/ $//')"; \
       if [ "$EM" != "$EXPECT_EM" ]; then \
         echo "FATAL: ${BIN} has e_machine='${EM}', expected '${EXPECT_EM}' for TARGETARCH=${TARGETARCH}." >&2; \
-        echo "This is exactly the amd64-binary-in-an-arm64-image failure this file exists to prevent. Refusing to publish." >&2; \
+        echo "Wrong-architecture binaries must never reach a published image. The manifest entry would still claim ${TARGETARCH}, and the failure would surface only at exec time on the target node. That class of defect, in either direction, is what this file exists to prevent. Refusing to publish." >&2; \
         exit 1; \
       fi; \
       chmod 0755 "$BIN"; \
