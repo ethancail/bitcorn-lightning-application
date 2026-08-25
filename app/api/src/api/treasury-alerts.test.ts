@@ -499,11 +499,56 @@ describe("channel data staleness reaches the alerts surface", () => {
   });
 
   it("(i) FIRES: stale channel rows produce the alert", async () => {
-    s.channelAgeMs = 10 * 60 * 1000;
+    // ⚠ THE FIXTURE IS DELIBERATELY OFF THE THRESHOLD, AND THE ASSERTION IS A
+    // WINDOW RATHER THAN A FLOOR. This is a WIRING test — see the header above:
+    // it proves the classifier is ATTACHED and that an age reaches the payload.
+    // The exact number is incidental to that claim, and pinning it here was
+    // actively wrong, because THIS surface reads the clock TWICE:
+    //
+    //   treasury-alerts.ts   `const now = Date.now()` is captured FIRST
+    //   the fixture below    stamps `Date.now() - channelAgeMs` LATER, at the
+    //                        moment readChannelDataAges() issues its SELECT
+    //
+    // so the observed elapsed is `channelAgeMs − (t_read − t_now)`, and
+    // base/staleness.ts floors to whole seconds. With the old fixture sitting
+    // exactly on 600_000ms, a gap of ONE MILLISECOND truncated the age to 599
+    // and failed an assertion demanding >= 600. Measured: it passed only when
+    // the two reads landed in the same millisecond, which is why it failed
+    // roughly 1 run in 15 under parallel load and never in isolation.
+    //
+    // THE THRESHOLD ITSELF IS NOT LOSING COVERAGE BY MOVING OFF IT. It is
+    // pinned three times over, at every level below this one, all with an
+    // INJECTED clock and therefore no two-read problem:
+    //   base/staleness.test.ts        isStaleByThreshold / classifyStaleness,
+    //                                 just-below and exactly-at, both thresholds
+    //   memberStatsFreshness.test.ts  channelDataFreshness "crosses into stale
+    //                                 exactly at base/staleness.ts's threshold,
+    //                                 not before", plus the 30-minute crossing
+    //   channelDataStaleness.test.ts  the classifier: "does not fire one tick
+    //                                 before the threshold" / "fires exactly AT
+    //                                 the threshold"
+    // An exact-threshold assertion belongs where the clock is supplied. It does
+    // not belong here, where two independent Date.now() calls decide it.
+    //
+    // 12 minutes sits clear of BOTH thresholds — 7 minutes above stale, 18 below
+    // very_stale — so `severity === "warning"` still discriminates with a wide
+    // margin instead of resting on a boundary.
+    //
+    // The window is what keeps this a real assertion rather than one loosened
+    // until green. `<= 720` is a HARD ceiling: the gap can only ever subtract,
+    // so an age above the fixture value is impossible and would mean the age is
+    // not derived from these rows at all. `>= 700` absorbs 20 SECONDS of
+    // scheduling jitter — far beyond anything real — while still rejecting 0
+    // (age not plumbed through), 2700 (the 45-minute fixture leaking from the
+    // case below), 300 (wrong threshold), and 720000 (milliseconds reported as
+    // seconds). It is a strictly tighter claim than the `>= 600` it replaces,
+    // which would have accepted every one of those but the first.
+    s.channelAgeMs = 12 * 60 * 1000;
     const a = find(await getTreasuryAlerts());
-    expect(a, "no CHANNEL_DATA_STALE alert on 10-minute-old rows").toBeDefined();
+    expect(a, "no CHANNEL_DATA_STALE alert on 12-minute-old rows").toBeDefined();
     expect(a.severity).toBe("warning");
-    expect(a.data.channel_data_age_seconds).toBeGreaterThanOrEqual(600);
+    expect(a.data.channel_data_age_seconds).toBeGreaterThanOrEqual(700);
+    expect(a.data.channel_data_age_seconds).toBeLessThanOrEqual(720);
     expect(a.data.blocks_expansion).toBe(false);
   });
 
