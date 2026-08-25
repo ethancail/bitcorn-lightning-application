@@ -24,6 +24,79 @@ has stopped working.
 
 ---
 
+## 2026-08-25
+
+### A Docker manifest claiming an architecture is not evidence the binary inside it is that architecture
+
+**Scar:** `2dc6e8a` (2026-03-27) reverted the standalone loopd sidecar back to litd because
+`lightninglabs/loop`'s arm64 image died with "exec format error" on aarch64 — "despite manifest claiming
+arm64 support," in its own commit message. The cause went unfound for five months and the image was
+written off as upstream breakage. Root cause, 2026-08-25: upstream's Dockerfile pins BOTH stages to
+`--platform=${BUILDPLATFORM}` while its publish workflow requests both platforms, so both manifest
+entries carry the same amd64 filesystem [RELAYED — recon read at `lightninglabs/loop` v0.31.8-beta and
+master `341d844`, 2026-08-25; not read from this repo]. Proven without downloading anything: the two
+per-arch entries share byte-identical layer digests and their config blobs differ in exactly one
+string, `"architecture"`. Identical layers means identical bytes, so at most one of the two labels can
+be true. The repo-side facts are checkable here — `git show -s 2dc6e8a`, `sed -n '69p'
+app/api/src/config/env.ts` — and that pair was the entire written record: `grep -rn -i 'exec format'`
+over tracked files returns nothing, this file had zero hits for arm64/manifest/loopd, and
+`docs/LOOP_SETUP.md` none either.
+
+**Lesson:** A multi-arch index is a set of *claims*, and it is **falsifiable with two small HTTP reads**
+— no pull, no emulator, no target hardware. Compare the per-arch entries: shared layer digests mean one
+filesystem wearing two labels. The check is on the artifact, never on the claim. This generalizes well
+past Docker: a declared platform, target triple, or ABI is metadata, and metadata is exactly the layer
+that can be wrong while everything downstream keeps agreeing with it. Note what made the gap feel
+covered — the repo *did* carry an ARM64 gotcha (`CLAUDE.md:145`, QEMU/musl `signal 4`) for an unrelated
+cause. An adjacent record of a *different* failure is what lets an unwritten one pass for known.
+
+**Disposition:** `[PROMOTED → app/loopd/Dockerfile header + its ELF e_machine check (2ef2130)]` — the
+header's standing rule is "⚠ VERIFY THE ARTIFACT, NEVER THE MANIFEST," and the ELF read enforces it
+mechanically at build time. ⚠ That file exists only on `feature/loopd-image` — check with
+`git branch -a --contains 2ef2130`. Until it merges, this entry is the only record on `develop`, which
+is the weak form.
+
+### When digest-pinning a base image, pin the index digest — never a per-arch manifest digest
+
+**Scar:** Hardening `app/loopd/Dockerfile` against the same-tag hazard (CLAUDE.md § Umbrel Gotchas)
+meant pinning `debian:12-slim` by digest. A registry exposes two different digests at that reference
+and they are indistinguishable by shape — both are `sha256:` plus 64 hex. Pinning the amd64 *manifest*
+digest rather than the *index* digest would make every platform entry of the resulting image resolve to
+amd64: the scar above, reproduced from the opposite direction, in the act of hardening against it.
+
+**Lesson:** A digest pin buys reproducibility and silently spends the tag's platform dispatch if you
+pin the wrong level. An index digest still resolves per target platform; a per-arch manifest digest is
+a platform decision wearing the costume of a version pin. Because the two are shape-identical, the pin
+must record *which kind it is* and how that was checked — a bare digest is unverifiable by the next
+reader, who has no way to see the mistake. General form: when one identifier can name either a set or a
+member of that set, the pin has to say which, because nothing downstream will complain.
+
+**Disposition:** `[PROMOTED → inline ⚠ beside the BASE_IMAGE pin in app/loopd/Dockerfile (2ef2130)]` —
+records the media type it was verified as, the date, and a one-command bump. Same branch caveat as
+above.
+
+### `--help` proves a flag was declared, never that it is read
+
+**Scar:** Bitcorn's March standalone-loopd compose passed `--tlsautorefresh` to loopd in good faith
+(introduced `d874a72`, 2026-03-26; carried through `df71d92` and `baf01f8`; removed by the litd revert
+`2dc6e8a` — `git log --all -S'tlsautorefresh'`). The flag does nothing: declared at
+`loopd/config.go:167` and read nowhere, while its siblings `TLSExtraIPs`, `TLSExtraDomains`,
+`TLSDisableAutofill` are consumed at `config.go:479-480` [RELAYED — same recon; upstream line numbers
+not read from this repo]. It still appears in `loopd --help`, so a CLI-existence test passes it and a
+reviewer checking the help output has the flag confirmed back to them.
+
+**Lesson:** `--help` is generated from the flag *declaration*, so it proves registration and says
+nothing about consumption. The sound test greps for **reads** of the field the flag binds to; a flag
+with a declaration and no reader is inert forever, and the config passing it looks correct forever.
+Same class as the manifest scar above — `--help` output, a manifest entry, and a green build are all
+cheap checks on *claims*, and each one is fully satisfied by a system that does not do the thing.
+Whenever a check is cheap, ask what it reads: if it reads a declaration, it cannot see a missing
+implementation.
+
+**Disposition:** `[PROMOTED → inline ⚠ at app/loopd/Dockerfile:263 (2ef2130)]` — names the three March
+commits that passed the flag, so the next person wiring compose does not re-add it. Same branch caveat.
+Re-verify the upstream line numbers before relying on them; they are relayed, not read here.
+
 ## 2026-08-11
 
 ### A scar recorded in one instruction surface is invisible to every session that doesn't load it
