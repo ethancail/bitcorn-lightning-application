@@ -7,6 +7,10 @@ on:
     paths:
       - "app/api/**"
       - "app/web/**"
+      # A new image whose path is absent from this filter never rebuilds,
+      # silently, forever. Tested programmatically against the literal patterns
+      # in this block rather than eyeballed — see the build-loopd job below.
+      - "app/loopd/**"
       - "bitcorn-lightning-node/umbrel-app.yml"
       - ".github/workflows/docker-publish.yml"
 
@@ -367,3 +371,92 @@ jobs:
           # change — and falls back to Base Sepolia (84532) when unset.
           build-args: |
             VITE_BASE_CHAIN_ID=${{ vars.VITE_BASE_CHAIN_ID || '84532' }}
+
+  # ── loopd — Bitcorn-published Lightning Labs loopd ───────────────────────
+  # WHY WE PUBLISH THIS AT ALL. Upstream's own image is unusable on aarch64:
+  # its Dockerfile pins both stages to ${BUILDPLATFORM} while its workflow
+  # requests amd64+arm64, so the arm64 manifest entry carries an amd64 binary.
+  # Measured, not assumed — the two per-arch entries of
+  # lightninglabs/loop:v0.34.0-beta-v0.8.1-tapd share all four byte-identical
+  # layer digests and differ only in the config blob's "architecture" string.
+  # That is the failure that pushed Bitcorn onto litd in March 2026 (2dc6e8a),
+  # and litd's cost is that it never re-reads LND's TLS cert and never exits.
+  # app/loopd/Dockerfile carries the full account and the acceptance criteria.
+  #
+  # TAG SCHEME — DECIDED, and it is not the obvious one. This image is tagged
+  # with the BITCORN app version, byte-identical to build-api and build-web
+  # above: latest, <app version>, <short sha>. There is deliberately NO
+  # loop-version tag; the shipped loopd version lives in the image's
+  # org.opencontainers.image.version LABEL only.
+  #
+  # The consequence to know before "fixing" this: because this job keeps
+  # `needs: get-version`, the rebuild trigger is A BITCORN RELEASE, not a
+  # change to app/loopd/**. get-version asserts refs/tags/v<version> does not
+  # exist, so a loopd-only merge to main with an unbumped version fails the
+  # whole workflow at that assert rather than publishing. That is the gate
+  # working — but it means bumping LOOP_VERSION in the Dockerfile ships only as
+  # part of a release. Note also that pr-checks.yml's version-bump job diffs
+  # `-- app/api app/web` only, so it will NOT ask for a bump on a loopd-only
+  # PR; the two gates genuinely disagree, and get-version is the one that
+  # decides whether anything is published.
+  #
+  # Version drift cannot arrive from the base image: app/loopd/Dockerfile pins
+  # debian:12-slim by INDEX digest, so a Debian tag move cannot change these
+  # bytes under an unchanged Bitcorn tag.
+  build-loopd:
+    name: Build loopd image
+    runs-on: ubuntu-latest
+    needs: get-version
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Kept for symmetry with build-api/build-web, and strictly unnecessary
+      # here: app/loopd/Dockerfile's fetch stage runs on the build platform and
+      # its final stage contains no RUN, so no target-arch instruction is ever
+      # emulated. Left in so the next reader does not wonder why this job is
+      # shaped differently from the two above it.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: image=moby/buildkit:v0.18.1
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.REPO }}/loopd
+          tags: |
+            type=raw,value=latest
+            type=raw,value=${{ needs.get-version.outputs.version }}
+            type=sha,prefix=,format=short
+
+      # ⚠ A GREEN RUN HERE IS NOT EVIDENCE THAT THE arm64 IMAGE CONTAINS AN
+      # arm64 BINARY. `platforms:` is a request, and upstream's broken image
+      # proves a build can satisfy it and still be wrong. The real checks are
+      # inside the Dockerfile (it reads e_machine out of every binary it copies
+      # and refuses on mismatch) and on the hardware (DONE-WHEN item 1 there:
+      # a local native build on the Pi, run BEFORE any release, because
+      # get-version gates publishing behind one).
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app/loopd
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
