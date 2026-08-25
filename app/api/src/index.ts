@@ -3355,91 +3355,25 @@ async function dispatchRequest(
     return;
   }
 
-  if (req.method === "POST" && req.url === "/api/lightning/open-recommended-channel") {
-    let body = "";
-    req.on("data", (chunk: string) => (body += chunk));
-    req.on("end", async () => {
-      try {
-        const parsed = JSON.parse(body || "{}");
-        const peerId = parsed.peer_id;
-        const localFundingAmountSat = Number(parsed.local_funding_amount_sat);
-
-        if (!peerId || typeof peerId !== "string") {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "peer_id is required" }));
-          return;
-        }
-        if (!Number.isFinite(localFundingAmountSat) || localFundingAmountSat < 100_000) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "local_funding_amount_sat must be at least 100,000" }));
-          return;
-        }
-
-        // Fetch approved list from Worker — peer_id must match.
-        // Worker-side: public — no Bearer required.
-        let response: Response;
-        try {
-          response = await workerFetch("/recommended-peers");
-        } catch (err: any) {
-          if (err instanceof WorkerFetchError && err.reason === "not_configured") {
-            res.writeHead(503, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "worker_not_configured" }));
-            return;
-          }
-          throw err;
-        }
-        if (!response.ok) {
-          res.writeHead(502, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "could not verify peer against approved list" }));
-          return;
-        }
-        const approvedPeers = (await response.json()) as Array<{
-          id: string; pubkey: string; socket: string; label: string;
-        }>;
-
-        const peer = approvedPeers.find((p) => p.id === peerId);
-        if (!peer) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "peer_not_in_approved_list" }));
-          return;
-        }
-
-        // Connect to peer if needed
-        await connectToPeer(peer.pubkey, peer.socket);
-
-        // Open channel
-        const result = await openTreasuryChannel(peer.pubkey, localFundingAmountSat, {
-          isPrivate: false,
-          partnerSocket: peer.socket,
-        });
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          ok: true,
-          peer_id: peer.id,
-          peer_label: peer.label,
-          funding_txid: result.transaction_id ?? null,
-        }));
-      } catch (err: any) {
-        console.error("[open-recommended-channel]", err);
-        // ln-service throws [statusCode, 'ErrorName', { err }] arrays
-        const errStr = Array.isArray(err) ? JSON.stringify(err) : (err?.message ?? "");
-        let userMsg = "Failed to open channel";
-        if (/insufficient|InsufficientFunds/i.test(errStr)) {
-          userMsg = "Insufficient on-chain balance to open this channel. Fund your node first.";
-        } else if (/already.*peer|already.*connected/i.test(errStr)) {
-          userMsg = "Already connected to this peer";
-        } else if (/timeout|ETIMEDOUT|connect.*refused/i.test(errStr)) {
-          userMsg = "Could not connect to peer. The node may be offline.";
-        } else if (err?.message) {
-          userMsg = err.message;
-        }
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: userMsg }));
-      }
-    });
-    return;
-  }
+  // POST /api/lightning/open-recommended-channel REMOVED.
+  //
+  // It funded a channel to a pubkey taken LIVE from the Worker's
+  // /recommended-peers on every call — no local cache, no prior-seen check
+  // against lnd_peers/lnd_channels/contacts, no operator approval step, and no
+  // upper bound on local_funding_amount_sat beyond a 100k floor. It also
+  // carried NO role gate, so it executed on member nodes as readily as on the
+  // treasury, and it was one of the two openTreasuryChannel call sites that
+  // never reached assertCanExpand() — so max_peer_capacity_sats could not catch
+  // a duplicate open to a peer already funded.
+  //
+  // It had no caller. The UI panel that would have driven it was deleted
+  // earlier on architectural grounds — see the note at web App.tsx where
+  // RecommendedPeersPanel used to render: the hub-and-spoke model uses
+  // intentionally unbalanced merchant/farmer lanes and members do not need
+  // external peers. The route outlived the panel.
+  //
+  // The GET /api/network/recommended-peers enrichment route above is a
+  // SEPARATE route with its own behaviour and deliberately stays.
 
   // ═══════════════════════════════════════════════════════════════════════
   // NETWORK PAYMENTS

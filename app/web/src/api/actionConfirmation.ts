@@ -73,11 +73,13 @@ export type ConfirmedRoute = { method: string; match: Matcher; fields: Field[] }
  * server's CONFIRMED_ROUTES and asserts every route reachable from this UI
  * matches entry for entry. A drift fails there, not in production.
  *
- * Only the eight routes with a real UI caller are listed. /api/pay,
- * /api/treasury/rebalance/{loop-out,circular} and
- * /api/lightning/open-recommended-channel have no caller in this app (the last
- * three via client methods nothing invokes), so listing them here would be
- * dead data that the parity test would then have to special-case.
+ * Only the eight routes with a real UI caller are listed. /api/pay and
+ * /api/treasury/rebalance/{loop-out,circular} have no caller in this app (via
+ * client methods nothing invokes), so listing them here would be dead data that
+ * the parity test would then have to special-case.
+ *
+ * /api/lightning/open-recommended-channel used to be a fourth such route. It
+ * was deleted rather than wired up — see the tombstone in api/src/index.ts.
  */
 export const UI_CONFIRMED_ROUTES: ConfirmedRoute[] = [
   {

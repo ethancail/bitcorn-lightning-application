@@ -251,13 +251,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  // Recommended peers
+  // Recommended peers — READ ONLY. openRecommendedChannel() was removed with
+  // the server route it called; see the tombstone in api/src/index.ts.
   getRecommendedPeers: () => apiFetch<RecommendedPeer[]>("/api/network/recommended-peers"),
-  openRecommendedChannel: (peerId: string, localFundingAmountSat: number) =>
-    apiFetch<OpenRecommendedChannelResult>("/api/lightning/open-recommended-channel", {
-      method: "POST",
-      body: JSON.stringify({ peer_id: peerId, local_funding_amount_sat: localFundingAmountSat }),
-    }),
   // Swaps — member
   getSwapLoopOutQuote: (body: { amount_sat: number; destination_address?: string; max_fee_sat?: number }) =>
     apiFetch<SwapQuoteResponse>("/api/swaps/loop-out/quote", { method: "POST", body: JSON.stringify(body) }),
@@ -1186,13 +1182,6 @@ export type RecommendedPeer = {
   connected: boolean;
   has_channel: boolean;
   channels: RecommendedPeerChannel[];
-};
-
-export type OpenRecommendedChannelResult = {
-  ok: boolean;
-  peer_id: string;
-  peer_label: string;
-  funding_txid: string | null;
 };
 
 // ─── Swap types ───────────────────────────────────────────────────────────
