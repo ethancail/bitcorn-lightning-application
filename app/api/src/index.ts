@@ -47,6 +47,7 @@ import {
 import {
   getCapitalPolicy,
   setCapitalPolicy,
+  CapitalPolicyValidationError,
 } from "./api/treasury-capital-policy";
 import {
   assertCanExpand,
@@ -2102,6 +2103,25 @@ async function dispatchRequest(
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(policy));
         } catch (err: any) {
+          // An out-of-range policy write is the CALLER's error, not the
+          // server's. It was a 500 before this branch existed, which told an
+          // operator their treasury was broken when in fact their value was
+          // refused and nothing was written — the opposite of what happened.
+          // The bounds travel in the body so the UI can say which field and
+          // what range without parsing the message.
+          if (err instanceof CapitalPolicyValidationError) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                error: "capital_policy_out_of_range",
+                field: err.field,
+                min: err.min,
+                max: err.max,
+                detail: err.message,
+              }),
+            );
+            return;
+          }
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: String(err?.message ?? err) }));
         }
