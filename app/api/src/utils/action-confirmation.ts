@@ -113,7 +113,7 @@ export type ConfirmedRoute = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * The twelve capital-moving routes that take a confirmation.
+ * The eleven capital-moving routes that take a confirmation.
  *
  * Derived from dispatch reachability to an outflow primitive — see
  * action-confirmation.coverage.test.ts, which re-derives this set from the
@@ -209,16 +209,6 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     note:
       "Peer is ENV.treasuryPubkey (server-side), so capacity_sats is the only required " +
       "caller consequence. partner_socket is an optional connect hint and is covered when sent.",
-  },
-  {
-    method: "POST",
-    match: { kind: "exact", url: "/api/lightning/open-recommended-channel" },
-    shape: 1,
-    fields: [
-      { name: "peer_id", from: "body", kind: "text" },
-      { name: "local_funding_amount_sat", from: "body", kind: "number" },
-    ],
-    note: "Opens a channel to peer_id for local_funding_amount_sat.",
   },
   {
     method: "POST",
