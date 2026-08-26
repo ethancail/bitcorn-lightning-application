@@ -45,6 +45,55 @@ Chain reads use raw JSON-RPC `eth_call` with selectors computed by an embedded,
 self-tested keccak-256 — no web3 dependency. Requires Node ≥ 18. Getter names are
 verified against `bitcorn-stablecoin-rail/src/SettlementRouter.sol`.
 
+## loopd-guard-static.py + loopd-guard-exec.sh — app/loopd ELF guard control
+
+Proves the wrong-architecture guard in `app/loopd/Dockerfile` actually fires.
+That guard is the only thing standing between upstream's mislabelled multi-arch
+image and a Bitcorn release (see `learnings.md`, 2026-08-25), and until this was
+committed it had been verified only by scratch scripts in `/tmp`.
+
+- **loopd-guard-static.py** — parses the Dockerfile (folds `\` continuations,
+  strips comments including ones inside a continued instruction), locates the
+  RUN containing `sha256sum -c`, and asserts over its literal text: `set -eu`
+  heads it, the verify is not piped/`||`-ed/backgrounded, extraction happens
+  after verification, both `case` arms carry their own correct `EXPECT_EM`, and
+  the `mv` into `/out` comes after both ELF guards. Emits that RUN body verbatim
+  with `--emit` for the executed half — extraction, never transcription.
+- **loopd-guard-exec.sh** — runs that emitted body unmodified in a bubblewrap
+  sandbox, varying only the environment, per arch: **A** correct digest + correct
+  arch must SUCCEED (the positive control — without it B and C prove nothing),
+  **B** wrong pinned digest must ABORT at the checksum, **C** valid digest with
+  the OTHER arch's binaries inside must ABORT at `e_machine` with `/out` empty.
+  Each scenario pins the *reason* it must abort, so aborting for the wrong cause
+  is a deviation rather than a pass.
+
+```bash
+scripts/loopd-guard-exec.sh                   # both arches, A/B/C
+scripts/loopd-guard-exec.sh --arch amd64      # one arch
+scripts/loopd-guard-exec.sh --mutants         # + mutation discrimination matrix
+python3 scripts/loopd-guard-static.py         # static assertions alone
+```
+
+Exit codes are three-valued on purpose: **0** all scenarios as expected, **1** a
+scenario deviated (the guard is wrong), **2** could not run (missing bwrap,
+tarballs, or a shim failure). The third exists because a dead harness once
+reported non-zero exits with an empty `/out` — indistinguishable from clean
+aborts — so classification is by output, and a run reaching no verdict line is
+never allowed to read as either pass or fail.
+
+`--mutants` re-runs scenario C against three deliberately weakened copies of the
+guard and reports which side sees which. `transpose` is caught from either arch;
+`dup-b7` (both arms expecting `b7 00`) is caught **only** from amd64 and aborts
+indistinguishably from a correct guard on arm64; `dup-3e` is its mirror. That
+asymmetry is why both arches are run — and a `MISSED` line is the evidence, not
+a failure. The real body is never edited; its sha256 is printed before and after.
+
+Needs `bwrap`, `python3`, and both release tarballs for the pinned
+`LOOP_VERSION`; the first run populates a cache (default
+`/tmp/loopd-guard-cache`, override with `--cache` or `LOOPD_GUARD_CACHE`) via
+`gh release download` and digest-checks each tarball against the Dockerfile's
+own pins. Nothing outside the sandbox and that cache is written.
+
 ## test-hooks.mjs — safety-hook regression tests
 
 Tests the two agent-safety mechanisms so a future edit (or Claude Code update)
