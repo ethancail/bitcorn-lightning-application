@@ -501,10 +501,16 @@ CI's four `paths:` entries — not only releases. A `main` merge touching only
 all, so `latest` is unchanged by those. But a non-release code merge to `app/api/**`
 or `app/web/**` does move it.
 
+The workflow also carries `workflow_dispatch:`, which adds a second way in:
+**a manual dispatch re-points `latest` from whatever ref it is dispatched on.**
+No `paths:` filter applies to a dispatch, and no build job pins `ref:` on
+checkout, so the ref chosen in the Run-workflow UI is what gets built and
+tagged — it need not be `main`.
+
 Nothing consumes `latest` — compose pins exact versions — so this is currently
 harmless. **Prevents:** someone using `latest` to identify or deploy "the current
-release". It is "the most recent `main` build of a watched path", which is a
-different thing.
+release". It is "the most recent published build, from whichever ref
+produced it", which is a different thing.
 
 ### `exports.sh` fails silently, and there is no built-in detection
 
