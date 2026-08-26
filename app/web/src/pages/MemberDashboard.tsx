@@ -20,6 +20,7 @@ import { classifyConfirmError } from "../components/actionConfirm/confirmErrors"
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import StaleMarker from "../components/StaleMarker";
 import { channelStalenessNotice } from "../components/channelStaleness";
+import { certExpiryNotice } from "../components/certExpiryNotice";
 import {
   INITIAL_FRESHNESS,
   freshnessStatus,
@@ -461,6 +462,43 @@ export default function MemberDashboard() {
   return (
     <div>
       <MemberSubscriptionBanner status={subStatus} />
+
+      {/* Cert-expiry arc: the farmer's own node telling them its TLS
+          certificate is running out.
+
+          ⚠ PAGE-TOP, OUTSIDE ALL THREE STATE GATES — deliberately NOT inside
+          the {hasChannel && ...} block below, where the staleness notice
+          lives. That gate is correct for a notice ABOUT the channel numbers;
+          it is wrong here. A member with no channel still has an LND with a
+          cert, and a NEWLY-PROVISIONED member is exactly who is on the clock
+          of a cert issued at install time. Nesting this under hasChannel
+          would hide it from them.
+
+          ⚠ RENDERS NOTHING BEFORE THE DATA ARRIVES. stats is null until the
+          first poll returns, so `stats?.cert_expiry` is undefined and the
+          helper returns null — chosen over the `?? true`-style default used
+          at the staleness call site below, because that one defaults a
+          HEALTH flag toward healthy while this would be defaulting a CLAIM
+          about the node. A dashboard that has not finished loading must not
+          accuse the node of anything.
+
+          Silent on a healthy node: level "ok" returns null, as does
+          "unknown". Pinned by paired controls in certExpiryNotice.test.ts. */}
+      {(() => {
+        const notice = certExpiryNotice(stats?.cert_expiry, Date.now());
+        if (!notice) return null;
+        return (
+          <div className={`alert ${notice.severity === "critical" ? "critical" : "warning"}`}>
+            <span className="alert-icon" aria-hidden>
+              {notice.severity === "critical" ? "✕" : "⚠"}
+            </span>
+            <div className="alert-body">
+              <div className="alert-msg">{notice.text}</div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>My Dashboard</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>

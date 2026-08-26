@@ -47,18 +47,26 @@ import {
 import {
   getCapitalPolicy,
   setCapitalPolicy,
+  CapitalPolicyValidationError,
 } from "./api/treasury-capital-policy";
 import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
 import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, getLndChainFeeRate, updateNodeAlias, clearNodeAlias } from "./lightning/lnd";
+// Two route handlers in this file call ln-service DIRECTLY off getLndClient()'s
+// handle instead of through an lnd.ts wrapper (POST /api/pay's decode, and the
+// gossip alias lookup in POST /api/contacts/sync-peers). Those two bypass the
+// wrappers' deadlines, so they bind their own.
+import { withDeadline, LND_GOSSIP_CALL_TIMEOUT_MS } from "./lightning/callDeadline";
 // Shared error unwrapper. ln-service throws [503, 'Name', {err}] ARRAYS whose
 // top-level .message/.code/.details are all undefined, so `err.message` at a
 // catch site prints nothing — and String(err) on the array yields
 // "503,Name,[object Object]". lndFaultDetail flattens it properly.
 import { lndFaultDetail } from "./lightning/lndHealth";
 import { channelDataFreshness } from "./api/memberStatsFreshness";
+import { readLocalCertExpiry } from "./lightning/readCertExpiry";
+import { certExpiryLevel, certExpiryMessage } from "./lightning/certExpiry";
 import { runTimeoutBoundLndProbe } from "./lightning/lndProbeRoute";
 import { normalizeAlias, validateAliasFormat, isAliasBlocked, lndDefaultAlias } from "./profile/aliasValidation";
 import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow } from "./profile/profileStore";
@@ -2095,6 +2103,34 @@ async function dispatchRequest(
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(policy));
         } catch (err: any) {
+          // An out-of-range policy write is the CALLER's error, not the
+          // server's. It was a 500 before this branch existed, which told an
+          // operator their treasury was broken when in fact their value was
+          // refused and nothing was written — the opposite of what happened.
+          // The bounds travel in the body so the UI can say which field and
+          // what range without parsing the message.
+          //
+          // ⚠ `zero_permitted` IS NOT OPTIONAL DECORATION. Both zero-rejecting
+          // fields carry min: 0, so {min, max} alone would advertise a range
+          // that includes a value the server refuses. The permitted set is
+          // [min, max] MINUS {0} when zero_permitted is false; `reason` says
+          // which of the two refusals happened. Dropping either field makes this
+          // payload untrue rather than merely terse.
+          if (err instanceof CapitalPolicyValidationError) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                error: "capital_policy_out_of_range",
+                field: err.field,
+                reason: err.reason,
+                min: err.min,
+                max: err.max,
+                zero_permitted: err.zeroPermitted,
+                detail: err.message,
+              }),
+            );
+            return;
+          }
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: String(err?.message ?? err) }));
         }
@@ -2897,7 +2933,15 @@ async function dispatchRequest(
           const { lnd: lndClient } = getLndClient();
           let decodedRequest: { id: string; destination: string; tokens: number } | null = null;
           try {
-            decodedRequest = await decodePaymentRequest({ lnd: lndClient, request: payment_request });
+            // Raw ln-service call off getLndClient()'s handle, so it does not
+            // inherit an lnd.ts wrapper's deadline and binds its own. Bounded
+            // rather than held: the decode commits nothing, and a decode that
+            // times out means no payment was attempted.
+            decodedRequest = await withDeadline(
+              "pay:decodePaymentRequest",
+              () => decodePaymentRequest({ lnd: lndClient, request: payment_request }),
+              LND_GOSSIP_CALL_TIMEOUT_MS,
+            );
           } catch (decodeErr) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "invalid_payment_request" }));
@@ -3123,6 +3167,51 @@ async function dispatchRequest(
         )
         .get(cutoff30d) as { total: number };
 
+      // ── The LND TLS certificate's expiry, read from local disk. ──
+      //
+      // WHY THIS FIELD RIDES THIS ENDPOINT AND NOT ANOTHER. An expired cert is
+      // detected precisely when every gRPC call is failing, so a warning about
+      // it is useless on a surface that fails with LND. This route survives
+      // that state — its two live reads are swallowed into lnd_live_read_ok
+      // above and everything else is SQLite — and the cert itself needs no LND
+      // at all (readCertExpiry.ts reads /lnd/tls.cert, a live bind mount). So
+      // the fact and its carrier are both available during the fault. Pinned by
+      // api/memberStatsCertExpiry.http.test.ts, which asserts one body carrying
+      // lnd_live_read_ok:false AND a non-null cert_expiry together.
+      //
+      // ⚠ COMPUTED PER REQUEST, deliberately. maybeCheckCertExpiry() is
+      // rate-limited to once a day and retains no outcome, so calling it here
+      // would return nulls on ~95 of every 96 calls. Reading directly also
+      // sidesteps a live defect: certExpiryMessage's nowMs parameter is
+      // accepted but never read (certExpiry.ts:157-180), so a message rendered
+      // from a cached inspection would carry a daysRemaining frozen at check
+      // time. A fresh read makes that unreachable rather than worked around.
+      // Cost is one readFileSync + one X509 parse — the same order as the two
+      // existsSync calls isLndAvailable() already makes on the LND hot path.
+      //
+      // ⚠ `unknown` TRAVELS TRUTHFULLY. It is NOT folded into `ok` or into
+      // null: "the cert is fine" and "we could not read the cert" are different
+      // claims, and collapsing them is the silent-failure pattern this arc
+      // exists to remove (certExpiry.ts:124-130). Whether a farmer is SHOWN
+      // `unknown` is a UI policy and lives in the web helper, not here.
+      //
+      // null means the computation itself threw. readLocalCertExpiry turns
+      // every filesystem and parse outcome into a result rather than an
+      // exception, so this is the residual "something we did not anticipate"
+      // case — and it must not take the rest of the dashboard down with it.
+      let certExpiry: { level: string; message: string | null; not_after_ms: number | null } | null;
+      try {
+        const inspection = readLocalCertExpiry(Date.now());
+        certExpiry = {
+          level: certExpiryLevel(inspection),
+          message: certExpiryMessage(inspection, Date.now()),
+          not_after_ms: inspection.ok ? inspection.notAfterMs : null,
+        };
+      } catch (err) {
+        console.warn("[member-stats] cert expiry read failed:", lndFaultDetail(err));
+        certExpiry = null;
+      }
+
       const result = {
         hub_pubkey: hubPubkey || null,
         membership_status: node?.membership_status ?? "unsynced",
@@ -3133,6 +3222,8 @@ async function dispatchRequest(
         // channel numbers are SQLite-sourced and LND could not be reached this
         // request — the state that previously looked identical to healthy.
         lnd_live_read_ok: lndLiveReadOk,
+        // Read from disk this request, independent of the two live reads above.
+        cert_expiry: certExpiry,
         treasury_channel: treasuryChannel
           ? {
               channel_id: treasuryChannel.channel_id,
@@ -3273,91 +3364,25 @@ async function dispatchRequest(
     return;
   }
 
-  if (req.method === "POST" && req.url === "/api/lightning/open-recommended-channel") {
-    let body = "";
-    req.on("data", (chunk: string) => (body += chunk));
-    req.on("end", async () => {
-      try {
-        const parsed = JSON.parse(body || "{}");
-        const peerId = parsed.peer_id;
-        const localFundingAmountSat = Number(parsed.local_funding_amount_sat);
-
-        if (!peerId || typeof peerId !== "string") {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "peer_id is required" }));
-          return;
-        }
-        if (!Number.isFinite(localFundingAmountSat) || localFundingAmountSat < 100_000) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "local_funding_amount_sat must be at least 100,000" }));
-          return;
-        }
-
-        // Fetch approved list from Worker — peer_id must match.
-        // Worker-side: public — no Bearer required.
-        let response: Response;
-        try {
-          response = await workerFetch("/recommended-peers");
-        } catch (err: any) {
-          if (err instanceof WorkerFetchError && err.reason === "not_configured") {
-            res.writeHead(503, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: "worker_not_configured" }));
-            return;
-          }
-          throw err;
-        }
-        if (!response.ok) {
-          res.writeHead(502, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "could not verify peer against approved list" }));
-          return;
-        }
-        const approvedPeers = (await response.json()) as Array<{
-          id: string; pubkey: string; socket: string; label: string;
-        }>;
-
-        const peer = approvedPeers.find((p) => p.id === peerId);
-        if (!peer) {
-          res.writeHead(403, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: "peer_not_in_approved_list" }));
-          return;
-        }
-
-        // Connect to peer if needed
-        await connectToPeer(peer.pubkey, peer.socket);
-
-        // Open channel
-        const result = await openTreasuryChannel(peer.pubkey, localFundingAmountSat, {
-          isPrivate: false,
-          partnerSocket: peer.socket,
-        });
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          ok: true,
-          peer_id: peer.id,
-          peer_label: peer.label,
-          funding_txid: result.transaction_id ?? null,
-        }));
-      } catch (err: any) {
-        console.error("[open-recommended-channel]", err);
-        // ln-service throws [statusCode, 'ErrorName', { err }] arrays
-        const errStr = Array.isArray(err) ? JSON.stringify(err) : (err?.message ?? "");
-        let userMsg = "Failed to open channel";
-        if (/insufficient|InsufficientFunds/i.test(errStr)) {
-          userMsg = "Insufficient on-chain balance to open this channel. Fund your node first.";
-        } else if (/already.*peer|already.*connected/i.test(errStr)) {
-          userMsg = "Already connected to this peer";
-        } else if (/timeout|ETIMEDOUT|connect.*refused/i.test(errStr)) {
-          userMsg = "Could not connect to peer. The node may be offline.";
-        } else if (err?.message) {
-          userMsg = err.message;
-        }
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: userMsg }));
-      }
-    });
-    return;
-  }
+  // POST /api/lightning/open-recommended-channel REMOVED.
+  //
+  // It funded a channel to a pubkey taken LIVE from the Worker's
+  // /recommended-peers on every call — no local cache, no prior-seen check
+  // against lnd_peers/lnd_channels/contacts, no operator approval step, and no
+  // upper bound on local_funding_amount_sat beyond a 100k floor. It also
+  // carried NO role gate, so it executed on member nodes as readily as on the
+  // treasury, and it was one of the two openTreasuryChannel call sites that
+  // never reached assertCanExpand() — so max_peer_capacity_sats could not catch
+  // a duplicate open to a peer already funded.
+  //
+  // It had no caller. The UI panel that would have driven it was deleted
+  // earlier on architectural grounds — see the note at web App.tsx where
+  // RecommendedPeersPanel used to render: the hub-and-spoke model uses
+  // intentionally unbalanced merchant/farmer lanes and members do not need
+  // external peers. The route outlived the panel.
+  //
+  // The GET /api/network/recommended-peers enrichment route above is a
+  // SEPARATE route with its own behaviour and deliberately stays.
 
   // ═══════════════════════════════════════════════════════════════════════
   // NETWORK PAYMENTS
@@ -3631,7 +3656,14 @@ async function dispatchRequest(
         let name = `${peer_pubkey.slice(0, 8)}…${peer_pubkey.slice(-6)}`;
         try {
           const { lnd } = getLndClient();
-          const nodeInfo = await getNode({ lnd, public_key: peer_pubkey, is_omitting_channels: true });
+          // Raw ln-service gossip read; binds its own deadline for the same
+          // reason as the decode above. ⚠ PER PEER — this sits inside the
+          // contact loop, so the route's exposure is peers × the deadline.
+          const nodeInfo = await withDeadline(
+            "syncPeers:getNode",
+            () => getNode({ lnd, public_key: peer_pubkey, is_omitting_channels: true }),
+            LND_GOSSIP_CALL_TIMEOUT_MS,
+          );
           if (nodeInfo.alias && nodeInfo.alias.trim()) {
             name = nodeInfo.alias.trim();
           }

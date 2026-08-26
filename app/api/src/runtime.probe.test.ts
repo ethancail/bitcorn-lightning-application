@@ -19,6 +19,10 @@ const EXPECTED_MAJOR = 20; // .nvmrc = "20"; Dockerfile = node:20-slim
 
 describe("test runtime", () => {
   it(`runs on Node ${EXPECTED_MAJOR}.x`, () => {
+    // Printed UNCONDITIONALLY, not only on failure. A green assertion leaves the
+    // version unevidenced, and the runtime is a fact reports have to quote — the
+    // message below only surfaces when the check already failed.
+    console.log(`[runtime-probe] process.version = ${process.version}`);
     const major = Number(process.version.replace(/^v/, "").split(".")[0]);
     expect(
       major,

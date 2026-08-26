@@ -10,6 +10,7 @@ import { readLocalCertExpiry } from "../lightning/readCertExpiry";
 import { isLoopAvailable } from "../lightning/loop";
 import { ENV } from "../config/env";
 import { MANUAL_METRIC_KEYS, listLatestPerMetric } from "../valuation/manualInputStore";
+import { channelDataStalenessAlert } from "./channelDataStaleness";
 
 export type AlertSeverity = "info" | "warning" | "critical";
 
@@ -45,10 +46,48 @@ function getExpansionsTodayCount(): number {
   return row?.v ?? 0;
 }
 
+/**
+ * Age of the cached channel data the capital guardrails read.
+ *
+ * Two statements rather than a join: lnd_node_info is a singleton and the
+ * channel aggregate has to survive an empty table, which an inner join would
+ * turn into no row at all — collapsing exactly the case this needs to report.
+ */
+function readChannelDataAges(): {
+  latestChannelUpdatedAt: number | null;
+  channelRowCount: number;
+  nodeInfoUpdatedAt: number | null;
+} {
+  const ch = db
+    .prepare(
+      `SELECT MAX(updated_at) AS latest, COUNT(*) AS n FROM lnd_channels`,
+    )
+    .get() as { latest: number | null; n: number } | undefined;
+
+  const ni = db
+    .prepare(`SELECT updated_at FROM lnd_node_info WHERE id = 1`)
+    .get() as { updated_at: number | null } | undefined;
+
+  return {
+    latestChannelUpdatedAt: ch?.latest ?? null,
+    channelRowCount: ch?.n ?? 0,
+    nodeInfoUpdatedAt: ni?.updated_at ?? null,
+  };
+}
+
 export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   const now = Date.now();
   const alerts: TreasuryAlert[] = [];
   const policy = getCapitalPolicy();
+
+  // --- Channel data staleness (REPORT-ONLY; nothing below refuses on it) ---
+  // assertCanExpand() computes deployed capacity from lnd_channels with no age
+  // predicate, and stale rows under-count, which makes its deploy-ratio and
+  // per-peer checks EASIER to pass. Same shape as ONCHAIN_RESERVE_CHECK_SKIPPED
+  // below: the point is that a guardrail reading zeros should not be
+  // indistinguishable from one that passed.
+  const staleness = channelDataStalenessAlert({ ...readChannelDataAges(), nowMs: now });
+  if (staleness) alerts.push(staleness);
 
   // --- Rotation candidates ---
   const candidates = getRotationCandidates();
@@ -161,9 +200,17 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     // rendered by the treasury Dashboard and read by nothing else.
     //
     // The probe is deadline-bound (LND_PROBE_TIMEOUT_MS, 3s), so it cannot hang
-    // the 60s dashboard poll. Note that getLndChainBalance() above and
-    // isLoopAvailable() below still carry NO deadline — pre-existing, tracked
-    // separately, and not addressed here.
+    // the 60s dashboard poll. getLndChainBalance() above is now bound too, at
+    // the same 3s, inside its lnd.ts wrapper — so reaching this catch site is
+    // the EXPECTED outcome of a wedged LND rather than an unreachable one.
+    //
+    // ⚠ THIS COMMENT USED TO SAY isLoopAvailable() BELOW CARRIED NO DEADLINE.
+    // That was never true. It has always passed a 5s gRPC deadline
+    // (lightning/loop.ts:130, `rpcCall("GetInfo", {}, 5_000)`), and loop.ts
+    // bounds every RPC it makes via a real `{ deadline: Date }` call option —
+    // 30s by default, 60s for swap initiation. Unlike the Promise.race used on
+    // the LND side, a gRPC deadline actually cancels the call. The Loop half of
+    // this surface was never at risk; only the LND half was.
     try {
       const report = await runTimeoutBoundLndProbe(now);
       // The cert is read from LOCAL DISK — no LND call, so it still answers

@@ -23,6 +23,14 @@ export async function payInvoice(paymentRequest: string) {
   const { lnd } = getLndClient();
   const outgoingChannel = getTreasuryChannelId();
 
+  // ⚠ HELD — NO DEADLINE, DELIBERATELY. This is the one raw ln-service call site
+  // in the app that is NOT bounded; the other seven are. It is in
+  // HELD_UNBOUNDED_CALLS (lightning/callDeadline.ts): a deadline cannot cancel
+  // the call, so abandoning an in-flight payment leaves the outcome UNKNOWN —
+  // the HTLC may already have settled. Retrying would be a double spend, not
+  // retrying would be a lost payment, and nothing local can distinguish them.
+  // A hung payment is a real cost, accepted knowingly against a worse one.
+  // Pinned by lightning/heldCalls.test.ts.
   const result = await payViaPaymentRequest({
     lnd,
     request: paymentRequest,

@@ -73,6 +73,40 @@ function getDeployedSats(): number {
   return row?.v ?? 0;
 }
 
+/**
+ * Age of the rows getDeployedSats() and getPeerDeployedSats() just summed.
+ *
+ * ⚠ REPORTED, NOT ENFORCED. Nothing in assertCanExpand() branches on this — the
+ * verdict is byte-for-byte what it was before this function existed. It travels
+ * in the refusal message because the two deployed-capacity reads have no age
+ * predicate and stale rows UNDER-count, which makes both checks easier to pass;
+ * so when a refusal does happen, the operator needs to know whether the numbers
+ * it quotes came from data worth acting on. The alert that fires when the data
+ * is stale but nothing refuses is CHANNEL_DATA_STALE on the treasury alerts
+ * surface — this half only annotates a refusal that was already going to happen.
+ *
+ * Returns null on an empty table, which prints as "unknown" rather than as a
+ * zero age: an empty lnd_channels carries no timestamp at all, and calling that
+ * "0s old" would be the most reassuring possible rendering of the least
+ * trustworthy state.
+ */
+function getChannelDataAgeSeconds(): number | null {
+  const row = db
+    .prepare(`SELECT MAX(updated_at) AS latest FROM lnd_channels`)
+    .get() as { latest: number | null } | undefined;
+  const latest = row?.latest ?? null;
+  if (latest == null || !Number.isFinite(latest)) return null;
+  return Math.max(0, Math.floor((Date.now() - latest) / 1000));
+}
+
+/** Suffix appended to the two refusals whose numbers come from cached rows. */
+function channelDataAgeNote(): string {
+  const age = getChannelDataAgeSeconds();
+  return age == null
+    ? ` [channel data age: unknown — lnd_channels is empty]`
+    : ` [channel data age: ${age}s]`;
+}
+
 function getPeerDeployedSats(peerPubkey: string): number {
   const row = db
     .prepare(
@@ -216,7 +250,8 @@ export async function assertCanExpand(
   const totalDeployedAfter = deployedSats + pendingSats + capacitySats;
   if (totalDeployedAfter > maxDeploySats) {
     throw new CapitalGuardrailError(
-      `Policy violation: max deploy ratio would be exceeded (deployed+pending+new=${totalDeployedAfter}, max=${maxDeploySats} of ${totalCapital} total capital)`
+      `Policy violation: max deploy ratio would be exceeded (deployed+pending+new=${totalDeployedAfter}, max=${maxDeploySats} of ${totalCapital} total capital)` +
+        channelDataAgeNote()
     );
   }
 
@@ -230,7 +265,8 @@ export async function assertCanExpand(
   // B. Max sats per peer
   if (peerDeployedSats + capacitySats > policy.max_peer_capacity_sats) {
     throw new CapitalGuardrailError(
-      `Policy violation: max sats per peer exceeded (peer would have ${peerDeployedSats + capacitySats}, max ${policy.max_peer_capacity_sats})`
+      `Policy violation: max sats per peer exceeded (peer would have ${peerDeployedSats + capacitySats}, max ${policy.max_peer_capacity_sats})` +
+        channelDataAgeNote()
     );
   }
 

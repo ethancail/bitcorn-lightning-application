@@ -40,12 +40,39 @@ const s = vi.hoisted(() => ({
   keysendDisabled: [] as any[],
   latestPerMetric: [] as any[],
   metricKeys: [] as string[],
+  // Channel-data freshness fixture, as an AGE in ms rather than an absolute
+  // timestamp: Date.now() is real in this suite, so a pinned absolute would
+  // drift into staleness as the file's slower cases run. Defaults describe a
+  // HEALTHY, SYNCED treasury.
+  channelAgeMs: 5_000 as number,
+  channelRowCount: 3 as number,
+  /** null = no lnd_node_info row at all, i.e. never synced. */
+  nodeInfoAgeMs: 5_000 as number | null,
 }));
 
+// ⚠ THE CHANNEL-DATA READS ARE ANSWERED SPECIFICALLY, NOT BY THE `{ v: 0 }`
+// CATCH-ALL. getTreasuryAlerts() now also ages lnd_channels against
+// lnd_node_info (CHANNEL_DATA_STALE). Under the blanket `{ v: 0 }` those reads
+// return no channel rows and no node-info timestamp, which is a NEVER-SYNCED
+// node — so every "quiet treasury" case below would carry a staleness alert and
+// the empty-list assertions would fail. That is the classifier being right about
+// a fixture that was not describing a quiet treasury at all: a quiet treasury
+// has synced. The fixture now says so.
 vi.mock("../db", () => ({
   db: {
-    prepare: () => ({
-      get: () => ({ v: 0 }),
+    prepare: (sql: string) => ({
+      get: () => {
+        if (sql.includes("MAX(updated_at)") && sql.includes("lnd_channels")) {
+          return {
+            latest: s.channelRowCount === 0 ? null : Date.now() - s.channelAgeMs,
+            n: s.channelRowCount,
+          };
+        }
+        if (sql.includes("FROM lnd_node_info")) {
+          return { updated_at: s.nodeInfoAgeMs == null ? null : Date.now() - s.nodeInfoAgeMs };
+        }
+        return { v: 0 };
+      },
       all: () => s.keysendDisabled,
       run: () => undefined,
     }),
@@ -153,6 +180,9 @@ beforeEach(() => {
   s.keysendDisabled = [];
   s.latestPerMetric = [];
   s.metricKeys = [];
+  s.channelAgeMs = 5_000;
+  s.channelRowCount = 3;
+  s.nodeInfoAgeMs = 5_000;
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -358,17 +388,56 @@ describe("the producer's deadline protects the probe", () => {
     expect(fault.severity).toBe("critical"); // permission outranks connectivity
   }, 20_000);
 
-  it("⚠ RESIDUAL HAZARD, PINNED NOT FIXED: a wedged reserve call still hangs the poll", async () => {
-    // getLndChainBalance() at :121 has no deadline, so a wedged-but-connected
-    // LND hangs there and never reaches the catch site or the producer. This
-    // arc's timeout does NOT close that; fixing :121 (and isLoopAvailable() at
-    // :162) is a separate, pre-existing item. Pinned so it is visible rather
-    // than mistaken for solved.
+  it("the producer itself imposes no deadline on the reserve call", async () => {
+    // ─── THIS CASE USED TO READ "RESIDUAL HAZARD, PINNED NOT FIXED" ──────────
+    //
+    // It was written when getLndChainBalance() had no deadline anywhere, so a
+    // wedged-but-connected LND hung here forever and never reached the catch
+    // site. That is no longer true: lnd.ts now bounds getLndChainBalance at
+    // LND_FAST_CALL_TIMEOUT_MS (3s), so in production the wedge becomes a
+    // rejection and the case below ("a timed-out reserve call…") shows what the
+    // producer then does with it.
+    //
+    // ⚠ THE ASSERTION IS UNCHANGED AND STILL TRUE, WHICH IS EXACTLY WHY THE
+    // COMMENT HAD TO CHANGE. This file mocks ../lightning/lnd wholesale, so the
+    // real wrapper — and its deadline — is not in play here at all; and even in
+    // production 3s is longer than this 600ms race. A test that keeps passing
+    // while its explanation goes stale is worse than one that fails.
+    //
+    // What it still legitimately pins: getTreasuryAlerts() has no deadline of
+    // its OWN. The bound lives one layer down, in the lnd.ts wrapper, and is
+    // proven in lightning/lnd.deadlines.test.ts against a mocked ln-service.
+    // (The old comment's ":121" / ":162" line references were stale too — the
+    // calls are at treasury-alerts.ts:124 and :220.)
     s.chainBalanceHangs = true;
 
     const call = getTreasuryAlerts().then(() => "settled" as const);
     const race = new Promise<"hung">((r) => globalThis.setTimeout(() => r("hung"), 600));
     expect(await Promise.race([call, race])).toBe("hung");
+  }, 20_000);
+
+  it("a timed-out reserve call becomes a critical alert, not a hang", async () => {
+    // The done-when for this endpoint, at the producer level: once lnd.ts turns
+    // a wedge into an ETIMEDOUT rejection, the reserve check's catch site is
+    // reached and the guardrail's failure is REPORTED rather than silent.
+    //
+    // The error shape is the one lnd.ts's withDeadline actually constructs, so
+    // this exercises the same string CONNECTIVITY_RE keys on rather than an
+    // invented stand-in.
+    s.chainBalanceThrows = new Error(
+      "ETIMEDOUT: getLndChainBalance exceeded 3000ms deadline",
+    );
+
+    const alerts = await getTreasuryAlerts();
+    const types_ = types(alerts);
+
+    expect(types_).toContain("ONCHAIN_RESERVE_CHECK_SKIPPED");
+    const skipped = alerts.find((a) => a.type === "ONCHAIN_RESERVE_CHECK_SKIPPED")!;
+    expect(skipped.severity).toBe("critical");
+
+    // And the fault itself is classified rather than discarded.
+    const fault = alerts.find((a) => a.type === "LND_FAULT")!;
+    expect(fault.data.kinds).toContain("connectivity");
   }, 20_000);
 });
 
@@ -406,5 +475,111 @@ describe("report-only: existing behaviour is unaffected", () => {
       expect(Object.keys(a).sort()).toEqual(["at", "data", "message", "severity", "type"]);
       expect(["info", "warning", "critical"]).toContain(a.severity);
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CHANNEL_DATA_STALE — WIRING, not classification.
+//
+// channelDataStaleness.test.ts proves the classifier is correct. This proves it
+// is ATTACHED: that getTreasuryAlerts() actually calls it, that its two db reads
+// are the ones the classifier expects, and that its alert reaches the returned
+// array. A correct classifier nothing calls is the failure unit tests cannot
+// see — the same reason action-confirmation.route.test.ts exists beside
+// action-confirmation.test.ts.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("channel data staleness reaches the alerts surface", () => {
+  const find = (alerts: any[]) => alerts.find((a) => a.type === "CHANNEL_DATA_STALE");
+
+  it("(ii) PERMITS: fresh channel data produces NO staleness alert", async () => {
+    // The default fixture is a healthy synced treasury. If this ever fires, the
+    // alert is noise on every dashboard poll and will be tuned out.
+    expect(find(await getTreasuryAlerts())).toBeUndefined();
+  });
+
+  it("(i) FIRES: stale channel rows produce the alert", async () => {
+    // ⚠ THE FIXTURE IS DELIBERATELY OFF THE THRESHOLD, AND THE ASSERTION IS A
+    // WINDOW RATHER THAN A FLOOR. This is a WIRING test — see the header above:
+    // it proves the classifier is ATTACHED and that an age reaches the payload.
+    // The exact number is incidental to that claim, and pinning it here was
+    // actively wrong, because THIS surface reads the clock TWICE:
+    //
+    //   treasury-alerts.ts   `const now = Date.now()` is captured FIRST
+    //   the fixture below    stamps `Date.now() - channelAgeMs` LATER, at the
+    //                        moment readChannelDataAges() issues its SELECT
+    //
+    // so the observed elapsed is `channelAgeMs − (t_read − t_now)`, and
+    // base/staleness.ts floors to whole seconds. With the old fixture sitting
+    // exactly on 600_000ms, a gap of ONE MILLISECOND truncated the age to 599
+    // and failed an assertion demanding >= 600. Measured: it passed only when
+    // the two reads landed in the same millisecond, which is why it failed
+    // roughly 1 run in 15 under parallel load and never in isolation.
+    //
+    // THE THRESHOLD ITSELF IS NOT LOSING COVERAGE BY MOVING OFF IT. It is
+    // pinned three times over, at every level below this one, all with an
+    // INJECTED clock and therefore no two-read problem:
+    //   base/staleness.test.ts        isStaleByThreshold / classifyStaleness,
+    //                                 just-below and exactly-at, both thresholds
+    //   memberStatsFreshness.test.ts  channelDataFreshness "crosses into stale
+    //                                 exactly at base/staleness.ts's threshold,
+    //                                 not before", plus the 30-minute crossing
+    //   channelDataStaleness.test.ts  the classifier: "does not fire one tick
+    //                                 before the threshold" / "fires exactly AT
+    //                                 the threshold"
+    // An exact-threshold assertion belongs where the clock is supplied. It does
+    // not belong here, where two independent Date.now() calls decide it.
+    //
+    // 12 minutes sits clear of BOTH thresholds — 7 minutes above stale, 18 below
+    // very_stale — so `severity === "warning"` still discriminates with a wide
+    // margin instead of resting on a boundary.
+    //
+    // The window is what keeps this a real assertion rather than one loosened
+    // until green. `<= 720` is a HARD ceiling: the gap can only ever subtract,
+    // so an age above the fixture value is impossible and would mean the age is
+    // not derived from these rows at all. `>= 700` absorbs 20 SECONDS of
+    // scheduling jitter — far beyond anything real — while still rejecting 0
+    // (age not plumbed through), 2700 (the 45-minute fixture leaking from the
+    // case below), 300 (wrong threshold), and 720000 (milliseconds reported as
+    // seconds). It is a strictly tighter claim than the `>= 600` it replaces,
+    // which would have accepted every one of those but the first.
+    s.channelAgeMs = 12 * 60 * 1000;
+    const a = find(await getTreasuryAlerts());
+    expect(a, "no CHANNEL_DATA_STALE alert on 12-minute-old rows").toBeDefined();
+    expect(a.severity).toBe("warning");
+    expect(a.data.channel_data_age_seconds).toBeGreaterThanOrEqual(700);
+    expect(a.data.channel_data_age_seconds).toBeLessThanOrEqual(720);
+    expect(a.data.blocks_expansion).toBe(false);
+  });
+
+  it("(i) FIRES: empty table with no node info reports never_synced", async () => {
+    s.channelRowCount = 0;
+    s.nodeInfoAgeMs = null;
+    const a = find(await getTreasuryAlerts());
+    expect(a).toBeDefined();
+    expect(a.data.node_info_staleness).toBe("never_synced");
+    expect(a.data.indistinguishable_cases).toEqual([
+      "never_synced",
+      "genuinely_zero_channels",
+    ]);
+  });
+
+  it("(ii) PERMITS: empty table with FRESH node info stays quiet", async () => {
+    // A genuinely channel-less treasury that is syncing fine. The discriminator
+    // that makes this distinguishable from never_synced is the whole reason the
+    // classifier reads lnd_node_info at all.
+    s.channelRowCount = 0;
+    s.nodeInfoAgeMs = 5_000;
+    expect(find(await getTreasuryAlerts())).toBeUndefined();
+  });
+
+  it("does not disturb the other alerts on the surface", async () => {
+    // Report-only means additive. A breached reserve must still be reported
+    // alongside, with its own type, when both conditions hold at once.
+    s.chainBalance = 1;
+    s.channelAgeMs = 45 * 60 * 1000;
+    const alerts = await getTreasuryAlerts();
+    expect(find(alerts)?.severity).toBe("critical");
+    expect(alerts.some((a) => a.type === "ONCHAIN_RESERVE_BREACHED")).toBe(true);
   });
 });

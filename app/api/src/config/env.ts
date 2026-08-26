@@ -1,6 +1,8 @@
 // Environment variable configuration and validation.
 // REQUIRED vars have no safe default and must be set before starting.
 // All other vars have conservative defaults suitable for first-run operators.
+import { parseSyncTimingLevel } from "../lightning/syncTiming";
+
 export const ENV = {
     // true when NODE_ENV is not "production"
     isDev: process.env.NODE_ENV !== "production",
@@ -157,6 +159,15 @@ export const ENV = {
     // Auto-pause after N consecutive failed_buy or failed_withdraw transitions.
     // Operator must click Resume to re-enable. Reset on any successful sweep.
     autoBuyFailurePauseThreshold: Number(process.env.AUTOBUY_FAILURE_PAUSE_THRESHOLD ?? "3"),
+
+    // --- LND sync-tick timing ---
+    // "calls" (default) | "tick" | "off". ON by default and NOT gated behind
+    // DEBUG: the measurement is wanted from real member nodes, whose operators
+    // never set DEBUG, and a debug-gated metric is an unreachable one. The knob
+    // exists so the volume can come down without a code change. Parsing lives in
+    // lightning/syncTiming.ts so it is testable; syncTiming.test.ts proves a
+    // non-default value actually reaches this object.
+    syncTimingLevel: parseSyncTimingLevel(process.env.LND_SYNC_TIMING_LEVEL),
 
     // --- Subscription auto-pay (member-node-local renewal) ---
     // Scheduler tick cadence. 60s matches the frontend status-poll cadence and
