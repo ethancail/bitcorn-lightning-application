@@ -57,11 +57,20 @@ describe("channelStalenessNotice", () => {
     expect(channelStalenessNotice(fresh, true, NOW)).toBeNull();
   });
 
-  it("names the remediation in the order that actually works", () => {
+  it("names one remediation step, and it is the Lightning app", () => {
     const n = channelStalenessNotice(veryStale, false, NOW)!;
-    // LND regenerates the cert on ITS restart; the API only picks up the new
-    // cert afterwards. Lightning first, then Bitcorn.
-    expect(n.text).toMatch(/restarting the lightning app, then bitcorn/i);
+    // This notice is CAUSE-AGNOSTIC: an unresponsive LND is only one of the
+    // things that puts it on screen, and it cannot tell which it is looking at.
+    // So it may only claim what holds for every cause. A follow-up Bitcorn
+    // restart does not — it is specific to the cert case, where the cert notice
+    // states it with its scope attached (app/api/src/lightning/certExpiry.ts).
+    // Naming it here asserted a remedy for faults it does not fix.
+    //
+    // The negative pin below is LIVE, not decorative: it guards the exact
+    // wording this arc removed from the aged branch. See bitcorn-research
+    // decisions/2026-08-26-cert-fault-remediation-loop-step-moves.md.
+    expect(n.text).toMatch(/restarting the lightning app/i);
+    expect(n.text).not.toMatch(/then bitcorn/i);
   });
 
   it("escalates very_stale above stale", () => {
