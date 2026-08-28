@@ -152,7 +152,18 @@ export function certExpiryLevel(
  * same shape as confirmMachine.test.ts:153-154.
  *
  * The remediation named here is the one a farmer can actually perform on their
- * own node: restart the Lightning app so LND issues a fresh certificate.
+ * own node: restart the Lightning app so LND issues a fresh certificate,
+ * followed by a Bitcorn restart. (Worded that way on purpose — the copy's own
+ * phrasing is a done-when grep for this arc, and a comment that repeated it
+ * verbatim would match the query as readily as the rendered string does.)
+ * The second step is here because loopd is a service in
+ * Bitcorn's OWN compose (bitcorn-lightning-node/docker-compose.yml), a
+ * different Umbrel app from Lightning — so only a Bitcorn restart reaches it,
+ * and Loop stays dead after step 1 alone. It is labelled as such in the copy so
+ * a farmer who does not use Loop can see what the second restart buys them.
+ * Placement decided in bitcorn-research
+ * decisions/2026-08-26-cert-fault-remediation-loop-step-moves.md; that record
+ * marks step 2's NECESSITY as accepted on evidence, not proven in-repo.
  */
 export function certExpiryMessage(inspection: CertInspection, nowMs: number): string | null {
   const level = certExpiryLevel(inspection);
@@ -167,14 +178,20 @@ export function certExpiryMessage(inspection: CertInspection, nowMs: number): st
     const days = Math.abs(inspection.daysRemaining);
     return (
       `LND's TLS certificate EXPIRED on ${on} (${days} day${days === 1 ? "" : "s"} ago). ` +
-      `Lightning calls will keep failing until LND issues a new one. ` +
-      `Restart the Lightning app to regenerate it.`
+      `Until LND issues a new one, your channel figures won't update and ` +
+      `payments sent from Bitcorn won't go through. ` +
+      `Restart the Lightning app to regenerate it, then restart Bitcorn. ` +
+      `The second restart is what gets Loop working again — it doesn't pick up ` +
+      `the new certificate on its own.`
     );
   }
   return (
     `LND's TLS certificate expires on ${on} ` +
     `(${inspection.daysRemaining} day${inspection.daysRemaining === 1 ? "" : "s"} away). ` +
-    `Restart the Lightning app before then to regenerate it; Lightning calls ` +
-    `will fail once it lapses.`
+    `Once it lapses, your channel figures will stop updating and payments sent ` +
+    `from Bitcorn won't go through. The fix at that point: restart the Lightning ` +
+    `app so LND issues a new certificate, then restart Bitcorn. The second ` +
+    `restart is what gets Loop working again — it doesn't pick up the new ` +
+    `certificate on its own.`
   );
 }

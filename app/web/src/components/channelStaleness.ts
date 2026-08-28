@@ -83,7 +83,8 @@ export function channelStalenessNotice(
         `Last updated ${when}. Your node's Lightning service isn't responding, ` +
         `so these figures are the last ones recorded — not current. ` +
         `Your channel and funds are unaffected by this display problem. ` +
-        `Restarting the Lightning app, then Bitcorn, usually restores it.`,
+        `If this doesn't clear on its own in a few minutes, restarting the ` +
+        `Lightning app usually restores it.`,
     };
   }
 

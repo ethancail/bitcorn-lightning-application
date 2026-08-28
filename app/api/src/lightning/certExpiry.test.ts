@@ -160,6 +160,26 @@ describe("certExpiryMessage — copy", () => {
     expect(bad).not.toMatch(/contact your (node )?operator/i);
   });
 
+  // ⚠ THE API-SIDE CONTROL THIS ARC OWES.
+  //
+  // Before this test, nothing in app/api guarded the remediation copy: the web
+  // side's pins only ever saw a string this module had already produced, and
+  // this suite banned operator-routing phrasing and nothing else. An API-side
+  // regression of the remediation therefore passed both suites green. See
+  // bitcorn-research decisions/2026-08-26-cert-fault-remediation-loop-step-moves.md.
+  //
+  // These are PROPERTY pins, not wording pins — that the message names a second
+  // restart step, and that it attributes that step to Loop. A rephrase keeping
+  // both properties stays green, deliberately; the copy is allowed to change,
+  // the two claims are not allowed to vanish.
+  it("names the second restart and attributes it to Loop", () => {
+    for (const now of [lapsed, soon]) {
+      const msg = certExpiryMessage(inspectCertBytes(CERT_A, now), now) ?? "";
+      expect(msg).toMatch(/then restart bitcorn/i);
+      expect(msg).toMatch(/loop/i);
+    }
+  });
+
   // Release reality: this ships as a release and members update by clicking, so
   // the copy reaches nodes that are currently FINE. It must read correctly to
   // someone who has no problem at all — i.e. say nothing to them.
