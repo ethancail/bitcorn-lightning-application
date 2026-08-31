@@ -124,11 +124,11 @@ Urgency escalates on consecutive non-healthy runs.
 - **Farmer**: high local → Loop Out; undersized (< 1M) or 3+ filling runs → channel upgrade
 - **Unknown**: prompts user to set role via Settings
 
-**Close/reopen is never recommended** — Loop In/Out are the normal maintenance path. Each member node ships its own `loopd` (Lightning Terminal sidecar) since v1.8.4, so members can execute Loop In/Out locally without treasury involvement.
+**Close/reopen is never recommended** — Loop In/Out are the normal maintenance path. Each member node ships its own `loopd` sidecar since v1.8.0, so members can execute Loop In/Out locally without treasury involvement.
 
 ### Member Loop In (merchant refill)
 
-Since v1.8.4 every node — treasury, merchant, farmer — ships its own loopd as a litd sidecar (see `bitcorn-lightning-node/docker-compose.yml`). This enables *member-side* Loop In: a merchant uses their own on-chain BTC to restore local Lightning balance on the merchant↔treasury channel.
+Since v1.8.0 every node — treasury, merchant, farmer — ships its own loopd sidecar (see `bitcorn-lightning-node/docker-compose.yml`). Between v1.8.4 and v1.18.9 that sidecar was litd running Loop as an integrated subserver, a detour forced by a broken upstream ARM64 image; it is standalone loopd again, from the Bitcorn-published image. Either way the capability is the same and predates the detour: this is what enables *member-side* Loop In, where a merchant uses their own on-chain BTC to restore local Lightning balance on the merchant↔treasury channel.
 
 **Physical flow in the leaf topology:**
 
