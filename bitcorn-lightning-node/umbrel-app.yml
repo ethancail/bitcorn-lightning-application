@@ -27,17 +27,26 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  v1.18.9: This one changes the engine behind Loop — the feature that moves money
-  between your Lightning channels and your own on-chain Bitcoin wallet ("Withdraw
-  to Bitcoin Wallet", and merchant channel refills). Bitcorn now runs its own Loop
-  daemon instead of borrowing Lightning Terminal's. There is nothing for you to
-  install or set up, and nothing to re-do: your swap history, any swap still in
-  flight when you update, and your Loop settings all carry over. The reason for
-  the change is Raspberry Pi — the standalone Loop daemon we wanted to ship had a
-  broken Raspberry Pi build, so Bitcorn now builds its own, and Loop behaves the
-  same on a Pi as on a PC. If Loop has been unavailable on your node, try it
-  again after updating. Your Lightning node, channels, routing, payments,
-  subscription and stablecoin settings are all untouched.
+  v1.18.9: Two changes you'll notice. The first is the engine behind Loop — the
+  feature that moves money between your Lightning channels and your own on-chain
+  Bitcoin wallet ("Withdraw to Bitcoin Wallet", and merchant channel refills).
+  Bitcorn now runs its own Loop daemon instead of borrowing Lightning Terminal's.
+  Updating asks nothing of you, and nothing needs re-doing: your swap history, any
+  swap still in flight when you update, and your Loop settings all carry over. The
+  reason for the change is Raspberry Pi — the standalone Loop daemon we wanted to
+  ship had a broken Raspberry Pi build, so Bitcorn now builds its own, and Loop
+  behaves the same on a Pi as on a PC. If Loop has been unavailable on your node,
+  try it again after updating. The second change follows from the first, and it is
+  the only thing this release asks of you — and only when a warning says so.
+  Because Loop now runs inside Bitcorn instead of inside the Lightning app, the
+  certificate warning now asks for two restarts rather than one: restart the
+  Lightning app, which renews the certificate, and then restart Bitcorn. Loop does
+  not pick up the renewed certificate on its own, and that second restart is what
+  brings it back. It is only about Loop — if you don't use Loop, the first restart
+  is enough. Separately, the notice that appears when your channel figures are out
+  of date no longer suggests restarting anything right away; that one usually
+  clears on its own within a few minutes. Your Lightning node, channels, routing,
+  payments, subscription and stablecoin settings are all untouched.
 
   v1.18.8: One change you'll notice, and it's a smaller one than last release. The
   certificate warning added in 1.18.7 now appears on your own dashboard, not only
