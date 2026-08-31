@@ -579,8 +579,13 @@ The farmer clicked Update before the images finished building.
 ```bash
 sudo docker pull ghcr.io/ethancail/bitcorn-lightning-application/api:X.Y.Z
 sudo docker pull ghcr.io/ethancail/bitcorn-lightning-application/web:X.Y.Z
+sudo docker pull ghcr.io/ethancail/bitcorn-lightning-application/loopd:X.Y.Z
 sudo umbreld client apps.restart.mutate --appId bitcorn-lightning-node
 ```
+
+Three images since v1.18.9, not two. Miss the `loopd` pull and the node comes
+back running the previous release's Loop daemon against the current release's
+api — with nothing on the node reporting the mismatch.
 
 ### Hotfix under the same tag
 `umbreld` won't detect image changes for an unchanged tag. Force-pull + restart with
@@ -589,8 +594,8 @@ the fleet split across two different builds of one version, with no way to tell 
 apart. (This is the same damage as the `develop` footgun, arrived at deliberately.)
 
 ### `cloudflared` floats on `:latest`
-Every other image is pinned (`api:X.Y.Z`, `web:X.Y.Z`,
-`lightning-terminal:v0.16.1-alpha`). `cloudflare/cloudflared:latest` is not, so its
+Every other image is pinned (`api:X.Y.Z`, `web:X.Y.Z`, and since v1.18.9
+`loopd:X.Y.Z`). `cloudflare/cloudflared:latest` is not, so its
 content can change under a node on any container recreate — including during an
 unrelated release. **Prevents:** attributing a tunnel regression to your release
 when the tunnel image changed underneath it.

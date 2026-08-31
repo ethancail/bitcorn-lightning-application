@@ -37,10 +37,13 @@ entries carry the same amd64 filesystem [RELAYED — recon read at `lightninglab
 master `341d844`, 2026-08-25; not read from this repo]. Proven without downloading anything: the two
 per-arch entries share byte-identical layer digests and their config blobs differ in exactly one
 string, `"architecture"`. Identical layers means identical bytes, so at most one of the two labels can
-be true. The repo-side facts are checkable here — `git show -s 2dc6e8a`, `sed -n '69p'
-app/api/src/config/env.ts` — and that pair was the entire written record: `grep -rn -i 'exec format'`
-over tracked files returns nothing, this file had zero hits for arm64/manifest/loopd, and
-`docs/LOOP_SETUP.md` none either.
+be true. The repo-side facts are checkable here — `git show -s 2dc6e8a`, and
+`git log -S'ARM64-compatible' -- app/api/src/config/env.ts` — and that pair was the entire written
+record: `grep -rn -i 'exec format'` over tracked files returns nothing, this file had zero hits for
+arm64/manifest/loopd, and `docs/LOOP_SETUP.md` none either. **The env.ts pointer used to be
+`sed -n '69p'`, which stopped resolving when v1.18.9 replaced that comment** — the `-S` search is
+given instead because it survives the line moving, and finds both the commit that wrote the claim and
+the one that retired it.
 
 **Lesson:** A multi-arch index is a set of *claims*, and it is **falsifiable with two small HTTP reads**
 — no pull, no emulator, no target hardware. Compare the per-arch entries: shared layer digests mean one
@@ -52,9 +55,12 @@ cause. An adjacent record of a *different* failure is what lets an unwritten one
 
 **Disposition:** `[PROMOTED → app/loopd/Dockerfile header + its ELF e_machine check (2ef2130)]` — the
 header's standing rule is "⚠ VERIFY THE ARTIFACT, NEVER THE MANIFEST," and the ELF read enforces it
-mechanically at build time. ⚠ That file exists only on `feature/loopd-image` — check with
-`git branch -a --contains 2ef2130`. Until it merges, this entry is the only record on `develop`, which
-is the weak form.
+mechanically at build time. **This entry used to say that file existed only on `feature/loopd-image`
+and that the branch was unmerged. Both were false by 2026-08-31:** `2ef2130` is on `main` and
+`develop`, and `feature/loopd-image` no longer exists on the remote. Re-derive rather than trusting
+this sentence — `git branch -a --contains 2ef2130` and `git ls-remote --heads origin` — because branch
+position is exactly the class of fact CLAUDE.md says to query, and this entry is the proof of why: it
+kept asserting a stale one for weeks after the merge.
 
 ### When digest-pinning a base image, pin the index digest — never a per-arch manifest digest
 
@@ -72,8 +78,8 @@ reader, who has no way to see the mistake. General form: when one identifier can
 member of that set, the pin has to say which, because nothing downstream will complain.
 
 **Disposition:** `[PROMOTED → inline ⚠ beside the BASE_IMAGE pin in app/loopd/Dockerfile (2ef2130)]` —
-records the media type it was verified as, the date, and a one-command bump. Same branch caveat as
-above.
+records the media type it was verified as, the date, and a one-command bump. The branch caveat that
+used to sit here is withdrawn with the one above: `2ef2130` is on `main` and `develop`.
 
 ### `--help` proves a flag was declared, never that it is read
 
@@ -94,8 +100,11 @@ Whenever a check is cheap, ask what it reads: if it reads a declaration, it cann
 implementation.
 
 **Disposition:** `[PROMOTED → inline ⚠ at app/loopd/Dockerfile:263 (2ef2130)]` — names the three March
-commits that passed the flag, so the next person wiring compose does not re-add it. Same branch caveat.
-Re-verify the upstream line numbers before relying on them; they are relayed, not read here.
+commits that passed the flag, so the next person wiring compose does not re-add it. Branch caveat
+withdrawn, as above. Re-verify the upstream line numbers before relying on them; they are relayed, not
+read here. **The warning did its job:** the v1.18.9 compose swap wired standalone loopd back up and
+did not re-add the flag; `bitcorn-lightning-node/docker-compose.yml` now carries the same prohibition
+inline, where the next person editing that command list will actually be looking.
 
 ## 2026-08-11
 
