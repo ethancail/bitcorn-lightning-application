@@ -131,9 +131,24 @@ services:
   # app/loopd/Dockerfile repackages upstream's release binaries and refuses to
   # publish a wrong-architecture one — see its header for the mechanism.
   #
-  # litd's price, now retired: it never re-reads LND's TLS cert and never exits,
-  # so Loop stayed dead after every cert rotation. loopd exits when the LND
-  # block-epoch stream breaks, and `restart: unless-stopped` brings it back.
+  # ⚠ WHAT THIS DOES NOT YET RETIRE — stated precisely, because the tempting
+  # version of this paragraph claims a fix that has never been observed.
+  # litd never re-read LND's TLS cert and never exited, so Loop stayed dead
+  # after a rotation until a human restarted Bitcorn.
+  #   VERIFIED (upstream source): loopd exits when the LND block-epoch stream
+  #     breaks, and `restart: unless-stopped` then brings it back.
+  #   INFERENCE, NEVER OBSERVED: that an Umbrel LND cert rotation is a thing
+  #     that breaks that stream. Nobody has watched one. The two facts only
+  #     compose into self-healing if that middle step holds, and it is exactly
+  #     the step with no evidence behind it.
+  # So assume the second restart is still required. `certExpiry.ts:184-185`
+  # and `:194-195` tell farmers precisely that, deliberately left in place, and
+  # this comment must not contradict shipped copy on the strength of a guess.
+  # WHAT CLOSES IT: one watched cert rotation with loopd running. Either the
+  # loopd container restarts on its own — self-healing confirmed, and the cert
+  # copy can then be revisited — or it does not, and the copy is already right.
+  # The asymmetry favours the current copy meanwhile: a needless restart costs
+  # a minute, a missing instruction leaves a farmer with dead Loop.
   loopd:
     image: ghcr.io/ethancail/bitcorn-lightning-application/loopd:1.18.9
     restart: unless-stopped
