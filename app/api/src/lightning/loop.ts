@@ -1,7 +1,7 @@
-// Loop gRPC client — communicates with Bitcorn's litd sidecar running Loop
-// as an integrated subserver. litd connects to LND in remote mode and provides
-// the Loop RPC on its unified gRPC endpoint (port 8443). Uses the litd TLS cert
-// for authentication and the Loop macaroon for authorization.
+// Loop gRPC client — communicates with Bitcorn's standalone loopd sidecar.
+// loopd runs as a dedicated service in Bitcorn's own Docker stack, wired
+// straight to LND, and serves the Loop RPC on port 11010. Its TLS cert and the
+// Loop macaroon both sit under <loopdir>/<network>/. No litd in the path.
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
 import fs from "fs";
