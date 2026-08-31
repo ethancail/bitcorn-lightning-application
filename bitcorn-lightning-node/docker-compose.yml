@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.18.8
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.18.9
     restart: unless-stopped
     ports:
       - "3101:3101"
@@ -135,7 +135,7 @@ services:
   # so Loop stayed dead after every cert rotation. loopd exits when the LND
   # block-epoch stream breaks, and `restart: unless-stopped` brings it back.
   loopd:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/loopd:1.18.8
+    image: ghcr.io/ethancail/bitcorn-lightning-application/loopd:1.18.9
     restart: unless-stopped
     volumes:
       - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
@@ -178,7 +178,7 @@ services:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.18.8
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.18.9
     restart: unless-stopped
     ports:
       - "3200:3200"

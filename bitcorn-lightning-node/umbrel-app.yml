@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.8"
+version: "1.18.9"
 port: 3200
 
 description: >
@@ -27,6 +27,18 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.9: This one changes the engine behind Loop — the feature that moves money
+  between your Lightning channels and your own on-chain Bitcoin wallet ("Withdraw
+  to Bitcoin Wallet", and merchant channel refills). Bitcorn now runs its own Loop
+  daemon instead of borrowing Lightning Terminal's. There is nothing for you to
+  install or set up, and nothing to re-do: your swap history, any swap still in
+  flight when you update, and your Loop settings all carry over. The reason for
+  the change is Raspberry Pi — the standalone Loop daemon we wanted to ship had a
+  broken Raspberry Pi build, so Bitcorn now builds its own, and Loop behaves the
+  same on a Pi as on a PC. If Loop has been unavailable on your node, try it
+  again after updating. Your Lightning node, channels, routing, payments,
+  subscription and stablecoin settings are all untouched.
+
   v1.18.8: One change you'll notice, and it's a smaller one than last release. The
   certificate warning added in 1.18.7 now appears on your own dashboard, not only
   in the operator view — so if your node's Lightning certificate is close to
