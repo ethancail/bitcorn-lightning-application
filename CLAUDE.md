@@ -215,7 +215,7 @@ Things that cost hours to find. Read before debugging in that area.
 See `docs/LOOP_SETUP.md` for the full gotcha list. Highlights that bite regularly:
 - **Prepay is a HOLD not a fee:** ~30k sats returned in the on-chain payment. Net fee = swap + miner only.
 - **ACINQ caps in-flight at 45% of capacity:** Need ≥556k channel for 250k minimum swap.
-- **Restart cascade:** Restarting LND requires restarting litd (`apps.restart.mutate --appId lightning-terminal`).
+- **Restart cascade:** Restarting LND requires restarting **Bitcorn** (`apps.restart.mutate --appId bitcorn-lightning-node`) — loopd is a service in Bitcorn's own compose, a different Umbrel app from Lightning, so only a Bitcorn restart reaches it. This used to say `--appId lightning-terminal`, which targets an app this stack has not used since v1.18.9 and did not reach loopd even before that. `certExpiry.ts:159-163` states the same model.
 - **Channel ID uint64 conversion:** `(block<<40)|(tx<<16)|output` via BigInt; `longs: String` in proto-loader.
 
 ### Rebalancing

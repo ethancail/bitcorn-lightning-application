@@ -11,7 +11,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 // ─── The API's OWN sentences, mirrored verbatim ─────────────────────────────
 //
-// These are the strings app/api/src/lightning/certExpiry.ts:157-180 actually
+// These are the strings app/api/src/lightning/certExpiry.ts:168-197 actually
 // produces, copied character-for-character. The helper under test is a
 // pass-through for the prose, so using the real sentences is what makes the
 // copy assertions below mean anything — a paraphrase would test a string this
@@ -23,8 +23,11 @@ const EXPIRED: CertExpiryInput = {
   level: "expired",
   message:
     "LND's TLS certificate EXPIRED on 2026-08-21 (3 days ago). " +
-    "Lightning calls will keep failing until LND issues a new one. " +
-    "Restart the Lightning app to regenerate it.",
+    "Until LND issues a new one, your channel figures won't update and " +
+    "payments sent from Bitcorn won't go through. " +
+    "Restart the Lightning app to regenerate it, then restart Bitcorn. " +
+    "The second restart is what gets Loop working again — it doesn't pick up " +
+    "the new certificate on its own.",
   not_after_ms: NOW - 3 * DAY,
 };
 
@@ -32,8 +35,11 @@ const EXPIRING_SOON: CertExpiryInput = {
   level: "expiring_soon",
   message:
     "LND's TLS certificate expires on 2026-09-07 (14 days away). " +
-    "Restart the Lightning app before then to regenerate it; Lightning calls " +
-    "will fail once it lapses.",
+    "Once it lapses, your channel figures will stop updating and payments sent " +
+    "from Bitcorn won't go through. The fix at that point: restart the Lightning " +
+    "app so LND issues a new certificate, then restart Bitcorn. The second " +
+    "restart is what gets Loop working again — it doesn't pick up the new " +
+    "certificate on its own.",
   not_after_ms: NOW + 14 * DAY,
 };
 
@@ -180,21 +186,29 @@ describe("CERT_EXPIRY_WARN_DAYS narrows the dashboard's window", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// C3 — THE REMEDIATION IS ONE STEP, AND MENTIONS BITCORN NOWHERE.
+// C3 — THE REMEDIATION STARTS WITH THE LIGHTNING APP.
 //
-// v1.18.7's self-heal rebuilds the LND client on a cert-bytes change
-// (lnd.ts:111-136), so the second "then restart Bitcorn" step ceased to exist.
-// The API's strings are already one-step; this pins that the rendered side has
-// not reintroduced the two-step form.
+// ⚠ THIS BLOCK USED TO BAN NAMING BITCORN HERE, and the ban is gone rather
+// than relaxed. Its reasoning was that v1.18.7's self-heal (the client rebuild
+// on a cert-bytes change, lnd.ts:115-152) had retired the follow-up restart —
+// which is true ONLY for the API's own LND client. Loop is a separate service
+// in Bitcorn's own compose and does not self-heal, so the follow-up restart is
+// real for Loop and the cert notice now names it deliberately. Placement and
+// the scope each message may claim are decided in bitcorn-research
+// decisions/2026-08-26-cert-fault-remediation-loop-step-moves.md.
+//
+// What survives is the positive pin: the FIRST step is still the one a farmer
+// performs on their own node. The API side owns the property pins on the
+// follow-up step (certExpiry.test.ts, "names the second restart and attributes
+// it to Loop") — that is where the string is produced, and where a regression
+// would previously have passed both suites green.
 // ═══════════════════════════════════════════════════════════════════════════
 
-describe("the rendered remediation is ONE step", () => {
-  it("names restarting the Lightning app and nothing after it", () => {
+describe("the rendered remediation names the Lightning app restart", () => {
+  it("carries the first step through to the rendered text", () => {
     for (const cert of [EXPIRED, EXPIRING_SOON]) {
       const text = certExpiryNotice(cert, NOW)!.text;
       expect(text).toMatch(/restart(ing)? the lightning app/i);
-      expect(text).not.toMatch(/then bitcorn/i);
-      expect(text).not.toMatch(/bitcorn/i);
     }
   });
 });

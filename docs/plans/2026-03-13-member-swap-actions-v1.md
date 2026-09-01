@@ -4,7 +4,7 @@
 >
 > This spec was written when each member node did NOT have its own loopd. The design here has the treasury orchestrate swaps on the member's behalf: "Cash Out = Loop In with `last_hop = member pubkey`" means treasury runs Loop In to pull Lightning sats through the member's channel, then presumably forwards the on-chain receipt to the member.
 >
-> Since v1.8.4 (see `bitcorn-lightning-node/umbrel-app.yml` release notes), every node ships its own loopd as a litd sidecar. The current model is:
+> Since v1.8.0 (see `bitcorn-lightning-node/umbrel-app.yml` release notes), every node ships its own loopd sidecar — litd running Loop as a subserver from v1.8.4, standalone loopd again from v1.18.9. The current model is:
 > - **Farmer Cash Out** = member runs its OWN Loop Out locally (no treasury orchestration, no trust required)
 > - **Merchant Refill** = member runs its OWN Loop In locally (same pattern, inverse direction)
 >
