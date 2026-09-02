@@ -73,10 +73,14 @@ export async function checkLoopAvailability(): Promise<LoopAvailability> {
     // ⚠ THE CAUSE IS CARRIED, NOT DISCARDED. This early return used to be
     // `return result`, which threw away a fact loop.ts had classified
     // structurally one layer up — and that discard is the whole reason a
-    // farmer whose cert had expired was told "Loop is not installed on this
-    // node." The field is on the result, not merely computed: a reason added
-    // and then dropped a line later would satisfy the description of this fix
-    // while changing nothing a member reads.
+    // farmer whose cert had expired was told the Loop software was absent from
+    // their node. (Described, not quoted: this arc removed those phrasings
+    // from the copy, and a comment reproducing them verbatim would put the
+    // words back on the page and read as live wording to the next grep.)
+    //
+    // The field is on the result, not merely computed: a reason added and then
+    // dropped a line later would satisfy the description of this fix while
+    // changing nothing a member reads.
     //
     // `?? "unreachable"` is a total fallback, not a guess about a case that
     // happens. loop.ts sets the reason at both of its `available: false`
