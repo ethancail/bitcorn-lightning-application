@@ -109,10 +109,44 @@ function rpcCall<T>(
 
 // ─── Exported functions ──────────────────────────────────────────────────────
 
+/**
+ * WHY loopd could not be reached — derived from WHICH BRANCH of
+ * `isLoopAvailable()` below produced the failure, never from the error text.
+ *
+ * ⚠ STRUCTURAL BY DECISION, not by preference. Classifying from `error`'s
+ * wording would re-derive downstream a fact this function already knows for
+ * free, and would depend on a string a dependency can reword — see
+ * `decisions/2026-09-02-loop-unavailability-classification-taxonomy-and-copy.md`
+ * D1. So there is deliberately no `includes()`, no `match()`, and no comparison
+ * against a message anywhere in this function, and nothing downstream needs one.
+ *
+ * COARSE ON PURPOSE (D2): two failure reasons, not four. Splitting `unreachable`
+ * into timeout / refused / auth-denied / expired-cert would require inspecting
+ * the error, and nothing in this repository has measured which of those members
+ * actually hit — a finer taxonomy today would be argued rather than derived.
+ * The third daemon state, `available`, needs no member here: it is `available:
+ * true` with no reason set.
+ */
+export type LoopUnavailableReason = "credentials_absent" | "unreachable";
+
 export type LoopAvailability = {
   available: boolean;
   version?: string;
   error?: string;
+  /**
+   * Set on every `available: false` return, absent when available.
+   *
+   * ⚠ ADDITIVE, AND THAT IS A SCOPE BOUND rather than a style note. The three
+   * fields above are byte-compatible with what five caller files across ten
+   * call sites already read, and every one of them selects fields explicitly
+   * (no call site spreads this object). So those callers receive a richer
+   * object, ignore this field, and need no edit. REPLACING the shape instead
+   * would turn all ten sites into edits — six of them wire-format changes on
+   * HTTP responses, two member-reachable — against no existing test coverage of
+   * the `available: false` branch. A later arc wanting that supersedes the
+   * spec's §1 amendment by reference.
+   */
+  unavailableReason?: LoopUnavailableReason;
 };
 
 /**
@@ -125,12 +159,27 @@ export async function isLoopAvailable(): Promise<LoopAvailability> {
       !fs.existsSync(ENV.loopTlsCertPath) ||
       !fs.existsSync(ENV.loopMacaroonPath)
     ) {
-      return { available: false, error: "Loop credentials not found" };
+      // The filesystem branch. Reachable transiently as well as permanently:
+      // loopd deletes and regenerates the Loop macaroon on first start, and
+      // start-to-listening measured 120ms/135ms on a Pi 5, so a check racing a
+      // container restart lands here on a node that is otherwise fine.
+      return {
+        available: false,
+        error: "Loop credentials not found",
+        unavailableReason: "credentials_absent",
+      };
     }
     const info = await rpcCall<{ version?: string }>("GetInfo", {}, 5_000);
     return { available: true, version: info.version };
   } catch (err: any) {
-    return { available: false, error: err.message };
+    // The catch branch: everything else, deliberately undifferentiated. An
+    // expired or rotated LND cert lands here, as do a refused connection and
+    // this call's own 5s deadline.
+    return {
+      available: false,
+      error: err.message,
+      unavailableReason: "unreachable",
+    };
   }
 }
 
