@@ -104,6 +104,52 @@ export function describeSustainedRuns(runs: number): string {
 
 const LOOP_PROTOCOL_MIN = 250_000;
 
+// ─── Loop-unavailability copy, one sentence per daemon state ────────────────
+//
+// THREE DAEMON STATES, FOUR COPY CASES — the distinction that must not
+// collapse. The two sentences here cover the daemon-down states and are
+// role-independent; the fourth case (daemon UP, only the terms fetch failed) is
+// reached after `loopDaemonRunning` is already true and keeps its own
+// role-specific sentence at each site below, unchanged. Mapping three daemon
+// states onto the two ternary arms that used to be here would collapse it.
+//
+// Shared consts rather than literals at each site so the two role sites cannot
+// drift apart; the branch itself stays inline at both, where it is readable.
+//
+// ⚠ WHAT THESE REPLACED, AND WHY THE CLAIM WAS FALSE. Both sites used to
+// assert that the Loop software was absent from the node — as a flat statement
+// of fact — whenever the daemon failed to answer, whatever the cause. loopd has
+// shipped on every node since v1.8.4, so nothing about it is optional and that
+// assertion was untrue on every node that ever rendered it; most visibly on the
+// one whose LND cert had just expired, where the daemon was present, running,
+// and simply unable to reach LND.
+//
+// The banned phrasings are described here rather than quoted, deliberately.
+// This arc's done-when greps the whole file for them and permits a hit in no
+// location — not in copy, not in a fixture, and not in a comment explaining
+// what was removed, which would otherwise satisfy a count-based query while
+// leaving the words on the page.
+
+/**
+ * `credentials_absent`. Says "yet" and not "not set up" deliberately: loopd
+ * deletes and regenerates the Loop macaroon on first start, and
+ * start-to-listening measured 120ms/135ms on a Pi 5, so a filesystem check
+ * racing a container restart sees this state on a perfectly healthy node.
+ * Permanent-sounding copy would be false ~200ms later. D3 permits the
+ * permanence claim; these grounds are why it is not taken.
+ */
+const LOOP_CREDENTIALS_ABSENT = "Loop isn't ready on this node yet.";
+
+/**
+ * `unreachable`. Asserts NO cause, per D3 — and that is a constraint, not
+ * reticence. An expired or rotated LND cert lands in this state, and the cert
+ * notice already owns that fault's cause and remediation on the same dashboard
+ * in the same poll cycle (index.ts → certExpiryNotice.ts → MemberDashboard).
+ * The advisor states the state; the cert notice explains the cause. No gRPC
+ * codes and no daemon internals either — the standing member-copy register ban.
+ */
+const LOOP_UNREACHABLE = "Loop isn't responding right now.";
+
 // ─── Role: UNKNOWN ──────────────────────────────────────────────────────────
 
 function recommendUnknown(
@@ -235,15 +281,26 @@ function recommendMerchant(
 
   // Loop In not available — manual recovery
   const noLoopReason = !loop.loopDaemonRunning
-    ? "Loop is not installed on this node."
-    : "Top Up is currently unavailable.";
+    ? loop.unavailableReason === "credentials_absent"
+      ? LOOP_CREDENTIALS_ABSENT
+      : LOOP_UNREACHABLE
+    : // Fourth case: the daemon is UP and only the terms fetch failed
+      // (loopAvailability.ts's bare catches). Already honest, unchanged.
+      "Top Up is currently unavailable.";
 
   return {
     action: "manual_recovery",
     suggestedAmountSats: null,
     projectedMemberLocalPct: null,
+    // D4: this sentence used to direct the merchant to add the Loop software
+    // before using Top Up, which put the absent-software claim OUTSIDE the
+    // ternary and therefore past the discriminator entirely — so a merchant
+    // whose loopd was fine but whose Loop In terms fetch had failed was told to
+    // go and add software already present, in the same breath as being told it
+    // was merely unavailable. The claim is gone; the sentence keeps its
+    // function, which is to route them to Top Up.
     reason:
-      `${stateLabel}. To restore your ability to pay, install Loop and use Top Up, ` +
+      `${stateLabel}. To restore your ability to pay, use Top Up to add sending balance, ` +
       `or open a new channel. ${noLoopReason}`,
     urgency: depleted ? "high" : c.urgency,
     loopAvailable: false,
@@ -351,8 +408,12 @@ function recommendFarmer(
 
   // Loop Out not available — manual recovery
   const noLoopReason = !loop.loopDaemonRunning
-    ? "Loop is not installed on this node."
-    : "Withdrawals are currently unavailable.";
+    ? loop.unavailableReason === "credentials_absent"
+      ? LOOP_CREDENTIALS_ABSENT
+      : LOOP_UNREACHABLE
+    : // Fourth case: the daemon is UP and only the terms fetch failed
+      // (loopAvailability.ts's bare catches). Already honest, unchanged.
+      "Withdrawals are currently unavailable.";
 
   return {
     action: "manual_recovery",
