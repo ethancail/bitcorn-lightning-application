@@ -205,8 +205,9 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     // the EXPECTED outcome of a wedged LND rather than an unreachable one.
     //
     // ⚠ THIS COMMENT USED TO SAY isLoopAvailable() BELOW CARRIED NO DEADLINE.
-    // That was never true. It has always passed a 5s gRPC deadline
-    // (lightning/loop.ts:130, `rpcCall("GetInfo", {}, 5_000)`), and loop.ts
+    // That was never true. It has always passed a 5s gRPC deadline — the
+    // `rpcCall("GetInfo", …, 5_000)` inside `isLoopAvailable()` itself
+    // (lightning/loop.ts) — and loop.ts
     // bounds every RPC it makes via a real `{ deadline: Date }` call option —
     // 30s by default, 60s for swap initiation. Unlike the Promise.race used on
     // the LND side, a gRPC deadline actually cancels the call. The Loop half of
