@@ -805,7 +805,11 @@ jobs:
 
           APP_CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- app/api app/web)
           if [ -z "$APP_CHANGED" ]; then
-            echo "No changes under app/api or app/web — no publish, no bump needed."
+            echo "No changes under app/api or app/web — this job requires no bump."
+            echo "NOTE: that is not the same as \"no publish\". docker-publish.yml also"
+            echo "triggers on app/loopd/**, bitcorn-lightning-node/umbrel-app.yml, and"
+            echo "its own file. This job's diff is scoped to -- app/api app/web, so a"
+            echo "loopd-only change fires a build that this check never inspects."
             exit 0
           fi
 
@@ -836,10 +840,14 @@ jobs:
           This has happened twice, both on 1.17.19: 34c20c2 (PR #224) and
           f323faf (PR #227), 2026-07-21.
 
-          TO FIX — bump all three, in one commit:
+          TO FIX — bump the manifest and EVERY published image tag, in one commit:
             1. bitcorn-lightning-node/umbrel-app.yml        version: "X.Y.Z"
             2. bitcorn-lightning-node/docker-compose.yml    api image tag
             3. bitcorn-lightning-node/docker-compose.yml    web image tag
+            4. bitcorn-lightning-node/docker-compose.yml    loopd image tag
+          Do not trust this list to be complete: the "Version triplet agrees"
+          check derives the published set from docker-publish.yml and will name
+          any tag this list has fallen behind on. Its output is authoritative.
           Add release notes to umbrel-app.yml's releaseNotes while you are there.
           Full procedure: docs/RELEASE.md
 
