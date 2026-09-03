@@ -24,6 +24,48 @@ has stopped working.
 
 ---
 
+## 2026-09-03
+
+### An absolute-path `node` invocation pins the process you launch, never the toolchain it spawns
+
+**Scar:** A fresh worktree needed `app/api` dependencies to run one test. `npm install` was invoked by
+the ABSOLUTE Node 20 binary path — `~/.nvm/versions/node/v20.20.2/bin/node …/npm-cli.js install` —
+precisely to avoid the machine's default Node 22. It produced a `better_sqlite3.node` built at
+`NODE_MODULE_VERSION` **127** (Node 22) loaded by a runtime requiring **115** (Node 20). The obvious
+repair, `npm rebuild better-sqlite3 --build-from-source` invoked the same way, **exited 0, printed
+"rebuilt dependencies successfully", rewrote the artifact — and produced 127 again.** Twice: a second
+attempt prefixing `npm_config_build_from_source=true` changed nothing. It came out at 115 only once Node
+20 was FIRST ON PATH, because node-gyp resolves `node` from PATH for its child process and never saw the
+outer binary. Symptom before the fix: **17 test files / 42 tests failing, every failure a `bindings.js`
+ABI error** thrown from `new Database(":memory:")` — which reads as a broken data layer, not a toolchain
+mismatch. After: 53 files / 856 tests, 0 failures (measured at `bc665d1`, re-measured unchanged at
+`b2a0848`; re-derive with `<node20>/bin/node ./node_modules/vitest/vitest.mjs run` from `app/api`).
+
+**Lesson:** "Which node" is not one setting — it is one per process in the tree, and pinning the root
+pins only the root. An absolute-path invocation *looks* like the strongest available pin and is the
+weakest one for anything that shells out. Worse, **the documented escape hatch lies**: exit 0, a success
+line, and a fresh mtime are all fully satisfied by a rebuild that produced the wrong ABI, so the repair
+is indistinguishable from the failure by every cheap signal. The only distinguishing read is loading the
+module and catching the version error — do that, and do not trust the rebuild's own report. **Watch the
+direction, because this repo's existing note points the opposite way:**
+`app/api/src/runtime.probe.test.ts`'s header warns that prepending Node 20 to PATH does NOT prove the
+test runner used it, since `npx vitest` resolves node through the shebang — so pin the runner by
+absolute path. Both are true; they govern different processes and their remedies invert. A reader who
+has internalised the probe's lesson will reach for the absolute path at the build step and get a silent
+wrong-ABI compile — the shape the 2026-08-25 manifest scar named, where an adjacent record of a
+*different* failure lets an unwritten one pass for known. That scar's generalization is the parent of
+this one: a declared platform or ABI is metadata, and metadata is the layer that can be wrong while
+everything downstream keeps agreeing with it.
+
+**Disposition:** `[RECORDED]` — the weak form, and it should feel like it. Nothing in the repo carried
+this: `grep -rn 'node-gyp\|NODE_MODULE_VERSION\|build-from-source\|prebuild-install'` over tracked files
+returned zero hits, and `CLAUDE.md`'s worktree paragraph says only that `better-sqlite3` "compiles
+native bindings each time" — not which runtime it compiles against, nor that pinning the invocation
+fails to pin the compile. The promotion this wants is a check that the loaded module's ABI matches the
+running node and fails as one loud line rather than as 42 unrelated-looking test failures; the runtime
+probe is the natural home. Deliberately not done here — this turn records the trap and does not touch
+the Node setup.
+
 ## 2026-08-25
 
 ### A Docker manifest claiming an architecture is not evidence the binary inside it is that architecture
