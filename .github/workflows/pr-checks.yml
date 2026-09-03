@@ -830,15 +830,24 @@ jobs:
 
           WHY THIS BLOCKS
           Merging this to main fires docker-publish.yml, which reads the tag from
-          umbrel-app.yml. With the version unchanged it REPUBLISHES the current
-          release's image tags with different content. Nodes already on that
-          version see no update and keep their cached image, while any fresh
-          install or re-pull gets your code under the old tag — two nodes then
-          report the same version while running different code, with nothing
-          distinguishing them.
+          umbrel-app.yml. With the version unchanged that build RED-BUILDS rather
+          than republishing: get-version asserts that v<version> does not already
+          exist, and every build job declares `needs: get-version`, so the assert
+          trips before any of them starts and NOTHING is pushed to ghcr.io. The
+          cost of merging this as-is is a FAILED release, not a corrupted one —
+          still a release someone has to notice and unpick.
+
+          What that assert prevents — and what a same-tag republish still does,
+          once the tag is deleted to force one deliberately — is a silent fleet
+          split: nodes already on that version see no update and keep their
+          cached image, while any fresh install or re-pull gets your code under
+          the old tag. Two nodes then report the same version while running
+          different code, with nothing distinguishing them.
 
           This has happened twice, both on 1.17.19: 34c20c2 (PR #224) and
           f323faf (PR #227), 2026-07-21.
+          Both PREDATE the assert (ce0080d, 2026-08-12), so they are history —
+          not evidence about what happens today.
 
           TO FIX — bump the manifest and EVERY published image tag, in one commit:
             1. bitcorn-lightning-node/umbrel-app.yml        version: "X.Y.Z"
@@ -851,9 +860,21 @@ jobs:
           Add release notes to umbrel-app.yml's releaseNotes while you are there.
           Full procedure: docs/RELEASE.md
 
-          IF THE REPUBLISH IS DELIBERATE (the documented same-tag hotfix), add the
-          label `allow-same-tag-republish` to this PR. It is recorded on the PR and
-          stays queryable: gh pr list --label allow-same-tag-republish
+          IF THE REPUBLISH IS DELIBERATE (the documented same-tag hotfix), the
+          label `allow-same-tag-republish` on this PR is NECESSARY BUT NOT
+          SUFFICIENT. It skips this PR-time check and nothing else. get-version's
+          tag assert is deliberately label-agnostic — a push event carries no PR
+          labels, so there is nothing there for it to read — and it will still
+          refuse, because v<version> already exists. A deliberate same-tag
+          republish additionally requires DELETING THE EXISTING TAG.
+
+          docker-publish.yml prints the exact recovery commands at the moment it
+          refuses. Use that output as authoritative; the commands are not copied
+          here on purpose, because a second copy on a different revision cadence
+          is how the two drift apart.
+
+          The label is still what leaves the audit trail, and it stays queryable:
+          gh pr list --label allow-same-tag-republish
           EOF
             exit 1
           fi
