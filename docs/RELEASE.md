@@ -479,8 +479,11 @@ git show origin/develop:bitcorn-lightning-node/umbrel-app.yml | grep '^version:'
 ```
 
 When they match, merging `develop` → `main` as-is **fires the build on the existing
-version string** `X.Y.Z` and overwrites its image tags with entirely different
-content. The damage is quiet:
+version string** `X.Y.Z`. **Since `ce0080d` (2026-08-12) that build no longer
+republishes — it red-builds:** Step 2.5's assert refuses because `vX.Y.Z` already
+exists, and nothing is pushed. What follows is the damage that ordering caused
+before the assert existed, and it is still exactly what a same-tag republish does
+when someone deletes the tag to force one deliberately. The damage is quiet:
 
 - Nodes already on `X.Y.Z` see **no update** — the version didn't change, so
   `umbreld` has nothing to offer. They keep running the old code.
@@ -519,9 +522,12 @@ The merge then arrives already bumped. CI fires once, on the new version string,
 publishing new tags and overwriting nothing. `umbreld` sees a higher version and
 offers the update normally.
 
-Doing it the other way — merge first, bump second — means **two** builds: one that
-overwrites the current release's tags, and one that publishes the new version.
-The first build is the damage, and it happens before you have a chance to fix it.
+Doing it the other way — merge first, bump second — means **two** builds: one on
+the unchanged version string, and one that publishes the new version. Since
+`ce0080d` the first fails at Step 2.5's assert and publishes nothing, so the cost
+is a red build and a blocked release rather than an overwritten tag. That is a
+failed release someone still has to notice and unpick; the required ordering
+avoids it entirely.
 
 ### `develop` also carries Worker source
 
