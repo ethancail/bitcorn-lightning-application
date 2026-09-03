@@ -271,6 +271,22 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
  * re-derives that enumeration from the AST and asserts this list matches it
  * exactly. Adding a mutation route to index.ts without classifying it here
  * fails the test; it also fails CLOSED at runtime (see classifyMutation).
+ *
+ * DERIVED, BUT THE DOMAIN IS NOW DECIDED. The derivation still produces this
+ * list — that has not changed. What changed is that its BOUNDARY is no longer
+ * merely a by-product of where the seed happens to sit. As of
+ * bitcorn-research/decisions/2026-09-03-confirmation-coverage-domain-narrow.md,
+ * the domain stays "reaches an outflow primitive" BY DECISION and does not
+ * extend to "governs what an outflow may do". So a route that governs what an
+ * outflow may do — the capital-policy write below is the worked example — is
+ * exempt BY DECISION, not merely by falling out of the rule. Read its
+ * "policy config" tag as a recorded position, not an accident of taint
+ * direction.
+ *
+ * ONE RESIDUAL IS OPEN: /api/autobuy/credentials, POST and DELETE. Its
+ * disposition is unmade. The decision above does not settle it in either
+ * direction and neither does this comment — do not read its presence in this
+ * list as the answer.
  */
 export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: string }> = [
   // ── Reachable outflow, but no consequential caller-supplied parameter.

@@ -46,6 +46,47 @@
 // 3. Anything reached from a scheduler rather than a request. Those paths have
 //    no caller and no parameter, so confirmation cannot apply to them at all —
 //    they belong to the capital-guardrail arc.
+//
+// ── NAMED, NOT NUMBERED, from here down ────────────────────────────────────
+// Entries below are named, and new ones must be too. An ordinal is a stored
+// count: "the fourth" stops being true the moment this list changes, and two
+// different holes have already been recorded elsewhere under that same label.
+// The three above keep their numbers — renumbering settled text is its own rot.
+//
+// ── THE LIMIT-CONFIGURATION BLIND SPOT — DECIDED, not a gap ────────────────
+// The walk taints BACKWARD from outflow primitives, so a route whose whole
+// consequence is changing the limits that bind every outflow — rather than
+// performing one — reaches no primitive and derives non-capital by
+// construction. POST /api/treasury/capital-policy is the worked example: it
+// writes the eight bounds that assertCanExpand() and
+// assertDailyLossCapNotExceeded() read, and calls nothing tainted.
+//
+// This is NOT a fourth item of the same kind as the three above. Those are
+// things the rule CANNOT SEE. This is something the rule DELIBERATELY DOES NOT
+// LOOK FOR: the domain stays "reaches an outflow primitive" and does not extend
+// to "governs what an outflow may do". Decided 2026-09-03 —
+// bitcorn-research/decisions/2026-09-03-confirmation-coverage-domain-narrow.md.
+//
+// So do not "fix" this by seeding for it. Widening the seed is the thing that
+// was decided against, and a future reader who adds a seed here to close what
+// looks like a hole is reopening a closed question, not tightening a loose one.
+//
+// ── THE GET-ARM BLIND SPOT — latent, not live ──────────────────────────────
+// The dispatch enumeration below drops any block whose method literal is GET,
+// HEAD or OPTIONS, and handleRequest passes GET and HEAD straight to
+// dispatchRequest without classifying them at all. A GET dispatch site that
+// reached an outflow primitive would therefore be BOTH outside per-action
+// confirmation AND invisible to this test — a case none of the three numbered
+// entries covers.
+//
+// There are currently ZERO such routes. That was established by re-running this
+// walk with the method filter removed, across every GET/HEAD block: none
+// reaches a tainted callee. The negative is not vacuous — a control seeding a
+// read-only function (getCapitalPolicy) lit up GET blocks, proving the GET arm
+// scans rather than silently matching nothing.
+//
+// Latent, not live: nothing to repair today. Re-derive rather than trusting
+// this paragraph — drop the method filter, re-run, and read the GET rows.
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { beforeAll, describe, expect, it } from "vitest";
