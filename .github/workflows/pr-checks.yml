@@ -475,40 +475,122 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: umbrel-app.yml version == both compose image tags
+      - name: umbrel-app.yml version == every published image tag in compose
         # Drift here means umbreld offers version X while compose pins the old
         # tags, so a farmer "updates" to a new version number running the
         # previous code — with nothing erroring. Static check; runs on every
         # PR regardless of target branch.
+        #
+        # ⚠ THE JOB `name:` ABOVE IS A RULESET-PINNED REQUIRED CONTEXT.
+        # Ruleset 20756755 pins its required checks by EXACT STRING. Renaming
+        # this job is therefore a TWO-PART change — this file AND the ruleset,
+        # together — because a renamed job against an unedited ruleset produces
+        # a required context that never appears, and GitHub renders a context
+        # that will never arrive identically to one that is still queuing. It
+        # is not forbidden; it is strictly worse than extending this script,
+        # which is why the loopd coverage below was added HERE.
+        #   gh api repos/ethancail/bitcorn-lightning-application/rulesets/20756755
+        #
+        # ⚠ THE IMAGE SET IS DERIVED, NEVER LISTED. This step used to grep for
+        # `/api:` and `/web:` by name. When loopd was added it was invisible
+        # here, so a stale loopd tag passed every PR gate, the images published
+        # at the new version, and the node pulled the PREVIOUS release's Loop
+        # daemon — successfully, with nothing on the node reporting it. A hand
+        # list cannot stay in step with an image set that grows, so the
+        # expected set is read from docker-publish.yml's own `images:`
+        # declarations: add a fourth image there and it is required here in the
+        # same commit, with no edit to this file.
         run: |
           MANIFEST=bitcorn-lightning-node/umbrel-app.yml
           COMPOSE=bitcorn-lightning-node/docker-compose.yml
+          PUBLISH=.github/workflows/docker-publish.yml
+
           # Same extraction docker-publish.yml uses, so this reads the version
           # exactly the way the publisher does.
           V=$(grep '^version:' "$MANIFEST" | sed 's/version: *"\(.*\)"/\1/')
-          API=$(grep -oE 'image: ghcr\.io/[^ ]*/api:[^ ]+' "$COMPOSE" | sed 's/.*://')
-          WEB=$(grep -oE 'image: ghcr\.io/[^ ]*/web:[^ ]+' "$COMPOSE" | sed 's/.*://')
+          if [ -z "$V" ]; then
+            echo "::error::Could not extract the version from $MANIFEST — the file format changed."
+            echo "This check greps for a line matching '^version:'."
+            exit 1
+          fi
 
-          echo "manifest=$V  api=$API  web=$WEB"
-          for pair in "manifest:$V" "api:$API" "web:$WEB"; do
-            if [ -z "${pair#*:}" ]; then
-              echo "::error::Could not extract ${pair%%:*} version — the file format changed."
-              echo "This check greps for '^version:' and 'image: ghcr.io/.../{api,web}:TAG'."
-              exit 1
+          # EXPECTED = what the publisher actually publishes. Each build job
+          # declares `images: <registry>/<owner>/<repo>/<component>`, so the
+          # component is the last path segment.
+          EXPECTED=$(grep -E '^[[:space:]]*images:[[:space:]]' "$PUBLISH" | sed 's|.*/||' | sort -u)
+          if [ -z "$EXPECTED" ]; then
+            echo "::error::Found no 'images:' declarations in $PUBLISH."
+            echo "Could-not-determine is a failure, not a pass: an empty expected set"
+            echo "would let every tag in $COMPOSE through unchecked."
+            exit 1
+          fi
+
+          # FOUND = every FIRST-PARTY pin in compose. Anchored on the `image:`
+          # key so a comment that merely mentions ghcr.io cannot match, and
+          # host-scoped to ghcr.io so third-party images (cloudflared) are not
+          # dragged into this version contract — whether those get pinned is a
+          # separate question and deliberately not decided here.
+          PINS=$(grep -E '^[[:space:]]*image:[[:space:]]*"?ghcr\.io/' "$COMPOSE" \
+                 | sed -e 's/^[[:space:]]*image:[[:space:]]*//' -e 's/[[:space:]].*$//' -e 's/"//g')
+
+          # Print what matched, never just what failed: a pattern that silently
+          # matches nothing is indistinguishable from a clean pass otherwise.
+          echo "manifest version : $V"
+          echo "publisher builds : $(echo $EXPECTED)"
+          echo "compose pins     :"
+
+          RC=0
+          FOUND=
+          for REF in $PINS; do
+            case "$REF" in
+              */*:*) ;;
+              *)
+                echo "  UNPARSEABLE  $REF"
+                echo "::error::Unparseable image reference in $COMPOSE: '$REF'"
+                echo "Expected the form ghcr.io/<owner>/<repo>/<component>:<tag>."
+                RC=1
+                continue
+                ;;
+            esac
+            NAME=${REF%:*}; NAME=${NAME##*/}
+            TAG=${REF##*:}
+            FOUND="$FOUND $NAME"
+            if [ "$TAG" = "$V" ]; then
+              echo "  ok           $NAME -> $TAG"
+            else
+              echo "  MISMATCH     $NAME -> $TAG  (expected $V)"
+              echo "::error::$COMPOSE pins $NAME at $TAG, but $MANIFEST says $V."
+              RC=1
             fi
           done
 
-          if [ "$V" != "$API" ] || [ "$V" != "$WEB" ]; then
-            echo "::error::Version triplet disagrees."
-            echo "  $MANIFEST         version: \"$V\""
-            echo "  $COMPOSE  api tag: $API"
-            echo "  $COMPOSE  web tag: $WEB"
+          # Both directions of the set comparison. Tag equality alone would pass
+          # vacuously if a pin went missing entirely — nothing left to disagree.
+          for E in $EXPECTED; do
+            if ! printf '%s\n' $FOUND | grep -qxF "$E"; then
+              echo "::error::$PUBLISH publishes '$E' but $COMPOSE pins no ghcr.io image for it."
+              echo "Every published image must be pinned here, or the release ships a"
+              echo "component the node never receives."
+              RC=1
+            fi
+          done
+          for F in $FOUND; do
+            if ! printf '%s\n' $EXPECTED | grep -qxF "$F"; then
+              echo "::error::$COMPOSE pins '$F' but $PUBLISH publishes no such image."
+              echo "That tag can never exist on ghcr.io — the install fails at 0%."
+              RC=1
+            fi
+          done
+
+          if [ "$RC" -ne 0 ]; then
             echo ""
-            echo "TO FIX: make all three identical, in the same commit."
+            echo "TO FIX: make the version in $MANIFEST and EVERY ghcr.io image tag in"
+            echo "$COMPOSE identical, in the same commit — one tag per published image"
+            echo "($(echo $EXPECTED)), not just api and web."
             echo "See docs/RELEASE.md § Step 1."
             exit 1
           fi
-          echo "All three agree at $V."
+          echo "Manifest and all $(printf '%s\n' $EXPECTED | wc -l) published image tags agree at $V."
 
   conflict-markers:
     name: No conflict markers
