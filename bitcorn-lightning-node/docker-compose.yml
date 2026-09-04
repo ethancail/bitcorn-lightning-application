@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.18.10
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.18.11
     restart: unless-stopped
     ports:
       - "3101:3101"
@@ -150,7 +150,7 @@ services:
   # The asymmetry favours the current copy meanwhile: a needless restart costs
   # a minute, a missing instruction leaves a farmer with dead Loop.
   loopd:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/loopd:1.18.10
+    image: ghcr.io/ethancail/bitcorn-lightning-application/loopd:1.18.11
     restart: unless-stopped
     volumes:
       - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
@@ -193,7 +193,7 @@ services:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.18.10
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.18.11
     restart: unless-stopped
     ports:
       - "3200:3200"

@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.10"
+version: "1.18.11"
 port: 3200
 
 description: >
@@ -27,6 +27,10 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.11: The Withdraw button now waits until your node can actually reach
+  Loop, instead of offering a withdrawal that would fail. Plus internal
+  release-tooling and documentation work.
+
   v1.18.10: A wording fix. If Loop wasn't working, your dashboard used to say
   "Loop is not installed on this node," which was wrong — Loop ships with
   Bitcorn and is always installed. It now tells you Loop isn't responding, and
