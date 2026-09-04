@@ -39,10 +39,10 @@ cannot tell you how `umbreld` behaves at runtime.
 
 | # | Step | Who |
 |---|---|---|
-| 1 | Bump three places in one commit | **MANUAL** |
+| 1 | Bump the version everywhere it is pinned, in one commit | **MANUAL** |
 | 2 | `release/vX.Y.Z` → PR → merge to `main` | **MANUAL** |
-| **2.5** | **CI tags the release — before either image is pushed** | AUTOMATED |
-| 3 | CI builds and pushes both images | AUTOMATED |
+| **2.5** | **CI tags the release — before any image is pushed** | AUTOMATED |
+| 3 | CI builds and pushes the images | AUTOMATED |
 | **3a** | **Verify the images and the tag actually landed** | **MANUAL — do not skip** |
 | 4 | Umbrel host's app-store clone refreshes from `main` | AUTOMATED |
 | 5 | `umbreld` sees the higher version, offers the update | AUTOMATED |
@@ -53,15 +53,23 @@ cannot tell you how `umbreld` behaves at runtime.
 
 ---
 
-### Step 1 — Bump three places in ONE commit · MANUAL
+### Step 1 — Bump the version everywhere it is pinned, in ONE commit · MANUAL
 
-Three version strings must agree. All three, same commit:
+**The set, not a count:** the `version:` in `umbrel-app.yml`, plus **every Bitcorn
+image tag in `docker-compose.yml`** — that is, every `image: ghcr.io/…` line. All of
+them must read the same `X.Y.Z`, in the same commit.
 
-| File | What |
-|---|---|
-| `bitcorn-lightning-node/umbrel-app.yml` | `version: "X.Y.Z"` |
-| `bitcorn-lightning-node/docker-compose.yml` | `image: …/api:X.Y.Z` |
-| `bitcorn-lightning-node/docker-compose.yml` | `image: …/web:X.Y.Z` |
+Do not memorise how many that is. It was three strings until v1.18.9 and is four
+since, because the compose file gained a `loopd` pin — and the next component to
+join the set will falsify any number written here too. Enumerate it instead:
+
+```bash
+grep -c 'image: ghcr.io' bitcorn-lightning-node/docker-compose.yml   # how many compose pins exist
+```
+
+⚠ `cloudflare/cloudflared:latest` is deliberately **not** in that set — it is
+unpinned on purpose ([gotcha](#cloudflared-floats-on-latest)), which is why the
+command greps `ghcr.io` rather than `image:`.
 
 Also add the release notes to `umbrel-app.yml`'s `releaseNotes:` field in the same
 commit — farmers read it in the Umbrel update prompt, and there is no later chance
@@ -77,7 +85,11 @@ previous tags, so `umbreld` pulls stale images and the "new" version runs old co
 grep -n '^version:' bitcorn-lightning-node/umbrel-app.yml
 grep -n 'image: ghcr.io' bitcorn-lightning-node/docker-compose.yml
 ```
-All three strings identical. Then confirm they're in the same commit:
+**PASS:** every tag the second command prints is identical to the version the first
+prints. Count the lines it actually returns — do not stop after a remembered
+number, which is how a stale `loopd` pin ships unnoticed (nothing downstream
+catches that one: see [step 5](#step-5--umbreld-offers-the-update--automated)'s
+version-string-only comparison). Then confirm they're in the same commit:
 ```bash
 git show --stat HEAD
 ```
@@ -90,8 +102,9 @@ Branch, push, open a PR, merge. Merging is what fires everything downstream.
 from `main`. See [Releasing from `develop`](#releasing-from-develop) before doing
 the `develop` variant — it has a footgun the normal path doesn't.
 
-**Verify before moving on:** the PR's diff contains the three version strings and
-nothing you didn't intend. **`pr-checks.yml`'s jobs are required status checks, so
+**Verify before moving on:** the PR's diff contains every version string from
+[step 1](#step-1--bump-the-version-everywhere-it-is-pinned-in-one-commit--manual)
+and nothing you didn't intend. **`pr-checks.yml`'s jobs are required status checks, so
 the gate now blocks the merge** — which it did not always do. Do not take that from
 this page, and do not take the list of what is required from here either; both are
 settings that change without touching the repo. Ask, per
@@ -107,25 +120,32 @@ anything between the merge and the image publish — a PR gate is not a release 
 and `docker-publish.yml` runs no tests. See
 [No test gate runs on the RELEASE path](#no-test-gate-runs-on-the-release-path--the-pr-gate-is-a-different-thing).
 
-### Step 2.5 — CI tags the release, BEFORE either image is pushed · AUTOMATED
+### Step 2.5 — CI tags the release, BEFORE any image is pushed · AUTOMATED
 
 The push to `main` fires `docker-publish.yml`, and the **first** thing it does — in
-`get-version`, before `build-api` or `build-web` start — is assert that
+`get-version`, before any `build-*` job starts — is assert that
 `v<version>` does not already exist, then create and push it.
 
 **The ordering is the mechanism, not a detail.** `get-version` is the sole common
-ancestor of both build jobs (each declares `needs: get-version`), so a failure there
-leaves **both un-started and nothing published**. That is what makes a duplicate
+ancestor of every build job (each declares `needs: get-version`), so a failure there
+leaves **all of them un-started and nothing published**. That is what makes a duplicate
 version stop the release instead of being discovered afterwards. Placing the same
 check inside a build job would fail *open*: the `VITE_BASE_CHAIN_ID` guard lives in
 `build-web`, and when it trips, `build-api` is concurrently pushing its image and
-re-pointing `latest`, because the two build jobs do not depend on each other.
+re-pointing `latest`, because the build jobs do not depend on each other.
 
 What the tag step will refuse:
 
 - **A version whose tag already exists** — the republish incident this repo has
-  already had twice. It prints two remedies: bump the triplet, or (for the
-  deliberate same-tag hotfix) delete the tag and re-run.
+  already had twice. It prints two remedies: bump the version everywhere
+  [step 1](#step-1--bump-the-version-everywhere-it-is-pinned-in-one-commit--manual)
+  pins it, or (for the deliberate same-tag hotfix) delete the tag and re-run.
+  ⚠ **The `allow-same-tag-republish` PR label does NOT reach this assert** — it
+  skips `pr-checks.yml`'s `version-bump` job and nothing else. This step is
+  label-agnostic by design (a push event carries no PR labels), so a deliberate
+  republish still requires deleting the tag. Verified by execution, not by
+  reading: the assert reads only the version and the tag, and refuses with the
+  label supplied every way GitHub could supply it.
 - **A manifest it cannot read.** An unreadable `umbrel-app.yml` used to yield an
   empty version string and publish images tagged with the empty string. It is now a
   hard failure. Could-not-determine is a failure, not a pass.
@@ -155,27 +175,42 @@ recoverable in three commands; an overwritten image tag is not recoverable at al
 **Note the tag prefix.** Image tags are bare (`1.18.3`); git tags are `v`-prefixed
 (`v1.18.3`). The workflow adds the `v` in one place and nowhere else.
 
-### Step 3 — CI builds and pushes both images · AUTOMATED
+### Step 3 — CI builds and pushes the images · AUTOMATED
 
 `.github/workflows/docker-publish.yml` fires on push to `main`, but **only** when
-the changed files match one of its four `paths:` entries:
+the changed files match one of its `paths:` entries. **Print the filter rather than
+trusting a list on this page** — this block has been wrong before, and a path
+missing from a copy here reads as "that change publishes nothing", which is the
+most expensive way to be wrong about this file:
 
+```bash
+python3 -c 'import yaml,sys; d=yaml.safe_load(open(".github/workflows/docker-publish.yml")); print("\n".join((d.get(True) or d["on"])["push"]["paths"]))'
 ```
-app/api/**
-app/web/**
-bitcorn-lightning-node/umbrel-app.yml
-.github/workflows/docker-publish.yml
+
+Or, without a YAML parser:
+
+```bash
+sed -n '/^    paths:/,/^[a-z]/p' .github/workflows/docker-publish.yml | grep -E '^      - '
 ```
+
+⚠ **`bitcorn-lightning-node/docker-compose.yml` is deliberately NOT in that
+filter** — a compose-only bump therefore triggers no build at all. That is by
+design, and the reason is
+[step 1's one-commit rule](#step-1--bump-the-version-everywhere-it-is-pinned-in-one-commit--manual);
+the consequence is spelled out at
+[Bumping only the compose file triggers no build](#bumping-only-the-compose-file-triggers-no-build).
+Do not "fix" the filter without reading both.
 
 A `get-version` job greps the version out of the manifest —
-`grep '^version:' bitcorn-lightning-node/umbrel-app.yml` — and both build jobs
-consume it. Each image gets **three tags**:
+`grep '^version:' bitcorn-lightning-node/umbrel-app.yml` — and every build job
+consumes it. Each image gets **three tags** (a closed set — the workflow's
+`metadata-action` emits exactly these):
 
 - `latest`
 - `X.Y.Z` ← the only one that matters; it's what compose pins
 - `<short-sha>`
 
-Both images build for `linux/amd64,linux/arm64`. The web build additionally bakes
+Every image builds for `linux/amd64,linux/arm64`. The web build additionally bakes
 `VITE_BASE_CHAIN_ID` into the bundle at build time, defaulting to `84532`
 (Base Sepolia) — a guard fails the build if the repo variable is unset or
 unsupported on a `main` build.
@@ -200,7 +235,7 @@ check here as having closed the window.
 ```bash
 gh run list --branch main --limit 5
 ```
-Both build jobs must be `completed / success`. If a job failed:
+Every build job must be `completed / success`. If a job failed:
 ```bash
 gh run rerun <run-id> --failed
 ```
@@ -212,14 +247,22 @@ proxy for it:
 ```bash
 docker manifest inspect ghcr.io/ethancail/bitcorn-lightning-application/api:X.Y.Z >/dev/null && echo API OK
 docker manifest inspect ghcr.io/ethancail/bitcorn-lightning-application/web:X.Y.Z >/dev/null && echo WEB OK
+docker manifest inspect ghcr.io/ethancail/bitcorn-lightning-application/loopd:X.Y.Z >/dev/null && echo LOOPD OK
 ```
 
-Both must print OK. If either does not, you are already in the window where a
+**Check one line per image the compose file pins** — derive that set from
+[step 1](#step-1--bump-the-version-everywhere-it-is-pinned-in-one-commit--manual)
+rather than from the number of lines above. `loopd` was absent from this check for
+its first release, which is the omission that matters most here: a missing `loopd`
+tag produces exactly the flips-back-to-Install-at-0% failure this step exists to
+catch, and nothing else in the pipeline looks for it.
+
+Every one must print OK. If any does not, you are already in the window where a
 farmer can click a broken update — go to step 3a's fix-forward path above, and do
 not wait on step 4, which is not waiting on you.
 
 **Then confirm the tag reached `origin` and points where you think it does.** The
-images and the tag can disagree: [step 2.5](#step-25--ci-tags-the-release-before-either-image-is-pushed--automated)
+images and the tag can disagree: [step 2.5](#step-25--ci-tags-the-release-before-any-image-is-pushed--automated)
 pushes the tag first, so a failed build leaves the tag present and the images
 absent. Checking only the images would miss that, and checking only the tag would
 miss the reverse.
@@ -234,11 +277,20 @@ rather than leaving a tag that names an uninstallable version.
 
 ### Step 4 — App-store clone refreshes from `main` · AUTOMATED
 
-The Umbrel host holds a git clone of this repo as a community app store:
+The Umbrel host holds a git clone of this repo as a community app store, under
+`~/umbrel/app-stores/`. **The directory name carries a per-node suffix — derive it,
+never paste one:**
 
+```bash
+ls ~/umbrel/app-stores/
+STORE=$(echo ~/umbrel/app-stores/*bitcorn-lightning-application*)
+echo "$STORE"
 ```
-/home/umbrel/umbrel/app-stores/ethancail-bitcorn-lightning-application-github-020f9ee0/
-```
+
+On the treasury node in 2026-08 that resolved to
+`…/ethancail-bitcorn-lightning-application-github-020f9ee0/`, but the suffix is
+assigned per install. The farmer is the operator here and there is no second
+machine to normalise against, so a pasted path is wrong on every node but one.
 
 It tracks `main`, and it is a **grafted (shallow) checkout** — `git log` there shows
 truncated history, and anything needing full history will not work in it. Refreshing
@@ -271,7 +323,7 @@ Forcing it is still safe, and is still how you make the refresh immediate rather
 than eventual:
 
 ```bash
-cd ~/umbrel/app-stores/ethancail-bitcorn-lightning-application-github-020f9ee0
+cd "$(echo ~/umbrel/app-stores/*bitcorn-lightning-application*)"
 sudo git pull
 ```
 
@@ -279,7 +331,7 @@ sudo git pull
 the clone's HEAD and its advertised version against `main`:
 
 ```bash
-STORE=~/umbrel/app-stores/ethancail-bitcorn-lightning-application-github-020f9ee0
+STORE=$(echo ~/umbrel/app-stores/*bitcorn-lightning-application*)
 
 # What the clone is at, and what it is advertising to umbreld
 sudo git -C "$STORE" rev-parse HEAD
@@ -386,7 +438,7 @@ Migrations must still be idempotent. Never mutate schema by hand.
 
 **Verify the release landed:**
 ```bash
-sudo docker ps --format '{{.Names}}\t{{.Image}}' | grep bitcorn   # both images at X.Y.Z
+sudo docker ps --format '{{.Names}}\t{{.Image}}' | grep bitcorn   # every Bitcorn image at X.Y.Z
 ```
 That also gives you the API container's **actual** name, which you need below.
 
@@ -427,8 +479,11 @@ git show origin/develop:bitcorn-lightning-node/umbrel-app.yml | grep '^version:'
 ```
 
 When they match, merging `develop` → `main` as-is **fires the build on the existing
-version string** `X.Y.Z` and overwrites its image tags with entirely different
-content. The damage is quiet:
+version string** `X.Y.Z`. **Since `ce0080d` (2026-08-12) that build no longer
+republishes — it red-builds:** Step 2.5's assert refuses because `vX.Y.Z` already
+exists, and nothing is pushed. What follows is the damage that ordering caused
+before the assert existed, and it is still exactly what a same-tag republish does
+when someone deletes the tag to force one deliberately. The damage is quiet:
 
 - Nodes already on `X.Y.Z` see **no update** — the version didn't change, so
   `umbreld` has nothing to offer. They keep running the old code.
@@ -441,20 +496,24 @@ the overwritten tag cannot be recovered — the previous `X.Y.Z` images are gone
 from that tag.
 
 **Two gates now catch this, and neither existed when it happened.**
-[Step 2.5](#step-25--ci-tags-the-release-before-either-image-is-pushed--automated)
+[Step 2.5](#step-25--ci-tags-the-release-before-any-image-is-pushed--automated)
 refuses to publish when `vX.Y.Z` already exists, and `pr-checks.yml`'s
 `Version bumped` job fails a PR to `main` that changes `app/api`/`app/web` without
 a bump. Note the residual gap rather than trusting them completely: that PR check
-exits early when **no** `app/` files changed, so a merge touching only
-`umbrel-app.yml` or `docker-publish.yml` still publishes without it objecting.
-Step 2.5 is what covers that case.
+diffs `app/api` and `app/web` **only**, so a merge touching just `app/loopd/**`,
+`umbrel-app.yml`, or `docker-publish.yml` fires the workflow without that check
+objecting — those paths are in the publish filter but outside the check's diff.
+Step 2.5 is what covers all three: with the version unchanged its tag already
+exists, so the assert refuses and **nothing is published**. The two gates
+genuinely disagree about what counts as a release, and Step 2.5 is the one that
+decides whether anything ships.
 
 ### THE FIX — required ordering, not a suggestion
 
 **Put the version-bump commit on `develop` BEFORE merging to `main`.**
 
 ```
-1. On develop: commit the three-place bump (step 1 above) → push
+1. On develop: commit the step-1 bump — every pinned version string → push
 2. Open develop → main PR
 3. Merge
 ```
@@ -463,9 +522,12 @@ The merge then arrives already bumped. CI fires once, on the new version string,
 publishing new tags and overwriting nothing. `umbreld` sees a higher version and
 offers the update normally.
 
-Doing it the other way — merge first, bump second — means **two** builds: one that
-overwrites the current release's tags, and one that publishes the new version.
-The first build is the damage, and it happens before you have a chance to fix it.
+Doing it the other way — merge first, bump second — means **two** builds: one on
+the unchanged version string, and one that publishes the new version. Since
+`ce0080d` the first fails at Step 2.5's assert and publishes nothing, so the cost
+is a red build and a blocked release rather than an overwritten tag. That is a
+failed release someone still has to notice and unpick; the required ordering
+avoids it entirely.
 
 ### `develop` also carries Worker source
 
@@ -481,10 +543,15 @@ Do not read "Worker code merged to main" as "Worker change shipped". See
 
 ## Gotchas
 
-### The three version strings must agree
-`umbrel-app.yml` version, `docker-compose.yml` api tag, `docker-compose.yml` web tag.
+### Every pinned version string must agree
+`umbrel-app.yml`'s `version:`, and every `image: ghcr.io/…` tag in
+`docker-compose.yml` — enumerate them per
+[step 1](#step-1--bump-the-version-everywhere-it-is-pinned-in-one-commit--manual)
+rather than counting from memory.
 **Drift causes:** `umbreld` offers version X.Y.Z but compose pins the old tags, so
 farmers "update" to a new version number running the previous code. Nothing errors.
+⚠ **CI checks only the `api` and `web` tags.** A stale `loopd` pin passes every
+gate and ships silently — that one is on this step alone.
 
 ### Bumping only the compose file triggers no build
 `bitcorn-lightning-node/docker-compose.yml` is **not** in CI's `paths:` filter.
@@ -496,10 +563,11 @@ only GHCR is (step 3a).
 
 ### `latest` is not a pointer to the current release
 `latest` is re-pointed by **any** push to `main` whose changed files match one of
-CI's four `paths:` entries — not only releases. A `main` merge touching only
-`docs/` or `bitcorn-lightning-node/docker-compose.yml` doesn't fire the workflow at
-all, so `latest` is unchanged by those. But a non-release code merge to `app/api/**`
-or `app/web/**` does move it.
+CI's `paths:` entries — not only releases; print that filter per
+[step 3](#step-3--ci-builds-and-pushes-the-images--automated). A `main` merge
+touching only `docs/` or `bitcorn-lightning-node/docker-compose.yml` doesn't fire
+the workflow at all, so `latest` is unchanged by those. But a non-release code
+merge to a filtered path — `app/api/**`, `app/web/**`, `app/loopd/**` — does move it.
 
 The workflow also carries `workflow_dispatch:`, which adds a second way in:
 **a manual dispatch re-points `latest` from whatever ref it is dispatched on.**
@@ -588,8 +656,10 @@ back running the previous release's Loop daemon against the current release's
 api — with nothing on the node reporting the mismatch.
 
 ### Hotfix under the same tag
-`umbreld` won't detect image changes for an unchanged tag. Force-pull + restart with
-the same two commands as above. **Prefer a version bump** — a same-tag hotfix leaves
+`umbreld` won't detect image changes for an unchanged tag. Force-pull **every**
+Bitcorn image, then restart — the same commands as
+[Half-installed](#half-installed-after-an-early-user-click) above, one pull per
+image the compose file pins. **Prefer a version bump** — a same-tag hotfix leaves
 the fleet split across two different builds of one version, with no way to tell them
 apart. (This is the same damage as the `develop` footgun, arrived at deliberately.)
 
@@ -603,7 +673,7 @@ when the tunnel image changed underneath it.
 ### `scripts/init-secrets.sh` does nothing — do not add it to a checklist
 It generates `db.key`, `jwt.key`, `hmac.key` under `/data/secrets`. **All three are
 read nowhere in the repo**, and the script is **invoked nowhere** — not by compose,
-either Dockerfile, CI, or any npm script. It also carries a `TODO` at the top
+by any Dockerfile, by CI, or by any npm script. It also carries a `TODO` at the top
 ("Generate and store required secrets"), which makes it read like pending work
 rather than dead code. It is dead code.
 
@@ -642,7 +712,8 @@ it has been exercised.
   ```
   Confirm this before relying on it.
 - **Compose pins exact tags**, so pointing a node at an older version is an edit to
-  two lines of its deployed compose file plus a restart — not a rebuild.
+  every `image: ghcr.io/…` line of its deployed compose file plus a restart — not a
+  rebuild. Edit them all: leaving one behind mixes releases on one node.
 - **The operator `.env` lives in `app-data/` and survives**, so a downgrade does not
   lose operator config.
 
@@ -663,10 +734,23 @@ cd /home/umbrel/umbrel/app-data/bitcorn-lightning-node
 sudo cp docker-compose.yml docker-compose.yml.bak     # you will want this
 sudo sed -i 's|/api:X.Y.Z|/api:X.Y.Z-PREV|' docker-compose.yml
 sudo sed -i 's|/web:X.Y.Z|/web:X.Y.Z-PREV|' docker-compose.yml
+sudo sed -i 's|/loopd:X.Y.Z|/loopd:X.Y.Z-PREV|' docker-compose.yml
 sudo docker pull ghcr.io/ethancail/bitcorn-lightning-application/api:X.Y.Z-PREV
 sudo docker pull ghcr.io/ethancail/bitcorn-lightning-application/web:X.Y.Z-PREV
+sudo docker pull ghcr.io/ethancail/bitcorn-lightning-application/loopd:X.Y.Z-PREV
 sudo umbreld client apps.restart.mutate --appId bitcorn-lightning-node
 ```
+
+⚠ **One `sed` per `image: ghcr.io/…` line the file actually has** — check with
+`grep -c 'image: ghcr.io' docker-compose.yml` before assuming the three above are
+all of them.
+
+⚠ **The `loopd` line only swaps cleanly back to v1.18.9 or later.** Earlier
+releases ran Lightning Terminal in that service slot — same service *name*, a
+completely different command list and a required `LIT_PASSWORD` — so a target
+below v1.18.9 is **not** an image-tag swap at all; it is a whole-service-block
+restore. The identical service name makes two incompatible configurations look
+interchangeable. Do not `sed` your way across that boundary.
 
 ### ⚠ Genuinely unknown — do not guess at these
 
@@ -771,8 +855,11 @@ second command means only that *legacy* protection is absent. Reading that 404 a
 required checks were in force via a ruleset the command never consulted. Either
 endpoint returning enforcement means checks are required.
 
-⚠ **The thresholds went fully strict in PR #255 (2026-08-07)** — two ceilings at
-zero, two collection floors. They were branch-aware between PRs #244 and #255,
+⚠ **The thresholds went fully strict in PR #255 (2026-08-07)** — the ceilings went
+to zero and every *test* suite gained a collection floor. (The count of each is
+itself a moving number — the grep below is the answer, not this sentence. A third
+floor was added after this paragraph was written, and it went on saying "two" for
+both until 2026-09.) They were branch-aware between PRs #244 and #255,
 keyed on `github.base_ref`, because the two trees genuinely differed then. v1.18.0
 converged the branches and those arms became pure slack — a `main`-based PR was
 still being allowed a tree's worth of errors that no longer existed — so they were

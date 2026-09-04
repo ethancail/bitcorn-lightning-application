@@ -21,6 +21,7 @@ import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import StaleMarker from "../components/StaleMarker";
 import { channelStalenessNotice } from "../components/channelStaleness";
 import { certExpiryNotice } from "../components/certExpiryNotice";
+import { withdrawCtaGate } from "../components/withdrawCtaGate";
 import {
   INITIAL_FRESHNESS,
   freshnessStatus,
@@ -799,21 +800,33 @@ export default function MemberDashboard() {
                   </div>
                 )}
 
-                {/* Farmer: withdraw action */}
+                {/* Farmer: withdraw action.
+                    Rendered on balance as before; ENABLED on the Loop daemon
+                    flag (./withdrawCtaGate.ts — decisions B/C, 2026-09-02).
+                    The render condition is deliberately unchanged: the gate
+                    governs enabledness inside it, not whether it appears. */}
                 {isFarmer && ch!.local_sats >= 250_000 && (
-                  <div className="member-action">
-                    <button
-                      className="btn btn-primary"
-                      style={{ width: "100%" }}
-                      onClick={() => navigate(cashOutUrl)}
-                    >
-                      Withdraw Earnings →
-                    </button>
-                    <div className="caption">
-                      Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
-                      {toUsd(estWithdrawalFee) && ` (${toUsd(estWithdrawalFee)})`}
-                    </div>
-                  </div>
+                  (() => {
+                    const withdrawGate = withdrawCtaGate(advisor);
+                    return (
+                      <div className="member-action">
+                        <button
+                          className="btn btn-primary"
+                          style={{ width: "100%" }}
+                          disabled={!withdrawGate.enabled}
+                          onClick={() => navigate(cashOutUrl)}
+                        >
+                          Withdraw Earnings →
+                        </button>
+                        <div className="caption">
+                          {withdrawGate.explanation ?? <>
+                            Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
+                            {toUsd(estWithdrawalFee) && ` (${toUsd(estWithdrawalFee)})`}
+                          </>}
+                        </div>
+                      </div>
+                    );
+                  })()
                 )}
                 {isFarmer && ch!.local_sats > 0 && ch!.local_sats < 250_000 && (
                   <div style={{ textAlign: "center", fontSize: "0.75rem", color: "var(--text-3)" }}>
