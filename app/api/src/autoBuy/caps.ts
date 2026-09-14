@@ -81,6 +81,51 @@ export function checkRollingCaps(db: Database.Database, intendedUsd: number): Ca
   return { ok: true };
 }
 
+/** Cap, spend-so-far and remaining room for one rolling window. */
+export type WindowHeadroom = { cap: number; spent: number; headroom: number };
+
+/**
+ * How much room is LEFT under each rolling cap, right now.
+ *
+ * checkRollingCaps answers yes/no for one amount. The member-elected catch-up
+ * needs the quantity itself: when the caps bind, it offers the largest whole
+ * number of missed intervals that FITS and retains the rest as claimable
+ * (decisions/2026-09-14-partial-catchup-with-remainder-retained.md, D5). That
+ * question cannot be asked of a boolean.
+ *
+ * Sums the same counted states over the same windows as checkRollingCaps, so
+ * the two cannot disagree about what has been spent.
+ *
+ * ⚠ `cap` and `headroom` are +Infinity when the env var is unset or <= 0 —
+ * safeCap's deliberate "not configured means unlimited". Callers that serialise
+ * this must map Infinity to null; JSON.stringify turns it into `null` anyway,
+ * but silently, which is the sort of thing worth doing on purpose.
+ */
+export function rollingHeadroom(db: Database.Database): { d7: WindowHeadroom; d30: WindowHeadroom } {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const countedStates = ["buy_filled", "awaiting_withdraw_hold", "sweep_assigned", "withdraw_placed", "withdraw_confirmed"];
+  const placeholders = countedStates.map(() => "?").join(",");
+
+  const spentIn = (windowDays: number): number => {
+    const row = db.prepare(
+      `SELECT COALESCE(SUM(filled_usd), 0) AS total
+       FROM autobuy_runs
+       WHERE status IN (${placeholders}) AND filled_at >= ?`,
+    ).get(...countedStates, nowSec - windowDays * 86400) as { total: number };
+    return row.total;
+  };
+
+  const cap7 = safeCap(ENV.autoBuyMax7dUsd);
+  const spent7 = spentIn(7);
+  const cap30 = safeCap(ENV.autoBuyMax30dUsd);
+  const spent30 = spentIn(30);
+
+  return {
+    d7: { cap: cap7, spent: spent7, headroom: Math.max(0, cap7 - spent7) },
+    d30: { cap: cap30, spent: spent30, headroom: Math.max(0, cap30 - spent30) },
+  };
+}
+
 /**
  * Is the requested base_unit_usd (from a user PATCH request) under the hard cap?
  */

@@ -380,15 +380,391 @@ function insertFailedBuyRow(
   return Number(info.lastInsertRowid);
 }
 
+/**
+ * THE STATUS VALUE `skipped_missed_interval` — ITS CONTRACT.
+ *
+ * ⚠ THIS IS A WIRE VALUE, NOT AN API-INTERNAL TOKEN. It crosses the HTTP
+ * boundary in BOTH directions and is therefore load-bearing API:
+ *   · OUT — as `autobuy_runs.status` in GET /api/autobuy/status (`recent`)
+ *     and GET /api/autobuy/history (`rows`).
+ *   · IN  — the history route filters on exact equality against whatever
+ *     string the client sends (`WHERE status = ?`), and the web filter
+ *     `<option value="skipped_missed_interval">` sends precisely this token.
+ * Renaming it silently breaks any saved filter and any stored row. Treat it
+ * as a released string.
+ *
+ * WHAT IT MEANS: a scheduled interval that ELAPSED WITHOUT A TICK EVALUATING
+ * IT. It is NOT one of the four `skipped_*` values, all of which mean "a tick
+ * ran and declined for reason X". A passed-over interval had no tick at all,
+ * and saying the scheduler declined would be the exact misdescription this
+ * whole arc exists to remove.
+ *
+ * WHAT MAY CONSUME IT: display and filtering only. No API-side code branches
+ * on it, and none should — `caps.checkRollingCaps` and the status payload's
+ * in-flight list both ENUMERATE the states they include, so this value is
+ * excluded by construction rather than by an explicit test.
+ *
+ * WHAT MAY NOT: it must not be read as evidence of a decision, a spend, or a
+ * failure. These rows carry no `filled_usd` and never will.
+ *
+ * The `skipped_` prefix is deliberate, so the web StatusBadge fallback and any
+ * future `LIKE 'skipped_%'` query degrade sensibly.
+ *
+ * Spec: bitcorn-research/specs/2026-09-14-autobuy-scheduler-catchup-clamp-spec.md §3 R3.
+ */
+const STATUS_MISSED_INTERVAL = "skipped_missed_interval";
+
+/**
+ * Advance the cursor, CLAMPED so it can never land in the past, and record
+ * every whole interval the clamp stepped over.
+ *
+ * Before the clamp, a cursor k intervals stale advanced by exactly one
+ * increment per tick, so the scheduler bought k times across k consecutive
+ * ticks — a burst nobody chose. Now it fires once and resumes.
+ *
+ * §1.5 (settled by Ethan, OVERRIDING the recommendation to preserve phase):
+ * the cadence RE-PHASES. `base = max(stored, now)`, so a member whose weekly
+ * buy landed on Mondays resumes on whatever weekday recovery happened. The
+ * rejected alternative — advance to the next ORIGINAL slot — is recorded in
+ * the spec; it is not what this implements.
+ *
+ * Spec: …-catchup-clamp-spec.md §2 (C1–C4), §3 (R1).
+ */
 function scheduleNext(
   db: Database.Database,
-  cfg: { frequency: string; next_run_at: number | null },
+  cfg: { frequency: string; next_run_at: number | null; base_unit_usd: number },
 ): void {
   const now = nowSec();
   const increment = frequencyToSeconds(cfg.frequency);
-  const base = cfg.next_run_at && cfg.next_run_at > 0 ? cfg.next_run_at : now;
+  const stored = cfg.next_run_at && cfg.next_run_at > 0 ? cfg.next_run_at : now;
+
+  // C1: never behind now. For a current or future cursor this is `stored` and
+  // the behaviour is exactly today's; the clamp bites ONLY when stored < now.
+  const base = Math.max(stored, now);
   const nextRunAt = base + increment;
+
+  // C3/R1: how many whole intervals did the cursor pass over? The tick that is
+  // running consumed the slot at `stored`, and `base` consumes the slot at
+  // `now`, so the genuinely passed-over slots are i = 1 … k-1. A current,
+  // future or null cursor gives k <= 1 and the loop body never runs.
+  const k = stored < now ? Math.ceil((now - stored) / increment) : 0;
+  for (let i = 1; i < k; i++) {
+    insertMissedIntervalRow(db, stored + i * increment, cfg.base_unit_usd);
+  }
+
   db.prepare(`UPDATE autobuy_config SET last_run_at = ?, next_run_at = ? WHERE id = 1`).run(now, nextRunAt);
+}
+
+/**
+ * One row per interval the clamp stepped over (§3 R1).
+ *
+ * `scheduled_for` is the ORIGINAL slot, not the moment of discovery, so the
+ * history shows WHEN the buy was missed. `multiplier`, `z_score` and `zone`
+ * are NULL on purpose: the valuation at the missed moment is unknowable
+ * retroactively, and a stored number there would be a guess wearing a fact's
+ * clothes.
+ */
+function insertMissedIntervalRow(db: Database.Database, slot: number, baseUnitUsd: number): void {
+  const now = nowSec();
+  db.prepare(
+    `INSERT INTO autobuy_runs
+       (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
+        status, error_code, created_at, updated_at)
+     VALUES (?, NULL, NULL, NULL, ?, ?, ?, 'clamped_past_interval', ?, ?)`,
+  ).run(slot, baseUnitUsd, baseUnitUsd, STATUS_MISSED_INTERVAL, now, now);
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// The member-elected catch-up (spec §4)
+//
+// A ONE-TIME EXPLICIT ACTION, not a setting (§1.1). A setting would recreate
+// the present defect for anyone who enables it and forgets — and the defect
+// exists precisely because nobody chose the behaviour.
+//
+// ONE AGGREGATE ORDER, not one per missed tick (§1.4): N orders over N ticks is
+// the burst behaviour in slow motion, same fee count, same price exposure.
+// ───────────────────────────────────────────────────────────────────────
+
+/** An unclaimed passed-over interval. */
+type MissedRow = { id: number; scheduled_for: number };
+
+function readUnclaimedMissed(db: Database.Database): MissedRow[] {
+  return db.prepare(
+    `SELECT id, scheduled_for FROM autobuy_runs
+      WHERE status = ? AND claimed_by_run_id IS NULL
+      ORDER BY scheduled_for ASC`,
+  ).all(STATUS_MISSED_INTERVAL) as MissedRow[];
+}
+
+/**
+ * The largest whole number of intervals that fits the tighter rolling window.
+ *
+ * WHOLE-INTERVAL granularity is the spec's recommendation (§4 A2, D5 §6): a
+ * partial interval is not a thing the member ever chose to buy, and offering
+ * "$37 of a $100 buy" invents a unit the product does not have.
+ */
+function fittingIntervals(count: number, unitUsd: number, headroomUsd: number): number {
+  if (unitUsd <= 0) return 0;
+  // Nudge for float dust: 10 × 100.00 must fit exactly 1000.00 headroom.
+  const fits = Math.floor((headroomUsd + 1e-9) / unitUsd);
+  return Math.max(0, Math.min(count, fits));
+}
+
+const roundUsd = (n: number): number => Math.round(n * 100) / 100;
+
+export type MissedSummary = {
+  intervals: number;
+  base_unit_usd: number;
+  oldest_slot: number;
+  newest_slot: number;
+  /** null when the valuation is unavailable — count and slots still stand. */
+  multiplier: number | null;
+  zone: string | null;
+  valuation_updated_at: string | null;
+  estimated_usd: number | null;
+  /** The portion that fits current rolling headroom. null without a valuation. */
+  fits_now: { intervals: number; estimated_usd: number } | null;
+  /** What stays claimable after fits_now. null when nothing is withheld. */
+  remainder: { intervals: number; estimated_usd: number } | null;
+};
+
+/**
+ * What the member is shown BEFORE they act (§4 A2).
+ *
+ * Returns null when there is nothing unclaimed — A1 is explicit that the block
+ * renders nothing at all in that case: no empty state, no "0 missed".
+ *
+ * ⚠ Every amount here is an ESTIMATE AT DISPLAY TIME. The order is placed at
+ * action time against the valuation and the headroom then, which is why
+ * runCatchUp re-derives rather than trusting anything computed here.
+ */
+export async function computeMissedSummary(db: Database.Database): Promise<MissedSummary | null> {
+  const missed = readUnclaimedMissed(db);
+  if (missed.length === 0) return null;
+
+  const cfg = readConfig(db);
+  const base: MissedSummary = {
+    intervals: missed.length,
+    base_unit_usd: cfg.base_unit_usd,
+    oldest_slot: missed[0].scheduled_for,
+    newest_slot: missed[missed.length - 1].scheduled_for,
+    multiplier: null,
+    zone: null,
+    valuation_updated_at: null,
+    estimated_usd: null,
+    fits_now: null,
+    remainder: null,
+  };
+
+  // A valuation failure DEGRADES this block rather than removing it: the
+  // member still learns how many intervals were missed and when.
+  const valResult = await getCurrent();
+  if (!valResult.ok) return base;
+  const val = valResult.value;
+  const mult = parseZoneMultiplier(cfg.zone_multipliers, val.zone);
+
+  const unit = computeIntendedBuy(cfg.base_unit_usd, mult);
+  const headroom = capsHeadroomUsd(db);
+  const k = fittingIntervals(missed.length, unit, headroom);
+
+  return {
+    ...base,
+    multiplier: mult,
+    zone: val.zone,
+    valuation_updated_at: val.updated_at,
+    estimated_usd: roundUsd(missed.length * unit),
+    fits_now: { intervals: k, estimated_usd: roundUsd(k * unit) },
+    remainder:
+      k < missed.length
+        ? { intervals: missed.length - k, estimated_usd: roundUsd((missed.length - k) * unit) }
+        : null,
+  };
+}
+
+/** The binding rolling headroom — the tighter of the 7-day and 30-day windows. */
+function capsHeadroomUsd(db: Database.Database): number {
+  const h = caps.rollingHeadroom(db);
+  return Math.min(h.d7.headroom, h.d30.headroom);
+}
+
+export type CatchUpRefusalCode =
+  | "not_schedulable"
+  | "address_not_whitelisted"
+  | "valuation_unavailable"
+  | "valuation_stale"
+  | "zero_multiplier"
+  | "nothing_to_claim"
+  | "rolling_cap_no_headroom"
+  | "amount_changed"
+  | "no_credentials"
+  | "account_check_failed"
+  | "insufficient_funds"
+  | "order_failed";
+
+export type CatchUpResult =
+  | {
+      ok: true;
+      run_id: number;
+      intervals: number;
+      usd: number;
+      currency: string;
+      order_id: string;
+      /** Intervals deliberately left claimable — the D5 remainder. */
+      remainder_intervals: number;
+    }
+  | {
+      ok: false;
+      code: CatchUpRefusalCode;
+      reason: string;
+      /** On amount_changed: what the server re-derived, for the UI to re-show. */
+      actual?: { intervals: number; usd: number };
+    };
+
+/**
+ * Buy the missed intervals the member confirmed (§4 A5).
+ *
+ * ⚠ THE SINGLE-BUY CAP IS DELIBERATELY NOT CHECKED HERE. Decided by Ethan in
+ * decisions/2026-09-14-single-buy-cap-does-not-bind-confirmed-catchup.md (D4):
+ * AUTOBUY_MAX_SINGLE_BUY_USD is an UNATTENDED-AUTOMATION bound — its own
+ * comment says "per single scheduled buy" — whereas a catch-up's control is the
+ * member's confirmation of the actual amount. Leaving it in would make the cap
+ * a DE FACTO EXPIRY, contradicting the settled "a missed interval does not
+ * expire". The AUTOMATED path at stepEnqueueAndPlaceBuy keeps the cap and is
+ * unchanged; scheduler.clamp/catchup tests pin both directions.
+ *
+ * ⚠ THE ROLLING CAPS STILL BIND, but a bind is not a refusal (D5). The fitting
+ * portion is placed and the remainder stays claimable. Only k = 0 refuses.
+ *
+ * ORDER-OF-OPERATIONS NOTE, reported as a deviation from a literal reading of
+ * A5: A5 says "re-derive … refuse 409 … then run the gate sequence", but the
+ * D5 correction requires the 409 to compare the FITTING PORTION, which cannot
+ * be computed without the valuation (for the multiplier) and the live headroom.
+ * So the valuation gates run BEFORE the 409 check. Every gate still refuses
+ * with its own reason and places nothing.
+ */
+export async function runCatchUp(
+  db: Database.Database,
+  expected: { intervals: number; usd: number },
+): Promise<CatchUpResult> {
+  const gate = caps.canSchedule(db);
+  if (!gate.ok) return { ok: false, code: "not_schedulable", reason: gate.reason };
+
+  const cfg = readConfig(db);
+  if (!cfg.withdraw_address_whitelisted_at) {
+    return { ok: false, code: "address_not_whitelisted", reason: "address_not_whitelisted" };
+  }
+
+  const valResult = await getCurrent();
+  if (!valResult.ok) {
+    // Reuse the scheduler's own cause taxonomy rather than inventing a second.
+    return { ok: false, code: "valuation_unavailable", reason: valResult.error.kind };
+  }
+  const val = valResult.value;
+
+  const freshness = caps.checkValuationFreshness(val.updated_at);
+  if (!freshness.ok) return { ok: false, code: "valuation_stale", reason: freshness.reason };
+
+  const mult = parseZoneMultiplier(cfg.zone_multipliers, val.zone);
+  if (mult === 0) return { ok: false, code: "zero_multiplier", reason: `zone=${val.zone}` };
+
+  const missed = readUnclaimedMissed(db);
+  if (missed.length === 0) return { ok: false, code: "nothing_to_claim", reason: "no_unclaimed_intervals" };
+
+  const unit = computeIntendedBuy(cfg.base_unit_usd, mult);
+  const h = caps.rollingHeadroom(db);
+  const headroom = Math.min(h.d7.headroom, h.d30.headroom);
+  const k = fittingIntervals(missed.length, unit, headroom);
+  if (k === 0) {
+    // The ONLY rolling refusal left on this path: not even one interval fits.
+    const binding = h.d7.headroom <= h.d30.headroom ? "7d" : "30d";
+    return {
+      ok: false,
+      code: "rolling_cap_no_headroom",
+      reason: `${binding}_cap_headroom:${headroom.toFixed(2)}<${unit.toFixed(2)}`,
+    };
+  }
+
+  const total = roundUsd(k * unit);
+
+  // The member confirmed a NUMBER, not a procedure. If the world moved between
+  // display and confirm — a zone flip, a competing spend eating headroom, a
+  // concurrent claim — refuse and re-show rather than spend a different amount.
+  if (expected.intervals !== k || roundUsd(expected.usd) !== total) {
+    return {
+      ok: false,
+      code: "amount_changed",
+      reason: `expected ${expected.intervals}x/$${roundUsd(expected.usd)}, derived ${k}x/$${total}`,
+      actual: { intervals: k, usd: total },
+    };
+  }
+
+  const creds = loadCredentials(db);
+  if (!creds) return { ok: false, code: "no_credentials", reason: "no_credentials" };
+
+  const accounts = await listAccounts(creds);
+  if (!accounts.ok) {
+    return { ok: false, code: "account_check_failed", reason: `http_${accounts.status}` };
+  }
+
+  const usdAcct = accounts.data.accounts.find((a) => a.currency === "USD");
+  const parsedUsd = usdAcct ? Number(usdAcct.available_balance.value) : 0;
+  const usdBalance = Number.isFinite(parsedUsd) ? parsedUsd : 0;
+  const usdcAcct = accounts.data.accounts.find((a) => a.currency === "USDC");
+  const parsedUsdc = usdcAcct ? Number(usdcAcct.available_balance.value) : 0;
+  const usdcBalance = Number.isFinite(parsedUsdc) ? parsedUsdc : 0;
+
+  const preference = cfg.currency_preference as CurrencyPreference;
+  const currenciesChecked = currenciesCheckedFor(preference);
+  const currency = selectCurrency(preference, usdBalance, usdcBalance, total);
+  if (!currency) {
+    return {
+      ok: false,
+      code: "insufficient_funds",
+      reason: `usd_balance=${usdBalance};usdc_balance=${usdcBalance};need=${total}`,
+    };
+  }
+
+  const placed = await placeMarketBuy(creds, total, currency);
+  if (!placed.ok) {
+    const runId = insertFailedBuyRow(db, placed.error, mult, val, total, null, currenciesChecked);
+    raiseOrderFailureAlert(db, placed.status, placed.error, runId, null);
+    caps.recordFailure(db);
+    return { ok: false, code: "order_failed", reason: placed.error.slice(0, 200) };
+  }
+
+  // ONE buy_placed row, entering the normal hold → sweep state machine exactly
+  // as a scheduled buy does. scheduled_for is NOW, not a missed slot: this
+  // order was placed now, and the missed slots keep their own rows.
+  const now = nowSec();
+  const info = db.prepare(
+    `INSERT INTO autobuy_runs
+       (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
+        status, coinbase_order_id, currencies_checked, currency_used, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'buy_placed', ?, ?, ?, ?, ?)`,
+  ).run(
+    now, val.z_score, val.zone, mult, cfg.base_unit_usd, total,
+    placed.order_id, currenciesChecked, currency, now, now,
+  );
+  const runId = Number(info.lastInsertRowid);
+
+  // Claim exactly k rows, OLDEST FIRST. The remainder stays unclaimed and keeps
+  // rendering in the block — partial-and-drop is the rejected alternative
+  // (D5 §8 leg 2), and dropping them here is what would implement it.
+  const claim = db.prepare(`UPDATE autobuy_runs SET claimed_by_run_id = ?, updated_at = ? WHERE id = ?`);
+  for (const row of missed.slice(0, k)) claim.run(runId, now, row.id);
+
+  clearAlerts(db, "buy");
+  console.log(`[autobuy-catchup] placed ${k}x order=${placed.order_id} ${currency.toLowerCase()}=${total} remainder=${missed.length - k}`);
+
+  return {
+    ok: true,
+    run_id: runId,
+    intervals: k,
+    usd: total,
+    currency,
+    order_id: placed.order_id,
+    remainder_intervals: missed.length - k,
+  };
 }
 
 // ───────────────────────────────────────────────────────────────────────

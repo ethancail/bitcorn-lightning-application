@@ -1456,6 +1456,36 @@ export type AutoBuyRun = {
   currency_used?: string | null;
   created_at?: number;
   updated_at?: number;
+  /**
+   * On a `skipped_missed_interval` row: the id of the catch-up `buy_placed`
+   * run that bought this interval, or null while it is still claimable.
+   */
+  claimed_by_run_id?: number | null;
+};
+
+/**
+ * Unclaimed passed-over intervals and what buying them would cost.
+ *
+ * ⚠ Every amount here is an ESTIMATE AT DISPLAY TIME — it depends on a
+ * valuation that changes. POST /api/autobuy/catch-up re-derives and answers
+ * 409 `catch_up_amount_changed` if the figures moved.
+ *
+ * `multiplier` / `zone` / `estimated_usd` / `fits_now` are null when the
+ * valuation is unavailable: the count and the dates still stand.
+ */
+export type AutoBuyMissed = {
+  intervals: number;
+  base_unit_usd: number;
+  oldest_slot: number;
+  newest_slot: number;
+  multiplier: number | null;
+  zone: string | null;
+  valuation_updated_at: string | null;
+  estimated_usd: number | null;
+  /** The portion that fits the current rolling headroom. */
+  fits_now: { intervals: number; estimated_usd: number } | null;
+  /** What stays claimable after fits_now; null when nothing is withheld. */
+  remainder: { intervals: number; estimated_usd: number } | null;
 };
 
 export type AutoBuyStatus = {
@@ -1463,6 +1493,8 @@ export type AutoBuyStatus = {
   credentials: AutoBuyCredentialsInfo | null;
   in_flight: AutoBuyRun[];
   recent: AutoBuyRun[];
+  /** null when nothing is unclaimed — the UI renders no block at all. */
+  missed: AutoBuyMissed | null;
 };
 
 // Auto-Buy failure alerts (Phase 2). Reuses the shared AlertSeverity, but the

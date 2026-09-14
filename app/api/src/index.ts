@@ -90,7 +90,7 @@ import { postManualInputToWorker, postRefreshToWorker } from "./valuation/worker
 import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
-import { startScheduler, runTick, ensureWithdrawAddress } from "./autoBuy/scheduler";
+import { startScheduler, runTick, ensureWithdrawAddress, runCatchUp, computeMissedSummary } from "./autoBuy/scheduler";
 import {
   getActiveAlerts,
   getAlertHistory,
@@ -4009,6 +4009,67 @@ async function dispatchRequest(
     return;
   }
 
+  // The member-elected catch-up for passed-over intervals.
+  //
+  // Unlike execute-now above, this carries CONSEQUENTIAL CALLER-SUPPLIED
+  // PARAMETERS (the count and amount the member saw and confirmed), so it is a
+  // CONFIRMED_ROUTES entry rather than an EXEMPT_MUTATIONS one — see
+  // action-confirmation.ts and its AST coverage test.
+  //
+  // Two distinct 409s reach this path and they are NOT the same refusal:
+  //   · confirmation_mismatch — from the gate, before dispatch: the body does
+  //     not match the confirmation header.
+  //   · catch_up_amount_changed — from here: the header matched the body, but
+  //     the SERVER re-derived a different number than the member was shown.
+  // Spec: …-autobuy-scheduler-catchup-clamp-spec.md §4 A3/A4/A5.
+  if (req.method === "POST" && req.url === "/api/autobuy/catch-up") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const expectedIntervals = Number(parsed.expected_intervals);
+        const expectedUsd = Number(parsed.expected_usd);
+        if (!Number.isInteger(expectedIntervals) || expectedIntervals < 1 || !Number.isFinite(expectedUsd) || expectedUsd <= 0) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_expected_values" }));
+          return;
+        }
+        const result = await runCatchUp(db, { intervals: expectedIntervals, usd: expectedUsd });
+        if (result.ok) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+          return;
+        }
+        // amount_changed is the replay-ish case and gets 409; every other
+        // refusal is a precondition the member can act on, so 409 would
+        // misdescribe it. 503 for a dependency that is simply not answering.
+        const status =
+          result.code === "amount_changed" ? 409
+          : result.code === "valuation_unavailable" || result.code === "account_check_failed" ? 503
+          : result.code === "order_failed" ? 502
+          : 400;
+        res.writeHead(status, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          error: result.code === "amount_changed" ? "catch_up_amount_changed" : result.code,
+          reason: result.reason,
+          ...(result.actual ? { actual: result.actual } : {}),
+        }));
+      } catch (err: any) {
+        console.error("[autobuy-catch-up]", err);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "internal_error" }));
+      }
+    });
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/autobuy/credentials") {
     const node = getNodeInfo();
     try { assertNonEmpty(node?.node_role); } catch (err: any) {
@@ -4189,6 +4250,16 @@ async function dispatchRequest(
                 status, filled_at, withdraw_txid, error_code, error_message, currencies_checked, currency_used
          FROM autobuy_runs ORDER BY id DESC LIMIT 20`,
       ).all();
+      // Unclaimed passed-over intervals, and what buying them would cost.
+      // NULL when there are none — the UI renders nothing at all in that case
+      // (spec §4 A1: no empty state, no "0 missed"). A valuation failure
+      // degrades this to counts and dates rather than removing it.
+      let missed = null;
+      try {
+        missed = await computeMissedSummary(db);
+      } catch (err) {
+        console.warn("[autobuy-status] computeMissedSummary failed:", err);
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         config: cfg ? {
@@ -4212,6 +4283,7 @@ async function dispatchRequest(
         } : null,
         in_flight: next,
         recent,
+        missed,
       }));
     } catch (err: any) {
       console.error("[autobuy-status]", err);
