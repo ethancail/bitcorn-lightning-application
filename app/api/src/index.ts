@@ -4267,8 +4267,12 @@ async function dispatchRequest(
       // are no unclaimed intervals — so a status-side failure made the block
       // silently vanish and every downstream surface read it as "all caught
       // up". The two are now distinguishable on the wire: `missed_error`
-      // carries the fault, `missed` stays null, and a UI that ignores the new
-      // field degrades exactly as it did before rather than breaking.
+      // carries the fault and `missed` stays null.
+      //
+      // The web UI CONSUMES this (it did not when the field first landed): the
+      // Missed-buys block mounts on `missed || missed_error` and renders a
+      // one-sentence body in this state instead of vanishing. Any other client
+      // that ignores the field still degrades exactly as it did before.
       let missed = null;
       let missedError: string | null = null;
       try {

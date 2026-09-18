@@ -1,8 +1,10 @@
 // Controls for the "Missed buys" block — spec §4 A1–A3 and §5's accepted strings.
 //
 // Authority: bitcorn-research/specs/2026-09-14-autobuy-scheduler-catchup-clamp-spec.md
-// (blob 63d8840 @ vault bec59fe, eleven correction waves — R-bal accepted in
-// the eleventh; the nine-wave blob 7beb628 this file first cited predates it).
+// (blob dbf260c @ vault b953000, thirteen correction waves — B-error accepted
+// in the thirteenth. Earlier blobs this file cited — 7beb628 at nine waves,
+// 63d8840 at eleven — predate it; §5 has reopened after being declared settled
+// twice, so this cite is re-read rather than carried forward.)
 //
 // ─── WHY THIS FILE IS .tsx AND WHY THAT IS NEW ──────────────────────────────
 // `vitest.config.ts` collected only `*.test.ts` until 2026-09-18; the block's
@@ -113,7 +115,17 @@ const MISSED_DEGRADED: AutoBuyMissed = {
 };
 
 const status = (missed: AutoBuyMissed | null, over: Record<string, unknown> = {}): AutoBuyStatus =>
-  ({ config: cfg(over), credentials: null, in_flight: [], recent: [], missed }) as unknown as AutoBuyStatus;
+  ({ config: cfg(over), credentials: null, in_flight: [], recent: [], missed, missed_error: null }) as unknown as AutoBuyStatus;
+
+/**
+ * The status-error state: `missed_error` set, `missed` null.
+ *
+ * Null `missed` is not a convenience here — it is how the route behaves. The
+ * summary is computed in a `try` whose `catch` sets `missed_error` and leaves
+ * `missed` at its initialised null, so the two are never both populated.
+ */
+const statusWithError = (err: string, over: Record<string, unknown> = {}): AutoBuyStatus =>
+  ({ config: cfg(over), credentials: null, in_flight: [], recent: [], missed: null, missed_error: err }) as unknown as AutoBuyStatus;
 
 const valuation = { z_score: -0.4, zone: "fair_value", price_usd: 60000, updated_at: new Date(NOW * 1000).toISOString() } as any;
 
@@ -560,5 +572,129 @@ describe("no raw zone token survives anywhere on the Strategy tab", () => {
     // Page-wide now: the block was already correct, the pre-existing summary
     // banner one panel above it was not.
     expect(text).not.toContain("fair_value");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// B-error — the status-error state (spec §5 (2d), thirteenth wave).
+//
+// ⚠ THE MOUNT CONDITION IS THE SUBSTANCE HERE, NOT THE STRING. The block used
+// to mount on `status.missed`, and `missed` is null exactly when `missed_error`
+// is set — so a body-only change would have rendered nothing at all. The wire
+// stopped conflating "threw" with "nothing missed" at 8681d6c; these prove the
+// SCREEN stopped conflating them too.
+//
+// Three states, not two: something missed · nothing missed · could not tell.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("B-error · the block renders when the summary could not be computed", () => {
+  it("renders the header AND B-error's body when missed_error is set and missed is null", async () => {
+    await render(React.createElement(StrategyTab, {
+      status: statusWithError("computeMissedSummary failed: boom"),
+      valuation, onRefresh: async () => {},
+    }));
+    expect(block()).toContain("Missed buys");
+    expect(block()).toContain("Missed buys can't be shown right now.");
+  });
+
+  it("asserts NO cause and points at NO notice — deliberately unlike B-degraded", async () => {
+    // B-degraded says "see the notice above" because the page HAS a valuation
+    // banner to point at. Here the cause is a server-side throw with no
+    // member-facing surface, so a pointer would point at nothing — the exact
+    // defect the tenth wave found in B-degraded before the banner's gate was
+    // widened. Paired with the positive assertion above, so this cannot pass
+    // on an empty render.
+    const text = await (async () => {
+      await render(React.createElement(StrategyTab, {
+        status: statusWithError("boom"), valuation, onRefresh: async () => {},
+      }));
+      return block();
+    })();
+    expect(text).toContain("Missed buys can't be shown right now.");
+    expect(text).not.toContain("see the notice above");
+    expect(text).not.toContain("Worker");
+    expect(text).not.toContain("valuation");
+    // The raw server error is never shown to the member.
+    expect(text).not.toContain("boom");
+  });
+
+  it("offers no count, no dates, no button and no modal — `missed` is null, so there is nothing else to say", async () => {
+    await render(React.createElement(StrategyTab, {
+      status: statusWithError("boom"), valuation, onRefresh: async () => {},
+    }));
+    expect(btn("Buy missed intervals")).toBeUndefined();
+    expect(block()).not.toContain("were missed between");
+    expect(host.querySelector("#action-confirm-challenge")).toBeNull();
+  });
+});
+
+describe("B-error · the mount change did not break the other two states", () => {
+  it("THE PERMITTING DIRECTION — a normal `missed` still renders the full block", async () => {
+    // A suite proving only the error case would pass a block that ALWAYS shows
+    // the error. This is the direction that catches that, and it is the one
+    // that matters — deltas/2026-09-02-farmer-loop-copy-arc-deltas.md, where
+    // collapsing a discriminator left every refusal-direction test green.
+    await render(React.createElement(StrategyTab, {
+      status: status(MISSED_FULL), valuation, onRefresh: async () => {},
+    }));
+    expect(block()).toContain("11 weekly buys were missed between");
+    expect(block()).toContain("Buying them now would place one order of about $1,100.00");
+    expect(btn("Buy missed intervals")).toBeDefined();
+    expect(block()).not.toContain("Missed buys can't be shown right now.");
+  });
+
+  it("the DEGRADED state is still distinct from the error state — three bodies, not two", async () => {
+    await render(React.createElement(StrategyTab, {
+      status: status(MISSED_DEGRADED), valuation: null, onRefresh: async () => {},
+    }));
+    expect(block()).toContain("The amount can't be calculated right now — see the notice above.");
+    expect(block()).not.toContain("Missed buys can't be shown right now.");
+  });
+
+  it("nothing missed and no error still renders NOTHING — no empty state, no '0 missed'", async () => {
+    await render(React.createElement(StrategyTab, {
+      status: status(null), valuation, onRefresh: async () => {},
+    }));
+    expect(host.textContent ?? "").not.toContain("Missed buys");
+    expect(block()).toBe("");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The dead disjunct's removal must not take NS with it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("NS still reaches the member after the dead arm is removed", () => {
+  it("not_schedulable with a paused_reason still renders NS, pointing at the banner above", async () => {
+    stub.catchUpAutoBuy.mockRejectedValue(Object.assign(new Error("refused"), {
+      body: { error: "not_schedulable", reason: "paused:user_paused" },
+    }));
+    await render(React.createElement(StrategyTab, {
+      status: status(MISSED_FULL, { enabled: false, paused_reason: "user_paused" }),
+      valuation, onRefresh: async () => {},
+    }));
+    await click(btn("Buy missed intervals")!);
+    const input = host.querySelector("#action-confirm-challenge") as HTMLInputElement;
+    await type(input, "1100.00");
+    await click(btn("Buy now")!);
+
+    expect(block()).toContain("Not placed: Auto-Buy is paused — see the notice above. Nothing was bought; the missed intervals are still listed.");
+    // …and the banner it points at is genuinely on this surface.
+    expect(host.textContent ?? "").toContain("Paused by operator");
+  });
+
+  it("not_schedulable WITHOUT a paused_reason still takes the generic frame", async () => {
+    // The other side of the same condition: NS is gated on the banner existing.
+    stub.catchUpAutoBuy.mockRejectedValue(Object.assign(new Error("refused"), {
+      body: { error: "not_schedulable", reason: "env_kill_switch" },
+    }));
+    await render(React.createElement(StrategyTab, {
+      status: status(MISSED_FULL, { paused_reason: null }), valuation, onRefresh: async () => {},
+    }));
+    await click(btn("Buy missed intervals")!);
+    const input = host.querySelector("#action-confirm-challenge") as HTMLInputElement;
+    await type(input, "1100.00");
+    await click(btn("Buy now")!);
+
+    expect(block()).toContain("Not placed (not_schedulable). Nothing was bought; the missed intervals are still listed.");
+    expect(block()).not.toContain("see the notice above");
   });
 });

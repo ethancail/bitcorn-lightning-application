@@ -1525,7 +1525,11 @@ export type AutoBuyStatus = {
   credentials: AutoBuyCredentialsInfo | null;
   in_flight: AutoBuyRun[];
   recent: AutoBuyRun[];
-  /** null when nothing is unclaimed — the UI renders no block at all. */
+  /**
+   * null when nothing is unclaimed — AND when `missed_error` is set, which is
+   * why the UI mounts its block on the two together. Null alone no longer
+   * means "render nothing".
+   */
   missed: AutoBuyMissed | null;
   /**
    * Why `missed` could not be computed, or null.

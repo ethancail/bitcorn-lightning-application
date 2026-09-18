@@ -99,7 +99,22 @@ function catchUpRefusalMessage(
 
   // NS — the member's own switch, or a system pause. Both put a banner on this
   // very surface (PausedBanner, above), so "the notice above" is true.
-  if ((code === "not_schedulable" || code === "address_not_whitelisted") && ctx.pausedReason) {
+  // ⚠ `address_not_whitelisted` was a second disjunct here and is GONE. It was
+  // dead twice over, and the simpler argument is the decisive one: the route
+  // only reaches that refusal AFTER `canSchedule` passes, which requires
+  // `paused_reason` to be null — while this branch requires `pausedReason` to
+  // be truthy. The two conditions are mutually exclusive, so the arm could
+  // never be taken. (Independently, the state it describes — enabled with no
+  // whitelist timestamp — is one the application cannot produce.)
+  //
+  // ⚠ THE API-SIDE GUARD IS NOT THIS, AND STAYS — `runCatchUp`'s own
+  // `address_not_whitelisted` return in `app/api/src/autoBuy/scheduler.ts`
+  // (find it with `grep -n 'code: "address_not_whitelisted"'`; line cites in
+  // this arc have drifted three times under its own edits). A direct sqlite
+  // write can still produce that state, and an unreachable guard on a money
+  // path is defence in depth, not dead weight. Two different things; do not
+  // remove one because the other went.
+  if (code === "not_schedulable" && ctx.pausedReason) {
     return `Not placed: Auto-Buy is paused — see the notice above. ${tail}`;
   }
 
@@ -162,16 +177,33 @@ function catchUpRefusalMessage(
 
 /**
  * The Missed buys block (spec §4 A1–A3; §5 H / B-full / B-partial / B-degraded
- * / BTN / M-full / M-partial / OK).
+ * / B-error / BTN / M-full / M-partial / OK).
  *
- * Renders ONLY when unclaimed intervals exist — no empty state, no "0 missed".
+ * THREE BODIES, not two — the header is the same in all of them:
+ *   · `missed` with amounts      → B-full (+ B-partial when the caps bind)
+ *   · `missed` without amounts   → B-degraded (valuation unavailable)
+ *   · `missedError`              → B-error (the summary could not be computed)
+ *
  * Renders while `enabled = 0` too: the intervals were missed either way, and a
  * refusal then carries NS, which points at the pause banner above.
+ *
+ * ⚠ The block does NOT render when there is neither — no empty state, no
+ * "0 missed". Three states, and only two of them draw anything.
  */
 function MissedBuysBlock({
-  missed, pausedReason, frequency, onRefresh,
+  missed, missedError, pausedReason, frequency, onRefresh,
 }: {
-  missed: AutoBuyMissed;
+  missed: AutoBuyMissed | null;
+  /**
+   * Why the summary could not be computed, or null.
+   *
+   * ⚠ `missed` is null WHENEVER this is set — the status route computes the
+   * summary in a `try` whose `catch` sets this and leaves `missed` at its
+   * initialised null. That is why the mount condition is a disjunction: a
+   * body-only change here would have rendered nothing at all, because the
+   * block used to mount on `missed` alone.
+   */
+  missedError: string | null;
   pausedReason: string | null;
   /**
    * The node's configured cadence, rendered verbatim into the lead.
@@ -188,17 +220,17 @@ function MissedBuysBlock({
   const confirm = useActionConfirm();
   const [toast, setToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
 
-  const n = missed.intervals;
-  const dates = `${fmtSlotDate(missed.oldest_slot)} and ${fmtSlotDate(missed.newest_slot)}`;
+  const n = missed?.intervals ?? 0;
+  const dates = missed ? `${fmtSlotDate(missed.oldest_slot)} and ${fmtSlotDate(missed.newest_slot)}` : "";
   const lead = `${n} ${frequency} ${plural(n, "buy", "buys")} ${plural(n, "was", "were")} missed between ${dates}`;
 
   // DEGRADED: count and dates are known, no amount is. Claim nothing else —
   // the row carries no cause, so the block asserts none and points at the
   // page's valuation notice, which renders on this tab.
-  const degraded = missed.estimated_usd === null || missed.fits_now === null;
+  const degraded = !!missed && (missed.estimated_usd === null || missed.fits_now === null);
 
-  const fits = missed.fits_now;
-  const remainder = missed.remainder;
+  const fits = missed?.fits_now ?? null;
+  const remainder = missed?.remainder ?? null;
 
   const doConfirm = async (): Promise<void> => {
     if (!fits) return;
@@ -224,12 +256,28 @@ function MissedBuysBlock({
           </div>
         )}
 
-        {degraded ? (
+        {missedError ? (
+          // B-error. One sentence, and deliberately nothing more.
+          //
+          // ⚠ It asserts NO cause and — unlike B-degraded — points at NO
+          // notice. The cause is a server-side throw with no member-facing
+          // surface anywhere on this page, so a pointer would point at
+          // nothing: exactly the defect found in B-degraded's "see the notice
+          // above" before the valuation banner's tab gate was widened. The raw
+          // error is not shown either; it is for the logs, not the farmer.
+          //
+          // No count, no dates, no button, no modal — `missed` is null in this
+          // state by construction, so there is nothing else the code has.
+          <p style={{ margin: 0 }}>Missed buys can't be shown right now.</p>
+        ) : degraded ? (
           <p style={{ margin: 0 }}>{lead}. The amount can't be calculated right now — see the notice above.</p>
         ) : (
           <>
             <p style={{ margin: 0 }}>
-              {lead}. Buying them now would place one order of about {fmtUsd(missed.estimated_usd!)} ({n} × {fmtUsd(missed.base_unit_usd)} × {missed.multiplier}× {zoneLabelFor(missed.zone ?? "")}) at today's price. The final amount is set when you confirm.
+              {/* Reached only when `missed` is non-null AND not degraded —
+                  both narrowed above, but TypeScript cannot carry that through
+                  the ternary, hence the explicit reads. */}
+              {lead}. Buying them now would place one order of about {fmtUsd(missed!.estimated_usd!)} ({n} × {fmtUsd(missed!.base_unit_usd)} × {missed!.multiplier}× {zoneLabelFor(missed!.zone ?? "")}) at today's price. The final amount is set when you confirm.
             </p>
 
             {remainder && fits && (
@@ -277,7 +325,7 @@ function MissedBuysBlock({
               // a frame carrying a code the member cannot act on.
               message: cls && cls.kind === "mismatch" && !body?.error
                 ? cls.detail
-                : catchUpRefusalMessage(body, { pausedReason, zone: missed.zone }),
+                : catchUpRefusalMessage(body, { pausedReason, zone: missed?.zone ?? null }),
             });
             throw err;
           }
@@ -305,10 +353,16 @@ export default function StrategyTab({ status, valuation, onRefresh, valuationErr
     <div>
       <MasterControl status={status} onRefresh={onRefresh} />
 
-      {/* Unclaimed passed-over intervals. Renders only when there are some. */}
-      {status.missed && (
+      {/* Unclaimed passed-over intervals — OR the fact that we could not find
+          out. The second disjunct is the whole point: `missed` is null when
+          `missed_error` is set, so mounting on `missed` alone made the block
+          vanish on a status-side failure, which is the same "surface says
+          nothing while something is wrong" shape that opened this arc.
+          Neither set → nothing renders, as A1 requires. */}
+      {(status.missed || status.missed_error) && (
         <MissedBuysBlock
           missed={status.missed}
+          missedError={status.missed_error}
           pausedReason={cfg.paused_reason}
           frequency={cfg.frequency}
           onRefresh={onRefresh}
