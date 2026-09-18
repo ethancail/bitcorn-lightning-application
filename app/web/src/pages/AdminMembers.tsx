@@ -261,7 +261,7 @@ function AdminMembersBody({
         }}
       />
       {response.members.length === 0 ? (
-        <EmptyPanel message="No members yet. The treasury has no channel peers." />
+        <EmptyPanel message="No members yet. The treasury has no channel peers and no subscription enrollments." />
       ) : sorted.length === 0 ? (
         <EmptyPanel message="No members match the active filters." />
       ) : (

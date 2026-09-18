@@ -214,7 +214,7 @@ mechanism, not introduced here.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/admin/members` | Stage 5b members list: per-channel-peer subscription state, lane, tier, paid-through, last payment |
+| GET | `/api/admin/members` | Stage 5b members list — the enrollment ledger: one row per member across the UNION of channel peers and subscription rows (a channel-less subscription row still appears), carrying subscription state, lane, tier, paid-through, last payment. Pubkeys are emitted canonical-lowercase; `totals` are roster-wide, not channel-wide |
 | GET | `/api/admin/subscription/revenue` | Per-member on-chain revenue sums (kind=`onchain` only) + dashboard aggregates: total earned (sats/USD-at-receipt), recurring entitlement vs actual for the current policy window, paying/enrolled counts ("paying" = ≥1 confirmed on-chain payment, not tier). Names are joined client-side from contacts |
 
 **Member liquidity (treasury-side, edge-case only)**

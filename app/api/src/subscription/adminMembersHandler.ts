@@ -9,10 +9,15 @@
 //
 // Per spec §10.2: the implementation runs the existing per-pubkey Cases
 // A-E discrimination from statusHandler.computeSubscriptionStatusForPubkey
-// in a server-side loop across all channel-peer pubkeys. At Bitcorn's
-// current scale (single-digit to low-tens of members per treasury), the
-// per-pubkey loop is the right shape — simpler than a single-query JOIN
-// that would have to re-derive the discrimination logic locally.
+// in a server-side loop across the roster. At Bitcorn's current scale
+// (single-digit to low-tens of members per treasury), the per-pubkey
+// loop is the right shape — simpler than a single-query JOIN that would
+// have to re-derive the discrimination logic locally.
+//
+// Roster membership (decisions/2026-09-18-channel-less-subscription-row-
+// roster-semantics.md): a channel-less subscription row IS a member, so
+// the row source is the UNION of channel peers and subscription rows —
+// this endpoint is the enrollment ledger, not a view of open channels.
 //
 // Naming convention note (small spec deviation worth flagging):
 // the spec §2.1 / §4.2 uses dash-form for lane_purpose values
@@ -79,8 +84,8 @@ export interface AdminMembersResponse {
   };
 }
 
-interface PeerRow {
-  peer_pubkey: string;
+interface RosterRow {
+  member_pubkey: string;
 }
 
 interface LastPaymentRow {
@@ -88,21 +93,45 @@ interface LastPaymentRow {
 }
 
 /**
- * Returns the admin members list. One row per distinct channel-peer
- * pubkey on the treasury's lnd_channels, with per-row Cases A-E
- * discrimination via computeSubscriptionStatusForPubkey, plus the
- * eleven-state distribution counter pre-aggregated.
+ * Returns the admin members list. One row per distinct member pubkey in
+ * the roster — the union of the treasury's channel peers and every
+ * subscription row, so a member whose channel is not (or no longer)
+ * open still appears. Each row carries the Cases A-E discrimination
+ * from computeSubscriptionStatusForPubkey, plus the eleven-state
+ * distribution counter pre-aggregated.
+ *
+ * `totals.total_members` and `totals.by_state` are therefore
+ * roster-wide, not channel-wide — a deliberate meaning change that
+ * comes with the enrollment-ledger semantics.
  *
  * Pure of HTTP — caller wires to a 200 response.
  */
 export function computeMembersListForTreasury(): AdminMembersResponse {
-  const peerRows = db
-    .prepare(`SELECT DISTINCT peer_pubkey FROM lnd_channels`)
-    .all() as PeerRow[];
+  // The roster is normalized to lowercase HERE, once, because this is
+  // the only place the two sources meet. `subscription` stores
+  // lowercase; `lnd_channels` stores whatever LND handed the sync loop
+  // (persist-channels.ts binds partner_public_key verbatim) and
+  // `contacts` stores as-entered. Both `contacts.pubkey` and
+  // `lnd_channels.peer_pubkey` are binary-collated TEXT, so case decides
+  // whether a lookup matches at all — and classifyLanePurpose does not
+  // lowercase (lanePurpose.ts:40,42) while it GATES subscription scope.
+  // Emitting the canonical lowercase form keeps this endpoint's lane
+  // classification identical to the one every other subscription-scope
+  // consumer computes (statusHandler.ts:97,144).
+  //
+  // UNION, not UNION ALL: it dedupes, so a member holding both a channel
+  // and a subscription row yields exactly one roster row.
+  const rosterRows = db
+    .prepare(
+      `SELECT lower(peer_pubkey) AS member_pubkey FROM lnd_channels
+       UNION
+       SELECT lower(member_pubkey) AS member_pubkey FROM subscription`,
+    )
+    .all() as RosterRow[];
 
-  const members: AdminMembersRow[] = peerRows.map(({ peer_pubkey }) => {
-    const status = computeSubscriptionStatusForPubkey(peer_pubkey);
-    const lane_purpose = classifyLanePurpose(peer_pubkey);
+  const members: AdminMembersRow[] = rosterRows.map(({ member_pubkey }) => {
+    const status = computeSubscriptionStatusForPubkey(member_pubkey);
+    const lane_purpose = classifyLanePurpose(member_pubkey);
 
     if (status.applicable) {
       // Case A — subscription row exists. Look up the most recent
@@ -115,9 +144,9 @@ export function computeMembersListForTreasury(): AdminMembersResponse {
            WHERE member_pubkey = ? AND kind = 'onchain'
            ORDER BY received_at DESC LIMIT 1`,
         )
-        .get(peer_pubkey.toLowerCase()) as LastPaymentRow | undefined;
+        .get(member_pubkey) as LastPaymentRow | undefined;
       return {
-        member_pubkey: peer_pubkey,
+        member_pubkey,
         lane_purpose,
         subscription_state: status.current_tier,
         current_tier: status.current_tier,
@@ -128,7 +157,7 @@ export function computeMembersListForTreasury(): AdminMembersResponse {
     }
     // Cases B-E — no subscription row, reason discriminates.
     return {
-      member_pubkey: peer_pubkey,
+      member_pubkey,
       lane_purpose,
       subscription_state: status.reason,
       current_tier: null,
