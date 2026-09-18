@@ -108,6 +108,13 @@ export default function ActionConfirmModal({
             ))}
           </dl>
 
+          {/* Free prose beneath the rows, for actions whose accepted copy is
+              sentences rather than label/value pairs. Rendered before
+              `irreversible` so the narrative reads before the warning. */}
+          {summary.body && (
+            <p style={{ marginTop: 12, marginBottom: 0 }}>{summary.body}</p>
+          )}
+
           {summary.irreversible && (
             <p style={{ marginTop: 12, marginBottom: 0, opacity: 0.85 }}>{summary.irreversible}</p>
           )}

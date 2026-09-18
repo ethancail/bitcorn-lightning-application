@@ -68,6 +68,14 @@ describe("client/server field-map parity", () => {
     // UI panel that would have driven it had already been removed. Shrinking
     // here is the intended direction; a route joining this list is the one that
     // deserves a second look.
+    //
+    // Was FOUR again, briefly. POST /api/autobuy/catch-up joined on 2026-09-14
+    // when its server route landed ahead of any caller — uncovered on purpose
+    // and temporarily, because the Strategy-tab block that would call it was
+    // made entirely of copy Ethan had not yet accepted. It LEFT on 2026-09-18
+    // by gaining that caller, which is the departure this entry predicted and
+    // the direction the paragraph above calls intended.
+    // See bitcorn-research/specs/2026-09-14-autobuy-scheduler-catchup-clamp-spec.md §4 A1–A3.
     const uncovered = [...serverByKey.keys()]
       .filter((k) => !UI_CONFIRMED_ROUTES.some((r) => rkey(r.method, r.match) === k))
       .sort();

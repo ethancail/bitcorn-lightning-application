@@ -1,13 +1,22 @@
 // app/web/src/components/autoBuy/StrategyTab.tsx
 import { useEffect, useRef, useState } from "react";
-import { api, type AutoBuyStatus, type AutoBuyZoneMultipliers, type CurrencyPreference, type ValuationCurrent, type ValuationZone } from "../../api/client";
+import { api, type AutoBuyMissed, type AutoBuyStatus, type AutoBuyZoneMultipliers, type CurrencyPreference, type ValuationCurrent, type ValuationZone } from "../../api/client";
 import HistoryTable from "./HistoryTable";
 import CoinbaseCard from "./CoinbaseCard";
+import ActionConfirmModal, { useActionConfirm } from "../actionConfirm/ActionConfirmModal";
+import { summarizeCatchUp, fmtUsd } from "../actionConfirm/confirmAction";
+import { classifyConfirmError } from "../actionConfirm/confirmErrors";
 
 interface Props {
   status: AutoBuyStatus | null;
   valuation: ValuationCurrent | null;
   onRefresh: () => Promise<unknown>;
+  /**
+   * The page's valuation fetch error, forwarded so the Missed-buys block can
+   * check that B-degraded's "see the notice above" has a referent ON THIS TAB.
+   * The banner itself is the page's; this prop is only the fact of it.
+   */
+  valuationError?: { code?: string } | null;
 }
 
 // One-line explanation per currency-preference option (spec §6 / §12.3).
@@ -27,7 +36,306 @@ const ZONE_ORDER: Array<{ key: keyof AutoBuyZoneMultipliers; label: string }> = 
   { key: "extreme_sell", label: "Extreme Sell" },
 ];
 
-export default function StrategyTab({ status, valuation, onRefresh }: Props) {
+/**
+ * Zone token → the label the page already shows.
+ *
+ * ⚠ ZONE_ORDER is one of TWO component-local zone-label maps in this app; the
+ * other is `ZONE_BANDS` / `zoneLabel()` in ValuationTab.tsx, whose own comment
+ * says "Kept in sync manually". This function is a lookup over the map that is
+ * already in this file — deliberately NOT a third copy. Lifting one of the two
+ * to a shared home is a real cleanup and a different arc's: they are keyed by
+ * different types (`keyof AutoBuyZoneMultipliers` here, `ValuationZone` there)
+ * and ValuationTab's carries thresholds and colours mirroring the Worker, so
+ * merging means deciding where THOSE live.
+ */
+function zoneLabelFor(zone: string): string {
+  return ZONE_ORDER.find((z) => z.key === zone)?.label ?? zone;
+}
+
+/**
+ * A missed slot's date. Date only, no time (DATE-FMT).
+ *
+ * Same call as HistoryTable's own slot dates, so a missed interval reads
+ * identically in the block and in the history row that records it. That helper
+ * is component-local there; this is the same one-liner rather than an import,
+ * and lifting both is the same class of question as the zone maps above.
+ */
+function fmtSlotDate(sec: number): string {
+  return new Date(sec * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+const plural = (n: number, one: string, many: string): string => (n === 1 ? one : many);
+
+/**
+ * What the member is told when the catch-up refuses.
+ *
+ * ⚠ EVERY BRANCH RETURNS COPY ETHAN ACCEPTED. Refusals with no accepted string
+ * take the accepted GENERIC FRAME carrying the code verbatim — deliberately,
+ * because inventing prose here is the one thing the spec forbids outright, and
+ * a code a member can quote in a report beats a sentence nobody signed off.
+ *
+ * The split between member-facing prose and the generic frame is Ethan's
+ * ruling: prose for the member's own switches and for what they can act on,
+ * the gate's own reason inside one frame for everything else.
+ */
+function catchUpRefusalMessage(
+  body: {
+    error?: string;
+    reason?: string;
+    cap?: { window: "7d" | "30d"; cap_usd: number; headroom_usd: number; unit_usd: number };
+    staleness?: { threshold_hours: number; age_hours: number };
+    actual?: { intervals: number; usd: number };
+    funds?: {
+      needed_usd: number;
+      considered: Array<"USD" | "USDC">;
+      usd_balance: number | null;
+      usdc_balance: number | null;
+    };
+  } | null,
+  ctx: { pausedReason: string | null; zone: string | null },
+): string {
+  const code = body?.error ?? "unknown";
+  const tail = "Nothing was bought; the missed intervals are still listed.";
+
+  // NS — the member's own switch, or a system pause. Both put a banner on this
+  // very surface (PausedBanner, above), so "the notice above" is true.
+  // ⚠ `address_not_whitelisted` was a second disjunct here and is GONE. It was
+  // dead twice over, and the simpler argument is the decisive one: the route
+  // only reaches that refusal AFTER `canSchedule` passes, which requires
+  // `paused_reason` to be null — while this branch requires `pausedReason` to
+  // be truthy. The two conditions are mutually exclusive, so the arm could
+  // never be taken. (Independently, the state it describes — enabled with no
+  // whitelist timestamp — is one the application cannot produce.)
+  //
+  // ⚠ THE API-SIDE GUARD IS NOT THIS, AND STAYS — `runCatchUp`'s own
+  // `address_not_whitelisted` return in `app/api/src/autoBuy/scheduler.ts`
+  // (find it with `grep -n 'code: "address_not_whitelisted"'`; line cites in
+  // this arc have drifted three times under its own edits). A direct sqlite
+  // write can still produce that state, and an unreachable guard on a money
+  // path is defence in depth, not dead weight. Two different things; do not
+  // remove one because the other went.
+  if (code === "not_schedulable" && ctx.pausedReason) {
+    return `Not placed: Auto-Buy is paused — see the notice above. ${tail}`;
+  }
+
+  // R-cap — the only rolling refusal D5 leaves. Every figure is a FIELD.
+  // "7-day" / "30-day", not "week"/"month": the windows are rolling.
+  if (code === "rolling_cap_no_headroom" && body?.cap) {
+    const { window, cap_usd, headroom_usd, unit_usd } = body.cap;
+    const label = window === "7d" ? "7-day" : "30-day";
+    return `Not placed: this ${label} limit of ${fmtUsd(cap_usd)} has ${fmtUsd(headroom_usd)} left — less than one missed buy (${fmtUsd(unit_usd)}). ${tail}`;
+  }
+
+  // R-stale — this node's threshold, not a hardcoded 48. The field's ABSENCE
+  // is what routes `invalid_updated_at` (same code, no age) to the frame.
+  if (code === "valuation_stale" && body?.staleness) {
+    return `Not placed: the valuation is more than ${body.staleness.threshold_hours} hours old. ${tail}`;
+  }
+
+  // R-zero — the zone LABEL, never the wire token.
+  if (code === "zero_multiplier") {
+    const token = body?.reason?.startsWith("zone=") ? body.reason.slice(5) : ctx.zone ?? "";
+    return `Not placed: the current zone (${zoneLabelFor(token)}) has a 0× multiplier, so there is nothing to buy. ${tail}`;
+  }
+
+  // R-409 — the ROUTE's 409. The middleware's confirmation_mismatch is a
+  // different refusal and takes the frame.
+  if (code === "catch_up_amount_changed" && body?.actual) {
+    return `The amount changed since this was shown (now ${fmtUsd(body.actual.usd)}). Nothing was bought — review and confirm again.`;
+  }
+
+  // R-bal — TWO forms, selected on how many currencies the preference weighed.
+  //
+  // ⚠ ONE STRING CANNOT SERVE BOTH CASES HONESTLY, and that is the ruling's
+  // point rather than an implementation convenience. `selectCurrency` tests
+  // INDEPENDENT coverage only — no split-fill — so under a `*_preferred`
+  // preference a refusal means NEITHER balance alone covered the total, and
+  // any combined figure ("you are $400 short" on 600 + 600 against 1000)
+  // would be false.
+  //
+  // ⚠ `null` means NOT CONSIDERED, never zero: a missing Coinbase account
+  // reads 0. So the one-currency form can never name the other balance — that
+  // falls out of the field shape rather than needing a rule here.
+  //
+  // "below" and "neither … covers" are both exact: coverage is `>=`, so a
+  // refusal means strictly less.
+  if (code === "insufficient_funds" && body?.funds) {
+    const f = body.funds;
+    if (f.considered.length === 1) {
+      const currency = f.considered[0];
+      const balance = currency === "USD" ? f.usd_balance : f.usdc_balance;
+      return `Not placed: your Coinbase ${currency} balance is ${fmtUsd(balance ?? 0)}, below the ${fmtUsd(f.needed_usd)} needed. Fund the account and try again; nothing was bought and the missed intervals are still listed.`;
+    }
+    return `Not placed: neither balance covers the ${fmtUsd(f.needed_usd)} needed — USD ${fmtUsd(f.usd_balance ?? 0)}, USDC ${fmtUsd(f.usdc_balance ?? 0)}. A single buy is paid from one currency, not both. Fund either account and try again; nothing was bought and the missed intervals are still listed.`;
+  }
+
+  // GEN — including an `insufficient_funds` that arrives WITHOUT `funds`, which
+  // an older API would send. The frame is accepted copy and stays the fallback
+  // rather than the branch above guessing at figures it does not have.
+  return `Not placed (${code}). ${tail}`;
+}
+
+/**
+ * The Missed buys block (spec §4 A1–A3; §5 H / B-full / B-partial / B-degraded
+ * / B-error / BTN / M-full / M-partial / OK).
+ *
+ * THREE BODIES, not two — the header is the same in all of them:
+ *   · `missed` with amounts      → B-full (+ B-partial when the caps bind)
+ *   · `missed` without amounts   → B-degraded (valuation unavailable)
+ *   · `missedError`              → B-error (the summary could not be computed)
+ *
+ * Renders while `enabled = 0` too: the intervals were missed either way, and a
+ * refusal then carries NS, which points at the pause banner above.
+ *
+ * ⚠ The block does NOT render when there is neither — no empty state, no
+ * "0 missed". Three states, and only two of them draw anything.
+ */
+function MissedBuysBlock({
+  missed, missedError, pausedReason, frequency, onRefresh,
+}: {
+  missed: AutoBuyMissed | null;
+  /**
+   * Why the summary could not be computed, or null.
+   *
+   * ⚠ `missed` is null WHENEVER this is set — the status route computes the
+   * summary in a `try` whose `catch` sets this and leaves `missed` at its
+   * initialised null. That is why the mount condition is a disjunction: a
+   * body-only change here would have rendered nothing at all, because the
+   * block used to mount on `missed` alone.
+   */
+  missedError: string | null;
+  pausedReason: string | null;
+  /**
+   * The node's configured cadence, rendered verbatim into the lead.
+   *
+   * ⚠ READ, NOT ASSUMED. This said "weekly" unconditionally, which is false on
+   * a node set to daily — exactly the class of defect this arc exists to fix,
+   * one surface over. The value comes from `autobuy_config.frequency`, which
+   * PATCH /api/autobuy/config validates against the four known values, so an
+   * unexpected string cannot arrive through the API.
+   */
+  frequency: string;
+  onRefresh: () => Promise<unknown>;
+}) {
+  const confirm = useActionConfirm();
+  const [toast, setToast] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+
+  const n = missed?.intervals ?? 0;
+  const dates = missed ? `${fmtSlotDate(missed.oldest_slot)} and ${fmtSlotDate(missed.newest_slot)}` : "";
+  const lead = `${n} ${frequency} ${plural(n, "buy", "buys")} ${plural(n, "was", "were")} missed between ${dates}`;
+
+  // DEGRADED: count and dates are known, no amount is. Claim nothing else —
+  // the row carries no cause, so the block asserts none and points at the
+  // page's valuation notice, which renders on this tab.
+  const degraded = !!missed && (missed.estimated_usd === null || missed.fits_now === null);
+
+  const fits = missed?.fits_now ?? null;
+  const remainder = missed?.remainder ?? null;
+
+  const doConfirm = async (): Promise<void> => {
+    if (!fits) return;
+    const res = await api.catchUpAutoBuy({
+      expected_intervals: fits.intervals,
+      expected_usd: fits.estimated_usd,
+    });
+    const left = res.remainder_intervals;
+    const clause = left > 0
+      ? ` ${left} missed ${plural(left, "buy", "buys")} ${plural(left, "remains", "remain")} and can be bought once the limit frees up.`
+      : "";
+    setToast({ kind: "success", message: `Order placed for ${fmtUsd(res.usd)}.${clause} Check history.` });
+    await onRefresh();
+  };
+
+  return (
+    <div className="panel" style={{ marginBottom: 16 }}>
+      <div className="panel-header">Missed buys</div>
+      <div className="panel-body">
+        {toast && (
+          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "white", marginBottom: 16 }}>
+            <div className="alert-body">{toast.message}</div>
+          </div>
+        )}
+
+        {missedError ? (
+          // B-error. One sentence, and deliberately nothing more.
+          //
+          // ⚠ It asserts NO cause and — unlike B-degraded — points at NO
+          // notice. The cause is a server-side throw with no member-facing
+          // surface anywhere on this page, so a pointer would point at
+          // nothing: exactly the defect found in B-degraded's "see the notice
+          // above" before the valuation banner's tab gate was widened. The raw
+          // error is not shown either; it is for the logs, not the farmer.
+          //
+          // No count, no dates, no button, no modal — `missed` is null in this
+          // state by construction, so there is nothing else the code has.
+          <p style={{ margin: 0 }}>Missed buys can't be shown right now.</p>
+        ) : degraded ? (
+          <p style={{ margin: 0 }}>{lead}. The amount can't be calculated right now — see the notice above.</p>
+        ) : (
+          <>
+            <p style={{ margin: 0 }}>
+              {/* Reached only when `missed` is non-null AND not degraded —
+                  both narrowed above, but TypeScript cannot carry that through
+                  the ternary, hence the explicit reads. */}
+              {lead}. Buying them now would place one order of about {fmtUsd(missed!.estimated_usd!)} ({n} × {fmtUsd(missed!.base_unit_usd)} × {missed!.multiplier}× {zoneLabelFor(missed!.zone ?? "")}) at today's price. The final amount is set when you confirm.
+            </p>
+
+            {remainder && fits && (
+              <p style={{ marginTop: 10, marginBottom: 0 }}>
+                {fits.intervals} of {n} missed buys {plural(fits.intervals, "fits", "fit")} within this {remainder.binding_window === "7d" ? "7-day" : "30-day"} limit: about {fmtUsd(fits.estimated_usd)}. {remainder.intervals} missed {plural(remainder.intervals, "buy", "buys")} (about {fmtUsd(remainder.estimated_usd)}) {plural(remainder.intervals, "remains", "remain")} and can be bought once the limit frees up.
+              </p>
+            )}
+
+            <div style={{ marginTop: 14 }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => {
+                  if (!fits) return;
+                  confirm.open(summarizeCatchUp({
+                    intervals: n,
+                    fitsIntervals: fits.intervals,
+                    fitsUsd: fits.estimated_usd,
+                    remainderIntervals: remainder?.intervals ?? 0,
+                  }));
+                }}
+              >
+                Buy missed intervals
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* The modal owns the typed challenge; the button inside it stays
+          disabled until the two-decimal target is typed character for
+          character. classifyConfirmError distinguishes a 409 from a 400 so a
+          gate refusal never renders as "something went wrong". */}
+      <ActionConfirmModal
+        controller={confirm}
+        onConfirm={async () => {
+          try {
+            await doConfirm();
+          } catch (err) {
+            const cls = classifyConfirmError(err);
+            const body = (err as { body?: Parameters<typeof catchUpRefusalMessage>[0] })?.body ?? null;
+            setToast({
+              kind: "error",
+              // A confirmation-gate failure with no route-level code is the
+              // gate's own refusal — render its classified detail rather than
+              // a frame carrying a code the member cannot act on.
+              message: cls && cls.kind === "mismatch" && !body?.error
+                ? cls.detail
+                : catchUpRefusalMessage(body, { pausedReason, zone: missed?.zone ?? null }),
+            });
+            throw err;
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+export default function StrategyTab({ status, valuation, onRefresh, valuationError }: Props) {
   if (!status?.config) {
     return (
       <div className="panel"><div className="panel-body">
@@ -45,13 +353,32 @@ export default function StrategyTab({ status, valuation, onRefresh }: Props) {
     <div>
       <MasterControl status={status} onRefresh={onRefresh} />
 
+      {/* Unclaimed passed-over intervals — OR the fact that we could not find
+          out. The second disjunct is the whole point: `missed` is null when
+          `missed_error` is set, so mounting on `missed` alone made the block
+          vanish on a status-side failure, which is the same "surface says
+          nothing while something is wrong" shape that opened this arc.
+          Neither set → nothing renders, as A1 requires. */}
+      {(status.missed || status.missed_error) && (
+        <MissedBuysBlock
+          missed={status.missed}
+          missedError={status.missed_error}
+          pausedReason={cfg.paused_reason}
+          frequency={cfg.frequency}
+          onRefresh={onRefresh}
+        />
+      )}
+
       {/* Summary banner */}
       <div className="panel" style={{ marginBottom: 16, background: "var(--panel)", borderLeft: `4px solid ${nextBuyUsd > 0 ? "var(--green)" : "var(--text-dim)"}` }}>
         <div className="panel-body">
           <div style={{ fontSize: "0.875rem", color: "var(--text-dim)", marginBottom: 4 }}>At current Z-score</div>
           <div style={{ fontSize: "1.25rem" }}>
             {valuation ? (
-              <>If base = <strong>${cfg.base_unit_usd.toFixed(2)}</strong> the next buy is <strong>${nextBuyUsd.toFixed(2)}</strong> (zone: {valuation.zone}, {currentMultiplier}×)</>
+              // The LABEL, not the wire token: a member should not read
+              // `fair_value` in prose one panel above a block that says
+              // "Fair Value". Same helper, no third map.
+              <>If base = <strong>${cfg.base_unit_usd.toFixed(2)}</strong> the next buy is <strong>${nextBuyUsd.toFixed(2)}</strong> (zone: {zoneLabelFor(valuation.zone)}, {currentMultiplier}×)</>
             ) : (
               <em className="text-dim">Valuation not loaded — next-buy calculation unavailable.</em>
             )}
