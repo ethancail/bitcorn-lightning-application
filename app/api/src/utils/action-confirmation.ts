@@ -113,7 +113,7 @@ export type ConfirmedRoute = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * The eleven capital-moving routes that take a confirmation.
+ * The twelve capital-moving routes that take a confirmation.
  *
  * Derived from dispatch reachability to an outflow primitive — see
  * action-confirmation.coverage.test.ts, which re-derives this set from the
@@ -197,6 +197,26 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     shape: 1,
     fields: [{ name: "payment_request", from: "body", kind: "text" }],
     note: "The invoice fixes destination and amount; it is the whole consequence.",
+  },
+  {
+    method: "POST",
+    match: { kind: "exact", url: "/api/autobuy/catch-up" },
+    shape: 1,
+    fields: [
+      { name: "expected_intervals", from: "body", kind: "number" },
+      { name: "expected_usd", from: "body", kind: "number" },
+    ],
+    note:
+      "Buys the passed-over Auto-Buy intervals the member confirmed, as ONE market " +
+      "order. Classified by this map's OWN criterion rather than by preference: it " +
+      "reaches placeMarketBuy (a named outflow primitive) AND carries consequential " +
+      "caller-supplied parameters — which is exactly the property whose ABSENCE made " +
+      "the neighbouring /api/autobuy/execute-now an exemption instead.\n" +
+      "Both fields are hashed and both are REQUIRED. expected_usd alone would leave " +
+      "the interval count unconfirmed, and the count is what the member is actually " +
+      "choosing — the dollar figure is derived from it. The server re-derives both " +
+      "and answers 409 catch_up_amount_changed if either moved, so this hash proves " +
+      "the member saw the number and that 409 proves the number is still true.",
   },
   {
     method: "POST",

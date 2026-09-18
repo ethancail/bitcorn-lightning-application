@@ -358,6 +358,19 @@ export const api = {
   executeAutoBuyNow: () =>
     apiFetch<{ ok: true }>("/api/autobuy/execute-now", { method: "POST" }),
 
+  // Buys the passed-over intervals the member confirmed, as ONE market order.
+  //
+  // The body's two fields are what the member was SHOWN and are re-derived
+  // server-side: a 409 `catch_up_amount_changed` means the world moved between
+  // display and confirm. They are also the hashed confirmation fields — the
+  // header is derived from this body inside apiFetch, so the order of the
+  // entry in UI_CONFIRMED_ROUTES must match the server's exactly.
+  catchUpAutoBuy: (body: { expected_intervals: number; expected_usd: number }) =>
+    apiFetch<AutoBuyCatchUpResult>("/api/autobuy/catch-up", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
   postAutoBuyCredentials: (body: { json_blob: string } | { key_name: string; private_key: string }) =>
     apiFetch<{ ok: true; key_name: string; connected_at: number }>("/api/autobuy/credentials", {
       method: "POST",
@@ -1456,6 +1469,55 @@ export type AutoBuyRun = {
   currency_used?: string | null;
   created_at?: number;
   updated_at?: number;
+  /**
+   * On a `skipped_missed_interval` row: the id of the catch-up `buy_placed`
+   * run that bought this interval, or null while it is still claimable.
+   */
+  claimed_by_run_id?: number | null;
+};
+
+/**
+ * Unclaimed passed-over intervals and what buying them would cost.
+ *
+ * ⚠ Every amount here is an ESTIMATE AT DISPLAY TIME — it depends on a
+ * valuation that changes. POST /api/autobuy/catch-up re-derives and answers
+ * 409 `catch_up_amount_changed` if the figures moved.
+ *
+ * `multiplier` / `zone` / `estimated_usd` / `fits_now` are null when the
+ * valuation is unavailable: the count and the dates still stand.
+ */
+export type AutoBuyMissed = {
+  intervals: number;
+  base_unit_usd: number;
+  oldest_slot: number;
+  newest_slot: number;
+  multiplier: number | null;
+  zone: string | null;
+  valuation_updated_at: string | null;
+  estimated_usd: number | null;
+  /** The portion that fits the current rolling headroom. */
+  fits_now: { intervals: number; estimated_usd: number } | null;
+  /**
+   * What stays claimable after fits_now; null when nothing is withheld.
+   *
+   * `binding_window` names the rolling window that held the remainder back.
+   * It lives INSIDE this object because the claim "this 7-day limit held some
+   * back" is only true when something was held back — nesting makes asserting
+   * it otherwise structurally impossible. "7d" / "30d", never "week"/"month":
+   * these are rolling windows over filled spend, not calendar periods.
+   */
+  remainder: { intervals: number; estimated_usd: number; binding_window: "7d" | "30d" } | null;
+};
+
+/** The catch-up's success payload. */
+export type AutoBuyCatchUpResult = {
+  ok: true;
+  run_id: number;
+  intervals: number;
+  usd: number;
+  currency: string;
+  order_id: string;
+  remainder_intervals: number;
 };
 
 export type AutoBuyStatus = {
@@ -1463,6 +1525,22 @@ export type AutoBuyStatus = {
   credentials: AutoBuyCredentialsInfo | null;
   in_flight: AutoBuyRun[];
   recent: AutoBuyRun[];
+  /**
+   * null when nothing is unclaimed — AND when `missed_error` is set, which is
+   * why the UI mounts its block on the two together. Null alone no longer
+   * means "render nothing".
+   */
+  missed: AutoBuyMissed | null;
+  /**
+   * Why `missed` could not be computed, or null.
+   *
+   * ⚠ `missed: null` alone is AMBIGUOUS and used to be the only signal: it is
+   * what the route sends both when nothing is missed and when the summary
+   * threw. This field is what separates them — a non-null value means the
+   * block is missing because something broke, not because the member is caught
+   * up.
+   */
+  missed_error: string | null;
 };
 
 // Auto-Buy failure alerts (Phase 2). Reuses the shared AlertSeverity, but the

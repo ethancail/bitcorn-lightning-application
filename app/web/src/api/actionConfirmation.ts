@@ -73,7 +73,8 @@ export type ConfirmedRoute = { method: string; match: Matcher; fields: Field[] }
  * server's CONFIRMED_ROUTES and asserts every route reachable from this UI
  * matches entry for entry. A drift fails there, not in production.
  *
- * Only the eight routes with a real UI caller are listed. /api/pay and
+ * Only the nine routes with a real UI caller are listed (eight until the
+ * Auto-Buy catch-up gained its "Missed buys" block, 2026-09-18). /api/pay and
  * /api/treasury/rebalance/{loop-out,circular} have no caller in this app (via
  * client methods nothing invokes), so listing them here would be dead data that
  * the parity test would then have to special-case.
@@ -112,6 +113,17 @@ export const UI_CONFIRMED_ROUTES: ConfirmedRoute[] = [
     method: "POST",
     match: { kind: "exact", url: "/api/network/pay" },
     fields: [{ name: "payment_request", from: "body", kind: "text" }],
+  },
+  {
+    // Field ORDER is wire API: the canonical string is built by walking this
+    // array, so it must match the server's entry exactly. The parity test
+    // asserts that, entry for entry.
+    method: "POST",
+    match: { kind: "exact", url: "/api/autobuy/catch-up" },
+    fields: [
+      { name: "expected_intervals", from: "body", kind: "number" },
+      { name: "expected_usd", from: "body", kind: "number" },
+    ],
   },
   {
     method: "POST",

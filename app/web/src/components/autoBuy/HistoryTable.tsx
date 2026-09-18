@@ -108,6 +108,11 @@ export default function HistoryTable({ sweepDayOfWeek }: Props) {
             <option value="skipped_zero_multiplier">Skipped (zero)</option>
             <option value="skipped_cap_hit">Skipped (cap)</option>
             <option value="skipped_insufficient_funds">Skipped (funds)</option>
+            {/* An interval that elapsed with no tick at all — distinct from the
+                four above, each of which means a tick ran and declined. The
+                value is sent verbatim as ?status= and matched by exact equality
+                server-side. See app/api/src/autoBuy/scheduler.ts. */}
+            <option value="skipped_missed_interval">Missed (no tick)</option>
             <option value="failed_buy">Failed (buy)</option>
             <option value="failed_withdraw">Failed (withdraw)</option>
           </select>
@@ -201,6 +206,7 @@ function StatusBadge({ status }: { status: string }) {
     skipped_zero_multiplier: { label: "SKIPPED",           cls: "badge-muted" },
     skipped_cap_hit:         { label: "CAP HIT",           cls: "badge-muted" },
     skipped_insufficient_funds:{ label: "LOW FUNDS",       cls: "badge-muted" },
+    skipped_missed_interval: { label: "MISSED",            cls: "badge-muted" },
     failed_buy:              { label: "FAILED",            cls: "badge-red" },
     failed_withdraw:         { label: "FAILED",            cls: "badge-red" },
   };

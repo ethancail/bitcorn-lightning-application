@@ -156,7 +156,14 @@ export default function AutoBuy() {
         </p>
       </div>
 
-      {errorBanner && tab === "valuation" && (
+      {/* ⚠ The gate is `valuation` OR `strategy`, not `valuation` alone.
+          The Strategy tab's Missed-buys block renders a degraded body that says
+          "see the notice above" when the amount cannot be computed — and this
+          IS that notice. Gated to the valuation tab, that sentence pointed at
+          nothing, which is the same defect class the Auto-Buy arc exists to
+          fix. Widened to the two tabs that can reference it; `alerts` has its
+          own banner and does not. */}
+      {errorBanner && (tab === "valuation" || tab === "strategy") && (
         <div className={`alert ${errorBanner.severity}`} style={{ marginBottom: 16 }}>
           <span className="alert-icon">{errorBanner.severity === "warning" ? "⚠" : "ⓘ"}</span>
           <div className="alert-body">
@@ -207,7 +214,7 @@ export default function AutoBuy() {
       ) : (
         <>
           {tab === "valuation" && <ValuationTab valuation={valuation} />}
-          {tab === "strategy" && <StrategyTab status={status} valuation={valuation} onRefresh={refresh} />}
+          {tab === "strategy" && <StrategyTab status={status} valuation={valuation} onRefresh={refresh} valuationError={valuationError} />}
           {tab === "alerts" && <AlertsTab />}
         </>
       )}

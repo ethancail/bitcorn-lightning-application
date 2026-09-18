@@ -15,13 +15,35 @@
 // is exactly the coupling that "compute it in the form" produces.
 
 export type Challenge =
-  /** Type the amount in sats. Used wherever the action HAS an amount. */
+  /**
+   * Type the amount in sats.
+   *
+   * Used wherever the action has a SATS amount. ⚠ NOT universal any more: the
+   * Auto-Buy catch-up has an amount and deliberately does not use this kind,
+   * because its amount is USD with cents and this kind is integer-only
+   * (`String(Math.round(c.sats))`, and `challengeSatisfied` accepts `^\d+$`).
+   * See the `phrase` note below and CH-FMT in the spec.
+   */
   | { kind: "amount"; sats: number }
   /**
-   * Type a short word. Used only where there is genuinely no amount — closing a
-   * channel, approving a stored recommendation. Naming the fallback rather than
-   * inventing a fake amount: a number the operator cannot check against
-   * anything is worse than a word, because it looks like verification.
+   * Type a short word — or, since 2026-09-18, a short STRING that may be an
+   * amount this kind can express and `amount` cannot.
+   *
+   * Originally used only where there is genuinely no amount — closing a
+   * channel, approving a stored recommendation. The reasoning was: naming the
+   * fallback rather than inventing a fake amount, because a number the operator
+   * cannot check against anything is worse than a word, since it looks like
+   * verification.
+   *
+   * ⚠ THAT REASONING STILL HOLDS AND IS WHY THE SECOND USE IS LEGITIMATE. The
+   * Auto-Buy catch-up challenges on `"1100.00"` — a bare two-decimal USD figure
+   * — while the modal shows `$1,100.00` one line above it. The hazard the
+   * original note guarded against is a number with nothing to check it against;
+   * here the number IS the amount, displayed adjacently, so it is checkable.
+   * The catch-up uses this kind rather than `amount` because this branch trims
+   * and lower-cases and strips NOTHING else, so cents survive — which is also
+   * why its target must be typed character for character.
+   * Spec: bitcorn-research/specs/2026-09-14-autobuy-scheduler-catchup-clamp-spec.md §5, CH-FMT/CH-DEC.
    */
   | { kind: "phrase"; text: string };
 
@@ -30,6 +52,20 @@ export interface ActionSummary {
   title: string;
   /** Label → value rows. Amount and destination first where they exist. */
   rows: Array<{ label: string; value: string }>;
+  /**
+   * Free prose beneath the rows, or undefined.
+   *
+   * ⚠ ADDED 2026-09-18 for the Auto-Buy catch-up, whose confirm-modal body is
+   * two to four sentences of copy Ethan accepted VERBATIM. The alternative was
+   * splitting that prose across `rows` as label/value fragments, which was
+   * rejected on the ground that the spec forbids shipping accepted copy in any
+   * form but the accepted one — not on taste. `irreversible` was the only other
+   * prose slot and means something narrower (see below), so overloading it
+   * would have made its own doc comment false.
+   *
+   * Optional, so the seven summaries that predate it are unaffected.
+   */
+  body?: string;
   /** One line on what cannot be undone, or undefined when nothing applies. */
   irreversible?: string;
   challenge: Challenge;
@@ -211,6 +247,65 @@ export function summarizeLoopIn(p: { amountSats: number; feeSats?: number }): Ac
     irreversible: "The swap fee is spent even if the swap does not complete.",
     challenge: { kind: "amount", sats: p.amountSats },
     confirmLabel: "Refill",
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-Buy catch-up (spec §4 A3; §5 M-full / M-partial / M-labels; CH-FMT/CH-DEC)
+//
+// ⚠ EVERY STRING BELOW IS ACCEPTED COPY, REPRODUCED CHARACTER-EXACT. Ethan
+// accepted these words; the spec is explicit that the implementer does not ship
+// copy it has not marked ACCEPTED, and by the same rule does not reword what it
+// has. Edit only against a new acceptance.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The amount as the member TYPES it: a bare decimal, always two places.
+ *
+ * No `$`, no thousands separator (CH-FMT), and two decimals even when the
+ * amount is whole (CH-DEC — `1100.00`, not `1100`). Both matter because the
+ * `phrase` branch of `challengeSatisfied` strips nothing, so `1100`,
+ * `1,100.00` and `$1100.00` are each a DIFFERENT challenge from `1100.00`.
+ */
+export const catchUpChallengeTarget = (usd: number): string => usd.toFixed(2);
+
+/** The amount as the member READS it, one line above the input. */
+export const fmtUsd = (usd: number): string =>
+  `$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const plural = (n: number, one: string, many: string): string => (n === 1 ? one : many);
+
+export function summarizeCatchUp(p: {
+  /** Total unclaimed missed intervals. */
+  intervals: number;
+  /** The portion being bought now — equals `intervals` unless the caps bind. */
+  fitsIntervals: number;
+  /** USD for the portion being bought now. This is what is challenged. */
+  fitsUsd: number;
+  /** Intervals left claimable; 0 when nothing is withheld. */
+  remainderIntervals: number;
+}): ActionSummary {
+  const partial = p.remainderIntervals > 0;
+  // The remainder sentence is the toast's exact words (decision (3)): one fact
+  // stated identically wherever it appears, rather than two that drift. Both
+  // the noun and the VERB inflect — "1 missed buy remain" was the accepted
+  // text's own edge case and reads as a defect on the one screen where the
+  // member is committing money.
+  const remainderSentence = `${p.remainderIntervals} missed ${plural(p.remainderIntervals, "buy", "buys")} ${plural(p.remainderIntervals, "remains", "remain")} and can be bought once the limit frees up.`;
+  const persistence = "This is a one-time action; it does not change your schedule.";
+
+  return {
+    title: partial
+      // "1 of 3 missed intervals" keeps the plural: the noun belongs to the 3.
+      ? `Buy ${p.fitsIntervals} of ${p.intervals} missed intervals now?`
+      : `Buy ${p.intervals} missed ${plural(p.intervals, "interval", "intervals")}?`,
+    rows: [{ label: "Amount", value: fmtUsd(p.fitsUsd) }],
+    body: partial
+      ? `One market buy of about ${fmtUsd(p.fitsUsd)} on Coinbase, then the usual 72h hold and weekly sweep. ${remainderSentence} ${persistence}`
+      : `One market buy of about ${fmtUsd(p.fitsUsd)} on Coinbase, then the usual 72h hold and weekly sweep. ${persistence}`,
+    // A USD amount in the `phrase` kind — see that kind's note at the top.
+    challenge: { kind: "phrase", text: catchUpChallengeTarget(p.fitsUsd) },
+    confirmLabel: "Buy now",
   };
 }
 

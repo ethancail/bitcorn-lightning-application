@@ -40,6 +40,7 @@ const CALL_SITES: Array<{ file: string; method: string; route: string }> = [
   { file: "App.tsx", method: "treasuryCloseChannel", route: "/api/treasury/rotation/execute" },
   { file: "App.tsx", method: "treasuryOpenChannel", route: "/api/treasury/expansion/execute" },
   { file: "pages/SwapOperations.tsx", method: "adminLoopOut", route: "/api/admin/swaps/loop-out" },
+  { file: "components/autoBuy/StrategyTab.tsx", method: "catchUpAutoBuy", route: "/api/autobuy/catch-up" },
 ];
 
 describe("every capital call site has a confirmation step", () => {
@@ -93,10 +94,23 @@ describe("every capital call site has a confirmation step", () => {
 
 describe("window.confirm is not used for anything that moves funds", () => {
   it("no capital call site falls back to window.confirm", () => {
-    // The three remaining confirm() sites (StrategyTab, CoinbaseCard, DayForm)
-    // guard config changes and a row delete. None is an outflow, and none is in
-    // this list — but a capital page reaching for confirm() would be a
-    // regression to the weak form this arc replaced.
+    // ⚠ THIS ASSERTION IS WEAKER THAN IT LOOKS, AND SINCE 2026-09-18 ONE ENTRY
+    // IN THE LIST PROVES IT. The regex requires the WINDOW-QUALIFIED form.
+    // StrategyTab.tsx guards Execute Now with a bare `confirm(...)` — no
+    // `window.` — so this passes on that file while the native dialog it exists
+    // to catch is right there. It is not a false green about the CATCH-UP
+    // action, which is gated by ActionConfirmModal and proven so by
+    // StrategyTab.missedBlock.test.tsx; it is a real hole in this guard.
+    //
+    // The previous comment here said the remaining confirm() sites — StrategyTab,
+    // CoinbaseCard, DayForm — "guard config changes and a row delete… none is in
+    // this list". StrategyTab IS in this list now, and Execute Now is still a
+    // bare confirm(), so that sentence is retired rather than edited.
+    //
+    // Widening the regex to `/\b(window\.)?confirm\s*\(/` would catch it and
+    // would also fail this file today; that widening was deliberately routed
+    // OUT of the catch-up arc by Ethan, because it reaches beyond it. Recorded
+    // here so the gap is visible to whoever picks it up.
     for (const { file } of CALL_SITES) {
       const src = read(file);
       expect(/\bwindow\.confirm\s*\(/.test(src), `${file} uses window.confirm`).toBe(false);
