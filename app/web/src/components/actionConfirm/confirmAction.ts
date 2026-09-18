@@ -287,14 +287,18 @@ export function summarizeCatchUp(p: {
 }): ActionSummary {
   const partial = p.remainderIntervals > 0;
   // The remainder sentence is the toast's exact words (decision (3)): one fact
-  // stated identically wherever it appears, rather than two that drift.
-  const remainderSentence = `${p.remainderIntervals} missed ${plural(p.remainderIntervals, "buy", "buys")} remain and can be bought once the limit frees up.`;
+  // stated identically wherever it appears, rather than two that drift. Both
+  // the noun and the VERB inflect — "1 missed buy remain" was the accepted
+  // text's own edge case and reads as a defect on the one screen where the
+  // member is committing money.
+  const remainderSentence = `${p.remainderIntervals} missed ${plural(p.remainderIntervals, "buy", "buys")} ${plural(p.remainderIntervals, "remains", "remain")} and can be bought once the limit frees up.`;
   const persistence = "This is a one-time action; it does not change your schedule.";
 
   return {
     title: partial
+      // "1 of 3 missed intervals" keeps the plural: the noun belongs to the 3.
       ? `Buy ${p.fitsIntervals} of ${p.intervals} missed intervals now?`
-      : `Buy ${p.intervals} missed intervals?`,
+      : `Buy ${p.intervals} missed ${plural(p.intervals, "interval", "intervals")}?`,
     rows: [{ label: "Amount", value: fmtUsd(p.fitsUsd) }],
     body: partial
       ? `One market buy of about ${fmtUsd(p.fitsUsd)} on Coinbase, then the usual 72h hold and weekly sweep. ${remainderSentence} ${persistence}`

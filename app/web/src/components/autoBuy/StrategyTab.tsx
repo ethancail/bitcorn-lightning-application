@@ -85,6 +85,12 @@ function catchUpRefusalMessage(
     cap?: { window: "7d" | "30d"; cap_usd: number; headroom_usd: number; unit_usd: number };
     staleness?: { threshold_hours: number; age_hours: number };
     actual?: { intervals: number; usd: number };
+    funds?: {
+      needed_usd: number;
+      considered: Array<"USD" | "USDC">;
+      usd_balance: number | null;
+      usdc_balance: number | null;
+    };
   } | null,
   ctx: { pausedReason: string | null; zone: string | null },
 ): string {
@@ -123,9 +129,34 @@ function catchUpRefusalMessage(
     return `The amount changed since this was shown (now ${fmtUsd(body.actual.usd)}). Nothing was bought — review and confirm again.`;
   }
 
-  // GEN. ⚠ `insufficient_funds` lands here ON PURPOSE: its structured `funds`
-  // fields now exist so R-bal CAN be written, but Ethan has not written it, and
-  // the frame is the accepted thing to say until he does.
+  // R-bal — TWO forms, selected on how many currencies the preference weighed.
+  //
+  // ⚠ ONE STRING CANNOT SERVE BOTH CASES HONESTLY, and that is the ruling's
+  // point rather than an implementation convenience. `selectCurrency` tests
+  // INDEPENDENT coverage only — no split-fill — so under a `*_preferred`
+  // preference a refusal means NEITHER balance alone covered the total, and
+  // any combined figure ("you are $400 short" on 600 + 600 against 1000)
+  // would be false.
+  //
+  // ⚠ `null` means NOT CONSIDERED, never zero: a missing Coinbase account
+  // reads 0. So the one-currency form can never name the other balance — that
+  // falls out of the field shape rather than needing a rule here.
+  //
+  // "below" and "neither … covers" are both exact: coverage is `>=`, so a
+  // refusal means strictly less.
+  if (code === "insufficient_funds" && body?.funds) {
+    const f = body.funds;
+    if (f.considered.length === 1) {
+      const currency = f.considered[0];
+      const balance = currency === "USD" ? f.usd_balance : f.usdc_balance;
+      return `Not placed: your Coinbase ${currency} balance is ${fmtUsd(balance ?? 0)}, below the ${fmtUsd(f.needed_usd)} needed. Fund the account and try again; nothing was bought and the missed intervals are still listed.`;
+    }
+    return `Not placed: neither balance covers the ${fmtUsd(f.needed_usd)} needed — USD ${fmtUsd(f.usd_balance ?? 0)}, USDC ${fmtUsd(f.usdc_balance ?? 0)}. A single buy is paid from one currency, not both. Fund either account and try again; nothing was bought and the missed intervals are still listed.`;
+  }
+
+  // GEN — including an `insufficient_funds` that arrives WITHOUT `funds`, which
+  // an older API would send. The frame is accepted copy and stays the fallback
+  // rather than the branch above guessing at figures it does not have.
   return `Not placed (${code}). ${tail}`;
 }
 
@@ -138,10 +169,20 @@ function catchUpRefusalMessage(
  * refusal then carries NS, which points at the pause banner above.
  */
 function MissedBuysBlock({
-  missed, pausedReason, onRefresh,
+  missed, pausedReason, frequency, onRefresh,
 }: {
   missed: AutoBuyMissed;
   pausedReason: string | null;
+  /**
+   * The node's configured cadence, rendered verbatim into the lead.
+   *
+   * ⚠ READ, NOT ASSUMED. This said "weekly" unconditionally, which is false on
+   * a node set to daily — exactly the class of defect this arc exists to fix,
+   * one surface over. The value comes from `autobuy_config.frequency`, which
+   * PATCH /api/autobuy/config validates against the four known values, so an
+   * unexpected string cannot arrive through the API.
+   */
+  frequency: string;
   onRefresh: () => Promise<unknown>;
 }) {
   const confirm = useActionConfirm();
@@ -149,7 +190,7 @@ function MissedBuysBlock({
 
   const n = missed.intervals;
   const dates = `${fmtSlotDate(missed.oldest_slot)} and ${fmtSlotDate(missed.newest_slot)}`;
-  const lead = `${n} weekly ${plural(n, "buy", "buys")} ${plural(n, "was", "were")} missed between ${dates}`;
+  const lead = `${n} ${frequency} ${plural(n, "buy", "buys")} ${plural(n, "was", "were")} missed between ${dates}`;
 
   // DEGRADED: count and dates are known, no amount is. Claim nothing else —
   // the row carries no cause, so the block asserts none and points at the
@@ -167,7 +208,7 @@ function MissedBuysBlock({
     });
     const left = res.remainder_intervals;
     const clause = left > 0
-      ? ` ${left} missed ${plural(left, "buy", "buys")} remain and can be bought once the limit frees up.`
+      ? ` ${left} missed ${plural(left, "buy", "buys")} ${plural(left, "remains", "remain")} and can be bought once the limit frees up.`
       : "";
     setToast({ kind: "success", message: `Order placed for ${fmtUsd(res.usd)}.${clause} Check history.` });
     await onRefresh();
@@ -193,7 +234,7 @@ function MissedBuysBlock({
 
             {remainder && fits && (
               <p style={{ marginTop: 10, marginBottom: 0 }}>
-                {fits.intervals} of {n} missed buys fit within this {remainder.binding_window === "7d" ? "7-day" : "30-day"} limit: about {fmtUsd(fits.estimated_usd)}. {remainder.intervals} missed {plural(remainder.intervals, "buy", "buys")} (about {fmtUsd(remainder.estimated_usd)}) remain and can be bought once the limit frees up.
+                {fits.intervals} of {n} missed buys {plural(fits.intervals, "fits", "fit")} within this {remainder.binding_window === "7d" ? "7-day" : "30-day"} limit: about {fmtUsd(fits.estimated_usd)}. {remainder.intervals} missed {plural(remainder.intervals, "buy", "buys")} (about {fmtUsd(remainder.estimated_usd)}) {plural(remainder.intervals, "remains", "remain")} and can be bought once the limit frees up.
               </p>
             )}
 
@@ -269,6 +310,7 @@ export default function StrategyTab({ status, valuation, onRefresh, valuationErr
         <MissedBuysBlock
           missed={status.missed}
           pausedReason={cfg.paused_reason}
+          frequency={cfg.frequency}
           onRefresh={onRefresh}
         />
       )}
@@ -279,7 +321,10 @@ export default function StrategyTab({ status, valuation, onRefresh, valuationErr
           <div style={{ fontSize: "0.875rem", color: "var(--text-dim)", marginBottom: 4 }}>At current Z-score</div>
           <div style={{ fontSize: "1.25rem" }}>
             {valuation ? (
-              <>If base = <strong>${cfg.base_unit_usd.toFixed(2)}</strong> the next buy is <strong>${nextBuyUsd.toFixed(2)}</strong> (zone: {valuation.zone}, {currentMultiplier}×)</>
+              // The LABEL, not the wire token: a member should not read
+              // `fair_value` in prose one panel above a block that says
+              // "Fair Value". Same helper, no third map.
+              <>If base = <strong>${cfg.base_unit_usd.toFixed(2)}</strong> the next buy is <strong>${nextBuyUsd.toFixed(2)}</strong> (zone: {zoneLabelFor(valuation.zone)}, {currentMultiplier}×)</>
             ) : (
               <em className="text-dim">Valuation not loaded — next-buy calculation unavailable.</em>
             )}

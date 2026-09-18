@@ -1,7 +1,8 @@
 // Controls for the "Missed buys" block — spec §4 A1–A3 and §5's accepted strings.
 //
 // Authority: bitcorn-research/specs/2026-09-14-autobuy-scheduler-catchup-clamp-spec.md
-// (blob 7beb628 @ vault 60021b9, nine correction waves).
+// (blob 63d8840 @ vault bec59fe, eleven correction waves — R-bal accepted in
+// the eleventh; the nine-wave blob 7beb628 this file first cited predates it).
 //
 // ─── WHY THIS FILE IS .tsx AND WHY THAT IS NEW ──────────────────────────────
 // `vitest.config.ts` collected only `*.test.ts` until 2026-09-18; the block's
@@ -131,11 +132,15 @@ const btn = (text: string): HTMLButtonElement | undefined =>
 /**
  * The Missed-buys panel's own text, scoped.
  *
- * ⚠ Page-wide assertions are wrong here, and that is a finding rather than a
- * detail: StrategyTab's PRE-EXISTING summary banner renders the raw zone token
- * (`zone: fair_value`, StrategyTab.tsx:54), so a page-wide
- * `not.toContain("fair_value")` fails on copy this arc did not write and must
- * not silently change. Scoping keeps the ZONE-LABEL assertion about the block.
+ * Scoping keeps a block-level claim about the block, so a change to a
+ * neighbouring panel cannot turn one of these assertions green or red for the
+ * wrong reason.
+ *
+ * ⚠ It was originally introduced for a narrower reason that no longer holds:
+ * StrategyTab's summary banner used to render the raw zone token, so a
+ * page-wide `not.toContain("fair_value")` failed on copy this arc had not
+ * written. Ethan later ruled that banner in, it now renders the label through
+ * `zoneLabelFor`, and the page-wide assertion lives in the last describe below.
  */
 function block(): string {
   const panel = Array.from(host.querySelectorAll(".panel")).find(
@@ -222,7 +227,7 @@ describe("the partial offer names the binding window", () => {
     const text = host.textContent ?? "";
 
     expect(text).toContain(
-      "10 of 11 missed buys fit within this 7-day limit: about $1,000.00. 1 missed buy (about $100.00) remain and can be bought once the limit frees up.",
+      "10 of 11 missed buys fit within this 7-day limit: about $1,000.00. 1 missed buy (about $100.00) remains and can be bought once the limit frees up.",
     );
     // Ruling 6 — the windows are ROLLING, not calendar.
     expect(text).not.toContain("this week's limit");
@@ -335,8 +340,225 @@ describe("the confirm modal's challenge is the two-decimal amount, and it GATES"
 
     expect(text).toContain("Buy 10 of 11 missed intervals now?");
     expect(text).toContain("Type 1000.00 to confirm");
-    expect(text).toContain("1 missed buy remain and can be bought once the limit frees up.");
+    expect(text).toContain("1 missed buy remains and can be bought once the limit frees up.");
     // M-full/M-partial both carry the persistence clause (fourth wave).
     expect(text).toContain("This is a one-time action; it does not change your schedule.");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// R-bal — the balance refusal, accepted 2026-09-18 (eleventh wave). TWO forms,
+// selected on `funds.considered.length`, because one string cannot serve both
+// cases honestly: `selectCurrency` tests INDEPENDENT coverage only, so under a
+// *_preferred preference a refusal means neither balance alone covered it, and
+// any combined figure would be false.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** The two-decimal target for whatever portion this fixture offers. */
+const catchUpTarget = (m: AutoBuyMissed): string => (m.fits_now?.estimated_usd ?? 0).toFixed(2);
+
+/** Drive the block to a refusal and return the block's text. */
+async function refuse(body: unknown, missed: AutoBuyMissed = MISSED_FULL): Promise<string> {
+  stub.catchUpAutoBuy.mockRejectedValue(Object.assign(new Error("refused"), { body }));
+  await render(React.createElement(StrategyTab, { status: status(missed), valuation, onRefresh: async () => {} }));
+  await click(btn("Buy missed intervals")!);
+  const input = host.querySelector("#action-confirm-challenge") as HTMLInputElement;
+  await type(input, catchUpTarget(missed));
+  await click(btn("Buy now")!);
+  return block();
+}
+
+describe("R-bal · one currency considered", () => {
+  const ONE = {
+    error: "insufficient_funds",
+    reason: "usd_balance=12.5;usdc_balance=0;need=1100",
+    funds: { needed_usd: 1100, considered: ["USD"], usd_balance: 12.5, usdc_balance: null },
+  };
+
+  it("renders the ONE-CURRENCY form, verbatim", async () => {
+    // Anti-vacuity partner for the negative below: this asserts the RIGHT
+    // content, so an empty render cannot pass the pair.
+    expect(await refuse(ONE)).toContain(
+      "Not placed: your Coinbase USD balance is $12.50, below the $1,100.00 needed. Fund the account and try again; nothing was bought and the missed intervals are still listed.",
+    );
+  });
+
+  it("never names the balance that was NOT considered", async () => {
+    // `usdc_balance: null` means the preference excluded USDC — naming it would
+    // let the copy claim something the node would never have spent.
+    const text = await refuse(ONE);
+    expect(text).not.toContain("USDC");
+    expect(text).not.toContain("neither balance");
+  });
+
+  it("names USDC when USDC is the considered one — the currency is read, not assumed", async () => {
+    const text = await refuse({
+      error: "insufficient_funds",
+      reason: "x",
+      funds: { needed_usd: 1100, considered: ["USDC"], usd_balance: null, usdc_balance: 3 },
+    });
+    expect(text).toContain("your Coinbase USDC balance is $3.00, below the $1,100.00 needed.");
+  });
+});
+
+describe("R-bal · both currencies considered", () => {
+  it("renders the NEITHER-COVERS form with both balances and the one-currency sentence", async () => {
+    const text = await refuse({
+      error: "insufficient_funds",
+      reason: "x",
+      funds: { needed_usd: 1100, considered: ["USD", "USDC"], usd_balance: 600, usdc_balance: 600 },
+    });
+    expect(text).toContain(
+      "Not placed: neither balance covers the $1,100.00 needed — USD $600.00, USDC $600.00. A single buy is paid from one currency, not both. Fund either account and try again; nothing was bought and the missed intervals are still listed.",
+    );
+  });
+
+  it("a 0 balance is a REAL zero, not a not-considered — it is named", async () => {
+    // A missing Coinbase account reads 0, and null is reserved for "not
+    // considered". Under a *_preferred preference the member must see the 0.
+    const text = await refuse({
+      error: "insufficient_funds",
+      reason: "x",
+      funds: { needed_usd: 1100, considered: ["USD", "USDC"], usd_balance: 50, usdc_balance: 0 },
+    });
+    expect(text).toContain("USD $50.00, USDC $0.00.");
+  });
+
+  it("and insufficient_funds NO LONGER falls through to the generic frame", async () => {
+    const text = await refuse({
+      error: "insufficient_funds",
+      reason: "x",
+      funds: { needed_usd: 1100, considered: ["USD", "USDC"], usd_balance: 600, usdc_balance: 600 },
+    });
+    expect(text).not.toContain("Not placed (insufficient_funds)");
+  });
+
+  it("a refusal with NO funds field still takes the generic frame — the branch is guarded", async () => {
+    // The permitting direction's mirror: the new branch must not swallow
+    // refusals it cannot render. GEN is accepted copy and stays the fallback.
+    const text = await refuse({ error: "no_credentials", reason: "no_credentials" });
+    expect(text).toContain("Not placed (no_credentials). Nothing was bought; the missed intervals are still listed.");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The cadence word is READ, not assumed.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("the frequency is interpolated, not hardcoded weekly", () => {
+  it("a daily config says daily — and does NOT say weekly", async () => {
+    await render(React.createElement(StrategyTab, {
+      status: status(MISSED_FULL, { frequency: "daily" }), valuation, onRefresh: async () => {},
+    }));
+    // Assert the WORD, both directions: the positive alone would pass a render
+    // that said "daily weekly", the negative alone would pass an empty block.
+    expect(block()).toContain("11 daily buys were missed between");
+    expect(block()).not.toContain("weekly buys");
+  });
+
+  it("a monthly config says monthly", async () => {
+    await render(React.createElement(StrategyTab, {
+      status: status(MISSED_FULL, { frequency: "monthly" }), valuation, onRefresh: async () => {},
+    }));
+    expect(block()).toContain("11 monthly buys were missed between");
+  });
+
+  it("the DEGRADED body reads the cadence too — both bodies share one lead", async () => {
+    await render(React.createElement(StrategyTab, {
+      status: status(MISSED_DEGRADED, { frequency: "biweekly" }), valuation: null, onRefresh: async () => {},
+    }));
+    expect(block()).toContain("11 biweekly buys were missed between");
+    expect(block()).toContain("The amount can't be calculated right now — see the notice above.");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Singular and plural, BOTH directions. A suite asserting only the plural
+// passes an implementation that never inflects.
+// ─────────────────────────────────────────────────────────────────────────────
+const ONE_MISSED: AutoBuyMissed = {
+  ...MISSED_FULL,
+  intervals: 1,
+  estimated_usd: 100,
+  fits_now: { intervals: 1, estimated_usd: 100 },
+  remainder: null,
+};
+
+/** 3 missed, 1 fits, 2 remain — exercises "1 of 3 … fits" and a plural remainder. */
+const ONE_FITS_OF_THREE: AutoBuyMissed = {
+  ...MISSED_FULL,
+  intervals: 3,
+  estimated_usd: 300,
+  fits_now: { intervals: 1, estimated_usd: 100 },
+  remainder: { intervals: 2, estimated_usd: 200, binding_window: "7d" },
+};
+
+/** 3 missed, 2 fit, 1 remains — exercises a plural "fit" and a singular "remains". */
+const TWO_FIT_OF_THREE: AutoBuyMissed = {
+  ...MISSED_FULL,
+  intervals: 3,
+  estimated_usd: 300,
+  fits_now: { intervals: 2, estimated_usd: 200 },
+  remainder: { intervals: 1, estimated_usd: 100, binding_window: "7d" },
+};
+
+describe("singular and plural both render correctly", () => {
+  it("one missed interval: singular noun and verb in the lead", async () => {
+    await render(React.createElement(StrategyTab, { status: status(ONE_MISSED), valuation, onRefresh: async () => {} }));
+    expect(block()).toContain("1 weekly buy was missed between");
+  });
+
+  it("one missed interval: the modal title is singular", async () => {
+    await render(React.createElement(StrategyTab, { status: status(ONE_MISSED), valuation, onRefresh: async () => {} }));
+    await click(btn("Buy missed intervals")!);
+    expect(host.textContent ?? "").toContain("Buy 1 missed interval?");
+    expect(host.textContent ?? "").not.toContain("Buy 1 missed intervals?");
+  });
+
+  it("many missed intervals: the modal title stays plural — the other direction", async () => {
+    await render(React.createElement(StrategyTab, { status: status(MISSED_FULL), valuation, onRefresh: async () => {} }));
+    await click(btn("Buy missed intervals")!);
+    expect(host.textContent ?? "").toContain("Buy 11 missed intervals?");
+  });
+
+  it("one of three fits: the verb agrees with the ONE, and the remainder is plural", async () => {
+    await render(React.createElement(StrategyTab, { status: status(ONE_FITS_OF_THREE), valuation, onRefresh: async () => {} }));
+    expect(block()).toContain("1 of 3 missed buys fits within this 7-day limit: about $100.00.");
+    expect(block()).toContain("2 missed buys (about $200.00) remain and can be bought once the limit frees up.");
+  });
+
+  it("two of three fit: plural verb, singular remainder — both inflections in one render", async () => {
+    await render(React.createElement(StrategyTab, { status: status(TWO_FIT_OF_THREE), valuation, onRefresh: async () => {} }));
+    expect(block()).toContain("2 of 3 missed buys fit within this 7-day limit: about $200.00.");
+    expect(block()).toContain("1 missed buy (about $100.00) remains and can be bought once the limit frees up.");
+  });
+
+  it("the partial modal inflects its remainder sentence too", async () => {
+    await render(React.createElement(StrategyTab, { status: status(TWO_FIT_OF_THREE), valuation, onRefresh: async () => {} }));
+    await click(btn("Buy missed intervals")!);
+    expect(host.textContent ?? "").toContain("1 missed buy remains and can be bought once the limit frees up.");
+  });
+
+  it("the success toast inflects its remainder clause", async () => {
+    stub.catchUpAutoBuy.mockResolvedValue({ ok: true, intervals: 2, usd: 200, remainder_intervals: 1 });
+    await render(React.createElement(StrategyTab, { status: status(TWO_FIT_OF_THREE), valuation, onRefresh: async () => {} }));
+    await click(btn("Buy missed intervals")!);
+    const input = host.querySelector("#action-confirm-challenge") as HTMLInputElement;
+    await type(input, "200.00");
+    await click(btn("Buy now")!);
+    expect(block()).toContain("Order placed for $200.00. 1 missed buy remains and can be bought once the limit frees up. Check history.");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The zone LABEL, everywhere on this tab — not only inside the block.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("no raw zone token survives anywhere on the Strategy tab", () => {
+  it("the summary banner one panel above the block reads the label too", async () => {
+    await render(React.createElement(StrategyTab, { status: status(MISSED_FULL), valuation, onRefresh: async () => {} }));
+    const text = host.textContent ?? "";
+    expect(text).toContain("Fair Value");
+    // Page-wide now: the block was already correct, the pre-existing summary
+    // banner one panel above it was not.
+    expect(text).not.toContain("fair_value");
   });
 });
