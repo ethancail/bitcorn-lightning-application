@@ -69,21 +69,17 @@ describe("client/server field-map parity", () => {
     // here is the intended direction; a route joining this list is the one that
     // deserves a second look.
     //
-    // POST /api/autobuy/catch-up JOINED the list on 2026-09-14, and this is the
-    // second look. It is uncovered ON PURPOSE and TEMPORARILY: the server route,
-    // its gates and its controls all landed, but the Strategy-tab "Missed buys"
-    // block that would call it is made entirely of copy that Ethan has not
-    // accepted (spec §5 — the partial-offer and k=0 strings are PROPOSED), and
-    // shipping unaccepted copy is the one thing that spec forbids outright. The
-    // route is therefore reachable only by a deliberate client. It is EXPECTED
-    // to leave this list when that block lands; if it is still here long after
-    // the copy is settled, that is the signal this entry exists to give.
+    // Was FOUR again, briefly. POST /api/autobuy/catch-up joined on 2026-09-14
+    // when its server route landed ahead of any caller — uncovered on purpose
+    // and temporarily, because the Strategy-tab block that would call it was
+    // made entirely of copy Ethan had not yet accepted. It LEFT on 2026-09-18
+    // by gaining that caller, which is the departure this entry predicted and
+    // the direction the paragraph above calls intended.
     // See bitcorn-research/specs/2026-09-14-autobuy-scheduler-catchup-clamp-spec.md §4 A1–A3.
     const uncovered = [...serverByKey.keys()]
       .filter((k) => !UI_CONFIRMED_ROUTES.some((r) => rkey(r.method, r.match) === k))
       .sort();
     expect(uncovered).toEqual([
-      "POST =/api/autobuy/catch-up",
       "POST =/api/pay",
       "POST =/api/treasury/rebalance/circular",
       "POST =/api/treasury/rebalance/loop-out",

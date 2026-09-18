@@ -4059,7 +4059,14 @@ async function dispatchRequest(
         res.end(JSON.stringify({
           error: result.code === "amount_changed" ? "catch_up_amount_changed" : result.code,
           reason: result.reason,
+          // Structured member-facing figures. Each is present only on the
+          // refusal it belongs to, and an absent one is meaningful — see the
+          // contracts on CatchUpResult in autoBuy/scheduler.ts. `reason` stays
+          // for logs; the UI reads these and never parses that string.
           ...(result.actual ? { actual: result.actual } : {}),
+          ...(result.cap ? { cap: result.cap } : {}),
+          ...(result.funds ? { funds: result.funds } : {}),
+          ...(result.staleness ? { staleness: result.staleness } : {}),
         }));
       } catch (err: any) {
         console.error("[autobuy-catch-up]", err);
@@ -4254,10 +4261,20 @@ async function dispatchRequest(
       // NULL when there are none — the UI renders nothing at all in that case
       // (spec §4 A1: no empty state, no "0 missed"). A valuation failure
       // degrades this to counts and dates rather than removing it.
+      //
+      // ⚠ A THROW IS NOT "NOTHING MISSED". This catch used to set `missed =
+      // null`, which is the same value the route sends when there genuinely
+      // are no unclaimed intervals — so a status-side failure made the block
+      // silently vanish and every downstream surface read it as "all caught
+      // up". The two are now distinguishable on the wire: `missed_error`
+      // carries the fault, `missed` stays null, and a UI that ignores the new
+      // field degrades exactly as it did before rather than breaking.
       let missed = null;
+      let missedError: string | null = null;
       try {
         missed = await computeMissedSummary(db);
       } catch (err) {
+        missedError = err instanceof Error ? err.message.slice(0, 200) : "unknown_error";
         console.warn("[autobuy-status] computeMissedSummary failed:", err);
       }
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -4284,6 +4301,7 @@ async function dispatchRequest(
         in_flight: next,
         recent,
         missed,
+        missed_error: missedError,
       }));
     } catch (err: any) {
       console.error("[autobuy-status]", err);

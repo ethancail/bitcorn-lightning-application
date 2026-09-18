@@ -138,10 +138,31 @@ export function checkBaseUnitCap(proposedUsd: number): CapResult {
 }
 
 /**
+ * The age that made a valuation stale, and the threshold it passed.
+ *
+ * ⚠ WHY THIS IS A WIDER RETURN THAN `CapResult`, AND ONLY HERE. These two
+ * numbers are MEMBER-FACING: the catch-up refusal tells the farmer how old the
+ * valuation is against *this node's* limit, and `AUTOBUY_STALE_DATA_MAX_HOURS`
+ * is env-tunable — so a UI that hardcodes 48 is false on a tuned node, and a UI
+ * that scrapes them back out of `reason` breaks silently the day anyone edits
+ * that text. Widening the shared `CapResult` would push an optional field onto
+ * four other cap functions that have no use for it; widening this one does not.
+ *
+ * `staleness` is present ONLY on the stale arm. `invalid_updated_at` — an
+ * unparseable timestamp — is a different fault with no age to report, and its
+ * ABSENCE here is the discriminator the UI uses to route it to the generic
+ * frame instead of the "more than N hours old" string. Structural, so nobody
+ * has to remember a rule.
+ */
+export type FreshnessResult =
+  | { ok: true }
+  | { ok: false; reason: string; staleness?: { threshold_hours: number; age_hours: number } };
+
+/**
  * Is the Worker's composite valuation fresh enough? updatedAtISO is the
  * updated_at field from /valuation/current. Stale threshold lives in env.
  */
-export function checkValuationFreshness(updatedAtISO: string): CapResult {
+export function checkValuationFreshness(updatedAtISO: string): FreshnessResult {
   const updatedAt = Date.parse(updatedAtISO);
   if (!Number.isFinite(updatedAt)) {
     return { ok: false, reason: "invalid_updated_at" };
@@ -149,7 +170,15 @@ export function checkValuationFreshness(updatedAtISO: string): CapResult {
   const ageHours = (Date.now() - updatedAt) / (1000 * 60 * 60);
   const threshold = safeCap(ENV.autoBuyStaleDataMaxHours);
   if (ageHours > threshold) {
-    return { ok: false, reason: `stale_data:${ageHours.toFixed(1)}h>${threshold}h` };
+    // threshold is necessarily FINITE here: safeCap maps an unset or <= 0 env
+    // var to +Infinity, and `ageHours > Infinity` is never true — so this arm
+    // is unreachable with an unconfigured threshold and the field never has to
+    // carry Infinity (which JSON.stringify would silently render as null).
+    return {
+      ok: false,
+      reason: `stale_data:${ageHours.toFixed(1)}h>${threshold}h`,
+      staleness: { threshold_hours: threshold, age_hours: Math.round(ageHours * 10) / 10 },
+    };
   }
   return { ok: true };
 }

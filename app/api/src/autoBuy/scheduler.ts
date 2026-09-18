@@ -524,8 +524,21 @@ export type MissedSummary = {
   estimated_usd: number | null;
   /** The portion that fits current rolling headroom. null without a valuation. */
   fits_now: { intervals: number; estimated_usd: number } | null;
-  /** What stays claimable after fits_now. null when nothing is withheld. */
-  remainder: { intervals: number; estimated_usd: number } | null;
+  /**
+   * What stays claimable after fits_now. null when nothing is withheld.
+   *
+   * ⚠ `binding_window` LIVES INSIDE THIS OBJECT ON PURPOSE. The member-facing
+   * copy names which rolling window held the remainder back ("this 7-day
+   * limit"), and that claim is only true when something WAS held back. Nesting
+   * it here makes asserting a binding window while nothing bound structurally
+   * impossible — `remainder` is non-null exactly when `k < intervals`, which is
+   * exactly when a window bound. A sibling field on `missed` would need a null
+   * arm plus a convention someone has to remember.
+   *
+   * "7d" / "30d" rather than "week" / "month": these are ROLLING windows over
+   * filled spend, not calendar periods.
+   */
+  remainder: { intervals: number; estimated_usd: number; binding_window: "7d" | "30d" } | null;
 };
 
 /**
@@ -564,8 +577,12 @@ export async function computeMissedSummary(db: Database.Database): Promise<Misse
   const mult = parseZoneMultiplier(cfg.zone_multipliers, val.zone);
 
   const unit = computeIntendedBuy(cfg.base_unit_usd, mult);
-  const headroom = capsHeadroomUsd(db);
-  const k = fittingIntervals(missed.length, unit, headroom);
+  // Read BOTH windows rather than the min alone: when the caps withhold a
+  // remainder, the member is told WHICH window did it, and the min discards
+  // exactly that. 7-day and 30-day differ by days versus weeks and can bind
+  // independently, so it is information the member plans around.
+  const h = caps.rollingHeadroom(db);
+  const k = fittingIntervals(missed.length, unit, Math.min(h.d7.headroom, h.d30.headroom));
 
   return {
     ...base,
@@ -576,15 +593,23 @@ export async function computeMissedSummary(db: Database.Database): Promise<Misse
     fits_now: { intervals: k, estimated_usd: roundUsd(k * unit) },
     remainder:
       k < missed.length
-        ? { intervals: missed.length - k, estimated_usd: roundUsd((missed.length - k) * unit) }
+        ? {
+            intervals: missed.length - k,
+            estimated_usd: roundUsd((missed.length - k) * unit),
+            binding_window: bindingWindow(h),
+          }
         : null,
   };
 }
 
-/** The binding rolling headroom — the tighter of the 7-day and 30-day windows. */
-function capsHeadroomUsd(db: Database.Database): number {
-  const h = caps.rollingHeadroom(db);
-  return Math.min(h.d7.headroom, h.d30.headroom);
+/**
+ * Which rolling window is holding the claim back — the tighter one.
+ *
+ * Tie goes to 7d, matching the k = 0 refusal's own choice, so the block and the
+ * refusal never name different windows for the same state.
+ */
+function bindingWindow(h: { d7: caps.WindowHeadroom; d30: caps.WindowHeadroom }): "7d" | "30d" {
+  return h.d7.headroom <= h.d30.headroom ? "7d" : "30d";
 }
 
 export type CatchUpRefusalCode =
@@ -601,6 +626,20 @@ export type CatchUpRefusalCode =
   | "insufficient_funds"
   | "order_failed";
 
+/**
+ * ⚠ THE STRUCTURED REFUSAL FIELDS BELOW ARE THE MEMBER-FACING NUMBERS.
+ *
+ * Every one of them used to exist only inside `reason` — a single string the
+ * UI would have had to parse to render a real figure, which breaks silently
+ * the day anyone edits the text. `reason` survives for logs and for the
+ * generic frame; anything a member READS comes from a field.
+ *
+ * Which refusal carries which is not uniform, because the refusals are not:
+ * `cap` only exists where a rolling window bound, `funds` only where balances
+ * were weighed, `staleness` only where an age passed a threshold. An absent
+ * field is therefore meaningful — it is how the UI tells "more than N hours
+ * old" from an unparseable timestamp without a second rule to remember.
+ */
 export type CatchUpResult =
   | {
       ok: true;
@@ -618,6 +657,43 @@ export type CatchUpResult =
       reason: string;
       /** On amount_changed: what the server re-derived, for the UI to re-show. */
       actual?: { intervals: number; usd: number };
+      /**
+       * On rolling_cap_no_headroom: the window that bound, its cap, what is
+       * left under it, and the cost of one interval. `cap_usd` is finite here
+       * by construction — an unconfigured cap is +Infinity, which yields
+       * infinite headroom, which admits at least one interval, which means
+       * this refusal never fires.
+       */
+      cap?: { window: "7d" | "30d"; cap_usd: number; headroom_usd: number; unit_usd: number };
+      /**
+       * On insufficient_funds: what was needed, which currencies the member's
+       * `currency_preference` actually WEIGHED, and their balances.
+       *
+       * ⚠ A balance is `null` when that currency was NOT considered — not 0.
+       * Under `usd_only` naming a USDC balance would be misleading ("your USDC
+       * covers it" when the preference excludes it), so the UI must be able to
+       * tell "not considered" from "empty", and 0 cannot.
+       *
+       * ⚠ AND THE TRAP FOR WHOEVER WRITES THE COPY: `selectCurrency` tests
+       * INDEPENDENT coverage only — there is no split-fill. Under the
+       * `*_preferred` values a refusal means NEITHER balance alone covered the
+       * total, so "you are $X short" or any combined figure would be FALSE
+       * (usd 600 + usdc 600 against a 1000 total refuses, and the sum is not
+       * short). The honest form names each considered balance against the
+       * total separately.
+       */
+      funds?: {
+        needed_usd: number;
+        considered: Array<"USD" | "USDC">;
+        usd_balance: number | null;
+        usdc_balance: number | null;
+      };
+      /**
+       * On valuation_stale: this node's threshold and the age that passed it.
+       * ABSENT on the `invalid_updated_at` sub-reason, which shares the code
+       * and has no age — that absence is the UI's discriminator.
+       */
+      staleness?: { threshold_hours: number; age_hours: number };
     };
 
 /**
@@ -662,7 +738,15 @@ export async function runCatchUp(
   const val = valResult.value;
 
   const freshness = caps.checkValuationFreshness(val.updated_at);
-  if (!freshness.ok) return { ok: false, code: "valuation_stale", reason: freshness.reason };
+  if (!freshness.ok) {
+    return {
+      ok: false,
+      code: "valuation_stale",
+      reason: freshness.reason,
+      // Undefined on `invalid_updated_at` — see the field's contract above.
+      ...(freshness.staleness ? { staleness: freshness.staleness } : {}),
+    };
+  }
 
   const mult = parseZoneMultiplier(cfg.zone_multipliers, val.zone);
   if (mult === 0) return { ok: false, code: "zero_multiplier", reason: `zone=${val.zone}` };
@@ -676,11 +760,18 @@ export async function runCatchUp(
   const k = fittingIntervals(missed.length, unit, headroom);
   if (k === 0) {
     // The ONLY rolling refusal left on this path: not even one interval fits.
-    const binding = h.d7.headroom <= h.d30.headroom ? "7d" : "30d";
+    const binding = bindingWindow(h);
+    const window = binding === "7d" ? h.d7 : h.d30;
     return {
       ok: false,
       code: "rolling_cap_no_headroom",
       reason: `${binding}_cap_headroom:${headroom.toFixed(2)}<${unit.toFixed(2)}`,
+      cap: {
+        window: binding,
+        cap_usd: window.cap,
+        headroom_usd: roundUsd(window.headroom),
+        unit_usd: unit,
+      },
     };
   }
 
@@ -717,10 +808,19 @@ export async function runCatchUp(
   const currenciesChecked = currenciesCheckedFor(preference);
   const currency = selectCurrency(preference, usdBalance, usdcBalance, total);
   if (!currency) {
+    // Only the currencies the preference actually weighed appear as numbers;
+    // the other is null, not 0. See the `funds` contract on CatchUpResult.
+    const considered = currenciesChecked.split(",") as Array<"USD" | "USDC">;
     return {
       ok: false,
       code: "insufficient_funds",
       reason: `usd_balance=${usdBalance};usdc_balance=${usdcBalance};need=${total}`,
+      funds: {
+        needed_usd: total,
+        considered,
+        usd_balance: considered.includes("USD") ? usdBalance : null,
+        usdc_balance: considered.includes("USDC") ? usdcBalance : null,
+      },
     };
   }
 

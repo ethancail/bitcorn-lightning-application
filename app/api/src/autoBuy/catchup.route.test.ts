@@ -397,3 +397,180 @@ describe("K-5 · the member confirmed a NUMBER, not a procedure", () => {
     expect(unclaimed()).toHaveLength(11);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE FOUR WIRE ADDITIONS — each must reach its consumer AS A FIELD.
+//
+// Every one of these numbers used to exist only inside `reason`. A UI rendering
+// them would have had to parse that string, which breaks silently the day the
+// text is edited — the defect these fields exist to remove. So each assertion
+// reads a TYPED FIELD and, where it matters, asserts the string is NOT the
+// source. `reason` is deliberately still present: it is the log line and the
+// generic frame's payload.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("wire additions · the member-facing numbers are fields, not substrings", () => {
+  it("rolling_cap_no_headroom carries `cap` with the binding window, its cap, headroom and unit", async () => {
+    reset();
+    seedMissed(11);
+    seedFilledSpend(1950); // 7d cap 2000 -> $50 headroom, below one $100 interval
+
+    const r = await catchUp(11, 1100);
+
+    expect(r.status).toBe(400);
+    expect(r.body?.error).toBe("rolling_cap_no_headroom");
+    // The field, typed and whole — not a number scraped out of `reason`.
+    expect(r.body?.cap).toEqual({
+      window: "7d",
+      cap_usd: 2000,
+      headroom_usd: 50,
+      unit_usd: 100,
+    });
+    // `cap_usd` is the one value that was on NO wire at 254f96e — `reason`
+    // carried headroom and unit only. If this ever comes back as undefined the
+    // copy that interpolates it silently renders "undefined".
+    expect(typeof r.body?.cap?.cap_usd).toBe("number");
+    expect(r.body?.reason).not.toContain("2000");
+  });
+
+  it("insufficient_funds carries `funds`, and a NOT-CONSIDERED balance is null, never 0", async () => {
+    reset({ currency_preference: "usd_only" });
+    seedMissed(2);
+    // USD account absent entirely, USDC flush — under usd_only the USDC balance
+    // must not appear as a number the copy could claim covers the buy.
+    stubs.listAccounts.mockResolvedValue({
+      ok: true,
+      data: { accounts: [{ currency: "USDC", available_balance: { value: "9999" } }] },
+    });
+
+    const r = await catchUp(2, 200);
+
+    expect(r.status).toBe(400);
+    expect(r.body?.error).toBe("insufficient_funds");
+    expect(r.body?.funds).toEqual({
+      needed_usd: 200,
+      considered: ["USD"],
+      usd_balance: 0,
+      usdc_balance: null,
+    });
+    // The discrimination that matters: "not considered" is null and an empty
+    // account is 0, and the two are different facts.
+    expect(r.body?.funds?.usdc_balance).toBeNull();
+    expect(r.body?.funds?.usd_balance).toBe(0);
+  });
+
+  it("insufficient_funds under a *_preferred preference reports BOTH as considered — neither covered it", async () => {
+    reset({ currency_preference: "usdc_preferred" });
+    seedMissed(10); // $1,000 total
+    // 600 + 600: each is short on its own, the SUM is not. selectCurrency has
+    // no split-fill, so the honest claim is "neither", and the fields have to
+    // let the copy say that rather than imply a shortfall of 400.
+    stubs.listAccounts.mockResolvedValue({
+      ok: true,
+      data: {
+        accounts: [
+          { currency: "USD", available_balance: { value: "600" } },
+          { currency: "USDC", available_balance: { value: "600" } },
+        ],
+      },
+    });
+
+    const r = await catchUp(10, 1000);
+
+    expect(r.body?.error).toBe("insufficient_funds");
+    expect(r.body?.funds?.considered).toEqual(["USD", "USDC"]);
+    expect(r.body?.funds?.usd_balance).toBe(600);
+    expect(r.body?.funds?.usdc_balance).toBe(600);
+    expect(r.body?.funds?.needed_usd).toBe(1000);
+  });
+
+  it("valuation_stale carries `staleness` with THIS NODE'S threshold, not a hardcoded 48", async () => {
+    reset();
+    seedMissed(2);
+    stubs.getCurrent.mockResolvedValue({
+      ok: true,
+      value: {
+        z_score: -0.4,
+        zone: "fair_value",
+        updated_at: new Date(Date.now() - 100 * 3600 * 1000).toISOString(),
+      },
+    });
+
+    const r = await catchUp(2, 200);
+
+    expect(r.body?.error).toBe("valuation_stale");
+    expect(r.body?.staleness?.threshold_hours).toBe(48); // AUTOBUY_STALE_DATA_MAX_HOURS in this fixture
+    expect(r.body?.staleness?.age_hours).toBeGreaterThan(99);
+    expect(typeof r.body?.staleness?.threshold_hours).toBe("number");
+  });
+
+  it("…and `staleness` is ABSENT on invalid_updated_at — the absence is the discriminator", async () => {
+    // Same refusal CODE, different fault, no age to report. A UI that rendered
+    // "more than {threshold} hours old" here would be describing a fault that
+    // has no threshold. The field's absence routes it to the generic frame
+    // without anyone having to remember a rule.
+    reset();
+    seedMissed(2);
+    stubs.getCurrent.mockResolvedValue({
+      ok: true,
+      value: { z_score: -0.4, zone: "fair_value", updated_at: "not-a-timestamp" },
+    });
+
+    const r = await catchUp(2, 200);
+
+    expect(r.body?.error).toBe("valuation_stale");
+    expect(r.body?.reason).toBe("invalid_updated_at");
+    expect(r.body?.staleness).toBeUndefined();
+  });
+
+  it("status `missed.remainder` carries binding_window — nested, so it cannot exist when nothing bound", async () => {
+    reset();
+    seedMissed(11);
+    seedFilledSpend(1000); // 7d headroom $1,000 -> 10 fit, 1 withheld
+
+    const r = await call("GET", "/api/autobuy/status", undefined);
+
+    expect(r.status).toBe(200);
+    expect(r.body?.missed?.fits_now).toEqual({ intervals: 10, estimated_usd: 1000 });
+    expect(r.body?.missed?.remainder).toEqual({
+      intervals: 1,
+      estimated_usd: 100,
+      binding_window: "7d",
+    });
+  });
+
+  it("…and when nothing binds there is NO remainder, hence no binding window to assert", async () => {
+    reset();
+    seedMissed(3); // $300 against clear headroom
+
+    const r = await call("GET", "/api/autobuy/status", undefined);
+
+    expect(r.body?.missed?.remainder).toBeNull();
+    expect(r.body?.missed?.fits_now).toEqual({ intervals: 3, estimated_usd: 300 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// A THROWN SUMMARY IS NOT "NOTHING MISSED".
+// ─────────────────────────────────────────────────────────────────────────────
+describe("status · a computeMissedSummary failure is distinguishable from an empty set", () => {
+  it("a throw sets missed_error and leaves missed null", async () => {
+    reset();
+    seedMissed(4);
+    stubs.getCurrent.mockRejectedValue(new Error("valuation client exploded"));
+
+    const r = await call("GET", "/api/autobuy/status", undefined);
+
+    expect(r.status).toBe(200);
+    expect(r.body?.missed).toBeNull();
+    expect(r.body?.missed_error).toContain("valuation client exploded");
+  });
+
+  it("genuinely nothing missed leaves BOTH null — the two states differ on the wire", async () => {
+    reset(); // no seedMissed
+
+    const r = await call("GET", "/api/autobuy/status", undefined);
+
+    expect(r.body?.missed).toBeNull();
+    expect(r.body?.missed_error).toBeNull();
+  });
+});
