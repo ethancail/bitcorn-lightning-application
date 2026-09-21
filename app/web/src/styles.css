@@ -3006,9 +3006,10 @@ input[type="number"] {
 
 /* Two-line "Member" cell: contact name on top (sans-serif primary
    text), truncated pubkey on bottom (Plex Mono muted). Renders only
-   when the row has a matching entry in the contacts table; rows
-   without a contact show the single-line pubkey plus the unidentified
-   marker and its Contacts link (see below). */
+   when the row has a matching entry in the contacts table; rows with
+   no entry show the single-line pubkey plus the unidentified marker
+   and its Contacts link (see below), and rows whose contacts read
+   FAILED show the single-line pubkey alone. */
 .admin-members-pubkey.has-contact {
   align-items: flex-start;
   padding-top: 0.3rem;
@@ -3034,8 +3035,10 @@ input[type="number"] {
   opacity: 0.8;
 }
 
-/* Unidentified marker — shown only when the treasury holds NO contacts row
-   for the row's pubkey. Stacks UNDER the pubkey rather than beside it: the
+/* Unidentified marker — shown only when the contacts read SUCCEEDED and held
+   no row for this pubkey. A failed read renders no marker at all: the marker
+   is a claim, and there is no basis for it without a reading.
+   Stacks UNDER the pubkey rather than beside it: the
    Member column is already the widest in a dense operator table, and a second
    inline element would push the sortable headers around.
    Theme parity comes free from the tokens — --amber and --text-3 are both

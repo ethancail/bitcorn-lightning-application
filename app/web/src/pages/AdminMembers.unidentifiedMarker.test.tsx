@@ -195,3 +195,67 @@ describe("unidentified marker — spec §6", () => {
     expect(marked[0].textContent).toContain(short(NAMELESS));
   });
 });
+
+// ─── The contacts READ FAILURE, which is not the same as "nobody is named" ──
+//
+// The marker means exactly one thing (spec §1.2): enrolled, and the treasury
+// holds no name. A failed contacts read means the treasury does not KNOW
+// whether it holds a name — so the marker must say nothing at all, and the
+// row falls back to the pre-marker display.
+//
+// ⚠ The distinction under test is FETCH-FAILED vs FETCH-SUCCEEDED-EMPTY, not
+// empty vs non-empty. A successful read returning zero contacts is a truthful
+// "nobody is named" and must still mark every row — which is what the
+// permitting control below pins. Suppressing on emptiness instead of on
+// failure would satisfy the forbidding test and quietly break the feature's
+// most common first-run state.
+
+const markedRows = (): HTMLTableRowElement[] =>
+  Array.from(host.querySelectorAll("tbody tr")).filter((tr) =>
+    (tr.textContent ?? "").includes(MARKER),
+  ) as HTMLTableRowElement[];
+
+describe("contacts read failure vs empty contacts", () => {
+  it("PERMITTING CONTROL: a SUCCESSFUL read returning an empty array still marks every row", async () => {
+    stub.getContacts.mockResolvedValue([]);
+    await renderRoster();
+
+    // Positive content first: the rows are actually here. Without this the
+    // length check below could be satisfied by a table that never rendered.
+    expect(host.querySelectorAll("tbody tr")).toHaveLength(3);
+    expect(
+      markedRows(),
+      "an empty-but-successful read is a truthful 'nobody is named' — all three rows qualify",
+    ).toHaveLength(3);
+  });
+
+  it("FORBIDDING: a FAILED read marks NO row, and the pubkeys still render", async () => {
+    stub.getContacts.mockRejectedValue(
+      Object.assign(new Error("contacts unreachable"), { status: 500 }),
+    );
+    await renderRoster();
+
+    expect(
+      markedRows(),
+      "the roster must not assert the treasury has identified nobody when it could not read contacts",
+    ).toHaveLength(0);
+
+    // Anti-vacuity — "no marker" passes against a blank render, an error
+    // boundary, a thrown component, and a table that never mounted. The
+    // pre-marker display is what must survive, so assert it directly.
+    const text = host.textContent ?? "";
+    for (const pk of [NAMED, NAMELESS, MIXEDCASE]) {
+      expect(text, `the pubkey for ${short(pk)} must still render`).toContain(short(pk));
+    }
+    expect(host.querySelectorAll("tbody tr"), "all three rows still render").toHaveLength(3);
+  });
+
+  it("FORBIDDING: a FAILED read offers no add-contact link either", async () => {
+    stub.getContacts.mockRejectedValue(new Error("contacts unreachable"));
+    await renderRoster();
+
+    expect(host.textContent ?? "").not.toContain(ADD_LINK);
+    // Anti-vacuity: the table is present, so the absence is meaningful.
+    expect(host.querySelectorAll("tbody tr")).toHaveLength(3);
+  });
+});
