@@ -8,11 +8,19 @@
 // have right now" — surfaces that generate the right questions for
 // real operator use to name v2 follow-ups.
 //
+// ⚠ ONE DEPARTURE FROM THAT, ADDED DELIBERATELY AND UNDER ITS OWN AUTHORITY:
+// the unidentified marker links out to Contacts with the pubkey prefilled
+// (specs/2026-09-21-operator-nudge-for-unidentified-enrolled-members-spec.md,
+// decision 3b81b7e). It is navigation, not an action on state — nothing here
+// mutates — but "no drill-down" above is Stage 5b's rule and this is the
+// later spec spending it. Recorded so the sentence is not read as current.
+//
 // Data: GET /api/admin/members (treasury-only via assertTreasury).
 // Filter/sort: all client-side per spec §10.5; the dataset is small.
 // Refresh: manual button + 60s auto-poll per spec §3.6.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   api,
   type AdminMembersResponse,
@@ -38,6 +46,49 @@ function findContactName(pubkey: string, contacts: Contact[]): string | undefine
   const needle = pubkey.toLowerCase();
   return contacts.find((c) => c.pubkey.toLowerCase() === needle)?.name;
 }
+
+// ⚠ PROPOSED COPY — spec §5, awaiting Ethan. NOT accepted. Centralized here so
+// the review decision is a one-line edit rather than a sweep of the component.
+//
+// Known weakness, named by the spec rather than hidden: neither string carries
+// decision §2's central point — that the operator must go and FIND OUT the
+// name, because it does not exist anywhere yet. "Add contact" reads like data
+// entry for something already known. The spec flags this as the most likely
+// thing to change at review, with a tooltip or helper line the likely home.
+const UNIDENTIFIED_MARKER = "Unidentified";
+const ADD_CONTACT_CTA = "Add contact";
+
+/** What the treasury can say about a member's name. THREE states, not two.
+ *
+ *  `unidentified` is a CLAIM — "we looked, and we hold no name" — and the
+ *  marker is the UI making it. `unknown` is the absence of a claim: the
+ *  contacts read failed, so the treasury does not know whether it holds a
+ *  name, and the roster must assert nothing. Collapsing the two makes the
+ *  roster tell the operator it has identified nobody whenever the contacts
+ *  endpoint is down, which is false rather than merely degraded.
+ *
+ *  A union rather than a pair of booleans, for the same reason the name and
+ *  marker share one source: two independent flags can disagree, and the
+ *  disagreement renders. */
+type Identity =
+  | { kind: "named"; name: string }
+  | { kind: "unidentified" }
+  | { kind: "unknown" };
+
+/** The single place the three states are decided. `contacts === null` means
+ *  the read FAILED — distinct from a successful read that returned zero
+ *  contacts, which is a legitimate "nobody is named" and still marks. */
+function resolveIdentity(pubkey: string, contacts: Contact[] | null): Identity {
+  if (contacts === null) return { kind: "unknown" };
+  const name = findContactName(pubkey, contacts);
+  return name !== undefined ? { kind: "named", name } : { kind: "unidentified" };
+}
+
+/** Stable empty list for the filter and sort paths, which genuinely do not
+ *  care why contacts are missing — an unreadable list and an empty one both
+ *  mean "no names to match or order by". Module-scope so the useMemo deps
+ *  below do not see a new array identity on every render. */
+const NO_CONTACTS: Contact[] = [];
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -93,7 +144,9 @@ type ViewState =
   | {
       kind: "ok";
       response: AdminMembersResponse;
-      contacts: Contact[];
+      /** `null` means the contacts read FAILED — see Identity. Not the same
+       *  as `[]`, which means it succeeded and the treasury names nobody. */
+      contacts: Contact[] | null;
       revenue: Map<string, MemberRevenueRow>;
     }
   | { kind: "error"; code?: string; detail?: string };
@@ -132,9 +185,16 @@ export default function AdminMembers() {
       // resolution. The contacts and revenue calls are best-effort:
       // a failure there shouldn't hide the members list, just fall
       // back to pubkey-only display / em-dash revenue cells.
+      //
+      // ⚠ Contacts fails to `null`, NOT to `[]`. An empty array is a real
+      // answer — the treasury read its contacts and names nobody — and the
+      // unidentified marker is correct on every row. A failed read is not an
+      // answer at all, and marking every row would have the roster assert
+      // something it has no basis for. The two must stay distinguishable all
+      // the way to the cell; see Identity.
       const [response, contacts, revenueResponse] = await Promise.all([
         api.getAdminMembers(),
-        api.getContacts().catch(() => [] as Contact[]),
+        api.getContacts().catch(() => null),
         api.getAdminSubscriptionRevenue().catch(() => null),
       ]);
       setView({
@@ -208,7 +268,7 @@ function AdminMembersBody({
   setSort,
 }: {
   response: AdminMembersResponse;
-  contacts: Contact[];
+  contacts: Contact[] | null;
   revenue: Map<string, MemberRevenueRow>;
   selectedStates: Set<SubscriptionStateKey>;
   setSelectedStates: (s: Set<SubscriptionStateKey>) => void;
@@ -220,6 +280,11 @@ function AdminMembersBody({
   sort: { column: SortColumn; direction: SortDirection };
   setSort: (s: { column: SortColumn; direction: SortDirection }) => void;
 }) {
+  // Filter and sort don't care WHY names are missing — an unreadable list and
+  // an empty one both mean "nothing to match or order by". Only the cell needs
+  // the distinction, so only the cell is handed the nullable.
+  const known = contacts ?? NO_CONTACTS;
+
   const filtered = useMemo(() => {
     const needle = pubkeySearch.toLowerCase();
     return response.members.filter((row) => {
@@ -229,18 +294,18 @@ function AdminMembersBody({
         // Match against contact name OR pubkey — operators searching
         // by either should find the row. Case-insensitive substring
         // on both sides.
-        const name = findContactName(row.member_pubkey, contacts);
+        const name = findContactName(row.member_pubkey, known);
         const matchesName = name?.toLowerCase().includes(needle) ?? false;
         const matchesPubkey = row.member_pubkey.toLowerCase().includes(needle);
         if (!matchesName && !matchesPubkey) return false;
       }
       return true;
     });
-  }, [response.members, contacts, selectedStates, selectedLanes, pubkeySearch]);
+  }, [response.members, known, selectedStates, selectedLanes, pubkeySearch]);
 
   const sorted = useMemo(
-    () => sortRows(filtered, sort, contacts, revenue),
-    [filtered, sort, contacts, revenue],
+    () => sortRows(filtered, sort, known, revenue),
+    [filtered, sort, known, revenue],
   );
 
   return (
@@ -519,7 +584,7 @@ function MembersTable({
   setSort,
 }: {
   rows: AdminMembersRow[];
-  contacts: Contact[];
+  contacts: Contact[] | null;
   revenue: Map<string, MemberRevenueRow>;
   sort: { column: SortColumn; direction: SortDirection };
   setSort: (s: { column: SortColumn; direction: SortDirection }) => void;
@@ -551,7 +616,7 @@ function MembersTable({
             <MemberRow
               key={row.member_pubkey}
               row={row}
-              contactName={findContactName(row.member_pubkey, contacts)}
+              identity={resolveIdentity(row.member_pubkey, contacts)}
               revenue={findRevenue(row.member_pubkey, revenue)}
             />
           ))}
@@ -583,18 +648,18 @@ function SortHeader({
 
 function MemberRow({
   row,
-  contactName,
+  identity,
   revenue,
 }: {
   row: AdminMembersRow;
-  contactName: string | undefined;
+  identity: Identity;
   revenue: MemberRevenueRow | undefined;
 }) {
   const pill = stateToPill(row.subscription_state);
   return (
     <tr>
       <td>
-        <PubkeyCell pubkey={row.member_pubkey} contactName={contactName} />
+        <PubkeyCell pubkey={row.member_pubkey} identity={identity} />
       </td>
       <td>{formatLane(row.lane_purpose)}</td>
       <td>
@@ -611,10 +676,10 @@ function MemberRow({
 
 function PubkeyCell({
   pubkey,
-  contactName,
+  identity,
 }: {
   pubkey: string;
-  contactName: string | undefined;
+  identity: Identity;
 }) {
   const [copied, setCopied] = useState(false);
   const short = `${pubkey.slice(0, 8)}…${pubkey.slice(-8)}`;
@@ -645,27 +710,64 @@ function PubkeyCell({
     try { if (document.execCommand("copy")) markCopied(); } catch { /* clipboard unavailable */ }
     document.body.removeChild(ta);
   };
+  // ONE value drives every branch. Name, marker and silence are three arms of
+  // the same Identity, resolved once in resolveIdentity() — spec §2.2:
+  // "computing the marker on the same data that resolves the name is what
+  // guarantees they cannot disagree." A row showing a name AND the marker is
+  // not prevented here; it is unrepresentable.
+  //
+  // The lookup's case-insensitivity comes along for free, which is what §3
+  // requires: an uppercase-entered contacts row against a lowercase roster
+  // pubkey is the SAME member, and a case-sensitive test would nudge the
+  // operator to go find a name the treasury already holds.
+  //
+  // `unknown` (contacts unreadable) renders as the bare pubkey — identical to
+  // the pre-marker display. The marker is a claim; with no reading of the
+  // contacts table there is no basis to make it.
+  const identified = identity.kind === "named";
+
   // Two-line layout when a contact exists: name on top (sans-serif,
   // primary text), truncated pubkey on bottom (Plex Mono, muted).
   // Click still copies the full pubkey — operator's support-workflow
   // affordance preserved.
+  //
+  // When no contacts row exists the pubkey STAYS VISIBLE and the marker sits
+  // beside it (§4.2) — it is the only durable handle the operator has on an
+  // unnamed row, and what they read out during the out-of-band conversation.
+  // The link is a SIBLING of the copy button, not a child: an <a> nested in a
+  // <button> is invalid HTML and unreachable by keyboard.
   return (
-    <button
-      type="button"
-      className={`admin-members-pubkey${contactName ? " has-contact" : ""}`}
-      onClick={handleCopy}
-      title={pubkey}
-    >
-      {contactName ? (
-        <span className="admin-members-pubkey-stack">
-          <span className="admin-members-contact-name">{contactName}</span>
-          <code className="admin-members-pubkey-short">{short}</code>
+    <div className="admin-members-member-cell">
+      <button
+        type="button"
+        className={`admin-members-pubkey${identified ? " has-contact" : ""}`}
+        onClick={handleCopy}
+        title={pubkey}
+      >
+        {identity.kind === "named" ? (
+          <span className="admin-members-pubkey-stack">
+            <span className="admin-members-contact-name">{identity.name}</span>
+            <code className="admin-members-pubkey-short">{short}</code>
+          </span>
+        ) : (
+          <code>{short}</code>
+        )}
+        {copied && <span className="admin-members-pubkey-copied">copied</span>}
+      </button>
+      {identity.kind === "unidentified" && (
+        <span className="admin-members-unidentified">
+          <span className="admin-members-unidentified-marker">{UNIDENTIFIED_MARKER}</span>
+          {/* Pubkey only — spec §7. Prefilling a name, or a GUESS at one,
+              would invert the decision's entire point. */}
+          <Link
+            className="admin-members-unidentified-link"
+            to={`/contacts?pubkey=${encodeURIComponent(pubkey)}`}
+          >
+            {ADD_CONTACT_CTA}
+          </Link>
         </span>
-      ) : (
-        <code>{short}</code>
       )}
-      {copied && <span className="admin-members-pubkey-copied">copied</span>}
-    </button>
+    </div>
   );
 }
 

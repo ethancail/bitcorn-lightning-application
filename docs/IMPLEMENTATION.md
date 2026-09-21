@@ -101,7 +101,7 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/pages/MemberLiquidity.tsx` | (Orphaned — imported in `App.tsx` but not currently rendered; displaced by the Liquidity page overhaul shipped in v1.13.8. Retained on disk pending a future cleanup PR.) |
 | `app/web/src/pages/Payments.tsx` | Invoice-based payments (Request Payment + Pay Invoice) with QR |
 | `app/web/src/pages/Charts.tsx` | PowerLawChart + PriceTickerStrip + MovingAverages + CornBitcoin + CornMAs |
-| `app/web/src/pages/Contacts.tsx` | CRUD address book with tag editor and sync-from-peers |
+| `app/web/src/pages/Contacts.tsx` | CRUD address book with tag editor and sync-from-peers. Accepts `?pubkey=` to open the add form with the Node ID prefilled — the landing point for the admin roster's unidentified marker |
 | `app/web/src/pages/Stablecoin.tsx` | Stablecoin Settlements page — member-side rail surface (spec §9.1) |
 | `app/web/src/stablecoin/RailScope.tsx` | Scoped WagmiProvider wrapper — keeps wagmi off the rest of the UI |
 | `app/web/src/stablecoin/wagmi.ts` | Wagmi v2 config: Coinbase Smart Wallet / MetaMask / WalletConnect; default chain from `VITE_BASE_CHAIN_ID` |
