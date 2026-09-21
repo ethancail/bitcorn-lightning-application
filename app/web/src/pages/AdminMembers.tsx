@@ -8,11 +8,19 @@
 // have right now" — surfaces that generate the right questions for
 // real operator use to name v2 follow-ups.
 //
+// ⚠ ONE DEPARTURE FROM THAT, ADDED DELIBERATELY AND UNDER ITS OWN AUTHORITY:
+// the unidentified marker links out to Contacts with the pubkey prefilled
+// (specs/2026-09-21-operator-nudge-for-unidentified-enrolled-members-spec.md,
+// decision 3b81b7e). It is navigation, not an action on state — nothing here
+// mutates — but "no drill-down" above is Stage 5b's rule and this is the
+// later spec spending it. Recorded so the sentence is not read as current.
+//
 // Data: GET /api/admin/members (treasury-only via assertTreasury).
 // Filter/sort: all client-side per spec §10.5; the dataset is small.
 // Refresh: manual button + 60s auto-poll per spec §3.6.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   api,
   type AdminMembersResponse,
@@ -38,6 +46,17 @@ function findContactName(pubkey: string, contacts: Contact[]): string | undefine
   const needle = pubkey.toLowerCase();
   return contacts.find((c) => c.pubkey.toLowerCase() === needle)?.name;
 }
+
+// ⚠ PROPOSED COPY — spec §5, awaiting Ethan. NOT accepted. Centralized here so
+// the review decision is a one-line edit rather than a sweep of the component.
+//
+// Known weakness, named by the spec rather than hidden: neither string carries
+// decision §2's central point — that the operator must go and FIND OUT the
+// name, because it does not exist anywhere yet. "Add contact" reads like data
+// entry for something already known. The spec flags this as the most likely
+// thing to change at review, with a tooltip or helper line the likely home.
+const UNIDENTIFIED_MARKER = "Unidentified";
+const ADD_CONTACT_CTA = "Add contact";
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -645,27 +664,63 @@ function PubkeyCell({
     try { if (document.execCommand("copy")) markCopied(); } catch { /* clipboard unavailable */ }
     document.body.removeChild(ta);
   };
+  // ONE predicate drives BOTH branches. The name and the marker are derived
+  // from the same findContactName() result, so a row cannot render both —
+  // spec §2.2: "computing the marker on the same data that resolves the name
+  // is what guarantees they cannot disagree." That also inherits the lookup's
+  // case-insensitivity for free, which is what §3 requires: an uppercase-
+  // entered contacts row against a lowercase roster pubkey is the SAME member,
+  // and a case-sensitive absence test would nudge the operator to go find a
+  // name the treasury already holds.
+  //
+  // `undefined` means "no contacts row" — the trigger, and the whole trigger
+  // (§1.2). Deliberately not `!contactName`: that would treat a row with an
+  // empty name as absent, making the marker fire on a member the treasury HAS
+  // a record for.
+  const identified = contactName !== undefined;
+
   // Two-line layout when a contact exists: name on top (sans-serif,
   // primary text), truncated pubkey on bottom (Plex Mono, muted).
   // Click still copies the full pubkey — operator's support-workflow
   // affordance preserved.
+  //
+  // When no contacts row exists the pubkey STAYS VISIBLE and the marker sits
+  // beside it (§4.2) — it is the only durable handle the operator has on an
+  // unnamed row, and what they read out during the out-of-band conversation.
+  // The link is a SIBLING of the copy button, not a child: an <a> nested in a
+  // <button> is invalid HTML and unreachable by keyboard.
   return (
-    <button
-      type="button"
-      className={`admin-members-pubkey${contactName ? " has-contact" : ""}`}
-      onClick={handleCopy}
-      title={pubkey}
-    >
-      {contactName ? (
-        <span className="admin-members-pubkey-stack">
-          <span className="admin-members-contact-name">{contactName}</span>
-          <code className="admin-members-pubkey-short">{short}</code>
+    <div className="admin-members-member-cell">
+      <button
+        type="button"
+        className={`admin-members-pubkey${identified ? " has-contact" : ""}`}
+        onClick={handleCopy}
+        title={pubkey}
+      >
+        {identified ? (
+          <span className="admin-members-pubkey-stack">
+            <span className="admin-members-contact-name">{contactName}</span>
+            <code className="admin-members-pubkey-short">{short}</code>
+          </span>
+        ) : (
+          <code>{short}</code>
+        )}
+        {copied && <span className="admin-members-pubkey-copied">copied</span>}
+      </button>
+      {!identified && (
+        <span className="admin-members-unidentified">
+          <span className="admin-members-unidentified-marker">{UNIDENTIFIED_MARKER}</span>
+          {/* Pubkey only — spec §7. Prefilling a name, or a GUESS at one,
+              would invert the decision's entire point. */}
+          <Link
+            className="admin-members-unidentified-link"
+            to={`/contacts?pubkey=${encodeURIComponent(pubkey)}`}
+          >
+            {ADD_CONTACT_CTA}
+          </Link>
         </span>
-      ) : (
-        <code>{short}</code>
       )}
-      {copied && <span className="admin-members-pubkey-copied">copied</span>}
-    </button>
+    </div>
   );
 }
 
