@@ -7,6 +7,10 @@
 // price feed. If this test and the workbook disagree, the implementation is
 // wrong until shown otherwise.
 //
+// The fixture is generated, never hand-edited:
+//   python3 cloudflare-worker/scripts/gen-daybreak-oracle-fixture.py <workbook.xlsx>
+// (see that script's header; the workbook path is a required argument).
+//
 // TOLERANCES, and why they differ by quantity:
 //   - age, residual, Z are O(1) and asserted ABSOLUTELY at 1e-12.
 //   - trend runs to ~2.4e4, where one ulp is ~3.6e-12 — an absolute 1e-12 is
@@ -44,6 +48,8 @@ import {
 } from "../fixtures/daybreakPowerLawOracle";
 
 const TOL_ABS = 1e-12;
+// TREND ONLY — see the comment on the TREND assertion before tightening this
+// or switching trend to TOL_ABS: an absolute 1e-12 is unmeetable there.
 const TOL_REL = 1e-12;
 
 // The model author's parameters as published to us. Asserted below to be the
@@ -176,6 +182,18 @@ describe("computePowerLawZ against the author's workbook — all 4,016 rows", ()
   });
 
   it("TREND (sheet column F) matches, relative 1e-12", () => {
+    // RELATIVE, NOT ABSOLUTE — AND AN ABSOLUTE 1e-12 CANNOT BE MET HERE.
+    // Trend reaches 23,840.2 (2026-09-21). A double near 2.4e4 has an ulp of
+    // 2^-38 ≈ 3.64e-12, so an absolute 1e-12 asks for less than one ulp: it
+    // would fail a CORRECT implementation. It does: measured against the
+    // workbook, the worst absolute trend error is 5.82e-11 — exactly 16 ulps,
+    // at 2026-08-29 (trend 23,420.2) — because the workbook computes
+    // 10^(log10 a + b·log10 age) while we compute a·age^b, and the two forms
+    // round differently. Relatively that is 2.5e-15, about 11 machine
+    // epsilons, so relative 1e-12 still leaves ~400x headroom and still fails
+    // every wrong-model mutant by orders of magnitude (the 365-day-year
+    // control misses by 3.4e-3). Age, residual and Z are O(1) and stay
+    // ABSOLUTE at 1e-12. Ruled on by Ethan, 2026-09-22.
     const c = compare((v) => v.trend, (r) => r.trend, "rel");
     expect(c.offenders, describeFailure("TREND (a·age^b)", "rel", c)).toEqual([]);
     expect(c.checked).toBe(ORACLE_ROW_COUNT);
