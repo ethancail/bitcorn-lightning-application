@@ -14,10 +14,10 @@ import {
 
 describe("normalizeAlias", () => {
   it("trims leading/trailing whitespace", () => {
-    expect(normalizeAlias("  Ethan's Farm  ")).toBe("Ethan's Farm");
+    expect(normalizeAlias("  Lazy Acres Farm  ")).toBe("Lazy Acres Farm");
   });
   it("collapses internal whitespace runs to a single space", () => {
-    expect(normalizeAlias("Ethan's    Farm")).toBe("Ethan's Farm");
+    expect(normalizeAlias("Lazy Acres    Farm")).toBe("Lazy Acres Farm");
     expect(normalizeAlias("a\t\tb")).toBe("a b");
   });
   it("is idempotent (normalizing twice == once)", () => {
@@ -33,7 +33,7 @@ describe("normalizeAlias", () => {
 
 describe("validateAliasFormat", () => {
   it("accepts ordinary names", () => {
-    expect(validateAliasFormat("Ethan's Farm").valid).toBe(true);
+    expect(validateAliasFormat("Lazy Acres Farm").valid).toBe(true);
     expect(validateAliasFormat("Node-1_alpha").valid).toBe(true);
     expect(validateAliasFormat("What?! Yes.").valid).toBe(true);
   });
