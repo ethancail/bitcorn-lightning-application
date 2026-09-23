@@ -36,6 +36,8 @@ describe("validateAliasFormat", () => {
     expect(validateAliasFormat("Lazy Acres Farm").valid).toBe(true);
     expect(validateAliasFormat("Node-1_alpha").valid).toBe(true);
     expect(validateAliasFormat("What?! Yes.").valid).toBe(true);
+    // The only accepted fixture with an apostrophe — keeps ' in the charset guarded.
+    expect(validateAliasFormat("Farmer's Co-op").valid).toBe(true);
   });
   it("rejects empty input (length 0)", () => {
     expect(validateAliasFormat("").valid).toBe(false);

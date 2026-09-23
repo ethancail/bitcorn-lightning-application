@@ -21,6 +21,8 @@ describe("aliasInputState", () => {
     expect(s.valid).toBe(true);
     expect(s.normalized).toBe("Lazy Acres Farm");
     expect(s.byteCount).toBe("Lazy Acres Farm".length); // all ASCII => bytes == chars
+    // The only accepted fixture with an apostrophe — keeps ' in the charset guarded.
+    expect(aliasInputState("Farmer's Co-op").valid).toBe(true);
   });
 
   it("counts multibyte UTF-8 bytes, not char length", () => {
