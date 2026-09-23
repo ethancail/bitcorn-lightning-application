@@ -3006,8 +3006,10 @@ input[type="number"] {
 
 /* Two-line "Member" cell: contact name on top (sans-serif primary
    text), truncated pubkey on bottom (Plex Mono muted). Renders only
-   when the row has a matching entry in the contacts table; rows
-   without a contact fall back to single-line pubkey display. */
+   when the row has a matching entry in the contacts table; rows with
+   no entry show the single-line pubkey plus the unidentified marker
+   and its Contacts link (see below), and rows whose contacts read
+   FAILED show the single-line pubkey alone. */
 .admin-members-pubkey.has-contact {
   align-items: flex-start;
   padding-top: 0.3rem;
@@ -3031,6 +3033,46 @@ input[type="number"] {
   font-size: 0.7rem;
   color: var(--fg-2);
   opacity: 0.8;
+}
+
+/* Unidentified marker — shown only when the contacts read SUCCEEDED and held
+   no row for this pubkey. A failed read renders no marker at all: the marker
+   is a claim, and there is no basis for it without a reading.
+   Stacks UNDER the pubkey rather than beside it: the
+   Member column is already the widest in a dense operator table, and a second
+   inline element would push the sortable headers around.
+   Theme parity comes free from the tokens — --amber and --text-3 are both
+   redefined in the light block. ⚠ The copy is PROPOSED, not accepted; see the
+   §5 note in AdminMembers.tsx. */
+.admin-members-member-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+.admin-members-unidentified {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding-left: 0.4rem; /* line up with the copy button's inner padding */
+}
+.admin-members-unidentified-marker {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--amber);
+  opacity: 0.9;
+}
+.admin-members-unidentified-link {
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  color: var(--text-3);
+  text-decoration: none;
+  border-bottom: 1px dotted currentColor;
+}
+.admin-members-unidentified-link:hover {
+  color: var(--amber);
 }
 
 /* ─── Stablecoin Rail (§8) — Briefing-Room-aligned ─────────────── */

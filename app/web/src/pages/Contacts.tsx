@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api, type Contact, truncPubkey, fmtSats } from "../api/client";
 
 // ─── Tag Editor ──────────────────────────────────────────────────────────────
@@ -130,7 +131,26 @@ export default function Contacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showAddForm, setShowAddForm] = useState(false);
+
+  // Prefill, for arrivals from the admin Members roster's unidentified marker:
+  // it links here as /contacts?pubkey=<pubkey> so the operator can record a
+  // name they obtained out of band.
+  //
+  // Query string rather than router state, for two reasons: it is the
+  // convention this app already uses for exactly this (RefillChannel and
+  // WithdrawBitcoin take ?amount=, MemberDashboard ?upgrade_capacity=,
+  // ValuationInput ?date=/?view=), and unlike router state it survives a
+  // reload and a pasted link.
+  //
+  // ⚠ Pubkey ONLY. Prefilling Name or Notes is out of scope, and prefilling a
+  // GUESS at a name would invert the point of the nudge — the operator is
+  // being asked to go and find out, not to confirm something already assumed.
+  const [searchParams] = useSearchParams();
+  const prefillPubkey = searchParams.get("pubkey")?.trim() ?? "";
+
+  // Opened automatically when a pubkey arrives — otherwise the operator lands
+  // on a collapsed form and the prefill is invisible.
+  const [showAddForm, setShowAddForm] = useState(prefillPubkey.length > 0);
   const [editingPubkey, setEditingPubkey] = useState<string | null>(null);
   const [deletingPubkey, setDeletingPubkey] = useState<string | null>(null);
   const [syncResult, setSyncResult] = useState<{ added: number; skipped: number } | null>(null);
@@ -138,7 +158,7 @@ export default function Contacts() {
   const [isTreasury, setIsTreasury] = useState(false);
 
   // Add form state
-  const [addPubkey, setAddPubkey] = useState("");
+  const [addPubkey, setAddPubkey] = useState(prefillPubkey);
   const [addName, setAddName] = useState("");
   const [addNotes, setAddNotes] = useState("");
   const [addTags, setAddTags] = useState<string[]>([]);
