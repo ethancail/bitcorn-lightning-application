@@ -8,7 +8,9 @@
 // Stored on this node only. The "who can see it" line must stay TRUE AT SHIP:
 // until the transport (D5 part 2) exists the name reaches nobody, so the line
 // says exactly that. ⚠ Part 2 MUST revise it in the same release the name
-// starts travelling — a label that is true now becomes false that day.
+// starts travelling — a label that is true now becomes false that day. The
+// dashboard prompt's BODY (memberNamePrompt.ts) carries the same coupling:
+// its "for now" / "upcoming update" wording must change in that same release.
 //
 // Overwrite only: no clear action (accepted, spec §6). A thin renderer over
 // bitcornNameInputState (client hints) + the API (authoritative; errors are
@@ -18,7 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type BitcornName } from "../api/client";
 import { bitcornNameInputState, BITCORN_NAME_MAX_CHARS } from "./bitcornNameInputState";
 
-// ⚠ COPY IS PROPOSED, NOT ACCEPTED (spec §8).
+// ⚠ COPY IS PROPOSED, NOT ACCEPTED (spec §8) — both strings below.
 export const BITCORN_NAME_FIELD_LABEL = "BitCorn name";
 export const BITCORN_NAME_VISIBILITY_LINE =
   "Stored on this node only. Not published to the Lightning network. (Your public alias, below, is.)";

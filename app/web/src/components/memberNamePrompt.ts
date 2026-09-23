@@ -24,14 +24,26 @@ export type MemberNamePrompt =
   | { render: false }
   | { render: true; headline: string; body: string; actionLabel: string };
 
-// ⚠ COPY IS PROPOSED, NOT ACCEPTED (spec §8) — named constants so a revision
-// is one edit; the tests hardcode them on purpose so a change fails them.
-// Binding constraints the words must keep meeting: never promise the treasury
-// (or anyone) will see the name — until the transport ships it reaches nobody;
-// never send the farmer to "your node operator" (they are the operator).
+// Named constants so a revision is one edit; the tests hardcode them on
+// purpose so a change fails them. Binding constraints the words must keep
+// meeting: never claim the name is seen or used TODAY — until the transport
+// ships it reaches nobody; never send the farmer to "your node operator"
+// (they are the operator).
+//
+// ⚠ PART-2 COUPLING. The BODY is true only while the name stays on the node:
+// its "for now" / "upcoming update" wording MUST change in the same release
+// part 2's transport ships — alongside BitcornNamePanel's visibility line,
+// which carries the same coupling. Either one left alone becomes false that
+// day. (The test pinning "for now" will then need updating too, deliberately.)
+
+// PROPOSED, NOT ACCEPTED (spec §8).
 export const MEMBER_NAME_PROMPT_HEADLINE = "Add a name for your farm";
+// ACCEPTED — Ethan's exact wording, 2026-09-23. It replaced "Pick a name for
+// BitCorn to use for you…", which passed the forbidden-words test while still
+// implying BitCorn uses the name today.
 export const MEMBER_NAME_PROMPT_BODY =
-  "Pick a name for BitCorn to use for you. It's kept on your node, not announced to the Lightning network.";
+  "It stays on your node for now. In an upcoming update it'll be shared with BitCorn so we know who you are. It's never announced to the Lightning network.";
+// PROPOSED, NOT ACCEPTED (spec §8).
 export const MEMBER_NAME_PROMPT_ACTION = "Add name in Settings →";
 
 export function memberNamePromptFor(read: BitcornNameRead): MemberNamePrompt {

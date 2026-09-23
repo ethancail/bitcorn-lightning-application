@@ -10,12 +10,13 @@ import { memberNamePromptFor } from "./memberNamePrompt";
 // ⚠ Every "no prompt" case sits beside a paired positive built from the same
 // shape (§9.4), so a descriptor that never renders fails the pair.
 //
-// Copy is hardcoded here ON PURPOSE (§8): the strings are proposed, not
-// accepted, and a revision should fail this file rather than slip through.
+// Copy is hardcoded here ON PURPOSE (§8), so a revision fails this file
+// rather than slipping through. The BODY is ACCEPTED (Ethan, 2026-09-23); the
+// headline and action remain proposed.
 
 const HEADLINE = "Add a name for your farm";
 const BODY =
-  "Pick a name for BitCorn to use for you. It's kept on your node, not announced to the Lightning network.";
+  "It stays on your node for now. In an upcoming update it'll be shared with BitCorn so we know who you are. It's never announced to the Lightning network.";
 const ACTION = "Add name in Settings →";
 
 describe("memberNamePromptFor", () => {
@@ -47,5 +48,16 @@ describe("memberNamePromptFor", () => {
     for (const forbidden of ["treasury", "operator", "hub will", "will see", "visible to"]) {
       expect(all, forbidden).not.toContain(forbidden);
     }
+  });
+
+  // Why this exists: the replaced body ("Pick a name for BitCorn to use for
+  // you…") PASSED the forbidden-words check above while still implying BitCorn
+  // uses the name TODAY. Until part 2's transport ships, nothing uses it. A
+  // word blocklist cannot see a tense; this pins the present-tense qualifier,
+  // so an edit that drops it — reverting to a claim about today — goes red.
+  it("§8 present-tense honesty: the body says the name stays on the node 'for now'", () => {
+    const p = memberNamePromptFor({ state: "loaded", bitcorn_name: null });
+    if (!p.render) throw new Error("paired positive did not render");
+    expect(p.body).toContain("for now");
   });
 });
