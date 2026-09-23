@@ -8,9 +8,10 @@
 // Nothing here reads a clock or touches KV: `now` is always passed in, so every
 // answer is a function of its arguments. Every conversion goes through Intl
 // with an explicit `America/Chicago` zone. ⚠ Never use Date's local getters
-// (getDate, getHours, …) for Central time: production Workers run in UTC, but
-// the local test pool inherits the HOST's zone, so on a Chicago machine a
-// local-getter bug passes the tests and is wrong in production. Date-only
+// (getDate, getHours, …) for Central time: they answer in whatever zone the
+// runtime has. Production Workers run in UTC; a local workerd inherits the
+// HOST's zone unless pinned (vitest.config.ts pins the test pool to UTC, so the
+// tests see what production sees). Date-only
 // arithmetic (adding days, the weekday of a calendar date) is done in UTC on
 // purpose — a calendar date has no zone, and UTC has no DST.
 

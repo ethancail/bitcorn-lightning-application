@@ -4,11 +4,12 @@
 // has a PERMITTING case (the right thing IS there) and a FORBIDDING case (the
 // wrong thing never is), per the spec's §5.1 / §5.2.
 //
-// ⚠ The local workerd pool inherits the HOST's timezone (on a Chicago machine,
-// `new Date(x).getDate()` answers in CDT; under TZ=UTC it answers in UTC).
-// Production Workers run in UTC. So a local-getter bug can pass here and fail
-// there — which is why these assertions compare against exact UTC instants and
-// Intl output with an explicit zone, never against local getters.
+// ⚠ An unpinned local workerd inherits the HOST's timezone (on a Chicago
+// machine, `new Date(x).getDate()` answers in CDT), while production Workers run
+// in UTC — so a local-getter bug could pass here and fail there. vitest.config.ts
+// pins the pool to UTC to close that; independently, these assertions compare
+// against exact UTC instants and Intl output with an explicit zone, never
+// against local getters.
 
 import { describe, expect, it } from "vitest";
 import {
