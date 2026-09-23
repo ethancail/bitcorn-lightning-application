@@ -136,7 +136,7 @@ export default function ProfilePanel() {
           <input
             type="text"
             value={input}
-            placeholder={`e.g. "Ethan's Farm"`}
+            placeholder={`e.g. "Lazy Acres Farm"`}
             disabled={inFlight}
             onChange={(e) => setInput(e.target.value)}
             style={{
@@ -186,7 +186,7 @@ export default function ProfilePanel() {
             Technical details expander below) */}
         <div style={{ fontSize: "0.75rem", color: "var(--text-3)", lineHeight: 1.5, borderTop: "1px solid var(--border)", paddingTop: 10 }}>
           <p style={{ margin: "0 0 6px" }}>
-            Your name is announced to the public Lightning network and can take up to
+            Your alias is announced to the public Lightning network and can take up to
             24&nbsp;hours to appear everywhere.
           </p>
           <p style={{ margin: "0 0 6px" }}>
