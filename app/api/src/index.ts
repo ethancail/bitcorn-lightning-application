@@ -69,7 +69,8 @@ import { readLocalCertExpiry } from "./lightning/readCertExpiry";
 import { certExpiryLevel, certExpiryMessage } from "./lightning/certExpiry";
 import { runTimeoutBoundLndProbe } from "./lightning/lndProbeRoute";
 import { normalizeAlias, validateAliasFormat, isAliasBlocked, lndDefaultAlias } from "./profile/aliasValidation";
-import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow } from "./profile/profileStore";
+import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow, setBitcornName } from "./profile/profileStore";
+import { normalizeBitcornName, validateBitcornName } from "./profile/nameValidation";
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury, assertNonEmpty, assertMember } from "./utils/role";
@@ -1269,6 +1270,67 @@ async function dispatchRequest(
     }
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  // GET /api/profile/name — the member's Bitcorn-level name (migrations
+  // 055/056). NOT the LND alias: kept on its own route so the two stay apart
+  // on the wire (spec 2026-09-23-member-name-prompt §6). Stored on this node
+  // only; nothing sends it anywhere.
+  if (req.method === "GET" && req.url === "/api/profile/name") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    const profile = getMemberProfile(node!.pubkey);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      bitcorn_name: profile?.bitcorn_name ?? null,
+      bitcorn_name_set_at: profile?.bitcorn_name_set_at ?? null,
+    }));
+    return;
+  }
+
+  // POST /api/profile/name — set/overwrite the Bitcorn-level name. Body:
+  // { name: string }. No DELETE: overwrite only (spec §6). Errors are SPECIFIC,
+  // unlike the alias route's generic rejection — that one exists to keep the
+  // blocklist unexplained, and this field has no blocklist (§5.3).
+  if (req.method === "POST" && req.url === "/api/profile/name") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    const pubkey = node!.pubkey;
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const parsed = JSON.parse(body || "{}") as { name?: unknown };
+        if (typeof parsed.name !== "string") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_request", detail: "name must be a string" }));
+          return;
+        }
+        const normalized = normalizeBitcornName(parsed.name);
+        const check = validateBitcornName(normalized);
+        if (!check.valid) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_name", detail: check.error }));
+          return;
+        }
+        const now = Math.floor(Date.now() / 1000);
+        setBitcornName(pubkey, normalized, now);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ bitcorn_name: normalized, bitcorn_name_set_at: now }));
+      } catch (err: any) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "profile_name_set_failed", detail: String(err?.message ?? err) }));
+      }
+    });
     return;
   }
 
