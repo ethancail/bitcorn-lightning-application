@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.13"
+version: "1.18.14"
 port: 3200
 
 description: >
@@ -27,6 +27,10 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.14: Your dashboard now asks for your name or business name. It stays on
+  your node for now — in an upcoming update it'll be shared with BitCorn so we
+  know who you are. It's never announced to the Lightning network.
+
   v1.18.13: Internal improvements to the treasury operator's member list. No
   changes to anything on your node.
 
