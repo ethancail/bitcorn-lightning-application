@@ -193,6 +193,89 @@ describe("test 9: an edition published before 06:00 Central renders immediately"
   });
 });
 
+// ─── Held over is decided by DATE COMPARISON (Ethan, 2026-09-23) ──────────
+
+describe("held over by date comparison, not by the due date's own key", () => {
+  const THU = "2026-09-24";
+  const FRI = "2026-09-25"; // due (Mon–Fri) — left MISSING below
+  const SAT = "2026-09-26"; // off-calendar
+  const SAT_NOON = at("2026-09-26T17:00:00Z"); // Sat 12:00 CDT → due date is Fri
+  const thuEdition = { headline: "Thursday edition" };
+  const satEdition = { headline: "Saturday special edition" };
+
+  async function publish(kv: KVNamespace, date: string, content: Record<string, unknown>) {
+    expect((await writeDraft(kv, date, content)).ok).toBe(true);
+    expect((await publishEdition(kv, date)).ok).toBe(true);
+  }
+
+  it("an off-calendar edition dated AFTER a missing due date renders CURRENT — never held over", async () => {
+    const { kv, store } = mockKV();
+    await publish(kv, THU, thuEdition);
+    await publish(kv, SAT, satEdition);
+    expect(store.has("daybreak:2026-09-25:published")).toBe(false); // the due edition really is missing
+
+    const res = await readEditionStatus(kv, SAT_NOON);
+    expect(res).toEqual({ ok: true, state: "current", dueDate: FRI, edition: { date: SAT, content: satEdition } }); // permitting
+    expect(res.ok && res.state).not.toBe("held_over"); // forbidding
+  });
+
+  it("a missing due date with only OLDER editions still renders HELD OVER — and flips once it is published", async () => {
+    const { kv } = mockKV();
+    await publish(kv, THU, thuEdition);
+
+    const res = await readEditionStatus(kv, SAT_NOON);
+    expect(res).toEqual({ ok: true, state: "held_over", dueDate: FRI, edition: { date: THU, content: thuEdition } }); // permitting
+    expect(res.ok && res.state).not.toBe("current"); // forbidding
+
+    // anti-vacuity: the same read with the due edition present is current
+    await publish(kv, FRI, { headline: "Friday edition" });
+    const after = await readEditionStatus(kv, SAT_NOON);
+    expect(after.ok && after.state).toBe("current");
+    expect(after.ok && after.state !== "unavailable" && after.edition.date).toBe(FRI);
+  });
+
+  it("a due edition published LATE, dated its own due date, renders CURRENT once published", async () => {
+    const { kv } = mockKV();
+    await publishTuesday(kv);
+    const WED_0900 = at("2026-09-23T14:00:00Z");
+    const WED_0931 = at("2026-09-23T14:31:00Z");
+
+    // Before: 09:00 Wed, three hours past due, Wednesday missing → held over.
+    const before = await readEditionStatus(kv, WED_0900);
+    expect(before.ok && before.state).toBe("held_over");
+
+    // Kevin publishes Wednesday's edition at 09:30.
+    await writeDraft(kv, WED, wedFinal);
+    await publishEdition(kv, WED);
+    const res = await readEditionStatus(kv, WED_0931);
+    expect(res).toEqual({ ok: true, state: "current", dueDate: WED, edition: { date: WED, content: wedFinal } }); // permitting
+    expect(res.ok && res.state).not.toBe("held_over"); // forbidding: lateness is not sticky
+  });
+});
+
+describe("visibility: an edition is visible from Central midnight of its own date, never earlier (Ethan, 2026-09-23)", () => {
+  const TUE_2100 = at("2026-09-23T02:00:00Z"); // Tue 21:00 CDT
+  const TUE_235959 = at("2026-09-23T04:59:59Z"); // Tue 23:59:59 CDT
+  const WED_0000 = at("2026-09-23T05:00:00Z"); // Wed 00:00 CDT
+
+  it("a Wednesday edition published at 21:00 Tuesday is NOT visible Tuesday, and IS visible at 00:00 Wednesday", async () => {
+    const { kv, store } = mockKV();
+    await publishTuesday(kv);
+    await writeDraft(kv, WED, wedFinal);
+    await publishEdition(kv, WED); // published Tuesday evening
+    expect(store.has("daybreak:2026-09-23:published")).toBe(true);
+
+    for (const now of [TUE_2100, TUE_235959]) {
+      const res = await readEditionStatus(kv, now);
+      expect(res).toEqual({ ok: true, state: "current", dueDate: TUE, edition: { date: TUE, content: tueEdition } }); // Tuesday still shows Tuesday
+      expect(JSON.stringify(res)).not.toContain("Wednesday"); // forbidding: never early
+    }
+
+    const res = await readEditionStatus(kv, WED_0000);
+    expect(res).toEqual({ ok: true, state: "current", dueDate: TUE, edition: { date: WED, content: wedFinal } }); // permitting
+  });
+});
+
 describe("status: nothing published at all", () => {
   it("→ unavailable (and a single published edition anywhere in the window flips it)", async () => {
     const { kv } = mockKV();

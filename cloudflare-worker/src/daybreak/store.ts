@@ -175,7 +175,12 @@ export async function findLatestPublished(
   return { ok: true, found: false };
 }
 
-/** The member read: which edition to show at `now`, and whether it is held over. */
+/**
+ * The member read: which edition to show at `now`, and whether it is held over.
+ * The walk starts at today's Central date, so an edition becomes visible from
+ * Central midnight of its own date, never earlier (Ethan, 2026-09-23). Held over
+ * is decided by comparing the latest edition's date with the due date.
+ */
 export async function readEditionStatus(
   kv: KVNamespace,
   now: Date,
@@ -187,19 +192,7 @@ export async function readEditionStatus(
   if (!latest.found) return { ok: true, state: "unavailable" };
 
   const dueDate = mostRecentDueDate(now, calendar, maxLookbackDays);
-  let dueDatePublished = false;
-  if (dueDate !== null) {
-    if (latest.date === dueDate) {
-      dueDatePublished = true;
-    } else if (latest.date > dueDate) {
-      // A later, non-due edition exists; the due date's own key decides.
-      const r = await readSlot(kv, dueDate, "published");
-      if (!r.ok) return r;
-      dueDatePublished = r.found;
-    }
-    // latest.date < dueDate: the walk already passed the due date and found nothing.
-  }
-  const state = classifyEdition({ dueDate, latestPublishedDate: latest.date, dueDatePublished });
+  const state = classifyEdition({ dueDate, latestPublishedDate: latest.date });
   return {
     ok: true,
     state: state === "current" ? "current" : "held_over",

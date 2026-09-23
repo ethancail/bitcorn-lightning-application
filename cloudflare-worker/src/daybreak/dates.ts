@@ -1,9 +1,10 @@
 // Pure date functions for Daybreak editions.
 //
 // An edition is filed under its US CENTRAL publication date (Ruling E), and
-// "held over" begins at the due time, 6:00 AM Central, on a due day with no
-// edition published for that date (Ruling F.1). Both rulings are in the
-// research vault's Daybreak spec, §3.3.
+// "held over" begins at the due time, 6:00 AM Central, on a due day (Ruling
+// F.1) — both in the research vault's Daybreak spec, §3.3 — when the latest
+// published edition is dated BEFORE that day (Ethan, 2026-09-23: date
+// comparison, not whether the due date's own key exists).
 //
 // Nothing here reads a clock or touches KV: `now` is always passed in, so every
 // answer is a function of its arguments. Every conversion goes through Intl
@@ -145,19 +146,22 @@ export function mostRecentDueDate(
 export type EditionState = "current" | "held_over" | "unavailable";
 
 /**
- * The status rule. A published edition is always visible once published — the
- * due time decides only when ABSENCE becomes late:
- *   - nothing published at all            → unavailable
- *   - no due date in the window           → current (no absence can be late)
- *   - an edition published for the due date → the latest is current
- *   - otherwise                           → the latest is held over
+ * The status rule, decided by DATE COMPARISON (Ethan, 2026-09-23), not by
+ * whether the due date's own key exists. A published edition is always visible
+ * once its date begins — the due time decides only when ABSENCE becomes late:
+ *   - nothing published at all                   → unavailable
+ *   - no due date in the window                  → current (no absence can be late)
+ *   - latest edition dated ON OR AFTER the due date → current
+ *   - latest edition dated BEFORE the due date   → held over
+ * So an off-calendar edition newer than a missing due edition is current: what
+ * the member sees is not stale, whatever the calendar expected.
  */
 export function classifyEdition(input: {
   dueDate: CentralDate | null;
   latestPublishedDate: CentralDate | null;
-  dueDatePublished: boolean;
 }): EditionState {
   if (input.latestPublishedDate === null) return "unavailable";
   if (input.dueDate === null) return "current";
-  return input.dueDatePublished ? "current" : "held_over";
+  // YYYY-MM-DD strings compare in calendar order.
+  return input.latestPublishedDate >= input.dueDate ? "current" : "held_over";
 }

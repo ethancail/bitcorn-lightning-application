@@ -191,16 +191,26 @@ describe("mostRecentDueDate — the most recent due instant at or before now", (
   });
 });
 
-describe("classifyEdition — current / held over / unavailable", () => {
-  it("published for the due date → current; not → held over; nothing → unavailable", () => {
-    expect(classifyEdition({ dueDate: "2026-09-23", latestPublishedDate: "2026-09-23", dueDatePublished: true })).toBe("current");
-    expect(classifyEdition({ dueDate: "2026-09-23", latestPublishedDate: "2026-09-22", dueDatePublished: false })).toBe("held_over");
-    expect(classifyEdition({ dueDate: "2026-09-23", latestPublishedDate: null, dueDatePublished: false })).toBe("unavailable");
+describe("classifyEdition — decided by DATE COMPARISON", () => {
+  it("latest dated ON the due date → current; BEFORE → held over; nothing → unavailable", () => {
+    expect(classifyEdition({ dueDate: "2026-09-23", latestPublishedDate: "2026-09-23" })).toBe("current");
+    expect(classifyEdition({ dueDate: "2026-09-23", latestPublishedDate: "2026-09-22" })).toBe("held_over");
+    expect(classifyEdition({ dueDate: "2026-09-23", latestPublishedDate: null })).toBe("unavailable");
+  });
+
+  it("latest dated AFTER the due date (an off-calendar edition) → current, never held over", () => {
+    expect(classifyEdition({ dueDate: "2026-09-25", latestPublishedDate: "2026-09-26" })).toBe("current"); // Sat after a missing Fri
+    expect(classifyEdition({ dueDate: "2026-09-25", latestPublishedDate: "2026-09-24" })).toBe("held_over"); // anti-vacuity
+  });
+
+  it("compares in calendar order across month and year boundaries", () => {
+    expect(classifyEdition({ dueDate: "2026-10-01", latestPublishedDate: "2026-09-30" })).toBe("held_over");
+    expect(classifyEdition({ dueDate: "2026-12-31", latestPublishedDate: "2027-01-01" })).toBe("current");
   });
 
   it("no due date in the window → absence is never late → current", () => {
-    expect(classifyEdition({ dueDate: null, latestPublishedDate: "2026-09-10", dueDatePublished: false })).toBe("current");
-    expect(classifyEdition({ dueDate: null, latestPublishedDate: null, dueDatePublished: false })).toBe("unavailable");
+    expect(classifyEdition({ dueDate: null, latestPublishedDate: "2026-09-10" })).toBe("current");
+    expect(classifyEdition({ dueDate: null, latestPublishedDate: null })).toBe("unavailable");
   });
 });
 
