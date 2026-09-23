@@ -22,6 +22,7 @@ import StaleMarker from "../components/StaleMarker";
 import { channelStalenessNotice } from "../components/channelStaleness";
 import { certExpiryNotice } from "../components/certExpiryNotice";
 import { withdrawCtaGate } from "../components/withdrawCtaGate";
+import { memberNamePromptFor, type BitcornNameRead } from "../components/memberNamePrompt";
 import {
   INITIAL_FRESHNESS,
   freshnessStatus,
@@ -353,6 +354,7 @@ export default function MemberDashboard() {
   const [fundLoading, setFundLoading] = useState(false);
   const [fundError, setFundError] = useState<string | null>(null);
   const subStatus = useSubscriptionStatus();
+  const [nameRead, setNameRead] = useState<BitcornNameRead>({ state: "loading" });
 
   // U24 H2: a failed stats fetch must be distinguishable from "no channel" —
   // otherwise the Connect-to-Hub onboarding form renders for a member who HAS
@@ -397,6 +399,15 @@ export default function MemberDashboard() {
       api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
     }, 60_000);
     return () => clearInterval(id);
+  }, []);
+
+  // Member-name prompt: one read per mount. Saving in Settings and coming back
+  // remounts this page, so the prompt clears on the next read with no event or
+  // cache flag (the prompt is derived; a second source of truth is not needed).
+  useEffect(() => {
+    api.getBitcornName()
+      .then((n) => setNameRead({ state: "loaded", bitcorn_name: n.bitcorn_name }))
+      .catch(() => setNameRead({ state: "failed" }));
   }, []);
 
   // Exchange rate for USD display
@@ -495,6 +506,41 @@ export default function MemberDashboard() {
             </span>
             <div className="alert-body">
               <div className="alert-msg">{notice.text}</div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Member-name prompt (D6 §2, §4; spec 2026-09-23-member-name-prompt §7).
+
+          ⚠ PAGE-TOP, OUTSIDE ALL THREE STATE GATES — for the same reason as
+          the cert notice above, and do NOT "align" it with the role nudge,
+          which lives inside {hasChannel && ...}. Every member this prompt
+          exists for is channel-less (nine of nine, D6 §2); under hasChannel it
+          would render for none of them.
+
+          ⚠ TRIGGERED ONLY BY THE STORED NAME — never subStatus, tier, stats,
+          channel or role. subStatus is null until the first token lands,
+          which is exactly the first-boot window this targets (D6 §4). A
+          failed or pending name read renders nothing (memberNamePrompt.ts).
+          No dismiss: it stays until a name is set. Pinned by
+          MemberDashboard.namePrompt.test.tsx. */}
+      {(() => {
+        const prompt = memberNamePromptFor(nameRead);
+        if (!prompt.render) return null;
+        return (
+          <div className="alert info">
+            <span className="alert-icon" aria-hidden>◉</span>
+            <div className="alert-body">
+              <div className="alert-type">{prompt.headline}</div>
+              <div className="alert-msg">{prompt.body}</div>
+              <button
+                className="btn btn-outline"
+                style={{ marginTop: 8, fontSize: "0.75rem" }}
+                onClick={() => navigate("/settings")}
+              >
+                {prompt.actionLabel}
+              </button>
             </div>
           </div>
         );

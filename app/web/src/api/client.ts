@@ -107,6 +107,14 @@ export const api = {
     }),
   clearProfileAlias: () =>
     apiFetch<{ ok: boolean }>("/api/profile/alias", { method: "DELETE" }),
+  // Member Bitcorn-level name — NOT the alias above; stored on this node only.
+  // Member-only (403 on the treasury). No clear: overwrite only.
+  getBitcornName: () => apiFetch<BitcornName>("/api/profile/name"),
+  setBitcornName: (name: string) =>
+    apiFetch<BitcornName>("/api/profile/name", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    }),
   // Subscription auto-pay (member-node-local renewal). All member-only.
   getAutoPayConfig: () => apiFetch<AutoPayConfig>("/api/profile/auto-pay"),
   setAutoPay: (enabled: boolean) =>
@@ -438,6 +446,13 @@ export type ProfileAlias = {
   alias_applied_at: number | null;
   pubkey: string;
   default_alias: string;
+};
+
+// Member Bitcorn-level name (GET/POST /api/profile/name). `bitcorn_name` null
+// => not set (the dashboard prompt's trigger). Timestamp is unix seconds.
+export type BitcornName = {
+  bitcorn_name: string | null;
+  bitcorn_name_set_at: number | null;
 };
 
 // Subscription auto-pay alert (GET /api/profile/auto-pay*). Severity domain is

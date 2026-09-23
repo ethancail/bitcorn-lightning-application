@@ -324,6 +324,7 @@ export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: stri
   { method: "POST", match: { kind: "exact", url: "/api/profile/acknowledge-price-change" }, why: "local flag" },
   { method: "POST", match: { kind: "exact", url: "/api/profile/alias" }, why: "node alias" },
   { method: "DELETE", match: { kind: "exact", url: "/api/profile/alias" }, why: "node alias" },
+  { method: "POST", match: { kind: "exact", url: "/api/profile/name" }, why: "local profile field" },
   { method: "POST", match: { kind: "exact", url: "/api/valuation/manual" }, why: "valuation input" },
   { method: "POST", match: { kind: "exact", url: "/api/valuation/refresh-worker" }, why: "cache refresh" },
   { method: "POST", match: { kind: "exact", url: "/api/stablecoin/wallet/challenge" }, why: "SIWE nonce" },

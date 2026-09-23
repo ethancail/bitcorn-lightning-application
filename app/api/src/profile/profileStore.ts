@@ -1,4 +1,5 @@
-// Member-profile DB access (member_profile + blocked_aliases, migration 051).
+// Member-profile DB access (member_profile + blocked_aliases, migration 051;
+// member_profile extended by 052 and 055/056).
 //
 // All reads/writes are keyed on the local member pubkey. On a member node the
 // table holds at most one row (the local node); keying on pubkey keeps it
@@ -18,6 +19,10 @@ export interface MemberProfileRow {
   auto_pay_enabled_at: number | null; // epoch seconds
   last_acknowledged_price: number | null; // sats
   last_acknowledged_price_at: number | null; // epoch seconds
+  // Bitcorn-level member name (migrations 055/056) — NOT the LND alias above.
+  // Stored on this node only; NULL = not set.
+  bitcorn_name: string | null;
+  bitcorn_name_set_at: number | null; // epoch seconds
 }
 
 /** All operator-blocked alias strings (full-table scan; handful-of-rows scale). */
@@ -99,6 +104,22 @@ export function acknowledgePrice(pubkey: string, price: number, now: number): vo
        last_acknowledged_price = excluded.last_acknowledged_price,
        last_acknowledged_price_at = excluded.last_acknowledged_price_at`,
   ).run(pubkey, price, now);
+}
+
+/**
+ * Store the member's Bitcorn-level name (migrations 055/056): persist the
+ * (already normalized + validated) name and `bitcorn_name_set_at`. Upserts so
+ * a member with no profile row yet can set one; touches no alias column.
+ * There is no clear counterpart — overwrite only (spec §6).
+ */
+export function setBitcornName(pubkey: string, name: string, setAt: number): void {
+  db.prepare(
+    `INSERT INTO member_profile (member_pubkey, bitcorn_name, bitcorn_name_set_at)
+     VALUES (?, ?, ?)
+     ON CONFLICT(member_pubkey) DO UPDATE SET
+       bitcorn_name = excluded.bitcorn_name,
+       bitcorn_name_set_at = excluded.bitcorn_name_set_at`,
+  ).run(pubkey, name, setAt);
 }
 
 /** Record a successful LND apply (set or startup re-assert). */
