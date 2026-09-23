@@ -1,0 +1,22 @@
+-- Migration 055: Member Bitcorn-level name (member_profile.bitcorn_name).
+--
+-- Implements specs/2026-09-23-member-name-prompt-spec.md §3-§4 (D6, D5 §1.1).
+-- A member-chosen name for BitCorn to use, stored on the member's OWN node.
+-- It is NOT the LND alias: every existing name column on this table (051) is
+-- the public, gossiped alias, and the two are kept apart by name and on the
+-- wire (the name has its own /api/profile/name routes). Nothing in this
+-- release sends it anywhere.
+--
+-- Extends member_profile in place, the 052 precedent: member identity, 1:1,
+-- member-keyed, and it rides the existing SELECT * in getMemberProfile.
+-- NULL = not set, which is what the dashboard prompt triggers on.
+--
+-- ⚠ ONE STATEMENT IN THIS FILE, ON PURPOSE — do not fold 056 into it.
+-- db/migrate.ts db.execs each file whole with no transaction, and on an error
+-- containing "duplicate column"/"already exists" it marks the WHOLE FILE
+-- applied. In a multi-statement file whose first statement hits that swallow,
+-- every later statement is skipped and never retried (spec §4.1; observed in
+-- db/migrate.memberProfileName.test.ts (d)). With one statement, the swallow
+-- firing can only mean "this column already exists" — i.e. done.
+
+ALTER TABLE member_profile ADD COLUMN bitcorn_name TEXT;

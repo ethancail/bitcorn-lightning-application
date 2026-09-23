@@ -32,6 +32,7 @@ import {
 } from "./components/actionConfirm/confirmAction";
 import { classifyConfirmError } from "./components/actionConfirm/confirmErrors";
 import ProfilePanel from "./components/ProfilePanel";
+import BitcornNamePanel from "./components/BitcornNamePanel";
 import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
 import {
   settingsBadgeFor,
@@ -793,6 +794,13 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
       )}
 
       <div className="settings-section-label">Personal</div>
+
+      {/* Bitcorn-level name — member-only, stored on this node only; NOT the
+          LND alias. Directly above ProfilePanel, which its visibility line
+          points to ("Your public alias, below, is published."). The dashboard's
+          member-name prompt sends the farmer here. Spec 2026-09-23-member-
+          name-prompt §7.4. */}
+      {!isTreasury && <BitcornNamePanel />}
 
       {/* Profile — member-only public Lightning alias. Identity reads ahead of
           appearance; mounted with !isTreasury (treasury sets BitCorn1 via

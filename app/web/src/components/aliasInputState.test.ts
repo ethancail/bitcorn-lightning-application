@@ -6,7 +6,7 @@ import { aliasInputState, normalizeAlias, ALIAS_MAX_BYTES } from "./aliasInputSt
 
 describe("normalizeAlias (web)", () => {
   it("trims and collapses internal whitespace", () => {
-    expect(normalizeAlias("  Ethan's   Farm  ")).toBe("Ethan's Farm");
+    expect(normalizeAlias("  Lazy Acres   Farm  ")).toBe("Lazy Acres Farm");
   });
 });
 
@@ -17,10 +17,12 @@ describe("aliasInputState", () => {
   });
 
   it("counts ASCII bytes correctly", () => {
-    const s = aliasInputState("Ethan's Farm");
+    const s = aliasInputState("Lazy Acres Farm");
     expect(s.valid).toBe(true);
-    expect(s.normalized).toBe("Ethan's Farm");
-    expect(s.byteCount).toBe("Ethan's Farm".length); // all ASCII => bytes == chars
+    expect(s.normalized).toBe("Lazy Acres Farm");
+    expect(s.byteCount).toBe("Lazy Acres Farm".length); // all ASCII => bytes == chars
+    // The only accepted fixture with an apostrophe — keeps ' in the charset guarded.
+    expect(aliasInputState("Farmer's Co-op").valid).toBe(true);
   });
 
   it("counts multibyte UTF-8 bytes, not char length", () => {

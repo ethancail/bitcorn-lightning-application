@@ -49,6 +49,15 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 | POST | `/api/pay` | Pay a BOLT11 invoice (`{ payment_request }`). Forces `outgoing_channel` to treasury. |
 | POST | `/api/network/pay` | Pay via network payment flow (recorded in `network_payments` + `payments_outbound`) |
 
+## Member Profile Endpoints (member-node local)
+
+Member-only: `assertMember` rejects the treasury role (403 `member_required`). It authenticates no caller — the same posture as the other `/api/profile/*` routes. ⚠ Those other profile routes (alias, auto-pay, price acknowledgment) are not yet listed in this file; only the two below are.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/profile/name` | The member's Bitcorn-level name: `{ bitcorn_name, bitcorn_name_set_at }` (both null until set). **Not** the LND alias. Stored on this node only — nothing sends it anywhere. |
+| POST | `/api/profile/name` | Set/overwrite the name (`{ name }`). Normalized (trim, collapse whitespace), then validated: non-empty, `[A-Za-z0-9 .-_'!?]` only (no `:`), ≤ 64 characters. 400 `invalid_name` carries a **specific** `detail`. No DELETE — overwrite only. Exempt from per-action confirmation (`local profile field`). |
+
 ## Stablecoin Endpoints (member-node local)
 
 Member-facing surface of the BASE/USDC rail (**pre-mainnet** — currently runs against Base Sepolia). Identity is the local node's own pubkey — same trust model as the subscription endpoints: local-node identity + local-network CORS, not role checks or bearer tokens. See `docs/ARCHITECTURE.md` § Stablecoin Rail.
