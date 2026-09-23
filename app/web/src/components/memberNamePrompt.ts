@@ -36,14 +36,16 @@ export type MemberNamePrompt =
 // which carries the same coupling. Either one left alone becomes false that
 // day. (The test pinning "for now" will then need updating too, deliberately.)
 
-// PROPOSED, NOT ACCEPTED (spec §8).
-export const MEMBER_NAME_PROMPT_HEADLINE = "Add a name for your farm";
+// ACCEPTED — Ethan's exact wording, 2026-09-23. It replaced "Add a name for
+// your farm", which addressed only farmers; grain merchants are half the
+// membership, and the prompt renders for every unnamed member.
+export const MEMBER_NAME_PROMPT_HEADLINE = "Add your name or business name";
 // ACCEPTED — Ethan's exact wording, 2026-09-23. It replaced "Pick a name for
 // BitCorn to use for you…", which passed the forbidden-words test while still
 // implying BitCorn uses the name today.
 export const MEMBER_NAME_PROMPT_BODY =
   "It stays on your node for now. In an upcoming update it'll be shared with BitCorn so we know who you are. It's never announced to the Lightning network.";
-// PROPOSED, NOT ACCEPTED (spec §8).
+// ACCEPTED — Ethan, 2026-09-23 (unchanged from the spec's proposal).
 export const MEMBER_NAME_PROMPT_ACTION = "Add name in Settings →";
 
 export function memberNamePromptFor(read: BitcornNameRead): MemberNamePrompt {

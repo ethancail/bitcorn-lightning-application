@@ -11,10 +11,10 @@ import { memberNamePromptFor } from "./memberNamePrompt";
 // shape (§9.4), so a descriptor that never renders fails the pair.
 //
 // Copy is hardcoded here ON PURPOSE (§8), so a revision fails this file
-// rather than slipping through. The BODY is ACCEPTED (Ethan, 2026-09-23); the
-// headline and action remain proposed.
+// rather than slipping through. All three strings are ACCEPTED (Ethan,
+// 2026-09-23).
 
-const HEADLINE = "Add a name for your farm";
+const HEADLINE = "Add your name or business name";
 const BODY =
   "It stays on your node for now. In an upcoming update it'll be shared with BitCorn so we know who you are. It's never announced to the Lightning network.";
 const ACTION = "Add name in Settings →";
@@ -59,5 +59,15 @@ describe("memberNamePromptFor", () => {
     const p = memberNamePromptFor({ state: "loaded", bitcorn_name: null });
     if (!p.render) throw new Error("paired positive did not render");
     expect(p.body).toContain("for now");
+  });
+
+  // Why this exists: the replaced headline ("Add a name for your farm")
+  // addressed only farmers, and grain merchants are half the membership. The
+  // prompt renders for every unnamed member regardless of channel role, so its
+  // headline must not assume one.
+  it("§8 addresses every member: the headline does not say 'farm'", () => {
+    const p = memberNamePromptFor({ state: "loaded", bitcorn_name: null });
+    if (!p.render) throw new Error("paired positive did not render");
+    expect(p.headline.toLowerCase()).not.toContain("farm");
   });
 });

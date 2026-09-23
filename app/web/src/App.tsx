@@ -797,7 +797,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
 
       {/* Bitcorn-level name — member-only, stored on this node only; NOT the
           LND alias. Directly above ProfilePanel, which its visibility line
-          points to ("Your public alias, below, is."). The dashboard's
+          points to ("Your public alias, below, is published."). The dashboard's
           member-name prompt sends the farmer here. Spec 2026-09-23-member-
           name-prompt §7.4. */}
       {!isTreasury && <BitcornNamePanel />}

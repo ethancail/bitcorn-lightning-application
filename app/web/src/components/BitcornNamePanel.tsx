@@ -20,10 +20,13 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type BitcornName } from "../api/client";
 import { bitcornNameInputState, BITCORN_NAME_MAX_CHARS } from "./bitcornNameInputState";
 
-// ⚠ COPY IS PROPOSED, NOT ACCEPTED (spec §8) — both strings below.
-export const BITCORN_NAME_FIELD_LABEL = "BitCorn name";
+// ACCEPTED — Ethan's exact wording, 2026-09-23 (both strings below).
+export const BITCORN_NAME_FIELD_LABEL = "Your name for BitCorn";
+// ⚠ PART-2 COUPLING: "only" is the word that becomes false the day the name
+// starts travelling. Part 2 must change it in that same release, together
+// with the dashboard prompt body's "for now" / "upcoming update".
 export const BITCORN_NAME_VISIBILITY_LINE =
-  "Stored on this node only. Not published to the Lightning network. (Your public alias, below, is.)";
+  "Saved on this node only — never published to the Lightning network. Your public alias, below, is published.";
 
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: string };
 

@@ -27,7 +27,7 @@ import { act } from "react-dom/test-utils";
 import React from "react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 
-const HEADLINE = "Add a name for your farm";
+const HEADLINE = "Add your name or business name";
 const ACTION = "Add name in Settings →";
 
 const NOW = Date.now();
