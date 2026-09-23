@@ -24,6 +24,50 @@ has stopped working.
 
 ---
 
+## 2026-09-23
+
+### The local Worker test pool ran in the host's timezone, not production's
+
+**Scar:** Daybreak computes "today" in `America/Chicago`. A probe inside the Worker test pool
+(`@cloudflare/vitest-pool-workers` 0.5.x, workerd) reported `new Intl.DateTimeFormat().resolvedOptions()
+.timeZone === "America/Chicago"` and `getTimezoneOffset() === 300` on Ethan's CDT machine; the same probe
+under `TZ=UTC` reported `"UTC"` / `0`. Deployed Workers run in UTC. The negative control made it concrete:
+a "Central date" mutant built on `getFullYear/getMonth/getDate` **passed the whole Daybreak suite, 80/80, on
+the host — and failed it under `TZ=UTC`.** A local-getter date bug was undetectable on the one machine the
+suite is run on, and would have been wrong in production from the first deploy.
+
+**Lesson:** A local emulator is faithful to the runtime's *APIs*, not to its *environment*: the process it
+spawns inherits the developer's timezone (and locale, and env) unless something pins them. For any
+date/time code, "the tests pass" means "the tests pass in this zone" — so the zone is part of the test's
+preconditions and belongs in the config, where every invocation gets it. A `package.json`-script `TZ=UTC`
+would not have worked here: runs in this repo invoke `vitest.mjs` directly and bypass npm scripts.
+
+**Disposition:** `[PROMOTED → cloudflare-worker/vitest.config.ts]` — `process.env.TZ = "UTC"` at the top
+of the config, which vitest's main process evaluates before the pool spawns workerd. Proven, not assumed:
+with the pin and no `TZ` in the shell, the local-getters mutant goes RED (6 failed / 74); with the pin line
+commented out, the same mutant is GREEN (80/80). Re-derive by reapplying that mutant to
+`src/daybreak/dates.ts` `centralDateOf` and running the Worker suite both ways.
+
+### A run is evidence only about the tree and directory it actually ran in — read both from its output
+
+**Scar:** Two runs in one session reported results for a tree they did not test. (1) A `cd
+…/cloudflare-worker && … vitest.mjs run tests/daybreak` negative-control run did not stay in the directory:
+the shell's cwd was the worktree root, so vitest resolved no Worker config and ran the tests in **plain
+Node, outside workerd** — same pass/fail shape, no Worker pool. Caught only because the log had no `vpw`
+(vitest-pool-workers) lines and its `RUN v2.1.9 <root>` path was the worktree root. (2) A compound
+"restore the pin, remove the mutant" command was **refused whole by the session's worktree-isolation
+check**; the next command, a full-suite run, went ahead and reported 36 files / 417 tests passing — on the
+tree with the pin still off and the mutant still in. The green was real and meant nothing.
+
+**Lesson:** A test result carries its preconditions only if you read them *from the run*, not from the
+command you intended. Pass the root explicitly (`vitest.mjs run --root <abs>/cloudflare-worker`) so cwd
+cannot matter; check each Worker log for the pool's lines and the `RUN … <root>` path; and after any
+mutate/restore step, re-read the tree state (`grep -c MUTATION`, `git status --short`) before trusting the
+run that follows — a refused or partially-applied restore leaves no error in the run itself.
+
+**Disposition:** `[RECORDED]` — nothing enforces `--root` or the post-restore re-read; this entry is the
+weak form.
+
 ## 2026-09-03
 
 ### An absolute-path `node` invocation pins the process you launch, never the toolchain it spawns
