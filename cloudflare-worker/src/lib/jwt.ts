@@ -33,6 +33,11 @@ import type { Env } from "./types";
 // commodity-prices reads available so members can buy BTC and renew).
 // Per decisions/2026-05-11-subscription-stage-5a-architectural-deltas.md
 // decision #2.
+//
+// `payment` also admits the Daybreak member read (GET /daybreak/edition). That
+// one is NOT a recovery path: it is gated at `payment` because Daybreak is
+// subscriber-base scope by Ethan's decision of 2026-09-24, so every subscriber
+// tier reads it.
 export type Scope = "full" | "payment";
 
 export interface VerifiedJwt {
