@@ -8,7 +8,7 @@ import { payInvoice } from "./lightning/pay";
 import { assertActiveMember } from "./utils/membership";
 import { assertRateLimit } from "./utils/rate-limit";
 import { insertOutboundPayment } from "./lightning/persist-payments";
-import { decodePaymentRequest, getNode } from "ln-service";
+import { decodePaymentRequest } from "ln-service";
 import { getChannels, getPeers, getNodeInfo } from "./api/read";
 import { getTreasuryMetrics } from "./api/treasury";
 import { getChannelMetrics } from "./api/treasury-channel-metrics";
@@ -54,10 +54,11 @@ import {
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
 import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, getLndChainFeeRate, updateNodeAlias, clearNodeAlias } from "./lightning/lnd";
-// Two route handlers in this file call ln-service DIRECTLY off getLndClient()'s
-// handle instead of through an lnd.ts wrapper (POST /api/pay's decode, and the
-// gossip alias lookup in POST /api/contacts/sync-peers). Those two bypass the
-// wrappers' deadlines, so they bind their own.
+// One route handler in this file calls ln-service DIRECTLY off getLndClient()'s
+// handle instead of through an lnd.ts wrapper (POST /api/pay's decode). It
+// bypasses the wrappers' deadlines, so it binds its own. (The gossip alias
+// lookup that POST /api/contacts/sync-peers used to make here now lives in
+// lightning/nodeAlias.ts, which binds its own deadline.)
 import { withDeadline, LND_GOSSIP_CALL_TIMEOUT_MS } from "./lightning/callDeadline";
 // Shared error unwrapper. ln-service throws [503, 'Name', {err}] ARRAYS whose
 // top-level .message/.code/.details are all undefined, so `err.message` at a
@@ -190,6 +191,12 @@ import {
   getCachedToken,
 } from "./subscription/tokenRefresh";
 import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
+import { lookupNodeAlias } from "./lightning/nodeAlias";
+import {
+  listPublicAliases,
+  refreshPublicAliases,
+  PublicAliasRefreshInProgressError,
+} from "./subscription/publicAlias";
 import { fetchDaybreakEdition, mapDaybreakErrorToHttp } from "./daybreak/editionClient";
 import { startBaseSyncLoop } from "./base/sync";
 import {
@@ -1362,6 +1369,59 @@ async function dispatchRequest(
       console.error("[admin] members list failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "members_list_failed" }));
+    }
+    return;
+  }
+
+  // The treasury's public-alias store (bitcorn-research
+  // specs/2026-09-24-public-alias-refresh-spec.md §6-§7, decision D7): what
+  // each roster member's node announces as its public alias, as one of four
+  // outcomes. Read separately by the roster, so a failure here degrades the
+  // alias column, not the roster. Treasury-only, same convention as above.
+  // Neither route reads or writes `contacts`.
+  if (req.method === "GET" && req.url === "/api/admin/members/public-aliases") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ aliases: listPublicAliases() }));
+    } catch (err: any) {
+      console.error("[admin] public aliases read failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "public_alias_read_failed" }));
+    }
+    return;
+  }
+
+  // Button-driven refresh — nothing schedules it. Bounded-parallel gossip
+  // lookups over every roster pubkey (lnd_channels ∪ subscription), one
+  // refresh at a time: a second request while one runs is a 409 and starts
+  // nothing. Confirmation: EXEMPT ("public alias refresh") — a gossip read
+  // plus a local cache write, moving no funds.
+  if (req.method === "POST" && req.url === "/api/admin/members/public-aliases/refresh") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const counts = await refreshPublicAliases();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, ...counts }));
+    } catch (err: any) {
+      if (err instanceof PublicAliasRefreshInProgressError) {
+        res.writeHead(409, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "refresh_in_progress" }));
+        return;
+      }
+      console.error("[admin] public alias refresh failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "public_alias_refresh_failed" }));
     }
     return;
   }
@@ -3730,6 +3790,9 @@ async function dispatchRequest(
 
       let added = 0;
       let skipped = 0;
+      let none_announced = 0;
+      let not_in_graph = 0;
+      let failed = 0;
       const now = Date.now();
 
       for (const peer_pubkey of allPubkeys) {
@@ -3738,33 +3801,33 @@ async function dispatchRequest(
           continue;
         }
 
-        // Try to get alias from LND gossip graph
-        let name = `${peer_pubkey.slice(0, 8)}…${peer_pubkey.slice(-6)}`;
-        try {
-          const { lnd } = getLndClient();
-          // Raw ln-service gossip read; binds its own deadline for the same
-          // reason as the decode above. ⚠ PER PEER — this sits inside the
-          // contact loop, so the route's exposure is peers × the deadline.
-          const nodeInfo = await withDeadline(
-            "syncPeers:getNode",
-            () => getNode({ lnd, public_key: peer_pubkey, is_omitting_channels: true }),
-            LND_GOSSIP_CALL_TIMEOUT_MS,
-          );
-          if (nodeInfo.alias && nodeInfo.alias.trim()) {
-            name = nodeInfo.alias.trim();
-          }
-        } catch {
-          // gossip lookup failed — use truncated pubkey
+        // The shared gossip lookup (lightning/nodeAlias.ts — binds its own
+        // deadline). ⚠ PER PEER, sequentially — the route's exposure is
+        // peers × the deadline.
+        //
+        // A contacts row is inserted ONLY for a real alias. No placeholder,
+        // no LND 20-hex default, no row: the roster treats ANY contacts row
+        // as a name, so a pubkey-derived one would silence D4's Unidentified
+        // marker on a member nobody has identified (spec
+        // 2026-09-24-public-alias-refresh §9, D7 §4). This route does not
+        // write the treasury's peer_public_alias store — it runs on member
+        // nodes too, and stays ungated.
+        const result = await lookupNodeAlias(peer_pubkey);
+        if (result.outcome !== "alias") {
+          if (result.outcome === "none_announced") none_announced++;
+          else if (result.outcome === "not_in_graph") not_in_graph++;
+          else failed++;
+          continue;
         }
 
         db.prepare(
           "INSERT INTO contacts (pubkey, name, notes, tags, source, created_at, updated_at) VALUES (?, ?, NULL, NULL, 'auto', ?, ?)"
-        ).run(peer_pubkey, name, now, now);
+        ).run(peer_pubkey, result.alias, now, now);
         added++;
       }
 
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true, added, skipped }));
+      res.end(JSON.stringify({ ok: true, added, skipped, none_announced, not_in_graph, failed }));
     } catch (err: any) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "failed_to_sync_peers" }));

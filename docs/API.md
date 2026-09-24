@@ -29,7 +29,7 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 | POST | `/api/contacts` | Create contact |
 | PATCH | `/api/contacts/:pubkey` | Update contact |
 | DELETE | `/api/contacts/:pubkey` | Delete contact |
-| POST | `/api/contacts/sync-peers` | Import channel peers + live connected peers |
+| POST | `/api/contacts/sync-peers` | Import channel peers + live connected peers. A contact is added ONLY for a peer announcing a real alias — none for an empty alias, LND's 20-hex default, a node not in the graph, or a failed lookup. Response: `{ ok, added, skipped, none_announced, not_in_graph, failed }` (`skipped` = already in contacts). Not role-gated |
 | GET | `/api/exchange-rate` | BTC/USD from Coinbase Spot (best-effort) |
 | POST | `/api/network/invoice` | Create BOLT11 invoice (Request Payment) |
 | POST | `/api/network/decode` | Decode BOLT11 for preview |
@@ -246,6 +246,8 @@ mechanism, not introduced here.
 |--------|------|---------|
 | GET | `/api/admin/members` | Stage 5b members list — the enrollment ledger: one row per member across the UNION of channel peers and subscription rows (a channel-less subscription row still appears), carrying subscription state, lane, tier, paid-through, last payment. Pubkeys are emitted canonical-lowercase; `totals` are roster-wide, not channel-wide |
 | GET | `/api/admin/subscription/revenue` | Per-member on-chain revenue sums (kind=`onchain` only) + dashboard aggregates: total earned (sats/USD-at-receipt), recurring entitlement vs actual for the current policy window, paying/enrolled counts ("paying" = ≥1 confirmed on-chain payment, not tier). Names are joined client-side from contacts |
+| GET | `/api/admin/members/public-aliases` | The public-alias store: `{ aliases: [{ pubkey, outcome, alias, outcome_at, last_attempt_at, last_attempt_ok }] }`. `outcome` is `alias` / `none_announced` / `not_in_graph`, or null when never definitively learned. Read separately by the roster so its failure degrades one column |
+| POST | `/api/admin/members/public-aliases/refresh` | Button-driven gossip lookup of every roster pubkey (channel peers ∪ subscription rows), at most 4 in flight, each with the 10s gossip deadline. Returns `{ ok, total, alias, none_announced, not_in_graph, failed }`; `409 refresh_in_progress` if one is already running. Never writes `contacts`. Confirmation: EXEMPT |
 
 **Member liquidity (treasury-side, edge-case only)**
 
