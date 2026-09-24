@@ -373,18 +373,28 @@ describe("§11.10 case", () => {
 describe("§11.12 single-flight", () => {
   it("a second refresh while one runs → 409 refresh_in_progress, and starts no lookups", async () => {
     seedChannel(REAL, "1");
-    let release!: () => void;
-    ln.scripts.set(REAL, () => new Promise((resolve) => (release = () => resolve({ alias: "Lazy H Farms" }))));
+    // Every caller's lookup is held until release() — so if a second refresh
+    // DID start a lookup, it would be held too, and must not deadlock the test.
+    const held: Array<() => void> = [];
+    const release = () => held.splice(0).forEach((r) => r());
+    ln.scripts.set(REAL, () => new Promise((resolve) => held.push(() => resolve({ alias: "Lazy H Farms" }))));
 
     const first = refresh();
     // Let the first request reach its lookup.
     await new Promise((r) => setTimeout(r, 5));
     expect(ln.calls).toEqual([REAL]);
 
-    const second = await refresh();
+    // ⚠ Checked BEFORE awaiting the second request. Awaiting first would make
+    // a missing single-flight show up as a test TIMEOUT (the second refresh
+    // waits on its own held lookup) rather than as this assertion — found by
+    // mutation: removing the guard went red for the wrong reason.
+    const secondPending = refresh();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(ln.calls, "the refused refresh started nothing").toEqual([REAL]);
+
+    const second = await secondPending;
     expect(second.status).toBe(409);
     expect(second.body).toEqual({ error: "refresh_in_progress" });
-    expect(ln.calls, "the refused refresh started nothing").toEqual([REAL]);
 
     release();
     const done = await first;
