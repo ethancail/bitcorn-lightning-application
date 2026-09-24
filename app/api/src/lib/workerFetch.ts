@@ -12,7 +12,7 @@
 //   public         (no Bearer required)
 //     /treasury-info, /recommended-peers
 //   subscriber-base (any valid Bearer — payment or full)
-//     POST /, /prices, /prices/corn-history
+//     POST /, /prices, /prices/corn-history, /daybreak/edition
 //   tier-gated      (scope=full required)
 //     /valuation/{current,history,inputs,manual/*}
 //

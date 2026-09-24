@@ -190,6 +190,7 @@ import {
   getCachedToken,
 } from "./subscription/tokenRefresh";
 import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
+import { fetchDaybreakEdition, mapDaybreakErrorToHttp } from "./daybreak/editionClient";
 import { startBaseSyncLoop } from "./base/sync";
 import {
   handleBalance as handleStablecoinBalance,
@@ -1793,6 +1794,29 @@ async function dispatchRequest(
       res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "corn_history_unavailable" }));
     }
+    return;
+  }
+
+  // Daybreak member read proxied from the Cloudflare Worker (spec §3.4.2).
+  // Worker-side: subscriber-base scope. Guarded the way the valuation reads
+  // are (assertNonEmpty). Unlike the two proxies above, it KEEPS the Worker's
+  // rejection reason — see daybreak/editionClient.ts. No cache.
+  if (req.method === "GET" && req.url === "/api/daybreak/edition") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    const result = await fetchDaybreakEdition();
+    if (!result.ok) {
+      const mapped = mapDaybreakErrorToHttp(result.error);
+      res.writeHead(mapped.status, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(mapped.body));
+      return;
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(result.value));
     return;
   }
 

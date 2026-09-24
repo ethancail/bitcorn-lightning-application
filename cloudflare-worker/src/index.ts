@@ -13,6 +13,7 @@
 //   GET  /valuation/manual/day      — Read all 8 metric values for a date (handlers/manualInputQuery.ts)
 //   GET  /valuation/manual/calendar — Per-day completeness summary across a range (handlers/manualInputQuery.ts)
 //   POST /valuation/refresh   — Manually trigger the engine cron (HMAC; handlers/refresh.ts)
+//   GET  /daybreak/edition    — Subscriber-base; Daybreak member read: current edition + held-over status (handlers/daybreak.ts)
 //
 //   ─── Stablecoin rail (per spec §5) ───
 //   GET  /base/contract-info  — Public; SettlementRouter address + live state (handlers/base.ts)
@@ -37,6 +38,7 @@ import {
 import { handleManualInput } from "./handlers/manualInput";
 import { handleManualInputCalendar, handleManualInputDay } from "./handlers/manualInputQuery";
 import { handleValuationRefresh } from "./handlers/refresh";
+import { handleDaybreakEdition } from "./handlers/daybreak";
 import {
   handleBaseBalance,
   handleBaseContractInfo,
@@ -97,6 +99,13 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/prices/corn-history") {
       return withJwtGate(request, env, "payment", () => handleCornHistory(env));
+    }
+    // The recovery-path rationale above covers Onramp and prices only.
+    // Daybreak sits in this block because it is subscriber-base scope (Ethan,
+    // 2026-09-24) — any valid subscriber token reads the current edition — not
+    // because it is a recovery path.
+    if (request.method === "GET" && url.pathname === "/daybreak/edition") {
+      return withJwtGate(request, env, "payment", () => handleDaybreakEdition(env));
     }
     // ── BASE state-read endpoints: FULL scope (the stablecoin rail is a
     //    subscription benefit) ───────────────────────────────────────
