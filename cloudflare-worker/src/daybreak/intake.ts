@@ -28,10 +28,17 @@
 //
 // ─── THE OBSERVATION DATE ────────────────────────────────────────────────
 //
-// The trend's age is taken at the LATER of the two close dates. That matches
-// the model author's workbook, whose rows are calendar dates carrying that
-// day's BTC close and the most recent corn close (weekend corn is Friday's,
-// carried). Not a ruling — the spec does not address it.
+// The trend's age is taken at the LATER of the two close dates — RULED
+// 2026-09-24 (spec §3.4.1; decisions/2026-09-24-daybreak-future-dated-close-
+// rejected-trend-at-later-close.md), accepted as built. It matches the model
+// author's workbook, whose rows are calendar dates carrying that day's BTC
+// close and the most recent corn close (weekend corn is Friday's, carried).
+//
+// ─── A CLOSE DATED AFTER ITS EDITION IS REJECTED ─────────────────────────
+//
+// Same ruling: a close dated after the edition's Central date makes the Z
+// unavailable with reason "future_dated_close". A close dated ON the edition's
+// date (age 0) is allowed.
 
 import type { CloseFetcher, CloseFetchResult, PriceSymbol } from "./closes";
 import { isCentralDate, type CentralDate } from "./dates";
@@ -53,7 +60,12 @@ export interface StampedClose {
   fetchedAt: string;
 }
 
-export type ZUnavailableReason = "params_unavailable" | "fetch_failed" | "stale_close" | "computation_failed";
+export type ZUnavailableReason =
+  | "params_unavailable"
+  | "fetch_failed"
+  | "future_dated_close"
+  | "stale_close"
+  | "computation_failed";
 
 export type ZBlock =
   | { status: "available"; value: number; corn: StampedClose; btc: StampedClose }
@@ -103,14 +115,22 @@ async function computeZBlock({ kv, fetcher }: IntakeDeps, editionDate: CentralDa
   if (failed.length > 0) return unavailable("fetch_failed", failed.join("; "));
   const [corn, btc] = closes as Extract<CloseFetchResult, { ok: true }>[];
 
-  const stale = [corn, btc].flatMap((c) => {
+  const future: string[] = [];
+  const stale: string[] = [];
+  for (const c of [corn, btc]) {
     const age = isCentralDate(c.date) ? daysBetween(c.date, editionDate) : NaN;
     const bound = STALENESS_BOUND_DAYS[c.symbol];
-    // Written as !(age <= bound) so an unreadable date (NaN) fails closed too.
-    return !(age <= bound)
-      ? [`${c.symbol} close dated ${String(c.date)} is ${age} days before the ${editionDate} edition; bound is ${bound}`]
-      : [];
-  });
+    // The ONLY accepting branch needs both comparisons true, so an unreadable
+    // date (NaN fails every comparison) can pass neither route. It falls
+    // through to stale below, as before.
+    if (age >= 0 && age <= bound) continue;
+    if (age < 0) {
+      future.push(`${c.symbol} close dated ${c.date} is ${-age} days after the ${editionDate} edition`);
+    } else {
+      stale.push(`${c.symbol} close dated ${String(c.date)} is ${age} days before the ${editionDate} edition; bound is ${bound}`);
+    }
+  }
+  if (future.length > 0) return unavailable("future_dated_close", [...future, ...stale].join("; "));
   if (stale.length > 0) return unavailable("stale_close", stale.join("; "));
 
   const obsDate = corn.date > btc.date ? corn.date : btc.date;

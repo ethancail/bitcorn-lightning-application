@@ -245,6 +245,68 @@ describe("test 21 (+15): staleness boundaries measured from the EDITION's Centra
   });
 });
 
+// ─── Tests 25 + 26: direction — a close dated AFTER its edition is rejected ─
+
+describe("tests 25 + 26: a close dated AFTER the edition's Central date is rejected; one dated ON it is allowed (2026-09-24)", () => {
+  async function run(cornDate: string, btcDate: string) {
+    const { kv, store } = withParams();
+    const { fetcher } = mockFetcher({
+      "ZC=F": ok("ZC=F", cornDate, CORN),
+      "BTC-USD": ok("BTC-USD", btcDate, BTC),
+    });
+    const result = await runDraftIntake({ kv, fetcher }, EDITION, SECTIONS);
+    const draft = storedDraft(store);
+    return { result, draft, z: zBlockOf(draft) };
+  }
+
+  it("test 25 permitting: corn dated Wed 2026-09-30 for the Tue 2026-09-29 edition → Z unavailable, reason future_dated_close, detail names the date", async () => {
+    const { result, z } = await run("2026-09-30", "2026-09-28");
+    expect(result).toMatchObject({ ok: true, z: "unavailable" });
+    expect(z.status).toBe("unavailable");
+    expect(z.reason).toBe("future_dated_close");
+    expect(String(z.detail)).toContain("ZC=F");
+    expect(String(z.detail)).toContain("2026-09-30");
+  });
+
+  it("test 25 permitting: BTC dated 2026-09-30 → Z unavailable, reason future_dated_close, detail names the date", async () => {
+    const { z } = await run("2026-09-28", "2026-09-30");
+    expect(z.reason).toBe("future_dated_close");
+    expect(String(z.detail)).toContain("BTC-USD");
+    expect(String(z.detail)).toContain("2026-09-30");
+  });
+
+  it("test 25 forbidding: no numeric Z is stamped, and the reason is NOT stale_close", async () => {
+    for (const [c, b] of [["2026-09-30", "2026-09-28"], ["2026-09-28", "2026-09-30"]]) {
+      const { draft, z } = await run(c, b);
+      expect(numbersIn(draft)).toEqual([]);
+      expect("value" in z).toBe(false);
+      expect(z.reason).not.toBe("stale_close");
+    }
+  });
+
+  it("test 26 permitting: corn and BTC both dated ON the edition's date (age 0) are accepted and a Z is stamped", async () => {
+    const { result, z } = await run(EDITION, EDITION);
+    expect(result).toMatchObject({ ok: true, z: "available" });
+    expect(z.status).toBe("available");
+    expect(z.value).toBeCloseTo(expectedZ(EDITION), 12);
+  });
+
+  it("test 26 forbidding: an age-0 close is never marked unavailable for direction (anti-vacuity: test 25 shows the check fires)", async () => {
+    const { z } = await run(EDITION, EDITION);
+    expect(z.reason).toBeUndefined();
+    expect(z.status).not.toBe("unavailable");
+  });
+
+  it("a malformed close date (a NaN age) fails closed — it is accepted by NEITHER the direction nor the staleness route", async () => {
+    for (const bad of ["2026-13-01", "2026-02-30", "not a date"]) {
+      const { z } = await run(bad, "2026-09-28");
+      expect(z.status).toBe("unavailable");
+      expect(z.reason).toBe("stale_close");
+      expect("value" in z).toBe(false);
+    }
+  });
+});
+
 // ─── Tests 16 + 20: failures at intake → the draft is STILL WRITTEN (I.2) ──
 
 describe("tests 16 + 20: a price failure at intake writes the draft with the Z UNAVAILABLE and a reason", () => {
