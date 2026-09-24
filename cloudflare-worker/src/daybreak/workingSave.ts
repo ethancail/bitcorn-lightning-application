@@ -5,18 +5,23 @@
 // taken SERVER-SIDE (I.1), and the editor has no way to set them: anything it
 // puts under the reserved key is DISCARDED.
 //
-// ⚠ COPY ONCE (J.3). The FIRST save for an edition date copies the reserved
-// key from the current draft. Every LATER save keeps the working key's own
-// reserved key and does NOT re-read the draft — so a drafting-agent re-run
-// between two saves cannot change the numbers under Kevin's text. J's record
-// flags the consequence: an unavailable Z captured at the first save is kept
-// too; recovery waits on the undecided "start over from the latest draft"
-// action (§7).
+// ⚠ AN AVAILABLE Z PINS; AN UNAVAILABLE ONE DOES NOT (J.3, K.1). If the
+// working key has no reserved block yet, OR its Z block is unavailable, the
+// save copies the reserved block from the current draft. Once it holds an
+// AVAILABLE Z, every later save keeps the working key's own block and does NOT
+// re-read the draft — so a drafting-agent re-run between two saves cannot
+// change the numbers under Kevin's text, while an outage at the first save
+// recovers on the next save after a successful re-run.
 //
-// ⚠ NO DRAFT AT THE FIRST SAVE is an explicit error, "no_draft", and nothing
-// is written. What should happen instead is OPEN — reserved to Ethan (§7).
-// A draft or working key that lacks the reserved key (written around intake)
-// is refused the same way: this save never invents Worker-owned fields.
+// ⚠ PER-PIECE PINNING (ruled 2026-09-24) supersedes K.1's whole-block re-copy
+// in part. Today the block holds exactly one piece — the Z with its two close
+// dates — so the two are identical. When market tiles join the block, each
+// tile must pin on its own and this whole-block copy must change.
+//
+// ⚠ NO DRAFT when one must be copied is an explicit error, "no_draft", and
+// nothing is written. What should happen instead is OPEN — reserved to Ethan
+// (§7). A draft that lacks the reserved key (written around intake) is refused
+// the same way: this save never invents Worker-owned fields.
 
 import { isCentralDate, type CentralDate } from "./dates";
 import { WORKER_OWNED_KEY } from "./intake";
@@ -33,6 +38,14 @@ function isPlainObject(v: unknown): v is EditionContent {
   return proto === Object.prototype || proto === null;
 }
 
+// Anything short of a well-formed available Z block is treated as not pinned,
+// so the save falls back to the Worker-written draft — never to the editor.
+function holdsAvailableZ(content: EditionContent): boolean {
+  const owned = content[WORKER_OWNED_KEY];
+  if (!isPlainObject(owned) || !isPlainObject(owned.z)) return false;
+  return owned.z.status === "available";
+}
+
 export async function saveWorking(kv: KVNamespace, date: CentralDate, content: EditionContent): Promise<WorkingSaveResult> {
   if (!isCentralDate(date)) {
     return { ok: false, reason: "invalid_date", detail: `an explicit YYYY-MM-DD Central edition date is required, got ${String(date)}` };
@@ -46,7 +59,7 @@ export async function saveWorking(kv: KVNamespace, date: CentralDate, content: E
 
   let from: "draft" | "working" = "working";
   let source: EditionContent;
-  if (working.found) {
+  if (working.found && holdsAvailableZ(working.content)) {
     source = working.content;
   } else {
     const draft = await readDraft(kv, date);

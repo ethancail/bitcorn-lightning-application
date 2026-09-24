@@ -1,7 +1,8 @@
 // Daybreak working save (src/daybreak/workingSave.ts): Kevin's save takes the
-// Worker-owned fields from the DRAFT, server-side (I.1), ONCE — at the first
-// save for an edition date — and every later save keeps the working key's own
-// (J.3). The editor can never set them.
+// Worker-owned fields from the DRAFT, server-side (I.1). An AVAILABLE Z, once
+// captured, pins — later saves keep the working key's own (J.3) — but an
+// UNAVAILABLE one does not: it is re-copied from the draft on the next save
+// (K.1). The editor can never set them.
 //
 // Drafts are produced by the real intake (runDraftIntake) against a mock
 // fetcher, so the Worker-owned fields under test are genuine stamped Zs.
@@ -10,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import type { CloseFetcher, CloseFetchResult, PriceSymbol } from "../../src/daybreak/closes";
 import { runDraftIntake, WORKER_OWNED_KEY } from "../../src/daybreak/intake";
-import { publishEdition, readDraft, readWorking, writeDraft } from "../../src/daybreak/store";
+import { publishEdition, readDraft, readWorking, writeDraft, writeWorking } from "../../src/daybreak/store";
 import { saveWorking } from "../../src/daybreak/workingSave";
 import { POWER_LAW_PARAMS_KV_KEY } from "../../src/valuation/powerLawParams";
 import { ORACLE_PARAMS } from "../fixtures/daybreakPowerLawOracle";
@@ -183,18 +184,101 @@ describe("test 22: a drafting-agent re-run BETWEEN two working saves", () => {
   });
 });
 
-// ─── J.3's flagged consequence: an unavailable Z at the first save is kept ─
+// ─── Test 23: an outage at the first save, then recovery (K.1) ────────────
 
-describe("J.3 consequence (flagged in J's record): an UNAVAILABLE Z captured at the first save is kept through later saves", () => {
-  it("a later successful re-run does not reach the working key", async () => {
+describe("test 23 (K.1): an outage at the first save, then recovery — an UNAVAILABLE Z does not pin", () => {
+  async function sequence() {
+    const { kv, store } = mockKV();
+    await draftWith(kv, closesFail); // draft A: unavailable Z (I.2)
+    const first = await saveWorking(kv, EDITION, kevinFirst);
+    const afterFirst = owned(stored(store, "working"));
+    await draftWith(kv, closesB); // successful re-run: draft B, available
+    const draftB = owned(stored(store, "draft"));
+    const next = await saveWorking(kv, EDITION, kevinSecond);
+    return { store, first, afterFirst, draftB, next };
+  }
+
+  it("permitting: the first save captures UNAVAILABLE; the next save captures draft B's AVAILABLE Z and close dates", async () => {
+    const { store, first, afterFirst, draftB, next } = await sequence();
+    expect(first).toEqual({ ok: true, workerOwnedFrom: "draft" });
+    expect(afterFirst.z.status).toBe("unavailable");
+    expect(draftB.z.status).toBe("available"); // anti-vacuity: the re-run really succeeded
+    expect(next).toEqual({ ok: true, workerOwnedFrom: "draft" });
+    expect(owned(stored(store, "working"))).toEqual(draftB);
+  });
+
+  it("forbidding: the unavailable block is NEVER kept past a save made while an available draft exists", async () => {
+    const { store, afterFirst } = await sequence();
+    expect(owned(stored(store, "working"))).not.toEqual(afterFirst);
+    expect(owned(stored(store, "working")).z.status).not.toBe("unavailable");
+  });
+
+  it("Kevin's written sections are unchanged by the re-copy", async () => {
+    const { store } = await sequence();
+    const { [WORKER_OWNED_KEY]: _o, ...sections } = stored(store, "working");
+    expect(sections).toEqual(kevinSecond);
+  });
+
+  it("while the draft is STILL unavailable, a later save keeps re-copying the draft (still unavailable) — it never invents a Z", async () => {
     const { kv, store } = mockKV();
     await draftWith(kv, closesFail);
     await saveWorking(kv, EDITION, kevinFirst);
+    const r = await saveWorking(kv, EDITION, { ...kevinSecond, [WORKER_OWNED_KEY]: { z: { status: "available", value: 1 } } });
+    expect(r).toEqual({ ok: true, workerOwnedFrom: "draft" });
     expect(owned(stored(store, "working")).z.status).toBe("unavailable");
+  });
+});
+
+// ─── Test 24: an available Z pins (K.1) ───────────────────────────────────
+
+describe("test 24 (K.1): once an AVAILABLE Z is captured, a further re-run does not change what later saves keep", () => {
+  async function sequence() {
+    const { kv, store, ops, reset } = mockKV();
+    await draftWith(kv, closesFail); // outage first, so B is captured by RECOVERY, not by the first save
+    await saveWorking(kv, EDITION, kevinFirst);
+    await draftWith(kv, closesB); // draft B: available
+    await saveWorking(kv, EDITION, kevinSecond); // captures B
+    const capturedB = owned(stored(store, "working"));
+    await draftWith(kv, closesA); // a further re-run: draft C, a different available Z
+    const draftC = owned(stored(store, "draft"));
+    reset();
+    const later = await saveWorking(kv, EDITION, kevinFirst);
+    return { store, ops, capturedB, draftC, later };
+  }
+
+  it("anti-vacuity: C's Z differs from B's, and the draft key holds C", async () => {
+    const { store, capturedB, draftC } = await sequence();
+    expect(capturedB.z.status).toBe("available");
+    expect(draftC.z.status).toBe("available");
+    expect(draftC.z.value).not.toBe(capturedB.z.value);
+    expect(owned(stored(store, "draft"))).toEqual(draftC);
+  });
+
+  it("permitting: the working key still holds B's Z and close dates", async () => {
+    const { store, capturedB, later } = await sequence();
+    expect(capturedB.z.status).toBe("available"); // B really was captured — never a vacuous pass on a pinned outage
+    expect(later).toEqual({ ok: true, workerOwnedFrom: "working" });
+    expect(owned(stored(store, "working"))).toEqual(capturedB);
+  });
+
+  it("forbidding: it NEVER holds C's, and the pinned save never reads the draft key", async () => {
+    const { store, ops, draftC } = await sequence();
+    expect(owned(stored(store, "working"))).not.toEqual(draftC);
+    expect(ops.filter((o) => o.key === `daybreak:${EDITION}:draft`)).toEqual([]);
+  });
+});
+
+// ─── A working key with NO reserved block yet copies from the draft ───────
+
+describe("a working key with no reserved block yet copies it from the current draft", () => {
+  it("permitting: the save fills the block from the draft; forbidding: the editor's forged block never lands", async () => {
+    const { kv, store } = mockKV();
     await draftWith(kv, closesA);
-    expect(owned(stored(store, "draft")).z.status).toBe("available"); // the re-run did succeed
-    await saveWorking(kv, EDITION, kevinSecond);
-    expect(owned(stored(store, "working")).z.status).toBe("unavailable");
+    expect((await writeWorking(kv, EDITION, { lead: "written around the save" })).ok).toBe(true);
+    const r = await saveWorking(kv, EDITION, { ...kevinFirst, [WORKER_OWNED_KEY]: { z: { status: "available", value: 7.77 } } });
+    expect(r).toEqual({ ok: true, workerOwnedFrom: "draft" });
+    expect(owned(stored(store, "working"))).toEqual(owned(stored(store, "draft")));
+    expect(JSON.stringify(owned(stored(store, "working")))).not.toContain("7.77");
   });
 });
 
