@@ -20,7 +20,9 @@
 //     fits neither shape — including an unavailable one whose reason is not a
 //     known code — is shown as unavailable with Z_UNRECOGNIZED, never dropped
 //     and never guessed at: none of its stored fields is carried (ruled
-//     2026-09-24).
+//     2026-09-24). So is a missing Z: an absent or non-object block, or one
+//     with no `z`. A member never receives an edition with no Z block (ruled
+//     2026-09-25).
 // The written sections pass through untouched: their schema is not this
 // module's. This is hygiene, not secrecy — an available Z discloses the model's
 // parameters over time regardless.
@@ -92,12 +94,8 @@ function pickZ(z: unknown): Obj | undefined {
 
 function sanitizeEditionContent(content: EditionContent): EditionContent {
   const { [WORKER_OWNED_KEY]: owned, ...sections } = content;
-  if (owned === undefined) return sections;
-  const safe: Obj = {};
-  if (isPlainObject(owned) && Object.prototype.hasOwnProperty.call(owned, "z")) {
-    safe.z = pickZ(owned.z) ?? { status: "unavailable", reason: Z_UNRECOGNIZED };
-  }
-  return { ...sections, [WORKER_OWNED_KEY]: safe };
+  const z = isPlainObject(owned) ? pickZ(owned.z) : undefined;
+  return { ...sections, [WORKER_OWNED_KEY]: { z: z ?? { status: "unavailable", reason: Z_UNRECOGNIZED } } };
 }
 
 function json(body: unknown, status = 200): Response {

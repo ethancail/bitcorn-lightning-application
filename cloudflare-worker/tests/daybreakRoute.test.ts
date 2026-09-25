@@ -1,5 +1,5 @@
 // Router-level tests for the Daybreak member read, GET /daybreak/edition —
-// spec §3.4.2, first tests 27–30 and 32 (bitcorn-research, specs/2026-09-21-bitcorn-
+// spec §3.4.2, first tests 27–30, 32 and 34 (bitcorn-research, specs/2026-09-21-bitcorn-
 // daybreak-spec.md). Each has a PERMITTING and a FORBIDDING case, and every
 // "X is absent" assertion carries a companion showing X was there to be seen.
 //
@@ -332,6 +332,65 @@ describe("test 32 — an unrecognized Z block reaches the member as unavailable"
       edition: { content: { workerOwned: Record<string, unknown> } };
     };
     expect(body.edition.content.workerOwned).toEqual({ z: { status: "unavailable", reason: "stale_close" } });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Test 34 — every absent or malformed Z reaches the member as unavailable
+// (ruled 2026-09-25: a member never receives an edition with no Z block).
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("test 34 — every absent or malformed Z reaches the member as unavailable", () => {
+  const UNRECOGNIZED_BLOCK = { z: { status: "unavailable", reason: Z_UNRECOGNIZED } };
+
+  // `stored` is a string the stored fixture carries that must not reach the
+  // member — undefined where the fixture has nothing of its own to leak.
+  const CASES: Array<{ name: string; content: Record<string, unknown>; stored?: string }> = [
+    { name: "(a) workerOwned MISSING", content: { ...SECTIONS } },
+    { name: "(b) workerOwned a string", content: { ...SECTIONS, workerOwned: "not_an_object_payload" }, stored: "not_an_object_payload" },
+    { name: "(b) workerOwned an array", content: { ...SECTIONS, workerOwned: ["array_payload"] }, stored: "array_payload" },
+    { name: "(b) workerOwned null", content: { ...SECTIONS, workerOwned: null } },
+    { name: "(c) workerOwned with NO z (empty)", content: { ...SECTIONS, workerOwned: {} } },
+    { name: "(c) workerOwned with NO z (other keys only)", content: { ...SECTIONS, workerOwned: { market: "other_key_payload" } }, stored: "other_key_payload" },
+  ];
+
+  for (const c of CASES) {
+    it(`${c.name} → workerOwned: { z: unavailable ${Z_UNRECOGNIZED} }, never an edition without a Z block`, async () => {
+      const { kv, store } = mockKV();
+      await publish(kv, TODAY, c.content);
+      // Anti-vacuity: the stored edition really has the fixture's shape.
+      const stored = JSON.parse(store.get(`daybreak:${TODAY}:published`)!) as Record<string, unknown>;
+      if ("workerOwned" in c.content) expect(stored.workerOwned).toEqual(c.content.workerOwned);
+      else expect(stored).not.toHaveProperty("workerOwned");
+
+      const res = await get(envWith(kv));
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      const body = JSON.parse(text) as { edition: { content: Record<string, unknown> } };
+      const content = body.edition.content;
+
+      // FORBIDS: never an edition with no workerOwned key, or with no z.
+      expect(content).toHaveProperty("workerOwned");
+      expect(content.workerOwned).toHaveProperty("z");
+      // PERMITS: exactly the generic unavailable block — toEqual also forbids
+      // the stored non-object or any stored key riding along.
+      expect(content.workerOwned).toEqual(UNRECOGNIZED_BLOCK);
+      if (c.stored) expect(text).not.toContain(c.stored);
+      // The written sections are untouched by the substitution.
+      const { workerOwned: _owned, ...sections } = content;
+      expect(sections).toEqual(SECTIONS);
+    });
+  }
+
+  it("anti-vacuity: a VALID available Z in the same fixture shape still carries its value and both closes", async () => {
+    const { kv } = mockKV();
+    await publish(kv, TODAY, edition(Z_AVAILABLE));
+
+    const body = (await (await get(envWith(kv))).json()) as {
+      edition: { content: { workerOwned: { z: Record<string, unknown> } } };
+    };
+    expect(body.edition.content.workerOwned).toEqual({ z: Z_AVAILABLE });
+    expect(body.edition.content.workerOwned.z.value).toBe(Z_AVAILABLE.value);
   });
 });
 
