@@ -35,20 +35,20 @@ const RETRY = "This page will try again on its own.";
 const PROXY_COPY: Record<string, Copy> = {
   node_role_required: {
     headline: "Daybreak isn't available yet",
-    body: "Your node is still setting up. Daybreak will appear once it finishes, usually within a few minutes of starting.",
+    body: "Your node is still setting up. Daybreak will appear once it finishes.",
   },
   auth_missing: {
-    headline: "Daybreak needs your BitCorn subscription",
+    headline: "Daybreak is waiting on your node",
     body: `This node doesn't have its subscription pass yet. If you've just installed or restarted, give it a minute. ${RETRY} You can check your subscription in Settings.`,
   },
   auth_invalid: {
     headline: "Daybreak couldn't confirm your subscription",
     body: `BitCorn didn't accept this node's subscription pass. It renews itself, so this usually clears within a few minutes. ${RETRY} You can check your subscription in Settings.`,
   },
-  scope_insufficient: {
-    headline: "Daybreak isn't included in your current subscription",
-    body: "You can check your subscription in Settings.",
-  },
+  // scope_insufficient is deliberately ABSENT, so it gets GENERIC_ERROR (ruled
+  // 2026-09-25): the Worker gates this route at payment scope, so it cannot
+  // occur, and any words naming a tier would be false — every tier includes
+  // Daybreak.
   worker_unavailable: {
     headline: "Daybreak is temporarily unavailable",
     body: `BitCorn's Daybreak service couldn't answer just now. ${RETRY}`,
@@ -62,12 +62,12 @@ const PROXY_COPY: Record<string, Copy> = {
     body: `BitCorn's Daybreak service sent something this node couldn't read. ${RETRY}`,
   },
   worker_unreachable: {
-    headline: "Your node couldn't reach Daybreak",
-    body: `Check that your node is online and connected to the internet. ${RETRY}`,
+    headline: "Daybreak couldn't be reached",
+    body: `Your node couldn't reach BitCorn's services just now. ${RETRY} If it keeps happening, check that your node is online.`,
   },
   worker_not_configured: {
     headline: "This node isn't set up to reach Daybreak",
-    body: "The BitCorn app on this node is missing the address it uses to reach BitCorn's services. Updating the BitCorn app from the Umbrel app store should restore it.",
+    body: "The BitCorn app on this node is missing the address it uses to reach BitCorn's services. This is unusual — updating the BitCorn app from the Umbrel app store is the first thing to try.",
   },
 };
 
@@ -101,7 +101,14 @@ export const NO_EDITION: Copy = {
 };
 
 export const HELD_OVER_MARK = "Held over";
-export const HELD_OVER_NOTE = "Today's edition isn't out yet. This is the most recent one.";
+export const HELD_OVER_NOTE = "Today's edition hasn't been published. This is the most recent one.";
+
+// Shown beside a KEPT read once polls have failed (useDaybreakEdition.ts,
+// DAYBREAK_STALE_THRESHOLD). `when` is an instant, already formatted in the
+// browser's zone (daybreakView.ts formatInstant).
+export function staleCopy(when: string): string {
+  return `Daybreak couldn't refresh, so this may not be the latest edition. Last updated ${when}. This page will keep trying on its own.`;
+}
 
 export const Z_TITLE = "Corn-Bitcoin Z-Score";
 export const Z_UNAVAILABLE_HEADLINE = "The Z-Score isn't available for this edition";
@@ -153,6 +160,7 @@ export function allDaybreakCopy(): string[] {
     ...copies.flatMap((c) => [c.headline, c.body]),
     HELD_OVER_MARK,
     HELD_OVER_NOTE,
+    staleCopy("Sep 29, 5:55 AM CDT"),
     Z_TITLE,
     Z_UNAVAILABLE_HEADLINE,
     ...Object.values(Z_REASON_COPY),

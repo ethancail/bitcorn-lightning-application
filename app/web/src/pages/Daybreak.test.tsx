@@ -363,3 +363,112 @@ describe("§3.5: gauge text is sized in rem so it follows the member's text scal
     }
   });
 });
+
+// ─── Stale must not read as current ────────────────────────────────────────
+//
+// Held-over is decided by the Worker at read time, so a KEPT edition cannot
+// learn it has become held over. After failed polls the page must say it
+// couldn't refresh, and when it last did — an INSTANT, in the browser's zone.
+// Fake timers drive the 5-minute poll (Date included, so the last-success
+// instant is pinned); fetch answers from a scripted sequence.
+
+describe("a kept read after failed polls is marked stale, with its last-refresh time", () => {
+  const MIN = 60_000;
+  const LAST_OK = new Date("2026-09-29T10:55:00Z"); // 05:55 CDT · 19:55 JST
+  const originalTZ = process.env.TZ;
+  const ok = () => json(edition({ state: "current" }));
+  const down = () => new Response("<html>Bad Gateway</html>", { status: 502, statusText: "Bad Gateway", headers: { "Content-Type": "text/html" } });
+
+  async function mountSequence(first: () => Response) {
+    const queue: Array<() => Response> = [first];
+    fetchMock = vi.fn(async () => (queue.length > 1 ? queue.shift()! : queue[0])());
+    vi.stubGlobal("fetch", fetchMock);
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => {
+      root!.render(React.createElement(Daybreak));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    return {
+      el: host,
+      /** The next poll answers with `r` (and every one after, until changed). */
+      next: async (r: () => Response) => {
+        queue.length = 0;
+        queue.push(r);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5 * MIN);
+        });
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    process.env.TZ = originalTZ;
+  });
+
+  function setup(zone: string) {
+    process.env.TZ = zone;
+    vi.useFakeTimers();
+    vi.setSystemTime(LAST_OK);
+  }
+
+  it("forbidding: after a good read, with no failed poll, there is no stale marker — and a good poll keeps it away", async () => {
+    setup("America/Chicago");
+    const { el, next } = await mountSequence(ok);
+    expect(q(el, "daybreak-date")).not.toBeNull(); // anti-vacuity: the edition is on screen
+    expect(q(el, "daybreak-stale")).toBeNull();
+    await next(ok);
+    expect(q(el, "daybreak-stale")).toBeNull();
+  });
+
+  it("permitting: once a poll fails, the kept edition shows the stale marker with the last-success time", async () => {
+    setup("America/Chicago");
+    const { el, next } = await mountSequence(ok);
+    expect(q(el, "daybreak-stale")).toBeNull(); // the same fixture, before the failure
+    await next(down);
+    const marker = q(el, "daybreak-stale");
+    expect(marker, "the stale marker must render").not.toBeNull();
+    expect(text(marker)).toContain("couldn't refresh");
+    expect(text(marker)).toMatch(/\b5:55\b/); // 10:55Z in Chicago
+    expect(text(q(el, "daybreak-date")), "the kept edition stays on screen").toMatch(/\b29\b/);
+    expect(text(el)).not.toContain("Bad Gateway");
+  });
+
+  it("the last-success time is an INSTANT: it renders in the browser's zone, never in UTC", async () => {
+    setup("Asia/Tokyo");
+    const { el, next } = await mountSequence(ok);
+    await next(down);
+    const t = text(q(el, "daybreak-stale"));
+    expect(t).toMatch(/\b7:55\b/); // 10:55Z is 19:55 in Tokyo
+    expect(t).not.toMatch(/\b10:55\b/);
+    expect(t).not.toMatch(/\b5:55\b/);
+  });
+
+  it("the last-success time is when the read SUCCEEDED, not when it failed", async () => {
+    setup("America/Chicago");
+    const { el, next } = await mountSequence(ok);
+    await next(down); // fails at 06:00 CDT
+    expect(text(q(el, "daybreak-stale"))).toMatch(/\b5:55\b/);
+    expect(text(q(el, "daybreak-stale"))).not.toMatch(/\b6:00\b/);
+  });
+
+  it("a successful poll after the failure clears the marker", async () => {
+    setup("America/Chicago");
+    const { el, next } = await mountSequence(ok);
+    await next(down);
+    expect(q(el, "daybreak-stale")).not.toBeNull();
+    await next(ok);
+    expect(q(el, "daybreak-stale")).toBeNull();
+  });
+
+  it("with no good read ever, it is the error state — not a stale marker", async () => {
+    setup("America/Chicago");
+    const { el } = await mountSequence(down);
+    expect(q(el, "daybreak-error")).not.toBeNull();
+    expect(q(el, "daybreak-stale")).toBeNull();
+  });
+});

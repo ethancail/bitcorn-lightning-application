@@ -17,9 +17,25 @@
 
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
+import { INITIAL_FRESHNESS, recordFailure, recordSuccess, type FreshnessState } from "../components/freshness";
 import { parseDaybreakRead, type DaybreakRead } from "./daybreakView";
 
 export const DAYBREAK_POLL_INTERVAL_MS = 5 * 60_000;
+
+// ⚠ STALE MUST NOT READ AS CURRENT. Held-over is decided by the Worker at read
+// time, so a kept edition cannot learn that it has since become held over:
+// with reads failing from 5 AM, yesterday's edition would still say "current"
+// past the 6 AM due time. Every poll outcome is therefore recorded with
+// ../components/freshness.ts (the balance poll's helper, MemberDashboard.tsx),
+// and the page marks the kept read once freshnessStatus says "stale".
+//
+// THRESHOLD: ONE failed poll — not freshness.ts's default of three. That
+// default exists so a single blip on a 15–60s poll does not flash a warning;
+// at this 5-minute cadence three failures is 15 minutes of an unmarked claim,
+// and after a hidden tab returns, its one immediate fetch may be the only read
+// before the member looks. The marker states a fact ("couldn't refresh") rather
+// than an alarm, so a blip costs one calm line for five minutes.
+export const DAYBREAK_STALE_THRESHOLD = 1;
 
 export type DaybreakFailure = { code?: string; reason?: string };
 
@@ -36,8 +52,9 @@ function failureOf(err: unknown): DaybreakFailure {
   return out;
 }
 
-export function useDaybreakEdition(): DaybreakState {
+export function useDaybreakEdition(): { view: DaybreakState; freshness: FreshnessState } {
   const [state, setState] = useState<DaybreakState>({ status: "loading" });
+  const [freshness, setFreshness] = useState<FreshnessState>(INITIAL_FRESHNESS);
 
   useEffect(() => {
     let cancelled = false;
@@ -49,12 +66,18 @@ export function useDaybreakEdition(): DaybreakState {
         .then((raw) => {
           if (cancelled) return;
           const read = parseDaybreakRead(raw);
-          if (read) setState({ status: "ready", read });
-          else setState((s) => (s.status === "ready" ? s : { status: "failed", failure: {} }));
+          if (read) {
+            setState({ status: "ready", read });
+            setFreshness((f) => recordSuccess(f, Date.now()));
+          } else {
+            setState((s) => (s.status === "ready" ? s : { status: "failed", failure: {} }));
+            setFreshness(recordFailure);
+          }
         })
         .catch((err: unknown) => {
           if (cancelled) return;
           setState((s) => (s.status === "ready" ? s : { status: "failed", failure: failureOf(err) }));
+          setFreshness(recordFailure);
         });
 
     const start = () => {
@@ -88,5 +111,5 @@ export function useDaybreakEdition(): DaybreakState {
     };
   }, []);
 
-  return state;
+  return { view: state, freshness };
 }

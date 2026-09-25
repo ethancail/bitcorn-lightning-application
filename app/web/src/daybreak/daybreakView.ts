@@ -12,8 +12,8 @@
 //
 // ⚠ DATES. Edition, due and close dates are US Central CALENDAR dates and are
 // never converted to the browser's zone: formatCentralDate renders the date as
-// written. Only instants would take the browser's zone, and the screen shows
-// none.
+// written. Only instants take the browser's zone (formatInstant); the one the
+// screen shows is when the edition was last refreshed.
 
 export type Band = { lower: number | null; upper: number | null; label: string };
 
@@ -90,6 +90,21 @@ export function formatCentralDate(ymd: string): string {
     month: "long",
     day: "numeric",
   }).format(at);
+}
+
+/**
+ * An INSTANT (epoch ms) in the browser's own zone, with the zone named — the
+ * one kind of time this screen converts. Used for "last updated", never for an
+ * edition, due or close date.
+ */
+export function formatInstant(ms: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  }).format(new Date(ms));
 }
 
 function contains(b: Band, z: number): boolean {

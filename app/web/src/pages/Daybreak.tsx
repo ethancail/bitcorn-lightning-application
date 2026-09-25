@@ -25,11 +25,13 @@ import {
   Z_UNAVAILABLE_HEADLINE,
   closesCopy,
   daybreakErrorCopy,
+  staleCopy,
   zUnavailableCopy,
   type Copy,
 } from "../daybreak/daybreakCopy";
-import { formatCentralDate, type EditionView, type SectionsView } from "../daybreak/daybreakView";
-import { useDaybreakEdition } from "../daybreak/useDaybreakEdition";
+import { formatCentralDate, formatInstant, type EditionView, type SectionsView } from "../daybreak/daybreakView";
+import { DAYBREAK_STALE_THRESHOLD, useDaybreakEdition } from "../daybreak/useDaybreakEdition";
+import { freshnessStatus } from "../components/freshness";
 
 function Notice({ copy, testId }: { copy: Copy; testId: string }) {
   return (
@@ -146,7 +148,12 @@ function Edition({ edition }: { edition: EditionView }) {
 }
 
 export default function Daybreak() {
-  const state = useDaybreakEdition();
+  const { view: state, freshness } = useDaybreakEdition();
+  // A kept read after failed polls: its held-over status may be out of date.
+  const stale =
+    state.status === "ready" &&
+    freshness.lastSuccessAt !== null &&
+    freshnessStatus(freshness, true, DAYBREAK_STALE_THRESHOLD) === "stale";
 
   let body: React.ReactNode;
   if (state.status === "loading") {
@@ -168,6 +175,16 @@ export default function Daybreak() {
   return (
     <div className="fade-in" style={{ maxWidth: 720, margin: "0 auto" }}>
       <h1 style={{ marginBottom: 12 }}>{DAYBREAK_TITLE}</h1>
+      {stale && (
+        <div
+          role="status"
+          data-testid="daybreak-stale"
+          style={{ display: "flex", gap: 6, alignItems: "baseline", fontSize: "0.8125rem", color: "var(--amber)", marginBottom: 12 }}
+        >
+          <span aria-hidden>⚠</span>
+          <span>{staleCopy(formatInstant(freshness.lastSuccessAt as number))}</span>
+        </div>
+      )}
       {body}
     </div>
   );
