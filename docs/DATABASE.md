@@ -62,8 +62,9 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `054_autobuy_missed_interval_claim.sql` | Auto-Buy catch-up clamp: claim linkage for passed-over intervals (a separate nullable fact; `autobuy_runs.status` stays truthful) |
 | `055_member_profile_bitcorn_name.sql` | Member Bitcorn-level name: `member_profile.bitcorn_name` (nullable; NOT the LND alias; stored on this node only) |
 | `056_member_profile_bitcorn_name_set_at.sql` | `member_profile.bitcorn_name_set_at` (unix seconds) — companion to 055 |
+| `057_peer_public_alias.sql` | Treasury's public-alias store: one row per roster pubkey (lowercased) holding the last gossip-lookup OUTCOME (`alias` / `none_announced` / `not_in_graph`) apart from the last attempt, so a failed lookup keeps the last good value. Written only by the treasury's refresh; never a contacts name |
 
-The migration set is contiguous from `001` through `056` with no gaps. Always allocate the next sequential number for new migrations.
+The migration set is contiguous from `001` through `057` with no gaps. Always allocate the next sequential number for new migrations.
 
 ⚠ **Adding columns: one statement per file.** `db/migrate.ts` `db.exec`s each file whole with no transaction, and on any "duplicate column" / "already exists" error it marks the **whole file** applied — so in a multi-statement file whose first statement hits that, the rest never run and are never retried. `055`/`056` are split for that reason (`db/migrate.memberProfileName.test.ts` (d) demonstrates it). `052` is a multi-statement file of exactly that shape.
 
@@ -88,6 +89,7 @@ The migration set is contiguous from `001` through `056` with no gaps. Always al
 
 **Contacts**
 - `contacts` — address book with tags
+- `peer_public_alias` — treasury-only: what each roster member's node announces as its public alias (outcome + last attempt). NOT a name the treasury holds — the roster shows it in its own column, and it never feeds `contacts`
 - `member_keysend_status` — tracks peers that reject keysend (24h skip window)
 
 **Cluster rebalance engine v1 (removed 2026-05; tables retained)**

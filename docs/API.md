@@ -29,7 +29,7 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 | POST | `/api/contacts` | Create contact |
 | PATCH | `/api/contacts/:pubkey` | Update contact |
 | DELETE | `/api/contacts/:pubkey` | Delete contact |
-| POST | `/api/contacts/sync-peers` | Import channel peers + live connected peers |
+| POST | `/api/contacts/sync-peers` | Import channel peers + live connected peers. A contact is added ONLY for a peer announcing a real alias — none for an empty alias, LND's 20-hex default, a node not in the graph, or a failed lookup. Response: `{ ok, added, skipped, none_announced, not_in_graph, failed }` (`skipped` = already in contacts). Not role-gated |
 | GET | `/api/exchange-rate` | BTC/USD from Coinbase Spot (best-effort) |
 | POST | `/api/network/invoice` | Create BOLT11 invoice (Request Payment) |
 | POST | `/api/network/decode` | Decode BOLT11 for preview |
@@ -41,6 +41,27 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 | GET | `/api/coinbase/onramp-url` | Build Coinbase Onramp URL via Cloudflare Worker session token |
 | GET | `/api/commodity-prices` | Gold / corn / soybeans / wheat (proxied from Worker) |
 | GET | `/api/corn-history` | Historical monthly corn price (proxied from Worker) |
+
+## Daybreak Endpoint (proxied from Worker)
+
+Guard: `assertNonEmpty(node_role)` — the same guard as the valuation reads; 403 when the node has no role yet. It authenticates no caller. The Worker call carries this node's own entitlement token (`workerFetch`); the Worker route is subscriber-base scope. No cache.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/daybreak/edition` | Daybreak member read: `{ state: "current" \| "held_over", dueDate, edition: { date, content } }` or `{ state: "unavailable" }`, relayed from the Worker's `GET /daybreak/edition` |
+
+Unlike the other Worker proxies, this one **keeps the rejection reason** (codes only — no Worker or transport detail reaches the body):
+
+| Status | Body | Cause |
+|--------|------|-------|
+| 401 | `{ "error": "auth_missing" }` | Worker 401 `missing` — this node holds no entitlement token |
+| 401 | `{ "error": "auth_invalid" }` | Any other Worker 401 (expired, bad signature, …) after `workerFetch`'s one refresh-and-retry |
+| 403 | `{ "error": "scope_insufficient" }` | Worker 403 `scope_insufficient` |
+| 503 | `{ "error": "worker_unavailable", "reason": "<code>" }` | Worker 503 carrying its own reason code (e.g. `daybreak_read_failed`, `service_unconfigured`) |
+| 502 | `{ "error": "upstream_error", "status": <n> }` | Any other Worker non-OK, including a 503 whose reason is not a code |
+| 502 | `{ "error": "invalid_worker_response" }` | Worker 200 with a non-JSON body |
+| 503 | `{ "error": "worker_unreachable" }` | Network failure reaching the Worker |
+| 503 | `{ "error": "worker_not_configured" }` | `COINBASE_WORKER_URL` unset on this node |
 
 ## Member Endpoints
 
@@ -225,6 +246,8 @@ mechanism, not introduced here.
 |--------|------|---------|
 | GET | `/api/admin/members` | Stage 5b members list — the enrollment ledger: one row per member across the UNION of channel peers and subscription rows (a channel-less subscription row still appears), carrying subscription state, lane, tier, paid-through, last payment. Pubkeys are emitted canonical-lowercase; `totals` are roster-wide, not channel-wide |
 | GET | `/api/admin/subscription/revenue` | Per-member on-chain revenue sums (kind=`onchain` only) + dashboard aggregates: total earned (sats/USD-at-receipt), recurring entitlement vs actual for the current policy window, paying/enrolled counts ("paying" = ≥1 confirmed on-chain payment, not tier). Names are joined client-side from contacts |
+| GET | `/api/admin/members/public-aliases` | The public-alias store: `{ aliases: [{ pubkey, outcome, alias, outcome_at, last_attempt_at, last_attempt_ok }] }`. `outcome` is `alias` / `none_announced` / `not_in_graph`, or null when never definitively learned. Read separately by the roster so its failure degrades one column |
+| POST | `/api/admin/members/public-aliases/refresh` | Button-driven gossip lookup of every roster pubkey (channel peers ∪ subscription rows), at most 4 in flight, each with the 10s gossip deadline. Returns `{ ok, total, alias, none_announced, not_in_graph, failed }`; `409 refresh_in_progress` if one is already running. Never writes `contacts`. Confirmation: EXEMPT |
 
 **Member liquidity (treasury-side, edge-case only)**
 

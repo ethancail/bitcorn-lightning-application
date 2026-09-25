@@ -150,6 +150,18 @@ export async function readPublished(kv: KVNamespace, date: CentralDate): Promise
   return readSlot(kv, date, "published");
 }
 
+/** The draft for one date — for the working save's first copy (J.3). Never a member read. */
+export async function readDraft(kv: KVNamespace, date: CentralDate): Promise<ReadResult> {
+  if (!isCentralDate(date)) return invalidDate(date);
+  return readSlot(kv, date, "draft");
+}
+
+/** The working edition for one date — for the working save (J.3). Never a member read. */
+export async function readWorking(kv: KVNamespace, date: CentralDate): Promise<ReadResult> {
+  if (!isCentralDate(date)) return invalidDate(date);
+  return readSlot(kv, date, "working");
+}
+
 /**
  * The most recent published edition at or before `fromDate`, walking back one
  * date at a time through at most `maxLookbackDays` dates (`fromDate` included).

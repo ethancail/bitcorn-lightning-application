@@ -15,7 +15,14 @@
 // mutates — but "no drill-down" above is Stage 5b's rule and this is the
 // later spec spending it. Recorded so the sentence is not read as current.
 //
-// Data: GET /api/admin/members (treasury-only via assertTreasury).
+// ⚠ A SECOND DEPARTURE, and this one DOES mutate: the "Refresh public aliases"
+// button (specs/2026-09-24-public-alias-refresh-spec.md §8.3, decision D7)
+// POSTs a refresh of the treasury's public-alias store — gossip reads written
+// to a local cache. It moves no funds and writes no contacts, but it is an
+// action, so "no actions" above is no longer literally true either.
+//
+// Data: GET /api/admin/members (treasury-only via assertTreasury), plus
+// GET /api/admin/members/public-aliases for the Public alias column.
 // Filter/sort: all client-side per spec §10.5; the dataset is small.
 // Refresh: manual button + 60s auto-poll per spec §3.6.
 
@@ -25,9 +32,11 @@ import {
   api,
   type AdminMembersResponse,
   type AdminMembersRow,
+  type AdminPublicAliasRow,
   type Contact,
   type LanePurpose,
   type MemberRevenueRow,
+  type PublicAliasRefreshResult,
   type SubscriptionStateKey,
 } from "../api/client";
 import { Pill, stateToPill } from "../components/Pill";
@@ -84,11 +93,81 @@ function resolveIdentity(pubkey: string, contacts: Contact[] | null): Identity {
   return name !== undefined ? { kind: "named", name } : { kind: "unidentified" };
 }
 
+// ─── Public alias column ─────────────────────────────────────────
+//
+// Spec: bitcorn-research specs/2026-09-24-public-alias-refresh-spec.md §7-§8
+// (decision D7). What each member's node ANNOUNCES as its public Lightning
+// alias, from the treasury's public-alias store. It is NOT a name the treasury
+// holds — that stays in the Member column, from contacts — so it never feeds
+// Identity, and D4's Unidentified marker ignores it.
+
+// ⚠ PROPOSED COPY — spec §10, awaiting Ethan. NOT accepted.
+const PUBLIC_ALIAS_COLUMN = "Public alias";
+const PUBLIC_ALIAS_NONE_ANNOUNCED = "none announced";
+const PUBLIC_ALIAS_NOT_IN_GRAPH = "no public channel";
+const PUBLIC_ALIAS_NOT_CHECKED = "not checked yet";
+const PUBLIC_ALIAS_READ_FAILED_CELL = "—";
+const PUBLIC_ALIAS_READ_FAILED_HEADER = "unavailable";
+const PUBLIC_ALIAS_REFRESH_BUTTON = "Refresh public aliases";
+function publicAliasRefreshMessage(r: PublicAliasRefreshResult): string {
+  return (
+    `Checked ${r.total}: ${r.alias} with an alias, ${r.none_announced} none announced, ` +
+    `${r.not_in_graph} no public channel, ${r.failed} lookups failed.`
+  );
+}
+// ⚠ PROPOSED COPY — the implementer's, NOT in spec §10 (which says only that a
+// 409 "shows already running" and a failure "shows that the refresh failed").
+const PUBLIC_ALIAS_REFRESH_IN_PROGRESS = "A public alias refresh is already running.";
+const PUBLIC_ALIAS_REFRESH_FAILED = "Public alias refresh failed";
+
+/** What the roster can say about a member's public alias. FIVE states.
+ *
+ *  `unavailable` is the column-wide read failure and asserts nothing per row;
+ *  `not_checked` IS a per-row claim — "we have not learned this". Collapsing
+ *  them would have the roster claim the treasury never checked anyone whenever
+ *  the endpoint is down (spec §8.2). */
+type PublicAliasState =
+  | { kind: "alias"; alias: string }
+  | { kind: "none_announced" }
+  | { kind: "not_in_graph" }
+  | { kind: "not_checked" }
+  | { kind: "unavailable" };
+
+function findPublicAliasRow(
+  pubkey: string,
+  aliases: AdminPublicAliasRow[],
+): AdminPublicAliasRow | undefined {
+  const needle = pubkey.toLowerCase();
+  return aliases.find((a) => a.pubkey.toLowerCase() === needle);
+}
+
+/** The single place the cell is decided. `aliases === null` means the read
+ *  FAILED — distinct from `[]`, a successful read with no rows. A failed LAST
+ *  attempt over a definitive outcome renders the outcome (D7 §3): only the
+ *  outcome is consulted here, never last_attempt_ok. */
+function resolvePublicAlias(pubkey: string, aliases: AdminPublicAliasRow[] | null): PublicAliasState {
+  if (aliases === null) return { kind: "unavailable" };
+  const row = findPublicAliasRow(pubkey, aliases);
+  if (row?.outcome === "alias" && row.alias) return { kind: "alias", alias: row.alias };
+  if (row?.outcome === "none_announced") return { kind: "none_announced" };
+  if (row?.outcome === "not_in_graph") return { kind: "not_in_graph" };
+  return { kind: "not_checked" };
+}
+
+type AliasRefreshState =
+  | { kind: "idle" }
+  | { kind: "running" }
+  | { kind: "done"; result: PublicAliasRefreshResult }
+  | { kind: "in_progress" }
+  | { kind: "failed"; code?: string };
+
 /** Stable empty list for the filter and sort paths, which genuinely do not
  *  care why contacts are missing — an unreadable list and an empty one both
  *  mean "no names to match or order by". Module-scope so the useMemo deps
  *  below do not see a new array identity on every render. */
 const NO_CONTACTS: Contact[] = [];
+/** Same, for the public-alias rows the search matches against. */
+const NO_ALIASES: AdminPublicAliasRow[] = [];
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -148,10 +227,21 @@ type ViewState =
        *  as `[]`, which means it succeeded and the treasury names nobody. */
       contacts: Contact[] | null;
       revenue: Map<string, MemberRevenueRow>;
+      /** `null` means the public-alias read FAILED — see PublicAliasState.
+       *  Not the same as `[]`, a successful read with no rows. */
+      aliases: AdminPublicAliasRow[] | null;
     }
   | { kind: "error"; code?: string; detail?: string };
 
 // ─── Root component ──────────────────────────────────────────────
+
+/** The public-alias read, failing to `null` (not `[]`) — see PublicAliasState. */
+function fetchPublicAliases(): Promise<AdminPublicAliasRow[] | null> {
+  return api
+    .getAdminPublicAliases()
+    .then((r) => r.aliases)
+    .catch(() => null);
+}
 
 export default function AdminMembers() {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
@@ -192,16 +282,23 @@ export default function AdminMembers() {
       // answer at all, and marking every row would have the roster assert
       // something it has no basis for. The two must stay distinguishable all
       // the way to the cell; see Identity.
-      const [response, contacts, revenueResponse] = await Promise.all([
+      //
+      // The public-alias read follows the contacts convention exactly: it
+      // fails to `null`, never `[]`, so the column can say "unavailable"
+      // rather than claim nobody has been checked. The poll only READS it;
+      // nothing here triggers a refresh.
+      const [response, contacts, revenueResponse, aliases] = await Promise.all([
         api.getAdminMembers(),
         api.getContacts().catch(() => null),
         api.getAdminSubscriptionRevenue().catch(() => null),
+        fetchPublicAliases(),
       ]);
       setView({
         kind: "ok",
         response,
         contacts,
         revenue: buildRevenueLookup(revenueResponse?.members ?? []),
+        aliases,
       });
     } catch (err: any) {
       setView({
@@ -220,13 +317,34 @@ export default function AdminMembers() {
     return () => clearInterval(id);
   }, [fetchMembers]);
 
+  // Button-only refresh of the treasury's public-alias store (spec §8.3).
+  // Never silent: success shows the counts, a 409 says one is already
+  // running, anything else says it failed.
+  const [aliasRefresh, setAliasRefresh] = useState<AliasRefreshState>({ kind: "idle" });
+  const refreshPublicAliases = useCallback(async () => {
+    setAliasRefresh({ kind: "running" });
+    try {
+      const result = await api.refreshAdminPublicAliases();
+      setAliasRefresh({ kind: "done", result });
+      // Refetch only the alias read — the rest of the roster is unchanged.
+      const aliases = await fetchPublicAliases();
+      setView((v) => (v.kind === "ok" ? { ...v, aliases } : v));
+    } catch (err: any) {
+      if (err?.status === 409) setAliasRefresh({ kind: "in_progress" });
+      else setAliasRefresh({ kind: "failed", code: err?.code ?? err?.message });
+    }
+  }, []);
+
   return (
     <div className="admin-members-page">
       <PageHeader
         fetchedAt={view.kind === "ok" ? view.response.fetched_at : null}
         onRefresh={() => void fetchMembers()}
         refreshing={refreshing}
+        onRefreshAliases={() => void refreshPublicAliases()}
+        aliasRefreshRunning={aliasRefresh.kind === "running"}
       />
+      <AliasRefreshNotice state={aliasRefresh} />
       {view.kind === "loading" && <LoadingSkeleton />}
       {view.kind === "error" && (
         <ErrorState message={errorMessageFor(view.code)} detail={view.detail} onRetry={fetchMembers} />
@@ -236,6 +354,7 @@ export default function AdminMembers() {
           response={view.response}
           contacts={view.contacts}
           revenue={view.revenue}
+          aliases={view.aliases}
           selectedStates={selectedStates}
           setSelectedStates={setSelectedStates}
           selectedLanes={selectedLanes}
@@ -257,6 +376,7 @@ function AdminMembersBody({
   response,
   contacts,
   revenue,
+  aliases,
   selectedStates,
   setSelectedStates,
   selectedLanes,
@@ -270,6 +390,7 @@ function AdminMembersBody({
   response: AdminMembersResponse;
   contacts: Contact[] | null;
   revenue: Map<string, MemberRevenueRow>;
+  aliases: AdminPublicAliasRow[] | null;
   selectedStates: Set<SubscriptionStateKey>;
   setSelectedStates: (s: Set<SubscriptionStateKey>) => void;
   selectedLanes: Set<LanePurpose>;
@@ -284,6 +405,7 @@ function AdminMembersBody({
   // an empty one both mean "nothing to match or order by". Only the cell needs
   // the distinction, so only the cell is handed the nullable.
   const known = contacts ?? NO_CONTACTS;
+  const knownAliases = aliases ?? NO_ALIASES;
 
   const filtered = useMemo(() => {
     const needle = pubkeySearch.toLowerCase();
@@ -291,17 +413,19 @@ function AdminMembersBody({
       if (!selectedStates.has(row.subscription_state)) return false;
       if (!selectedLanes.has(row.lane_purpose)) return false;
       if (needle) {
-        // Match against contact name OR pubkey — operators searching
-        // by either should find the row. Case-insensitive substring
-        // on both sides.
+        // Match against contact name, public alias OR pubkey — operators
+        // searching by any of them should find the row. Case-insensitive
+        // substring on both sides.
         const name = findContactName(row.member_pubkey, known);
         const matchesName = name?.toLowerCase().includes(needle) ?? false;
+        const publicAlias = findPublicAliasRow(row.member_pubkey, knownAliases)?.alias;
+        const matchesAlias = publicAlias?.toLowerCase().includes(needle) ?? false;
         const matchesPubkey = row.member_pubkey.toLowerCase().includes(needle);
-        if (!matchesName && !matchesPubkey) return false;
+        if (!matchesName && !matchesAlias && !matchesPubkey) return false;
       }
       return true;
     });
-  }, [response.members, known, selectedStates, selectedLanes, pubkeySearch]);
+  }, [response.members, known, knownAliases, selectedStates, selectedLanes, pubkeySearch]);
 
   const sorted = useMemo(
     () => sortRows(filtered, sort, known, revenue),
@@ -330,7 +454,14 @@ function AdminMembersBody({
       ) : sorted.length === 0 ? (
         <EmptyPanel message="No members match the active filters." />
       ) : (
-        <MembersTable rows={sorted} contacts={contacts} revenue={revenue} sort={sort} setSort={setSort} />
+        <MembersTable
+          rows={sorted}
+          contacts={contacts}
+          revenue={revenue}
+          aliases={aliases}
+          sort={sort}
+          setSort={setSort}
+        />
       )}
     </>
   );
@@ -434,10 +565,14 @@ function PageHeader({
   fetchedAt,
   onRefresh,
   refreshing,
+  onRefreshAliases,
+  aliasRefreshRunning,
 }: {
   fetchedAt: number | null;
   onRefresh: () => void;
   refreshing: boolean;
+  onRefreshAliases: () => void;
+  aliasRefreshRunning: boolean;
 }) {
   return (
     <header className="admin-members-header">
@@ -454,9 +589,25 @@ function PageHeader({
         <button className="sub-btn" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? "Refreshing…" : "Refresh now"}
         </button>
+        <button className="sub-btn" onClick={onRefreshAliases} disabled={aliasRefreshRunning}>
+          {PUBLIC_ALIAS_REFRESH_BUTTON}
+        </button>
       </div>
     </header>
   );
+}
+
+/** The refresh button's outcome, one line. Renders nothing while idle or
+ *  running — the disabled button is the running signal. */
+function AliasRefreshNotice({ state }: { state: AliasRefreshState }) {
+  if (state.kind === "idle" || state.kind === "running") return null;
+  const text =
+    state.kind === "done"
+      ? publicAliasRefreshMessage(state.result)
+      : state.kind === "in_progress"
+        ? PUBLIC_ALIAS_REFRESH_IN_PROGRESS
+        : `${PUBLIC_ALIAS_REFRESH_FAILED}${state.code ? ` (${state.code})` : ""}.`;
+  return <p className="admin-members-alias-refresh sub-muted">{text}</p>;
 }
 
 function DistributionCounter({ totals }: { totals: AdminMembersResponse["totals"] }) {
@@ -580,12 +731,14 @@ function MembersTable({
   rows,
   contacts,
   revenue,
+  aliases,
   sort,
   setSort,
 }: {
   rows: AdminMembersRow[];
   contacts: Contact[] | null;
   revenue: Map<string, MemberRevenueRow>;
+  aliases: AdminPublicAliasRow[] | null;
   sort: { column: SortColumn; direction: SortDirection };
   setSort: (s: { column: SortColumn; direction: SortDirection }) => void;
 }) {
@@ -602,6 +755,12 @@ function MembersTable({
         <thead>
           <tr>
             <SortHeader column="pubkey" sort={sort} onSort={handleSort}>Member</SortHeader>
+            {/* Not sortable — the Member column's sort is unchanged (spec §7).
+                The header carries the column-wide read failure. */}
+            <th>
+              {PUBLIC_ALIAS_COLUMN}
+              {aliases === null && <span className="sub-muted"> {PUBLIC_ALIAS_READ_FAILED_HEADER}</span>}
+            </th>
             <SortHeader column="lane" sort={sort} onSort={handleSort}>Lane</SortHeader>
             <SortHeader column="state" sort={sort} onSort={handleSort}>State</SortHeader>
             <SortHeader column="tier" sort={sort} onSort={handleSort}>Tier</SortHeader>
@@ -617,6 +776,7 @@ function MembersTable({
               key={row.member_pubkey}
               row={row}
               identity={resolveIdentity(row.member_pubkey, contacts)}
+              publicAlias={resolvePublicAlias(row.member_pubkey, aliases)}
               revenue={findRevenue(row.member_pubkey, revenue)}
             />
           ))}
@@ -649,10 +809,12 @@ function SortHeader({
 function MemberRow({
   row,
   identity,
+  publicAlias,
   revenue,
 }: {
   row: AdminMembersRow;
   identity: Identity;
+  publicAlias: PublicAliasState;
   revenue: MemberRevenueRow | undefined;
 }) {
   const pill = stateToPill(row.subscription_state);
@@ -660,6 +822,9 @@ function MemberRow({
     <tr>
       <td>
         <PubkeyCell pubkey={row.member_pubkey} identity={identity} />
+      </td>
+      <td>
+        <PublicAliasCell state={publicAlias} />
       </td>
       <td>{formatLane(row.lane_purpose)}</td>
       <td>
@@ -672,6 +837,24 @@ function MemberRow({
       <td>{revenue ? revenue.payment_count : <span className="sub-muted">—</span>}</td>
     </tr>
   );
+}
+
+/** One arm per PublicAliasState — the state was decided once, upstream, in
+ *  resolvePublicAlias. Only the alias itself renders as primary text; every
+ *  other state is muted, so no fallback reads like a name. */
+function PublicAliasCell({ state }: { state: PublicAliasState }) {
+  switch (state.kind) {
+    case "alias":
+      return <span className="admin-members-public-alias">{state.alias}</span>;
+    case "none_announced":
+      return <span className="sub-muted">{PUBLIC_ALIAS_NONE_ANNOUNCED}</span>;
+    case "not_in_graph":
+      return <span className="sub-muted">{PUBLIC_ALIAS_NOT_IN_GRAPH}</span>;
+    case "not_checked":
+      return <span className="sub-muted">{PUBLIC_ALIAS_NOT_CHECKED}</span>;
+    case "unavailable":
+      return <span className="sub-muted">{PUBLIC_ALIAS_READ_FAILED_CELL}</span>;
+  }
 }
 
 function PubkeyCell({

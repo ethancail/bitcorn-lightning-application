@@ -2831,6 +2831,7 @@ input[type="number"] {
   display: flex;
   align-items: center;
   gap: 0.875rem;
+  flex-wrap: wrap;
 }
 .admin-members-freshness {
   font-family: "IBM Plex Mono", monospace;

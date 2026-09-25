@@ -341,6 +341,9 @@ export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: stri
   { method: "POST", match: { kind: "exact", url: "/api/network/decode" }, why: "decode only" },
   { method: "POST", match: { kind: "exact", url: "/api/network/invoice" }, why: "invoice creation, inbound" },
   { method: "POST", match: { kind: "exact", url: "/api/contacts/sync-peers" }, why: "contact sync" },
+  // PROPOSED classification (spec 2026-09-24-public-alias-refresh §6.1), Ethan's
+  // to accept: same class as sync-peers — a gossip read plus a local cache write.
+  { method: "POST", match: { kind: "exact", url: "/api/admin/members/public-aliases/refresh" }, why: "public alias refresh" },
   { method: "POST", match: { kind: "exact", url: "/api/contacts" }, why: "contact CRUD" },
   { method: "PATCH", match: { kind: "prefix", url: "/api/contacts/" }, why: "contact CRUD" },
   { method: "DELETE", match: { kind: "prefix", url: "/api/contacts/" }, why: "contact CRUD" },

@@ -134,6 +134,14 @@ export const api = {
       method: "POST",
     }),
   getAdminMembers: () => apiFetch<AdminMembersResponse>("/api/admin/members"),
+  // The treasury's public-alias store (treasury-only). The read is separate
+  // from getAdminMembers so its failure degrades one column, not the roster.
+  getAdminPublicAliases: () =>
+    apiFetch<AdminPublicAliasesResponse>("/api/admin/members/public-aliases"),
+  refreshAdminPublicAliases: () =>
+    apiFetch<PublicAliasRefreshResult>("/api/admin/members/public-aliases/refresh", {
+      method: "POST",
+    }),
   getAdminSubscriptionRevenue: () =>
     apiFetch<SubscriptionRevenueResponse>("/api/admin/subscription/revenue"),
   getAdminRailFeeRevenue: () =>
@@ -187,8 +195,17 @@ export const api = {
     }),
   deleteContact: (pubkey: string) =>
     apiFetch<{ ok: boolean }>(`/api/contacts/${pubkey}`, { method: "DELETE" }),
+  // added = rows inserted (real aliases only); skipped = already in contacts.
+  // The other three count peers deliberately NOT added.
   syncPeers: () =>
-    apiFetch<{ ok: boolean; added: number; skipped: number }>("/api/contacts/sync-peers", {
+    apiFetch<{
+      ok: boolean;
+      added: number;
+      skipped: number;
+      none_announced: number;
+      not_in_graph: number;
+      failed: number;
+    }>("/api/contacts/sync-peers", {
       method: "POST",
     }),
   // Network Payments
@@ -896,6 +913,34 @@ export type AdminMembersResponse = {
     total_members: number;
     by_state: Record<SubscriptionStateKey, number>;
   };
+};
+
+// ─── Public-alias store (treasury roster) ──────────────────────────
+// Mirrors app/api/src/subscription/publicAlias.ts. pubkey arrives lowercased.
+
+export type PublicAliasOutcome = "alias" | "none_announced" | "not_in_graph";
+
+export type AdminPublicAliasRow = {
+  pubkey: string;
+  /** Last DEFINITIVE outcome; null = never definitively learned. */
+  outcome: PublicAliasOutcome | null;
+  /** Non-null iff outcome === "alias". */
+  alias: string | null;
+  outcome_at: number | null;
+  last_attempt_at: number;
+  /** 1 if the most recent lookup was definitive, 0 if it failed. */
+  last_attempt_ok: number;
+};
+
+export type AdminPublicAliasesResponse = { aliases: AdminPublicAliasRow[] };
+
+export type PublicAliasRefreshResult = {
+  ok: true;
+  total: number;
+  alias: number;
+  none_announced: number;
+  not_in_graph: number;
+  failed: number;
 };
 
 // ─── Subscription revenue (treasury dashboard + admin members) ─────

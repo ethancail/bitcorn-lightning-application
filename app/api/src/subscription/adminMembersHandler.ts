@@ -93,6 +93,39 @@ interface LastPaymentRow {
 }
 
 /**
+ * The roster: every distinct member pubkey, canonical lowercase.
+ *
+ * The ONE source for "who is on the roster" — this handler and the
+ * public-alias refresh (publicAlias.ts) both read it, so the refresh's
+ * coverage cannot drift from the rows the roster renders (D7 §7).
+ *
+ * The roster is normalized to lowercase HERE, once, because this is
+ * the only place the two sources meet. `subscription` stores
+ * lowercase; `lnd_channels` stores whatever LND handed the sync loop
+ * (persist-channels.ts binds partner_public_key verbatim) and
+ * `contacts` stores as-entered. Both `contacts.pubkey` and
+ * `lnd_channels.peer_pubkey` are binary-collated TEXT, so case decides
+ * whether a lookup matches at all — and classifyLanePurpose does not
+ * lowercase (lanePurpose.ts:40,42) while it GATES subscription scope.
+ * Emitting the canonical lowercase form keeps this endpoint's lane
+ * classification identical to the one every other subscription-scope
+ * consumer computes (statusHandler.ts:97,144).
+ *
+ * UNION, not UNION ALL: it dedupes, so a member holding both a channel
+ * and a subscription row yields exactly one roster row.
+ */
+export function listRosterPubkeys(): string[] {
+  const rosterRows = db
+    .prepare(
+      `SELECT lower(peer_pubkey) AS member_pubkey FROM lnd_channels
+       UNION
+       SELECT lower(member_pubkey) AS member_pubkey FROM subscription`,
+    )
+    .all() as RosterRow[];
+  return rosterRows.map((r) => r.member_pubkey);
+}
+
+/**
  * Returns the admin members list. One row per distinct member pubkey in
  * the roster — the union of the treasury's channel peers and every
  * subscription row, so a member whose channel is not (or no longer)
@@ -107,29 +140,8 @@ interface LastPaymentRow {
  * Pure of HTTP — caller wires to a 200 response.
  */
 export function computeMembersListForTreasury(): AdminMembersResponse {
-  // The roster is normalized to lowercase HERE, once, because this is
-  // the only place the two sources meet. `subscription` stores
-  // lowercase; `lnd_channels` stores whatever LND handed the sync loop
-  // (persist-channels.ts binds partner_public_key verbatim) and
-  // `contacts` stores as-entered. Both `contacts.pubkey` and
-  // `lnd_channels.peer_pubkey` are binary-collated TEXT, so case decides
-  // whether a lookup matches at all — and classifyLanePurpose does not
-  // lowercase (lanePurpose.ts:40,42) while it GATES subscription scope.
-  // Emitting the canonical lowercase form keeps this endpoint's lane
-  // classification identical to the one every other subscription-scope
-  // consumer computes (statusHandler.ts:97,144).
-  //
-  // UNION, not UNION ALL: it dedupes, so a member holding both a channel
-  // and a subscription row yields exactly one roster row.
-  const rosterRows = db
-    .prepare(
-      `SELECT lower(peer_pubkey) AS member_pubkey FROM lnd_channels
-       UNION
-       SELECT lower(member_pubkey) AS member_pubkey FROM subscription`,
-    )
-    .all() as RosterRow[];
-
-  const members: AdminMembersRow[] = rosterRows.map(({ member_pubkey }) => {
+  // Lowercase, deduped roster — see listRosterPubkeys.
+  const members: AdminMembersRow[] = listRosterPubkeys().map((member_pubkey) => {
     const status = computeSubscriptionStatusForPubkey(member_pubkey);
     const lane_purpose = classifyLanePurpose(member_pubkey);
 

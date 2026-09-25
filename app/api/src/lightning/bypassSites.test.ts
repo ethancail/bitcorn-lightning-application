@@ -46,7 +46,8 @@ const WRAPPER_LAYER = "lightning/lnd.ts";
 
 /** The bypass files and how many bounded / held raw calls each should hold. */
 const EXPECTED_BYPASS: Record<string, { bounded: number; held: number }> = {
-  "index.ts": { bounded: 2, held: 0 }, // /api/pay decode, sync-peers getNode
+  "index.ts": { bounded: 1, held: 0 }, // /api/pay decode
+  "lightning/nodeAlias.ts": { bounded: 1, held: 0 }, // getNode — shared by sync-peers + the public-alias refresh
   "lightning/fees.ts": { bounded: 3, held: 0 }, // 2x updateRoutingFees, getChannels
   "lightning/network-payments.ts": { bounded: 2, held: 0 }, // 2x decodePaymentRequest
   "lightning/pay.ts": { bounded: 0, held: 1 }, // payViaPaymentRequest — HELD
