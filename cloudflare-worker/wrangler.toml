@@ -26,6 +26,10 @@ id = "62c68c41830141cc8b0b6e7cdb193461"
 #                              to unauthenticated endpoint if unset)
 #   VALUATION_SUBMIT_HMAC   — shared secret between treasury node and Worker
 #                              for authenticating POST /valuation/manual
+#   DAYBREAK_DRAFT_SECRET   — bearer secret held by Radar (the Daybreak drafting
+#                              agent, on Hyperagent) for POST /daybreak/draft.
+#                              Worker-only: never on a member node, and no app
+#                              or compose configuration carries it. Unset → 503.
 #   SUBSCRIPTION_PUBLIC_KEY — base64url-encoded Ed25519 public key for JWT
 #                              validation on member-gated endpoints
 #

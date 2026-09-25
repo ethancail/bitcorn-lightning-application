@@ -44,6 +44,7 @@ FundNodePanel (browser)
 | GET | `/valuation/manual/calendar` | Per-day completeness summary across a range |
 | POST | `/valuation/refresh` | Manually trigger the valuation engine cron (HMAC) |
 | GET | `/daybreak/edition` | Daybreak member read — subscriber-base (any subscriber token): current edition + held-over status. Worker-owned fields rebuilt by allowlist (reason codes, never detail); an available Z carries the `bands` stamped at intake from KV key `daybreak_powerlaw_bands_v1` (table + classification, or unavailable with a reason; never read at request time — shape in `docs/API.md` § Daybreak; the key is seeded by the operator, not by code); a store or KV failure is 503 `daybreak_read_failed`. No cache |
+| POST | `/daybreak/draft` | Daybreak drafting-agent write (Radar) — **bearer secret** `DAYBREAK_DRAFT_SECRET` in `Authorization: Bearer`, compared in constant time and checked BEFORE the body is read; not JWT-gated, not HMAC. Body `{ date, sections }`, capped at 32 KiB. Writes ONLY `daybreak:<date>:draft`, via intake, and only when `date` is the next due date (the earliest due date whose 6:00 AM Central is strictly after now). Sections are validated against the section-key contract and rejected otherwise. Until the Yahoo adapter exists the Z is always unavailable (`fetch_failed`, or `params_unavailable` if the power-law params are unseeded). Codes only: 200 `{ date, z: { status, reason? } }`; 503 `daybreak_draft_not_configured`; 401 `missing_bearer` / `invalid_bearer`; 413 `body_too_large`; 400 `invalid_json` / `invalid_body` / `invalid_date` / `invalid_sections` / `unknown_section` / `invalid_section` / `invalid_link` (the last four and `invalid_body` may carry `field`); 422 `not_next_due_date`; 503 `daybreak_draft_write_failed` |
 | GET | `/base/contract-info` | Stablecoin rail — public: SettlementRouter address + live state |
 | POST | `/base/contract-state` | Stablecoin rail — payment-scope: allowlisted ABI read wrapper |
 | GET | `/base/balance` | Stablecoin rail — payment-scope: convenience ERC-20 `balanceOf` |
@@ -54,6 +55,7 @@ FundNodePanel (browser)
 - `CDP_KEY_NAME`
 - `CDP_PRIVATE_KEY` — SEC1 format (`-----BEGIN EC PRIVATE KEY-----`); Worker converts to PKCS#8 for the Web Crypto API via `sec1ToPkcs8Pem()`
 - `USDA_NASS_KEY`
+- `DAYBREAK_DRAFT_SECRET` — bearer secret for `POST /daybreak/draft`, held by Radar (the Daybreak drafting agent) in Hyperagent locked to this Worker's host. **Worker-only:** it is never on a member node, and no app, compose or `.env` configuration carries it. Set with `npx wrangler secret put DAYBREAK_DRAFT_SECRET`; unset → the route returns 503 `daybreak_draft_not_configured`
 
 ### Price Sources
 
