@@ -47,6 +47,8 @@ import { RailScope } from "./stablecoin/RailScope";
 import { isRailGated } from "./stablecoin/railAccess";
 import AdminMembers from "./pages/AdminMembers";
 import Liquidity from "./pages/Liquidity";
+import Daybreak from "./pages/Daybreak";
+import { DAYBREAK_NAV_LABEL } from "./daybreak/daybreakCopy";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
 // Browsers change number input values on scroll wheel — confusing for sats fields.
@@ -444,6 +446,9 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
   const navItems = [
     { to: "/dashboard", icon: "▤", label: "My Dashboard" },
     { to: "/charts", icon: "⟠", label: "Charts" },
+    // Flat on purpose — no "Insights" group until it has a second entry
+    // (member-screen Ruling 2, 2026-09-25). Member shell only for now.
+    { to: "/daybreak", icon: "☀", label: DAYBREAK_NAV_LABEL },
     { to: "/contacts", icon: "☰", label: "Contacts" },
     { to: "/channels", icon: "◈", label: "My Channels" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
@@ -570,6 +575,7 @@ function MemberShell() {
           <Routes>
             <Route path="/dashboard" element={<MemberDashboard />} />
             <Route path="/charts" element={<Charts />} />
+            <Route path="/daybreak" element={<Daybreak />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/channels" element={<ChannelsPage />} />
             <Route path="/payments" element={<Payments title="My Payments" />} />
