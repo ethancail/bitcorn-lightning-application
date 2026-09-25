@@ -2,6 +2,24 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, type Contact, truncPubkey, fmtSats } from "../api/client";
 
+// ⚠ PROPOSED COPY — spec 2026-09-24-public-alias-refresh §10, awaiting Ethan.
+// NOT accepted. sync-peers no longer adds a contact for a peer with no real
+// alias, so the line carries the counts of peers it deliberately left out.
+type SyncCounts = {
+  added: number;
+  skipped: number;
+  none_announced: number;
+  not_in_graph: number;
+  failed: number;
+};
+function syncCompleteMessage(c: SyncCounts): string {
+  return (
+    `Sync complete: ${c.added} added, ${c.skipped} already in contacts. ` +
+    `Not added: ${c.none_announced} announced no alias, ${c.not_in_graph} not in the public graph, ` +
+    `${c.failed} lookups failed.`
+  );
+}
+
 // ─── Tag Editor ──────────────────────────────────────────────────────────────
 
 const LANE_TAGS = ["merchant", "farmer"] as const;
@@ -153,7 +171,7 @@ export default function Contacts() {
   const [showAddForm, setShowAddForm] = useState(prefillPubkey.length > 0);
   const [editingPubkey, setEditingPubkey] = useState<string | null>(null);
   const [deletingPubkey, setDeletingPubkey] = useState<string | null>(null);
-  const [syncResult, setSyncResult] = useState<{ added: number; skipped: number } | null>(null);
+  const [syncResult, setSyncResult] = useState<SyncCounts | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [isTreasury, setIsTreasury] = useState(false);
 
@@ -192,7 +210,13 @@ export default function Contacts() {
     api
       .syncPeers()
       .then((res) => {
-        setSyncResult({ added: res.added, skipped: res.skipped });
+        setSyncResult({
+          added: res.added,
+          skipped: res.skipped,
+          none_announced: res.none_announced,
+          not_in_graph: res.not_in_graph,
+          failed: res.failed,
+        });
         loadContacts();
       })
       .catch(() => setSyncResult(null))
@@ -300,7 +324,7 @@ export default function Contacts() {
       {/* Sync result */}
       {syncResult && (
         <div className="alert info" style={{ marginBottom: 16 }}>
-          Sync complete: {syncResult.added} added, {syncResult.skipped} skipped.
+          {syncCompleteMessage(syncResult)}
         </div>
       )}
 

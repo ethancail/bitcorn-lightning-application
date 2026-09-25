@@ -80,6 +80,10 @@ const stub = vi.hoisted(() => ({
   getAdminMembers: vi.fn(),
   getContacts: vi.fn(),
   getAdminSubscriptionRevenue: vi.fn(),
+  // The roster also reads the public-alias store (spec 2026-09-24-public-alias-
+  // refresh §7). Stubbed so this suite makes no real fetch; the marker keys on
+  // contacts alone, so an empty alias read changes nothing asserted here.
+  getAdminPublicAliases: vi.fn(),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -97,6 +101,7 @@ beforeEach(() => {
   stub.getAdminMembers.mockResolvedValue(MEMBERS);
   stub.getContacts.mockResolvedValue(CONTACTS);
   stub.getAdminSubscriptionRevenue.mockResolvedValue({ members: [] });
+  stub.getAdminPublicAliases.mockResolvedValue({ aliases: [] });
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
