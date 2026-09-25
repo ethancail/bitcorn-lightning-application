@@ -1861,11 +1861,14 @@ async function dispatchRequest(
   // Worker-side: subscriber-base scope. Guarded the way the valuation reads
   // are (assertNonEmpty). Unlike the two proxies above, it KEEPS the Worker's
   // rejection reason — see daybreak/editionClient.ts. No cache.
+  // The node-role 403 answers with a code, not assertNonEmpty's sentence
+  // (ruled 2026-09-24, this route only): the shared thrower and the other
+  // routes that relay its message are unchanged.
   if (req.method === "GET" && req.url === "/api/daybreak/edition") {
     const node = getNodeInfo();
-    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+    try { assertNonEmpty(node?.node_role); } catch {
       res.writeHead(403, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
+      res.end(JSON.stringify({ error: "node_role_required" }));
       return;
     }
     const result = await fetchDaybreakEdition();

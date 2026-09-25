@@ -84,13 +84,15 @@ export default {
       return handleValuationRefresh(request, env);
     }
 
-    // ── SUBSCRIBER-BASE endpoints (Onramp + commodity prices) ─────
-    // Per decisions/2026-05-11-subscription-stage-5a-architectural-
-    // deltas.md decision #1: these endpoints serve the recovery path
-    // (Onramp lets a lapsed member acquire BTC to renew; prices give
-    // them the BTC/USD context to size the purchase), so any valid
-    // subscriber token is accepted — payment-scope (prepay + all
-    // lapsed tiers) and full-scope (current) both work.
+    // ── SUBSCRIBER-BASE endpoints (Onramp, commodity prices, Daybreak) ──
+    // Any valid subscriber token is accepted — payment-scope (prepay +
+    // all lapsed tiers) and full-scope (current) both work. Two different
+    // reasons put routes here:
+    //   - Onramp and prices serve the recovery path, per decisions/
+    //     2026-05-11-subscription-stage-5a-architectural-deltas.md
+    //     decision #1 (Onramp lets a lapsed member acquire BTC to renew;
+    //     prices give them the BTC/USD context to size the purchase);
+    //   - Daybreak sits here by its arc's scope decision (see its route).
     if (request.method === "POST" && (url.pathname === "/" || url.pathname === "")) {
       return withJwtGate(request, env, "payment", () => handleOnramp(request, env));
     }
@@ -100,10 +102,9 @@ export default {
     if (request.method === "GET" && url.pathname === "/prices/corn-history") {
       return withJwtGate(request, env, "payment", () => handleCornHistory(env));
     }
-    // The recovery-path rationale above covers Onramp and prices only.
-    // Daybreak sits in this block because it is subscriber-base scope (Ethan,
-    // 2026-09-24) — any valid subscriber token reads the current edition — not
-    // because it is a recovery path.
+    // Daybreak's scope was decided by Ethan at the arc's open (bitcorn-research
+    // BACKLOG.md §0). It is not a recovery path: a lapsed member keeps reading
+    // the edition by choice, not as renewal leverage.
     if (request.method === "GET" && url.pathname === "/daybreak/edition") {
       return withJwtGate(request, env, "payment", () => handleDaybreakEdition(env));
     }
