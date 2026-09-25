@@ -50,10 +50,20 @@ Guard: `assertNonEmpty(node_role)` — the same guard as the valuation reads; 40
 |--------|------|---------|
 | GET | `/api/daybreak/edition` | Daybreak member read: `{ state: "current" \| "held_over", dueDate, edition: { date, content } }` or `{ state: "unavailable" }`, relayed from the Worker's `GET /daybreak/edition` |
 
+`edition.content.workerOwned.z` is always present, in one of two shapes:
+
+- `{ status: "unavailable", reason }` — `reason` is one of intake's codes (`params_unavailable`, `fetch_failed`, `future_dated_close`, `stale_close`, `computation_failed`) or `unrecognized_z` for a stored block that fits neither shape.
+- `{ status: "available", value, corn, btc, bands }` — each close is `{ date, close, fetchedAt }`. `bands` is stamped at intake with the Z and never read live:
+  - `{ status: "available", table, index }` — `table` is Kevin's band table as stamped, an ordered, contiguous list of `{ lower, upper, label }`, open-ended at both extremes (`lower: null` on the first band, `upper: null` on the last), lower bound inclusive. `index` is the band holding `value`.
+  - `{ status: "unavailable", reason }` — `reason` is the loader's code (`absent`, `unparseable`, `wrong_shape`, `unordered`, `overlapping`, `gapped`), or `unrecognized_bands` for stamped bands that fit neither shape, including an edition stamped before bands existed. The Z is still shown.
+
+Dates (`edition.date`, `dueDate`, each close's `date`) are US Central calendar dates, `YYYY-MM-DD`.
+
 Unlike the other Worker proxies, this one **keeps the rejection reason** (codes only — no Worker or transport detail reaches the body):
 
 | Status | Body | Cause |
 |--------|------|-------|
+| 403 | `{ "error": "node_role_required" }` | This node has no role yet (the `assertNonEmpty(node_role)` guard). A code, not the shared thrower's sentence — this route only |
 | 401 | `{ "error": "auth_missing" }` | Worker 401 `missing` — this node holds no entitlement token |
 | 401 | `{ "error": "auth_invalid" }` | Any other Worker 401 (expired, bad signature, …) after `workerFetch`'s one refresh-and-retry |
 | 403 | `{ "error": "scope_insufficient" }` | Worker 403 `scope_insufficient` |

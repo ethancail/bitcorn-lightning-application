@@ -16,6 +16,14 @@
 //     `detail` can name KV keys, a parameter value or computation
 //     intermediates (powerLawParams.ts:39, powerLawZ.ts:128-129, :170);
 //   - an available Z carries its value and both closes (date, close, fetchedAt);
+//   - an available Z also carries its stamped `bands` (member-screen Ruling 1,
+//     2026-09-25), rebuilt the same way: either the table (each band exactly
+//     { lower, upper, label }, re-checked by the loader's own rule) with the
+//     index of the band holding the Z, or `unavailable` with a known reason
+//     code and no detail. Bands that fit neither — including an edition
+//     stamped before bands existed — are shown unavailable with
+//     BANDS_UNRECOGNIZED, and the Z is still shown. The bands come from the
+//     STAMP only; this route never reads the band key;
 //   - any other key, at any level of the block, is dropped. A Z block that
 //     fits neither shape — including an unavailable one whose reason is not a
 //     known code — is shown as unavailable with Z_UNRECOGNIZED, never dropped
@@ -39,6 +47,7 @@ import type { Env } from "../lib/types";
 import { DEFAULT_DAYBREAK_CALENDAR } from "../daybreak/dates";
 import { WORKER_OWNED_KEY, type ZUnavailableReason } from "../daybreak/intake";
 import { readEditionStatus, type EditionContent, type EditionStatusResult } from "../daybreak/store";
+import { bandContains, checkBandTable, type PowerLawBandsUnavailable } from "../valuation/powerLawBands";
 
 export const DAYBREAK_READ_FAILED = "daybreak_read_failed";
 
@@ -59,6 +68,20 @@ const Z_UNAVAILABLE_REASONS: Record<ZUnavailableReason, true> = {
   computation_failed: true,
 };
 
+// The one reason a member sees for stamped bands that fit neither shape.
+export const BANDS_UNRECOGNIZED = "unrecognized_bands";
+
+const _bandsUnrecognizedIsNotALoaderReason: typeof BANDS_UNRECOGNIZED extends PowerLawBandsUnavailable ? never : true = true;
+
+const BANDS_UNAVAILABLE_REASONS: Record<PowerLawBandsUnavailable, true> = {
+  absent: true,
+  unparseable: true,
+  wrong_shape: true,
+  unordered: true,
+  overlapping: true,
+  gapped: true,
+};
+
 type Obj = Record<string, unknown>;
 
 function isPlainObject(v: unknown): v is Obj {
@@ -74,13 +97,32 @@ function pickClose(c: unknown): Obj | undefined {
   return { date, close, fetchedAt };
 }
 
+function pickBands(b: unknown, value: number): Obj {
+  const unrecognized = { status: "unavailable", reason: BANDS_UNRECOGNIZED };
+  if (!isPlainObject(b)) return unrecognized;
+  if (b.status === "available") {
+    const checked = checkBandTable({ bands: b.table });
+    const index = b.index;
+    if (!checked.ok || typeof index !== "number" || !Number.isInteger(index)) return unrecognized;
+    const band = checked.bands[index];
+    if (!band || !bandContains(band, value)) return unrecognized;
+    return { status: "available", table: checked.bands, index };
+  }
+  if (b.status === "unavailable") {
+    const reason = b.reason;
+    if (typeof reason !== "string" || !Object.prototype.hasOwnProperty.call(BANDS_UNAVAILABLE_REASONS, reason)) return unrecognized;
+    return { status: "unavailable", reason };
+  }
+  return unrecognized;
+}
+
 function pickZ(z: unknown): Obj | undefined {
   if (!isPlainObject(z)) return undefined;
   if (z.status === "available") {
     const corn = pickClose(z.corn);
     const btc = pickClose(z.btc);
     if (typeof z.value !== "number" || !corn || !btc) return undefined;
-    return { status: "available", value: z.value, corn, btc };
+    return { status: "available", value: z.value, corn, btc, bands: pickBands(z.bands, z.value) };
   }
   if (z.status === "unavailable") {
     const reason = z.reason;

@@ -89,6 +89,10 @@ export const api = {
   getCoinbaseOnrampUrl: () => apiFetch<OnrampUrlResponse>("/api/coinbase/onramp-url"),
   getCommodityPrices: () => apiFetch<CommodityPrices>("/api/commodity-prices"),
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
+  // Daybreak member read. No query string: the proxy matches the URL exactly
+  // (app/api/src/index.ts). `unknown` on purpose — daybreak/daybreakView.ts
+  // parses it, because the written sections have no schema the API vouches for.
+  getDaybreakEdition: () => apiFetch<unknown>("/api/daybreak/edition"),
   getSubscriptionStatus: () => apiFetch<SubscriptionStatus>("/api/subscription/status"),
   getSubscriptionPayments: () => apiFetch<SubscriptionPaymentsResponse>("/api/subscription/payments"),
   // Pay-from-node modal (the "I have BTC → Pay from this node" path).

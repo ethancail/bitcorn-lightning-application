@@ -43,7 +43,7 @@ FundNodePanel (browser)
 | GET | `/valuation/manual/day` | All 8 metric values for a date |
 | GET | `/valuation/manual/calendar` | Per-day completeness summary across a range |
 | POST | `/valuation/refresh` | Manually trigger the valuation engine cron (HMAC) |
-| GET | `/daybreak/edition` | Daybreak member read — subscriber-base (any subscriber token): current edition + held-over status. Worker-owned fields rebuilt by allowlist (reason codes, never detail); a store or KV failure is 503 `daybreak_read_failed`. No cache |
+| GET | `/daybreak/edition` | Daybreak member read — subscriber-base (any subscriber token): current edition + held-over status. Worker-owned fields rebuilt by allowlist (reason codes, never detail); an available Z carries the `bands` stamped at intake from KV key `daybreak_powerlaw_bands_v1` (table + classification, or unavailable with a reason; never read at request time — shape in `docs/API.md` § Daybreak; the key is seeded by the operator, not by code); a store or KV failure is 503 `daybreak_read_failed`. No cache |
 | GET | `/base/contract-info` | Stablecoin rail — public: SettlementRouter address + live state |
 | POST | `/base/contract-state` | Stablecoin rail — payment-scope: allowlisted ABI read wrapper |
 | GET | `/base/balance` | Stablecoin rail — payment-scope: convenience ERC-20 `balanceOf` |
