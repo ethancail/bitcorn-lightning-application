@@ -49,6 +49,7 @@ import AdminMembers from "./pages/AdminMembers";
 import Liquidity from "./pages/Liquidity";
 import Daybreak from "./pages/Daybreak";
 import { DAYBREAK_NAV_LABEL } from "./daybreak/daybreakCopy";
+import { SHOW_DAYBREAK_IN_MEMBER_NAV } from "./daybreak/launch";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
 // Browsers change number input values on scroll wheel — confusing for sats fields.
@@ -448,7 +449,10 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
     { to: "/charts", icon: "⟠", label: "Charts" },
     // Flat on purpose — no "Insights" group until it has a second entry
     // (member-screen Ruling 2, 2026-09-25). Member shell only for now.
-    { to: "/daybreak", icon: "☀", label: DAYBREAK_NAV_LABEL },
+    // ⚠ HIDDEN UNTIL LAUNCH — the Stablecoin entry's "hide the entry, keep the
+    // door" pattern above: the /daybreak route below stays registered. What
+    // launch requires is in daybreak/launch.ts.
+    ...(SHOW_DAYBREAK_IN_MEMBER_NAV ? [{ to: "/daybreak", icon: "☀", label: DAYBREAK_NAV_LABEL }] : []),
     { to: "/contacts", icon: "☰", label: "Contacts" },
     { to: "/channels", icon: "◈", label: "My Channels" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
@@ -575,6 +579,8 @@ function MemberShell() {
           <Routes>
             <Route path="/dashboard" element={<MemberDashboard />} />
             <Route path="/charts" element={<Charts />} />
+            {/* Registered even while its nav entry is hidden (daybreak/launch.ts):
+                reachable directly by URL before launch. */}
             <Route path="/daybreak" element={<Daybreak />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/channels" element={<ChannelsPage />} />
