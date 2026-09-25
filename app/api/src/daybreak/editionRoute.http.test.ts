@@ -1,5 +1,5 @@
 // Route-level tests for GET /api/daybreak/edition — the member-reachable proxy
-// in front of the Worker's GET /daybreak/edition (spec §3.4.2, first test 31,
+// in front of the Worker's GET /daybreak/edition (spec §3.4.2, first tests 31 and 33,
 // bitcorn-research specs/2026-09-21-bitcorn-daybreak-spec.md).
 //
 // THE PROPERTY: the proxy KEEPS THE REASON. Each Worker outcome maps to its own
@@ -66,7 +66,7 @@ interface Captured {
   body: string;
 }
 
-async function getEdition(): Promise<{ status: number | null; body: any; raw: string }> {
+async function getEdition(url = "/api/daybreak/edition"): Promise<{ status: number | null; body: any; raw: string }> {
   const captured: Captured = { status: null, body: "" };
   const res: any = {
     setHeader() {},
@@ -79,7 +79,7 @@ async function getEdition(): Promise<{ status: number | null; body: any; raw: st
       return res;
     },
   };
-  await handleRequest({ method: "GET", url: "/api/daybreak/edition", headers: {} } as any, res);
+  await handleRequest({ method: "GET", url, headers: {} } as any, res);
   let body: any = null;
   try {
     body = JSON.parse(captured.body);
@@ -154,6 +154,45 @@ describe("guard: assertNonEmpty(node_role), as on the valuation reads", () => {
     const out = await getEdition();
     expect(out.status).toBe(403);
     expect(workerState.calls).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Test 33 — the Daybreak proxy's node-role 403 is a code (ruled 2026-09-24).
+// Scope: this route's response only — the shared assertNonEmpty and every
+// other route's body are unchanged.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const REASON_CODE = /^[a-z][a-z0-9_]{0,63}$/;
+const SENTENCE = "Node role required";
+
+describe("test 33 — the Daybreak proxy's node-role 403 is a code", () => {
+  const NO_ROLE: Array<{ name: string; node: { node_role?: string } | null }> = [
+    { name: "an empty node_role", node: { node_role: "" } },
+    { name: "no node info at all", node: null },
+  ];
+
+  for (const f of NO_ROLE) {
+    it(`${f.name}: 403 { error: "node_role_required" }, never the sentence`, async () => {
+      roleState.node = f.node;
+      workerReturns(200, EDITION);
+      const out = await getEdition();
+
+      expect(out.status).toBe(403);
+      // PERMITS: a snake_case code — the spec's pattern, then the exact name.
+      expect(out.body.error).toMatch(REASON_CODE);
+      expect(out.body).toEqual({ error: "node_role_required" });
+      // FORBIDS: the shared thrower's sentence never reaches this body.
+      expect(out.raw).not.toContain(SENTENCE);
+      expect(workerState.calls).toEqual([]);
+    });
+  }
+
+  it("scope control: another arc's route on the same assertNonEmpty still returns its existing body", async () => {
+    roleState.node = { node_role: "" };
+    const out = await getEdition("/api/valuation/current");
+    expect(out.status).toBe(403);
+    expect(out.body).toEqual({ error: SENTENCE });
   });
 });
 

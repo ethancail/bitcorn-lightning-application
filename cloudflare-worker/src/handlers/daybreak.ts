@@ -18,7 +18,9 @@
 //   - an available Z carries its value and both closes (date, close, fetchedAt);
 //   - any other key, at any level of the block, is dropped. A Z block that
 //     fits neither shape — including an unavailable one whose reason is not a
-//     known code — is dropped whole rather than guessed at.
+//     known code — is shown as unavailable with Z_UNRECOGNIZED, never dropped
+//     and never guessed at: none of its stored fields is carried (ruled
+//     2026-09-24).
 // The written sections pass through untouched: their schema is not this
 // module's. This is hygiene, not secrecy — an available Z discloses the model's
 // parameters over time regardless.
@@ -37,6 +39,13 @@ import { WORKER_OWNED_KEY, type ZUnavailableReason } from "../daybreak/intake";
 import { readEditionStatus, type EditionContent, type EditionStatusResult } from "../daybreak/store";
 
 export const DAYBREAK_READ_FAILED = "daybreak_read_failed";
+
+// The one reason a member sees for a Z block that fits neither shape.
+export const Z_UNRECOGNIZED = "unrecognized_z";
+
+// tsc fails here if intake.ts ever gains a reason spelled like the generic
+// code, which would make the two indistinguishable to a member.
+const _zUnrecognizedIsNotAnIntakeReason: typeof Z_UNRECOGNIZED extends ZUnavailableReason ? never : true = true;
 
 // A Record rather than an array so tsc fails here if intake.ts gains a reason
 // this list does not name.
@@ -85,8 +94,9 @@ function sanitizeEditionContent(content: EditionContent): EditionContent {
   const { [WORKER_OWNED_KEY]: owned, ...sections } = content;
   if (owned === undefined) return sections;
   const safe: Obj = {};
-  const z = isPlainObject(owned) ? pickZ(owned.z) : undefined;
-  if (z) safe.z = z;
+  if (isPlainObject(owned) && Object.prototype.hasOwnProperty.call(owned, "z")) {
+    safe.z = pickZ(owned.z) ?? { status: "unavailable", reason: Z_UNRECOGNIZED };
+  }
   return { ...sections, [WORKER_OWNED_KEY]: safe };
 }
 

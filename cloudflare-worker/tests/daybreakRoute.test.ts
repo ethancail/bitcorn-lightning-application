@@ -1,5 +1,5 @@
 // Router-level tests for the Daybreak member read, GET /daybreak/edition —
-// spec §3.4.2, first tests 27–30 (bitcorn-research, specs/2026-09-21-bitcorn-
+// spec §3.4.2, first tests 27–30 and 32 (bitcorn-research, specs/2026-09-21-bitcorn-
 // daybreak-spec.md). Each has a PERMITTING and a FORBIDDING case, and every
 // "X is absent" assertion carries a companion showing X was there to be seen.
 //
@@ -256,16 +256,6 @@ describe("test 29 — codes, not detail", () => {
     for (const s of ["trend", "vendor payload", "internalNote"]) expect(text).not.toContain(s);
   });
 
-  it("an unavailable Z with an unknown reason is dropped, never passed through", async () => {
-    const { kv } = mockKV();
-    await publish(kv, TODAY, edition({ status: "unavailable", reason: "KV key daybreak:x broke" }));
-
-    const body = (await (await get(envWith(kv))).json()) as {
-      edition: { content: { workerOwned: Record<string, unknown> } };
-    };
-    expect(body.edition.content.workerOwned).toEqual({});
-  });
-
   it("the written sections pass through untouched", async () => {
     const { kv } = mockKV();
     await publish(kv, TODAY, edition(Z_UNAVAILABLE));
@@ -275,6 +265,73 @@ describe("test 29 — codes, not detail", () => {
     };
     const { workerOwned: _owned, ...sections } = body.edition.content;
     expect(sections).toEqual(SECTIONS);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Test 32 — an unrecognized Z block reaches the member as UNAVAILABLE (ruled
+// 2026-09-24: shown unavailable with one generic code, never dropped).
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The generic code, written out rather than imported so that on a tree
+// without it this suite fails on the dropped block, not on a missing export.
+const Z_UNRECOGNIZED = "unrecognized_z";
+
+// intake.ts's ZUnavailableReason, listed by hand: tests are outside the
+// Worker's tsconfig. The compile-time guard that the generic code is not one of
+// these lives in handlers/daybreak.ts.
+const INTAKE_REASONS = ["params_unavailable", "fetch_failed", "future_dated_close", "stale_close", "computation_failed"];
+
+describe("test 32 — an unrecognized Z block reaches the member as unavailable", () => {
+  const UNRECOGNIZED: Array<{ name: string; z: Record<string, unknown>; stored: string }> = [
+    { name: "an unavailable Z with an unknown reason", z: { status: "unavailable", reason: "not_a_known_code" }, stored: "not_a_known_code" },
+    { name: "a Z with an unknown status", z: { status: "bogus" }, stored: "bogus" },
+  ];
+
+  it("the generic code is not one of intake's reasons", () => {
+    expect(INTAKE_REASONS).not.toContain(Z_UNRECOGNIZED);
+  });
+
+  for (const f of UNRECOGNIZED) {
+    it(`${f.name} → { status: "unavailable", reason: "${Z_UNRECOGNIZED}" }, never {} and never the stored field`, async () => {
+      const { kv, store } = mockKV();
+      await publish(kv, TODAY, edition(f.z));
+      // Anti-vacuity: the stored block really carries the unrecognized value.
+      expect(store.get(`daybreak:${TODAY}:published`)).toContain(f.stored);
+
+      const res = await get(envWith(kv));
+      expect(res.status).toBe(200);
+      const text = await res.text();
+      const body = JSON.parse(text) as { edition: { content: { workerOwned: Record<string, unknown> } } };
+
+      // FORBIDS: never an empty workerOwned.
+      expect(body.edition.content.workerOwned).not.toEqual({});
+      // PERMITS: exactly the generic unavailable Z — toEqual also forbids any
+      // other stored field riding along.
+      expect(body.edition.content.workerOwned).toEqual({ z: { status: "unavailable", reason: Z_UNRECOGNIZED } });
+      // FORBIDS: the stored block's unknown value never reaches the member.
+      expect(text).not.toContain(f.stored);
+    });
+  }
+
+  it("anti-vacuity: a VALID available Z in the same fixture shape still carries its value and both closes", async () => {
+    const { kv } = mockKV();
+    await publish(kv, TODAY, edition(Z_AVAILABLE));
+
+    const body = (await (await get(envWith(kv))).json()) as {
+      edition: { content: { workerOwned: Record<string, unknown> } };
+    };
+    expect(body.edition.content.workerOwned).toEqual({ z: Z_AVAILABLE });
+  });
+
+  it("a KNOWN intake reason still passes through as itself, not as the generic code", async () => {
+    const { kv } = mockKV();
+    await publish(kv, TODAY, edition({ status: "unavailable", reason: "stale_close" }));
+
+    const body = (await (await get(envWith(kv))).json()) as {
+      edition: { content: { workerOwned: Record<string, unknown> } };
+    };
+    expect(body.edition.content.workerOwned).toEqual({ z: { status: "unavailable", reason: "stale_close" } });
   });
 });
 
