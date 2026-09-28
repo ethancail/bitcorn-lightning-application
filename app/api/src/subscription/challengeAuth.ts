@@ -12,7 +12,14 @@
 //     bitcorn:token-request:<member_pubkey_hex>:<unix_seconds>
 //
 // Body shape:
-//     { challenge: <string>, signature: <hex> }
+//     { challenge: <string>, signature: <hex>,
+//       name?: <string>, name_signature?: <string> }
+//
+// `name` / `name_signature` (D8, spec 2026-09-25-member-name-signed-
+// transport §3) are optional, present together or not at all, and never
+// read here: the member's Bitcorn-level name under a SECOND signature,
+// processed by memberName.ts after this verification succeeds. The
+// challenge grammar and this parser are UNCHANGED by them (D8 call 1).
 //
 // Constraints:
 // - The challenge string must match the format exactly.
@@ -21,12 +28,14 @@
 // - The timestamp must be within ±CHALLENGE_SKEW_SEC of now.
 
 import { lndVerifyMessage } from "../lightning/lnd";
+import { CHALLENGE_PREFIX } from "./challengeGrammar";
 
-const CHALLENGE_PREFIX = "bitcorn:token-request:";
 const CHALLENGE_SKEW_SEC = 60;
 
 export interface ChallengeVerificationResult {
   verified_pubkey: string;
+  /** The challenge's signed timestamp (epoch s). Orders stored names (D8 call 3). */
+  timestamp_sec: number;
 }
 
 export class ChallengeAuthError extends Error {
@@ -135,7 +144,7 @@ export async function verifyChallengeSignature(
     );
   }
 
-  return { verified_pubkey: signedBy.toLowerCase() };
+  return { verified_pubkey: signedBy.toLowerCase(), timestamp_sec: parsed.timestamp_sec };
 }
 
 // Exposed for unit tests / debugging.

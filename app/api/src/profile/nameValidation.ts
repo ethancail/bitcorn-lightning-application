@@ -8,15 +8,21 @@
 // nothing here (§5.3) and is deliberately not wired. With no blocklist there
 // is nothing to hide, so errors are SPECIFIC (accepted 2026-09-23).
 //
+// The TREASURY applies these same two functions to the name each member sends
+// (subscription/memberName.ts, D8) and THEN checks its own operator's
+// blocked_aliases — there the answer is a generic "rejected", never why.
+//
 // The frontend mirrors these rules in bitcornNameInputState.ts (web side).
 
 // ⚠ A SEPARATE constant from the alias's ALLOWED_ALIAS_RE, even though the
-// value is currently identical. The charset is held no wider than the alias's
-// — which EXCLUDES ':' — until the signed transport exists (§5.2): the only
-// signed string today is a colon-delimited challenge, so a name containing
-// ':' could be stored now and then be unsendable later. That ruling is
-// time-bound; importing the alias regex by reference would make widening one
-// silently widen the other.
+// value is currently identical. ⚠ THE ':' EXCLUSION IS PERMANENT AND
+// LOAD-BEARING. It began as a time-bound ruling (§5.2 of the 2026-09-23 spec:
+// "until the signed transport exists"). The transport now exists (D8), and its
+// name signature is `bitcorn:member-name:<challenge>:<name>` — unambiguous
+// ONLY because the name has no ':', so the last colon always separates
+// challenge from name (subscription/challengeGrammar.ts). Admitting ':' here
+// would break that format. Importing the alias regex by reference would still
+// make widening one silently widen the other, hence the separate constant.
 const BITCORN_NAME_ALLOWED_RE = /^[A-Za-z0-9 .\-_'!?]+$/;
 
 // Characters, not bytes: the charset is ASCII-only, so they are equal here.

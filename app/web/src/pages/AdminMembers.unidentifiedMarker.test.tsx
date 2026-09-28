@@ -1,8 +1,13 @@
 // The unidentified marker on the admin Members roster.
 //
 // Spec: bitcorn-research/specs/2026-09-21-operator-nudge-for-unidentified-
-// enrolled-members-spec.md §6. Decision 3b81b7e. The trigger is "no contacts
-// row" and nothing else (§1.2) — not tier, not payment state, not lane.
+// enrolled-members-spec.md §6. Decision 3b81b7e. The trigger was "no contacts
+// row" and nothing else (§1.2) — not tier, not payment state, not lane. Since
+// D8 call 6 it is "no name the treasury holds": no contacts row, no member-set
+// name, no real public alias (AdminMembers.privateName.test.tsx pins the
+// other two). This suite stubs both of those reads as successful and empty, so
+// contacts alone still decide every case here — still never tier, payment
+// state or lane.
 //
 // ─── WHY EVERY TEST RENDERS ALL THREE ROWS AT ONCE ──────────────────────────
 // Spec §6.1: "a suite that only asserts the marker appears on nameless rows
@@ -22,10 +27,10 @@
 //        roster pubkey emitted lowercase is THE SAME MEMBER. A case-sensitive
 //        absence test marks them unidentified while their name is on screen.
 //
-// ⚠ COPY IS PROPOSED, NOT ACCEPTED (spec §5, awaiting Ethan). The strings are
-// hardcoded here ON PURPOSE rather than imported from the component: a test
-// that imports the constant it asserts cannot detect a copy change at all. If
-// Ethan revises the copy, these failing is the correct signal, not a defect.
+// ⚠ COPY IS ACCEPTED (spec §5; Ethan, a direct yes, 2026-09-28). The strings
+// are hardcoded here ON PURPOSE rather than imported from the component: a
+// test that imports the constant it asserts cannot detect a copy change at
+// all. If the copy is ever revised, these failing is the correct signal.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -33,8 +38,8 @@ import { act } from "react-dom/test-utils";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 
-const MARKER = "Unidentified";   // spec §5 — PROPOSED
-const ADD_LINK = "Add contact";  // spec §5 — PROPOSED
+const MARKER = "Unidentified";   // spec §5 — ACCEPTED 2026-09-28
+const ADD_LINK = "Add contact";  // spec §5 — ACCEPTED 2026-09-28
 
 // 66-char pubkeys, the real shape. PubkeyCell renders slice(0,8)…slice(-8).
 const NAMED     = "02" + "a".repeat(64);
@@ -81,9 +86,12 @@ const stub = vi.hoisted(() => ({
   getContacts: vi.fn(),
   getAdminSubscriptionRevenue: vi.fn(),
   // The roster also reads the public-alias store (spec 2026-09-24-public-alias-
-  // refresh §7). Stubbed so this suite makes no real fetch; the marker keys on
-  // contacts alone, so an empty alias read changes nothing asserted here.
+  // refresh §7) and the private-name store (D8). Since D8 call 6 the marker
+  // keys on all three reads — it needs every one to SUCCEED and none to hold a
+  // name — so both are stubbed as successful EMPTY reads: contacts alone then
+  // decide every outcome asserted here, as this suite's §1.2 framing needs.
   getAdminPublicAliases: vi.fn(),
+  getAdminPrivateNames: vi.fn(),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -102,6 +110,7 @@ beforeEach(() => {
   stub.getContacts.mockResolvedValue(CONTACTS);
   stub.getAdminSubscriptionRevenue.mockResolvedValue({ members: [] });
   stub.getAdminPublicAliases.mockResolvedValue({ aliases: [] });
+  stub.getAdminPrivateNames.mockResolvedValue({ names: [] });
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
