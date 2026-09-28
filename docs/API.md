@@ -50,10 +50,20 @@ Guard: `assertNonEmpty(node_role)` — the same guard as the valuation reads; 40
 |--------|------|---------|
 | GET | `/api/daybreak/edition` | Daybreak member read: `{ state: "current" \| "held_over", dueDate, edition: { date, content } }` or `{ state: "unavailable" }`, relayed from the Worker's `GET /daybreak/edition` |
 
+`edition.content.workerOwned.z` is always present, in one of two shapes:
+
+- `{ status: "unavailable", reason }` — `reason` is one of intake's codes (`params_unavailable`, `fetch_failed`, `future_dated_close`, `stale_close`, `computation_failed`) or `unrecognized_z` for a stored block that fits neither shape.
+- `{ status: "available", value, corn, btc, bands }` — each close is `{ date, close, fetchedAt }`. `bands` is stamped at intake with the Z and never read live:
+  - `{ status: "available", table, index }` — `table` is Kevin's band table as stamped, an ordered, contiguous list of `{ lower, upper, label }`, open-ended at both extremes (`lower: null` on the first band, `upper: null` on the last), lower bound inclusive. `index` is the band holding `value`.
+  - `{ status: "unavailable", reason }` — `reason` is the loader's code (`absent`, `unparseable`, `wrong_shape`, `unordered`, `overlapping`, `gapped`), or `unrecognized_bands` for stamped bands that fit neither shape, including an edition stamped before bands existed. The Z is still shown.
+
+Dates (`edition.date`, `dueDate`, each close's `date`) are US Central calendar dates, `YYYY-MM-DD`.
+
 Unlike the other Worker proxies, this one **keeps the rejection reason** (codes only — no Worker or transport detail reaches the body):
 
 | Status | Body | Cause |
 |--------|------|-------|
+| 403 | `{ "error": "node_role_required" }` | This node has no role yet (the `assertNonEmpty(node_role)` guard). A code, not the shared thrower's sentence — this route only |
 | 401 | `{ "error": "auth_missing" }` | Worker 401 `missing` — this node holds no entitlement token |
 | 401 | `{ "error": "auth_invalid" }` | Any other Worker 401 (expired, bad signature, …) after `workerFetch`'s one refresh-and-retry |
 | 403 | `{ "error": "scope_insufficient" }` | Worker 403 `scope_insufficient` |
@@ -76,8 +86,16 @@ Member-only: `assertMember` rejects the treasury role (403 `member_required`). I
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/profile/name` | The member's Bitcorn-level name: `{ bitcorn_name, bitcorn_name_set_at }` (both null until set). **Not** the LND alias. Stored on this node only — nothing sends it anywhere. |
-| POST | `/api/profile/name` | Set/overwrite the name (`{ name }`). Normalized (trim, collapse whitespace), then validated: non-empty, `[A-Za-z0-9 .-_'!?]` only (no `:`), ≤ 64 characters. 400 `invalid_name` carries a **specific** `detail`. No DELETE — overwrite only. Exempt from per-action confirmation (`local profile field`). |
+| GET | `/api/profile/name` | The member's Bitcorn-level name: `{ bitcorn_name, bitcorn_name_set_at, treasury_name_status }` (the first two null until set). **Not** the LND alias. Stored on this node and sent to the treasury with every token refresh under its own signature (see `POST /api/subscription/token` below). `treasury_name_status` is what the treasury last said about **the current name** — `"accepted"` / `"rejected"` / `null` (nothing said about it, e.g. an older treasury, or a status that was about an earlier name). |
+| POST | `/api/profile/name` | Set/overwrite the name (`{ name }`). Normalized (trim, collapse whitespace), then validated: non-empty, `[A-Za-z0-9 .-_'!?]` only (no `:` — permanent: the name signature's format depends on it), ≤ 64 characters. 400 `invalid_name` carries a **specific** `detail`. No DELETE — overwrite only. A 200 save then fires **one** token refresh (fire-and-forget) so the treasury learns the name in seconds; a failed refresh never fails or changes the save. Exempt from per-action confirmation (`local profile field`). |
+
+## Subscription Token Endpoint (served by the treasury)
+
+Authenticated by the LND-signed challenge itself, not by role. ⚠ The other `/api/subscription/*` routes are not yet listed in this file; only this one is.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `/api/subscription/token` | Mint the caller's entitlement JWT. Body `{ challenge, signature, name?, name_signature? }`. `challenge` = `bitcorn:token-request:<pubkey>:<unix_seconds>` (±60s), signed with LND `signMessage`; 400 `missing_challenge_or_signature`, 401 with the `ChallengeAuthError` reason. The optional pair (present together or not at all) carries the member's Bitcorn-level name: `name_signature` signs `bitcorn:member-name:<challenge>:<name>`, both exactly as sent. The treasury verifies that over the exact received bytes (signer must be the challenge's verified pubkey), then normalizes, validates, and checks its operator's `blocked_aliases`, and stores it (`member_private_name`) only from a **strictly newer** challenge timestamp. An absent name never clears a stored one. **Nothing in the name path affects the token.** The 200 body is the token (`{ jwt, scope, issued_at_sec, expires_at_sec }`) plus an additive `name_status`: `none` (no name field) / `accepted` (the treasury now holds exactly this name) / `rejected` (bad signature, invalid, blocked, or not newer than a different stored name — never says which). `name_status` is omitted on an internal error. Exempt from per-action confirmation (`token exchange`). |
 
 ## Stablecoin Endpoints (member-node local)
 
@@ -248,6 +266,7 @@ mechanism, not introduced here.
 | GET | `/api/admin/subscription/revenue` | Per-member on-chain revenue sums (kind=`onchain` only) + dashboard aggregates: total earned (sats/USD-at-receipt), recurring entitlement vs actual for the current policy window, paying/enrolled counts ("paying" = ≥1 confirmed on-chain payment, not tier). Names are joined client-side from contacts |
 | GET | `/api/admin/members/public-aliases` | The public-alias store: `{ aliases: [{ pubkey, outcome, alias, outcome_at, last_attempt_at, last_attempt_ok }] }`. `outcome` is `alias` / `none_announced` / `not_in_graph`, or null when never definitively learned. Read separately by the roster so its failure degrades one column |
 | POST | `/api/admin/members/public-aliases/refresh` | Button-driven gossip lookup of every roster pubkey (channel peers ∪ subscription rows), at most 4 in flight, each with the 10s gossip deadline. Returns `{ ok, total, alias, none_announced, not_in_graph, failed }`; `409 refresh_in_progress` if one is already running. Never writes `contacts`. Confirmation: EXEMPT |
+| GET | `/api/admin/members/private-names` | The treasury's store of members' Bitcorn-level names: `{ names: [{ pubkey, name, signed_at, received_at }] }` — each sent by the member under its own signature on `/api/subscription/token`, then verified, validated and blocklist-checked. `signed_at` is the challenge timestamp that signed it. 500 `private_name_read_failed`. Read separately by the roster so its failure degrades one column. A read — GETs are not classified for confirmation |
 
 **Member liquidity (treasury-side, edge-case only)**
 

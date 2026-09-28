@@ -93,11 +93,22 @@ const SECTIONS = {
   kevinsRead: { paragraphs: ["One.", "Two."], emphasis: true },
 };
 
+// Test-fixture bands (not Kevin's): the stamped shape intake writes since the
+// member screen (spec §3.4.3). -0.42 falls in index 1, [-1, -0.25).
+const BAND_TABLE = [
+  { lower: null, upper: -1, label: "Fixture band A" },
+  { lower: -1, upper: -0.25, label: "Fixture band B" },
+  { lower: -0.25, upper: 0.25, label: "Fixture band C" },
+  { lower: 0.25, upper: 1, label: "Fixture band D" },
+  { lower: 1, upper: null, label: "Fixture band E" },
+];
+
 const Z_AVAILABLE = {
   status: "available",
   value: -0.42,
   corn: { date: "2026-09-22", close: 4.1025, fetchedAt: "2026-09-22T23:10:00.000Z" },
   btc: { date: "2026-09-22", close: 63120.5, fetchedAt: "2026-09-22T23:10:01.000Z" },
+  bands: { status: "available", table: BAND_TABLE, index: 1 },
 };
 
 // A real-shaped detail from powerLawParams.ts:39 — the exact kind of string
@@ -399,7 +410,7 @@ describe("test 34 — every absent or malformed Z reaches the member as unavaila
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Every key string this read path can touch or mention.
-const KEY_STRINGS = ["daybreak:", "daybreak_powerlaw_params_v1", ":published", ":draft", ":working"];
+const KEY_STRINGS = ["daybreak:", "daybreak_powerlaw_params_v1", "daybreak_powerlaw_bands_v1", ":published", ":draft", ":working"];
 
 describe("test 30 — store errors and KV throws", () => {
   const CASES: Array<{ name: string; setup: () => ReturnType<typeof mockKV> }> = [
@@ -443,4 +454,119 @@ describe("test 30 — store errors and KV throws", () => {
       expect(logged.join("\n")).toContain(`daybreak:${TODAY}:published`);
     });
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Test 37 — the allowlist carries the bands (spec §3.4.3, member-screen
+// Ruling 1): rebuilt, never passed through, and read from the STAMP.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// The generic bands code, written out for the same reason as Z_UNRECOGNIZED.
+const BANDS_UNRECOGNIZED = "unrecognized_bands";
+const BANDS_KEY = "daybreak_powerlaw_bands_v1";
+const BANDS_REASONS = ["absent", "unparseable", "wrong_shape", "unordered", "overlapping", "gapped"];
+
+type BodyZ = { edition: { content: { workerOwned: { z: Record<string, any> } } } };
+
+async function readZ(kv: KVNamespace): Promise<{ z: Record<string, any>; text: string }> {
+  const res = await get(envWith(kv));
+  expect(res.status).toBe(200);
+  const text = await res.text();
+  return { z: (JSON.parse(text) as BodyZ).edition.content.workerOwned.z, text };
+}
+
+describe("test 37 — the allowlist carries the bands", () => {
+  it("PERMITS: the member read returns the stamped table and classification", async () => {
+    const { kv } = mockKV();
+    await publish(kv, TODAY, edition(Z_AVAILABLE));
+    const { z } = await readZ(kv);
+    expect(z.bands).toEqual({ status: "available", table: BAND_TABLE, index: 1 });
+    expect(z.value).toBe(-0.42);
+  });
+
+  it("FORBIDS any other key under the bands; anti-vacuity: the stored extra keys are there and are dropped", async () => {
+    const { kv, store } = mockKV();
+    const tampered = {
+      ...Z_AVAILABLE,
+      bands: {
+        ...Z_AVAILABLE.bands,
+        detail: "bands_detail_payload",
+        colour: "bands_colour_payload",
+        table: BAND_TABLE.map((b, i) => (i === 0 ? { ...b, colour: "band_colour_payload" } : b)),
+      },
+    };
+    await publish(kv, TODAY, edition(tampered));
+    const stored = store.get(`daybreak:${TODAY}:published`)!;
+    for (const s of ["bands_detail_payload", "bands_colour_payload", "band_colour_payload"]) expect(stored).toContain(s);
+
+    const { z, text } = await readZ(kv);
+    expect(z.bands).toEqual({ status: "available", table: BAND_TABLE, index: 1 });
+    for (const s of ["bands_detail_payload", "bands_colour_payload", "band_colour_payload"]) expect(text).not.toContain(s);
+  });
+
+  it("the bands come from the STAMP, never from KV at request time: a different live table is neither read nor served", async () => {
+    const { kv, store, gets } = mockKV();
+    await publish(kv, TODAY, edition(Z_AVAILABLE));
+    store.set(BANDS_KEY, JSON.stringify({ bands: [{ lower: null, upper: null, label: "Live recalibration" }] }));
+    gets.length = 0;
+
+    const { z, text } = await readZ(kv);
+    expect(z.bands, "the member read must carry a bands block").toBeDefined();
+    expect(z.bands.table).toEqual(BAND_TABLE); // permitting: the stamped table
+    expect(text).not.toContain("Live recalibration"); // forbidding: not the live one
+    expect(gets).not.toContain(BANDS_KEY);
+    expect(gets.length).toBeGreaterThan(0); // anti-vacuity: the read did touch KV
+  });
+
+  it("bands UNAVAILABLE at intake: reason code only, no detail — and the Z is still shown", async () => {
+    const { kv, store } = mockKV();
+    const z0 = { ...Z_AVAILABLE, bands: { status: "unavailable", reason: "gapped", detail: `KV key ${BANDS_KEY}: band 2 starts at 0` } };
+    await publish(kv, TODAY, edition(z0));
+    expect(store.get(`daybreak:${TODAY}:published`)).toContain(BANDS_KEY); // anti-vacuity
+
+    const { z, text } = await readZ(kv);
+    expect(z.status).toBe("available");
+    expect(z.value).toBe(-0.42);
+    expect(z.bands).toEqual({ status: "unavailable", reason: "gapped" });
+    expect(text).not.toContain(BANDS_KEY);
+  });
+
+  for (const reason of BANDS_REASONS) {
+    it(`a known bands reason (${reason}) passes through as itself`, async () => {
+      const { kv } = mockKV();
+      await publish(kv, TODAY, edition({ ...Z_AVAILABLE, bands: { status: "unavailable", reason, detail: "x" } }));
+      expect((await readZ(kv)).z.bands).toEqual({ status: "unavailable", reason });
+    });
+  }
+
+  const UNRECOGNIZED_BANDS: Array<{ name: string; bands: unknown; stored?: string }> = [
+    { name: "an available Z stamped BEFORE bands existed (no bands key)", bands: undefined },
+    { name: "an unknown bands reason", bands: { status: "unavailable", reason: "not_a_bands_code" }, stored: "not_a_bands_code" },
+    { name: "an unknown bands status", bands: { status: "bogus_bands_status" }, stored: "bogus_bands_status" },
+    { name: "a non-object bands", bands: "bands_string_payload", stored: "bands_string_payload" },
+    {
+      name: "a stored table that is gapped",
+      bands: { status: "available", table: [{ lower: null, upper: -1, label: "gap_a" }, { lower: 0, upper: null, label: "gap_b" }], index: 0 },
+      stored: "gap_a",
+    },
+    { name: "an index out of range", bands: { status: "available", table: BAND_TABLE, index: 9 } },
+    { name: "an index that does not hold the Z", bands: { status: "available", table: BAND_TABLE, index: 4 } },
+  ];
+
+  for (const f of UNRECOGNIZED_BANDS) {
+    it(`${f.name} → the Z is still shown, bands { unavailable, ${BANDS_UNRECOGNIZED} }`, async () => {
+      const { kv } = mockKV();
+      const { bands: _b, ...zNoBands } = Z_AVAILABLE;
+      await publish(kv, TODAY, edition(f.bands === undefined ? zNoBands : { ...zNoBands, bands: f.bands }));
+      const { z, text } = await readZ(kv);
+      expect(z.status).toBe("available");
+      expect(z.value).toBe(-0.42);
+      expect(z.bands).toEqual({ status: "unavailable", reason: BANDS_UNRECOGNIZED });
+      if (f.stored) expect(text).not.toContain(f.stored);
+    });
+  }
+
+  it("the generic bands code is not one of the loader's reasons", () => {
+    expect(BANDS_REASONS).not.toContain(BANDS_UNRECOGNIZED);
+  });
 });

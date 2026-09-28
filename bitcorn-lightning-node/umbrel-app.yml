@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.15"
+version: "1.18.16"
 port: 3200
 
 description: >
@@ -27,6 +27,9 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.16: The name you set for BitCorn is now shared with BitCorn, so we know
+  who you are. It's still never announced to the Lightning network.
+
   v1.18.15: Syncing contacts now tells you how many peers were named, had no
   name set, or couldn't be checked, and no longer adds placeholder entries.
   Treasury operators can also see each member's public Lightning alias.

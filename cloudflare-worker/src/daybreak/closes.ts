@@ -31,7 +31,9 @@ import type { CentralDate } from "./dates";
 
 export type PriceSymbol = "ZC=F" | "BTC-USD";
 
-export type CloseFetchFailure = "http_error" | "network_error" | "unparseable" | "empty_series";
+// `no_adapter` is only ever FAIL_CLOSED_FETCHER's (failClosedFetcher.ts): there
+// is no vendor behind it yet. A real adapter never returns it.
+export type CloseFetchFailure = "http_error" | "network_error" | "unparseable" | "empty_series" | "no_adapter";
 
 export type CloseFetchResult =
   | { ok: true; symbol: PriceSymbol; date: CentralDate; close: number; fetchedAt: string }

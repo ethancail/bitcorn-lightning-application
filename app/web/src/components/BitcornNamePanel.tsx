@@ -5,28 +5,44 @@
 // "Personal" directly above ProfilePanel, which is left untouched. This is
 // where the dashboard's member-name prompt sends the farmer.
 //
-// Stored on this node only. The "who can see it" line must stay TRUE AT SHIP:
-// until the transport (D5 part 2) exists the name reaches nobody, so the line
-// says exactly that. ⚠ Part 2 MUST revise it in the same release the name
-// starts travelling — a label that is true now becomes false that day. The
-// dashboard prompt's BODY (memberNamePrompt.ts) carries the same coupling:
-// its "for now" / "upcoming update" wording must change in that same release.
+// Stored on this node and, since D5 part 2 (D8), sent to the treasury with
+// every token refresh under its own signature. The "who can see it" line must
+// stay TRUE AT SHIP, so it now says the name is shared with BitCorn. ⚠ RELEASE
+// PRECONDITION (D8 §10): the treasury must run the part-2 code before any
+// member sees this line — against a treasury that drops the fields unread, it
+// would be false.
+//
+// Saving triggers one token refresh server-side (D8 call 9), so the treasury
+// hears the name in seconds; this panel then re-reads once after a delay so a
+// "rejected" verdict can appear in the same visit. The rejected message is
+// GENERIC and never says why (D8 call 8), and shows only for the CURRENT name
+// (the API compares name_sent — spec §6.3).
 //
 // Overwrite only: no clear action (accepted, spec §6). A thin renderer over
 // bitcornNameInputState (client hints) + the API (authoritative; errors are
 // specific, so the server's `detail` is shown as-is).
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, type BitcornName } from "../api/client";
 import { bitcornNameInputState, BITCORN_NAME_MAX_CHARS } from "./bitcornNameInputState";
 
-// ACCEPTED — Ethan's exact wording, 2026-09-23 (both strings below).
+// ACCEPTED — Ethan's exact wording, 2026-09-23.
 export const BITCORN_NAME_FIELD_LABEL = "Your name for BitCorn";
-// ⚠ PART-2 COUPLING: "only" is the word that becomes false the day the name
-// starts travelling. Part 2 must change it in that same release, together
-// with the dashboard prompt body's "for now" / "upcoming update".
+// ACCEPTED — Ethan, 2026-09-28 (D8 spec §10, as proposed). Replaced the
+// 2026-09-23 "Saved on this node only — …", whose "only" became false the day
+// the name started travelling. Changed in the same release as the dashboard
+// prompt body, which carried the same coupling. ⚠ RELEASE PRECONDITION: true
+// only once the treasury runs part 2 (see header).
 export const BITCORN_NAME_VISIBILITY_LINE =
-  "Saved on this node only — never published to the Lightning network. Your public alias, below, is published.";
+  "Shared with BitCorn — never published to the Lightning network. Your public alias, below, is published.";
+// ACCEPTED — Ethan, 2026-09-28, with ONE change from the spec's proposal: the
+// "Try a different one." sentence §10 offered is added. Meaning per D8 call
+// 8: generic, never says why.
+export const BITCORN_NAME_REJECTED_MESSAGE = "BitCorn couldn't accept this name. Try a different one.";
+
+// The one delayed re-read after a save (spec §9.2; 5s ACCEPTED — Ethan,
+// 2026-09-28) — long enough for the save's token refresh to round-trip.
+export const NAME_STATUS_RECHECK_MS = 5_000;
 
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: string };
 
@@ -50,6 +66,12 @@ export default function BitcornNamePanel() {
     void load();
   }, [load]);
 
+  // The one pending delayed re-read; cleared on unmount and on a newer save.
+  const recheck = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (recheck.current) clearTimeout(recheck.current);
+  }, []);
+
   const inFlight = status.kind === "saving";
   const inputState = bitcornNameInputState(input);
   const dirty = current ? inputState.normalized !== (current.bitcorn_name ?? "") : true;
@@ -61,8 +83,15 @@ export default function BitcornNamePanel() {
     setStatus({ kind: "saving" });
     try {
       await api.setBitcornName(inputState.normalized);
+      // The member top bar re-reads the name on this event (App.tsx).
+      window.dispatchEvent(new CustomEvent("bitcorn:name-changed"));
       await load();
       setStatus({ kind: "idle" });
+      if (recheck.current) clearTimeout(recheck.current);
+      recheck.current = setTimeout(() => {
+        recheck.current = null;
+        void load();
+      }, NAME_STATUS_RECHECK_MS);
     } catch (e: any) {
       setStatus({ kind: "error", message: e?.detail ?? "Could not save your name — please try again." });
     }
@@ -117,6 +146,11 @@ export default function BitcornNamePanel() {
           {showFormatError && (
             <p style={{ color: "var(--red, #ef4444)", fontSize: "0.75rem", margin: "4px 0 0" }}>
               {inputState.error}
+            </p>
+          )}
+          {current?.treasury_name_status === "rejected" && (
+            <p style={{ color: "var(--red, #ef4444)", fontSize: "0.75rem", margin: "4px 0 0" }}>
+              {BITCORN_NAME_REJECTED_MESSAGE}
             </p>
           )}
           <p style={{ color: "var(--text-3)", fontSize: "0.75rem", margin: "6px 0 0" }}>

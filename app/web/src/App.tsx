@@ -47,6 +47,9 @@ import { RailScope } from "./stablecoin/RailScope";
 import { isRailGated } from "./stablecoin/railAccess";
 import AdminMembers from "./pages/AdminMembers";
 import Liquidity from "./pages/Liquidity";
+import Daybreak from "./pages/Daybreak";
+import { DAYBREAK_NAV_LABEL } from "./daybreak/daybreakCopy";
+import { SHOW_DAYBREAK_IN_MEMBER_NAV } from "./daybreak/launch";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
 // Browsers change number input values on scroll wheel — confusing for sats fields.
@@ -170,10 +173,15 @@ function Topbar({
   node,
   role,
   onMenuToggle,
+  displayName,
 }: {
   node: NodeInfo | null;
   role: "TREASURY" | "MEMBER";
   onMenuToggle: () => void;
+  /** The member's Bitcorn-level name, shown in place of the public alias when
+   *  set (D8 call 7). Only MemberShell passes it; the treasury's bar is
+   *  unchanged. */
+  displayName?: string | null;
 }) {
   const syncColor = node?.synced_to_chain ? "var(--green)" : "var(--red)";
 
@@ -196,7 +204,7 @@ function Topbar({
               boxShadow: node.synced_to_chain ? undefined : "none",
             }}
           />
-          <span>{node.alias || "—"}</span>
+          <span>{displayName || node.alias || "—"}</span>
           <span style={{ color: "var(--text-3)" }}>
             ·{" "}
             {node.pubkey
@@ -444,6 +452,12 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
   const navItems = [
     { to: "/dashboard", icon: "▤", label: "My Dashboard" },
     { to: "/charts", icon: "⟠", label: "Charts" },
+    // Flat on purpose — no "Insights" group until it has a second entry
+    // (member-screen Ruling 2, 2026-09-25). Member shell only for now.
+    // ⚠ HIDDEN UNTIL LAUNCH — the Stablecoin entry's "hide the entry, keep the
+    // door" pattern above: the /daybreak route below stays registered. What
+    // launch requires is in daybreak/launch.ts.
+    ...(SHOW_DAYBREAK_IN_MEMBER_NAV ? [{ to: "/daybreak", icon: "☀", label: DAYBREAK_NAV_LABEL }] : []),
     { to: "/contacts", icon: "☰", label: "Contacts" },
     { to: "/channels", icon: "◈", label: "My Channels" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
@@ -524,6 +538,23 @@ function MemberShell() {
   const [node, setNode] = useState<NodeInfo | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [channelRole, setChannelRole] = useState("unknown");
+  const [bitcornName, setBitcornName] = useState<string | null>(null);
+
+  useEffect(() => {
+    // The top bar shows the member's Bitcorn-level name, else the public alias
+    // (D8 call 7). Read on mount and on "bitcorn:name-changed", which
+    // BitcornNamePanel dispatches after a save — the name changes only through
+    // this node's own Settings, so there is no poll. A failed read falls back
+    // to the alias, silently: the top bar makes no claim about the name.
+    const loadName = () => {
+      api.getBitcornName()
+        .then((n) => setBitcornName(n.bitcorn_name))
+        .catch(() => setBitcornName(null));
+    };
+    loadName();
+    window.addEventListener("bitcorn:name-changed", loadName);
+    return () => window.removeEventListener("bitcorn:name-changed", loadName);
+  }, []);
 
   useEffect(() => {
     const load = () => api.getNode().then(setNode).catch(() => {});
@@ -563,13 +594,16 @@ function MemberShell() {
   return (
     <RailScope>
       <div className="app-shell">
-        <Topbar node={node} role="MEMBER" onMenuToggle={() => setMenuOpen((v) => !v)} />
+        <Topbar node={node} role="MEMBER" displayName={bitcornName} onMenuToggle={() => setMenuOpen((v) => !v)} />
         <div className={`sidebar-overlay ${menuOpen ? "visible" : ""}`} onClick={() => setMenuOpen(false)} />
         <MemberSidebar open={menuOpen} onClose={() => setMenuOpen(false)} channelRole={channelRole} />
         <main className="main-content">
           <Routes>
             <Route path="/dashboard" element={<MemberDashboard />} />
             <Route path="/charts" element={<Charts />} />
+            {/* Registered even while its nav entry is hidden (daybreak/launch.ts):
+                reachable directly by URL before launch. */}
+            <Route path="/daybreak" element={<Daybreak />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/channels" element={<ChannelsPage />} />
             <Route path="/payments" element={<Payments title="My Payments" />} />
@@ -795,7 +829,8 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
 
       <div className="settings-section-label">Personal</div>
 
-      {/* Bitcorn-level name — member-only, stored on this node only; NOT the
+      {/* Bitcorn-level name — member-only; stored on this node and sent to
+          BitCorn with each token refresh under its own signature (D8); NOT the
           LND alias. Directly above ProfilePanel, which its visibility line
           points to ("Your public alias, below, is published."). The dashboard's
           member-name prompt sends the farmer here. Spec 2026-09-23-member-

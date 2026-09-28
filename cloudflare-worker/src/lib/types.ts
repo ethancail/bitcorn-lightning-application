@@ -10,6 +10,12 @@ export interface Env {
   PLANB_API_KEY?: string;
   // Manual-input HMAC (validated by POST /valuation/manual)
   VALUATION_SUBMIT_HMAC?: string;
+  // Daybreak drafting-agent bearer secret (validated by POST /daybreak/draft;
+  // handlers/daybreakDraft.ts). Held by Radar, the external drafting agent, in
+  // Hyperagent locked to this Worker's host — a WORKER secret only, never on a
+  // member node: no app or compose configuration carries it (spec §3.4.4).
+  // Unset or empty → the route returns 503 daybreak_draft_not_configured.
+  DAYBREAK_DRAFT_SECRET?: string;
   // Subscription entitlement-token public key (base64url of the raw
   // 32-byte Ed25519 public key, copied from the treasury's
   // `/api/admin/subscription/public-key` endpoint). Used by

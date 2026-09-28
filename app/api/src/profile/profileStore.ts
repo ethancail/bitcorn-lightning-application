@@ -20,7 +20,8 @@ export interface MemberProfileRow {
   last_acknowledged_price: number | null; // sats
   last_acknowledged_price_at: number | null; // epoch seconds
   // Bitcorn-level member name (migrations 055/056) — NOT the LND alias above.
-  // Stored on this node only; NULL = not set.
+  // Stored on this node and sent to the treasury on each token refresh (D8,
+  // subscription/tokenRefresh.ts); NULL = not set.
   bitcorn_name: string | null;
   bitcorn_name_set_at: number | null; // epoch seconds
 }

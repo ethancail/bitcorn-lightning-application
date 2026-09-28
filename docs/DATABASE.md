@@ -60,11 +60,13 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `052_subscription_autopay.sql` | Subscription auto-pay: member-node-local renewal (opt-in config + double-send guard state) |
 | `053_base_sync_cursor_attempt_success.sql` | Stablecoin rail: splits "the BASE sync tick ran" from "the tick succeeded" on `base_sync_cursor`, so a dead event feed no longer reads as fresh |
 | `054_autobuy_missed_interval_claim.sql` | Auto-Buy catch-up clamp: claim linkage for passed-over intervals (a separate nullable fact; `autobuy_runs.status` stays truthful) |
-| `055_member_profile_bitcorn_name.sql` | Member Bitcorn-level name: `member_profile.bitcorn_name` (nullable; NOT the LND alias; stored on this node only) |
+| `055_member_profile_bitcorn_name.sql` | Member Bitcorn-level name: `member_profile.bitcorn_name` (nullable; NOT the LND alias; stored on this node, and sent to the treasury on each token refresh under its own signature since 058/059) |
 | `056_member_profile_bitcorn_name_set_at.sql` | `member_profile.bitcorn_name_set_at` (unix seconds) — companion to 055 |
 | `057_peer_public_alias.sql` | Treasury's public-alias store: one row per roster pubkey (lowercased) holding the last gossip-lookup OUTCOME (`alias` / `none_announced` / `not_in_graph`) apart from the last attempt, so a failed lookup keeps the last good value. Written only by the treasury's refresh; never a contacts name |
+| `058_member_private_name.sql` | Treasury's store of members' Bitcorn-level names (`member_private_name`): one row per verified pubkey (lowercased) — `name` (normalized, validated, not blocked), `signed_at` (the challenge timestamp that signed it), `received_at`. Written by the `/api/subscription/token` handler only from a STRICTLY NEWER `signed_at` (the ordering is in the upsert's `WHERE`); an absent name never clears a row. Treasury-written only |
+| `059_member_name_status.sql` | Member-side record of the treasury's last `name_status` for the name this node sent (`member_name_status`: `name_sent`, `status` ∈ accepted/rejected/none). `name_sent` is load-bearing: Settings shows the rejected message only while it equals the current `bitcorn_name`. Member-written only |
 
-The migration set is contiguous from `001` through `057` with no gaps. Always allocate the next sequential number for new migrations.
+The migration set is contiguous from `001` through `059` with no gaps. Always allocate the next sequential number for new migrations.
 
 ⚠ **Adding columns: one statement per file.** `db/migrate.ts` `db.exec`s each file whole with no transaction, and on any "duplicate column" / "already exists" error it marks the **whole file** applied — so in a multi-statement file whose first statement hits that, the rest never run and are never retried. `055`/`056` are split for that reason (`db/migrate.memberProfileName.test.ts` (d) demonstrates it). `052` is a multi-statement file of exactly that shape.
 

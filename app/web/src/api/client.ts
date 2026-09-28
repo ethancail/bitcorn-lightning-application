@@ -89,6 +89,10 @@ export const api = {
   getCoinbaseOnrampUrl: () => apiFetch<OnrampUrlResponse>("/api/coinbase/onramp-url"),
   getCommodityPrices: () => apiFetch<CommodityPrices>("/api/commodity-prices"),
   getCornHistory: () => apiFetch<CornHistoryEntry[]>("/api/corn-history"),
+  // Daybreak member read. No query string: the proxy matches the URL exactly
+  // (app/api/src/index.ts). `unknown` on purpose — daybreak/daybreakView.ts
+  // parses it, because the written sections have no schema the API vouches for.
+  getDaybreakEdition: () => apiFetch<unknown>("/api/daybreak/edition"),
   getSubscriptionStatus: () => apiFetch<SubscriptionStatus>("/api/subscription/status"),
   getSubscriptionPayments: () => apiFetch<SubscriptionPaymentsResponse>("/api/subscription/payments"),
   // Pay-from-node modal (the "I have BTC → Pay from this node" path).
@@ -107,8 +111,9 @@ export const api = {
     }),
   clearProfileAlias: () =>
     apiFetch<{ ok: boolean }>("/api/profile/alias", { method: "DELETE" }),
-  // Member Bitcorn-level name — NOT the alias above; stored on this node only.
-  // Member-only (403 on the treasury). No clear: overwrite only.
+  // Member Bitcorn-level name — NOT the alias above; stored on this node and
+  // sent to the treasury with each token refresh, under its own signature
+  // (D8). Member-only (403 on the treasury). No clear: overwrite only.
   getBitcornName: () => apiFetch<BitcornName>("/api/profile/name"),
   setBitcornName: (name: string) =>
     apiFetch<BitcornName>("/api/profile/name", {
@@ -142,6 +147,10 @@ export const api = {
     apiFetch<PublicAliasRefreshResult>("/api/admin/members/public-aliases/refresh", {
       method: "POST",
     }),
+  // The treasury's store of members' Bitcorn-level names (treasury-only, D8).
+  // Separate read, like the alias store: its failure degrades one column.
+  getAdminPrivateNames: () =>
+    apiFetch<AdminPrivateNamesResponse>("/api/admin/members/private-names"),
   getAdminSubscriptionRevenue: () =>
     apiFetch<SubscriptionRevenueResponse>("/api/admin/subscription/revenue"),
   getAdminRailFeeRevenue: () =>
@@ -470,6 +479,9 @@ export type ProfileAlias = {
 export type BitcornName = {
   bitcorn_name: string | null;
   bitcorn_name_set_at: number | null;
+  /** What the treasury last said about THE CURRENT name (D8 §7.2); null when
+   *  it has said nothing about it. Optional: an older API omits it. */
+  treasury_name_status?: "accepted" | "rejected" | null;
 };
 
 // Subscription auto-pay alert (GET /api/profile/auto-pay*). Severity domain is
@@ -933,6 +945,20 @@ export type AdminPublicAliasRow = {
 };
 
 export type AdminPublicAliasesResponse = { aliases: AdminPublicAliasRow[] };
+
+// ─── Private-name store (treasury roster) ──────────────────────────
+// Mirrors app/api/src/subscription/memberName.ts. pubkey arrives lowercased.
+
+export type AdminPrivateNameRow = {
+  pubkey: string;
+  /** Normalized, validated, not blocked — what the member sent, signed. */
+  name: string;
+  /** The challenge timestamp that signed it (epoch s). */
+  signed_at: number;
+  received_at: number;
+};
+
+export type AdminPrivateNamesResponse = { names: AdminPrivateNameRow[] };
 
 export type PublicAliasRefreshResult = {
   ok: true;

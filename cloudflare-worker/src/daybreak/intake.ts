@@ -39,12 +39,23 @@
 // Same ruling: a close dated after the edition's Central date makes the Z
 // unavailable with reason "future_dated_close". A close dated ON the edition's
 // date (age 0) is allowed.
+//
+// ─── THE BANDS ARE STAMPED WITH THE Z (member-screen Ruling 1, 2026-09-25) ─
+//
+// An AVAILABLE Z also carries `bands`: the band table read fail-closed from KV
+// (valuation/powerLawBands.ts) and the index of the band the Z falls in, or,
+// when the table is absent or malformed, `unavailable` with the loader's reason
+// and a detail — never a guessed band. The Z is stamped either way. The bands
+// pin with the Z as one piece, so a later recalibration never relabels an
+// edition already written. An UNAVAILABLE Z carries no bands: there is no
+// number to classify, and none is stamped.
 
 import type { CloseFetcher, CloseFetchResult, PriceSymbol } from "./closes";
 import { isCentralDate, type CentralDate } from "./dates";
 import { writeDraft, type DaybreakStoreError, type EditionContent } from "./store";
 import { loadPowerLawParams } from "../valuation/powerLawParams";
 import { computePowerLawZ } from "../valuation/powerLawZ";
+import { classifyZ, loadPowerLawBands, type PowerLawBand, type PowerLawBandsUnavailable } from "../valuation/powerLawBands";
 
 export const WORKER_OWNED_KEY = "workerOwned";
 
@@ -67,8 +78,12 @@ export type ZUnavailableReason =
   | "stale_close"
   | "computation_failed";
 
+export type BandsBlock =
+  | { status: "available"; table: PowerLawBand[]; index: number }
+  | { status: "unavailable"; reason: PowerLawBandsUnavailable; detail: string };
+
 export type ZBlock =
-  | { status: "available"; value: number; corn: StampedClose; btc: StampedClose }
+  | { status: "available"; value: number; corn: StampedClose; btc: StampedClose; bands: BandsBlock }
   | { status: "unavailable"; reason: ZUnavailableReason; detail: string };
 
 export interface WorkerOwned {
@@ -138,7 +153,11 @@ async function computeZBlock({ kv, fetcher }: IntakeDeps, editionDate: CentralDa
   if (!z.ok) return unavailable("computation_failed", `${z.error}: ${z.detail}`);
 
   const stamp = (c: typeof corn): StampedClose => ({ date: c.date, close: c.close, fetchedAt: c.fetchedAt });
-  return { status: "available", value: z.value.z, corn: stamp(corn), btc: stamp(btc) };
+  const loaded = await loadPowerLawBands(kv);
+  const bands: BandsBlock = loaded.ok
+    ? { status: "available", table: loaded.bands, index: classifyZ(loaded.bands, z.value.z) }
+    : { status: "unavailable", reason: loaded.reason, detail: loaded.detail };
+  return { status: "available", value: z.value.z, corn: stamp(corn), btc: stamp(btc), bands };
 }
 
 /** The drafting agent's intake: stamp the Worker-owned fields, then writeDraft. */

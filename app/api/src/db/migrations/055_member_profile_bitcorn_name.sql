@@ -4,8 +4,11 @@
 -- A member-chosen name for BitCorn to use, stored on the member's OWN node.
 -- It is NOT the LND alias: every existing name column on this table (051) is
 -- the public, gossiped alias, and the two are kept apart by name and on the
--- wire (the name has its own /api/profile/name routes). Nothing in this
--- release sends it anywhere.
+-- wire (the name has its own /api/profile/name routes). Nothing in the release
+-- that added this column sent it anywhere; since 058/059 (D8) the member sends
+-- it to the treasury with every token refresh, under its own signature
+-- (subscription/tokenRefresh.ts). Comment edited after apply — the SQL is
+-- unchanged.
 --
 -- Extends member_profile in place, the 052 precedent: member identity, 1:1,
 -- member-keyed, and it rides the existing SELECT * in getMemberProfile.

@@ -7,10 +7,13 @@
 // authoritative; its errors are specific too (there is no blocklist to hide).
 //
 // ⚠ A SEPARATE constant from aliasInputState's ALLOWED_ALIAS_RE, though the
-// value is currently identical: the charset is held no wider than the alias's
-// (which EXCLUDES ':') until the signed transport exists (§5.2), and that
-// ruling is time-bound. Sharing the regex would make widening one silently
-// widen the other. Not bound by LND's 32 bytes — the cap is 64 characters,
+// value is currently identical. ⚠ THE ':' EXCLUSION IS NOW PERMANENT AND
+// LOAD-BEARING: it began as a time-bound ruling ("until the signed transport
+// exists", §5.2), and the transport now exists (D8). Its name signature,
+// `bitcorn:member-name:<challenge>:<name>`, is unambiguous ONLY because a
+// name has no ':' — widening the charset to admit one would break it (the
+// server's nameValidation.ts says the same). Sharing the regex would still
+// make widening one silently widen the other. Not bound by LND's 32 bytes — the cap is 64 characters,
 // and with an ASCII-only charset characters and bytes are equal.
 
 const BITCORN_NAME_ALLOWED_RE = /^[A-Za-z0-9 .\-_'!?]+$/;

@@ -182,13 +182,15 @@ import {
   getAlertHistory as getAutoPayAlertHistory,
   dismissAlert as dismissAutoPayAlert,
 } from "./subscription/autoPayAlertStore";
-import { verifyChallengeSignature, ChallengeAuthError } from "./subscription/challengeAuth";
+import { verifyChallengeSignature, ChallengeAuthError, type ChallengeVerificationResult } from "./subscription/challengeAuth";
+import { processMemberName, listPrivateNames, getTreasuryNameStatus } from "./subscription/memberName";
 import { issueTokenForPubkey } from "./subscription/tokenIssuance";
 import { getTreasuryPublicKeyForCloudflare } from "./subscription/treasuryKeypair";
 import {
   startTokenRefreshScheduler,
   getResolvedTreasuryBaseUrl,
   getCachedToken,
+  refreshLocalToken,
 } from "./subscription/tokenRefresh";
 import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
 import { lookupNodeAlias } from "./lightning/nodeAlias";
@@ -598,13 +600,18 @@ async function dispatchRequest(
     req.on("data", (chunk) => (body += chunk));
     req.on("end", async () => {
       try {
-        const parsed = JSON.parse(body || "{}") as { challenge?: string; signature?: string };
+        const parsed = JSON.parse(body || "{}") as {
+          challenge?: string;
+          signature?: string;
+          name?: unknown;
+          name_signature?: unknown;
+        };
         if (!parsed.challenge || !parsed.signature) {
           res.writeHead(400, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "missing_challenge_or_signature" }));
           return;
         }
-        let verified: { verified_pubkey: string };
+        let verified: ChallengeVerificationResult;
         try {
           verified = await verifyChallengeSignature(parsed.challenge, parsed.signature);
         } catch (err: any) {
@@ -615,10 +622,21 @@ async function dispatchRequest(
           }
           throw err;
         }
+        // The member's Bitcorn-level name, under its own signature (D8; spec
+        // 2026-09-25-member-name-signed-transport §5). Never throws, and the
+        // mint below reads only the verified pubkey — so a bad, blocked or
+        // rejected name can never cost the member their token. `undefined`
+        // (an internal error) omits name_status from the 200.
+        const nameStatus = await processMemberName(
+          { challenge: parsed.challenge, name: parsed.name, name_signature: parsed.name_signature },
+          verified,
+        );
         const result = await issueTokenForPubkey(verified.verified_pubkey);
         if (result.kind === "minted") {
           res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(result.token));
+          res.end(JSON.stringify(
+            nameStatus === undefined ? result.token : { ...result.token, name_status: nameStatus },
+          ));
         } else {
           // 402 per spec §6.3 for worker_lapsed / routing_lapsed /
           // close_due / no_subscription_row. Body carries paid_through
@@ -1284,7 +1302,10 @@ async function dispatchRequest(
   // GET /api/profile/name — the member's Bitcorn-level name (migrations
   // 055/056). NOT the LND alias: kept on its own route so the two stay apart
   // on the wire (spec 2026-09-23-member-name-prompt §6). Stored on this node
-  // only; nothing sends it anywhere.
+  // and sent to the treasury with every token refresh, under its own
+  // signature (D8; tokenRefresh.ts). `treasury_name_status` is what the
+  // treasury last said about THE CURRENT name — "accepted" | "rejected" |
+  // null — from member_name_status (059); spec 2026-09-25 §7.2.
   if (req.method === "GET" && req.url === "/api/profile/name") {
     const node = getNodeInfo();
     try { assertMember(node?.node_role); } catch (err: any) {
@@ -1293,10 +1314,12 @@ async function dispatchRequest(
       return;
     }
     const profile = getMemberProfile(node!.pubkey);
+    const bitcornName = profile?.bitcorn_name ?? null;
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({
-      bitcorn_name: profile?.bitcorn_name ?? null,
+      bitcorn_name: bitcornName,
       bitcorn_name_set_at: profile?.bitcorn_name_set_at ?? null,
+      treasury_name_status: getTreasuryNameStatus(node!.pubkey, bitcornName),
     }));
     return;
   }
@@ -1334,6 +1357,11 @@ async function dispatchRequest(
         setBitcornName(pubkey, normalized, now);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ bitcorn_name: normalized, bitcorn_name_set_at: now }));
+        // One token refresh, so the treasury learns the name in seconds rather
+        // than at the next 12h tick (D8 call 9). AFTER the write — the refresh
+        // reads the name at call time — and after the 200, fire-and-forget: a
+        // failed refresh never fails or changes the save.
+        void refreshLocalToken().catch(() => {});
       } catch (err: any) {
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "profile_name_set_failed", detail: String(err?.message ?? err) }));
@@ -1393,6 +1421,31 @@ async function dispatchRequest(
       console.error("[admin] public aliases read failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "public_alias_read_failed" }));
+    }
+    return;
+  }
+
+  // The treasury's store of members' Bitcorn-level names (bitcorn-research
+  // specs/2026-09-25-member-name-signed-transport-spec.md §7.1, decision D8):
+  // what each member sent under its own signature, verified, validated and
+  // blocklist-checked by the /token handler. Read separately by the roster so
+  // a failure here degrades one column, not the roster. Treasury-only, same
+  // convention as above. A read — GETs pass the confirmation gate unclassified.
+  if (req.method === "GET" && req.url === "/api/admin/members/private-names") {
+    const node = getNodeInfo();
+    try { assertTreasury(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const names = listPrivateNames();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ names }));
+    } catch (err: any) {
+      console.error("[admin] private names read failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "private_name_read_failed" }));
     }
     return;
   }
