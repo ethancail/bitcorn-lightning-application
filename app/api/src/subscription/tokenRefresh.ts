@@ -29,10 +29,13 @@ import { db } from "../db";
 import { ENV } from "../config/env";
 import { PORTS } from "../config/ports";
 import { getLndInfo, lndSignMessage } from "../lightning/lnd";
+import { getNodeInfo } from "../api/read";
+import { getMemberProfile } from "../profile/profileStore";
+import { CHALLENGE_PREFIX, buildNameSignedString } from "./challengeGrammar";
+import { recordMemberNameStatus } from "./memberName";
 
 const REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const INITIAL_DELAY_MS = 10 * 1000;
-const CHALLENGE_PREFIX = "bitcorn:token-request:";
 const WORKER_DISCOVERY_TIMEOUT_MS = 3000;
 
 // Exponential-backoff schedule for the first refresh attempt only.
@@ -311,6 +314,15 @@ export async function refreshLocalToken(): Promise<RefreshResult> {
     return { ok: false, reason: "lnd_unavailable", error: err?.message ?? String(err) };
   }
 
+  // This node's own Bitcorn-level name, under a SECOND signature bound to this
+  // challenge (D8; spec 2026-09-25-member-name-signed-transport §4). Read
+  // through getNodeInfo().pubkey — member_profile's key, as LND returned it —
+  // not the lowercased localPubkey (§2 Q2). The treasury has no member_profile
+  // row, so its self-refresh sends nothing new and stays byte-identical.
+  // Sent as stored: the name route already normalized it. ⚠ If reading or
+  // signing fails, the token is still requested — without the name.
+  const named = await signOwnName(challenge);
+
   // Resolve the base URL for the /token endpoint. Precedence:
   //  1. Operator-set TREASURY_API_URL env on this node (operator
   //     override always wins; useful for non-standard topologies).
@@ -370,7 +382,11 @@ export async function refreshLocalToken(): Promise<RefreshResult> {
     res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challenge, signature }),
+      body: JSON.stringify(
+        named
+          ? { challenge, signature, name: named.name, name_signature: named.name_signature }
+          : { challenge, signature },
+      ),
     });
   } catch (err: any) {
     return { ok: false, reason: "transport_error", error: err?.message ?? String(err) };
@@ -411,6 +427,18 @@ export async function refreshLocalToken(): Promise<RefreshResult> {
     fetchedAt,
   );
 
+  // What the treasury said about the name (D8 call 8), recorded only if a
+  // name was sent. The body came through an erased cast, so name_status is
+  // validated inside; missing or unknown records nothing. A failure here is
+  // logged and dropped — the token above is already stored.
+  if (named) {
+    try {
+      recordMemberNameStatus(named.profilePubkey, named.name, (body as { name_status?: unknown } | null)?.name_status);
+    } catch (err: any) {
+      console.warn("[subscription-token] name_status not recorded:", err?.code ?? "internal_error");
+    }
+  }
+
   return {
     ok: true,
     scope: payload.scope,
@@ -423,6 +451,26 @@ export async function refreshLocalToken(): Promise<RefreshResult> {
       fetched_at: fetchedAt,
     },
   };
+}
+
+/**
+ * The local node's stored Bitcorn-level name and its signature over
+ * buildNameSignedString(challenge, name), or null when there is no name or
+ * anything fails. Never throws: the name must never cost the token.
+ */
+async function signOwnName(
+  challenge: string,
+): Promise<{ name: string; name_signature: string; profilePubkey: string } | null> {
+  try {
+    const profilePubkey = getNodeInfo()?.pubkey;
+    if (!profilePubkey) return null;
+    const name = getMemberProfile(profilePubkey)?.bitcorn_name;
+    if (!name) return null;
+    const name_signature = await lndSignMessage(buildNameSignedString(challenge, name));
+    return { name, name_signature, profilePubkey };
+  } catch {
+    return null;
+  }
 }
 
 export function startTokenRefreshScheduler(): void {

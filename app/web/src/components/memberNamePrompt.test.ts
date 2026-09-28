@@ -11,12 +11,15 @@ import { memberNamePromptFor } from "./memberNamePrompt";
 // shape (§9.4), so a descriptor that never renders fails the pair.
 //
 // Copy is hardcoded here ON PURPOSE (§8), so a revision fails this file
-// rather than slipping through. All three strings are ACCEPTED (Ethan,
-// 2026-09-23).
+// rather than slipping through. HEADLINE and ACTION are ACCEPTED (Ethan,
+// 2026-09-23). BODY is PROPOSED (D8 spec §10, NOT accepted): it replaced the
+// accepted "stays on your node for now / in an upcoming update" body when the
+// transport shipped, and this file went red on that change before it was
+// revised to match.
 
 const HEADLINE = "Add your name or business name";
 const BODY =
-  "It stays on your node for now. In an upcoming update it'll be shared with BitCorn so we know who you are. It's never announced to the Lightning network.";
+  "It's shared with BitCorn so we know who you are. It's never announced to the Lightning network.";
 const ACTION = "Add name in Settings →";
 
 describe("memberNamePromptFor", () => {
@@ -41,24 +44,32 @@ describe("memberNamePromptFor", () => {
     expect(memberNamePromptFor({ state: "loading" })).toEqual({ render: false });
   });
 
-  it("§8 copy constraint: nothing in the prompt promises the treasury (or anyone) will see the name", () => {
+  // Revised deliberately by D8 (spec §10, PROPOSED). The list used to also
+  // forbid "hub will", "will see" and "visible to" — tense guards that existed
+  // only for the pre-transport window, when nothing could see the name. Now
+  // BitCorn does. What remains binding: member-facing copy says "BitCorn", and
+  // never "operator" — the farmer IS the operator of their own node.
+  it("§8 copy constraint: the prompt says 'BitCorn', never 'treasury' or 'operator'", () => {
     const p = memberNamePromptFor({ state: "loaded", bitcorn_name: null });
     if (!p.render) throw new Error("paired positive did not render");
     const all = `${p.headline} ${p.body} ${p.actionLabel}`.toLowerCase();
-    for (const forbidden of ["treasury", "operator", "hub will", "will see", "visible to"]) {
+    for (const forbidden of ["treasury", "operator"]) {
       expect(all, forbidden).not.toContain(forbidden);
     }
+    // Anti-vacuity: the word the copy is meant to use IS there.
+    expect(p.body).toContain("BitCorn");
   });
 
-  // Why this exists: the replaced body ("Pick a name for BitCorn to use for
-  // you…") PASSED the forbidden-words check above while still implying BitCorn
-  // uses the name TODAY. Until part 2's transport ships, nothing uses it. A
-  // word blocklist cannot see a tense; this pins the present-tense qualifier,
-  // so an edit that drops it — reverting to a claim about today — goes red.
-  it("§8 present-tense honesty: the body says the name stays on the node 'for now'", () => {
+  // ⚠ INVERTED DELIBERATELY by D8 (spec §10). This used to pin that the body
+  // SAID "for now" — present-tense honesty while the name stayed on the node.
+  // Once the transport ships, "for now" / "upcoming update" are the false
+  // words, so the same honesty now requires them ABSENT.
+  it("§8 present-tense honesty (post-transport): the body no longer says 'for now' or 'upcoming update'", () => {
     const p = memberNamePromptFor({ state: "loaded", bitcorn_name: null });
     if (!p.render) throw new Error("paired positive did not render");
-    expect(p.body).toContain("for now");
+    expect(p.body).not.toContain("for now");
+    expect(p.body).not.toContain("upcoming update");
+    expect(p.body).toContain("shared with BitCorn");
   });
 
   // Why this exists: the replaced headline ("Add a name for your farm")

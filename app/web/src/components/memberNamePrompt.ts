@@ -26,25 +26,26 @@ export type MemberNamePrompt =
 
 // Named constants so a revision is one edit; the tests hardcode them on
 // purpose so a change fails them. Binding constraints the words must keep
-// meeting: never claim the name is seen or used TODAY — until the transport
-// ships it reaches nobody; never send the farmer to "your node operator"
-// (they are the operator).
+// meeting: say "BitCorn", never "the treasury" or "the operator" — the farmer
+// IS the operator of their own node, so "your node operator" would send them
+// to themselves.
 //
-// ⚠ PART-2 COUPLING. The BODY is true only while the name stays on the node:
-// its "for now" / "upcoming update" wording MUST change in the same release
-// part 2's transport ships — alongside BitcornNamePanel's visibility line,
-// which carries the same coupling. Either one left alone becomes false that
-// day. (The test pinning "for now" will then need updating too, deliberately.)
+// ⚠ PART-2 COUPLING, DISCHARGED. The body used to say the name "stays on your
+// node for now" and would be shared "in an upcoming update". Part 2's
+// transport (D8) made that false, so it changed in the same release as
+// BitcornNamePanel's visibility line, which carried the same coupling.
+// ⚠ RELEASE PRECONDITION (D8 §10): the new body is true only once the
+// treasury runs part 2 — it must before any member sees this prompt.
 
 // ACCEPTED — Ethan's exact wording, 2026-09-23. It replaced "Add a name for
 // your farm", which addressed only farmers; grain merchants are half the
 // membership, and the prompt renders for every unnamed member.
 export const MEMBER_NAME_PROMPT_HEADLINE = "Add your name or business name";
-// ACCEPTED — Ethan's exact wording, 2026-09-23. It replaced "Pick a name for
-// BitCorn to use for you…", which passed the forbidden-words test while still
-// implying BitCorn uses the name today.
+// ⚠ PROPOSED COPY — D8 spec §10, NOT accepted. Replaces Ethan's ACCEPTED
+// 2026-09-23 body ("It stays on your node for now. In an upcoming update it'll
+// be shared with BitCorn…"), which was true only until the transport shipped.
 export const MEMBER_NAME_PROMPT_BODY =
-  "It stays on your node for now. In an upcoming update it'll be shared with BitCorn so we know who you are. It's never announced to the Lightning network.";
+  "It's shared with BitCorn so we know who you are. It's never announced to the Lightning network.";
 // ACCEPTED — Ethan, 2026-09-23 (unchanged from the spec's proposal).
 export const MEMBER_NAME_PROMPT_ACTION = "Add name in Settings →";
 

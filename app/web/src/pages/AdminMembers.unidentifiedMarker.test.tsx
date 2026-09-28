@@ -1,8 +1,13 @@
 // The unidentified marker on the admin Members roster.
 //
 // Spec: bitcorn-research/specs/2026-09-21-operator-nudge-for-unidentified-
-// enrolled-members-spec.md §6. Decision 3b81b7e. The trigger is "no contacts
-// row" and nothing else (§1.2) — not tier, not payment state, not lane.
+// enrolled-members-spec.md §6. Decision 3b81b7e. The trigger was "no contacts
+// row" and nothing else (§1.2) — not tier, not payment state, not lane. Since
+// D8 call 6 it is "no name the treasury holds": no contacts row, no member-set
+// name, no real public alias (AdminMembers.privateName.test.tsx pins the
+// other two). This suite stubs both of those reads as successful and empty, so
+// contacts alone still decide every case here — still never tier, payment
+// state or lane.
 //
 // ─── WHY EVERY TEST RENDERS ALL THREE ROWS AT ONCE ──────────────────────────
 // Spec §6.1: "a suite that only asserts the marker appears on nameless rows
@@ -81,9 +86,12 @@ const stub = vi.hoisted(() => ({
   getContacts: vi.fn(),
   getAdminSubscriptionRevenue: vi.fn(),
   // The roster also reads the public-alias store (spec 2026-09-24-public-alias-
-  // refresh §7). Stubbed so this suite makes no real fetch; the marker keys on
-  // contacts alone, so an empty alias read changes nothing asserted here.
+  // refresh §7) and the private-name store (D8). Since D8 call 6 the marker
+  // keys on all three reads — it needs every one to SUCCEED and none to hold a
+  // name — so both are stubbed as successful EMPTY reads: contacts alone then
+  // decide every outcome asserted here, as this suite's §1.2 framing needs.
   getAdminPublicAliases: vi.fn(),
+  getAdminPrivateNames: vi.fn(),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -102,6 +110,7 @@ beforeEach(() => {
   stub.getContacts.mockResolvedValue(CONTACTS);
   stub.getAdminSubscriptionRevenue.mockResolvedValue({ members: [] });
   stub.getAdminPublicAliases.mockResolvedValue({ aliases: [] });
+  stub.getAdminPrivateNames.mockResolvedValue({ names: [] });
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);

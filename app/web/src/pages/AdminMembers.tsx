@@ -22,7 +22,8 @@
 // action, so "no actions" above is no longer literally true either.
 //
 // Data: GET /api/admin/members (treasury-only via assertTreasury), plus
-// GET /api/admin/members/public-aliases for the Public alias column.
+// GET /api/admin/members/public-aliases for the Public alias column and
+// GET /api/admin/members/private-names for the Member-set name column (D8).
 // Filter/sort: all client-side per spec §10.5; the dataset is small.
 // Refresh: manual button + 60s auto-poll per spec §3.6.
 
@@ -32,6 +33,7 @@ import {
   api,
   type AdminMembersResponse,
   type AdminMembersRow,
+  type AdminPrivateNameRow,
   type AdminPublicAliasRow,
   type Contact,
   type LanePurpose,
@@ -67,39 +69,96 @@ function findContactName(pubkey: string, contacts: Contact[]): string | undefine
 const UNIDENTIFIED_MARKER = "Unidentified";
 const ADD_CONTACT_CTA = "Add contact";
 
-/** What the treasury can say about a member's name. THREE states, not two.
+/** What the treasury can say about a member's name. FOUR states.
  *
- *  `unidentified` is a CLAIM — "we looked, and we hold no name" — and the
- *  marker is the UI making it. `unknown` is the absence of a claim: the
- *  contacts read failed, so the treasury does not know whether it holds a
- *  name, and the roster must assert nothing. Collapsing the two makes the
- *  roster tell the operator it has identified nobody whenever the contacts
- *  endpoint is down, which is false rather than merely degraded.
+ *  The treasury holds a name for a member if ANY of three reads has one: a
+ *  contacts row, a member-set (private) name, or a real public alias (D8 call
+ *  6, superseding D4's contacts-only trigger by reference).
  *
- *  A union rather than a pair of booleans, for the same reason the name and
- *  marker share one source: two independent flags can disagree, and the
+ *  `named` — a contacts name; the Member cell shows it, as before.
+ *  `named-elsewhere` — no contacts name, but a private name or a real public
+ *  alias; each shows in its own column, and the Member cell shows the bare
+ *  pubkey with NO marker and NO Add-contact link (D4 treats mark and link as
+ *  one affordance, so they clear together).
+ *  `unidentified` is a CLAIM — "we looked in all three, and we hold no name" —
+ *  and the marker is the UI making it. It needs ALL THREE reads to succeed.
+ *  `unknown` is the absence of a claim: no name was found, but at least one
+ *  read failed, so the treasury does not know whether it holds one and the
+ *  roster must assert nothing. Collapsing the two makes the roster tell the
+ *  operator it has identified nobody whenever an endpoint is down, which is
+ *  false rather than merely degraded.
+ *
+ *  A union rather than a set of booleans, for the same reason the name and
+ *  marker share one source: independent flags can disagree, and the
  *  disagreement renders. */
 type Identity =
   | { kind: "named"; name: string }
+  | { kind: "named-elsewhere" }
   | { kind: "unidentified" }
   | { kind: "unknown" };
 
-/** The single place the three states are decided. `contacts === null` means
- *  the read FAILED — distinct from a successful read that returned zero
- *  contacts, which is a legitimate "nobody is named" and still marks. */
-function resolveIdentity(pubkey: string, contacts: Contact[] | null): Identity {
-  if (contacts === null) return { kind: "unknown" };
-  const name = findContactName(pubkey, contacts);
-  return name !== undefined ? { kind: "named", name } : { kind: "unidentified" };
+/** The single place the four states are decided (spec 2026-09-25 §8.2, the
+ *  four-arm composition — PROPOSED). For each read, `null` means it FAILED —
+ *  distinct from a successful read with no rows, which is a legitimate
+ *  "nobody is named" and still marks. Only a public-alias outcome of `alias`
+ *  counts as a name: "none announced", "no public channel" and "not checked
+ *  yet" are not names. A stale alias kept after a failed lookup IS one — it is
+ *  the last good value (D7 §3). */
+function resolveIdentity(
+  pubkey: string,
+  contacts: Contact[] | null,
+  privateNames: AdminPrivateNameRow[] | null,
+  aliases: AdminPublicAliasRow[] | null,
+): Identity {
+  const contactName = contacts === null ? undefined : findContactName(pubkey, contacts);
+  if (contactName !== undefined) return { kind: "named", name: contactName };
+  const privateName = privateNames === null ? undefined : findPrivateName(pubkey, privateNames);
+  if (privateName !== undefined || resolvePublicAlias(pubkey, aliases).kind === "alias") {
+    return { kind: "named-elsewhere" };
+  }
+  if (contacts !== null && privateNames !== null && aliases !== null) return { kind: "unidentified" };
+  return { kind: "unknown" };
+}
+
+// ─── Member-set name column ──────────────────────────────────────
+//
+// Spec: bitcorn-research specs/2026-09-25-member-name-signed-transport-spec.md
+// §8.1 (decision D8, D6 §5 column 1). The Bitcorn-level name each member set
+// on their own node and sent under its own signature — verified, validated
+// and blocklist-checked by the treasury. It is a name the treasury holds, so
+// it feeds Identity (clears D4's marker) but never the Member cell's text.
+
+// ⚠ PROPOSED COPY — spec §10, awaiting Ethan. NOT accepted.
+const PRIVATE_NAME_COLUMN = "Member-set name";
+const PRIVATE_NAME_NOT_SET = "not set";
+const PRIVATE_NAME_READ_FAILED_CELL = "—";
+const PRIVATE_NAME_READ_FAILED_HEADER = "unavailable";
+
+/** THREE states: the name, a successful read with no row, the read failed. */
+type PrivateNameState =
+  | { kind: "name"; name: string }
+  | { kind: "not_set" }
+  | { kind: "unavailable" };
+
+function findPrivateName(pubkey: string, names: AdminPrivateNameRow[]): string | undefined {
+  const needle = pubkey.toLowerCase();
+  return names.find((n) => n.pubkey.toLowerCase() === needle)?.name;
+}
+
+function resolvePrivateName(pubkey: string, names: AdminPrivateNameRow[] | null): PrivateNameState {
+  if (names === null) return { kind: "unavailable" };
+  const name = findPrivateName(pubkey, names);
+  return name !== undefined ? { kind: "name", name } : { kind: "not_set" };
 }
 
 // ─── Public alias column ─────────────────────────────────────────
 //
 // Spec: bitcorn-research specs/2026-09-24-public-alias-refresh-spec.md §7-§8
 // (decision D7). What each member's node ANNOUNCES as its public Lightning
-// alias, from the treasury's public-alias store. It is NOT a name the treasury
-// holds — that stays in the Member column, from contacts — so it never feeds
-// Identity, and D4's Unidentified marker ignores it.
+// alias, from the treasury's public-alias store. It stays out of the Member
+// column. Since D8 call 6 a REAL alias (outcome `alias`) counts as a name the
+// treasury holds, so it feeds Identity and clears D4's marker — reversing the
+// public-alias spec's §8.1, which kept the marker blind to it.
 
 // ⚠ PROPOSED COPY — spec §10, awaiting Ethan. NOT accepted.
 const PUBLIC_ALIAS_COLUMN = "Public alias";
@@ -168,6 +227,8 @@ type AliasRefreshState =
 const NO_CONTACTS: Contact[] = [];
 /** Same, for the public-alias rows the search matches against. */
 const NO_ALIASES: AdminPublicAliasRow[] = [];
+/** Same, for the private-name rows the search matches against. */
+const NO_PRIVATE_NAMES: AdminPrivateNameRow[] = [];
 
 // ─── Constants ───────────────────────────────────────────────────
 
@@ -230,6 +291,9 @@ type ViewState =
       /** `null` means the public-alias read FAILED — see PublicAliasState.
        *  Not the same as `[]`, a successful read with no rows. */
       aliases: AdminPublicAliasRow[] | null;
+      /** `null` means the private-name read FAILED — see PrivateNameState.
+       *  Not the same as `[]`, a successful read with no rows. */
+      privateNames: AdminPrivateNameRow[] | null;
     }
   | { kind: "error"; code?: string; detail?: string };
 
@@ -240,6 +304,14 @@ function fetchPublicAliases(): Promise<AdminPublicAliasRow[] | null> {
   return api
     .getAdminPublicAliases()
     .then((r) => r.aliases)
+    .catch(() => null);
+}
+
+/** The private-name read, failing to `null` (not `[]`) — see PrivateNameState. */
+function fetchPrivateNames(): Promise<AdminPrivateNameRow[] | null> {
+  return api
+    .getAdminPrivateNames()
+    .then((r) => r.names)
     .catch(() => null);
 }
 
@@ -286,12 +358,14 @@ export default function AdminMembers() {
       // The public-alias read follows the contacts convention exactly: it
       // fails to `null`, never `[]`, so the column can say "unavailable"
       // rather than claim nobody has been checked. The poll only READS it;
-      // nothing here triggers a refresh.
-      const [response, contacts, revenueResponse, aliases] = await Promise.all([
+      // nothing here triggers a refresh. The private-name read (D8) follows
+      // the same convention.
+      const [response, contacts, revenueResponse, aliases, privateNames] = await Promise.all([
         api.getAdminMembers(),
         api.getContacts().catch(() => null),
         api.getAdminSubscriptionRevenue().catch(() => null),
         fetchPublicAliases(),
+        fetchPrivateNames(),
       ]);
       setView({
         kind: "ok",
@@ -299,6 +373,7 @@ export default function AdminMembers() {
         contacts,
         revenue: buildRevenueLookup(revenueResponse?.members ?? []),
         aliases,
+        privateNames,
       });
     } catch (err: any) {
       setView({
@@ -355,6 +430,7 @@ export default function AdminMembers() {
           contacts={view.contacts}
           revenue={view.revenue}
           aliases={view.aliases}
+          privateNames={view.privateNames}
           selectedStates={selectedStates}
           setSelectedStates={setSelectedStates}
           selectedLanes={selectedLanes}
@@ -377,6 +453,7 @@ function AdminMembersBody({
   contacts,
   revenue,
   aliases,
+  privateNames,
   selectedStates,
   setSelectedStates,
   selectedLanes,
@@ -391,6 +468,7 @@ function AdminMembersBody({
   contacts: Contact[] | null;
   revenue: Map<string, MemberRevenueRow>;
   aliases: AdminPublicAliasRow[] | null;
+  privateNames: AdminPrivateNameRow[] | null;
   selectedStates: Set<SubscriptionStateKey>;
   setSelectedStates: (s: Set<SubscriptionStateKey>) => void;
   selectedLanes: Set<LanePurpose>;
@@ -406,6 +484,7 @@ function AdminMembersBody({
   // the distinction, so only the cell is handed the nullable.
   const known = contacts ?? NO_CONTACTS;
   const knownAliases = aliases ?? NO_ALIASES;
+  const knownPrivateNames = privateNames ?? NO_PRIVATE_NAMES;
 
   const filtered = useMemo(() => {
     const needle = pubkeySearch.toLowerCase();
@@ -413,19 +492,21 @@ function AdminMembersBody({
       if (!selectedStates.has(row.subscription_state)) return false;
       if (!selectedLanes.has(row.lane_purpose)) return false;
       if (needle) {
-        // Match against contact name, public alias OR pubkey — operators
-        // searching by any of them should find the row. Case-insensitive
-        // substring on both sides.
+        // Match against contact name, member-set name, public alias OR
+        // pubkey — operators searching by any of them should find the row.
+        // Case-insensitive substring on both sides.
         const name = findContactName(row.member_pubkey, known);
         const matchesName = name?.toLowerCase().includes(needle) ?? false;
+        const privateName = findPrivateName(row.member_pubkey, knownPrivateNames);
+        const matchesPrivateName = privateName?.toLowerCase().includes(needle) ?? false;
         const publicAlias = findPublicAliasRow(row.member_pubkey, knownAliases)?.alias;
         const matchesAlias = publicAlias?.toLowerCase().includes(needle) ?? false;
         const matchesPubkey = row.member_pubkey.toLowerCase().includes(needle);
-        if (!matchesName && !matchesAlias && !matchesPubkey) return false;
+        if (!matchesName && !matchesPrivateName && !matchesAlias && !matchesPubkey) return false;
       }
       return true;
     });
-  }, [response.members, known, knownAliases, selectedStates, selectedLanes, pubkeySearch]);
+  }, [response.members, known, knownPrivateNames, knownAliases, selectedStates, selectedLanes, pubkeySearch]);
 
   const sorted = useMemo(
     () => sortRows(filtered, sort, known, revenue),
@@ -459,6 +540,7 @@ function AdminMembersBody({
           contacts={contacts}
           revenue={revenue}
           aliases={aliases}
+          privateNames={privateNames}
           sort={sort}
           setSort={setSort}
         />
@@ -732,6 +814,7 @@ function MembersTable({
   contacts,
   revenue,
   aliases,
+  privateNames,
   sort,
   setSort,
 }: {
@@ -739,6 +822,7 @@ function MembersTable({
   contacts: Contact[] | null;
   revenue: Map<string, MemberRevenueRow>;
   aliases: AdminPublicAliasRow[] | null;
+  privateNames: AdminPrivateNameRow[] | null;
   sort: { column: SortColumn; direction: SortDirection };
   setSort: (s: { column: SortColumn; direction: SortDirection }) => void;
 }) {
@@ -755,6 +839,12 @@ function MembersTable({
         <thead>
           <tr>
             <SortHeader column="pubkey" sort={sort} onSort={handleSort}>Member</SortHeader>
+            {/* Not sortable, like Public alias (D8 spec §8.1). The header
+                carries the column-wide read failure. */}
+            <th>
+              {PRIVATE_NAME_COLUMN}
+              {privateNames === null && <span className="sub-muted"> {PRIVATE_NAME_READ_FAILED_HEADER}</span>}
+            </th>
             {/* Not sortable — the Member column's sort is unchanged (spec §7).
                 The header carries the column-wide read failure. */}
             <th>
@@ -775,7 +865,8 @@ function MembersTable({
             <MemberRow
               key={row.member_pubkey}
               row={row}
-              identity={resolveIdentity(row.member_pubkey, contacts)}
+              identity={resolveIdentity(row.member_pubkey, contacts, privateNames, aliases)}
+              privateName={resolvePrivateName(row.member_pubkey, privateNames)}
               publicAlias={resolvePublicAlias(row.member_pubkey, aliases)}
               revenue={findRevenue(row.member_pubkey, revenue)}
             />
@@ -809,11 +900,13 @@ function SortHeader({
 function MemberRow({
   row,
   identity,
+  privateName,
   publicAlias,
   revenue,
 }: {
   row: AdminMembersRow;
   identity: Identity;
+  privateName: PrivateNameState;
   publicAlias: PublicAliasState;
   revenue: MemberRevenueRow | undefined;
 }) {
@@ -822,6 +915,9 @@ function MemberRow({
     <tr>
       <td>
         <PubkeyCell pubkey={row.member_pubkey} identity={identity} />
+      </td>
+      <td>
+        <PrivateNameCell state={privateName} />
       </td>
       <td>
         <PublicAliasCell state={publicAlias} />
@@ -837,6 +933,19 @@ function MemberRow({
       <td>{revenue ? revenue.payment_count : <span className="sub-muted">—</span>}</td>
     </tr>
   );
+}
+
+/** One arm per PrivateNameState, decided once upstream in resolvePrivateName.
+ *  Only the name renders as primary text. */
+function PrivateNameCell({ state }: { state: PrivateNameState }) {
+  switch (state.kind) {
+    case "name":
+      return <span className="admin-members-private-name">{state.name}</span>;
+    case "not_set":
+      return <span className="sub-muted">{PRIVATE_NAME_NOT_SET}</span>;
+    case "unavailable":
+      return <span className="sub-muted">{PRIVATE_NAME_READ_FAILED_CELL}</span>;
+  }
 }
 
 /** One arm per PublicAliasState — the state was decided once, upstream, in
@@ -904,9 +1013,10 @@ function PubkeyCell({
   // pubkey is the SAME member, and a case-sensitive test would nudge the
   // operator to go find a name the treasury already holds.
   //
-  // `unknown` (contacts unreadable) renders as the bare pubkey — identical to
-  // the pre-marker display. The marker is a claim; with no reading of the
-  // contacts table there is no basis to make it.
+  // `unknown` (no name found, and a name read failed) and `named-elsewhere`
+  // (the name lives in the Member-set name or Public alias column) both render
+  // as the bare pubkey — identical to the pre-marker display. The marker is a
+  // claim; it needs every read to have answered, and none to hold a name.
   const identified = identity.kind === "named";
 
   // Two-line layout when a contact exists: name on top (sans-serif,

@@ -173,10 +173,15 @@ function Topbar({
   node,
   role,
   onMenuToggle,
+  displayName,
 }: {
   node: NodeInfo | null;
   role: "TREASURY" | "MEMBER";
   onMenuToggle: () => void;
+  /** The member's Bitcorn-level name, shown in place of the public alias when
+   *  set (D8 call 7). Only MemberShell passes it; the treasury's bar is
+   *  unchanged. */
+  displayName?: string | null;
 }) {
   const syncColor = node?.synced_to_chain ? "var(--green)" : "var(--red)";
 
@@ -199,7 +204,7 @@ function Topbar({
               boxShadow: node.synced_to_chain ? undefined : "none",
             }}
           />
-          <span>{node.alias || "—"}</span>
+          <span>{displayName || node.alias || "—"}</span>
           <span style={{ color: "var(--text-3)" }}>
             ·{" "}
             {node.pubkey
@@ -533,6 +538,23 @@ function MemberShell() {
   const [node, setNode] = useState<NodeInfo | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [channelRole, setChannelRole] = useState("unknown");
+  const [bitcornName, setBitcornName] = useState<string | null>(null);
+
+  useEffect(() => {
+    // The top bar shows the member's Bitcorn-level name, else the public alias
+    // (D8 call 7). Read on mount and on "bitcorn:name-changed", which
+    // BitcornNamePanel dispatches after a save — the name changes only through
+    // this node's own Settings, so there is no poll. A failed read falls back
+    // to the alias, silently: the top bar makes no claim about the name.
+    const loadName = () => {
+      api.getBitcornName()
+        .then((n) => setBitcornName(n.bitcorn_name))
+        .catch(() => setBitcornName(null));
+    };
+    loadName();
+    window.addEventListener("bitcorn:name-changed", loadName);
+    return () => window.removeEventListener("bitcorn:name-changed", loadName);
+  }, []);
 
   useEffect(() => {
     const load = () => api.getNode().then(setNode).catch(() => {});
@@ -572,7 +594,7 @@ function MemberShell() {
   return (
     <RailScope>
       <div className="app-shell">
-        <Topbar node={node} role="MEMBER" onMenuToggle={() => setMenuOpen((v) => !v)} />
+        <Topbar node={node} role="MEMBER" displayName={bitcornName} onMenuToggle={() => setMenuOpen((v) => !v)} />
         <div className={`sidebar-overlay ${menuOpen ? "visible" : ""}`} onClick={() => setMenuOpen(false)} />
         <MemberSidebar open={menuOpen} onClose={() => setMenuOpen(false)} channelRole={channelRole} />
         <main className="main-content">
@@ -807,7 +829,8 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
 
       <div className="settings-section-label">Personal</div>
 
-      {/* Bitcorn-level name — member-only, stored on this node only; NOT the
+      {/* Bitcorn-level name — member-only; stored on this node and sent to
+          BitCorn with each token refresh under its own signature (D8); NOT the
           LND alias. Directly above ProfilePanel, which its visibility line
           points to ("Your public alias, below, is published."). The dashboard's
           member-name prompt sends the farmer here. Spec 2026-09-23-member-

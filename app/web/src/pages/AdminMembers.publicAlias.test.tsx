@@ -9,10 +9,13 @@
 // emit without ever reading an alias; the first test is the one that says the
 // column does its job.
 //
-// ─── THE PUBLIC ALIAS IS NOT A NAME THE TREASURY HOLDS ─────────────────────
-// D4's Unidentified marker fires on "no contacts row", and this column must not
-// change that: a member whose node announces a public alias, but whom the
-// treasury has not named, is STILL unidentified. The D4 block below pins it.
+// ─── A REAL PUBLIC ALIAS IS A NAME THE TREASURY HOLDS (D8 call 6) ──────────
+// This header used to say the opposite: D4's marker fired on "no contacts row"
+// alone, and this column was pinned not to change that. D8 call 6 reversed it
+// (superseding D4's trigger by reference): a member whose node announces a
+// real alias — outcome `alias`, never "none announced" / "no public channel" /
+// "not checked yet" — is no longer marked. The D8 block below pins the new
+// rule; it is the old D4 block, inverted deliberately.
 //
 // ⚠ COPY IS PROPOSED, NOT ACCEPTED (spec §10). Hardcoded here on purpose, not
 // imported from the component — a test that imports the constant it asserts
@@ -96,6 +99,9 @@ const stub = vi.hoisted(() => ({
   getAdminSubscriptionRevenue: vi.fn(),
   getAdminPublicAliases: vi.fn(),
   refreshAdminPublicAliases: vi.fn(),
+  // The roster also reads the private-name store (D8). A SUCCESSFUL empty read
+  // here, so every marker outcome below is decided by contacts and aliases.
+  getAdminPrivateNames: vi.fn(),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -114,6 +120,7 @@ beforeEach(() => {
   stub.getContacts.mockResolvedValue(CONTACTS);
   stub.getAdminSubscriptionRevenue.mockResolvedValue({ members: [] });
   stub.getAdminPublicAliases.mockResolvedValue({ aliases: ALIASES });
+  stub.getAdminPrivateNames.mockResolvedValue({ names: [] });
   stub.refreshAdminPublicAliases.mockResolvedValue({
     ok: true,
     total: 4,
@@ -182,12 +189,16 @@ describe("§11.1 PERMITTING CONTROL — a real alias shows", () => {
     expect(aliasCell(HAS_ALIAS)).toBe("Lazy H Farms");
   });
 
-  it("the column sits immediately right of Member (spec §8.1)", async () => {
+  // ⚠ UPDATED DELIBERATELY by D8 (spec 2026-09-25 §8.1): the Member-set name
+  // column now sits BETWEEN Member and Public alias. This used to assert
+  // "immediately right of Member" and went red against the D8 roster.
+  it("the column sits right of Member, with only the Member-set name column between (D7 §8.1 as amended by D8 §8.1)", async () => {
     await renderRoster();
     const headers = Array.from(host.querySelectorAll("thead th")).map((h) => (h.textContent ?? "").trim());
-    const member = headers.findIndex((h) => h.startsWith("Member"));
+    const member = headers.findIndex((h) => h.startsWith("Member") && !h.startsWith("Member-set"));
     expect(member).toBeGreaterThanOrEqual(0);
-    expect(headers[member + 1]).toContain(COLUMN);
+    expect(headers[member + 1]).toContain("Member-set name");
+    expect(headers[member + 2]).toContain(COLUMN);
   });
 });
 
@@ -220,13 +231,23 @@ describe("§11.3 a failed LAST attempt over a definitive outcome renders the out
   });
 });
 
-describe("D4 PRESERVED — the public alias is not a name the treasury holds", () => {
-  it("a member announcing a public alias but with NO contacts row is still marked Unidentified", async () => {
+// ⚠ INVERTED DELIBERATELY by D8 call 6 (spec 2026-09-25-member-name-signed-
+// transport §8.2, §12 P10). This block used to be "D4 PRESERVED — the public
+// alias is not a name the treasury holds", and its first test asserted the
+// marker DID render beside a real alias. Run against the D8 roster before this
+// inversion it went red exactly there — no marker on the Prairie Mill row —
+// and it was then flipped: a real public alias IS a name the treasury holds.
+describe("D8 call 6 — a REAL public alias is a name the treasury holds", () => {
+  it("a member announcing a public alias but with NO contacts row is NOT marked Unidentified", async () => {
     await renderRoster();
     const text = rowFor(ALIAS_NO_CONTACT).textContent ?? "";
-    // Both halves in one row: the alias shows in its column, AND the marker.
+    // Both halves in one row: the alias shows in its column, and NO marker.
     expect(aliasCell(ALIAS_NO_CONTACT)).toBe("Prairie Mill");
-    expect(text).toContain(MARKER);
+    expect(text).not.toContain(MARKER);
+    // The link clears with the marker (D4 treats them as one affordance).
+    expect(text).not.toContain("Add contact");
+    // Anti-vacuity: the Member cell still renders the bare pubkey.
+    expect(rowFor(ALIAS_NO_CONTACT).cells[0].textContent).toContain(short(ALIAS_NO_CONTACT));
   });
 
   it("none announced + no contact → the marker renders beside the 'none announced' state", async () => {
@@ -255,8 +276,13 @@ describe("§11.8 a failed alias read degrades the column, not the roster", () =>
       expect(aliasCell(k), `a failed read asserts nothing per row (${short(k)})`).toBe(READ_FAILED_CELL);
     }
     expect(host.textContent).not.toContain(NOT_CHECKED);
-    // D4's marker keys on contacts, not on this read — it still renders.
-    expect(rowFor(NONE).textContent).toContain(MARKER);
+    // ⚠ INVERTED DELIBERATELY by D8 (spec §8.2 arm 4, §12 P10). This used to
+    // read "D4's marker keys on contacts, not on this read — it still renders."
+    // The marker now keys on all three reads: with this one FAILED, the roster
+    // cannot claim it holds no name for NONE, so it asserts nothing. Seen red
+    // against the D8 roster before flipping.
+    expect(rowFor(NONE).textContent).not.toContain(MARKER);
+    expect(host.textContent).not.toContain(MARKER);
   });
 
   it("PERMITTING HALF: a SUCCESSFUL empty read shows 'not checked yet' on every row, header normal", async () => {

@@ -19,12 +19,31 @@ import path from "path";
 import { PassThrough } from "stream";
 import type http from "http";
 import type Database from "better-sqlite3";
-import { beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TMP_DB = fs.mkdtempSync(path.join(os.tmpdir(), "bitcorn-name-route-test-"));
 process.env.DB_DIR = TMP_DB;
 
 const MEMBER_PUBKEY = "03" + "a".repeat(64);
+
+// D8 call 9: a save triggers one token refresh. The refresh is a spy here —
+// it records the name STORED AT CALL TIME, which is what the real refresh
+// reads and signs (tokenRefresh.nameCarrier.test.ts pins that half).
+const refresh = vi.hoisted(() => ({
+  namesAtCall: [] as Array<string | null>,
+  impl: null as null | (() => Promise<unknown>),
+  readName: null as null | (() => string | null),
+}));
+vi.mock("../subscription/tokenRefresh", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../subscription/tokenRefresh")>();
+  return {
+    ...actual,
+    refreshLocalToken: vi.fn(async () => {
+      refresh.namesAtCall.push(refresh.readName?.() ?? null);
+      return refresh.impl ? refresh.impl() : { ok: false, reason: "transport_error" };
+    }),
+  };
+});
 
 let handleRequest: (req: http.IncomingMessage, res: http.ServerResponse) => Promise<void>;
 let db: Database.Database;
@@ -48,8 +67,18 @@ function setNodeRole(role: "member" | "treasury") {
 
 beforeEach(() => {
   db.prepare("DELETE FROM member_profile").run();
+  db.prepare("DELETE FROM member_name_status").run();
   setNodeRole("member");
+  refresh.namesAtCall = [];
+  refresh.impl = null;
+  refresh.readName = () =>
+    (db.prepare("SELECT bitcorn_name FROM member_profile WHERE member_pubkey = ?").get(MEMBER_PUBKEY) as
+      | { bitcorn_name: string | null }
+      | undefined)?.bitcorn_name ?? null;
 });
+
+/** Let the fire-and-forget refresh run. */
+const settle = () => new Promise((r) => setTimeout(r, 20));
 
 type Captured = { status: number; body: any };
 
@@ -90,7 +119,8 @@ describe("GET /api/profile/name", () => {
   it("returns nulls for a member who has never set a name (no row yet)", async () => {
     const r = await call("GET", "/api/profile/name");
     expect(r.status).toBe(200);
-    expect(r.body).toEqual({ bitcorn_name: null, bitcorn_name_set_at: null });
+    // treasury_name_status is additive (D8 §7.2) — null with no name.
+    expect(r.body).toEqual({ bitcorn_name: null, bitcorn_name_set_at: null, treasury_name_status: null });
   });
 
   it("refuses the treasury (403 member_required)", async () => {
@@ -110,7 +140,11 @@ describe("POST /api/profile/name", () => {
     expect(w.body.bitcorn_name_set_at).toBeGreaterThanOrEqual(before);
 
     const r = await call("GET", "/api/profile/name");
-    expect(r.body).toEqual({ bitcorn_name: "Green Acres", bitcorn_name_set_at: w.body.bitcorn_name_set_at });
+    expect(r.body).toEqual({
+      bitcorn_name: "Green Acres",
+      bitcorn_name_set_at: w.body.bitcorn_name_set_at,
+      treasury_name_status: null,
+    });
   });
 
   it("overwrites an existing name", async () => {
@@ -178,5 +212,79 @@ describe("no clear path (spec §6, accepted)", () => {
     expect(r.status).toBe(400);
     expect(r.body.error).toBe("confirmation_required");
     expect(String(r.body.detail)).toMatch(/not classified/);
+  });
+});
+
+// ─── D8 (spec 2026-09-25-member-name-signed-transport) ──────────────────────
+
+describe("P15 — saving a name triggers exactly one token refresh (D8 call 9)", () => {
+  it("PERMITTING: a 200 save → ONE refresh, which sees the SAVED name", async () => {
+    const w = await call("POST", "/api/profile/name", { name: "  Green   Acres " });
+    await settle();
+    expect(w.status).toBe(200);
+    expect(refresh.namesAtCall, "one refresh, after the write").toEqual(["Green Acres"]);
+  });
+
+  it("a failed refresh does not fail the save: still 200, still stored", async () => {
+    refresh.impl = () => Promise.reject(new Error("treasury unreachable"));
+    const w = await call("POST", "/api/profile/name", { name: "Green Acres" });
+    await settle();
+    expect(w.status).toBe(200);
+    expect(w.body.bitcorn_name).toBe("Green Acres");
+    expect((await call("GET", "/api/profile/name")).body.bitcorn_name).toBe("Green Acres");
+    // Anti-vacuity: the refresh really ran — and really failed.
+    expect(refresh.namesAtCall).toEqual(["Green Acres"]);
+  });
+
+  it("a refresh that never settles does not hold the save's response", async () => {
+    refresh.impl = () => new Promise(() => {});
+    const w = await call("POST", "/api/profile/name", { name: "Green Acres" });
+    expect(w.status).toBe(200);
+  });
+
+  it("FORBIDDING: a 400 save triggers NO refresh", async () => {
+    const w = await call("POST", "/api/profile/name", { name: "Farm:1" });
+    await settle();
+    expect(w.status).toBe(400);
+    expect(refresh.namesAtCall).toEqual([]);
+  });
+
+  it("FORBIDDING: the treasury's refused save (403) triggers NO refresh", async () => {
+    setNodeRole("treasury");
+    await call("POST", "/api/profile/name", { name: "Treasury" });
+    await settle();
+    expect(refresh.namesAtCall).toEqual([]);
+  });
+});
+
+describe("P14 (server half) — GET reports the treasury's status for the CURRENT name only", () => {
+  const seedStatus = (name_sent: string, status: string) =>
+    db.prepare(
+      "INSERT INTO member_name_status (member_pubkey, name_sent, status, received_at) VALUES (?, ?, ?, 1)",
+    ).run(MEMBER_PUBKEY, name_sent, status);
+
+  it("a 'rejected' status for the current name → treasury_name_status 'rejected'", async () => {
+    await call("POST", "/api/profile/name", { name: "Green Acres" });
+    seedStatus("Green Acres", "rejected");
+    expect((await call("GET", "/api/profile/name")).body.treasury_name_status).toBe("rejected");
+  });
+
+  it("'accepted' for the current name → 'accepted'", async () => {
+    await call("POST", "/api/profile/name", { name: "Green Acres" });
+    seedStatus("Green Acres", "accepted");
+    expect((await call("GET", "/api/profile/name")).body.treasury_name_status).toBe("accepted");
+  });
+
+  it("⚠ a 'rejected' status for an EARLIER name does not describe the one saved since → null", async () => {
+    seedStatus("Old Name", "rejected");
+    await call("POST", "/api/profile/name", { name: "New Name" });
+    const r = await call("GET", "/api/profile/name");
+    expect(r.body.bitcorn_name).toBe("New Name");
+    expect(r.body.treasury_name_status).toBeNull();
+  });
+
+  it("no status row (an old treasury, or not yet refreshed) → null", async () => {
+    await call("POST", "/api/profile/name", { name: "Green Acres" });
+    expect((await call("GET", "/api/profile/name")).body.treasury_name_status).toBeNull();
   });
 });
