@@ -55,6 +55,9 @@
   --radius-xl:   12px;
   --radius-full: 9999px;
 
+  /* Keyboard focus ring — must reach 3:1 on --bg…--bg-3 in both themes. */
+  --focus-ring:  var(--amber);
+
   --text-scale: 1;
 
   /* Aliases for token names consumed in the app but never declared, which
@@ -310,7 +313,7 @@ p + .settings-section-label { margin-top: 8px; }
   background: var(--amber-glow2);
 }
 .policy-card:focus-visible {
-  outline: 2px solid var(--amber);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 .policy-card .policy-card-label {
@@ -376,8 +379,11 @@ p + .settings-section-label { margin-top: 8px; }
   color: var(--text);
 }
 .policy-card .policy-card-edit input:focus {
-  outline: none;
   border-color: var(--amber-dim);
+}
+.policy-card .policy-card-edit input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 .policy-card .policy-card-edit .unit {
   font-family: var(--mono);
@@ -983,6 +989,7 @@ p + .settings-section-label { margin-top: 8px; }
 
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn:active:not(:disabled) { transform: scale(0.97); }
+.btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 .btn-primary {
   background: var(--amber);
@@ -1035,12 +1042,12 @@ p + .settings-section-label { margin-top: 8px; }
   font-family: var(--mono);
   font-size: 0.875rem;
   color: var(--text);
-  outline: none;
   transition: border-color 0.15s;
   width: 100%;
 }
 
 .form-input:focus { border-color: var(--amber-dim); }
+.form-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 /* Remove number input spinners and prevent scroll-to-change */
 input[type="number"]::-webkit-inner-spin-button,
@@ -1872,6 +1879,10 @@ input[type="number"] {
   --text-2:      #685a49;
   --text-3:      #998a78;
 
+  /* Light --amber is under 3:1 on these backgrounds; --amber-dim passes.
+     Drop this override when tranche 2 re-values light --amber. */
+  --focus-ring:  var(--amber-dim);
+
   color: var(--text);
   background: var(--bg);
   color-scheme: light;
@@ -2064,11 +2075,10 @@ input[type="number"] {
   display: block;
   border-radius: var(--radius);
   background: var(--bg-2);
-  outline: none;
 }
 
 .liq-topology-svg:focus-visible {
-  outline: 2px solid var(--amber);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -2942,9 +2952,9 @@ input[type="number"] {
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.8125rem;
 }
-.admin-members-search:focus {
-  outline: 1px solid var(--amber);
-  outline-offset: -1px;
+.admin-members-search:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 /* Members table */
@@ -3363,9 +3373,12 @@ input[type="number"] {
 }
 
 .stablecoin-input:focus {
-  outline: none;
   border-color: var(--amber);
   background: var(--bg-3);
+}
+.stablecoin-input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }
 
 .stablecoin-input:disabled {
