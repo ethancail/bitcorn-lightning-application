@@ -1385,6 +1385,12 @@ input[type="number"] {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Opacity-only variant, used under prefers-reduced-motion (end of file). */
+@keyframes fadeInOpacity {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 .fade-in { animation: fadeIn 0.25s ease-out both; }
 .fade-in-1 { animation-delay: 0.05s; }
 .fade-in-2 { animation-delay: 0.10s; }
@@ -3766,4 +3772,26 @@ input[type="number"] {
   .stablecoin-contract-row {
     gap: 16px;
   }
+}
+
+/* ─── Reduced motion ───────────────────────────────────────────────
+   Gentler, not none: movement goes (translate, scale, width, radius
+   growth, sliding panels, moving shimmers and pulses); opacity and colour
+   changes stay, because they carry state. Kept last so it wins on order. */
+@media (prefers-reduced-motion: reduce) {
+  .fade-in { animation-name: fadeInOpacity; }
+
+  /* Press feedback without movement. */
+  .btn:active:not(:disabled) { transform: none; opacity: 0.85; }
+
+  .sidebar { transition: none; }
+  .member-gauge .fill { transition: none; }
+  .channel-balance-local { transition: none; }
+  .liq-health-bar-fill { transition: background 0.2s; }
+  .liq-topology-svg circle,
+  .liq-topology-svg line,
+  .liq-topology-svg text { transition: stroke-opacity 0.2s; }
+
+  .loading-shimmer { animation: none; }
+  .pulse-dot.green { animation: none; }
 }
