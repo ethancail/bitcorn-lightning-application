@@ -10,7 +10,8 @@
 // Moving the constant here changed where it lives, not its bytes; a test pins
 // the literal (challengeGrammar.test.ts).
 //
-// The name signature (D8 call 1, format PROPOSED — Ethan's to accept, §15):
+// The name signature (D8 call 1; format and field names ACCEPTED — Ethan,
+// 2026-09-28):
 //
 //     bitcorn:member-name:<the full challenge, exactly as sent>:<name, exactly as sent>
 //

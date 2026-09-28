@@ -35,7 +35,7 @@ import { getBlockedAliasList } from "../profile/profileStore";
 import { buildNameSignedString } from "./challengeGrammar";
 import type { ChallengeVerificationResult } from "./challengeAuth";
 
-/** The additive `name_status` on a /token 200 (§5.3; meanings PROPOSED). */
+/** The additive `name_status` on a /token 200 (§5.3; meanings ACCEPTED — Ethan, 2026-09-28). */
 export type MemberNameStatus = "accepted" | "rejected" | "none";
 
 export const MEMBER_NAME_STATUSES: readonly MemberNameStatus[] = ["accepted", "rejected", "none"];

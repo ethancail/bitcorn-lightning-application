@@ -14,9 +14,10 @@
 // beside a row in the SAME render that IS marked — so a component that never
 // marks, or marks every row, fails. The discrimination is what is under test.
 //
-// ⚠ COPY IS PROPOSED, NOT ACCEPTED (spec §10). Hardcoded here on purpose, not
-// imported: a test that imports the constant it asserts cannot detect a copy
-// change.
+// ⚠ This column's copy is ACCEPTED (Ethan, 2026-09-28; spec §10). D4's
+// marker/link strings below are that spec's and still PROPOSED there — not
+// this feature's to settle. Hardcoded here on purpose, not imported: a test
+// that imports the constant it asserts cannot detect a copy change.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -24,10 +25,10 @@ import { act } from "react-dom/test-utils";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 
-const COLUMN = "Member-set name"; //              §10 — PROPOSED
-const NOT_SET = "not set"; //                      §10 — PROPOSED
-const READ_FAILED_CELL = "—"; //                   §10 — PROPOSED
-const READ_FAILED_HEADER = "unavailable"; //       §10 — PROPOSED
+const COLUMN = "Member-set name"; //              §10 — ACCEPTED 2026-09-28
+const NOT_SET = "not set"; //                      §10 — ACCEPTED 2026-09-28
+const READ_FAILED_CELL = "—"; //                   §10 — ACCEPTED 2026-09-28
+const READ_FAILED_HEADER = "unavailable"; //       §10 — ACCEPTED 2026-09-28
 const MARKER = "Unidentified"; //                  D4 spec §5 — PROPOSED
 const ADD_LINK = "Add contact"; //                 D4 spec §5 — PROPOSED
 

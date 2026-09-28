@@ -98,7 +98,7 @@ type Identity =
   | { kind: "unknown" };
 
 /** The single place the four states are decided (spec 2026-09-25 §8.2, the
- *  four-arm composition — PROPOSED). For each read, `null` means it FAILED —
+ *  four-arm composition — ACCEPTED, Ethan 2026-09-28). For each read, `null` means it FAILED —
  *  distinct from a successful read with no rows, which is a legitimate
  *  "nobody is named" and still marks. Only a public-alias outcome of `alias`
  *  counts as a name: "none announced", "no public channel" and "not checked
@@ -128,7 +128,7 @@ function resolveIdentity(
 // and blocklist-checked by the treasury. It is a name the treasury holds, so
 // it feeds Identity (clears D4's marker) but never the Member cell's text.
 
-// ⚠ PROPOSED COPY — spec §10, awaiting Ethan. NOT accepted.
+// ACCEPTED COPY — Ethan, 2026-09-28 (D8 spec §10, as proposed).
 const PRIVATE_NAME_COLUMN = "Member-set name";
 const PRIVATE_NAME_NOT_SET = "not set";
 const PRIVATE_NAME_READ_FAILED_CELL = "—";

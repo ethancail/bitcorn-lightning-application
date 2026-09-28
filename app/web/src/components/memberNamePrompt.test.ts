@@ -12,8 +12,8 @@ import { memberNamePromptFor } from "./memberNamePrompt";
 //
 // Copy is hardcoded here ON PURPOSE (§8), so a revision fails this file
 // rather than slipping through. HEADLINE and ACTION are ACCEPTED (Ethan,
-// 2026-09-23). BODY is PROPOSED (D8 spec §10, NOT accepted): it replaced the
-// accepted "stays on your node for now / in an upcoming update" body when the
+// 2026-09-23). BODY is ACCEPTED (Ethan, 2026-09-28; D8 spec §10): it replaced
+// the "stays on your node for now / in an upcoming update" body when the
 // transport shipped, and this file went red on that change before it was
 // revised to match.
 
@@ -44,7 +44,7 @@ describe("memberNamePromptFor", () => {
     expect(memberNamePromptFor({ state: "loading" })).toEqual({ render: false });
   });
 
-  // Revised deliberately by D8 (spec §10, PROPOSED). The list used to also
+  // Revised deliberately by D8 (spec §10; ACCEPTED — Ethan, 2026-09-28). The list used to also
   // forbid "hub will", "will see" and "visible to" — tense guards that existed
   // only for the pre-transport window, when nothing could see the name. Now
   // BitCorn does. What remains binding: member-facing copy says "BitCorn", and

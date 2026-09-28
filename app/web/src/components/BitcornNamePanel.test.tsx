@@ -7,8 +7,10 @@
 // status shows it. Every "no message" case below sits beside that positive,
 // from the same fixture, so a panel that never shows the message fails.
 //
-// ⚠ COPY IS PROPOSED, NOT ACCEPTED (spec §10). Hardcoded here, not imported —
+// ⚠ COPY IS ACCEPTED (Ethan, 2026-09-28) and hardcoded here, not imported —
 // a test that imports the constant it asserts cannot detect a copy change.
+// The rejected message's "Try a different one." was Ethan's one change; this
+// file went red against the old string before the constant was updated.
 // The visibility line had NO test before this file (spec §12 P12).
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -17,8 +19,8 @@ import { act } from "react-dom/test-utils";
 import React from "react";
 
 const VISIBILITY_LINE =
-  "Shared with BitCorn — never published to the Lightning network. Your public alias, below, is published."; // §10 — PROPOSED
-const REJECTED = "BitCorn couldn't accept this name."; // §10 — PROPOSED
+  "Shared with BitCorn — never published to the Lightning network. Your public alias, below, is published."; // ACCEPTED — Ethan, 2026-09-28
+const REJECTED = "BitCorn couldn't accept this name. Try a different one."; // ACCEPTED — Ethan, 2026-09-28
 const OLD_VISIBILITY_LINE_WORD = "Saved on this node only";
 
 const stub = vi.hoisted(() => ({

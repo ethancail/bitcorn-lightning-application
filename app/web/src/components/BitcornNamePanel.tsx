@@ -28,19 +28,20 @@ import { bitcornNameInputState, BITCORN_NAME_MAX_CHARS } from "./bitcornNameInpu
 
 // ACCEPTED — Ethan's exact wording, 2026-09-23.
 export const BITCORN_NAME_FIELD_LABEL = "Your name for BitCorn";
-// ⚠ PROPOSED COPY — D8 spec §10, NOT accepted. Replaces the ACCEPTED
-// "Saved on this node only — …", whose "only" became false the day the name
-// started travelling. Changed in the same release as the dashboard prompt
-// body, which carried the same coupling. ⚠ RELEASE PRECONDITION: true only
-// once the treasury runs part 2 (see header).
+// ACCEPTED — Ethan, 2026-09-28 (D8 spec §10, as proposed). Replaced the
+// 2026-09-23 "Saved on this node only — …", whose "only" became false the day
+// the name started travelling. Changed in the same release as the dashboard
+// prompt body, which carried the same coupling. ⚠ RELEASE PRECONDITION: true
+// only once the treasury runs part 2 (see header).
 export const BITCORN_NAME_VISIBILITY_LINE =
   "Shared with BitCorn — never published to the Lightning network. Your public alias, below, is published.";
-// ⚠ PROPOSED COPY — D8 spec §10 / call 8; meaning decided (generic, never
-// why), final wording reserved to Ethan (D8 §13). NOT accepted.
-export const BITCORN_NAME_REJECTED_MESSAGE = "BitCorn couldn't accept this name.";
+// ACCEPTED — Ethan, 2026-09-28, with ONE change from the spec's proposal: the
+// "Try a different one." sentence §10 offered is added. Meaning per D8 call
+// 8: generic, never says why.
+export const BITCORN_NAME_REJECTED_MESSAGE = "BitCorn couldn't accept this name. Try a different one.";
 
-// The one delayed re-read after a save (spec §9.2, PROPOSED: 5s) — long
-// enough for the save's token refresh to round-trip to the treasury.
+// The one delayed re-read after a save (spec §9.2; 5s ACCEPTED — Ethan,
+// 2026-09-28) — long enough for the save's token refresh to round-trip.
 export const NAME_STATUS_RECHECK_MS = 5_000;
 
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: string };

@@ -41,7 +41,7 @@ export type MemberNamePrompt =
 // your farm", which addressed only farmers; grain merchants are half the
 // membership, and the prompt renders for every unnamed member.
 export const MEMBER_NAME_PROMPT_HEADLINE = "Add your name or business name";
-// ⚠ PROPOSED COPY — D8 spec §10, NOT accepted. Replaces Ethan's ACCEPTED
+// ACCEPTED — Ethan, 2026-09-28 (D8 spec §10, as proposed). Replaced the
 // 2026-09-23 body ("It stays on your node for now. In an upcoming update it'll
 // be shared with BitCorn…"), which was true only until the transport shipped.
 export const MEMBER_NAME_PROMPT_BODY =
