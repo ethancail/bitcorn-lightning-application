@@ -17,10 +17,13 @@
 // "not checked yet" — is no longer marked. The D8 block below pins the new
 // rule; it is the old D4 block, inverted deliberately.
 //
-// ⚠ COPY IS PROPOSED, NOT ACCEPTED (spec §10). Hardcoded here on purpose, not
-// imported from the component — a test that imports the constant it asserts
-// cannot detect a copy change. If Ethan revises the copy, these failing is the
-// correct signal.
+// ⚠ COPY IS ACCEPTED: D7's public-alias copy and search were accepted by
+// action by Ethan on 2026-09-24 (recorded in the research vault; these
+// markers were stale until 2026-09-28), and D4's marker string by a direct
+// yes on 2026-09-28. Hardcoded here on purpose, not imported from the
+// component — a test that imports the constant it asserts cannot detect a
+// copy change. If the copy is ever revised, these failing is the correct
+// signal.
 //
 // ⚠ PRE-CHANGE RUN: run against 30de308 before the column existed. Red there —
 // no "Public alias" header to find.
@@ -31,18 +34,18 @@ import { act } from "react-dom/test-utils";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 
-const COLUMN = "Public alias"; //                          §10 — PROPOSED
-const NONE_ANNOUNCED = "none announced"; //                §10 — PROPOSED
-const NOT_IN_GRAPH = "no public channel"; //               §10 — PROPOSED
-const NOT_CHECKED = "not checked yet"; //                  §10 — PROPOSED
-const READ_FAILED_CELL = "—"; //                           §10 — PROPOSED
-const READ_FAILED_HEADER = "unavailable"; //               §10 — PROPOSED
-const REFRESH_BUTTON = "Refresh public aliases"; //        §10 — PROPOSED
+const COLUMN = "Public alias"; //                          §10 — ACCEPTED 2026-09-24
+const NONE_ANNOUNCED = "none announced"; //                §10 — ACCEPTED 2026-09-24
+const NOT_IN_GRAPH = "no public channel"; //               §10 — ACCEPTED 2026-09-24
+const NOT_CHECKED = "not checked yet"; //                  §10 — ACCEPTED 2026-09-24
+const READ_FAILED_CELL = "—"; //                           §10 — ACCEPTED 2026-09-24
+const READ_FAILED_HEADER = "unavailable"; //               §10 — ACCEPTED 2026-09-24
+const REFRESH_BUTTON = "Refresh public aliases"; //        §10 — ACCEPTED 2026-09-24
 const REFRESH_RESULT =
-  "Checked 4: 1 with an alias, 1 none announced, 1 no public channel, 1 lookups failed."; // §10 — PROPOSED
-const REFRESH_IN_PROGRESS = "A public alias refresh is already running."; // NOT in §10 — implementer's PROPOSAL
-const REFRESH_FAILED = "Public alias refresh failed"; //  NOT in §10 — implementer's PROPOSAL
-const MARKER = "Unidentified"; //                          D4 spec §5 — PROPOSED
+  "Checked 4: 1 with an alias, 1 none announced, 1 no public channel, 1 lookups failed."; // §10 — ACCEPTED 2026-09-24
+const REFRESH_IN_PROGRESS = "A public alias refresh is already running."; // implementer's wording, not in §10 — ACCEPTED 2026-09-24
+const REFRESH_FAILED = "Public alias refresh failed"; //  implementer's wording, not in §10 — ACCEPTED 2026-09-24
+const MARKER = "Unidentified"; //                          D4 spec §5 — ACCEPTED 2026-09-28
 
 const pk = (c: string) => "02" + c.repeat(64);
 const HAS_ALIAS = pk("a"); //      announces "Lazy H Farms"; named by the treasury as something else
@@ -355,7 +358,7 @@ describe("§11.11 the refresh button — never silent", () => {
   });
 });
 
-describe("search matches the public alias (spec §7, PROPOSED)", () => {
+describe("search matches the public alias (spec §7, ACCEPTED by action — Ethan, 2026-09-24)", () => {
   it("typing part of an alias, in any case, filters to that row", async () => {
     await renderRoster();
     const input = host.querySelector("input.admin-members-search") as HTMLInputElement | null;

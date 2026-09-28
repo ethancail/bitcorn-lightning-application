@@ -14,10 +14,10 @@
 // beside a row in the SAME render that IS marked — so a component that never
 // marks, or marks every row, fails. The discrimination is what is under test.
 //
-// ⚠ This column's copy is ACCEPTED (Ethan, 2026-09-28; spec §10). D4's
-// marker/link strings below are that spec's and still PROPOSED there — not
-// this feature's to settle. Hardcoded here on purpose, not imported: a test
-// that imports the constant it asserts cannot detect a copy change.
+// ⚠ COPY IS ACCEPTED: this column's (Ethan, 2026-09-28; D8 spec §10) and D4's
+// marker/link strings below (Ethan, a direct yes, 2026-09-28; D4 spec §5).
+// Hardcoded here on purpose, not imported: a test that imports the constant
+// it asserts cannot detect a copy change.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -29,8 +29,8 @@ const COLUMN = "Member-set name"; //              §10 — ACCEPTED 2026-09-28
 const NOT_SET = "not set"; //                      §10 — ACCEPTED 2026-09-28
 const READ_FAILED_CELL = "—"; //                   §10 — ACCEPTED 2026-09-28
 const READ_FAILED_HEADER = "unavailable"; //       §10 — ACCEPTED 2026-09-28
-const MARKER = "Unidentified"; //                  D4 spec §5 — PROPOSED
-const ADD_LINK = "Add contact"; //                 D4 spec §5 — PROPOSED
+const MARKER = "Unidentified"; //                  D4 spec §5 — ACCEPTED 2026-09-28
+const ADD_LINK = "Add contact"; //                 D4 spec §5 — ACCEPTED 2026-09-28
 
 const pk = (c: string) => "03" + c.repeat(64);
 const PRIVATE_ONLY = pk("1"); //    member-set name only — no contact, alias "none announced"
@@ -256,7 +256,7 @@ describe("§8.2 arm 4 — a FAILED read means no claim (unknown), never the mark
   });
 });
 
-describe("search matches the member-set name (spec §8.1, PROPOSED)", () => {
+describe("search matches the member-set name (spec §8.1, ACCEPTED — Ethan, 2026-09-28)", () => {
   it("typing part of it, in any case, filters to that row", async () => {
     await renderRoster();
     const input = host.querySelector("input.admin-members-search") as HTMLInputElement | null;

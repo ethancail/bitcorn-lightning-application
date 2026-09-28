@@ -27,10 +27,10 @@
 //        roster pubkey emitted lowercase is THE SAME MEMBER. A case-sensitive
 //        absence test marks them unidentified while their name is on screen.
 //
-// ⚠ COPY IS PROPOSED, NOT ACCEPTED (spec §5, awaiting Ethan). The strings are
-// hardcoded here ON PURPOSE rather than imported from the component: a test
-// that imports the constant it asserts cannot detect a copy change at all. If
-// Ethan revises the copy, these failing is the correct signal, not a defect.
+// ⚠ COPY IS ACCEPTED (spec §5; Ethan, a direct yes, 2026-09-28). The strings
+// are hardcoded here ON PURPOSE rather than imported from the component: a
+// test that imports the constant it asserts cannot detect a copy change at
+// all. If the copy is ever revised, these failing is the correct signal.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -38,8 +38,8 @@ import { act } from "react-dom/test-utils";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
 
-const MARKER = "Unidentified";   // spec §5 — PROPOSED
-const ADD_LINK = "Add contact";  // spec §5 — PROPOSED
+const MARKER = "Unidentified";   // spec §5 — ACCEPTED 2026-09-28
+const ADD_LINK = "Add contact";  // spec §5 — ACCEPTED 2026-09-28
 
 // 66-char pubkeys, the real shape. PubkeyCell renders slice(0,8)…slice(-8).
 const NAMED     = "02" + "a".repeat(64);

@@ -58,14 +58,15 @@ function findContactName(pubkey: string, contacts: Contact[]): string | undefine
   return contacts.find((c) => c.pubkey.toLowerCase() === needle)?.name;
 }
 
-// ⚠ PROPOSED COPY — spec §5, awaiting Ethan. NOT accepted. Centralized here so
-// the review decision is a one-line edit rather than a sweep of the component.
+// ACCEPTED COPY — Ethan, a direct yes, 2026-09-28 (D4 spec §5). Centralized
+// here so any later revision is a one-line edit rather than a sweep of the
+// component.
 //
-// Known weakness, named by the spec rather than hidden: neither string carries
-// decision §2's central point — that the operator must go and FIND OUT the
-// name, because it does not exist anywhere yet. "Add contact" reads like data
-// entry for something already known. The spec flags this as the most likely
-// thing to change at review, with a tooltip or helper line the likely home.
+// Known weakness, named by the spec and kept on the record after acceptance:
+// neither string carries decision §2's central point — that the operator must
+// go and FIND OUT the name, because it does not exist anywhere yet. "Add
+// contact" reads like data entry for something already known. If it is ever
+// revisited, a tooltip or helper line is the likely home.
 const UNIDENTIFIED_MARKER = "Unidentified";
 const ADD_CONTACT_CTA = "Add contact";
 
@@ -160,7 +161,8 @@ function resolvePrivateName(pubkey: string, names: AdminPrivateNameRow[] | null)
 // treasury holds, so it feeds Identity and clears D4's marker — reversing the
 // public-alias spec's §8.1, which kept the marker blind to it.
 
-// ⚠ PROPOSED COPY — spec §10, awaiting Ethan. NOT accepted.
+// ACCEPTED COPY — accepted by action by Ethan, 2026-09-24 (D7 spec §10;
+// recorded in the research vault). This marker was stale until 2026-09-28.
 const PUBLIC_ALIAS_COLUMN = "Public alias";
 const PUBLIC_ALIAS_NONE_ANNOUNCED = "none announced";
 const PUBLIC_ALIAS_NOT_IN_GRAPH = "no public channel";
@@ -174,8 +176,10 @@ function publicAliasRefreshMessage(r: PublicAliasRefreshResult): string {
     `${r.not_in_graph} no public channel, ${r.failed} lookups failed.`
   );
 }
-// ⚠ PROPOSED COPY — the implementer's, NOT in spec §10 (which says only that a
-// 409 "shows already running" and a failure "shows that the refresh failed").
+// ACCEPTED COPY — accepted by action by Ethan, 2026-09-24 (recorded in the
+// research vault). Originally the implementer's wording, not in D7 spec §10
+// (which says only that a 409 "shows already running" and a failure "shows
+// that the refresh failed").
 const PUBLIC_ALIAS_REFRESH_IN_PROGRESS = "A public alias refresh is already running.";
 const PUBLIC_ALIAS_REFRESH_FAILED = "Public alias refresh failed";
 
