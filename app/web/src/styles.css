@@ -184,7 +184,7 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
   font-weight: 400;
   color: var(--text-2);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background-color 0.15s, color 0.15s;
   text-decoration: none;
   border: none;
   background: transparent;
@@ -977,10 +977,12 @@ p + .settings-section-label { margin-top: 8px; }
   letter-spacing: 0.02em;
   cursor: pointer;
   border: none;
-  transition: all 0.15s;
+  transition: background-color 0.15s, border-color 0.15s, color 0.15s, opacity 0.15s,
+              transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn:active:not(:disabled) { transform: scale(0.97); }
 
 .btn-primary {
   background: var(--amber);
@@ -1753,7 +1755,7 @@ input[type="number"] {
   font-family: var(--mono);
   font-size: 0.875rem;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .payment-tab:hover {
@@ -1925,7 +1927,7 @@ input[type="number"] {
   font-family: var(--mono);
   font-size: 0.8125rem;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
   width: 100%;
 }
 .theme-option:hover { border-color: var(--border-hi); color: var(--text); }
@@ -3250,7 +3252,7 @@ input[type="number"] {
   background: var(--bg-2);
   color: var(--text);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: border-color 0.15s, background-color 0.15s, opacity 0.15s;
   font-family: var(--sans);
   width: 100%;
 }
