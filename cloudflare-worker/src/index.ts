@@ -14,6 +14,7 @@
 //   GET  /valuation/manual/calendar — Per-day completeness summary across a range (handlers/manualInputQuery.ts)
 //   POST /valuation/refresh   — Manually trigger the engine cron (HMAC; handlers/refresh.ts)
 //   GET  /daybreak/edition    — Subscriber-base; Daybreak member read: current edition + held-over status (handlers/daybreak.ts)
+//   POST /daybreak/draft      — Drafting agent (Radar) writes the next due date's draft (bearer secret; handlers/daybreakDraft.ts)
 //
 //   ─── Stablecoin rail (per spec §5) ───
 //   GET  /base/contract-info  — Public; SettlementRouter address + live state (handlers/base.ts)
@@ -39,6 +40,7 @@ import { handleManualInput } from "./handlers/manualInput";
 import { handleManualInputCalendar, handleManualInputDay } from "./handlers/manualInputQuery";
 import { handleValuationRefresh } from "./handlers/refresh";
 import { handleDaybreakEdition } from "./handlers/daybreak";
+import { handleDaybreakDraft } from "./handlers/daybreakDraft";
 import {
   handleBaseBalance,
   handleBaseContractInfo,
@@ -82,6 +84,16 @@ export default {
     }
     if (request.method === "POST" && url.pathname === "/valuation/refresh") {
       return handleValuationRefresh(request, env);
+    }
+
+    // ── DRAFTING-AGENT endpoint (bearer secret; Daybreak draft write) ──
+    // Radar, the external drafting agent, holds DAYBREAK_DRAFT_SECRET and
+    // nothing else — no HMAC key, no entitlement token — so this is neither of
+    // the sections either side of it (spec §3.4.4). The handler checks the
+    // bearer itself, before it reads the body. A member's JWT arrives in the
+    // same `Authorization: Bearer` header and is, here, just a wrong secret.
+    if (request.method === "POST" && url.pathname === "/daybreak/draft") {
+      return handleDaybreakDraft(request, env);
     }
 
     // ── SUBSCRIBER-BASE endpoints (Onramp, commodity prices, Daybreak) ──

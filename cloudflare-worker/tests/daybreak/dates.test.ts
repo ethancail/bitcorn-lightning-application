@@ -20,6 +20,7 @@ import {
   isCentralDate,
   isDueDay,
   mostRecentDueDate,
+  nextDueDate,
   type DaybreakCalendar,
 } from "../../src/daybreak/dates";
 
@@ -188,6 +189,75 @@ describe("mostRecentDueDate — the most recent due instant at or before now", (
     // bound is inclusive of today: with a 1-day window only today can qualify
     expect(mostRecentDueDate(at("2026-09-23T12:00:00Z"), DEFAULT_DAYBREAK_CALENDAR, 1)).toBe("2026-09-23");
     expect(mostRecentDueDate(at("2026-09-23T10:00:00Z"), DEFAULT_DAYBREAK_CALENDAR, 1)).toBeNull();
+  });
+});
+
+// Spec §3.4.4, first test 49. The next due date is the earliest due date whose
+// 6:00 AM Central due time is STRICTLY AFTER now — at exactly 06:00:00 that day
+// has PASSED (Ruling 4, the mirror of mostRecentDueDate's "at or before"). Each
+// case pins the answer, and its `not` names the wrong answer a plausible bug gives.
+describe("nextDueDate — test 49: the earliest due instant strictly after now", () => {
+  it("one second before the due time: that day is still next (Mon 05:59:59 CDT)", () => {
+    const got = nextDueDate(at("2026-09-28T10:59:59Z"));
+    expect(got).toBe("2026-09-28"); // permitting
+    expect(got).not.toBe("2026-09-29"); // forbidding: an off-by-one-second boundary
+  });
+
+  it("AT the due time the day has passed (Mon 06:00:00 CDT), and one second after too", () => {
+    const at6 = nextDueDate(at("2026-09-28T11:00:00Z"));
+    expect(at6).toBe("2026-09-29"); // permitting
+    expect(at6).not.toBe("2026-09-28"); // forbidding: `>=` instead of `>` — 06:00:00 read as not yet passed
+    expect(nextDueDate(at("2026-09-28T11:00:01Z"))).toBe("2026-09-29");
+  });
+
+  it("Sunday at 10 PM (Radar's run) → Monday, never Sunday's own date and never Tuesday", () => {
+    const got = nextDueDate(at("2026-09-28T03:00:00Z")); // Sun 2026-09-27 22:00 CDT
+    expect(got).toBe("2026-09-28"); // permitting
+    expect(got).not.toBe("2026-09-27"); // forbidding: the run's own date (the {{isoDate}} trap)
+    expect(got).not.toBe("2026-09-29"); // forbidding: skipping Monday
+  });
+
+  it("after the fall-back change (CST): the due time is 12:00Z, not CDT's 11:00Z", () => {
+    expect(nextDueDate(at("2026-11-02T04:00:00Z"))).toBe("2026-11-02"); // Sun 2026-11-01 22:00 CST
+    const got = nextDueDate(at("2026-11-02T11:30:00Z")); // Mon 05:30 CST
+    expect(got).toBe("2026-11-02"); // permitting
+    expect(got).not.toBe("2026-11-03"); // forbidding: a fixed CDT offset reads 06:30 and has passed it
+    // one-second boundary on the first CST due morning
+    expect(nextDueDate(at("2026-11-02T11:59:59Z"))).toBe("2026-11-02");
+    expect(nextDueDate(at("2026-11-02T12:00:00Z"))).toBe("2026-11-03");
+  });
+
+  it("after the spring-forward change (CDT): the due time is 11:00Z, not CST's 12:00Z", () => {
+    expect(nextDueDate(at("2027-03-15T03:00:00Z"))).toBe("2027-03-15"); // Sun 2027-03-14 22:00 CDT
+    const got = nextDueDate(at("2027-03-15T11:30:00Z")); // Mon 06:30 CDT
+    expect(got).toBe("2027-03-16"); // permitting
+    expect(got).not.toBe("2027-03-15"); // forbidding: a fixed CST offset reads 05:30, not yet passed
+    // one-second boundary on the first CDT due morning
+    expect(nextDueDate(at("2027-03-15T10:59:59Z"))).toBe("2027-03-15");
+    expect(nextDueDate(at("2027-03-15T11:00:00Z"))).toBe("2027-03-16");
+  });
+
+  it("Friday after the due time → the following Monday, never Saturday", () => {
+    const got = nextDueDate(at("2026-09-25T11:00:00Z")); // Fri 06:00:00 CDT
+    expect(got).toBe("2026-09-28"); // permitting
+    expect(got).not.toBe("2026-09-26"); // forbidding: Saturday
+    expect(nextDueDate(at("2026-09-25T10:59:59Z"))).toBe("2026-09-25"); // anti-vacuity: before 06:00 Friday is next
+  });
+
+  it("uses the passed calendar: Mon/Wed/Fri on a Tuesday → Wednesday; a holiday is skipped", () => {
+    const mwf: DaybreakCalendar = { dueWeekdays: [1, 3, 5], holidays: [] };
+    expect(nextDueDate(at("2026-09-22T12:00:00Z"), mwf)).toBe("2026-09-23");
+    expect(nextDueDate(at("2026-09-22T10:00:00Z"))).toBe("2026-09-22"); // anti-vacuity: default calendar, Tue is due
+    const monHoliday: DaybreakCalendar = { dueWeekdays: [1, 2, 3, 4, 5], holidays: ["2026-09-28"] };
+    expect(nextDueDate(at("2026-09-28T03:00:00Z"), monHoliday)).toBe("2026-09-29");
+  });
+
+  it("is bounded: a calendar with no due days returns null instead of walking forever", () => {
+    expect(nextDueDate(at("2026-09-23T12:00:00Z"), { dueWeekdays: [], holidays: [] })).toBeNull();
+    // bound is inclusive of today: with a 1-day window only today can qualify
+    expect(nextDueDate(at("2026-09-23T10:00:00Z"), DEFAULT_DAYBREAK_CALENDAR, 1)).toBe("2026-09-23");
+    expect(nextDueDate(at("2026-09-23T12:00:00Z"), DEFAULT_DAYBREAK_CALENDAR, 1)).toBeNull();
+    expect(() => nextDueDate(at("2026-09-23T12:00:00Z"), DEFAULT_DAYBREAK_CALENDAR, 0)).toThrow(RangeError);
   });
 });
 

@@ -44,6 +44,12 @@ export const DUE_HOUR_CENTRAL = 6;
  */
 export const DEFAULT_MAX_LOOKBACK_DAYS = 14;
 
+/**
+ * How many dates the FORWARD walk (nextDueDate) examines, the starting date
+ * included — the same two weeks as the lookback, for the same reason.
+ */
+export const DEFAULT_MAX_LOOKAHEAD_DAYS = 14;
+
 const CENTRAL_ZONE = "America/Chicago";
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -139,6 +145,30 @@ export function mostRecentDueDate(
   for (let i = 0; i < maxLookbackDays; i++) {
     if (isDueDay(date, calendar) && dueInstant(date).getTime() <= now.getTime()) return date;
     date = addDays(date, -1);
+  }
+  return null;
+}
+
+/**
+ * The NEXT due date (spec §3.4.4): the Central date of the earliest due instant
+ * STRICTLY AFTER `now`, or null if no due day falls within `maxLookaheadDays`
+ * dates (today included). ⚠ At exactly 06:00:00 Central on a due day that day
+ * has PASSED (§3.4.4 Ruling 4), so the answer is the following due day — the
+ * mirror of mostRecentDueDate's "at or before", and of F.1, where held over
+ * starts AT the due time. Radar's write route accepts only this date.
+ */
+export function nextDueDate(
+  now: Date,
+  calendar: DaybreakCalendar = DEFAULT_DAYBREAK_CALENDAR,
+  maxLookaheadDays: number = DEFAULT_MAX_LOOKAHEAD_DAYS,
+): CentralDate | null {
+  if (!Number.isInteger(maxLookaheadDays) || maxLookaheadDays < 1) {
+    throw new RangeError(`maxLookaheadDays must be an integer ≥ 1, got ${maxLookaheadDays}`);
+  }
+  let date = centralDateOf(now);
+  for (let i = 0; i < maxLookaheadDays; i++) {
+    if (isDueDay(date, calendar) && dueInstant(date).getTime() > now.getTime()) return date;
+    date = addDays(date, 1);
   }
   return null;
 }
