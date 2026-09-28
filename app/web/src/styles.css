@@ -50,6 +50,20 @@
 
   --text-scale: 1;
 
+  /* Aliases for token names consumed in the app but never declared, which
+     rendered as unset. Declared here once: the light theme sets data-theme on
+     this same element, so each alias follows the active theme's target. */
+  --text-1:      var(--text);    /* DEPRECATED alias (P2): owners migrate consumers to --text */
+  --fg-1:        var(--text);    /* DEPRECATED alias (P2): owners migrate consumers to --text */
+  --fg-2:        var(--text-2);  /* DEPRECATED alias (P2): owners migrate consumers to --text-2 */
+  --text-dim:    var(--text-2);  /* DEPRECATED alias (P2): owners migrate consumers to --text-2 */
+  --panel:       var(--bg-1);    /* DEPRECATED alias (P2): owners migrate consumers to --bg-1 */
+  --panel-alt:   var(--bg-2);    /* DEPRECATED alias (P2): owners migrate consumers to --bg-2 */
+  --surface-2:   var(--bg-2);    /* DEPRECATED alias (P2): owners migrate consumers to --bg-2 */
+  --accent:      var(--text-2);  /* DEPRECATED alias (P2): owners migrate consumers to --text-2 */
+  /* --accent re-points to --amber in tranche 2, under notices N1/N2, once the
+     light-theme --amber passes text contrast. */
+
   font-family: var(--sans);
   font-size: calc(14px * var(--text-scale));
   line-height: 1.5;
