@@ -2120,13 +2120,8 @@ input[type="number"] {
   margin-bottom: 16px;
 }
 
+/* Typography comes from the base h1 rule — one h1 system app-wide. */
 .liq-page-title {
-  font-family: var(--mono);
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--amber-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
   margin: 0;
 }
 
@@ -2779,9 +2774,6 @@ input[type="number"] {
 }
 .sub-history-header h1 {
   margin: 0;
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
   flex: 1 1 auto;
 }
 
@@ -2845,12 +2837,6 @@ input[type="number"] {
 }
 .admin-members-title h1 {
   margin: 0;
-  font-family: "IBM Plex Mono", monospace;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  color: var(--amber);
-  text-transform: uppercase;
 }
 .admin-members-header-right {
   display: flex;
