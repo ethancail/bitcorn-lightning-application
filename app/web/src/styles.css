@@ -45,8 +45,15 @@
   --mono:        'IBM Plex Mono', monospace;
   --sans:        'IBM Plex Sans', sans-serif;
 
+  /* Radius scale — a 2px ladder. Every border-radius in this file uses it.
+     --radius-full makes circles on square elements and pills on the rest. */
+  --radius-xs:   2px;
+  --radius-sm:   4px;
   --radius:      6px;
+  --radius-md:   8px;
   --radius-lg:   10px;
+  --radius-xl:   12px;
+  --radius-full: 9999px;
 
   --text-scale: 1;
 
@@ -130,7 +137,7 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
   text-transform: uppercase;
   padding: 2px 8px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .topbar-spacer { flex: 1; }
@@ -290,7 +297,7 @@ p + .settings-section-label { margin-top: 8px; }
   padding: 10px 12px;
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius);
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
   text-align: left;
@@ -364,7 +371,7 @@ p + .settings-section-label { margin-top: 8px; }
   font-variant-numeric: tabular-nums;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 4px 8px;
   color: var(--text);
 }
@@ -455,7 +462,7 @@ p + .settings-section-label { margin-top: 8px; }
   padding: 10px 14px;
   background: var(--bg-1);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   margin-bottom: 12px;
   font-size: 0.8125rem;
 }
@@ -507,13 +514,13 @@ p + .settings-section-label { margin-top: 8px; }
 }
 .member-gauge .bar {
   height: 10px;
-  border-radius: 5px;
+  border-radius: var(--radius-full);
   background: var(--bg-3);
   overflow: hidden;
 }
 .member-gauge .fill {
   height: 100%;
-  border-radius: 5px;
+  border-radius: var(--radius-full);
   transition: width 0.3s ease;
 }
 
@@ -560,7 +567,7 @@ p + .settings-section-label { margin-top: 8px; }
   font-family: var(--mono);
   font-size: 0.6875rem;
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--amber-glow2);
   color: var(--amber-dim);
   font-weight: 600;
@@ -642,7 +649,7 @@ p + .settings-section-label { margin-top: 8px; }
 
 .channel-balance-bar {
   height: 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-full);
   background: var(--red);
   overflow: hidden;
   margin-bottom: 8px;
@@ -651,7 +658,7 @@ p + .settings-section-label { margin-top: 8px; }
 .channel-balance-local {
   height: 100%;
   background: var(--green);
-  border-radius: 4px 0 0 4px;
+  border-radius: var(--radius-full) 0 0 var(--radius-full);
   min-width: 2px;
   transition: width 0.3s ease;
 }
@@ -674,7 +681,7 @@ p + .settings-section-label { margin-top: 8px; }
 .channel-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   flex-shrink: 0;
 }
 
@@ -720,7 +727,7 @@ p + .settings-section-label { margin-top: 8px; }
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   flex-shrink: 0;
 }
 
@@ -931,7 +938,7 @@ p + .settings-section-label { margin-top: 8px; }
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 0.6875rem;
   font-weight: 500;
@@ -949,7 +956,7 @@ p + .settings-section-label { margin-top: 8px; }
   display: inline-flex;
   align-items: center;
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-full);
   font-family: var(--mono);
   font-size: 0.625rem;
   background: var(--amber-glow);
@@ -1138,7 +1145,7 @@ input[type="number"] {
   background: var(--bg-1);
   border: 1px solid var(--border);
   border-top: 2px solid var(--amber);
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   width: 100%;
   max-width: 560px;
   position: relative;
@@ -1190,7 +1197,7 @@ input[type="number"] {
 .wizard-rail-item .dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--border);
   flex-shrink: 0;
 }
@@ -1235,7 +1242,7 @@ input[type="number"] {
   padding: 20px 32px;
   border-top: 1px solid var(--border);
   background: var(--bg-2);
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 var(--radius-xl) var(--radius-xl);
 }
 
 .wizard-screen { display: flex; flex-direction: column; gap: 20px; }
@@ -1344,13 +1351,13 @@ input[type="number"] {
 /* ─── Scrollbar ────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: var(--radius-full); }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-3); }
 
 /* ─── Pulse dot ────────────────────────────────────────────────── */
 .pulse-dot {
   width: 8px; height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   display: inline-block;
 }
 .pulse-dot.green { background: var(--green); box-shadow: 0 0 0 0 var(--green-glow); animation: pulse-green 2s infinite; }
@@ -1601,7 +1608,7 @@ input[type="number"] {
 .posture-dot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   flex-shrink: 0;
 }
 
@@ -1631,7 +1638,7 @@ input[type="number"] {
   display: inline-flex;
   align-items: center;
   padding: 3px 10px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 0.6875rem;
   font-weight: 500;
@@ -1732,7 +1739,7 @@ input[type="number"] {
   display: flex;
   gap: 0;
   margin-bottom: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   border: 1px solid rgba(245, 158, 11, 0.2);
 }
@@ -1769,7 +1776,7 @@ input[type="number"] {
 .invoice-qr {
   width: 280px;
   height: 280px;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   border: 3px solid var(--amber);
 }
 
@@ -1780,7 +1787,7 @@ input[type="number"] {
   word-break: break-all;
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(245, 158, 11, 0.15);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px;
   max-height: 120px;
   overflow-y: auto;
@@ -1792,14 +1799,14 @@ input[type="number"] {
 .payment-preview {
   background: rgba(245, 158, 11, 0.05);
   border: 1px solid rgba(245, 158, 11, 0.15);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 12px 16px;
   margin-bottom: 16px;
   font-size: 0.875rem;
 }
 
 .payment-result {
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 20px;
   text-align: center;
 }
@@ -2011,13 +2018,13 @@ input[type="number"] {
 .liq-health-bar {
   height: 8px;
   background: var(--bg-3);
-  border-radius: 4px;
+  border-radius: var(--radius-full);
   overflow: hidden;
 }
 
 .liq-health-bar-fill {
   height: 100%;
-  border-radius: 4px;
+  border-radius: var(--radius-full);
   transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), background 0.2s;
 }
 
@@ -2026,7 +2033,7 @@ input[type="number"] {
   font-size: 0.6875rem;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   text-align: center;
   letter-spacing: 0.02em;
 }
@@ -2053,7 +2060,7 @@ input[type="number"] {
   width: 100%;
   height: 200px;
   display: block;
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--bg-2);
   outline: none;
 }
@@ -2147,7 +2154,7 @@ input[type="number"] {
      amber-top-border treatment. */
   background: color-mix(in srgb, var(--amber) 6%, var(--bg-2));
   border: 1px solid color-mix(in srgb, var(--amber) 18%, transparent);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   padding: 22px 26px;
   margin: 24px 0;
   color: var(--text);
@@ -2193,7 +2200,7 @@ input[type="number"] {
   align-items: center;
   gap: 6px;
   padding: 2px 10px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 11px;
   letter-spacing: 0.04em;
@@ -2202,7 +2209,7 @@ input[type="number"] {
 .sub-pill-dot {
   width: 6px;
   height: 6px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: currentColor;
 }
 .sub-pill-emerald     { color: #34d399; border-color: rgba(52,211,153,0.32); background: rgba(52,211,153,0.10); }
@@ -2277,7 +2284,7 @@ input[type="number"] {
   display: flex;
   gap: 10px;
   padding: 12px 16px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   margin: 12px 0;
   font-family: var(--mono);
   font-size: 13px;
@@ -2387,7 +2394,7 @@ input[type="number"] {
   flex-shrink: 0;
   padding: 6px;
   background: #fdfaf2;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
 }
 .sub-qr-placeholder {
   background: #fdfaf2;
@@ -2405,7 +2412,7 @@ input[type="number"] {
   padding: 12px;
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   word-break: break-all;
   user-select: all;
   margin: 8px 0;
@@ -2426,7 +2433,7 @@ input[type="number"] {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 13px;
   color: var(--text);
@@ -2482,7 +2489,7 @@ input[type="number"] {
   gap: 12px;
   padding: 12px 16px;
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   font-family: var(--mono);
   font-size: 13px;
   line-height: 1.5;
@@ -2550,7 +2557,7 @@ input[type="number"] {
 .sub-pulsing-dots span {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   background: var(--amber);
   animation: sub-pill-pulse 1.6s ease-in-out infinite;
 }
@@ -2598,7 +2605,7 @@ input[type="number"] {
   padding: 14px;
   background: var(--bg-2);
   border: 1px solid var(--border);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   margin: 8px 0;
 }
 .sub-pubkey {
@@ -2615,7 +2622,7 @@ input[type="number"] {
 .sub-skeleton-line {
   height: 14px;
   background: var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   margin: 12px 0;
 }
 
@@ -2864,7 +2871,7 @@ input[type="number"] {
   gap: 0.5rem;
   padding: 0.875rem 1rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--amber) 4%, var(--bg-2));
 }
 .admin-members-distribution-pills {
@@ -2897,7 +2904,7 @@ input[type="number"] {
   cursor: pointer;
   padding: 0.375rem 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-2);
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.8125rem;
@@ -2921,7 +2928,7 @@ input[type="number"] {
   gap: 0.25rem;
   padding: 0.625rem 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-2);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
   min-width: 14rem;
@@ -2941,7 +2948,7 @@ input[type="number"] {
   flex: 0 1 18rem;
   padding: 0.4rem 0.625rem;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   background: var(--bg-2);
   color: var(--fg-1);
   font-family: "IBM Plex Mono", monospace;
@@ -3001,7 +3008,7 @@ input[type="number"] {
   gap: 0.4rem;
   padding: 0.2rem 0.4rem;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--fg-1);
   font-family: "IBM Plex Mono", monospace;
@@ -3168,7 +3175,7 @@ input[type="number"] {
   color: var(--text);
   background: var(--bg-2);
   padding: 3px 8px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
 }
 
@@ -3313,7 +3320,7 @@ input[type="number"] {
   font-family: var(--mono);
   background: var(--bg-2);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   color: var(--text-2);
 }
 
@@ -3566,7 +3573,7 @@ input[type="number"] {
   letter-spacing: 0.05em;
   text-transform: uppercase;
   padding: 2px 8px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
 }
 
