@@ -56,6 +56,9 @@
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
+  /* Browser-drawn controls (unclassed buttons, selects, checkboxes, sliders)
+     follow the theme instead of the browser's default light styling. */
+  color-scheme: dark;
 }
 
 body {
@@ -1848,6 +1851,7 @@ input[type="number"] {
 
   color: var(--text);
   background: var(--bg);
+  color-scheme: light;
 }
 
 /* Alert text — dark mode uses pastel text on dark bg; light mode uses accent color directly */
