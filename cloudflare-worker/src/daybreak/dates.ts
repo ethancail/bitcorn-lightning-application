@@ -116,19 +116,27 @@ export function isDueDay(date: CentralDate, calendar: DaybreakCalendar = DEFAULT
 }
 
 /**
- * 6:00 AM Central on `date`, as a UTC instant. Two passes because the offset
- * at the first guess can differ from the offset at 06:00 itself on a DST
- * transition day; 06:00 is never inside a transition (they happen at 02:00),
- * so the result always exists and is unique — and is verified before return.
+ * `hour`:`minute` Central wall-clock time on `date`, as a UTC instant. Two
+ * passes because the offset at the first guess can differ from the offset at
+ * the target time itself on a DST transition day. A time outside 02:00–02:59
+ * is never inside a transition (they happen at 02:00), so for those the result
+ * always exists and is unique — and it is verified before return either way.
  */
-export function dueInstant(date: CentralDate): Date {
+export function centralInstant(date: CentralDate, hour: number, minute: number): Date {
   assertCentralDate(date);
   const [y, m, d] = splitDate(date);
-  const wall = Date.UTC(y, m - 1, d, DUE_HOUR_CENTRAL, 0, 0);
+  const wall = Date.UTC(y, m - 1, d, hour, minute, 0);
   let t = wall - (centralWallMs(wall) - wall);
   t = wall - (centralWallMs(t) - t);
-  if (centralWallMs(t) !== wall) throw new Error(`could not resolve 06:00 Central on ${date}`);
+  if (centralWallMs(t) !== wall) {
+    throw new Error(`could not resolve ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} Central on ${date}`);
+  }
   return new Date(t);
+}
+
+/** 6:00 AM Central on `date`, as a UTC instant. */
+export function dueInstant(date: CentralDate): Date {
+  return centralInstant(date, DUE_HOUR_CENTRAL, 0);
 }
 
 /**

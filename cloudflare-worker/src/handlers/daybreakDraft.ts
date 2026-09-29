@@ -28,7 +28,7 @@
 //      Date not the next due date  → 422 not_next_due_date
 //   6. Sections off-contract       → 400 invalid_sections | unknown_section |
 //                                    invalid_section | invalid_link (+ field)
-//   7. Intake (fail-closed fetcher) → 200 { date, z: { status, reason? } }
+//   7. Intake (Yahoo closes)       → 200 { date, z: { status, reason? } }
 //      Storage failure             → 503 daybreak_draft_write_failed
 //
 // ─── CODES ONLY ──────────────────────────────────────────────────────────
@@ -39,8 +39,10 @@
 //
 // ─── THE CLOCK ───────────────────────────────────────────────────────────
 //
-// `new Date()` is read once, only to accept or reject the stated date. The key
-// written is always the STATED date (Ruling E), never one derived from the clock.
+// `new Date()` is read here once, only to accept or reject the stated date. The
+// key written is always the STATED date (Ruling E), never one derived from the
+// clock. The Yahoo adapter reads the clock too, through its injected `now`: to
+// decide which bars are finished, and to stamp `fetchedAt`.
 //
 // ⚠ A RE-POST OVERWRITES the draft for that date (writeDraft, store.ts). That
 // never reaches Kevin's working copy or the published edition.
@@ -49,10 +51,10 @@ import { CORS_HEADERS } from "../lib/cors";
 import { extractBearerToken } from "../lib/jwt";
 import type { Env } from "../lib/types";
 import { DEFAULT_DAYBREAK_CALENDAR, isCentralDate, nextDueDate } from "../daybreak/dates";
-import { FAIL_CLOSED_FETCHER } from "../daybreak/failClosedFetcher";
 import { WORKER_OWNED_KEY, runDraftIntake } from "../daybreak/intake";
 import { validateSections } from "../daybreak/sections";
 import { readDraft } from "../daybreak/store";
+import { createYahooCloseFetcher } from "../daybreak/yahooCloses";
 
 /**
  * 32 KiB. A real edition is ~3–4 KB of JSON: Kevin's source spec sizes Kevin's
@@ -164,8 +166,9 @@ export async function handleDaybreakDraft(request: Request, env: Env): Promise<R
 
   // 7. Intake, then read the stamped Z back for its status and reason.
   try {
+    const fetcher = createYahooCloseFetcher({ fetch: (url, init) => fetch(url, init), now: () => new Date() });
     const written = await runDraftIntake(
-      { kv: env.PRICES_CACHE, fetcher: FAIL_CLOSED_FETCHER },
+      { kv: env.PRICES_CACHE, fetcher },
       date,
       sections as Record<string, unknown>,
     );

@@ -25,7 +25,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import React from "react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 
 const HEADLINE = "Add your name or business name";
 const ACTION = "Add name in Settings →";
@@ -131,6 +131,12 @@ async function flush() {
   }
 }
 
+// Shows the location it was reached with, so a test can pin the query too.
+function SettingsStub() {
+  const loc = useLocation();
+  return React.createElement("div", null, `SETTINGS PAGE at ${loc.pathname}${loc.search}`);
+}
+
 async function renderDashboard(): Promise<void> {
   await act(async () => {
     root.render(
@@ -141,7 +147,7 @@ async function renderDashboard(): Promise<void> {
           Routes,
           null,
           React.createElement(Route, { path: "/dashboard", element: React.createElement(MemberDashboard) }),
-          React.createElement(Route, { path: "/settings", element: React.createElement("div", null, "SETTINGS PAGE") }),
+          React.createElement(Route, { path: "/settings", element: React.createElement(SettingsStub) }),
         ),
       ),
     );
@@ -231,12 +237,16 @@ describe("§7.1 a FAILED name read does not render the prompt", () => {
   });
 });
 
-describe("§7.4 the prompt's action goes to Settings", () => {
-  it("clicking the action navigates to /settings", async () => {
+// settings-name-clarity (Ethan, 2026-09-29): the action deep-links to the name
+// field. `?focus=name` is read by SettingsPage in App.tsx — the two halves are
+// joined only by that literal, so App.settingsNameLink.test.tsx pins the
+// receiving half against the real App.
+describe("§7.4 the prompt's action goes to the name field in Settings", () => {
+  it("clicking the action navigates to /settings?focus=name", async () => {
     await renderDashboard();
     const btn = [...host.querySelectorAll("button")].find((b) => b.textContent === ACTION);
     expect(btn, "action button").toBeTruthy();
     await act(async () => { btn!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
-    expect(host.textContent).toContain("SETTINGS PAGE");
+    expect(host.textContent).toContain("SETTINGS PAGE at /settings?focus=name");
   });
 });

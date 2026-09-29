@@ -524,7 +524,11 @@ export default function MemberDashboard() {
           which is exactly the first-boot window this targets (D6 §4). A
           failed or pending name read renders nothing (memberNamePrompt.ts).
           No dismiss: it stays until a name is set. Pinned by
-          MemberDashboard.namePrompt.test.tsx. */}
+          MemberDashboard.namePrompt.test.tsx.
+
+          The action deep-links to the name field (?focus=name — read by
+          SettingsPage in App.tsx; the receiving half is pinned by
+          App.settingsNameLink.test.tsx). */}
       {(() => {
         const prompt = memberNamePromptFor(nameRead);
         if (!prompt.render) return null;
@@ -537,7 +541,7 @@ export default function MemberDashboard() {
               <button
                 className="btn btn-outline"
                 style={{ marginTop: 8, fontSize: "0.75rem" }}
-                onClick={() => navigate("/settings")}
+                onClick={() => navigate("/settings?focus=name")}
               >
                 {prompt.actionLabel}
               </button>
