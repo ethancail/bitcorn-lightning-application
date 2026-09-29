@@ -12,7 +12,8 @@
 //    class migration 051's header says must not be committed.
 // 3. The two Settings "Personal" panels no longer both read "Save": this one
 //    is headed "Public alias" (was "Profile") and its button says "Save public
-//    alias" — both PROPOSED, hardcoded below. Its placeholder is pinned
+//    alias" — both ACCEPTED (Ethan, 2026-09-29), hardcoded below. Its
+//    placeholder is pinned
 //    exactly because changing it was NOT approved; the name panel above was
 //    told not to duplicate it.
 //
@@ -86,9 +87,9 @@ describe("ProfilePanel copy", () => {
   });
 });
 
-describe("ProfilePanel copy — settings-name-clarity (PROPOSED)", () => {
-  const HEADING = "Public alias"; // PROPOSED — settings-name-clarity, 2026-09-29
-  const SAVE_ALIAS = "Save public alias"; // PROPOSED — settings-name-clarity, 2026-09-29
+describe("ProfilePanel copy — settings-name-clarity (ACCEPTED)", () => {
+  const HEADING = "Public alias"; // ACCEPTED — Ethan, 2026-09-29
+  const SAVE_ALIAS = "Save public alias"; // ACCEPTED — Ethan, 2026-09-29
 
   it("the panel is headed 'Public alias', not 'Profile'", () => {
     const title = host.querySelector(".panel-title");

@@ -41,17 +41,17 @@ export const BITCORN_NAME_VISIBILITY_LINE =
 // 8: generic, never says why.
 export const BITCORN_NAME_REJECTED_MESSAGE = "BitCorn couldn't accept this name. Try a different one.";
 
-// ⚠ PROPOSED — settings-name-clarity (Ethan approved the four changes,
-// 2026-09-29; the words below still need his accept before the release).
-// The button names what it saves: this panel and ProfilePanel below both
-// read a bare "Save" before.
+// ACCEPTED — Ethan, 2026-09-29 (settings-name-clarity, as built). The button
+// names what it saves: this panel and ProfilePanel below both read a bare
+// "Save" before.
 export const BITCORN_NAME_SAVE_LABEL = "Save name";
-// PROPOSED. Shown in the status slot when the read succeeded and no name is
-// stored — never while loading or after a failed read (unknown is not unset).
+// ACCEPTED — Ethan, 2026-09-29. Shown in the status slot when the read
+// succeeded and no name is stored — never while loading or after a failed
+// read (unknown is not unset).
 export const BITCORN_NAME_UNSET_LINE = "Not set yet";
-// PROPOSED. Must NOT duplicate ProfilePanel's `e.g. "Lazy Acres Farm"` — the
-// two fields hold different things. The example must itself pass
-// bitcornNameInputState (pinned).
+// ACCEPTED — Ethan, 2026-09-29. Must NOT duplicate ProfilePanel's
+// `e.g. "Lazy Acres Farm"` — the two fields hold different things. The
+// example must itself pass bitcornNameInputState (pinned).
 export const BITCORN_NAME_PLACEHOLDER = 'e.g. "Cedar Creek Grain"';
 
 // The one delayed re-read after a save (spec §9.2; 5s ACCEPTED — Ethan,
@@ -60,7 +60,8 @@ export const NAME_STATUS_RECHECK_MS = 5_000;
 
 // How long the deep link keeps re-landing the field while the page above it
 // is still loading (see the landing effect). Generous because the panels
-// above wait on the treasury's Worker round-trip on a real node.
+// above wait on the treasury's Worker round-trip on a real node. The
+// re-landing and this 10s window: ACCEPTED as in scope — Ethan, 2026-09-29.
 export const NAME_FIELD_LANDING_WINDOW_MS = 10_000;
 // Anything the member does themselves ends the re-landing.
 const MEMBER_INPUT_EVENTS = ["wheel", "touchstart", "keydown", "pointerdown"] as const;

@@ -14,7 +14,8 @@
 // The visibility line had NO test before this file (spec §12 P12).
 //
 // ⚠ The settings-name-clarity copy (Ethan's four yeses, 2026-09-29) is
-// PROPOSED, not accepted — hardcoded below for the same reason. The save
+// ACCEPTED as built (Ethan, 2026-09-29) — hardcoded below for the same
+// reason. The save
 // helper finds the button by "Save name"; the three §9 tests that use it went
 // red against the old bare "Save" before the component changed, so the helper
 // is proven to find the renamed button and not a stale one.
@@ -29,9 +30,9 @@ const VISIBILITY_LINE =
   "Shared with BitCorn — never published to the Lightning network. Your public alias, below, is published."; // ACCEPTED — Ethan, 2026-09-28
 const REJECTED = "BitCorn couldn't accept this name. Try a different one."; // ACCEPTED — Ethan, 2026-09-28
 const OLD_VISIBILITY_LINE_WORD = "Saved on this node only";
-const SAVE_NAME = "Save name"; // PROPOSED — settings-name-clarity, 2026-09-29
-const UNSET_LINE = "Not set yet"; // PROPOSED — settings-name-clarity, 2026-09-29
-const NAME_PLACEHOLDER = 'e.g. "Cedar Creek Grain"'; // PROPOSED — settings-name-clarity, 2026-09-29
+const SAVE_NAME = "Save name"; // ACCEPTED — Ethan, 2026-09-29
+const UNSET_LINE = "Not set yet"; // ACCEPTED — Ethan, 2026-09-29
+const NAME_PLACEHOLDER = 'e.g. "Cedar Creek Grain"'; // ACCEPTED — Ethan, 2026-09-29
 const ALIAS_PLACEHOLDER = 'e.g. "Lazy Acres Farm"'; // ProfilePanel's — must not be duplicated here
 const UNSET_READ = { bitcorn_name: null, bitcorn_name_set_at: null, treasury_name_status: null };
 
@@ -199,7 +200,7 @@ describe("§9 — what a save triggers on this page", () => {
   });
 });
 
-// ─── settings-name-clarity (Ethan, 2026-09-29) — copy PROPOSED ─────────────
+// ─── settings-name-clarity (Ethan, 2026-09-29) — copy ACCEPTED ─────────────
 
 describe("settings-name-clarity — the renamed button still saves", () => {
   it("PERMITTING: the one 'Save name' button stores the name and triggers the one refresh", async () => {

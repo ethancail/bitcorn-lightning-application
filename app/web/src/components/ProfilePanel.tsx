@@ -18,10 +18,10 @@ import { api, truncPubkey, type ProfileAlias } from "../api/client";
 import { aliasInputState, ALIAS_MAX_BYTES } from "./aliasInputState";
 import TechnicalDetails, { TechRow } from "./TechnicalDetails";
 
-// ⚠ PROPOSED — settings-name-clarity (Ethan approved the change, 2026-09-29;
-// the words still need his accept before the release). BitcornNamePanel sits
-// directly above with its own save button; both used to read a bare "Save",
-// and this panel's "Profile" heading didn't say which name it holds.
+// ACCEPTED — Ethan, 2026-09-29 (settings-name-clarity, as built), both
+// strings. BitcornNamePanel sits directly above with its own save button;
+// both used to read a bare "Save", and this panel's "Profile" heading didn't
+// say which name it holds.
 export const PROFILE_PANEL_HEADING = "Public alias";
 export const ALIAS_SAVE_LABEL = "Save public alias";
 
