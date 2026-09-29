@@ -14,15 +14,21 @@
 // daybreakRoute.test.ts). THE PINNED INSTANT: Sunday 2026-09-27, 22:00 CDT
 // (2026-09-28T03:00Z) — Radar's scheduled run (Ruling 3). The next due date is
 // Monday 2026-09-28, and Sunday's own date is the {{isoDate}} trap.
+//
+// THE NETWORK. The route fetches closes from Yahoo (src/daybreak/yahooCloses.ts),
+// so every test replaces the global fetch: by default it answers Yahoo's 429,
+// the refusal this repo's own network gets. No test here reaches the network.
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import type { Env } from "../src/lib/types";
 import { DRAFT_BODY_MAX_BYTES } from "../src/handlers/daybreakDraft";
-import { FAIL_CLOSED_FETCHER } from "../src/daybreak/failClosedFetcher";
+import { YAHOO_USER_AGENT, yahooChartUrl } from "../src/daybreak/yahooCloses";
 import { POWER_LAW_PARAMS_KV_KEY } from "../src/valuation/powerLawParams";
 import { ORACLE_PARAMS } from "./fixtures/daybreakPowerLawOracle";
 import { createEntitlementSigner, withAuth, type EntitlementSigner } from "./helpers/entitlementToken";
+import cornMondayAfternoon from "./daybreak/fixtures/yahoo/zc-f_5d_2026-09-28_afternoon.json";
+import btc5d from "./daybreak/fixtures/yahoo/btc-usd_5d_2026-09-28.json";
 
 const NOW = new Date("2026-09-28T03:00:00Z"); // Sun 2026-09-27 22:00 CDT
 const NEXT_DUE = "2026-09-28";
@@ -33,6 +39,7 @@ const SECRET = "radar-test-secret-0123456789abcdef";
 const WRONG = `${SECRET.slice(0, -1)}e`; // same length, differs in its last character only
 
 let signer: EntitlementSigner;
+let fetchSpy: ReturnType<typeof vi.spyOn>;
 
 beforeAll(async () => {
   signer = await createEntitlementSigner();
@@ -41,7 +48,11 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
+  fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("Too Many Requests", { status: 429 }));
 });
+
+/** The URLs the route asked the (replaced) global fetch for. */
+const fetchedUrls = () => fetchSpy.mock.calls.map((c) => String(c[0]));
 
 afterEach(() => {
   vi.useRealTimers();
@@ -389,13 +400,16 @@ describe("test 52: a non-https Worth Reading link is rejected", () => {
 
 // ─── Test 53 ─────────────────────────────────────────────────────────────
 
-describe("test 53: the fail-closed fetcher", () => {
-  it("the fetcher itself: every symbol is an explicit failure with no value", async () => {
-    for (const symbol of ["ZC=F", "BTC-USD"] as const) {
-      const r = await FAIL_CLOSED_FETCHER.latestCompletedClose(symbol);
-      expect(r.ok).toBe(false);
-      expect(r).toMatchObject({ ok: false, symbol, reason: "no_adapter" });
-      expect("close" in r).toBe(false);
+// Test 53 was written for the fail-closed stand-in the route ran with until the
+// Yahoo adapter existed (spec §3.4.4, Ruling 2). The stand-in is gone; its
+// route-level properties are kept, now driven by a real Yahoo failure (429).
+describe("test 53: a failed Yahoo fetch at the route (was: the fail-closed fetcher)", () => {
+  it("the route asks Yahoo — one request per symbol, with the adapter's User-Agent", async () => {
+    const { kv } = withParams();
+    expect((await send(envWith(kv), request(envelope()))).status).toBe(200);
+    expect(fetchedUrls().sort()).toEqual([yahooChartUrl("BTC-USD"), yahooChartUrl("ZC=F")].sort());
+    for (const [, init] of fetchSpy.mock.calls) {
+      expect(new Headers((init as RequestInit | undefined)?.headers).get("User-Agent")).toBe(YAHOO_USER_AGENT);
     }
   });
 
@@ -404,6 +418,7 @@ describe("test 53: the fail-closed fetcher", () => {
     const res = await send(envWith(kv), request(envelope()));
     expect(res.status).toBe(200);
     expect(await jsonOf(res)).toEqual({ date: NEXT_DUE, z: { status: "unavailable", reason: "fetch_failed" } });
+    expect(fetchedUrls()).toHaveLength(2); // the failure is Yahoo's 429, not a stand-in's
 
     const { workerOwned, ...sections } = storedDraft(store);
     expect(JSON.stringify(sections)).toBe(JSON.stringify(SECTIONS));
@@ -429,6 +444,29 @@ describe("test 53: the fail-closed fetcher", () => {
     const res = await send(envWith(kv), request(envelope()));
     expect(res.status).toBe(200);
     expect(await jsonOf(res)).toEqual({ date: NEXT_DUE, z: { status: "unavailable", reason: "params_unavailable" } });
+  });
+});
+
+describe("the route is wired to the Yahoo adapter", () => {
+  it("serving the real captures at Mon 22:00 CDT, the draft for 09-29 carries an AVAILABLE Z and both closes from Yahoo's bars", async () => {
+    vi.setSystemTime(new Date("2026-09-29T03:00:00Z")); // Mon 2026-09-28 22:00 CDT → next due 09-29
+    fetchSpy.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === yahooChartUrl("ZC=F")) return new Response(JSON.stringify(cornMondayAfternoon));
+      if (url === yahooChartUrl("BTC-USD")) return new Response(JSON.stringify(btc5d));
+      return new Response("unexpected", { status: 599 });
+    });
+    const { kv, store } = withParams();
+    const res = await send(envWith(kv), request(envelope({ date: "2026-09-29" })));
+    expect(res.status).toBe(200);
+    expect(await jsonOf(res)).toEqual({ date: "2026-09-29", z: { status: "available" } });
+
+    const z = (storedDraft(store, "daybreak:2026-09-29:draft").workerOwned as Record<string, any>).z;
+    expect(z.status).toBe("available");
+    expect(typeof z.value).toBe("number");
+    expect(z.corn).toEqual({ date: "2026-09-28", close: 5.2225, fetchedAt: "2026-09-29T03:00:00.000Z" });
+    expect(z.btc).toEqual({ date: "2026-09-28", close: 83843.0703125, fetchedAt: "2026-09-29T03:00:00.000Z" });
+    expect(fetchedUrls().sort()).toEqual([yahooChartUrl("BTC-USD"), yahooChartUrl("ZC=F")].sort());
   });
 });
 
