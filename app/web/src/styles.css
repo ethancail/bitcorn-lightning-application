@@ -3794,4 +3794,7 @@ input[type="number"] {
 
   .loading-shimmer { animation: none; }
   .pulse-dot.green { animation: none; }
+  /* Its border narrows 6px→3px, shifting the row's content. The failed
+     state itself (.stablecoin-row-failed) stays visible. */
+  .stablecoin-row-just-failed { animation: none; }
 }
