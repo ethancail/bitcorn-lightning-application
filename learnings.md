@@ -24,6 +24,42 @@ has stopped working.
 
 ---
 
+## 2026-09-29
+
+### A test run killed with exit 137 is the machine running out of memory, not a test result
+
+**Scar:** A Claude Code session's baseline Worker test run was killed outright with exit 137 while the
+machine had about 8.5 GB in use [RELAYED — from the previous Daybreak session's report; not re-observed].
+137 is 128 + SIGKILL: no test failed and no assertion ran to completion, so the run proved nothing about
+the tree, and a baseline is precisely the run everything after it is compared against. Running each suite
+under a memory cap, one at a time, prevented it recurring:
+`systemd-run --user --scope -p MemoryMax=5G <node20>/bin/node ./node_modules/vitest/vitest.mjs run --root
+<abs>/cloudflare-worker --no-file-parallelism`. Measured under exactly that command on 2026-09-29, with
+`free -g` showing 9 of 15 GiB in use at the start: 43 files / 653 tests passed, exit 0.
+
+**Lesson:** On this machine the test runner's memory is a precondition of the run, like its timezone
+(2026-09-23 below): a suite that fits on an idle machine does not fit once other sessions, Docker and LND
+are resident. An exit code above 128 is a signal, and says nothing about the code under test. Read it as
+could-not-run, never as a failure to investigate and never as a result, and rerun under the cap rather
+than trusting any partial output.
+
+**Disposition:** `[RECORDED]` — nothing enforces the cap. `cloudflare-worker/package.json`'s `test`
+script is a bare `vitest run`, and runs here invoke `vitest.mjs` directly, bypassing it anyway.
+
+### The parallel Worker suite times out under load on this machine, so it runs serially
+
+**Scar:** Run in parallel on this machine under load, the Worker suite times out, and the timeouts are
+the pool's, not the tests' [RELAYED — prior sessions' finding; not re-measured 2026-09-29]. That is why
+every Worker run passes `--no-file-parallelism`.
+
+**Lesson:** A timeout under parallel load reads like a failing test and is not one: rerun the same files
+serially before treating it as a result. The flag is load-bearing, and it exists only in the invocation.
+`cloudflare-worker/vitest.config.ts` sets no `fileParallelism`, so a bare `vitest run` gets the
+parallel default.
+
+**Disposition:** `[RECORDED]` — the serial requirement lives in the invocation and in this entry, not in
+the config.
+
 ## 2026-09-23
 
 ### The local Worker test pool ran in the host's timezone, not production's
