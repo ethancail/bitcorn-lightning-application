@@ -2,8 +2,9 @@
 //
 // Source: bitcorn-research/specs/2026-09-23-member-name-prompt-spec.md §7.4,
 // §8 (D6 §3). Member view only (mounted with !isTreasury), in Settings
-// "Personal" directly above ProfilePanel, which is left untouched. This is
-// where the dashboard's member-name prompt sends the farmer.
+// "Personal" directly above ProfilePanel (the public alias). This is where
+// the dashboard's member-name prompt sends the farmer — via
+// /settings?focus=name, which SettingsPage turns into focusOnMount.
 //
 // Stored on this node and, since D5 part 2 (D8), sent to the treasury with
 // every token refresh under its own signature. The "who can see it" line must
@@ -40,13 +41,34 @@ export const BITCORN_NAME_VISIBILITY_LINE =
 // 8: generic, never says why.
 export const BITCORN_NAME_REJECTED_MESSAGE = "BitCorn couldn't accept this name. Try a different one.";
 
+// ACCEPTED — Ethan, 2026-09-29 (settings-name-clarity, as built). The button
+// names what it saves: this panel and ProfilePanel below both read a bare
+// "Save" before.
+export const BITCORN_NAME_SAVE_LABEL = "Save name";
+// ACCEPTED — Ethan, 2026-09-29. Shown in the status slot when the read
+// succeeded and no name is stored — never while loading or after a failed
+// read (unknown is not unset).
+export const BITCORN_NAME_UNSET_LINE = "Not set yet";
+// ACCEPTED — Ethan, 2026-09-29. Must NOT duplicate ProfilePanel's
+// `e.g. "Lazy Acres Farm"` — the two fields hold different things. The
+// example must itself pass bitcornNameInputState (pinned).
+export const BITCORN_NAME_PLACEHOLDER = 'e.g. "Cedar Creek Grain"';
+
 // The one delayed re-read after a save (spec §9.2; 5s ACCEPTED — Ethan,
 // 2026-09-28) — long enough for the save's token refresh to round-trip.
 export const NAME_STATUS_RECHECK_MS = 5_000;
 
+// How long the deep link keeps re-landing the field while the page above it
+// is still loading (see the landing effect). Generous because the panels
+// above wait on the treasury's Worker round-trip on a real node. The
+// re-landing and this 10s window: ACCEPTED as in scope — Ethan, 2026-09-29.
+export const NAME_FIELD_LANDING_WINDOW_MS = 10_000;
+// Anything the member does themselves ends the re-landing.
+const MEMBER_INPUT_EVENTS = ["wheel", "touchstart", "keydown", "pointerdown"] as const;
+
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: string };
 
-export default function BitcornNamePanel() {
+export default function BitcornNamePanel({ focusOnMount = false }: { focusOnMount?: boolean }) {
   const [current, setCurrent] = useState<BitcornName | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [input, setInput] = useState("");
@@ -71,6 +93,53 @@ export default function BitcornNamePanel() {
   useEffect(() => () => {
     if (recheck.current) clearTimeout(recheck.current);
   }, []);
+
+  // The dashboard prompt's deep link: bring the field into view and focus it,
+  // once. Waits for the name read so the "Loading…" line above the field has
+  // already collapsed and cannot move it afterwards. scrollIntoView, as in
+  // Liquidity.tsx's row select, scrolls whichever ancestor actually scrolls —
+  // .main-content, which the router does not reset between routes — by the
+  // field's CURRENT offset, so whatever scrollTop the previous page left
+  // behind doesn't matter. Instant, not smooth: this is a page landing.
+  // "center", not the precedent's "nearest": nearest leaves the field on the
+  // bottom edge, where any growth above pushes it straight off screen.
+  //
+  // One scroll is not enough. The panels above (subscription, auto-pay) load
+  // on their own reads; measured in a browser at 500×700, when they finished
+  // after the name read they grew ~970px and left the focused field far below
+  // the fold. So re-land whenever the page holding this panel changes size,
+  // until the member does anything themselves (never fight them) or the
+  // window closes. The teardown lives in a ref, not this effect's cleanup:
+  // the effect re-runs on every `current`, and focusedOnce would stop it
+  // re-arming.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const focusedOnce = useRef(false);
+  const stopLanding = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopLanding.current?.(), []);
+  useEffect(() => {
+    if (!focusOnMount || focusedOnce.current || !current) return;
+    focusedOnce.current = true;
+    const field = inputRef.current;
+    if (!field) return;
+    field.focus({ preventScroll: true });
+    const land = () => field.scrollIntoView({ block: "center" });
+    land();
+
+    const page = panelRef.current?.parentElement;
+    if (!page || typeof ResizeObserver === "undefined") return; // jsdom has none
+    const watch = new ResizeObserver(land);
+    watch.observe(page);
+    const stop = () => {
+      watch.disconnect();
+      clearTimeout(timer);
+      for (const t of MEMBER_INPUT_EVENTS) window.removeEventListener(t, stop, true);
+      stopLanding.current = null;
+    };
+    const timer = setTimeout(stop, NAME_FIELD_LANDING_WINDOW_MS);
+    for (const t of MEMBER_INPUT_EVENTS) window.addEventListener(t, stop, { capture: true, passive: true });
+    stopLanding.current = stop;
+  }, [focusOnMount, current]);
 
   const inFlight = status.kind === "saving";
   const inputState = bitcornNameInputState(input);
@@ -97,11 +166,11 @@ export default function BitcornNamePanel() {
     }
   }
 
-  // marginBottom: .panel carries no margin, and ProfilePanel (left unmodified)
-  // sits directly below — without it the two would be flush (the 0px gap the
+  // marginBottom: .panel carries no margin, and ProfilePanel sits directly
+  // below — without it the two would be flush (the 0px gap the
   // Appearance panel's comment in App.tsx records fixing).
   return (
-    <div className="panel" style={{ marginBottom: 16 }}>
+    <div ref={panelRef} className="panel" style={{ marginBottom: 16 }}>
       <div className="panel-header">
         <span className="panel-title"><span className="icon">◉</span>{BITCORN_NAME_FIELD_LABEL}</span>
       </div>
@@ -112,6 +181,8 @@ export default function BitcornNamePanel() {
           </p>
         ) : !current ? (
           <p style={{ color: "var(--text-3)", fontSize: "0.8125rem", margin: 0 }}>Loading…</p>
+        ) : !current.bitcorn_name ? (
+          <p style={{ color: "var(--text-3)", fontSize: "0.8125rem", margin: 0 }}>{BITCORN_NAME_UNSET_LINE}</p>
         ) : null}
 
         <div>
@@ -128,8 +199,10 @@ export default function BitcornNamePanel() {
             </span>
           </div>
           <input
+            ref={inputRef}
             type="text"
             value={input}
+            placeholder={BITCORN_NAME_PLACEHOLDER}
             disabled={inFlight || loadFailed}
             onChange={(e) => setInput(e.target.value)}
             style={{
@@ -164,7 +237,7 @@ export default function BitcornNamePanel() {
             disabled={inFlight || loadFailed || !inputState.valid || !dirty}
             style={btnStyle(inputState.valid && dirty && !inFlight && !loadFailed)}
           >
-            {inFlight ? "Saving…" : "Save"}
+            {inFlight ? "Saving…" : BITCORN_NAME_SAVE_LABEL}
           </button>
         </div>
 

@@ -18,6 +18,13 @@ import { api, truncPubkey, type ProfileAlias } from "../api/client";
 import { aliasInputState, ALIAS_MAX_BYTES } from "./aliasInputState";
 import TechnicalDetails, { TechRow } from "./TechnicalDetails";
 
+// ACCEPTED — Ethan, 2026-09-29 (settings-name-clarity, as built), both
+// strings. BitcornNamePanel sits directly above with its own save button;
+// both used to read a bare "Save", and this panel's "Profile" heading didn't
+// say which name it holds.
+export const PROFILE_PANEL_HEADING = "Public alias";
+export const ALIAS_SAVE_LABEL = "Save public alias";
+
 type Status = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: string };
 
 export default function ProfilePanel() {
@@ -84,7 +91,7 @@ export default function ProfilePanel() {
   return (
     <div className="panel">
       <div className="panel-header">
-        <span className="panel-title"><span className="icon">◉</span>Profile</span>
+        <span className="panel-title"><span className="icon">◉</span>{PROFILE_PANEL_HEADING}</span>
       </div>
       <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {/* Current state */}
@@ -164,7 +171,7 @@ export default function ProfilePanel() {
             disabled={inFlight || !inputState.valid || !dirty}
             style={btnStyle(inputState.valid && dirty && !inFlight, "var(--amber)")}
           >
-            {inFlight ? "Saving…" : "Save"}
+            {inFlight ? "Saving…" : ALIAS_SAVE_LABEL}
           </button>
           {hasAlias && (
             <button

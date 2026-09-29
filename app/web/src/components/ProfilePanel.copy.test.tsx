@@ -1,6 +1,7 @@
-// ProfilePanel (the public-alias panel) — two copy pins, added when the
-// member-name feature put BitcornNamePanel directly above it in Settings
-// "Personal" (spec 2026-09-23-member-name-prompt §7.4).
+// ProfilePanel (the public-alias panel) — copy pins. 1 and 2 were added when
+// the member-name feature put BitcornNamePanel directly above it in Settings
+// "Personal" (spec 2026-09-23-member-name-prompt §7.4); 3 by
+// settings-name-clarity (Ethan, 2026-09-29).
 //
 // 1. The explanatory copy must not say "Your name is announced…". The panel
 //    above now says the member's name for BitCorn is never published; the
@@ -9,6 +10,12 @@
 // 2. The alias input's placeholder must not contain "Ethan". The old
 //    placeholder put an operator's personal name in the public repo — the
 //    class migration 051's header says must not be committed.
+// 3. The two Settings "Personal" panels no longer both read "Save": this one
+//    is headed "Public alias" (was "Profile") and its button says "Save public
+//    alias" — both ACCEPTED (Ethan, 2026-09-29), hardcoded below. Its
+//    placeholder is pinned
+//    exactly because changing it was NOT approved; the name panel above was
+//    told not to duplicate it.
 //
 // ⚠ Each forbidding assertion is paired with a positive in the SAME render
 // (the sentence is there; the placeholder is there), so neither can pass
@@ -77,5 +84,28 @@ describe("ProfilePanel copy", () => {
   it("the alias placeholder does not contain an operator's personal name ('Ethan')", () => {
     const input = host.querySelector("input[type=text]") as HTMLInputElement;
     expect(input.placeholder).not.toContain("Ethan");
+  });
+});
+
+describe("ProfilePanel copy — settings-name-clarity (ACCEPTED)", () => {
+  const HEADING = "Public alias"; // ACCEPTED — Ethan, 2026-09-29
+  const SAVE_ALIAS = "Save public alias"; // ACCEPTED — Ethan, 2026-09-29
+
+  it("the panel is headed 'Public alias', not 'Profile'", () => {
+    const title = host.querySelector(".panel-title");
+    expect(title, "panel title").toBeTruthy();
+    const icon = title!.querySelector(".icon")?.textContent ?? "";
+    expect((title!.textContent ?? "").slice(icon.length)).toBe(HEADING);
+  });
+
+  it("the save button says 'Save public alias', and no bare 'Save' button is left", () => {
+    const labels = Array.from(host.querySelectorAll("button")).map((b) => b.textContent);
+    expect(labels.filter((l) => l === SAVE_ALIAS)).toHaveLength(1);
+    expect(labels.filter((l) => l === "Save")).toHaveLength(0);
+  });
+
+  it("the alias placeholder is unchanged (changing it was not approved)", () => {
+    const input = host.querySelector("input[type=text]") as HTMLInputElement;
+    expect(input.placeholder).toBe('e.g. "Lazy Acres Farm"');
   });
 });
