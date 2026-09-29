@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.16"
+version: "1.18.17"
 port: 3200
 
 description: >
@@ -27,6 +27,14 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.17: In Settings, the name you share with BitCorn and your public alias
+  now have clearly labelled Save buttons, and the dashboard's "Add name" button
+  takes you straight to the right field. Most buttons now respond when you
+  press them, whatever you're on is clearly outlined when you move around with
+  the keyboard, and dropdowns and text boxes now match your light or dark
+  theme. If your device is set to reduce motion, pages fade in without sliding.
+  Nothing for you to do.
+
   v1.18.16: The name you set for BitCorn is now shared with BitCorn, so we know
   who you are. It's still never announced to the Lightning network.
 
