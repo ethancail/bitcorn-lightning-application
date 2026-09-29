@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate, NavLink, Link, useNavigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, NavLink, Link, useNavigate, useSearchParams } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
 import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
@@ -724,6 +724,7 @@ function ChannelRolePanel() {
 
 function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [theme, setTheme] = useState<ThemeChoice>(() => {
     const stored = localStorage.getItem("bitcorn_theme");
     if (stored === "light" || stored === "dark") return stored;
@@ -833,13 +834,15 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           BitCorn with each token refresh under its own signature (D8); NOT the
           LND alias. Directly above ProfilePanel, which its visibility line
           points to ("Your public alias, below, is published."). The dashboard's
-          member-name prompt sends the farmer here. Spec 2026-09-23-member-
-          name-prompt §7.4. */}
-      {!isTreasury && <BitcornNamePanel />}
+          member-name prompt sends the farmer here, to /settings?focus=name,
+          which lands focused on the field (App.settingsNameLink.test.tsx).
+          Spec 2026-09-23-member-name-prompt §7.4. */}
+      {!isTreasury && <BitcornNamePanel focusOnMount={searchParams.get("focus") === "name"} />}
 
-      {/* Profile — member-only public Lightning alias. Identity reads ahead of
-          appearance; mounted with !isTreasury (treasury sets BitCorn1 via
-          Umbrel/lnd.conf, not here). See member-naming spec §6. */}
+      {/* Public alias (ProfilePanel) — member-only public Lightning alias.
+          Identity reads ahead of appearance; mounted with !isTreasury
+          (treasury sets BitCorn1 via Umbrel/lnd.conf, not here). See
+          member-naming spec §6. */}
       {!isTreasury && <ProfilePanel />}
 
       {/* marginTop matches the inline-margin convention every other Settings
