@@ -5,6 +5,12 @@
 //
 //   lead, kevinsRead, insideAgriculture, closer — plain strings
 //   worthReading — ONE object { title: string, note: string, link: https URL }
+//                  None of the three may be EMPTY (Ethan's ruling): the editor
+//                  screen's notion, `s.trim() === ""`
+//                  (app/web/src/daybreakEditor/editorView.ts, `filled`), so a
+//                  whitespace-only field is empty. An empty title or note is
+//                  invalid_section; an empty link fails the https check as
+//                  invalid_link.
 //
 // Every key is optional; an absent section is simply not rendered. ANYTHING
 // ELSE IS REJECTED, never stripped (stripping was ruled out): an unknown key —
@@ -32,9 +38,9 @@ export type SectionsRejection =
   | { ok: false; code: "invalid_sections" }
   /** A key outside the contract; `field` is the key itself (for Worth Reading, `worthReading.<key>`). */
   | { ok: false; code: "unknown_section"; field: string }
-  /** A contract key holding the wrong shape. */
+  /** A contract key holding the wrong shape, or an empty Worth Reading title or note. */
   | { ok: false; code: "invalid_section"; field: string }
-  /** Worth Reading's link is missing, not a string, or not an absolute https: URL. */
+  /** Worth Reading's link is missing, not a string, or not an absolute https: URL (an empty link included). */
   | { ok: false; code: "invalid_link"; field: "worthReading.link" };
 
 export type SectionsValidation = { ok: true } | SectionsRejection;
@@ -61,8 +67,8 @@ function validateWorthReading(v: unknown): SectionsValidation {
       return { ok: false, code: "unknown_section", field: `worthReading.${key}` };
     }
   }
-  if (typeof v.title !== "string") return { ok: false, code: "invalid_section", field: "worthReading.title" };
-  if (typeof v.note !== "string") return { ok: false, code: "invalid_section", field: "worthReading.note" };
+  if (typeof v.title !== "string" || v.title.trim() === "") return { ok: false, code: "invalid_section", field: "worthReading.title" };
+  if (typeof v.note !== "string" || v.note.trim() === "") return { ok: false, code: "invalid_section", field: "worthReading.note" };
   if (!isHttpsUrl(v.link)) return { ok: false, code: "invalid_link", field: "worthReading.link" };
   return { ok: true };
 }
