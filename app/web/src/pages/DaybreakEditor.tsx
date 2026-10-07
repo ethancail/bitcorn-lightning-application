@@ -59,6 +59,7 @@ import {
 import {
   formToSections,
   parseEditorRead,
+  worthReadingIsPartial,
   zAfterSave,
   type EditorEdition,
   type EditorRead,
@@ -205,6 +206,11 @@ export default function DaybreakEditor() {
     setRead((r) => (r ? { next: r.next.date === date ? change(r.next) : r.next, recent: r.recent.date === date ? change(r.recent) : r.recent } : r));
 
   const save = async (date: string, values: FormValues, publishing: boolean): Promise<boolean> => {
+    // A partly filled Worth Reading is refused here, before anything is sent.
+    if (worthReadingIsPartial(values)) {
+      setToast({ kind: "error", msg: saveFailedCopy({ code: "worth_reading_incomplete" }, publishing) });
+      return false;
+    }
     try {
       const res = await api.saveDaybreakEdition({ date, sections: formToSections(values) });
       update(date, (e) => ({ ...e, hasCopy: true, z: zAfterSave(res, e.z) }));

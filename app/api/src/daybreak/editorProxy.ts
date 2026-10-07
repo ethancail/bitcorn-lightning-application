@@ -17,7 +17,10 @@
 //   2. DAYBREAK_EDITOR_SECRET unset → 503, no Worker call (as
 //      /api/valuation/manual does with its HMAC).
 //   3. COINBASE_WORKER_URL unset → 503, no Worker call.
-//   4. Save and publish: the body is CAPPED here. Exempt routes skip the gate's
+//   4. Save and publish: `Content-Type: application/json` is REQUIRED, else
+//      415 unsupported_content_type before the body is read (CSRF hardening:
+//      a JSON POST cannot be sent cross-site without a CORS preflight).
+//      Then the body is CAPPED here. Exempt routes skip the gate's
 //      1 MiB buffering, and /api/valuation/manual's uncapped read is not the
 //      precedent. A declared Content-Length over the cap is refused unread.
 //   5. The Worker call, with `Authorization: Bearer <secret>` and nothing from
@@ -105,6 +108,14 @@ export async function handleDaybreakEditorProxy(
 
   let body: Buffer | undefined;
   if (route !== "read") {
+    // CSRF hardening, Daybreak-local: only a JSON POST, refused before the body
+    // is read. A cross-site page can send text/plain, a form encoding or no
+    // type at all WITHOUT a CORS preflight; application/json forces one, and
+    // the preflight is answered by applyCorsAndPreflight's origin rules.
+    const mediaType = String(req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase();
+    if (mediaType !== "application/json") {
+      return send(res, { status: 415, body: { error: "unsupported_content_type" } });
+    }
     const declared = Number(req.headers["content-length"]);
     if (Number.isFinite(declared) && declared > EDITOR_PROXY_BODY_MAX_BYTES) {
       return send(res, { status: 413, body: { error: "body_too_large" } });

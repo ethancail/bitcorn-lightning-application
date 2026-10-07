@@ -280,6 +280,83 @@ describe("test 80: each state renders from its fixture", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Worth Reading is all three fields or none — the screen refuses a partial.
+// The Worker refuses a missing link, but ACCEPTS an empty title or note, so
+// this refusal is the screen's own and nothing is sent.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("a partly filled Worth Reading is refused by the screen, and nothing is sent", () => {
+  const INCOMPLETE = "Couldn't save: Worth Reading needs a title, a note and a link — or leave all three empty.";
+  const FULL = { wrTitle: "A title", wrNote: "A note.", wrLink: "https://example.com/read" };
+  const NONE = { wrTitle: "", wrNote: "", wrLink: "" };
+  // Every way to fill some but not all of the three.
+  const PARTIALS: Array<Record<string, string>> = [
+    { ...NONE, wrTitle: FULL.wrTitle },
+    { ...NONE, wrNote: FULL.wrNote },
+    { ...NONE, wrLink: FULL.wrLink },
+    { ...FULL, wrTitle: "" },
+    { ...FULL, wrNote: "   " }, // whitespace is empty
+    { ...FULL, wrLink: "" },
+  ];
+
+  async function fill(el: Element, values: Record<string, string>) {
+    for (const [name, value] of Object.entries(values)) await edit(el, name, value);
+  }
+
+  for (const partial of PARTIALS) {
+    const shape = Object.entries(partial).map(([k, v]) => `${k}=${v.trim() ? "set" : "empty"}`).join(" ");
+    it(`FORBIDS (${shape}): Save sends nothing and says exactly why; the text is kept`, async () => {
+      const el = await renderEditor();
+      await fill(el, partial);
+      await click(q(el, "editor-save"));
+      await flush();
+      expect(posts()).toEqual([]);
+      expect(text(q(el, "editor-toast"))).toBe(`${INCOMPLETE} Your text is still here.`);
+      for (const [name, value] of Object.entries(partial)) expect(field(el, name)!.value).toBe(value);
+    });
+
+    it(`FORBIDS (${shape}): Save and publish sends neither request and says nothing was published`, async () => {
+      const el = await renderEditor();
+      await fill(el, partial);
+      await click(q(el, "editor-publish"));
+      await flush();
+      expect(posts()).toEqual([]);
+      expect(text(q(el, "editor-toast"))).toBe(`${INCOMPLETE} Nothing was published. Your text is still here.`);
+    });
+  }
+
+  it("PERMITS: all three filled — the save is sent with all three", async () => {
+    const el = await renderEditor();
+    await fill(el, FULL);
+    await click(q(el, "editor-save"));
+    await flush();
+    expect(posts()).toEqual(["/api/daybreak/editor/save"]);
+    expect(calls.find((c) => c.method === "POST")!.body.sections.worthReading).toEqual({ title: FULL.wrTitle, note: FULL.wrNote, link: FULL.wrLink });
+  });
+
+  it("PERMITS: all three empty — the save is sent with no Worth Reading at all", async () => {
+    const el = await renderEditor();
+    await fill(el, NONE);
+    await click(q(el, "editor-publish"));
+    await flush();
+    expect(posts()).toEqual(["/api/daybreak/editor/save", "/api/daybreak/editor/publish"]);
+    expect("worthReading" in calls.find((c) => c.method === "POST")!.body.sections).toBe(false);
+  });
+
+  it("ANTI-VACUITY: completing the missing field lets the very same form save", async () => {
+    const el = await renderEditor();
+    await fill(el, { ...FULL, wrNote: "" });
+    await click(q(el, "editor-save"));
+    await flush();
+    expect(posts()).toEqual([]);
+    await edit(el, "wrNote", FULL.wrNote);
+    await click(q(el, "editor-save"));
+    await flush();
+    expect(posts()).toEqual(["/api/daybreak/editor/save"]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Test 73, the screen half — which editions (R6, ruling (A)).
 // ═══════════════════════════════════════════════════════════════════════════
 

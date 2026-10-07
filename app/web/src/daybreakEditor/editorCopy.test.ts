@@ -164,6 +164,7 @@ describe("strings AS DRAFTED, pinned verbatim — for Ethan's approval in the PR
   it("save failed", () => {
     const cases: Array<[string, string]> = [
       ["invalid_link", "Couldn't save: Worth Reading needs a full link starting with https://."],
+      ["worth_reading_incomplete", "Couldn't save: Worth Reading needs a title, a note and a link — or leave all three empty."],
       ["body_too_large", "Couldn't save: this edition is too long."],
       ["not_editable_date", "Couldn't save: this edition can no longer be edited, because a newer one is now due. Reload the page to see the current editions."],
       ["worker_unreachable", "Couldn't save: this node couldn't reach BitCorn's Daybreak service."],

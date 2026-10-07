@@ -94,14 +94,16 @@ function makeRes(captured: { status: number | null; body: string }) {
 
 async function send(
   route: RouteName,
-  opts: { body?: string | Buffer; url?: string; headers?: Record<string, string>; stream?: Readable; remoteAddress?: string } = {},
+  opts: { body?: string | Buffer; url?: string; headers?: Record<string, string>; noContentType?: boolean; stream?: Readable; remoteAddress?: string } = {},
 ): Promise<Sent> {
   const r = ROUTES[route];
   const captured = { status: null as number | null, body: "" };
   const req = (opts.stream ?? new PassThrough()) as any;
   req.method = r.method;
   req.url = opts.url ?? r.url;
-  req.headers = opts.headers ?? {};
+  // A POST carries application/json by default, as the web client sends it.
+  const json = r.method === "POST" && !opts.noContentType ? { "content-type": "application/json" } : {};
+  req.headers = { ...json, ...(opts.headers ?? {}) };
   req.socket = { remoteAddress: opts.remoteAddress ?? "100.64.0.7" };
   if (!opts.stream) {
     if (r.method === "GET") req.end();
@@ -418,6 +420,63 @@ describe("test 79: the proxy caps the body itself", () => {
       expect(fetchSpy).not.toHaveBeenCalled();
     });
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CSRF hardening — save and publish accept ONLY a JSON POST.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("CSRF hardening: save and publish require Content-Type: application/json", () => {
+  // A body stream that records whether anything read it.
+  const watched = (payload: string) => {
+    const state = { touched: false };
+    const stream = new Readable({
+      read() {
+        state.touched = true;
+        this.push(payload);
+        this.push(null);
+      },
+    });
+    return { stream, state };
+  };
+
+  for (const route of MUTATIONS) {
+    it(`PERMITS (${route}): an application/json POST is accepted — with or without a charset`, async () => {
+      for (const type of ["application/json", "application/json; charset=utf-8", "Application/JSON"]) {
+        workerReturns(200, okFor(route));
+        workerCalls = [];
+        const { stream, state } = watched(bodyFor(route)!);
+        const out = await send(route, { stream, headers: { "content-type": type } });
+        expect(out.status, type).toBe(200);
+        expect(state.touched, "anti-vacuity: an accepted body IS read").toBe(true);
+        expect(workerCalls, type).toHaveLength(1);
+      }
+    });
+
+    for (const [what, headers] of [
+      ["text/plain", { "content-type": "text/plain" }],
+      ["text/plain with a charset", { "content-type": "text/plain;charset=UTF-8" }],
+      ["a form encoding", { "content-type": "application/x-www-form-urlencoded" }],
+      ["multipart", { "content-type": "multipart/form-data; boundary=x" }],
+      ["a missing content type", null],
+    ] as const) {
+      it(`FORBIDS (${route}): ${what} is refused with 415 unsupported_content_type; the body is never read and the Worker is not called`, async () => {
+        workerReturns(200, okFor(route));
+        const { stream, state } = watched(bodyFor(route)!);
+        const out = await send(route, headers ? { stream, headers } : { stream, noContentType: true });
+        expect(out.status).toBe(415);
+        expect(out.body).toEqual({ error: "unsupported_content_type" });
+        expect(state.touched, "the body was read").toBe(false);
+        expect(fetchSpy).not.toHaveBeenCalled();
+      });
+    }
+  }
+
+  it("the read, a GET with no body, needs no content type", async () => {
+    workerReturns(200, READ_OK);
+    const out = await send("read");
+    expect(out.status).toBe(200);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

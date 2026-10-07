@@ -90,6 +90,7 @@ Save and publish bodies are capped by the proxy at 32 KiB, the Worker's own cap;
 | 403 | `{ "error": "treasury_role_required" }` | This node is not the treasury (or has no role yet) |
 | 503 | `{ "error": "editor_not_configured" }` | `DAYBREAK_EDITOR_SECRET` unset on this node — the Worker is not called |
 | 503 | `{ "error": "worker_not_configured" }` | `COINBASE_WORKER_URL` unset on this node |
+| 415 | `{ "error": "unsupported_content_type" }` | Save or publish without `Content-Type: application/json` (a charset parameter is fine) — refused before the body is read, the Worker is not called. CSRF hardening: a cross-site page can POST `text/plain` or a form encoding without a CORS preflight, but not JSON |
 | 413 | `{ "error": "body_too_large" }` | Save or publish body over the proxy's cap — the Worker is not called |
 | 4xx | `{ "error": "editor_refused", "reason": "<code>", "field"?: "<name>" }` | The Worker refused the request, with its status and code: 400 `invalid_json` / `invalid_body` / `invalid_date` / `invalid_sections` / `unknown_section` / `invalid_section` / `invalid_link` (`field` is a section name such as `worthReading.link`), 413 `body_too_large`, 422 `not_editable_date`, 409 `nothing_to_publish` |
 | 502 | `{ "error": "worker_auth_rejected", "reason"?: "<code>" }` | Worker 401 — the treasury's secret and the Worker's disagree |

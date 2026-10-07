@@ -90,6 +90,17 @@ export function parseEditorRead(raw: unknown): EditorRead | null {
 const filled = (s: string) => s.trim() !== "";
 
 /**
+ * Worth Reading with some, but not all, of its three fields filled. The screen
+ * refuses to send it: the Worker would refuse a missing link as `invalid_link`,
+ * but it ACCEPTS an empty title or note (an empty string passes the contract's
+ * type check), so only the screen can say what is wrong.
+ */
+export function worthReadingIsPartial(f: FormValues): boolean {
+  const n = [f.wrTitle, f.wrNote, f.wrLink].filter(filled).length;
+  return n > 0 && n < 3;
+}
+
+/**
  * The form → the sections a save sends. An empty text section is left out (the
  * save replaces the sections whole, so leaving it out clears it). Worth Reading
  * goes as all three fields, as typed, when any of them is filled — so a
