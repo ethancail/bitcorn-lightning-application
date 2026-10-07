@@ -91,9 +91,10 @@ const filled = (s: string) => s.trim() !== "";
 
 /**
  * Worth Reading with some, but not all, of its three fields filled. The screen
- * refuses to send it: the Worker would refuse a missing link as `invalid_link`,
- * but it ACCEPTS an empty title or note (an empty string passes the contract's
- * type check), so only the screen can say what is wrong.
+ * refuses to send it. The Worker refuses it too: a blank title or note is
+ * `invalid_section` and a blank link is `invalid_link`, judged by the same
+ * trimmed test as `filled` above (cloudflare-worker/src/daybreak/sections.ts),
+ * so the screen's check and the Worker's agree.
  */
 export function worthReadingIsPartial(f: FormValues): boolean {
   const n = [f.wrTitle, f.wrNote, f.wrLink].filter(filled).length;
