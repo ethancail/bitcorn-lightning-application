@@ -26,9 +26,12 @@ export type DaybreakCalendar = {
 };
 
 /**
- * Monday–Friday, no holidays: the model author's stated intent. ⚠ Which days
- * are due, and holidays, are reserved to Ethan (spec §7) — this is a default
- * for the parameter, not a ruling; callers pass their own calendar.
+ * Monday–Friday, no holidays — RULED by Ethan on 2026-10-06 (bitcorn-research
+ * decisions/2026-10-06-daybreak-due-days-monday-friday-no-holidays-z-full-
+ * precision.md): due days are Monday to Friday, with NO holiday calendar. On a
+ * market holiday Kevin does not publish for, members see the previous edition
+ * marked held over. To be revisited only if that proves wrong in practice.
+ * Callers may still pass their own calendar.
  */
 export const DEFAULT_DAYBREAK_CALENDAR: DaybreakCalendar = { dueWeekdays: [1, 2, 3, 4, 5], holidays: [] };
 
