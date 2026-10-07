@@ -606,7 +606,7 @@ The only reliable check is to read the container's environment directly:
 ```bash
 API=$(sudo docker ps --format '{{.Names}}' | grep -E 'bitcorn.*api')   # see step 9 note
 sudo docker exec "$API" sh -c \
-  'for v in VALUATION_SUBMIT_HMAC VALUATION_WORKER_URL BASE_CHAIN_ID BASE_RPC_URL TUNNEL_TOKEN; do
+  'for v in VALUATION_SUBMIT_HMAC DAYBREAK_EDITOR_SECRET VALUATION_WORKER_URL BASE_CHAIN_ID BASE_RPC_URL TUNNEL_TOKEN; do
      eval "val=\$$v"; [ -n "$val" ] && echo "$v: SET" || echo "$v: EMPTY"; done'
 ```
 
@@ -620,6 +620,7 @@ direct check matters:
 | `TUNNEL_TOKEN` | **Loud** — `cloudflared` can't connect; visible in `docker logs` |
 | `BASE_RPC_URL` | Noticeable — SIWE smart-wallet verification throws "BASE_RPC_URL is not configured" |
 | `VALUATION_SUBMIT_HMAC` | Quiet — treasury→Worker manual valuation submissions rejected on HMAC |
+| `DAYBREAK_EDITOR_SECRET` | Quiet — treasury only: the Daybreak Editor page can't load (proxies return 503 `editor_not_configured`); members' Daybreak is unaffected. **EMPTY is correct on a member node** — the compose line ships to every node, and the value must never be set there |
 | `BASE_CHAIN_ID` | **Silent and dangerous** — `config/env.ts` falls back to `84532` (Sepolia) for empty/garbage. On a mainnet node this is wrong-chain SIWE with no error at all |
 | `BITCOIN_NETWORK` | None — compose supplies a `mainnet` default |
 

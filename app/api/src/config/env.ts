@@ -140,6 +140,15 @@ export const ENV = {
     // If unset, POST /api/valuation/manual returns 503.
     valuationSubmitHmac: process.env.VALUATION_SUBMIT_HMAC || "",
 
+    // --- Daybreak editor (treasury → Worker bearer secret, spec §3.4.5 R3) ---
+    // Sent as `Authorization: Bearer` by the three /api/daybreak/editor*
+    // proxies to the Worker's /daybreak/editor* routes, at COINBASE_WORKER_URL.
+    // Must match the DAYBREAK_EDITOR_SECRET set on the Worker via `wrangler
+    // secret put`. Treasury-only by CONFIGURATION: the compose line ships empty
+    // to every node, and the proxies refuse a non-treasury node before reading
+    // it. If unset, each proxy returns 503 editor_not_configured.
+    daybreakEditorSecret: process.env.DAYBREAK_EDITOR_SECRET || "",
+
     // --- Coinbase Auto-Buy Executor ---
     // Global kill switch. When false, the scheduler refuses to create any
     // scheduled rows. Default false so a fresh install doesn't start buying
