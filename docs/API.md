@@ -1,6 +1,6 @@
 # API Reference
 
-Base URL is the API container (see `docker-compose.yml`). All responses are JSON unless noted. CORS allows `*` for configured methods (`GET`, `POST`, `PATCH`, `DELETE`, `OPTIONS`); allowed request headers are `Content-Type` and `x-bitcorn-confirm` (see Per-Action Confirmation below).
+Base URL is the API container (see `docker-compose.yml`). All responses are JSON unless noted. CORS: a request with **no** `Origin` header (server-to-server, CLI) gets `Access-Control-Allow-Origin: *`; a browser `Origin` is echoed back only when its hostname is an IP literal in a private range (IPv4 `10/8`, `172.16/12`, `192.168/16`, `100.64/10`, `127/8`; IPv6 `::1`, `fc00::/7`), exactly `localhost`, or ends in `.local` — every other origin, including public names that merely start like a private address (`10.attacker.example`) and unparseable ones, gets no `Access-Control-Allow-Origin`. Every response carries `Vary: Origin`. Configured methods are `GET`, `POST`, `PATCH`, `DELETE`, `OPTIONS`; allowed request headers are `Content-Type` and `x-bitcorn-confirm` (see Per-Action Confirmation below).
 
 ## Access Rules
 

@@ -1,4 +1,5 @@
 import http from "http";
+import net from "net";
 import { PORTS } from "./config/ports";
 import { initDb, db } from "./db";
 import { runMigrations } from "./db/migrate";
@@ -295,6 +296,34 @@ function bootSideEffects(): void {
   })();
 }
 
+// Private address ranges, tested as parsed addresses. The old check matched the
+// hostname's TEXT (startsWith("10.") …), so a public DNS name such as
+// `10.attacker.example` passed as private.
+const PRIVATE_ORIGIN_ADDRESSES = new net.BlockList();
+PRIVATE_ORIGIN_ADDRESSES.addSubnet("10.0.0.0", 8, "ipv4");
+PRIVATE_ORIGIN_ADDRESSES.addSubnet("172.16.0.0", 12, "ipv4");
+PRIVATE_ORIGIN_ADDRESSES.addSubnet("192.168.0.0", 16, "ipv4");
+PRIVATE_ORIGIN_ADDRESSES.addSubnet("100.64.0.0", 10, "ipv4"); // CGNAT, used by Tailscale
+PRIVATE_ORIGIN_ADDRESSES.addSubnet("127.0.0.0", 8, "ipv4");
+PRIVATE_ORIGIN_ADDRESSES.addAddress("::1", "ipv6");
+PRIVATE_ORIGIN_ADDRESSES.addSubnet("fc00::", 7, "ipv6"); // ULA, incl. Tailscale's fd7a:115c:a1e0::/48
+
+// An IP literal inside a private range, `localhost`, or a `.local` mDNS name.
+// Anything unparseable is rejected.
+function isPrivateOrigin(origin: string): boolean {
+  let hostname: string;
+  try {
+    hostname = new URL(origin).hostname;
+  } catch {
+    return false;
+  }
+  hostname = hostname.replace(/^\[(.*)\]$/, "$1");
+  const family = net.isIP(hostname);
+  if (family === 4) return PRIVATE_ORIGIN_ADDRESSES.check(hostname, "ipv4");
+  if (family === 6) return PRIVATE_ORIGIN_ADDRESSES.check(hostname, "ipv6");
+  return hostname === "localhost" || hostname.endsWith(".local");
+}
+
 // CORS, split out of the request handler so the confirmation gate can run
 // AFTER the headers are set. That ordering is load-bearing: a 400/409 from the
 // gate is a response the dashboard has to be able to READ, and without
@@ -307,27 +336,22 @@ function applyCorsAndPreflight(
   req: http.IncomingMessage,
   res: http.ServerResponse
 ): boolean {
-  // CORS — allow private/local network origins (Umbrel, Tailscale, LAN, localhost)
-  // Umbrel apps are only reachable on local/private networks, not the public internet.
+  // CORS — allow private/local network origins (Umbrel, Tailscale, LAN, localhost).
+  // This is a BROWSER boundary, not a network one: the API is not only reachable
+  // privately (a treasury on the `tunnel` compose profile serves it at a public
+  // hostname), and port 3101 has no caller authentication — so this check is
+  // what keeps a page on someone else's site from reading responses or passing
+  // the preflight that x-bitcorn-confirm forces on capital routes.
   const origin = req.headers.origin;
+  // The answer depends on Origin, so caches must key on it.
+  res.setHeader("Vary", "Origin");
   if (!origin) {
     // No Origin header = same-origin or non-browser client — always allow
     res.setHeader("Access-Control-Allow-Origin", "*");
-  } else {
-    // Allow: localhost, private RFC1918, CGNAT/Tailscale (100.64-127.*), .local mDNS
-    const host = origin.replace(/^https?:\/\//, "").split(":")[0];
-    const isLocal = host === "localhost" || host === "127.0.0.1" || host.endsWith(".local");
-    const isPrivate = host.startsWith("10.") || host.startsWith("192.168.") ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-    const isTailscale = host.startsWith("100.") && (() => {
-      const second = parseInt(host.split(".")[1], 10);
-      return second >= 64 && second <= 127; // CGNAT range used by Tailscale
-    })();
-    if (isLocal || isPrivate || isTailscale) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-    }
-    // Public origins get no Access-Control-Allow-Origin → browser blocks them
+  } else if (isPrivateOrigin(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
   }
+  // Public origins get no Access-Control-Allow-Origin → browser blocks them
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   // CONFIRMATION_HEADER must be listed or the browser blocks the very request
   // the gate exists to check — the preflight would fail before it is sent.
