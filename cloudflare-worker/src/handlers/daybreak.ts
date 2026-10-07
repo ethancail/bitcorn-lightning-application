@@ -2,8 +2,12 @@
 //
 // Which edition a member sees right now, and whether it is held over, straight
 // from store.ts's readEditionStatus at the current time and the DEFAULT
-// calendar (ruled 2026-09-24: the calendar's SOURCE is the code default; which
-// days are due stays Ethan's). No cache: every call is a fresh status read
+// calendar (ruled 2026-09-24: the calendar's SOURCE is the code default). Which
+// days are due was RULED by Ethan on 2026-10-06 (bitcorn-research decisions/
+// 2026-10-06-daybreak-due-days-monday-friday-no-holidays-z-full-precision.md):
+// Monday to Friday, with NO holiday calendar; on a market holiday Kevin does
+// not publish for, members see the previous edition held over — dates.ts,
+// DEFAULT_DAYBREAK_CALENDAR. No cache: every call is a fresh status read
 // (same ruling — dashboards poll every 5 minutes, and the interval lives in the
 // web client, not here).
 //

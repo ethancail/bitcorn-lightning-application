@@ -19,9 +19,12 @@
 // tile must pin on its own and this whole-block copy must change.
 //
 // ⚠ NO DRAFT when one must be copied is an explicit error, "no_draft", and
-// nothing is written. What should happen instead is OPEN — reserved to Ethan
-// (§7). A draft that lacks the reserved key (written around intake) is refused
-// the same way: this save never invents Worker-owned fields.
+// nothing is written. That stays this function's contract. What the EDITOR does
+// instead was settled by the CMS's ruling R8 (spec §3.4.5): with no draft for
+// the date, the save route first creates the draft through intake, computing
+// the Z as usual, and only then calls this function — handleDaybreakEditorSave
+// in handlers/daybreakEditor.ts. A draft that lacks the reserved key (written
+// around intake) is still refused: this save never invents Worker-owned fields.
 
 import { isCentralDate, type CentralDate } from "./dates";
 import { WORKER_OWNED_KEY } from "./intake";
