@@ -73,6 +73,31 @@ Unlike the other Worker proxies, this one **keeps the rejection reason** (codes 
 | 503 | `{ "error": "worker_unreachable" }` | Network failure reaching the Worker |
 | 503 | `{ "error": "worker_not_configured" }` | `COINBASE_WORKER_URL` unset on this node |
 
+## Daybreak Editor Endpoints (treasury → Worker, the CMS)
+
+Guard: `assertTreasury(node_role)` — the node-role check, NOT caller authentication; the editor's login is tailnet membership, as for every treasury page. On any other node the Worker is never called. Each proxy sends `Authorization: Bearer <DAYBREAK_EDITOR_SECRET>` to the Worker at `COINBASE_WORKER_URL`, and nothing else from the caller — no author, address or User-Agent is forwarded or recorded. Save and publish are exempt from per-action confirmation (no money moves). Paths match exactly: a query string misses the route (404 for the GET, 400 `confirmation_required` for a POST). No cache.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/daybreak/editor` | Both editable editions, relayed from the Worker's `GET /daybreak/editor`: `{ next, recent }` — `next` is the next due edition, `recent` the most recent — each `{ date, published, content }` or `{ date, published, code: "no_draft" }`. Takes no date |
+| POST | `/api/daybreak/editor/save` | Body `{ date, sections }`, forwarded byte-for-byte to `POST /daybreak/editor/save`. 200 `{ date, z: { status, reason? } }` |
+| POST | `/api/daybreak/editor/publish` | Body `{ date }`, forwarded byte-for-byte to `POST /daybreak/editor/publish`. 200 `{ date }` |
+
+Save and publish bodies are capped by the proxy at 32 KiB, the Worker's own cap; a declared `Content-Length` over it is refused unread. Codes only — no Worker `detail` or transport message reaches the body:
+
+| Status | Body | Cause |
+|--------|------|-------|
+| 403 | `{ "error": "treasury_role_required" }` | This node is not the treasury (or has no role yet) |
+| 503 | `{ "error": "editor_not_configured" }` | `DAYBREAK_EDITOR_SECRET` unset on this node — the Worker is not called |
+| 503 | `{ "error": "worker_not_configured" }` | `COINBASE_WORKER_URL` unset on this node |
+| 413 | `{ "error": "body_too_large" }` | Save or publish body over the proxy's cap — the Worker is not called |
+| 4xx | `{ "error": "editor_refused", "reason": "<code>", "field"?: "<name>" }` | The Worker refused the request, with its status and code: 400 `invalid_json` / `invalid_body` / `invalid_date` / `invalid_sections` / `unknown_section` / `invalid_section` / `invalid_link` (`field` is a section name such as `worthReading.link`), 413 `body_too_large`, 422 `not_editable_date`, 409 `nothing_to_publish` |
+| 502 | `{ "error": "worker_auth_rejected", "reason"?: "<code>" }` | Worker 401 — the treasury's secret and the Worker's disagree |
+| 503 | `{ "error": "worker_unavailable", "reason": "<code>" }` | Worker 503 with its reason code (`daybreak_editor_not_configured`, `daybreak_editor_failed`) |
+| 502 | `{ "error": "upstream_error", "status": <n> }` | Any other Worker non-OK, or a refusal whose `error` is not a code |
+| 502 | `{ "error": "invalid_worker_response" }` | Worker 200 with a non-JSON body |
+| 503 | `{ "error": "worker_unreachable" }` | Network failure reaching the Worker |
+
 ## Member Endpoints
 
 | Method | Path | Purpose |

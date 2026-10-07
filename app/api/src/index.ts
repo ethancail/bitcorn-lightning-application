@@ -200,6 +200,7 @@ import {
   PublicAliasRefreshInProgressError,
 } from "./subscription/publicAlias";
 import { fetchDaybreakEdition, mapDaybreakErrorToHttp } from "./daybreak/editionClient";
+import { handleDaybreakEditorProxy } from "./daybreak/editorProxy";
 import { startBaseSyncLoop } from "./base/sync";
 import {
   handleBalance as handleStablecoinBalance,
@@ -1934,6 +1935,21 @@ async function dispatchRequest(
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(result.value));
     return;
+  }
+
+  // Daybreak editor — the CMS's three treasury proxies (spec §3.4.5), each in
+  // front of the Worker's /daybreak/editor* route with DAYBREAK_EDITOR_SECRET.
+  // Treasury-only by assertTreasury; save and publish are exempt from
+  // per-action confirmation (no money moves) and body-capped by the proxy.
+  // See daybreak/editorProxy.ts.
+  if (req.method === "GET" && req.url === "/api/daybreak/editor") {
+    return handleDaybreakEditorProxy(req, res, "read", getNodeInfo()?.node_role);
+  }
+  if (req.method === "POST" && req.url === "/api/daybreak/editor/save") {
+    return handleDaybreakEditorProxy(req, res, "save", getNodeInfo()?.node_role);
+  }
+  if (req.method === "POST" && req.url === "/api/daybreak/editor/publish") {
+    return handleDaybreakEditorProxy(req, res, "publish", getNodeInfo()?.node_role);
   }
 
   // ─── Stablecoin rail (spec §8 + 2026-05-26 amendment) ─────────────────
