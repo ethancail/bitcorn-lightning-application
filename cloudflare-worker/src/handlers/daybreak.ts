@@ -134,7 +134,7 @@ function pickZ(z: unknown): Obj | undefined {
   return undefined;
 }
 
-function sanitizeEditionContent(content: EditionContent): EditionContent {
+export function sanitizeEditionContent(content: EditionContent): EditionContent {
   const { [WORKER_OWNED_KEY]: owned, ...sections } = content;
   const z = isPlainObject(owned) ? pickZ(owned.z) : undefined;
   return { ...sections, [WORKER_OWNED_KEY]: { z: z ?? { status: "unavailable", reason: Z_UNRECOGNIZED } } };

@@ -15,6 +15,9 @@
 //   POST /valuation/refresh   — Manually trigger the engine cron (HMAC; handlers/refresh.ts)
 //   GET  /daybreak/edition    — Subscriber-base; Daybreak member read: current edition + held-over status (handlers/daybreak.ts)
 //   POST /daybreak/draft      — Drafting agent (Radar) writes the next due date's draft (bearer secret; handlers/daybreakDraft.ts)
+//   GET  /daybreak/editor          — CMS read: N's and P's editable editions (editor bearer secret; handlers/daybreakEditor.ts)
+//   POST /daybreak/editor/save     — CMS save of Kevin's working copy (editor bearer secret; handlers/daybreakEditor.ts)
+//   POST /daybreak/editor/publish  — CMS publish (editor bearer secret; handlers/daybreakEditor.ts)
 //
 //   ─── Stablecoin rail (per spec §5) ───
 //   GET  /base/contract-info  — Public; SettlementRouter address + live state (handlers/base.ts)
@@ -41,6 +44,11 @@ import { handleManualInputCalendar, handleManualInputDay } from "./handlers/manu
 import { handleValuationRefresh } from "./handlers/refresh";
 import { handleDaybreakEdition } from "./handlers/daybreak";
 import { handleDaybreakDraft } from "./handlers/daybreakDraft";
+import {
+  handleDaybreakEditorPublish,
+  handleDaybreakEditorRead,
+  handleDaybreakEditorSave,
+} from "./handlers/daybreakEditor";
 import {
   handleBaseBalance,
   handleBaseContractInfo,
@@ -94,6 +102,21 @@ export default {
     // same `Authorization: Bearer` header and is, here, just a wrong secret.
     if (request.method === "POST" && url.pathname === "/daybreak/draft") {
       return handleDaybreakDraft(request, env);
+    }
+
+    // ── CMS EDITOR endpoints (bearer secret; Daybreak read, save, publish) ──
+    // The treasury API proves itself with DAYBREAK_EDITOR_SECRET — a different
+    // secret from Radar's, and not an entitlement token, so these are not
+    // JWT-gated either (spec §3.4.5, R3). Each handler checks the bearer itself,
+    // before it reads the body or KV.
+    if (request.method === "GET" && url.pathname === "/daybreak/editor") {
+      return handleDaybreakEditorRead(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/daybreak/editor/save") {
+      return handleDaybreakEditorSave(request, env);
+    }
+    if (request.method === "POST" && url.pathname === "/daybreak/editor/publish") {
+      return handleDaybreakEditorPublish(request, env);
     }
 
     // ── SUBSCRIBER-BASE endpoints (Onramp, commodity prices, Daybreak) ──
