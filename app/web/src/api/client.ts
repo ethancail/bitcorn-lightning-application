@@ -93,6 +93,15 @@ export const api = {
   // (app/api/src/index.ts). `unknown` on purpose — daybreak/daybreakView.ts
   // parses it, because the written sections have no schema the API vouches for.
   getDaybreakEdition: () => apiFetch<unknown>("/api/daybreak/edition"),
+  // Daybreak Editor (treasury). The read takes no date — the Worker supplies
+  // both editable editions — and no request carries a query string (the proxies
+  // match the URL exactly). Save and publish carry the date in the body.
+  // `unknown` on purpose — daybreakEditor/editorView.ts parses them.
+  getDaybreakEditor: () => apiFetch<unknown>("/api/daybreak/editor"),
+  saveDaybreakEdition: (body: { date: string; sections: Record<string, unknown> }) =>
+    apiFetch<unknown>("/api/daybreak/editor/save", { method: "POST", body: JSON.stringify(body) }),
+  publishDaybreakEdition: (body: { date: string }) =>
+    apiFetch<unknown>("/api/daybreak/editor/publish", { method: "POST", body: JSON.stringify(body) }),
   getSubscriptionStatus: () => apiFetch<SubscriptionStatus>("/api/subscription/status"),
   getSubscriptionPayments: () => apiFetch<SubscriptionPaymentsResponse>("/api/subscription/payments"),
   // Pay-from-node modal (the "I have BTC → Pay from this node" path).
