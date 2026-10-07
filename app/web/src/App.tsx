@@ -50,6 +50,8 @@ import Liquidity from "./pages/Liquidity";
 import Daybreak from "./pages/Daybreak";
 import { DAYBREAK_NAV_LABEL } from "./daybreak/daybreakCopy";
 import { SHOW_DAYBREAK_IN_MEMBER_NAV } from "./daybreak/launch";
+import DaybreakEditor from "./pages/DaybreakEditor";
+import { EDITOR_NAV_LABEL } from "./daybreakEditor/editorCopy";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
 // Browsers change number input values on scroll wheel — confusing for sats fields.
@@ -326,6 +328,8 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
     { to: "/swaps", icon: "⟲", label: "Swaps" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
     { to: "/valuation-input", icon: "◐", label: "Valuation Inputs" },
+    // The Daybreak CMS (spec §3.4.5): treasury shell only — never in MemberSidebar.
+    { to: "/daybreak-editor", icon: "☀", label: EDITOR_NAV_LABEL },
     { to: "/admin/members", icon: "◆", label: "Members" },
   ];
 
@@ -414,6 +418,7 @@ function AppShell() {
           <Route path="/swaps" element={<SwapOperations />} />
           <Route path="/auto-buy" element={<AutoBuy />} />
           <Route path="/valuation-input" element={<ValuationInput />} />
+          <Route path="/daybreak-editor" element={<DaybreakEditor />} />
           <Route path="/settings" element={<SettingsPage isTreasury />} />
           <Route path="/admin/members" element={<AdminMembers />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

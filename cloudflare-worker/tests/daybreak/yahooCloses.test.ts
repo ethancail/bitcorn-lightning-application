@@ -196,6 +196,19 @@ describe("test 59: Bitcoin's in-progress bar is never returned", () => {
     expectClose(await run(BTC, btc5d, "2026-09-28T23:59:59Z"), "2026-09-27", 84458.0859375);
     expectClose(await run(BTC, btc5d, "2026-09-29T00:00:00Z"), "2026-09-28", 83843.0703125);
   });
+
+  // At Mon 07:00 CDT (09-28T12:00Z) the SYNTHETIC body's 09-28 bar contains the
+  // clock and its 09-29 bar is dated AFTER it. "Not the clock's day" would admit
+  // 09-29; "before the clock's day" admits neither.
+  it("permitting: with a bar dated after the clock's UTC date present, the last bar dated before it (09-27) is returned", async () => {
+    expectClose(await run(BTC, btcPlus0929, "2026-09-28T12:00:00Z"), "2026-09-27", 84458.0859375);
+  });
+
+  it("forbidding: the future-dated 09-29 bar is never returned", async () => {
+    const r = await run(BTC, btcPlus0929, "2026-09-28T12:00:00Z");
+    expect(r.ok && r.date).not.toBe("2026-09-29");
+    expect(r.ok && r.close).not.toBe(99999.5);
+  });
 });
 
 // ─── Tests 60 and 64: a null or non-finite chosen close ──────────────────

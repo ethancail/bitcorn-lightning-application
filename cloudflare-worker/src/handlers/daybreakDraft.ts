@@ -87,7 +87,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
  * lengths — it would throw on unequal ones, and checking length first would
  * leak the secret's length.
  */
-async function bearerMatches(presented: string, secret: string): Promise<boolean> {
+export async function bearerMatches(presented: string, secret: string): Promise<boolean> {
   const [a, b] = await Promise.all([
     crypto.subtle.digest("SHA-256", encoder.encode(presented)),
     crypto.subtle.digest("SHA-256", encoder.encode(secret)),
@@ -100,7 +100,7 @@ async function bearerMatches(presented: string, secret: string): Promise<boolean
  * unread; otherwise the stream is counted as it arrives and cancelled the moment
  * it passes the cap, so an oversized body is never buffered whole.
  */
-async function readCappedBody(request: Request, max: number): Promise<{ ok: true; bytes: Uint8Array } | { ok: false }> {
+export async function readCappedBody(request: Request, max: number): Promise<{ ok: true; bytes: Uint8Array } | { ok: false }> {
   const declared = Number(request.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > max) return { ok: false };
   if (!request.body) return { ok: true, bytes: new Uint8Array(0) };

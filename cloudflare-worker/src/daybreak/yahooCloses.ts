@@ -14,8 +14,9 @@
 //  - A BAR'S DATE is the UTC date of its timestamp. Corn bars are stamped at New
 //    York midnight (04:00Z in EDT, 05:00Z in EST) and Bitcoin's at UTC
 //    midnight; `centralDateOf(ts)` would put both on the day before.
-//  - BITCOIN: the finished close is the last bar whose UTC day does not contain
-//    the fetcher's clock — here, the last bar dated before the clock's UTC date.
+//  - BITCOIN: the finished close is the last bar dated BEFORE the fetcher's
+//    clock's UTC date, so neither the in-progress bar nor a future-dated one is
+//    ever returned.
 //  - CORN: a bar dated D is finished once 1:20 PM Central has passed ON D, by
 //    the fetcher's clock; 1:20:00 exactly counts as passed. ⚠ CBOT's close is
 //    NOT in Yahoo's response — this HARDCODES it. Yahoo's trading-period window

@@ -21,7 +21,7 @@ Fixtures for `tests/daybreak/yahooCloses.test.ts` and `tests/daybreakDraftRoute.
 
 Files are renamed to keep `%` (from `ZC%3DF`) out of import paths.
 
-**Transcription oddity, unexplained:** consecutive bars repeat a volume. It happens in the 09-28 captures (09-24 and 09-25 both show 222470), and again in the 09-29 capture (09-25 and 09-28 both show 356335). The adapter reads no volume.
+**Repeated volumes are Yahoo's, not a transcription slip:** the latest finished corn bar repeats the volume of the bar before it. All three Monday captures show it identically (`zc-f_1mo_2026-09-28.json`, `zc-f_5d_2026-09-28_midday.json`, `zc-f_5d_2026-09-28_afternoon.json`: 09-24 and 09-25 both 222470), and the Tuesday capture shows it one bar later (`zc-f_5d_2026-09-29_midday.json`: 09-25 and 09-28 both 356335, 09-25's volume revised since Monday). A slip would not recur the same way across separately fetched and transcribed bodies. The adapter reads no volume.
 
 ## SYNTHETIC fixtures — derived, not captured
 

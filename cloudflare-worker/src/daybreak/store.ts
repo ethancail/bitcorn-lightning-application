@@ -3,8 +3,12 @@
 // single-writer semantics (spec §3.3.1: if auto-publish is ever adopted, the
 // backend behind these functions changes and nothing else does).
 //
-// THREE keys per US Central publication date, ONE writer each (Ruling D):
-//   daybreak:<YYYY-MM-DD>:draft      — the drafting agent
+// THREE keys per US Central publication date (Ruling D, superseded in part by
+// the CMS's ruling (8), spec §3.4.5 R8):
+//   daybreak:<YYYY-MM-DD>:draft      — the drafting agent; AND the treasury
+//                                      editor's save when no draft exists for
+//                                      the date, which creates it through intake
+//                                      before saving the working copy
 //   daybreak:<YYYY-MM-DD>:working    — the treasury editor, as Kevin saves
 //   daybreak:<YYYY-MM-DD>:published  — Kevin's publish action
 // in the PRICES_CACHE namespace. Member reads touch ONLY the published key.

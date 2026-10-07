@@ -49,7 +49,7 @@ Copy the full token string. You'll paste it into the Bitcorn environment file in
 
 #### 3. Add `TUNNEL_TOKEN` to your environment
 
-Open the Bitcorn environment file (the same file holding `VALUATION_SUBMIT_HMAC`, etc. — on Umbrel this lives at `~/umbrel/app-data/bitcorn-lightning-node/.env`) and add:
+Open the Bitcorn environment file (the same file holding `VALUATION_SUBMIT_HMAC`, and on the treasury `DAYBREAK_EDITOR_SECRET`, etc. — on Umbrel this lives at `~/umbrel/app-data/bitcorn-lightning-node/.env`) and add:
 
 ```
 TUNNEL_TOKEN=eyJh...<long string from step 2>...

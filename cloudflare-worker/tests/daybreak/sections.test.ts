@@ -142,3 +142,51 @@ describe("test 52: a non-https Worth Reading link is rejected", () => {
     expect(validateSections(with_({ worthReading: noLink }))).toEqual(rejected);
   });
 });
+
+// Ethan's ruling: an EMPTY Worth Reading title, note or link is refused, as the
+// editor screen already refuses one. "Empty" is the screen's own notion
+// (app/web/src/daybreakEditor/editorView.ts, `filled`: `s.trim() !== ""`), so a
+// whitespace-only field is empty and a padded one is not. The link's case was
+// already refused as invalid_link by the https check; it is pinned here with
+// the other two.
+const BLANKS = ["", " ", "\t\n  \r\n"];
+
+describe("Worth Reading: an empty title, note or link is refused", () => {
+  it("permitting: a title, a note and a link each holding something are accepted, padding included", () => {
+    expect(validateSections(withWorthReading({ title: "x" }))).toEqual({ ok: true });
+    expect(validateSections(withWorthReading({ title: "  A padded title  " }))).toEqual({ ok: true });
+    expect(validateSections(withWorthReading({ note: "x" }))).toEqual({ ok: true });
+    expect(validateSections(withWorthReading({ note: "\tA padded note\n" }))).toEqual({ ok: true });
+    expect(validateSections(withWorthReading({ link: "https://a.example/" }))).toEqual({ ok: true });
+  });
+
+  it("forbidding: an empty or whitespace-only title is invalid_section, naming worthReading.title", () => {
+    for (const title of BLANKS) {
+      expect(validateSections(withWorthReading({ title })), JSON.stringify(title)).toEqual({
+        ok: false,
+        code: "invalid_section",
+        field: "worthReading.title",
+      });
+    }
+  });
+
+  it("forbidding: an empty or whitespace-only note is invalid_section, naming worthReading.note", () => {
+    for (const note of BLANKS) {
+      expect(validateSections(withWorthReading({ note })), JSON.stringify(note)).toEqual({
+        ok: false,
+        code: "invalid_section",
+        field: "worthReading.note",
+      });
+    }
+  });
+
+  it("forbidding: an empty or whitespace-only link is invalid_link, naming worthReading.link", () => {
+    for (const link of BLANKS) {
+      expect(validateSections(withWorthReading({ link })), JSON.stringify(link)).toEqual({
+        ok: false,
+        code: "invalid_link",
+        field: "worthReading.link",
+      });
+    }
+  });
+});

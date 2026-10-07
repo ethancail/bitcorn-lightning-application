@@ -327,6 +327,11 @@ export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: stri
   { method: "POST", match: { kind: "exact", url: "/api/profile/name" }, why: "local profile field" },
   { method: "POST", match: { kind: "exact", url: "/api/valuation/manual" }, why: "valuation input" },
   { method: "POST", match: { kind: "exact", url: "/api/valuation/refresh-worker" }, why: "cache refresh" },
+  // Daybreak editor (spec §3.4.5 R5): an edition's text and its publication.
+  // Exempt does NOT authenticate — assertTreasury is the node-role check, and
+  // the login is tailnet membership.
+  { method: "POST", match: { kind: "exact", url: "/api/daybreak/editor/save" }, why: "edition text, no money moves" },
+  { method: "POST", match: { kind: "exact", url: "/api/daybreak/editor/publish" }, why: "edition publish, no money moves" },
   { method: "POST", match: { kind: "exact", url: "/api/stablecoin/wallet/challenge" }, why: "SIWE nonce" },
   { method: "POST", match: { kind: "exact", url: "/api/stablecoin/wallet" }, why: "wallet registration" },
   { method: "DELETE", match: { kind: "exact", url: "/api/stablecoin/wallet" }, why: "wallet removal" },
