@@ -398,6 +398,41 @@ describe("test 52: a non-https Worth Reading link is rejected", () => {
   });
 });
 
+// ─── Worth Reading: an empty field (route level) ─────────────────────────
+
+// Ethan's ruling: the shared validator refuses an empty Worth Reading title,
+// note or link, as the editor screen does — "empty" is the screen's trimmed
+// notion. The editor save's half is in tests/daybreakEditorRoute.test.ts.
+describe("Worth Reading: an empty title, note or link is a 400 naming the field — nothing written", () => {
+  const BLANKS = ["", " ", "\t\n  \r\n"];
+  const wr = (patch: Record<string, unknown>) => ({ ...SECTIONS, worthReading: { ...SECTIONS.worthReading, ...patch } });
+
+  it("permitting: a title, a note and a link each holding something are accepted, padding included", async () => {
+    for (const patch of [{ title: "x" }, { title: "  A padded title  " }, { note: "x" }, { note: "\tA padded note\n" }, { link: "https://a.example/" }]) {
+      const { kv, puts } = withParams();
+      expect((await send(envWith(kv), request(envelope({ sections: wr(patch) })))).status, JSON.stringify(patch)).toBe(200);
+      expect(puts(), JSON.stringify(patch)).toEqual([DRAFT_KEY]);
+    }
+  });
+
+  const forbidden: Array<[string, Record<string, unknown>]> = [
+    ["title", { error: "invalid_section", field: "worthReading.title" }],
+    ["note", { error: "invalid_section", field: "worthReading.note" }],
+    ["link", { error: "invalid_link", field: "worthReading.link" }],
+  ];
+  for (const [field, want] of forbidden) {
+    it(`forbidding: an empty or whitespace-only ${field}`, async () => {
+      for (const blank of BLANKS) {
+        const { kv, ops } = withParams();
+        const res = await send(envWith(kv), request(envelope({ sections: wr({ [field]: blank }) })));
+        expect(res.status, JSON.stringify(blank)).toBe(400);
+        expect(await jsonOf(res), JSON.stringify(blank)).toEqual(want);
+        expect(ops, JSON.stringify(blank)).toEqual([]);
+      }
+    });
+  }
+});
+
 // ─── Test 53 ─────────────────────────────────────────────────────────────
 
 // Test 53 was written for the fail-closed stand-in the route ran with until the

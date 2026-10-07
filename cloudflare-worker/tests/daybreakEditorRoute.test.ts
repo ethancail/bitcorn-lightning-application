@@ -620,6 +620,45 @@ describe("test 70: the save validates (R4)", () => {
   });
 });
 
+// ─── Worth Reading: an empty field (the save) ────────────────────────────
+
+// Ethan's ruling: the shared validator refuses an empty Worth Reading title,
+// note or link, as the editor screen does — "empty" is the screen's trimmed
+// notion. The drafting route's half is in tests/daybreakDraftRoute.test.ts.
+describe("Worth Reading: an empty title, note or link — the save refuses it", () => {
+  const BLANKS = ["", " ", "\t\n  \r\n"];
+  const wr = (patch: Record<string, unknown>) => ({ ...SECTIONS, worthReading: { ...SECTIONS.worthReading, ...patch } });
+
+  it("permitting: a title, a note and a link each holding something are accepted, padding included", async () => {
+    for (const patch of [{ title: "x" }, { title: "  A padded title  " }, { note: "x" }, { note: "\tA padded note\n" }, { link: "https://a.example/" }]) {
+      const m = await kvWithDraftForN();
+      expect((await send(envWith(m.kv), save(N, wr(patch)))).status, JSON.stringify(patch)).toBe(200);
+      expect(m.puts(), JSON.stringify(patch)).toEqual([key(N, "working")]);
+    }
+  });
+
+  const forbidden: Array<[string, Record<string, unknown>]> = [
+    ["title", { error: "invalid_section", field: "worthReading.title" }],
+    ["note", { error: "invalid_section", field: "worthReading.note" }],
+    ["link", { error: "invalid_link", field: "worthReading.link" }],
+  ];
+  for (const [field, want] of forbidden) {
+    it(`forbidding: an empty or whitespace-only ${field} is a 400 naming the field; neither :working nor :draft is written — with or without a draft`, async () => {
+      for (const blank of BLANKS) {
+        for (const withDraft of [true, false]) {
+          const why = `${JSON.stringify(blank)} (draft: ${withDraft})`;
+          const m = withDraft ? await kvWithDraftForN() : withParams();
+          const res = await send(envWith(m.kv), save(N, wr({ [field]: blank })));
+          expect(res.status, why).toBe(400);
+          expect(await jsonOf(res), why).toEqual(want);
+          expect(m.puts(), why).toEqual([]);
+          expect(m.editionOps(), why).toEqual([]);
+        }
+      }
+    });
+  }
+});
+
 // ─── Test 71 ─────────────────────────────────────────────────────────────
 
 describe("test 71: publish, and republish with no mark (R4, R7)", () => {
