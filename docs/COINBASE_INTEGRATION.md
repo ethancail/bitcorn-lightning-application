@@ -81,6 +81,7 @@ Required in the API container (`docker-compose.yml`):
 - `COINBASE_WORKER_URL` — URL of the Cloudflare Worker (e.g. `https://bitcorn-onramp.ethancail.workers.dev`). If unset, returns 503.
 - `VALUATION_SUBMIT_HMAC` — shared HMAC secret between the treasury API and the Worker for the `POST /valuation/manual` endpoint. **Sensitive** — never commit. Set via `bitcorn-lightning-node/.env` (see `.env.example` in that directory). If unset, `POST /api/valuation/manual` returns 503.
 - `VALUATION_WORKER_URL` — optional override; defaults to `COINBASE_WORKER_URL` (both endpoints live on the same Worker today).
+- `DAYBREAK_EDITOR_SECRET` — **treasury only.** The bearer secret the treasury API's three proxies (`GET /api/daybreak/editor`, `POST /api/daybreak/editor/save`, `POST /api/daybreak/editor/publish`) send to the Worker's `/daybreak/editor*` routes, at `COINBASE_WORKER_URL`; the SAME value as the Worker's `DAYBREAK_EDITOR_SECRET` above. **Sensitive** — never commit. Set in the treasury's `bitcorn-lightning-node/.env` exactly as `VALUATION_SUBMIT_HMAC` is below (`openssl rand -hex 32`, then `npx wrangler secret put DAYBREAK_EDITOR_SECRET` with the same value, then restart the app). The compose line ships empty to every node; it is never set on a member node. If unset, each proxy returns 503 `editor_not_configured`.
 
 ### Setting the operator secret (Umbrel install)
 

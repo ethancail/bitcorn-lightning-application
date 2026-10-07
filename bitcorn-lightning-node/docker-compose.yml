@@ -48,6 +48,17 @@ services:
       # If unset, POST /api/valuation/manual returns 503 valuation_worker_not_configured.
       # See .env.example in this directory for the template.
       VALUATION_SUBMIT_HMAC: "${VALUATION_SUBMIT_HMAC:-}"
+      # Daybreak editor — the treasury API's bearer secret for the Worker's
+      # /daybreak/editor routes (the CMS). Set it in the TREASURY's `.env` only,
+      # same mechanism as VALUATION_SUBMIT_HMAC above; generate with
+      #   openssl rand -hex 32
+      # and put the SAME value on the Worker via:
+      #   cd cloudflare-worker && npx wrangler secret put DAYBREAK_EDITOR_SECRET
+      # ⚠ There is ONE api service for every node, so this line ships EMPTY to
+      # member nodes too — treasury-only by configuration, not by construction.
+      # Never hand the value to a member node. If unset, the /api/daybreak/editor*
+      # proxies return 503 editor_not_configured.
+      DAYBREAK_EDITOR_SECRET: "${DAYBREAK_EDITOR_SECRET:-}"
       # Optional — defaults to COINBASE_WORKER_URL above. Only override if the
       # valuation endpoint ever lives on a different Worker than the Onramp one.
       VALUATION_WORKER_URL: "${VALUATION_WORKER_URL:-}"
