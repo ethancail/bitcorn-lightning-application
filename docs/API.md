@@ -90,7 +90,7 @@ Save and publish bodies are capped by the proxy at 32 KiB, the Worker's own cap;
 | 403 | `{ "error": "treasury_role_required" }` | This node is not the treasury (or has no role yet) |
 | 503 | `{ "error": "editor_not_configured" }` | `DAYBREAK_EDITOR_SECRET` unset on this node — the Worker is not called |
 | 503 | `{ "error": "worker_not_configured" }` | `COINBASE_WORKER_URL` unset on this node |
-| 415 | `{ "error": "unsupported_content_type" }` | Save or publish without `Content-Type: application/json` (a charset parameter is fine) — refused before the body is read, the Worker is not called. CSRF hardening: a cross-site page can POST `text/plain` or a form encoding without a CORS preflight, but not JSON |
+| 415 | `{ "error": "unsupported_content_type" }` | Save or publish without `Content-Type: application/json` (a charset parameter is fine) — refused before the body is read, the Worker is not called. `handleRequest` now refuses this for every write (see Write Requests below); the proxy's own check remains as a second line. CSRF hardening: a cross-site page can POST `text/plain` or a form encoding without a CORS preflight, but not JSON |
 | 413 | `{ "error": "body_too_large" }` | Save or publish body over the proxy's cap — the Worker is not called |
 | 4xx | `{ "error": "editor_refused", "reason": "<code>", "field"?: "<name>" }` | The Worker refused the request, with its status and code: 400 `invalid_json` / `invalid_body` / `invalid_date` / `invalid_sections` / `unknown_section` / `invalid_section` / `invalid_link` (`field` is a section name such as `worthReading.link`), 413 `body_too_large`, 422 `not_editable_date`, 409 `nothing_to_publish` |
 | 502 | `{ "error": "worker_auth_rejected", "reason"?: "<code>" }` | Worker 401 — the treasury's secret and the Worker's disagree |
@@ -307,6 +307,36 @@ Treasury-operator-approved push flow used for initial channel provisioning or ed
 | POST | `/api/member-liquidity/reject` | Reject recommendation |
 | GET | `/api/member-liquidity/outcomes` | Top-up history |
 
+## Write Requests: JSON only, no cross-site browsers
+
+**Every write — every `POST`, `PATCH` and `DELETE`, with or without a body —
+must send `Content-Type: application/json`.** From the shell:
+
+```bash
+curl -sS -X POST http://localhost:3101/lnd/sync -H 'Content-Type: application/json'
+```
+
+`curl -X POST` alone sends no Content-Type, and `curl -d` alone sends
+`application/x-www-form-urlencoded`; both are refused. Both checks run in
+`handleRequest` before the body is read and before classification, so they
+cover confirmed, exempt and unclassified routes alike:
+
+- **403 `{ "error": "cross_site_refused" }`** — the request carries an `Origin`
+  header that is not private (the same rule as CORS above). Cross-site browser
+  writes are refused. A request with **no** `Origin` — server-to-server, `curl`,
+  the treasury's own token self-mint — is not affected.
+- **415 `{ "error": "unsupported_content_type" }`** — the media type is not
+  `application/json`. A `charset` parameter and any capitalisation are fine; a
+  missing Content-Type is refused.
+
+Why: CORS stops a page reading a reply, not the request running. A browser sends
+a `text/plain`, form-encoded, multipart or untyped `POST` cross-site *without* a
+preflight, and the handlers parse the body as JSON whatever its type — so,
+without this check, a page on any site could trigger every route exempt from
+per-action confirmation, including bodiless ones that move funds. A JSON
+Content-Type cannot be sent cross-site without a preflight, and the preflight
+is answered by origin. Reads (`GET`/`HEAD`) and `OPTIONS` are untouched.
+
 ## Per-Action Confirmation (capital-moving routes)
 
 Routes that move funds require an `x-bitcorn-confirm` header carrying a value
@@ -469,9 +499,10 @@ Reads (`GET`/`HEAD`), `OPTIONS` preflight, and `/health` are untouched.
 ## Error Handling
 
 - **400:** Bad request (invalid body or parameters), or `confirmation_required`
-- **403:** Forbidden (not treasury, or membership not active for pay)
+- **403:** Forbidden (not treasury, or membership not active for pay), or `cross_site_refused` on a write — see Write Requests above
 - **409:** `confirmation_mismatch` — see Per-Action Confirmation above
 - **413:** Request body over the 1 MiB gate limit on a confirmed route
+- **415:** `unsupported_content_type` — a write without `Content-Type: application/json`; see Write Requests above
 - **429:** Rate limit or capital policy violation
 - **500:** Server or LND error
 - **502:** Upstream (Cloudflare Worker or Loop) down

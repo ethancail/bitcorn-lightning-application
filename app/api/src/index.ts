@@ -324,6 +324,25 @@ function isPrivateOrigin(origin: string): boolean {
   return hostname === "localhost" || hostname.endsWith(".local");
 }
 
+// The refusal for a mutation that a cross-site page could have sent, or null to
+// let it through. A present Origin must pass isPrivateOrigin — the same rule the
+// preflight uses — and the Content-Type's media type must be application/json,
+// compared without parameters (`; charset=…`) and without case. A missing
+// Content-Type is refused: it is exactly what a bodiless cross-site POST sends.
+function refuseCrossSiteMutation(
+  req: http.IncomingMessage
+): { status: 403 | 415; error: string } | null {
+  const origin = req.headers.origin;
+  if (origin !== undefined && !isPrivateOrigin(origin)) {
+    return { status: 403, error: "cross_site_refused" };
+  }
+  const mediaType = String(req.headers["content-type"] ?? "").split(";")[0].trim().toLowerCase();
+  if (mediaType !== "application/json") {
+    return { status: 415, error: "unsupported_content_type" };
+  }
+  return null;
+}
+
 // CORS, split out of the request handler so the confirmation gate can run
 // AFTER the headers are set. That ordering is load-bearing: a 400/409 from the
 // gate is a response the dashboard has to be able to READ, and without
@@ -382,6 +401,23 @@ export async function handleRequest(
 
   // Reads pass through untouched — no buffering, no classification.
   if (method === "GET" || method === "HEAD") return dispatchRequest(req, res);
+
+  // CROSS-SITE MUTATION GUARD. CORS stops a page READING the reply, not the
+  // request RUNNING: a browser sends a POST whose type is text/plain, a form
+  // encoding or absent WITHOUT a preflight, and nearly every handler here
+  // JSON.parses the body whatever its type — `body || "{}"` even makes an empty
+  // body valid. So every mutation, confirmed, exempt or unclassified, must carry
+  // a JSON Content-Type (which a browser cannot send cross-site without a
+  // preflight that applyCorsAndPreflight answers by origin), and a browser
+  // Origin that is present must be private. No Origin is a non-browser caller —
+  // the member-to-treasury token call and the treasury's own self-mint — and
+  // passes. Runs before any body is read.
+  const refusal = refuseCrossSiteMutation(req);
+  if (refusal) {
+    res.writeHead(refusal.status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: refusal.error }));
+    return;
+  }
 
   const verdict = classifyMutation(method, url);
 
