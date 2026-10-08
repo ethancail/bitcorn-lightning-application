@@ -362,3 +362,29 @@ These items are explicitly out of scope for the v1.16.0 runbook:
 ---
 
 *End of v1.16.0 runbook content. Subsequent sub-stages or release work that touches operator concerns will produce additional sections via the same handoff pattern.*
+
+---
+
+## Write Requests From the Shell — JSON Content-Type Required
+
+**Applies from:** the first release after v1.18.18.
+**Reference:** `docs/API.md` § Write Requests.
+
+Every write to the API — every `POST`, `PATCH` and `DELETE`, **including ones with no body** — must carry `-H 'Content-Type: application/json'`. Without it the API answers **415 `{"error":"unsupported_content_type"}`** and does nothing. The routes an operator runs by hand, with no dashboard button:
+
+```bash
+curl -sS -X POST http://localhost:3101/lnd/sync \
+  -H 'Content-Type: application/json'
+
+curl -sS -X POST http://localhost:3101/api/admin/subscription/acknowledge-first-run \
+  -H 'Content-Type: application/json'
+
+curl -sS -X POST http://localhost:3101/api/treasury/rebalance/loop-out/auto \
+  -H 'Content-Type: application/json'
+```
+
+Two `curl` habits now fail: `curl -X POST <url>` alone sends no Content-Type, and `curl -d '…' <url>` alone sends `application/x-www-form-urlencoded`. Add the header to both.
+
+**Cross-site browser writes are refused** with **403 `{"error":"cross_site_refused"}`**: a write whose `Origin` header names anything other than a private address, `localhost` or a `.local` name. `curl` and server-to-server calls send no `Origin` and are unaffected; so is the dashboard, which is served from a private address. If the dashboard's writes start failing with 403 after you reach it through a new hostname (for example a Tailscale MagicDNS `*.ts.net` name), that hostname is not private — use the node's IP or `umbrel.local` instead. Writes from such a hostname already failed the CORS preflight before this change.
+
+Why: a web page on any site could otherwise make your browser send a `text/plain` or form-encoded write to the node without a CORS preflight — including bodiless routes that move funds. The JSON Content-Type cannot be sent cross-site without a preflight, and the preflight only succeeds for private origins.

@@ -124,7 +124,9 @@ async function call(method: "GET" | "POST", url: string): Promise<{ status: numb
       return res;
     },
   };
-  await handleRequest({ method, url, headers: {} } as any, res);
+  // The bodiless POST as the web app sends it: apiFetch always sets the JSON
+  // Content-Type, which handleRequest's cross-site guard requires.
+  await handleRequest({ method, url, headers: { "content-type": "application/json" } } as any, res);
   let body: any = null;
   try {
     body = JSON.parse(captured.body);

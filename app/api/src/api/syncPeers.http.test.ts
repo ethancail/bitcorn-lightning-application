@@ -119,7 +119,12 @@ async function syncPeers(): Promise<{ status: number | null; body: any }> {
       return res;
     },
   };
-  await handleRequest({ method: "POST", url: "/api/contacts/sync-peers", headers: {} } as any, res);
+  // The bodiless POST as the web app sends it: apiFetch always sets the JSON
+  // Content-Type, which handleRequest's cross-site guard requires.
+  await handleRequest(
+    { method: "POST", url: "/api/contacts/sync-peers", headers: { "content-type": "application/json" } } as any,
+    res,
+  );
   let body: any = null;
   try {
     body = JSON.parse(captured.body);

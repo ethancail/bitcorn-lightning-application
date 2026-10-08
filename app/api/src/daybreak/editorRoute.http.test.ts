@@ -490,8 +490,10 @@ describe("test 72 (proxy half): no caller-identifying header is forwarded", () =
     "x-real-ip": "100.64.0.9",
     cookie: "session=abc",
     authorization: "Bearer something-the-browser-sent",
-    referer: "http://treasury.tail/daybreak-editor",
-    origin: "http://treasury.tail",
+    // A private origin, as the dashboard's really is: handleRequest refuses a
+    // write from any other (cross-site guard) before the proxy ever runs.
+    referer: "http://umbrel.local:3200/daybreak-editor",
+    origin: "http://umbrel.local:3200",
   };
 
   it("PERMITS: the Worker receives the Authorization the proxy built and the content type", async () => {
