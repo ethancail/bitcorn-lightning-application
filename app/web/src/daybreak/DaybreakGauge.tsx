@@ -20,7 +20,7 @@ import { Z_TITLE, bandsUnavailableCopy, gaugeAriaLabel } from "./daybreakCopy";
 import { TONE_COLOUR, bandTone, centreIndex, formatBound, formatZ, type Band, type BandsView } from "./daybreakView";
 
 const W = 240;
-const H = 140;
+const H = 160; // room below the pivot for the Z number at the largest text scale
 const CX = 120;
 const CY = 118;
 const R = 88;
@@ -112,11 +112,17 @@ export default function DaybreakGauge({ value, bands }: { value: number; bands: 
         })}
         <line x1={CX} y1={CY} x2={nx.toFixed(2)} y2={ny.toFixed(2)} stroke="var(--text)" strokeWidth={3} strokeLinecap="round" />
         <circle cx={CX} cy={CY} r={5} fill="var(--text)" />
+        {/* Below the pivot, where the needle can never reach: its angle is
+            always in [0, π] (fractionWithin is clamped to 0…1), so its tip is
+            never below CY, and with its round cap it paints no lower than
+            CY + 1.5; the pivot dot reaches CY + 5. The em box hangs from y, so
+            a larger text scale grows it downward, away from the needle. */}
         <text
           data-testid="daybreak-gauge-value"
           x={CX}
-          y={CY - 22}
+          y={CY + 12}
           textAnchor="middle"
+          dominantBaseline="text-before-edge"
           fill="var(--text)"
           style={{ fontSize: "1.375rem", fontWeight: 700, fontFamily: "var(--mono)" }}
         >
