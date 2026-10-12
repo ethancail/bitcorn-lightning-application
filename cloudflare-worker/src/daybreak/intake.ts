@@ -1,4 +1,7 @@
-// Daybreak DRAFT INTAKE (spec §3.4.1): the one place a Z enters an edition.
+// Daybreak DRAFT INTAKE (spec §3.4.1): the one place a Z is computed.
+// computeZBlock is also the working save's re-fetch when the draft's Z is
+// unavailable (workingSave.ts, ruled 2026-10-12) — one computation, one set of
+// rules, never a second copy.
 //
 // For an EXPLICITLY STATED edition date (Ruling E — never a clock):
 //   load params (fail closed) → fetch both closes → check staleness →
@@ -121,7 +124,7 @@ async function fetchClose(fetcher: CloseFetcher, symbol: PriceSymbol): Promise<C
   }
 }
 
-async function computeZBlock({ kv, fetcher }: IntakeDeps, editionDate: CentralDate): Promise<ZBlock> {
+export async function computeZBlock({ kv, fetcher }: IntakeDeps, editionDate: CentralDate): Promise<ZBlock> {
   const params = await loadPowerLawParams(kv);
   if (!params.ok) return unavailable("params_unavailable", `${params.reason}: ${params.detail}`);
 

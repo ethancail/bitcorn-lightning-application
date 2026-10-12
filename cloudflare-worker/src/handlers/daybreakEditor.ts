@@ -50,6 +50,12 @@
 // future_dated_close (intake fetches the latest completed closes); that is the
 // spec's open finding, built as written and not worked around.
 //
+// When the Z saveWorking would copy is UNAVAILABLE, it fetches the closes again
+// with this route's Yahoo fetcher and recomputes (ruled 2026-10-12; see
+// workingSave.ts). Publish copies working, and the editor saves before it
+// publishes, so a publish carries the re-fetched Z. With no draft and an
+// unavailable intake Z, one save therefore fetches twice.
+//
 // ─── CODES ONLY ──────────────────────────────────────────────────────────
 //
 // Every body is a code, a field name, a date, a yes/no, the sanitised edition,
@@ -187,14 +193,14 @@ export async function handleDaybreakEditorSave(request: Request, env: Env): Prom
 
   try {
     const kv = env.PRICES_CACHE;
+    const fetcher = createYahooCloseFetcher({ fetch: (url, init) => fetch(url, init), now: () => new Date() });
     const draft = await readDraft(kv, date);
     if (!draft.ok) throw storeFailure(draft);
     if (!draft.found) {
-      const fetcher = createYahooCloseFetcher({ fetch: (url, init) => fetch(url, init), now: () => new Date() });
       const created = await runDraftIntake({ kv, fetcher }, date, sections as Obj);
       if (!created.ok) throw storeFailure(created);
     }
-    const saved = await saveWorking(kv, date, sections as Obj);
+    const saved = await saveWorking(kv, date, sections as Obj, fetcher);
     if (!saved.ok) throw storeFailure(saved);
 
     // The working key's Z after the save, read back through the member read's
