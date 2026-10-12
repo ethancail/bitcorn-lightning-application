@@ -938,6 +938,66 @@ describe("test 74: no draft — the save creates it, through intake (R8)", () =>
   });
 });
 
+// ─── An unavailable Z is re-fetched at the save (Ethan's ruling, 2026-10-12) ─
+
+describe("a save that finds the draft's Z unavailable re-fetches it; save-then-publish publishes the recovered Z", () => {
+  // Test 74's instant and captures: N = 09-29, finished closes dated 09-28.
+  const AT = new Date("2026-09-29T03:00:00Z");
+  const N74 = "2026-09-29";
+  const Z_FETCH_FAILED = {
+    status: "unavailable",
+    reason: "fetch_failed",
+    detail: "BTC-USD: invalid_close: the 2026-09-28 bar's close is null",
+  };
+
+  beforeEach(() => {
+    vi.setSystemTime(AT);
+    fetchSpy.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url === yahooChartUrl("ZC=F")) return new Response(JSON.stringify(cornMondayAfternoon));
+      if (url === yahooChartUrl("BTC-USD")) return new Response(JSON.stringify(btc5d));
+      return new Response("unexpected", { status: 599 });
+    });
+  });
+
+  it("permitting: the save reports an available Z and the publish carries it, with the closes' dates; the draft is untouched", async () => {
+    const m = withParams();
+    const env = envWith(m.kv);
+    await seedDraft(m.kv, N74, draftOf(SECTIONS, Z_FETCH_FAILED));
+    const draftBefore = m.store.get(key(N74, "draft"));
+
+    const saved = await send(env, save(N74, EDITED));
+    expect(saved.status).toBe(200);
+    expect(await jsonOf(saved)).toEqual({ date: N74, z: { status: "available" } });
+    expect(fetchSpy).toHaveBeenCalled();
+
+    expect((await send(env, publish(N74))).status).toBe(200);
+    const z = stored(m.store, key(N74, "published")).workerOwned.z;
+    expect(z.status).toBe("available");
+    expect(typeof z.value).toBe("number");
+    expect(z.corn.date).toBe("2026-09-28");
+    expect(z.btc.date).toBe("2026-09-28");
+    expect(stored(m.store, key(N74, "published")).lead).toBe(EDITED.lead);
+    expect(m.store.get(key(N74, "draft"))).toBe(draftBefore);
+  });
+
+  it("forbidding: with Yahoo still failing, the published Z stays unavailable — the re-fetch's reason, never a number", async () => {
+    fetchSpy.mockImplementation(async () => new Response("Too Many Requests", { status: 429 }));
+    const m = withParams();
+    const env = envWith(m.kv);
+    await seedDraft(m.kv, N74, draftOf(SECTIONS, Z_FETCH_FAILED));
+
+    const saved = await send(env, save(N74, EDITED));
+    expect(await jsonOf(saved)).toEqual({ date: N74, z: { status: "unavailable", reason: "fetch_failed" } });
+    expect(fetchSpy).toHaveBeenCalled();
+    expect((await send(env, publish(N74))).status).toBe(200);
+    const z = stored(m.store, key(N74, "published")).workerOwned.z;
+    expect(z.status).toBe("unavailable");
+    expect(z.detail).not.toBe(Z_FETCH_FAILED.detail); // the save's own re-fetch, not the draft's copy
+    expect(z).not.toHaveProperty("value");
+  });
+});
+
 // ─── Test 75 ─────────────────────────────────────────────────────────────
 
 describe("test 75: no newer-draft notice, no start-over (R9)", () => {

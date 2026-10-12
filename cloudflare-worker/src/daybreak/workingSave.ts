@@ -13,6 +13,16 @@
 // change the numbers under Kevin's text, while an outage at the first save
 // recovers on the next save after a successful re-run.
 //
+// ⚠ AN UNAVAILABLE Z IS RE-FETCHED, NOT COPIED (ruled 2026-10-12). When the
+// block this save would take — the draft's, by the rule above — holds an
+// unavailable Z, the save fetches the closes AGAIN and recomputes the Z through
+// intake's own computeZBlock (same params, staleness, bands), instead of
+// copying the unavailable one. A failed re-fetch stores unavailable with the
+// re-fetch's own reason. Only the working key gets the result; the draft key is
+// never rewritten. An AVAILABLE Z — working's or the draft's — is never
+// re-fetched. (Radar's 2026-10-12 draft met a null Yahoo close at 3 AM UTC
+// that Yahoo filled hours later; the save copied fetch_failed into publish.)
+//
 // ⚠ PER-PIECE PINNING (ruled 2026-09-24) supersedes K.1's whole-block re-copy
 // in part. Today the block holds exactly one piece — the Z with its two close
 // dates — so the two are identical. When market tiles join the block, each
@@ -26,12 +36,13 @@
 // in handlers/daybreakEditor.ts. A draft that lacks the reserved key (written
 // around intake) is still refused: this save never invents Worker-owned fields.
 
+import type { CloseFetcher } from "./closes";
 import { isCentralDate, type CentralDate } from "./dates";
-import { WORKER_OWNED_KEY } from "./intake";
+import { WORKER_OWNED_KEY, computeZBlock } from "./intake";
 import { readDraft, readWorking, writeWorking, type DaybreakStoreError, type EditionContent } from "./store";
 
 export type WorkingSaveResult =
-  | { ok: true; workerOwnedFrom: "draft" | "working" }
+  | { ok: true; workerOwnedFrom: "draft" | "working" | "refetch" }
   | { ok: false; reason: "no_draft" | "missing_worker_owned"; detail: string }
   | DaybreakStoreError;
 
@@ -49,7 +60,12 @@ function holdsAvailableZ(content: EditionContent): boolean {
   return owned.z.status === "available";
 }
 
-export async function saveWorking(kv: KVNamespace, date: CentralDate, content: EditionContent): Promise<WorkingSaveResult> {
+export async function saveWorking(
+  kv: KVNamespace,
+  date: CentralDate,
+  content: EditionContent,
+  fetcher: CloseFetcher,
+): Promise<WorkingSaveResult> {
   if (!isCentralDate(date)) {
     return { ok: false, reason: "invalid_date", detail: `an explicit YYYY-MM-DD Central edition date is required, got ${String(date)}` };
   }
@@ -60,7 +76,7 @@ export async function saveWorking(kv: KVNamespace, date: CentralDate, content: E
   const working = await readWorking(kv, date);
   if (!working.ok) return working;
 
-  let from: "draft" | "working" = "working";
+  let from: "draft" | "working" | "refetch" = "working";
   let source: EditionContent;
   if (working.found && holdsAvailableZ(working.content)) {
     source = working.content;
@@ -74,9 +90,13 @@ export async function saveWorking(kv: KVNamespace, date: CentralDate, content: E
     source = draft.content;
   }
 
-  const owned = source[WORKER_OWNED_KEY];
+  let owned = source[WORKER_OWNED_KEY];
   if (!isPlainObject(owned)) {
     return { ok: false, reason: "missing_worker_owned", detail: `the ${from} for ${date} carries no ${WORKER_OWNED_KEY} key` };
+  }
+  if (!holdsAvailableZ(source)) {
+    owned = { ...owned, z: await computeZBlock({ kv, fetcher }, date) };
+    from = "refetch";
   }
 
   const { [WORKER_OWNED_KEY]: _discarded, ...sections } = content;
