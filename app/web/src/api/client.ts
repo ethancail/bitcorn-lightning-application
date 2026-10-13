@@ -320,7 +320,7 @@ export const api = {
   // adminLoopInQuote / adminLoopIn — removed from active architecture (v1.7.1).
   // Treasury-INITIATED Loop In endpoints return 410 (treasury maintains its own inbound
   // via Loop OUT on external channels). Member-side Loop In (a merchant refilling their
-  // own channel) is a different flow — see /api/swaps/loop-in when implemented.
+  // own channel) is a different, live flow — getSwapLoopInQuote / initiateSwapLoopIn above.
   adminSwapList: (limit?: number) => {
     const q = limit ? `?limit=${limit}` : "";
     return apiFetch<{ swaps: SwapRequest[] }>(`/api/admin/swaps${q}`);

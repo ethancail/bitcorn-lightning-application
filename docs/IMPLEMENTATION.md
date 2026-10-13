@@ -95,8 +95,8 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
 | `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (revenue-focused) |
 | `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form or role-aware earnings panel |
-| `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal — routes `/withdraw`, `/cashout` (farmer). **Note:** `/refill` (merchant) currently also points here. The merchant Loop In page exists in `RefillChannel.tsx` per `docs/plans/2026-04-14-merchant-refill-channel-design.md`; the route swap is pending. |
-| `app/web/src/pages/SwapOperations.tsx` | Treasury Loop Out / Loop In tabs, visual channel picker |
+| `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal — routes `/withdraw`, `/cashout` (farmer). `/refill` (merchant) routes to `RefillChannel.tsx`, the member Loop In page (`docs/plans/2026-04-14-merchant-refill-channel-design.md`), which reaches `swaps/loopProvider.ts` through `swapService.ts`. |
+| `app/web/src/pages/SwapOperations.tsx` | Treasury Loop Out tab, visual channel picker. (Treasury Loop In tab removed — those routes answer 410.) |
 | `app/web/src/pages/Peers.tsx` | Treasury: connect by URI, onboarding guide, live peers table |
 | `app/web/src/pages/MemberLiquidity.tsx` | (Orphaned — imported in `App.tsx` but not currently rendered; displaced by the Liquidity page overhaul shipped in v1.13.8. Retained on disk pending a future cleanup PR.) |
 | `app/web/src/pages/Payments.tsx` | Invoice-based payments (Request Payment + Pay Invoice) with QR |
