@@ -2227,11 +2227,11 @@ input[type="number"] {
 }
 .sub-panel-glyph {
   color: var(--amber);
-  font-size: 12px;
+  font-size: 0.8571rem;
 }
 .sub-panel-title h2 {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 0.7857rem;
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -2247,7 +2247,7 @@ input[type="number"] {
   padding: 2px 10px;
   border-radius: var(--radius-sm);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 0.7857rem;
   letter-spacing: 0.04em;
   border: 1px solid transparent;
 }
@@ -2277,7 +2277,7 @@ input[type="number"] {
 /* Tagline */
 .sub-tagline {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 0.9286rem;
   color: var(--text-3);
   margin: 8px 0 20px 0;
 }
@@ -2288,7 +2288,7 @@ input[type="number"] {
   margin: 8px 0 16px 0;
   padding: 0;
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 0.9286rem;
   color: var(--text-2);
 }
 .sub-prepay-bullets li {
@@ -2313,7 +2313,7 @@ input[type="number"] {
 /* Reassurance line (✓ Onramp ... ) */
 .sub-reassure {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 0.9286rem;
   color: var(--text-2);
   margin: 12px 0 18px 0;
   padding-left: 22px;
@@ -2332,7 +2332,7 @@ input[type="number"] {
   border-radius: var(--radius-sm);
   margin: 12px 0;
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 0.9286rem;
   line-height: 1.5;
 }
 .sub-alert-icon {
@@ -2377,7 +2377,7 @@ input[type="number"] {
 }
 .sub-bracket-label {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 0.7857rem;
   letter-spacing: 0.16em;
   color: var(--amber);
 }
@@ -2400,18 +2400,18 @@ input[type="number"] {
   font-family: var(--mono);
 }
 .sub-stat-label {
-  font-size: 10px;
+  font-size: 0.7143rem;
   letter-spacing: 0.18em;
   color: var(--text-3);
   margin-bottom: 6px;
 }
 .sub-stat-value {
-  font-size: 18px;
+  font-size: 1.2857rem;
   color: var(--text);
   line-height: 1;
 }
 .sub-stat-suffix {
-  font-size: 12px;
+  font-size: 0.8571rem;
   color: var(--text-3);
   margin-top: 4px;
 }
@@ -2451,7 +2451,7 @@ input[type="number"] {
 .sub-deposit-address {
   display: block;
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 0.9286rem;
   line-height: 1.6;
   color: var(--text);
   padding: 12px;
@@ -2467,7 +2467,7 @@ input[type="number"] {
 }
 .sub-deposit-helper {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 0.8571rem;
   color: var(--text-2);
   margin: 8px 0 4px 0;
 }
@@ -2480,7 +2480,7 @@ input[type="number"] {
   padding: 8px 14px;
   border-radius: var(--radius-sm);
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 0.9286rem;
   color: var(--text);
   background: transparent;
   border: 1px solid var(--border);
@@ -2499,7 +2499,7 @@ input[type="number"] {
 
 .sub-link {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 0.8571rem;
   color: var(--text-3);
   text-decoration: none;
 }
@@ -2536,7 +2536,7 @@ input[type="number"] {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 0.9286rem;
   line-height: 1.5;
   color: var(--text-2);
 }
@@ -2560,7 +2560,7 @@ input[type="number"] {
 /* Body copy (external_peer, no_channel) */
 .sub-body-copy {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 0.9286rem;
   color: var(--text-2);
   line-height: 1.6;
   margin: 8px 0;
@@ -2569,7 +2569,7 @@ input[type="number"] {
 /* Fineprint */
 .sub-fineprint {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 0.8571rem;
   color: var(--text-3);
   line-height: 1.5;
   margin-top: 14px;
@@ -2578,7 +2578,7 @@ input[type="number"] {
 /* Footer note (unexpected_missing_row) */
 .sub-footer-note {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 0.8571rem;
   color: var(--text-3);
   line-height: 1.5;
   margin-top: 18px;
@@ -2610,14 +2610,14 @@ input[type="number"] {
 .sub-pulsing-dots span:nth-child(3) { animation-delay: 0.4s; }
 .sub-centered-headline {
   font-family: var(--sans);
-  font-size: 18px;
+  font-size: 1.2857rem;
   color: var(--text);
   font-weight: 500;
   margin: 0 0 8px 0;
 }
 .sub-centered-body {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 0.9286rem;
   color: var(--text-2);
   line-height: 1.6;
   max-width: 520px;
@@ -2625,13 +2625,13 @@ input[type="number"] {
 }
 .sub-stuck-escalation {
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 0.9286rem;
   color: var(--amber);
   margin-top: 12px;
 }
 .sub-pending-channel-age {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 0.7857rem;
   color: var(--text-3);
   opacity: 0.7;
   margin-top: 12px;
@@ -2640,7 +2640,7 @@ input[type="number"] {
 /* Retry indicator (unexpected_missing_row, error states) */
 .sub-retry-indicator {
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 0.8571rem;
   color: var(--text-3);
   margin: 8px 0 16px 0;
 }
@@ -2656,7 +2656,7 @@ input[type="number"] {
 .sub-pubkey {
   display: block;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 0.8571rem;
   color: var(--text);
   word-break: break-all;
   user-select: all;
@@ -2674,7 +2674,7 @@ input[type="number"] {
 /* Error detail */
 .sub-error-detail {
   color: var(--text-3);
-  font-size: 11px;
+  font-size: 0.7857rem;
 }
 
 /* ─── Light-mode overrides for SubscriptionPanel ─────────────────
