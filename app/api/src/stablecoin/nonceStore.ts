@@ -46,9 +46,9 @@ export function upsertChallengeNonce(
 
 /**
  * Look up an outstanding challenge for a member+wallet pair. Returns null
- * if no row exists or if the row has expired. Expired rows are NOT
- * automatically deleted — they linger until a janitorial sweep or until
- * a new challenge UPSERTs over them.
+ * if no row exists or if the row has expired. This read does NOT delete
+ * expired rows — they linger until the hourly sweep that bootSideEffects
+ * (index.ts) schedules, or until a new challenge UPSERTs over them.
  */
 export function getChallengeNonce(
     memberPubkey: string,
