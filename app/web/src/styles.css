@@ -1005,6 +1005,14 @@ p + .settings-section-label { margin-top: 8px; }
 .btn:active:not(:disabled) { transform: scale(0.97); }
 .btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
+/* PR 2: EVERY button gets the house press cue and focus ring, not only .btn —
+   the inline-styled buttons (56 without .btn at 247db99) had neither. A base
+   element rule, so Daybreak is notified (P6); its own buttons are .btn already.
+   A class's own transition, where it sets one, still wins on specificity. */
+button { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1); }
+button:active:not(:disabled) { transform: scale(0.97); }
+button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
 .btn-primary {
   background: var(--amber);
   color: #0a0a0c;
@@ -3807,6 +3815,7 @@ input[type="number"] {
 
   /* Press feedback without movement. */
   .btn:active:not(:disabled) { transform: none; opacity: 0.85; }
+  button:active:not(:disabled) { transform: none; opacity: 0.85; }
 
   .sidebar { transition: none; }
   .member-gauge .fill { transition: none; }
