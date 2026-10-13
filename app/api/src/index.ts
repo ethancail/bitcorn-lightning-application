@@ -23,14 +23,6 @@ import {
   getRotationExecutions,
 } from "./api/treasury-rotation";
 import { getTreasuryAlerts } from "./api/treasury-alerts";
-import {
-  getRecommendations as getLiquidityRecommendations,
-  getEstimateForRecommendation,
-  approveRecommendation,
-  rejectRecommendation,
-  getOutcomes as getLiquidityOutcomes,
-  getOutcomeById as getLiquidityOutcomeById,
-} from "./memberLiquidity/liquidityRoutes";
 import { assertDailyLossCapNotExceeded, DailyLossCapError } from "./utils/loss-cap";
 import {
   getTreasuryFeePolicy,
@@ -3090,112 +3082,6 @@ async function dispatchRequest(
         res.end(JSON.stringify({ error: err?.message }));
       }
     });
-    return;
-  }
-
-  // ─── Member liquidity endpoints (treasury-only) ────────────────────────────
-
-  if (req.method === "GET" && req.url === "/api/member-liquidity/recommendations") {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const data = getLiquidityRecommendations();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
-
-  if (req.method === "GET" && req.url?.startsWith("/api/member-liquidity/recommendations/") && req.url?.endsWith("/estimate")) {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const recId = req.url.slice("/api/member-liquidity/recommendations/".length, -"/estimate".length);
-      const data = await getEstimateForRecommendation(recId);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : err?.message?.includes("not found") ? 404 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
-
-  if (req.method === "POST" && req.url?.startsWith("/api/member-liquidity/recommendations/") && req.url?.endsWith("/approve")) {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const recId = req.url.slice("/api/member-liquidity/recommendations/".length, -"/approve".length);
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", async () => {
-        try {
-          const parsed = JSON.parse(body || "{}");
-          const data = await approveRecommendation(recId, parsed);
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(data));
-        } catch (err: any) {
-          const code = err?.message?.includes("expired") ? 400 : err?.message?.includes("not found") ? 404 : 500;
-          res.writeHead(code, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: err?.message }));
-        }
-      });
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
-
-  if (req.method === "POST" && req.url?.startsWith("/api/member-liquidity/recommendations/") && req.url?.endsWith("/reject")) {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const recId = req.url.slice("/api/member-liquidity/recommendations/".length, -"/reject".length);
-      const data = rejectRecommendation(recId);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : err?.message?.includes("not found") ? 404 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
-
-  if (req.method === "GET" && req.url?.startsWith("/api/member-liquidity/outcomes")) {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const urlObj = new URL(req.url, `http://localhost`);
-      const path = urlObj.pathname;
-
-      if (path !== "/api/member-liquidity/outcomes" && path.startsWith("/api/member-liquidity/outcomes/")) {
-        const outcomeId = decodeURIComponent(path.slice("/api/member-liquidity/outcomes/".length));
-        const data = getLiquidityOutcomeById(outcomeId);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(data));
-        return;
-      }
-
-      const data = getLiquidityOutcomes({
-        clusterId: urlObj.searchParams.get("clusterId") ?? undefined,
-        status: urlObj.searchParams.get("status") ?? undefined,
-        limit: urlObj.searchParams.has("limit") ? Number(urlObj.searchParams.get("limit")) : undefined,
-      });
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : err?.message?.includes("not found") ? 404 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
     return;
   }
 

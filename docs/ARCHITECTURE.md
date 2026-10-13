@@ -157,17 +157,9 @@ Since v1.8.0 every node — treasury, merchant, farmer — ships its own loopd s
 
 Farmers accumulate sats on their local side as they receive payments for commodities. The Member Liquidity Advisor recommends Loop Out once member-local exceeds the threshold; the farmer's own loopd executes the swap, restoring the channel toward its provisioned inbound-heavy shape. Same per-node loopd architecture as merchant Loop In above; Loop Out's mechanics (250k min, ACINQ in-flight cap, prepay-is-not-a-fee) are documented in `docs/LOOP_SETUP.md` and apply identically here.
 
-### Treasury Push (provisioning + edge-case)
+### Treasury Push (removed 2026-10-13)
 
-`src/memberLiquidity/` — operator-approved keysend push from treasury to member. Used for **initial channel provisioning** (before the member has accumulated transaction flow that would naturally fill their side) and **edge-case maintenance** (e.g., bootstrapping a merchant who can't yet run Loop In). It is **not** part of steady-state rebalancing.
-
-- **Detection**: historically driven by the cluster engine's `liquidityDetector.detectLiquidityOpportunities()`; that function was removed alongside the cluster engine (2026-05). The treasury-push recommendation surface (`/api/member-liquidity/recommendations` etc.) is retained but currently operates on empty inputs — see the latent-finding note below.
-- **Estimate**: `liquidityAdvisor` computes the keysend push estimate (60s TTL, ~0 routing fee).
-- **Execution**: `liquidityExecutor.executePush()` calls `keysendPush()` to the member after **explicit operator approval** via the Member Liquidity page. No automatic execution.
-- **Single action type**: `treasury_push_topup`.
-- **Schema**: migration 026 (4 tables: recommendations, estimates, outcomes, config).
-- **Future direction**: invoice-based push is preferred per spec but requires N2N infrastructure (port 3109) that doesn't exist.
-- **Latent finding (flagged for future investigation):** `liquidityAdvisor` + `liquidityExecutor` still `SELECT` from `rebalance_clusters` / `rebalance_cluster_channels` (migrations 023–025, retained per the 2026-05 dormant-subsystem removal decision option a). The cluster engine was the only writer; with it removed, the tables are read but always empty. The treasury-push approve flow appears functional but has no data path feeding it. Triggers for investigation: this surface needing to function operationally, or the next dormant-subsystem audit.
+`src/memberLiquidity/` — the operator-approved keysend push from treasury to member — was deleted by ruling D2 of `decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md` in bitcorn-research, together with its `/api/member-liquidity/*` routes, the `keysendPush()` primitive in `lightning/lnd.ts` and the Member Liquidity page. It had no data path: its detection function went with the cluster engine (2026-05), so its recommendation list was always empty. Its tables (migration 026) are kept, orphaned by decision — see `docs/DATABASE.md`.
 
 ### Treasury Loop Out (external-inbound maintenance + edge cases)
 
@@ -189,11 +181,11 @@ See `docs/LOOP_SETUP.md` for setup, configuration, and gotchas. The optional aut
 
 `src/rebalance/` housed the original three-lever rebalancing architecture (fee steering + circular rebalance + topology monitor) operating on per-peer clusters every 15 min. It was superseded by the member-driven role-based model (Member Liquidity Advisor above) and removed in 2026-05 — see `decisions/2026-05-28-dormant-subsystems-disposition.md` (D2 + D2b) in the bitcorn-research repo. The eight modules (`clusterState`, `feeSteering`, `pairSelector`, `cycleEnumerator`, `cycleScorer`, `rebalanceExecutor`, `topologyMonitor`, `rebalanceScheduler`) and the `GET /api/member-liquidity/clusters` endpoint that read from them are gone. The `CLUSTER_REBALANCE_ENABLED` env var is no longer read.
 
-The associated tables (migrations 023–025) and `seeds/001_initial_clusters.sql` are **retained**: retained `memberLiquidity` treasury-push code still `SELECT`s from `rebalance_clusters` / `rebalance_cluster_channels` (see latent-finding note in the Treasury Push section above). A drop migration was deliberately not part of the removal PR.
+The associated tables (migrations 023–025) and `seeds/001_initial_clusters.sql` are **retained**. Their last reader, the `memberLiquidity` treasury-push code, was deleted 2026-10-13 (see Treasury Push above), so they now have no reader or writer and are kept by decision (`decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`). A drop migration was deliberately not part of either removal.
 
 ### Keysend Status
 
-Keysend push as a *rebalancing tool* was disabled at v1.3.5 — it permanently transfers sats in a hub-and-spoke topology rather than rebalancing the channel. The corresponding module (`lightning/rebalance-keysend.ts`) was removed in 2026-05. Keysend remains the execution mechanism for treasury push (see above) and for the keysend-feature pre-flight check on member onboarding via the retained `keysendPush()` primitive in `lightning/lnd.ts`. The `member_keysend_status` table tracks peers that reject keysend so treasury push attempts can skip them with a 24h backoff. (The `MEMBER_KEYSEND_DISABLED` treasury alert that surfaced it was removed 2026-10-13 — `decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`, D3, in bitcorn-research.)
+Keysend push as a *rebalancing tool* was disabled at v1.3.5 — it permanently transfers sats in a hub-and-spoke topology rather than rebalancing the channel. The corresponding module (`lightning/rebalance-keysend.ts`) was removed in 2026-05, and the treasury push — the last user of the `keysendPush()` primitive — was removed with that primitive on 2026-10-13 (D2 of `decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`, bitcorn-research). What remains is the member onboarding pre-flight, `GET /api/node/preflight`, which reads the local node's keysend feature bit via `isKeysendEnabled()` and sends nothing. The `member_keysend_status` table (migration 021) has no reader or writer and is kept by decision; the `MEMBER_KEYSEND_DISABLED` treasury alert that read it was removed the same day (D3).
 
 ## Lane Model
 
@@ -236,7 +228,6 @@ The full per-version changelog lives in `git log`. Snapshot of capabilities curr
 **Core treasury engine**
 - Channel expansion engine with capital guardrails
 - Loop Out (treasury-side, edge-case + external-inbound maintenance — see Liquidity Management above)
-- Treasury push (operator-approved provisioning + edge cases)
 - Treasury metrics API, rebalance cost ledger (records all rebalance costs regardless of source), forwarding fee tracking
 - Auto-cleans stale `requested`/`submitted` expansion executions after 1h
 
@@ -256,7 +247,6 @@ The full per-version changelog lives in `git log`. Snapshot of capabilities curr
 - Treasury Peers page: connect by URI, onboarding guide, live peers table
 - Treasury Settings page (max-width 720px): Routing Fee Policy + Capital Guardrails + Appearance
 - Swap Operations page: Loop Out / Loop In tabs with visual channel picker
-- Member Liquidity page: cluster overview, top-up approvals, history
 - Network Topology graph (SVG hub-and-spoke, zoom/pan, role-colored)
 
 **Charts & commodities**

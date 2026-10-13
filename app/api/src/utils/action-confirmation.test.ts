@@ -8,6 +8,7 @@ import {
   deriveConfirmation,
   findConfirmedRoute,
   verifyConfirmation,
+  type ConfirmedRoute,
 } from "./action-confirmation";
 
 const sha = (s: string) => crypto.createHash("sha256").update(s, "utf8").digest("hex");
@@ -71,14 +72,22 @@ describe("derivation", () => {
   });
 
   it("reads a Shape 2 path field out of the URL", () => {
-    const r = route("POST", "/api/member-liquidity/recommendations/42/approve");
-    const d = deriveConfirmation(r, {
-      url: "/api/member-liquidity/recommendations/42/approve",
-      body: {},
-    });
+    // SYNTHETIC descriptor. The only live route with a path field
+    // (member-liquidity …/approve) was deleted by ruling D2 of
+    // decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md, but the
+    // derivation still supports `from: "path"` on a `wrap` matcher, so the
+    // property is pinned here against the derivation itself.
+    const r: ConfirmedRoute = {
+      method: "POST",
+      match: { kind: "wrap", prefix: "/api/test-only/things/", suffix: "/act" },
+      shape: 2,
+      fields: [{ name: "thing_id", from: "path", kind: "text" }],
+      note: "test-only",
+    };
+    const d = deriveConfirmation(r, { url: "/api/test-only/things/42/act", body: {} });
     expect(d.ok).toBe(true);
     if (!d.ok) return;
-    expect(d.canonical).toBe("recommendation_id=42");
+    expect(d.canonical).toBe("thing_id=42");
   });
 
   it("refuses a value containing a framing character rather than escaping it", () => {

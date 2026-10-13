@@ -300,18 +300,9 @@ mechanism, not introduced here.
 | POST | `/api/admin/members/public-aliases/refresh` | Button-driven gossip lookup of every roster pubkey (channel peers ∪ subscription rows), at most 4 in flight, each with the 10s gossip deadline. Returns `{ ok, total, alias, none_announced, not_in_graph, failed }`; `409 refresh_in_progress` if one is already running. Never writes `contacts`. Confirmation: EXEMPT |
 | GET | `/api/admin/members/private-names` | The treasury's store of members' Bitcorn-level names: `{ names: [{ pubkey, name, signed_at, received_at }] }` — each sent by the member under its own signature on `/api/subscription/token`, then verified, validated and blocklist-checked. `signed_at` is the challenge timestamp that signed it. 500 `private_name_read_failed`. Read separately by the roster so its failure degrades one column. A read — GETs are not classified for confirmation |
 
-**Member liquidity (treasury-side, edge-case only)**
+**Member liquidity (treasury-side) — removed 2026-10-13**
 
-Treasury-operator-approved push flow used for initial channel provisioning or edge-case maintenance; not part of steady-state rebalancing. Steady-state member rebalancing is driven by the Member Liquidity Advisor on the member node — see `/api/liquidity/*` above.
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/member-liquidity/clusters` | Cluster overview |
-| GET | `/api/member-liquidity/recommendations` | Pending top-up recommendations |
-| GET | `/api/member-liquidity/estimate` | Keysend push estimate (60s TTL) |
-| POST | `/api/member-liquidity/approve` | Approve and execute top-up |
-| POST | `/api/member-liquidity/reject` | Reject recommendation |
-| GET | `/api/member-liquidity/outcomes` | Top-up history |
+The treasury push routes under `/api/member-liquidity/*` were deleted by ruling D2 of `decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md` (bitcorn-research). A POST to one is now refused as unclassified (400 `confirmation_required`); a GET falls through to 404. Steady-state member rebalancing is the Member Liquidity Advisor on the member node — see `/api/liquidity/*` above.
 
 ## Write Requests: JSON only, no cross-site browsers
 

@@ -22,10 +22,6 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/api/treasury-expansion.ts` | Channel expansion recommendations & execution |
 | `src/utils/capital-guardrails.ts` | Pre-expansion policy enforcement |
 | `src/config/env.ts` | All environment variables with defaults — authoritative |
-| `src/memberLiquidity/liquidityDetector.ts` | Treasury-side: holds the `MemberLiquidityActionType` union (detection function removed 2026-05 alongside the cluster engine) |
-| `src/memberLiquidity/liquidityAdvisor.ts` | Treasury-side: computes keysend push estimates |
-| `src/memberLiquidity/liquidityExecutor.ts` | Treasury-side: executes keysend push to member |
-| `src/memberLiquidity/liquidityRoutes.ts` | Treasury-side: route handlers for `/api/member-liquidity/*` |
 | `src/memberAdvisor/channelClassifier.ts` | Member-side: classifies treasury channel state (5 states × 3 urgencies) |
 | `src/memberAdvisor/loopAvailability.ts` | Member-side: checks Loop daemon availability and terms |
 | `src/memberAdvisor/recommendationEngine.ts` | Member-side: role-aware recommendations (merchant/farmer/unknown) |
@@ -98,7 +94,6 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal — routes `/withdraw`, `/cashout` (farmer). `/refill` (merchant) routes to `RefillChannel.tsx`, the member Loop In page (`docs/plans/2026-04-14-merchant-refill-channel-design.md`), which reaches `swaps/loopProvider.ts` through `swapService.ts`. |
 | `app/web/src/pages/SwapOperations.tsx` | Treasury Loop Out tab, visual channel picker. (Treasury Loop In tab removed — those routes answer 410.) |
 | `app/web/src/pages/Peers.tsx` | Treasury: connect by URI, onboarding guide, live peers table |
-| `app/web/src/pages/MemberLiquidity.tsx` | (Orphaned — imported in `App.tsx` but not currently rendered; displaced by the Liquidity page overhaul shipped in v1.13.8. Retained on disk pending a future cleanup PR.) |
 | `app/web/src/pages/Payments.tsx` | Invoice-based payments (Request Payment + Pay Invoice) with QR |
 | `app/web/src/pages/Charts.tsx` | PowerLawChart + PriceTickerStrip + MovingAverages + CornBitcoin + CornMAs |
 | `app/web/src/pages/Contacts.tsx` | CRUD address book with tag editor and sync-from-peers. Accepts `?pubkey=` to open the add form with the Node ID prefilled — the landing point for the admin roster's unidentified marker |
@@ -143,7 +138,7 @@ Role is derived from identity + treasury channel state — **not** bearer tokens
 
 - **Public**: health, node info, channels, pending channels, member stats, channel open, contacts, sync-peers, exchange rate, network invoice/decode/payments/sync-settlements, liquidity status/history/config, coinbase onramp URL, commodity prices, peers
 - **Member** (active treasury channel): `POST /api/pay`, `POST /api/network/pay`
-- **Treasury only**: all `/api/treasury/*` endpoints (metrics, fee policy, liquidity health, expansion, capital policy, rebalance Loop Out, peers), plus the treasury-only `/api/member-liquidity/*` endpoints (operator-approved treasury push for provisioning + edge cases — not steady-state rebalancing; see `docs/ARCHITECTURE.md` § Liquidity Management)
+- **Treasury only**: all `/api/treasury/*` endpoints (metrics, fee policy, liquidity health, expansion, capital policy, rebalance Loop Out, peers)
 
 See `docs/API.md` for the complete endpoint list and request/response shapes.
 

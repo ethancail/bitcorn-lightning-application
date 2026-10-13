@@ -29,7 +29,7 @@ const BANNED = [
 ];
 
 // Every code a member's browser can receive from GET /api/daybreak/edition
-// (app/api/src/daybreak/editionClient.ts:94-111 and app/api/src/index.ts:1870).
+// (app/api/src/daybreak/editionClient.ts:94-111 and app/api/src/index.ts:1994).
 // scope_insufficient is listed apart: it is a real proxy code, but it is RULED
 // to show the generic state (it cannot occur on this payment-gated route, and
 // any tier wording would be false — every tier includes Daybreak).

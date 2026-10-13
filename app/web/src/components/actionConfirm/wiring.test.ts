@@ -36,7 +36,6 @@ const CALL_SITES: Array<{ file: string; method: string; route: string }> = [
   { file: "pages/RefillChannel.tsx", method: "initiateSwapLoopIn", route: "/api/swaps/loop-in" },
   { file: "pages/WithdrawBitcoin.tsx", method: "initiateSwapLoopOut", route: "/api/swaps/loop-out" },
   { file: "pages/Payments.tsx", method: "payNetworkInvoice", route: "/api/network/pay" },
-  { file: "pages/MemberLiquidity.tsx", method: "approveLiquidity", route: "…/recommendations/{id}/approve" },
   { file: "App.tsx", method: "treasuryCloseChannel", route: "/api/treasury/rotation/execute" },
   { file: "App.tsx", method: "treasuryOpenChannel", route: "/api/treasury/expansion/execute" },
   { file: "pages/SwapOperations.tsx", method: "adminLoopOut", route: "/api/admin/swaps/loop-out" },

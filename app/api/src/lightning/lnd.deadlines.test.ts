@@ -230,7 +230,6 @@ describe("CONTROL 4 (behavioural) — held calls do not time out", () => {
     ["openTreasuryChannel", () => lnd.openTreasuryChannel("02bb", 100_000)],
     ["closeTreasuryChannel", () => lnd.closeTreasuryChannel("tx", 0)],
     ["payLndViaRoutes", () => lnd.payLndViaRoutes("ff", [] as never[])],
-    ["keysendPush", () => lnd.keysendPush({ destination: "02bb", tokens: 1 })],
   ];
 
   for (const [name, call] of HELD_CASES) {

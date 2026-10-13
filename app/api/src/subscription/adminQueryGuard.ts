@@ -9,7 +9,7 @@
 // A node-role check is not caller authentication.
 //
 // The member side already refused the parameter outright rather than trying to
-// authenticate it (index.ts:580-581 for /status, :749-751 for /payments). This
+// authenticate it (index.ts:808-809 for /status, :978-980 for /payments). This
 // module carries that same decision so the treasury refuses it too.
 //
 // Deliberately NOT done here, and not to be added later without revisiting the

@@ -99,7 +99,6 @@ const OUTFLOW_PRIMITIVES: Array<[file: string, name: string]> = [
   ["lightning/lnd.ts", "sendLndToChainAddress"],
   ["lightning/lnd.ts", "openTreasuryChannel"],
   ["lightning/lnd.ts", "closeTreasuryChannel"],
-  ["lightning/lnd.ts", "keysendPush"],
   ["lightning/lnd.ts", "payLndViaRoutes"],
   ["lightning/pay.ts", "payInvoice"],
   ["lightning/loop.ts", "executeLoopOutSwap"],

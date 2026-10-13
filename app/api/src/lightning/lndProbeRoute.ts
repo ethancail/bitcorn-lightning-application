@@ -18,7 +18,7 @@
 // ─── THE TIMEOUT, AND WHY IT IS HERE RATHER THAN IN lndHealth.ts ────────────
 //
 // Neither the LND client nor runLndHealthProbe() has any deadline:
-// authenticatedLndGrpc (lnd.ts:80-86) is constructed with no deadline and no
+// authenticatedLndGrpc (lnd.ts:132-139) is constructed with no deadline and no
 // keepalive, and runLndHealthProbe awaits a bare Promise.all (lndHealth.ts:378).
 // So an LND that accepts the TCP connection but never answers — a wedged or
 // paused process, as opposed to a refused port — produces no fault at all. It
@@ -132,7 +132,7 @@ export function withProbeTimeout<T>(
  * inside each call.
  *
  * isAvailable is NOT timeout-wrapped: it is a synchronous fs.existsSync pair
- * (lnd.ts:51-59), so there is nothing to time out.
+ * (lnd.ts:95-103), so there is nothing to time out.
  */
 export async function timeoutBoundProbeDeps(
   timeoutMs: number = LND_PROBE_TIMEOUT_MS,

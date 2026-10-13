@@ -1,6 +1,6 @@
 # Keysend Enforcement Implementation Plan
 
-> **Partial — keysend rebalance (the original motivating flow) was disabled in v1.3.5, but the keysend enforcement infrastructure described in this doc — `member_keysend_status` table, 24h backoff, ConnectToHub preflight — is still in use for the treasury push (provisioning + edge cases) execution path. The mechanics described below remain accurate; only the original motivation is stale. The `MEMBER_KEYSEND_DISABLED` alert was removed 2026-10-13 (`decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`, D3, bitcorn-research).
+> **Partial — keysend rebalance (the original motivating flow) was disabled in v1.3.5, but of the keysend enforcement infrastructure described in this doc only the ConnectToHub preflight is still in use. The treasury push it later served, and its 24h backoff, were removed 2026-10-13, as was the `MEMBER_KEYSEND_DISABLED` alert (`decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`, D2/D3, bitcorn-research); the `member_keysend_status` table is kept with no reader or writer. The mechanics below are a historical record.
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 

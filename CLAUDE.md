@@ -181,7 +181,6 @@ Docs describe *what* exists; source code shows *how* it works. When using Claude
 | Channel ROI / peer scoring | `src/api/treasury-channel-metrics.ts`, `src/api/treasury-liquidity-health.ts`, `src/api/treasury.ts` |
 | Capital guardrails | `src/utils/capital-guardrails.ts`, migration `013_treasury_capital_policy.sql` |
 | Member Liquidity Advisor (steady-state rebalancing) | `src/memberAdvisor/*`, migrations `027`, `028`, `032` |
-| Treasury push (provisioning + edge-case) | `src/memberLiquidity/*`, migration `026` |
 | Loop Out (treasury, edge-case maintenance) | `src/lightning/loop.ts`, `src/lightning/rebalance-loop.ts`, `src/lightning/rebalance-scheduler.ts`, migrations `014`, `015` |
 | Expansion engine | `src/api/treasury-expansion.ts`, `src/utils/capital-guardrails.ts` |
 | Metrics / net yield | `src/api/treasury.ts`, migrations `007`–`009`, `014` |
@@ -220,8 +219,8 @@ See `docs/LOOP_SETUP.md` for the full gotcha list. Highlights that bite regularl
 
 ### Rebalancing
 
-- **Steady-state rebalancing is member-driven, not treasury-coordinated:** the Member Liquidity Advisor on each member node recommends Loop In (merchant) or Loop Out (farmer) locally; the treasury does not orchestrate steady-state rebalancing. Treasury push and treasury-side Loop Out are reserved for provisioning and edge cases. See `docs/ARCHITECTURE.md` § Liquidity Management.
-- **Keysend push ≠ rebalance:** In hub-and-spoke topology with no external peers for circular routes, keysend push permanently transfers sats — it is *not* a rebalancing tool, and is disabled as such. Keysend remains the execution path for *treasury push* (provisioning + edge cases). Keysend enforcement (preflight + 24h skip on rejection) is retained for that path.
+- **Steady-state rebalancing is member-driven, not treasury-coordinated:** the Member Liquidity Advisor on each member node recommends Loop In (merchant) or Loop Out (farmer) locally; the treasury does not orchestrate steady-state rebalancing. Treasury-side Loop Out is reserved for edge cases; the treasury push was removed 2026-10-13. See `docs/ARCHITECTURE.md` § Liquidity Management.
+- **Keysend push ≠ rebalance:** In hub-and-spoke topology with no external peers for circular routes, keysend push permanently transfers sats — it is *not* a rebalancing tool, and is disabled as such. The treasury push that kept keysend as an execution path was removed 2026-10-13, with `keysendPush()`; only the member onboarding preflight (a local feature-bit read) remains.
 - **Role matters:** `channel_role` (merchant/farmer/unknown) is set by the user and controls whether the advisor recommends Loop In, Loop Out, or a channel upgrade. Never auto-classify by balance heuristics.
 
 ### Cloudflare Worker
