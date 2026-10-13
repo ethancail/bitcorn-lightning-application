@@ -66,20 +66,10 @@ document.addEventListener("wheel", (e) => {
 // ─── Theme initialization ─────────────────────────────────────────────────
 // Runs once on load — checks localStorage, falls back to OS preference.
 
-type FontPreset = { id: string; label: string; mono: string; sans: string; preview: string };
-
-const FONT_PRESETS: FontPreset[] = [
-  { id: "plex", label: "IBM Plex", mono: "'IBM Plex Mono', monospace", sans: "'IBM Plex Sans', sans-serif", preview: "The quick brown fox" },
-  { id: "inter", label: "Inter", mono: "'JetBrains Mono', monospace", sans: "'Inter', sans-serif", preview: "The quick brown fox" },
-  { id: "source", label: "Source", mono: "'Source Code Pro', monospace", sans: "'Source Sans 3', sans-serif", preview: "The quick brown fox" },
-  { id: "system", label: "System", mono: "ui-monospace, 'Cascadia Code', 'Fira Code', monospace", sans: "system-ui, -apple-system, sans-serif", preview: "The quick brown fox" },
-];
-
-function applyFont(presetId: string) {
-  const preset = FONT_PRESETS.find((p) => p.id === presetId) ?? FONT_PRESETS[0];
-  document.documentElement.style.setProperty("--mono", preset.mono);
-  document.documentElement.style.setProperty("--sans", preset.sans);
-}
+// Round 1, Z1: ONE font for the whole app. The font presets (FONT_PRESETS,
+// applyFont) and the Settings control are gone; the family is the --font
+// token. A previously stored "bitcorn_font" is simply ignored: nothing reads
+// it and nothing deletes it (no migration write).
 
 const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
 
@@ -117,11 +107,6 @@ function initTheme() {
   const scale = localStorage.getItem("bitcorn_text_scale");
   if (scale) {
     document.documentElement.style.setProperty("--text-scale", scale);
-  }
-  // Restore font
-  const font = localStorage.getItem("bitcorn_font");
-  if (font) {
-    applyFont(font);
   }
 }
 initTheme();
@@ -769,7 +754,6 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
     return "system";
   });
   const [textScale, setTextScale] = useState(() => localStorage.getItem("bitcorn_text_scale") || "1");
-  const [fontId, setFontId] = useState(() => localStorage.getItem("bitcorn_font") || "plex");
 
   function changeTheme(value: ThemeChoice) {
     setTheme(value);
@@ -789,16 +773,6 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
       localStorage.removeItem("bitcorn_text_scale");
     } else {
       localStorage.setItem("bitcorn_text_scale", value);
-    }
-  }
-
-  function changeFont(id: string) {
-    setFontId(id);
-    applyFont(id);
-    if (id === "plex") {
-      localStorage.removeItem("bitcorn_font");
-    } else {
-      localStorage.setItem("bitcorn_font", id);
     }
   }
 
@@ -923,32 +897,6 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
               onChange={(e) => changeTextScale(e.target.value)}
               style={{ width: "100%", accentColor: "var(--amber)" }}
             />
-          </div>
-
-          {/* Font: compact 2x2 grid */}
-          <div>
-            <span style={{ fontSize: "0.8125rem", fontWeight: 500, marginBottom: 4, display: "block" }}>Font</span>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              {FONT_PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  onClick={() => changeFont(preset.id)}
-                  style={{
-                    padding: "8px 10px", borderRadius: 8, cursor: "pointer",
-                    border: `2px solid ${fontId === preset.id ? "var(--amber)" : "var(--border)"}`,
-                    background: fontId === preset.id ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: "0.8125rem", color: fontId === preset.id ? "var(--amber)" : "var(--text)", fontFamily: preset.sans }}>
-                    {preset.label}
-                  </div>
-                  <div style={{ fontSize: "0.6875rem", fontFamily: preset.mono, color: "var(--text-3)", marginTop: 2 }}>
-                    0123456789
-                  </div>
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </div>
