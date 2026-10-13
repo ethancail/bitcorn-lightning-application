@@ -234,8 +234,8 @@ function Topbar({
               boxShadow: node.synced_to_chain ? undefined : "none",
             }}
           />
-          <span>{displayName || node.alias || "—"}</span>
-          <span style={{ color: "var(--text-3)" }}>
+          <span className="topbar-node-name">{displayName || node.alias || "—"}</span>
+          <span className="topbar-node-id">
             ·{" "}
             {node.pubkey
               ? `${node.pubkey.slice(0, 10)}…${node.pubkey.slice(-4)}`
