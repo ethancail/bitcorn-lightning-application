@@ -213,13 +213,14 @@ export default function DayForm({ date, onSaved }: Props) {
                 onChange={(e) => setInputs({ ...inputs, [m.key]: e.target.value })}
                 placeholder={existing != null ? String(existing) : "—"}
                 disabled={busy}
-                style={{ padding: "6px 10px", fontFamily: "var(--mono)", textAlign: "right" }}
+                className="form-input"
+                style={{ padding: "6px 10px", textAlign: "right" }}
               />
-              <button onClick={() => saveOne(m)} disabled={busy} style={{ padding: "4px 10px" }}>Save</button>
+              <button onClick={() => saveOne(m)} disabled={busy} className="btn btn-outline btn-sm">Save</button>
               <button
                 onClick={() => deleteOne(m)}
                 disabled={busy || existing == null}
-                style={{ padding: "4px 10px", color: existing != null ? "var(--red)" : "var(--text-3)" }}
+                className="btn btn-danger btn-sm"
                 title={existing == null ? "Nothing to delete" : "Delete this entry"}
               >
                 Delete

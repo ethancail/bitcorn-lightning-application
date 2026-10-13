@@ -176,7 +176,7 @@ function RefreshWorkerButton({ onRefreshed }: { onRefreshed: () => void }) {
           {toast.msg}
         </span>
       )}
-      <button onClick={click} disabled={busy} style={{ padding: "6px 14px" }}>
+      <button onClick={click} disabled={busy} className="btn btn-outline btn-sm">
         {busy ? "Refreshing…" : "Refresh now"}
       </button>
     </div>
