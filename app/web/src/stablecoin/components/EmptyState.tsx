@@ -37,14 +37,29 @@ export default function EmptyState({
     return () => { cancelled = true; };
   }, [walletAddress, showReceive]);
 
-  const handleCopy = useCallback(() => {
-    void navigator.clipboard.writeText(walletAddress).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1800);
-      },
-      () => { /* clipboard unavailable; user can still triple-click the code element */ },
-    );
+  const handleCopy = useCallback(async () => {
+    const markCopied = () => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    };
+    // navigator.clipboard exists only in secure contexts, and members reach
+    // their node over plain HTTP on a Tailscale or LAN IP, so the fallback is
+    // the common path. Same approach as AdminMembers.tsx's copy handler.
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(walletAddress);
+        markCopied();
+        return;
+      } catch {
+        // fall through
+      }
+    }
+    const ta = document.createElement("textarea");
+    ta.value = walletAddress;
+    ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { if (document.execCommand("copy")) markCopied(); } catch { /* clipboard unavailable; user can still triple-click the code element */ }
+    document.body.removeChild(ta);
   }, [walletAddress]);
 
   if (showReceive) {
