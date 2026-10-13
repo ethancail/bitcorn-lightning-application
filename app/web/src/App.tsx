@@ -81,13 +81,37 @@ function applyFont(presetId: string) {
   document.documentElement.style.setProperty("--sans", preset.sans);
 }
 
-function initTheme() {
+const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
+
+function storedThemeChoice(): "light" | "dark" | null {
   const stored = localStorage.getItem("bitcorn_theme");
-  if (stored === "light" || stored === "dark") {
+  return stored === "light" || stored === "dark" ? stored : null;
+}
+
+let followingSystemTheme = false;
+
+/** System theme: apply the device's scheme now, and keep following it while
+ *  the page is open — an OS switch re-applies unless an explicit Light or Dark
+ *  has been stored since. The listener is added once, the first time System is
+ *  in effect (at load, or when chosen in Settings), and checks the stored
+ *  choice on every change rather than being removed. */
+function followSystemTheme() {
+  const query = window.matchMedia(SYSTEM_DARK_QUERY);
+  document.documentElement.dataset.theme = query.matches ? "dark" : "light";
+  if (followingSystemTheme) return;
+  followingSystemTheme = true;
+  query.addEventListener("change", (e) => {
+    if (storedThemeChoice()) return;
+    document.documentElement.dataset.theme = e.matches ? "dark" : "light";
+  });
+}
+
+function initTheme() {
+  const stored = storedThemeChoice();
+  if (stored) {
     document.documentElement.dataset.theme = stored;
   } else {
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    document.documentElement.dataset.theme = prefersDark ? "dark" : "light";
+    followSystemTheme();
   }
   // Restore text scale
   const scale = localStorage.getItem("bitcorn_text_scale");
@@ -746,8 +770,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
     setTheme(value);
     if (value === "system") {
       localStorage.removeItem("bitcorn_theme");
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      document.documentElement.dataset.theme = prefersDark ? "dark" : "light";
+      followSystemTheme();
     } else {
       localStorage.setItem("bitcorn_theme", value);
       document.documentElement.dataset.theme = value;
