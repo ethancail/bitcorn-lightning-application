@@ -684,7 +684,9 @@ export default function MemberDashboard() {
       )}
 
       {hasChannel && (() => {
-        const role = advisor?.classification?.channelRole ?? "unknown";
+        // SH9: the DECLARED role, which the API returns whether or not the
+        // treasury channel is active (classification is null while it isn't).
+        const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
         const rec = advisor?.recommendation;
         const isMerchant = role === "merchant";
         const isFarmer = role === "farmer";
