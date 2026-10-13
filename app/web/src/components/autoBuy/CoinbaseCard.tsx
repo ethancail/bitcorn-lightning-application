@@ -283,7 +283,7 @@ function ConnectedReadyState({ status, onRefresh }: { status: AutoBuyStatus; onR
               ✓ Connected & Whitelisted
             </div>
             <div className="text-dim" style={{ fontSize: "0.75rem" }}>
-              {maskKey(status.credentials?.key_name ?? "")} — connected {new Date((status.credentials?.connected_at ?? 0) * 1000).toLocaleDateString()}
+              <span className="ident">{maskKey(status.credentials?.key_name ?? "")}</span> — connected {new Date((status.credentials?.connected_at ?? 0) * 1000).toLocaleDateString()}
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>

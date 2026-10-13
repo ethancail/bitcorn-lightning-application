@@ -344,7 +344,7 @@ function PendingRow({
             </a>
           </DetailRow>
           <DetailRow label="Recipient">
-            <code>{entry.recipient_address}</code>
+            <code className="ident">{entry.recipient_address}</code>
           </DetailRow>
           <DetailRow label="Amount">{entry.amount_human} USDC</DetailRow>
           <DetailRow label="Submitted">
@@ -426,7 +426,7 @@ function SettledRow({
             </a>
           </DetailRow>
           <DetailRow label="Counterparty">
-            <code>{counterparty}</code>
+            <code className="ident">{counterparty}</code>
           </DetailRow>
           {/* Full 6-decimal precision here, unlike the 2dp headline: this
               is the reconciliation surface, and truncated figures don't
@@ -446,7 +446,7 @@ function SettledRow({
             </DetailRow>
           )}
           <DetailRow label="Reference">
-            <code>{row.trade_ref}</code>
+            <code className="ident">{row.trade_ref}</code>
           </DetailRow>
           <DetailRow label="Synced">
             <span title="Bitcorn observed this settlement at this time; the on-chain settlement happened in the named block.">

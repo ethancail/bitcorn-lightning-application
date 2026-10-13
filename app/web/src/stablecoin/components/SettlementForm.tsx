@@ -435,6 +435,7 @@ export default function SettlementForm({
         <input
           type="text"
           className="stablecoin-input"
+          style={{ fontFamily: "var(--font-id)" }}
           placeholder="0x…"
           value={recipient}
           onChange={(e) => setRecipient(e.target.value)}

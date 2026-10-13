@@ -603,7 +603,7 @@ function PayInvoiceForm({
               <strong>Fee:</strong> {fmtSats(result.fee_sats)}
             </div>
             <div>
-              <strong>To:</strong> {resolveContactName(result.destination, contacts)}
+              <strong>To:</strong> <span className="ident">{resolveContactName(result.destination, contacts)}</span>
             </div>
             {result.memo && (
               <div>

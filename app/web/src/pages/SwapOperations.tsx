@@ -139,7 +139,7 @@ function ChannelPicker({
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 600, fontSize: "0.8125rem", color: isSelected ? "var(--amber)" : "var(--text)" }}>
+              <span className="ident" style={{ fontWeight: 600, fontSize: "0.8125rem", color: isSelected ? "var(--amber)" : "var(--text)" }}>
                 {ch.peerName}
               </span>
               <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>

@@ -138,7 +138,7 @@ function Screen1({
           <span className="alert-icon">ℹ</span>
           <div className="alert-body">
             <div className="alert-msg">
-              <code style={{ fontFamily: "var(--font-id)" }}>TREASURY_PUBKEY</code> is an environment variable managed by Umbrel — it cannot be changed from the UI. Set it to the pubkey above in your Umbrel app settings before proceeding.
+              <code className="ident">TREASURY_PUBKEY</code> is an environment variable managed by Umbrel — it cannot be changed from the UI. Set it to the pubkey above in your Umbrel app settings before proceeding.
             </div>
           </div>
         </div>
@@ -358,10 +358,10 @@ function Screen4({
       <div className="policy-card" style={{ cursor: "default", marginBottom: 8 }}>
         <div>
           <div className="policy-card-label">Hub Pubkey</div>
-          <div className="policy-card-meta">Reference — set via <code style={{ fontFamily: "var(--font-id)" }}>TREASURY_PUBKEY</code> env var</div>
+          <div className="policy-card-meta">Reference — set via <code className="ident">TREASURY_PUBKEY</code> env var</div>
         </div>
         <div className="policy-card-value">
-          {truncPubkey(data.detectedPubkey)}
+          <span className="ident">{truncPubkey(data.detectedPubkey)}</span>
         </div>
       </div>
 

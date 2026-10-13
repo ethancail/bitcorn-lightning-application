@@ -2924,7 +2924,7 @@ input[type="number"] {
   flex-wrap: wrap;
 }
 .admin-members-freshness {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--mono);
   font-size: 0.75rem;
   color: var(--fg-2);
 }
@@ -2948,7 +2948,7 @@ input[type="number"] {
   opacity: 0.45;
 }
 .admin-members-distribution-total {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--mono);
   font-size: 0.8125rem;
   color: var(--fg-2);
 }
@@ -2971,7 +2971,7 @@ input[type="number"] {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-2);
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--mono);
   font-size: 0.8125rem;
   user-select: none;
 }
@@ -3002,7 +3002,7 @@ input[type="number"] {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--mono);
   font-size: 0.8125rem;
   cursor: pointer;
 }
@@ -3016,7 +3016,7 @@ input[type="number"] {
   border-radius: var(--radius-sm);
   background: var(--bg-2);
   color: var(--fg-1);
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--mono);
   font-size: 0.8125rem;
 }
 .admin-members-search:focus-visible {
@@ -3076,7 +3076,7 @@ input[type="number"] {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--fg-1);
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-id);
   font-size: 0.8125rem;
   cursor: pointer;
 }
@@ -3096,7 +3096,7 @@ input[type="number"] {
 }
 
 /* Two-line "Member" cell: contact name on top (sans-serif primary
-   text), truncated pubkey on bottom (Plex Mono muted). Renders only
+   text), truncated pubkey on bottom (--font-id, muted). Renders only
    when the row has a matching entry in the contacts table; rows with
    no entry show the single-line pubkey plus the unidentified marker
    and its Contacts link (see below), and rows whose contacts read
@@ -3120,7 +3120,7 @@ input[type="number"] {
   color: var(--fg-1);
 }
 .admin-members-pubkey-short {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-id);
   font-size: 0.7rem;
   color: var(--fg-2);
   opacity: 0.8;
@@ -3381,7 +3381,7 @@ input[type="number"] {
   margin-top: 8px;
 }
 
-.stablecoin-network-hint code {
+.stablecoin-network-hint .stablecoin-network-name {
   font-family: var(--mono);
   background: var(--bg-2);
   padding: 1px 6px;

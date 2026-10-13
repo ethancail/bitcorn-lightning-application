@@ -486,7 +486,7 @@ export default function MemberLiquidity() {
                     <tr key={c.clusterId}>
                       <td>
                         <div style={{ fontWeight: 500 }}>{c.label}</div>
-                        <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+                        <div className="ident" style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
                           {resolveContactName(c.peerPubkey, contacts)}
                         </div>
                       </td>
@@ -708,7 +708,7 @@ export default function MemberLiquidity() {
                     <tr key={c.clusterId}>
                       <td>
                         <div style={{ fontWeight: 500 }}>{c.label}</div>
-                        <div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
+                        <div className="ident" style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
                           {resolveContactName(c.peerPubkey, contacts)}
                         </div>
                       </td>

@@ -1480,7 +1480,7 @@ function ChannelsPage() {
           <div className="dialog-card">
             <div className="dialog-title">Close Channel?</div>
             <div className="dialog-body">
-              This will cooperatively close the channel to <strong>{closeConfirm.peerName}</strong> ({closeConfirm.capacity.toLocaleString()} sats).
+              This will cooperatively close the channel to <strong className="ident">{closeConfirm.peerName}</strong> ({closeConfirm.capacity.toLocaleString()} sats).
               Funds will return to your on-chain wallet after confirmation. This cannot be undone.
             </div>
             <div style={{ marginTop: 14 }}>
@@ -1708,7 +1708,7 @@ function ChannelsPage() {
                 <div className="alert-body">
                   <div className="alert-type">{unclassifiedLanes.length} Unclassified Channel{unclassifiedLanes.length > 1 ? "s" : ""}</div>
                   <div className="alert-msg">
-                    {unclassifiedLanes.map((c) => c.peerName).join(", ")} — tag as
+                    <span className="ident">{unclassifiedLanes.map((c) => c.peerName).join(", ")}</span> — tag as
                     <strong> merchant</strong> or <strong>farmer</strong> in Contacts to classify.
                   </div>
                 </div>
@@ -1768,7 +1768,7 @@ function ChannelsPage() {
                         const actionLabel = c.state === "exhausted" ? "Renew Now" : c.state === "renew_soon" ? "Renew Soon" : "Close";
                         return (
                           <tr key={c.channel_id}>
-                            <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
                             <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                             <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {c.remote_balance_sat.toLocaleString()}
@@ -1830,7 +1830,7 @@ function ChannelsPage() {
                         const color = stateColor(c.state);
                         return (
                           <tr key={c.channel_id}>
-                            <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
                             <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                             <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {accumulated.toLocaleString()}
@@ -1888,7 +1888,7 @@ function ChannelsPage() {
                         const color = stateColor(c.state);
                         return (
                           <tr key={c.channel_id}>
-                            <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
                             <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                             <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {c.local_balance_sat.toLocaleString()}
@@ -1944,7 +1944,7 @@ function ChannelsPage() {
                     <tbody>
                       {unclassifiedLanes.map((c) => (
                         <tr key={c.channel_id}>
-                          <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                          <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
                           <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                           <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
                             {c.local_balance_sat.toLocaleString()}
@@ -2250,7 +2250,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: "0.875rem", fontWeight: 500 }}>{resolveContactName(p.peer_pubkey, contacts)}</div>
+                      <div className="ident" style={{ fontSize: "0.875rem", fontWeight: 500 }}>{resolveContactName(p.peer_pubkey, contacts)}</div>
                       <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{p.capacity_sat.toLocaleString()} sats</div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -2275,7 +2275,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: "0.875rem", fontWeight: 500 }}>{resolveContactName(p.peer_pubkey, contacts)}</div>
+                      <div className="ident" style={{ fontSize: "0.875rem", fontWeight: 500 }}>{resolveContactName(p.peer_pubkey, contacts)}</div>
                       <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{p.capacity_sat.toLocaleString()} sats</div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

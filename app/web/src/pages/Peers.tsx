@@ -119,7 +119,7 @@ export default function Peers() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               <div style={{ display: "flex", gap: 8 }}>
                 <span style={{ color: "var(--amber)", fontWeight: 600, minWidth: 18 }}>1.</span>
-                <span>Their <strong>Node URI</strong> — a string in the format <code style={{ background: "var(--bg-3)", padding: "2px 6px", borderRadius: 3, fontSize: "0.75rem" }}>pubkey@host:port</code></span>
+                <span>Their <strong>Node URI</strong> — a string in the format <code className="ident" style={{ background: "var(--bg-3)", padding: "2px 6px", borderRadius: 3, fontSize: "0.75rem" }}>pubkey@host:port</code></span>
               </div>
               <div style={{ display: "flex", gap: 8, paddingLeft: 26, fontSize: "0.75rem", color: "var(--text-3)" }}>
                 Found in: Umbrel → Lightning Node → click the "..." menu → Copy Node URI
@@ -221,7 +221,7 @@ export default function Peers() {
                   return (
                     <tr key={p.pubkey}>
                       <td>
-                        <div style={{ fontWeight: isNamed ? 500 : 400 }}>
+                        <div className={isNamed ? undefined : "ident"} style={{ fontWeight: isNamed ? 500 : 400 }}>
                           {isNamed ? name : truncPubkey(p.pubkey)}
                         </div>
                         {isNamed && (

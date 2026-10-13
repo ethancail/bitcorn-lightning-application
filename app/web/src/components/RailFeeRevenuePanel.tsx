@@ -178,7 +178,7 @@ function Figures({ data, doubted }: { data: RailFeeRevenueResponse; doubted: boo
         Total charged by the router and delivered to the fee recipient. Not a
         balance — sweeps aren&rsquo;t tracked.
         {data.fee_recipient_address && (
-          <> Current recipient: <code>{data.fee_recipient_address.slice(0, 10)}…</code></>
+          <> Current recipient: <code className="ident">{data.fee_recipient_address.slice(0, 10)}…</code></>
         )}
       </div>
     </div>
