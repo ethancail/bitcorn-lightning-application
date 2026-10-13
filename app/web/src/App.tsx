@@ -2102,7 +2102,7 @@ function ChannelsPage() {
                       <span className="channel-pct">({localPct.toFixed(0)}%)</span>
                     </span>
                     <span className="channel-label-remote">
-                      <span className="channel-dot" style={{ background: "var(--red)" }} />
+                      <span className="channel-dot" style={{ background: "var(--text-3)" }} />
                       Their side: {c.remote_balance_sat.toLocaleString()}
                       <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
                     </span>

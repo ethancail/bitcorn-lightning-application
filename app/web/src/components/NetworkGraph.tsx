@@ -348,7 +348,7 @@ export default function NetworkGraph() {
             <div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)", display: "flex", gap: 16 }}>
               <span>Capacity: {hovered.totalCapacity.toLocaleString()}</span>
               <span style={{ color: "var(--green)" }}>Local: {hovered.totalLocal.toLocaleString()}</span>
-              <span style={{ color: "var(--red)" }}>Remote: {hovered.totalRemote.toLocaleString()}</span>
+              <span>Remote: {hovered.totalRemote.toLocaleString()}</span>
             </div>
           </div>
         )}

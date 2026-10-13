@@ -670,7 +670,9 @@ p + .settings-section-label { margin-top: 8px; }
 .channel-balance-bar {
   height: 8px;
   border-radius: var(--radius-full);
-  background: var(--red);
+  /* The remote side — the track behind the local fill. D3: neutral, not red;
+     its legend dot in ChannelsPage uses the same colour. */
+  background: var(--text-3);
   overflow: hidden;
   margin-bottom: 8px;
 }
