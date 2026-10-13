@@ -190,6 +190,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
           </div>
           <div style={{ position: "relative" }}>
             <input
+              aria-label="Channel Capacity"
               className="form-input"
               type="text"
               inputMode="numeric"
@@ -262,6 +263,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
               <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(optional)</span>
             </label>
             <input
+              aria-label="Hub Address"
               className="form-input"
               type="text"
               placeholder="e.g. 203.0.113.5:9735 — ask your operator"

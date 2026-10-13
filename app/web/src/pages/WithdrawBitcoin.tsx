@@ -468,6 +468,7 @@ export default function WithdrawBitcoin() {
               </div>
               <div style={{ position: "relative" }}>
                 <input
+                  aria-label="Amount"
                   type="text"
                   inputMode="numeric"
                   className="form-input"

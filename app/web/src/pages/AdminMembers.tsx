@@ -756,6 +756,7 @@ function FilterBar({
         formatOption={(l) => l}
       />
       <input
+        aria-label="Search pubkey"
         type="text"
         className="admin-members-search"
         placeholder="Search pubkey…"

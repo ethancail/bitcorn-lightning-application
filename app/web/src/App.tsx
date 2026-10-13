@@ -885,11 +885,13 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           {/* Text size: slider only, no presets */}
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-              <span style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Text Size</span>
+              <span id="settings-text-size-label" style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Text Size</span>
               <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{Math.round(parseFloat(textScale) * 100)}%</span>
             </div>
             <input
               type="range" min="0.75" max="1.5" step="0.05" value={textScale}
+              aria-labelledby="settings-text-size-label"
+              aria-valuetext={`${Math.round(parseFloat(textScale) * 100)}%`}
               onChange={(e) => changeTextScale(e.target.value)}
               style={{ width: "100%", accentColor: "var(--amber)" }}
             />
@@ -1015,6 +1017,7 @@ function PolicyCard({
         </div>
         <div className="policy-card-edit">
           <input
+            aria-label={label}
             ref={inputRef}
             type="text"
             inputMode="numeric"
@@ -2399,6 +2402,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
             ) : (
               <>
                 <input
+                  aria-label="Peer pubkey"
                   type="text"
                   className="form-input"
                   value={manualPubkey}
@@ -2438,6 +2442,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
             </div>
             <div style={{ position: "relative" }}>
               <input
+                aria-label="Channel Capacity (sats)"
                 type="text"
                 inputMode="numeric"
                 className="form-input"

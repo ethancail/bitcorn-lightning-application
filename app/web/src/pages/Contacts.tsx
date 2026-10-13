@@ -122,6 +122,7 @@ function TagEditor({
       {/* Custom tag input */}
       <div style={{ display: "flex", gap: 6 }}>
         <input
+          aria-label="Add tag"
           className="form-input"
           placeholder="Add tag…"
           value={input}
@@ -330,6 +331,7 @@ export default function Contacts() {
 
       {/* Search */}
       <input
+        aria-label="Search contacts"
         className="form-input"
         placeholder="Search by name, pubkey, notes, or tags…"
         value={searchQuery}
@@ -345,6 +347,7 @@ export default function Contacts() {
           </div>
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <input
+              aria-label="Node ID"
               className="form-input"
               placeholder="Node ID (long code starting 02 or 03)"
               value={addPubkey}
@@ -352,12 +355,14 @@ export default function Contacts() {
               style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
             />
             <input
+              aria-label="Name"
               className="form-input"
               placeholder="Name"
               value={addName}
               onChange={(e) => setAddName(e.target.value)}
             />
             <textarea
+              aria-label="Notes"
               className="form-input"
               placeholder="Notes (optional, max 280 chars)"
               value={addNotes}
@@ -489,12 +494,14 @@ function ContactCard({
             {c.pubkey}
           </div>
           <input
+            aria-label="Name"
             className="form-input"
             placeholder="Name"
             value={editName}
             onChange={(e) => onEditNameChange(e.target.value)}
           />
           <textarea
+            aria-label="Notes"
             className="form-input"
             placeholder="Notes"
             value={editNotes}
