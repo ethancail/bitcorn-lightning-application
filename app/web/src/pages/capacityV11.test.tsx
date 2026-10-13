@@ -14,6 +14,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import React from "react";
 import { MemoryRouter } from "react-router-dom";
+import { cssRules } from "../styleRules.testutil";
 
 const NOW = Date.now();
 
@@ -122,6 +123,10 @@ describe("V11 — the member dashboard's gauge", () => {
     expect(bar()).toContain("var(--amber)");
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
     expect(host.textContent).toContain("Room to send · Low");
+    // On a phone the word must not wrap away from its label.
+    expect(host.querySelector('[data-testid="gauge-label"]')!.getAttribute("style") ?? "").toContain("white-space: nowrap");
+    const labels = cssRules().find((r) => r.media === null && r.selectors.includes(".member-gauge .labels"))!.decls;
+    expect(labels["gap"], "the label and the figure never touch").toBe("12px");
   });
 
   it("PERMITTING: a merchant at 10% the advisor calls healthy → green bar, no word", async () => {

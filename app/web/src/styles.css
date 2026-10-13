@@ -527,6 +527,8 @@ p + .settings-section-label { margin-top: 8px; }
 .member-gauge .labels {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
+  text-align: right;
   margin-bottom: 6px;
   font-size: 0.75rem;
   color: var(--text-3);

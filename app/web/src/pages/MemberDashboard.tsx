@@ -795,7 +795,9 @@ export default function MemberDashboard() {
                   aria-label={gaugeLabel}
                 >
                   <div className="labels">
-                    <span>
+                    {/* The label and its word stay on one line; on a phone the
+                        right-hand figure wraps instead. */}
+                    <span data-testid="gauge-label" style={{ whiteSpace: "nowrap" }}>
                       {gaugeLabel}
                       {gaugeWord && <span data-testid="capacity-text" style={{ color: "var(--text)" }}> · {gaugeWord}</span>}
                     </span>
