@@ -72,7 +72,7 @@ export default function ValuationInput() {
             Browse the calendar to add, edit, or audit Glassnode metric entries by date.
           </p>
         </div>
-        <button onClick={goToday} className="btn">Today</button>
+        <button onClick={goToday} className="btn btn-outline">Today</button>
       </div>
 
       {/* Breadcrumb */}

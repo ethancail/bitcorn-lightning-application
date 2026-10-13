@@ -1,6 +1,7 @@
 // V8: the four valuation controls the PR 1 re-screenshot still showed as
 // native chrome (ValuationInput's Refresh now; DayForm's number input, Save
-// and Delete) now carry the app's control classes.
+// and Delete) now carry the app's control classes — and a fifth, "Today",
+// which PR 2's own before-capture showed grey in dark (.btn with no variant).
 //
 // This pins the classes only. The evidence that the residue existed, and is
 // gone, is PR 2's before/after capture pair; a class check cannot see paint.
@@ -47,6 +48,12 @@ const buttons = (label: string) =>
   [...host.querySelectorAll("button")].filter((b) => b.textContent?.trim() === label);
 
 describe("V8 valuation residue", () => {
+  it("Today has a variant: a bare .btn sets no background, so the browser drew its grey", () => {
+    const [b] = buttons("Today");
+    expect(b).toBeTruthy();
+    expect([...b.classList]).toEqual(expect.arrayContaining(["btn", "btn-outline"]));
+  });
+
   it("Refresh now is a themed button", () => {
     const [b] = buttons("Refresh now");
     expect(b).toBeTruthy();
