@@ -5011,10 +5011,6 @@ function main(): void {
 // type=commonjs, Dockerfile CMD ["node", "dist/index.js"]). True only when
 // this file is the process entrypoint; false on any import, including under
 // vitest, where require/module exist but require.main is undefined.
-// CommonJS entrypoint guard (tsconfig module=CommonJS, package.json
-// type=commonjs, Dockerfile CMD ["node", "dist/index.js"]). True only when
-// this file is the process entrypoint; false on any import, including under
-// vitest, where require/module exist but require.main is undefined.
 if (require.main === module) {
   main();
 }
