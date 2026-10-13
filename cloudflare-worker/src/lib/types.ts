@@ -5,9 +5,6 @@ export interface Env {
   PRICES_CACHE: KVNamespace;
   TREASURY_PUBKEY?: string;
   TREASURY_SOCKET?: string;
-  // Valuation upstreams (only the auto-fetch adapters need keys now)
-  CRYPTOQUANT_API_KEY?: string;
-  PLANB_API_KEY?: string;
   // Manual-input HMAC (validated by POST /valuation/manual)
   VALUATION_SUBMIT_HMAC?: string;
   // Daybreak drafting-agent bearer secret (validated by POST /daybreak/draft;

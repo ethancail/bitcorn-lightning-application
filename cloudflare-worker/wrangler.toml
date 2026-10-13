@@ -21,9 +21,6 @@ id = "62c68c41830141cc8b0b6e7cdb193461"
 #   CDP_KEY_NAME            — existing (Coinbase Onramp)
 #   CDP_PRIVATE_KEY         — existing (Coinbase Onramp)
 #   USDA_NASS_KEY           — existing (commodity prices)
-#   CRYPTOQUANT_API_KEY     — valuation: miner_outflows (CryptoQuant free tier)
-#   PLANB_API_KEY           — valuation: stock_to_flow (OPTIONAL — falls through
-#                              to unauthenticated endpoint if unset)
 #   VALUATION_SUBMIT_HMAC   — shared secret between treasury node and Worker
 #                              for authenticating POST /valuation/manual
 #   DAYBREAK_DRAFT_SECRET   — bearer secret held by Radar (the Daybreak drafting
