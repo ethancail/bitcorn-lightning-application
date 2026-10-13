@@ -971,6 +971,17 @@ p + .settings-section-label { margin-top: 8px; }
 .badge-blue   { background: var(--blue-glow);   color: var(--blue); }
 .badge-orange { background: var(--orange-glow); color: var(--orange); }
 .badge-muted  { background: var(--bg-3); color: var(--text-3); }
+/* A capacity warning (D3 / V11, PR3-7): amber on the dot only. The word stays
+   in --text, since light --amber is 2.68:1 on --bg-1 (tranche 2, N2). */
+.badge-caution { background: var(--bg-3); color: var(--text); gap: 5px; }
+.badge-caution::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--amber);
+  flex-shrink: 0;
+}
 
 .tag-pill {
   display: inline-flex;

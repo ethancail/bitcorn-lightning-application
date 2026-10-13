@@ -1,4 +1,4 @@
-import { HEALTH_COLOR } from "./types";
+import { HEALTH_TEXT_COLOR } from "./types";
 import { formatSatsShort, type LiquidityKpis } from "./transform";
 
 type Props = { kpis: LiquidityKpis };
@@ -13,14 +13,14 @@ export default function LiquidityKpiBanner({ kpis }: Props) {
       </div>
       <div className="liq-kpi-card panel ops">
         <div className="liq-kpi-label">Merchants Send-Ready</div>
-        <div className="liq-kpi-value" style={{ color: HEALTH_COLOR[kpis.merchantsTier] }}>
+        <div className="liq-kpi-value" data-testid="capacity-text" style={{ color: HEALTH_TEXT_COLOR[kpis.merchantsTier] }}>
           {kpis.merchantsHealthy}<span className="liq-kpi-divider">/</span>{kpis.merchantsTotal}
         </div>
         <div className="liq-kpi-sub">healthy / total</div>
       </div>
       <div className="liq-kpi-card panel ops">
         <div className="liq-kpi-label">Farmers Receive-Ready</div>
-        <div className="liq-kpi-value" style={{ color: HEALTH_COLOR[kpis.farmersTier] }}>
+        <div className="liq-kpi-value" data-testid="capacity-text" style={{ color: HEALTH_TEXT_COLOR[kpis.farmersTier] }}>
           {kpis.farmersHealthy}<span className="liq-kpi-divider">/</span>{kpis.farmersTotal}
         </div>
         <div className="liq-kpi-sub">healthy / total</div>
