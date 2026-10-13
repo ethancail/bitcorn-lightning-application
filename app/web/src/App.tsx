@@ -603,7 +603,12 @@ function MemberShell() {
     // to update after save.
     const loadRole = () => {
       api.getMemberLiquidityStatus()
-        .then((s) => { if (s.classification?.channelRole) setChannelRole(s.classification.channelRole); })
+        .then((s) => {
+          // SH9: the declared role, which the API returns whether or not the
+          // treasury channel is active (classification is null while it isn't).
+          const r = s.channelRole ?? s.classification?.channelRole;
+          if (r) setChannelRole(r);
+        })
         .catch(() => {});
     };
     loadRole();
@@ -680,7 +685,7 @@ function ChannelRolePanel() {
   useEffect(() => {
     api.getMemberLiquidityStatus()
       .then((d) => {
-        const r = d.classification?.channelRole;
+        const r = d.channelRole ?? d.classification?.channelRole; // SH9, as in MemberShell
         if (r === "merchant" || r === "farmer") setRole(r);
       })
       .catch(() => {})

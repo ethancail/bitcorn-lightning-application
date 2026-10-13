@@ -5,8 +5,10 @@
 
 import {
   classifyTreasuryChannel,
+  getAdvisorConfig,
   getClassificationHistory,
   type ChannelClassification,
+  type ChannelRole,
 } from "./channelClassifier";
 import { checkLoopAvailability, type LoopAvailability } from "./loopAvailability";
 import { computeRecommendation, type LiquidityRecommendation } from "./recommendationEngine";
@@ -14,6 +16,14 @@ import { computeRecommendation, type LiquidityRecommendation } from "./recommend
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface LiquidityStatusResponse {
+  /**
+   * The member's DECLARED role, as stored (PATCH /api/liquidity/config),
+   * whether or not the treasury channel is active (SH9). `classification`
+   * is null while that channel is inactive, so a role read only from
+   * classification.channelRole vanished then and the shell fell back to the
+   * farmer nav. Same value as classification.channelRole when that exists.
+   */
+  channelRole: ChannelRole;
   classification: ChannelClassification | null;
   recommendation: LiquidityRecommendation | null;
   loopAvailability: LoopAvailability;
@@ -39,9 +49,11 @@ export interface LiquidityHistoryResponse {
 export async function getLiquidityStatus(): Promise<LiquidityStatusResponse> {
   const classification = classifyTreasuryChannel();
   const loopAvailability = await checkLoopAvailability();
+  const channelRole = getAdvisorConfig().channelRole;
 
   if (!classification) {
     return {
+      channelRole,
       classification: null,
       recommendation: null,
       loopAvailability,
@@ -51,6 +63,7 @@ export async function getLiquidityStatus(): Promise<LiquidityStatusResponse> {
   const recommendation = computeRecommendation(classification, loopAvailability);
 
   return {
+    channelRole,
     classification,
     recommendation,
     loopAvailability,

@@ -35,7 +35,7 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 | POST | `/api/network/decode` | Decode BOLT11 for preview |
 | GET | `/api/network/payments` | Payment history |
 | POST | `/api/network/sync-settlements` | Match pending receives against `payments_inbound` |
-| GET | `/api/liquidity/status` | Member-side advisor classification + recommendation |
+| GET | `/api/liquidity/status` | Member-side advisor classification + recommendation, plus the declared `channelRole` (present even when the treasury channel is inactive and `classification` is null) |
 | GET | `/api/liquidity/history` | Past classifications |
 | PATCH | `/api/liquidity/config` | Set member advisor config (including `channel_role`) |
 | GET | `/api/coinbase/onramp-url` | Build Coinbase Onramp URL via Cloudflare Worker session token |

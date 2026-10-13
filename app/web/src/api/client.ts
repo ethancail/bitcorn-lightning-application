@@ -1255,6 +1255,10 @@ export type MemberLoopAvailability = {
 };
 
 export type MemberLiquidityStatusResponse = {
+  /** The DECLARED role, whether or not the treasury channel is active (SH9).
+   *  Absent from an API older than PR 2, hence the classification fallback
+   *  at its readers. */
+  channelRole?: MemberChannelRole;
   classification: MemberChannelClassification | null;
   recommendation: MemberLiquidityRecommendation | null;
   loopAvailability: MemberLoopAvailability;
