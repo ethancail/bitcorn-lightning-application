@@ -573,7 +573,8 @@ p + .settings-section-label { margin-top: 8px; }
   line-height: 1;
 }
 .revenue-hero-num.positive { color: var(--green); }
-.revenue-hero-num.negative { color: var(--red); }
+/* D3: a negative number is --text; its minus sign carries the meaning. */
+.revenue-hero-num.negative { color: var(--text); }
 .revenue-hero-num.neutral { color: var(--text); }
 .revenue-hero-caption {
   font-family: var(--mono);
@@ -630,7 +631,7 @@ p + .settings-section-label { margin-top: 8px; }
 }
 
 .stat-value.positive { color: var(--green); }
-.stat-value.negative { color: var(--red); }
+.stat-value.negative { color: var(--text); }
 .stat-value.amber    { color: var(--amber); }
 
 .stat-sub {

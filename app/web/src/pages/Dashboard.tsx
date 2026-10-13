@@ -274,7 +274,7 @@ export default function Dashboard() {
                 </div>
                 <div className="stat-card" style={{ flex: "1 1 140px" }}>
                   <div className="stat-label">Revenue Yield</div>
-                  <div className="stat-value" style={{ fontSize: "1.125rem", color: (cap?.revenue_yield ?? 0) >= 0 ? "var(--green)" : "var(--red)" }}>
+                  <div className="stat-value" style={{ fontSize: "1.125rem", color: (cap?.revenue_yield ?? 0) >= 0 ? "var(--green)" : "var(--text)" }}>
                     {fmt(Math.round(cap?.revenue_yield ?? 0))}
                   </div>
                   <div className="stat-sub">sats per 1M deployed</div>
