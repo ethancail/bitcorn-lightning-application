@@ -895,7 +895,7 @@ function PaymentDetail({
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
           <span>Status</span>
-          <span className={sBadge.cls}>{sBadge.label}</span>
+          <span className={`badge ${sBadge.cls}`}>{sBadge.label}</span>
         </div>
         {p.fee_sats > 0 && (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
