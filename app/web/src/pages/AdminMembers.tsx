@@ -664,7 +664,7 @@ function PageHeader({
     <header className="admin-members-header">
       <div className="admin-members-title">
         <span className="sub-panel-glyph" aria-hidden>◆</span>
-        <h1>MEMBERS</h1>
+        <h1>Members</h1>
       </div>
       <div className="admin-members-header-right">
         {fetchedAt && (
@@ -756,6 +756,7 @@ function FilterBar({
         formatOption={(l) => l}
       />
       <input
+        aria-label="Search pubkey"
         type="text"
         className="admin-members-search"
         placeholder="Search pubkey…"

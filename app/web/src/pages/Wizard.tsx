@@ -182,6 +182,7 @@ function Screen2({
       <div className="form-group">
         <label className="form-label">Base Fee Rate (ppm)</label>
         <input
+          aria-label="Base Fee Rate (ppm)"
           className={`form-input${!valid ? " has-error" : ""}`}
           type="number"
           min={1}
@@ -281,6 +282,7 @@ function Screen3({
         <div className="form-group" key={f.key}>
           <label className="form-label">{f.label}</label>
           <input
+            aria-label={f.label}
             className="form-input"
             type="number"
             min={f.min ?? 0}

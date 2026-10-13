@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Link, useNavigate, useSearchParams } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
+import bitcornLogoLight from "./assets/bitcorn-logo-light.svg";
 import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
@@ -80,13 +81,37 @@ function applyFont(presetId: string) {
   document.documentElement.style.setProperty("--sans", preset.sans);
 }
 
-function initTheme() {
+const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
+
+function storedThemeChoice(): "light" | "dark" | null {
   const stored = localStorage.getItem("bitcorn_theme");
-  if (stored === "light" || stored === "dark") {
+  return stored === "light" || stored === "dark" ? stored : null;
+}
+
+let followingSystemTheme = false;
+
+/** System theme: apply the device's scheme now, and keep following it while
+ *  the page is open — an OS switch re-applies unless an explicit Light or Dark
+ *  has been stored since. The listener is added once, the first time System is
+ *  in effect (at load, or when chosen in Settings), and checks the stored
+ *  choice on every change rather than being removed. */
+function followSystemTheme() {
+  const query = window.matchMedia(SYSTEM_DARK_QUERY);
+  document.documentElement.dataset.theme = query.matches ? "dark" : "light";
+  if (followingSystemTheme) return;
+  followingSystemTheme = true;
+  query.addEventListener("change", (e) => {
+    if (storedThemeChoice()) return;
+    document.documentElement.dataset.theme = e.matches ? "dark" : "light";
+  });
+}
+
+function initTheme() {
+  const stored = storedThemeChoice();
+  if (stored) {
     document.documentElement.dataset.theme = stored;
   } else {
-    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    document.documentElement.dataset.theme = prefersDark ? "dark" : "light";
+    followSystemTheme();
   }
   // Restore text scale
   const scale = localStorage.getItem("bitcorn_text_scale");
@@ -193,7 +218,10 @@ function Topbar({
         ☰
       </button>
       <div className="topbar-logo">
-        <img src={bitcornLogo} alt="Bitcorn" style={{ height: 22, width: "auto" }} />
+        {/* Two assets, one per theme; styles.css shows the one matching
+            [data-theme]. An <img> SVG cannot see the page's theme. */}
+        <img src={bitcornLogo} alt="Bitcorn" className="topbar-logo-img topbar-logo-dark" />
+        <img src={bitcornLogoLight} alt="Bitcorn" className="topbar-logo-img topbar-logo-light" />
         <span className="topbar-tag">{role}</span>
       </div>
       <div className="topbar-spacer" />
@@ -206,8 +234,8 @@ function Topbar({
               boxShadow: node.synced_to_chain ? undefined : "none",
             }}
           />
-          <span>{displayName || node.alias || "—"}</span>
-          <span style={{ color: "var(--text-3)" }}>
+          <span className="topbar-node-name">{displayName || node.alias || "—"}</span>
+          <span className="topbar-node-id">
             ·{" "}
             {node.pubkey
               ? `${node.pubkey.slice(0, 10)}…${node.pubkey.slice(-4)}`
@@ -575,7 +603,12 @@ function MemberShell() {
     // to update after save.
     const loadRole = () => {
       api.getMemberLiquidityStatus()
-        .then((s) => { if (s.classification?.channelRole) setChannelRole(s.classification.channelRole); })
+        .then((s) => {
+          // SH9: the declared role, which the API returns whether or not the
+          // treasury channel is active (classification is null while it isn't).
+          const r = s.channelRole ?? s.classification?.channelRole;
+          if (r) setChannelRole(r);
+        })
         .catch(() => {});
     };
     loadRole();
@@ -652,7 +685,7 @@ function ChannelRolePanel() {
   useEffect(() => {
     api.getMemberLiquidityStatus()
       .then((d) => {
-        const r = d.classification?.channelRole;
+        const r = d.channelRole ?? d.classification?.channelRole; // SH9, as in MemberShell
         if (r === "merchant" || r === "farmer") setRole(r);
       })
       .catch(() => {})
@@ -742,8 +775,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
     setTheme(value);
     if (value === "system") {
       localStorage.removeItem("bitcorn_theme");
-      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      document.documentElement.dataset.theme = prefersDark ? "dark" : "light";
+      followSystemTheme();
     } else {
       localStorage.setItem("bitcorn_theme", value);
       document.documentElement.dataset.theme = value;
@@ -881,11 +913,13 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           {/* Text size: slider only, no presets */}
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-              <span style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Text Size</span>
+              <span id="settings-text-size-label" style={{ fontSize: "0.8125rem", fontWeight: 500 }}>Text Size</span>
               <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{Math.round(parseFloat(textScale) * 100)}%</span>
             </div>
             <input
               type="range" min="0.75" max="1.5" step="0.05" value={textScale}
+              aria-labelledby="settings-text-size-label"
+              aria-valuetext={`${Math.round(parseFloat(textScale) * 100)}%`}
               onChange={(e) => changeTextScale(e.target.value)}
               style={{ width: "100%", accentColor: "var(--amber)" }}
             />
@@ -1011,6 +1045,7 @@ function PolicyCard({
         </div>
         <div className="policy-card-edit">
           <input
+            aria-label={label}
             ref={inputRef}
             type="text"
             inputMode="numeric"
@@ -1617,19 +1652,21 @@ function ChannelsPage() {
           return labels[state] ?? state;
         }
 
+        // D3 / PR3-1: capacity is never red. The lane keeps its own states, and
+        // the tier that was red (exhausted, full_needs_withdrawal, critical)
+        // joins the amber warnings. PR3-7: amber on the bar and the badge's dot
+        // only — the badge's word and the percentage stay in --text.
         function stateBadge(state: LaneState): string {
           const green: LaneState[] = ["fresh", "active", "open_for_receiving", "earning", "healthy"];
-          const amber: LaneState[] = ["degrading", "renew_soon", "getting_full", "constrained"];
-          if (green.includes(state)) return "badge-green";
-          if (amber.includes(state)) return "badge-amber";
-          return "badge-red"; // exhausted, full_needs_withdrawal, critical
+          return green.includes(state) ? "badge-green" : "badge-caution";
         }
 
         function stateColor(state: LaneState): string {
-          const cls = stateBadge(state);
-          if (cls === "badge-green") return "var(--green)";
-          if (cls === "badge-amber") return "var(--amber)";
-          return "var(--red)";
+          return stateBadge(state) === "badge-green" ? "var(--green)" : "var(--amber)";
+        }
+
+        function stateTextColor(state: LaneState): string {
+          return stateBadge(state) === "badge-green" ? "var(--green)" : "var(--text)";
         }
 
         // ── Known external pubkeys ─────────────────────────────────────
@@ -1791,13 +1828,13 @@ function ChannelsPage() {
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
-                                  <div style={{ height: "100%", width: `${fwdLeftPct}%`, background: color, borderRadius: 3 }} />
+                                  <div data-testid="capacity-bar" style={{ height: "100%", width: `${fwdLeftPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
-                                <span style={{ fontFamily: "var(--mono)", color, fontSize: "0.75rem" }}>{fwdLeftPct}%</span>
+                                <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{fwdLeftPct}%</span>
                               </div>
                             </td>
                             <td>
-                              <span className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
+                              <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
                             <td>{closeBtn(c, actionLabel)}</td>
                           </tr>
@@ -1853,13 +1890,13 @@ function ChannelsPage() {
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
-                                  <div style={{ height: "100%", width: `${recvPct}%`, background: color, borderRadius: 3 }} />
+                                  <div data-testid="capacity-bar" style={{ height: "100%", width: `${recvPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
-                                <span style={{ fontFamily: "var(--mono)", color, fontSize: "0.75rem" }}>{recvPct}%</span>
+                                <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{recvPct}%</span>
                               </div>
                             </td>
                             <td>
-                              <span className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
+                              <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
                             <td>{closeBtn(c)}</td>
                           </tr>
@@ -1911,13 +1948,13 @@ function ChannelsPage() {
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
-                                  <div style={{ height: "100%", width: `${c.localPct}%`, background: color, borderRadius: 3 }} />
+                                  <div data-testid="capacity-bar" style={{ height: "100%", width: `${c.localPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
-                                <span style={{ fontFamily: "var(--mono)", color, fontSize: "0.75rem" }}>{c.localPct}%</span>
+                                <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{c.localPct}%</span>
                               </div>
                             </td>
                             <td>
-                              <span className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
+                              <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
                             <td>{closeBtn(c)}</td>
                           </tr>
@@ -2040,7 +2077,8 @@ function ChannelsPage() {
                       {resolveContactName(c.peer_pubkey, contacts)}
                     </span>
                     {capStatus === "undersized" && (
-                      <span className="badge badge-red">Too small</span>
+                      // PR3-5: a size warning, not an error — the amber dot, the word in --text.
+                      <span data-testid="capacity-text" className="badge badge-caution">Too small</span>
                     )}
                     {c.active ? (
                       <span className="badge badge-green">active</span>
@@ -2064,7 +2102,7 @@ function ChannelsPage() {
                       <span className="channel-pct">({localPct.toFixed(0)}%)</span>
                     </span>
                     <span className="channel-label-remote">
-                      <span className="channel-dot" style={{ background: "var(--red)" }} />
+                      <span className="channel-dot" style={{ background: "var(--text-3)" }} />
                       Their side: {c.remote_balance_sat.toLocaleString()}
                       <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
                     </span>
@@ -2395,6 +2433,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
             ) : (
               <>
                 <input
+                  aria-label="Peer pubkey"
                   type="text"
                   className="form-input"
                   value={manualPubkey}
@@ -2434,6 +2473,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
             </div>
             <div style={{ position: "relative" }}>
               <input
+                aria-label="Channel Capacity (sats)"
                 type="text"
                 inputMode="numeric"
                 className="form-input"

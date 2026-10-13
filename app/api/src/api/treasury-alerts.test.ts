@@ -21,6 +21,8 @@
 // report-only. Mocking its imports is the only way to reach it.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 // ─── Controllable mock state ────────────────────────────────────────────────
 
@@ -48,6 +50,20 @@ const s = vi.hoisted(() => ({
   channelRowCount: 3 as number,
   /** null = no lnd_node_info row at all, i.e. never synced. */
   nodeInfoAgeMs: 5_000 as number | null,
+  // Added for the SH1/SH2 heading cases, which must reach every alert type.
+  // Each defaults to the value the earlier cases already implied.
+  /** treasury_expansion_executions COUNT(*) — the {v: 0} catch-all before. */
+  expansionsToday: 0,
+  /** treasury_expansion_executions SUM(requested_capacity_sats) — likewise. */
+  dailyDeploySats: 0,
+  /** The ENV the module reads. Mutated in place; the mock holds this object. */
+  env: {
+    rebalanceSchedulerEnabled: false,
+    rebalanceSchedulerDryRun: false,
+    rebalanceSchedulerIntervalMs: 0,
+  },
+  /** Makes runTimeoutBoundLndProbe itself throw (the probe_failed site). */
+  probeThrows: false,
 }));
 
 // ⚠ THE CHANNEL-DATA READS ARE ANSWERED SPECIFICALLY, NOT BY THE `{ v: 0 }`
@@ -70,6 +86,12 @@ vi.mock("../db", () => ({
         }
         if (sql.includes("FROM lnd_node_info")) {
           return { updated_at: s.nodeInfoAgeMs == null ? null : Date.now() - s.nodeInfoAgeMs };
+        }
+        if (sql.includes("treasury_expansion_executions") && sql.includes("COUNT(*)")) {
+          return { v: s.expansionsToday };
+        }
+        if (sql.includes("treasury_expansion_executions") && sql.includes("SUM(requested_capacity_sats)")) {
+          return { v: s.dailyDeploySats };
         }
         return { v: 0 };
       },
@@ -128,12 +150,21 @@ vi.mock("../lightning/loop", () => ({
 }));
 
 vi.mock("../config/env", () => ({
-  ENV: {
-    rebalanceSchedulerEnabled: false,
-    rebalanceSchedulerDryRun: false,
-    rebalanceSchedulerIntervalMs: 0,
-  },
+  ENV: s.env,
 }));
+
+// Delegates to the real probe (which reaches the mocked lnd module above)
+// unless a case asks the probe itself to throw.
+vi.mock("../lightning/lndProbeRoute", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lightning/lndProbeRoute")>();
+  return {
+    ...actual,
+    runTimeoutBoundLndProbe: async (...args: Parameters<typeof actual.runTimeoutBoundLndProbe>) => {
+      if (s.probeThrows) throw new Error("probe module failed to load");
+      return actual.runTimeoutBoundLndProbe(...args);
+    },
+  };
+});
 
 vi.mock("../valuation/manualInputStore", () => ({
   MANUAL_METRIC_KEYS: s.metricKeys,
@@ -179,10 +210,17 @@ beforeEach(() => {
   s.loopAvailable = { available: true, version: "v0.9" };
   s.keysendDisabled = [];
   s.latestPerMetric = [];
-  s.metricKeys = [];
+  // In place: the manualInputStore mock captured this array at mock time, so a
+  // reassignment here would leave the module reading the first one forever.
+  s.metricKeys.length = 0;
   s.channelAgeMs = 5_000;
   s.channelRowCount = 3;
   s.nodeInfoAgeMs = 5_000;
+  s.expansionsToday = 0;
+  s.dailyDeploySats = 0;
+  s.env.rebalanceSchedulerEnabled = false;
+  s.env.rebalanceSchedulerDryRun = false;
+  s.probeThrows = false;
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -472,7 +510,8 @@ describe("report-only: existing behaviour is unaffected", () => {
   it("every alert still conforms to the TreasuryAlert shape", async () => {
     s.chainBalanceThrows = PERMISSION_FAULT;
     for (const a of await getTreasuryAlerts()) {
-      expect(Object.keys(a).sort()).toEqual(["at", "data", "message", "severity", "type"]);
+      // SH1 adds `heading`, deliberately: set where each alert is created.
+      expect(Object.keys(a).sort()).toEqual(["at", "data", "heading", "message", "severity", "type"]);
       expect(["info", "warning", "critical"]).toContain(a.severity);
     }
   });
@@ -581,5 +620,136 @@ describe("channel data staleness reaches the alerts surface", () => {
     const alerts = await getTreasuryAlerts();
     expect(find(alerts)?.severity).toBe("critical");
     expect(alerts.some((a) => a.type === "ONCHAIN_RESERVE_BREACHED")).toBe(true);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SH1/SH2 — every alert type the API can emit carries its ruled heading, set
+// where the alert is created (here, channelDataStaleness.ts, lndFaultAlerts.ts).
+//
+// Two halves, so neither can pass alone:
+//   (1) the table's keys ARE the set of types the three modules can emit, read
+//       from their source — a new `type:` with no heading here fails;
+//   (2) every one of those types is actually PRODUCED below, through the real
+//       getTreasuryAlerts(), and its heading compared with the table.
+// The table is round 1's proposed headings (39e549f) with SH2's one change.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const RULED_HEADINGS: Record<string, string> = {
+  CHANNEL_DATA_STALE: "Channel data may be out of date",
+  ROTATION_CANDIDATES_PRESENT: "Channels suggested for rotation",
+  DAILY_LOSS_CAP_EXCEEDED: "Daily loss limit reached",
+  DAILY_LOSS_CAP_NEAR: "Daily loss close to its limit",
+  DAILY_EXPANSION_LIMIT_REACHED: "Daily expansion limit reached",
+  DAILY_DEPLOY_LIMIT_NEAR: "Daily deployment close to its limit",
+  ONCHAIN_RESERVE_BREACHED: "On-chain reserve below its floor",
+  ONCHAIN_RESERVE_NEAR: "On-chain reserve close to its floor",
+  ONCHAIN_RESERVE_CHECK_SKIPPED: "On-chain reserve not checked",
+  LND_FAULT: "Lightning node check found a problem",
+  SCHEDULER_SIMULATION_MODE: "Rebalance scheduler in simulation mode",
+  LOOP_OUT_AVAILABLE: "Loop Out available for critical channels",
+  LOOP_NOT_INSTALLED: "Loop unavailable while channels need rebalancing",
+  MEMBER_KEYSEND_DISABLED: "Keysend off for some member nodes",
+  VALUATION_MANUAL_STALE: "Valuation inputs need attention",
+};
+
+function emittableTypes(): string[] {
+  const src = (f: string) => readFileSync(join(__dirname, f), "utf8");
+  const types = new Set<string>();
+  for (const f of ["treasury-alerts.ts", "channelDataStaleness.ts"]) {
+    for (const m of src(f).matchAll(/^\s+type: "([A-Z][A-Z0-9_]+)",$/gm)) types.add(m[1]);
+  }
+  for (const m of src("lndFaultAlerts.ts").matchAll(/export const \w+_ALERT\s*=\s*"([A-Z][A-Z0-9_]+)"/g)) {
+    types.add(m[1]);
+  }
+  return [...types].sort();
+}
+
+/** One setup per creation site. */
+const SCENARIOS: Record<string, () => void> = {
+  "channel data never synced": () => { s.channelRowCount = 0; s.nodeInfoAgeMs = null; },
+  "channel rows very stale": () => { s.channelAgeMs = 2 * 60 * 60 * 1000; },
+  "rotation candidates": () => { s.rotationCandidates = [{ rotation_score: 200, channel_id: "1x1x1", reason: "idle" }]; },
+  "loss cap exceeded": () => { s.dailyLossSats = 2_000_000; },
+  "loss cap near": () => { s.dailyLossSats = 900_000; },
+  "expansion limit reached": () => { s.expansionsToday = 10; },
+  "deploy limit near": () => { s.dailyDeploySats = 90_000_000; },
+  "reserve breached": () => { s.chainBalance = RESERVE_FLOOR - 1; },
+  "reserve near": () => { s.chainBalance = Math.floor(RESERVE_FLOOR * 1.1); },
+  "LND fault (lndFaultAlerts.ts sites)": () => { s.chainBalanceThrows = PERMISSION_FAULT; },
+  "probe itself failed (treasury-alerts.ts reserve-skipped site)": () => {
+    s.chainBalanceThrows = PERMISSION_FAULT;
+    s.probeThrows = true;
+  },
+  "scheduler dry run": () => { s.env.rebalanceSchedulerEnabled = true; s.env.rebalanceSchedulerDryRun = true; },
+  "loop available, critical channel": () => {
+    s.liquidityHealth = [{ is_active: true, health_classification: "critical" }];
+  },
+  "loop unavailable, critical channel": () => {
+    s.liquidityHealth = [{ is_active: true, health_classification: "critical" }];
+    s.loopAvailable = { available: false, error: "unreachable" };
+  },
+  "member keysend disabled": () => {
+    s.keysendDisabled = [{ peer_pubkey: "02" + "b".repeat(64), last_failure_at: Date.now() }];
+  },
+  "valuation never entered": () => { s.metricKeys.push("mvrv"); },
+};
+
+/** The suite's beforeEach reset, for use between scenarios inside one test. */
+function resetState() {
+  s.chainBalance = 100_000_000; s.chainBalanceThrows = null; s.probeThrows = false;
+  s.channelAgeMs = 5_000; s.channelRowCount = 3; s.nodeInfoAgeMs = 5_000;
+  s.rotationCandidates = []; s.dailyLossSats = 0; s.expansionsToday = 0; s.dailyDeploySats = 0;
+  s.env.rebalanceSchedulerEnabled = false; s.env.rebalanceSchedulerDryRun = false;
+  s.liquidityHealth = []; s.loopAvailable = { available: true, version: "v0.9" };
+  s.keysendDisabled = []; s.metricKeys.length = 0;
+}
+
+describe("SH1/SH2: every alert carries its ruled heading", () => {
+  it("the ruled table covers exactly the types the API can emit", () => {
+    expect(emittableTypes().length).toBe(15);
+    expect(Object.keys(RULED_HEADINGS).sort()).toEqual(emittableTypes());
+  });
+
+  it("every emittable type is produced by some scenario, with its ruled heading", async () => {
+    const seen = new Map<string, Set<string>>();
+    for (const [name, setup] of Object.entries(SCENARIOS)) {
+      resetState();
+      setup();
+      const alerts = await getTreasuryAlerts();
+      expect(alerts.length, `scenario "${name}" produced no alert`).toBeGreaterThan(0);
+      for (const a of alerts) {
+        if (!seen.has(a.type)) seen.set(a.type, new Set());
+        seen.get(a.type)!.add(a.heading);
+      }
+    }
+    expect([...seen.keys()].sort()).toEqual(emittableTypes());
+    for (const [type, headings] of seen) {
+      expect([...headings], type).toEqual([RULED_HEADINGS[type]]);
+    }
+  });
+
+  it("both ONCHAIN_RESERVE_CHECK_SKIPPED creation sites set the heading", async () => {
+    s.chainBalanceThrows = PERMISSION_FAULT;
+    const viaFault = (await getTreasuryAlerts()).find((a) => a.type === "ONCHAIN_RESERVE_CHECK_SKIPPED")!;
+    s.probeThrows = true;
+    const viaProbe = (await getTreasuryAlerts()).find((a) => a.type === "ONCHAIN_RESERVE_CHECK_SKIPPED")!;
+    expect(viaFault.data.reason).toBe("lnd_fault");
+    expect(viaProbe.data.reason).toBe("probe_failed");
+    expect(viaFault.heading).toBe("On-chain reserve not checked");
+    expect(viaProbe.heading).toBe("On-chain reserve not checked");
+  });
+
+  it("no heading prints a raw type identifier", () => {
+    for (const h of Object.values(RULED_HEADINGS)) expect(h).not.toMatch(/[A-Z]{2,}_[A-Z]/);
+  });
+
+  it("SH2: the Keysend heading says 'off', not 'paused'", () => {
+    expect(RULED_HEADINGS.MEMBER_KEYSEND_DISABLED).toBe("Keysend off for some member nodes");
+  });
+
+  it("the Loop heading asserts no cause and names no remediation (Loop decision D3)", () => {
+    expect(RULED_HEADINGS.LOOP_NOT_INSTALLED).not.toMatch(/install|configur|expire|running|start|restart|loopd|credential|cert/i);
+    expect(RULED_HEADINGS.LOOP_NOT_INSTALLED).toMatch(/loop/i);
   });
 });

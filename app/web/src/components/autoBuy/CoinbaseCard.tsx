@@ -72,6 +72,7 @@ function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> })
           A key missing Transfer will pass verification but fail silently 72h later at the sweep step.
         </p>
         <textarea
+          aria-label="Coinbase API key (JSON)"
           value={blob}
           onChange={(e) => setBlob(e.target.value)}
           placeholder={`{\n  "name": "organizations/.../apiKeys/...",\n  "privateKey": "-----BEGIN EC PRIVATE KEY-----\\n..."\n}`}

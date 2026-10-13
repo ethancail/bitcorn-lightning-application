@@ -214,6 +214,7 @@ import {
   handleWalletUnregister as handleStablecoinWalletUnregister,
 } from "./stablecoin/handlers";
 import { handleRailFeeRevenue } from "./stablecoin/feeRevenue";
+import { sweepExpiredChallenges } from "./stablecoin/nonceStore";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import {
   isAdminMemberQuery,
@@ -264,10 +265,26 @@ import { startSwapPoller } from "./swaps/swapPoller";
 // importing this file opened the DB, applied migrations, reached for LND and
 // left a live 15s interval running — which is why no test could import it.
 // They now run only from main(), behind the require.main guard at the bottom
-// of this file. Order of effects is unchanged.
-function bootSideEffects(): void {
+// of this file. Order of effects is unchanged. Exported only so
+// index.challengeSweep.test.ts can drive the same boot path main() runs.
+export function bootSideEffects(): void {
   initDb();
   runMigrations();
+
+  // Delete expired SIWE wallet-registration challenges: once now, then hourly,
+  // on every node (bootSideEffects has no role check). A failed sweep logs and
+  // is retried next hour; it never breaks boot. The timer is unref'd so it
+  // never holds the process open on its own.
+  const sweepChallenges = () => {
+    try {
+      const removed = sweepExpiredChallenges();
+      if (removed > 0) console.log(`[stablecoin] swept ${removed} expired SIWE challenge(s)`);
+    } catch (err: any) {
+      console.warn("[stablecoin] expired-challenge sweep failed:", err?.message ?? err);
+    }
+  };
+  sweepChallenges();
+  setInterval(sweepChallenges, 60 * 60 * 1000).unref();
 
   persistNodeInfo().catch(err => {
     console.warn("[lnd] unable to persist node info:", err.message);
@@ -5007,10 +5024,6 @@ function main(): void {
   });
 }
 
-// CommonJS entrypoint guard (tsconfig module=CommonJS, package.json
-// type=commonjs, Dockerfile CMD ["node", "dist/index.js"]). True only when
-// this file is the process entrypoint; false on any import, including under
-// vitest, where require/module exist but require.main is undefined.
 // CommonJS entrypoint guard (tsconfig module=CommonJS, package.json
 // type=commonjs, Dockerfile CMD ["node", "dist/index.js"]). True only when
 // this file is the process entrypoint; false on any import, including under

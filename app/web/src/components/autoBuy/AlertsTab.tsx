@@ -59,6 +59,7 @@ export default function AlertsTab() {
         <span className="panel-title">Alert History <span className="text-dim" style={{ fontWeight: 400 }}>· last 30 days</span></span>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <select
+            aria-label="Filter by status"
             value={filters.status}
             onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value as HistoryFilters["status"] }))}
             style={{ fontSize: "0.75rem" }}
@@ -69,6 +70,7 @@ export default function AlertsTab() {
             <option value="dismissed">Dismissed</option>
           </select>
           <select
+            aria-label="Filter by severity"
             value={filters.severity}
             onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value as HistoryFilters["severity"] }))}
             style={{ fontSize: "0.75rem" }}
@@ -78,6 +80,7 @@ export default function AlertsTab() {
             <option value="critical">Critical</option>
           </select>
           <select
+            aria-label="Filter by type"
             value={filters.type}
             onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))}
             style={{ fontSize: "0.75rem" }}

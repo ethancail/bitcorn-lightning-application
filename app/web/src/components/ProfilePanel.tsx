@@ -141,6 +141,7 @@ export default function ProfilePanel() {
             </span>
           </div>
           <input
+            aria-label="Public alias"
             type="text"
             value={input}
             placeholder={`e.g. "Lazy Acres Farm"`}

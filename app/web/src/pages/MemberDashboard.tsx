@@ -20,6 +20,7 @@ import { classifyConfirmError } from "../components/actionConfirm/confirmErrors"
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import StaleMarker from "../components/StaleMarker";
 import { channelStalenessNotice } from "../components/channelStaleness";
+import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
 import { certExpiryNotice } from "../components/certExpiryNotice";
 import { withdrawCtaGate } from "../components/withdrawCtaGate";
 import { memberNamePromptFor, type BitcornNameRead } from "../components/memberNamePrompt";
@@ -190,6 +191,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
           </div>
           <div style={{ position: "relative" }}>
             <input
+              aria-label="Channel Capacity"
               className="form-input"
               type="text"
               inputMode="numeric"
@@ -262,6 +264,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
               <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(optional)</span>
             </label>
             <input
+              aria-label="Hub Address"
               className="form-input"
               type="text"
               placeholder="e.g. 203.0.113.5:9735 — ask your operator"
@@ -682,14 +685,16 @@ export default function MemberDashboard() {
       )}
 
       {hasChannel && (() => {
-        const role = advisor?.classification?.channelRole ?? "unknown";
+        // SH9: the DECLARED role, which the API returns whether or not the
+        // treasury channel is active (classification is null while it isn't).
+        const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
         const rec = advisor?.recommendation;
         const isMerchant = role === "merchant";
         const isFarmer = role === "farmer";
 
         // Role-aware gauge
-        // Merchant: outbound capacity (local%) — depletes as they spend, green when high
-        // Farmer: earnings accumulated (local%) — fills up like a grain bin, amber→green→amber→red as it fills
+        // Merchant: outbound capacity (local%) — depletes as they spend
+        // Farmer: earnings accumulated (local%) — fills up like a grain bin
         // Unknown: raw local/remote split
         const gaugeLabel = isMerchant ? "Room to send" : isFarmer ? "Earnings accumulated" : "Channel balance";
         const gaugePct = isMerchant ? localPct : isFarmer ? localPct : localPct;
@@ -698,15 +703,14 @@ export default function MemberDashboard() {
           : isFarmer
             ? `${localPct}% full — ${ch!.local_sats.toLocaleString()} of ${ch!.capacity_sats.toLocaleString()} sats`
             : `${localPct}% local — ${remotePct}% remote`;
-        // Merchant: green=healthy(high local), amber/red=depleting
-        // Farmer: green=room to earn(low fill), amber=getting full, red=needs withdrawal
-        const gaugeColor = isFarmer
-          ? (localPct >= 85 ? "var(--red)" : localPct >= 70 ? "var(--amber)" : "var(--green)")
-          : (gaugePct < 15 ? "var(--red)" : gaugePct < 30 ? "var(--amber)" : "var(--green)");
+        // V11: the colour comes from the advisor's state, never red; an unknown
+        // role or no classification is neutral (components/capacityTone.ts).
+        const tone = capacityTone(role, advisor?.classification);
+        const gaugeColor = CAPACITY_BAR_COLOR[tone];
+        const gaugeWord = capacityWord(role, tone);
 
-        // Hero value color: role-aware, same urgency logic as the gauge.
-        // Unknown role stays neutral (no signal when we don't know the context).
-        const heroColor = role === "unknown" ? "var(--text)" : gaugeColor;
+        // PR3-7: the hero number never turns amber — a warning stays in --text.
+        const heroColor = CAPACITY_TEXT_COLOR[tone];
 
         // Hero number
         const heroLabel = isMerchant ? "Available to send" : isFarmer ? "Available to withdraw" : "Your balance";
@@ -721,9 +725,10 @@ export default function MemberDashboard() {
         const refillUrl = rec?.action === "loop_in" && rec?.suggestedAmountSats
           ? `/refill?amount=${rec.suggestedAmountSats}` : "/refill";
 
-        // Advisor alert
-        const alertClass = rec?.urgency === "high" ? "critical" : rec?.urgency === "medium" ? "warning" : "info";
-        const alertIcon = rec?.urgency === "high" ? "✕" : rec?.urgency === "medium" ? "⚠" : "ℹ";
+        // Advisor alert. PR3-3: it reports capacity, which is never an error, so
+        // high urgency takes the warning, not the red critical.
+        const alertClass = rec?.urgency === "high" || rec?.urgency === "medium" ? "warning" : "info";
+        const alertIcon = rec?.urgency === "high" || rec?.urgency === "medium" ? "⚠" : "ℹ";
         const showAlert = rec && rec.action !== "none";
 
         return (
@@ -743,6 +748,7 @@ export default function MemberDashboard() {
                   <div className="lbl">{heroLabel}</div>
                   <div
                     className="val"
+                    data-testid="capacity-text"
                     style={{ color: heroColor }}
                     aria-label={`${heroLabel}: ${heroSats.toLocaleString()} sats`}
                   >
@@ -789,11 +795,16 @@ export default function MemberDashboard() {
                   aria-label={gaugeLabel}
                 >
                   <div className="labels">
-                    <span>{gaugeLabel}</span>
+                    {/* The label and its word stay on one line; on a phone the
+                        right-hand figure wraps instead. */}
+                    <span data-testid="gauge-label" style={{ whiteSpace: "nowrap" }}>
+                      {gaugeLabel}
+                      {gaugeWord && <span data-testid="capacity-text" style={{ color: "var(--text)" }}> · {gaugeWord}</span>}
+                    </span>
                     <span>{gaugeRemaining}</span>
                   </div>
                   <div className="bar">
-                    <div className="fill" style={{ width: `${gaugePct}%`, background: gaugeColor }} />
+                    <div className="fill" data-testid="capacity-bar" style={{ width: `${gaugePct}%`, background: gaugeColor }} />
                   </div>
                 </div>
 

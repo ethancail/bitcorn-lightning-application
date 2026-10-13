@@ -199,6 +199,7 @@ export default function BitcornNamePanel({ focusOnMount = false }: { focusOnMoun
             </span>
           </div>
           <input
+            aria-label={BITCORN_NAME_FIELD_LABEL}
             ref={inputRef}
             type="text"
             value={input}

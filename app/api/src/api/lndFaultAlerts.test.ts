@@ -413,9 +413,13 @@ describe("purity", () => {
   it("conforms to the existing TreasuryAlert shape — no reshaping", async () => {
     const report = await reportFrom({ offchain: throws(PERMISSION_FAULT) });
     for (const a of lndFaultAlerts(report, NOW, OPTS)) {
-      expect(Object.keys(a).sort()).toEqual(["at", "data", "message", "severity", "type"]);
+      // SH1 adds `heading` to the shape, set here where these alerts are created.
+      expect(Object.keys(a).sort()).toEqual(["at", "data", "heading", "message", "severity", "type"]);
       expect(["info", "warning", "critical"]).toContain(a.severity);
       expect(typeof a.message).toBe("string");
+      expect(a.heading).toBe(
+        a.type === "LND_FAULT" ? "Lightning node check found a problem" : "On-chain reserve not checked",
+      );
       expect(typeof a.at).toBe("number");
     }
   });

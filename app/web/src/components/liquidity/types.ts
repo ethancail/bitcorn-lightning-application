@@ -29,13 +29,31 @@ export const ROLE_COLOR: Record<LiquidityRole, string> = {
   unknown:  "var(--text-3)",
 };
 
-// Health color tokens — same pattern.
+// Health color tokens — same pattern. D3 / PR3-1: capacity is never red; the
+// critical tier keeps its place and turns amber with heavy. These colour bars
+// and rings only.
 export const HEALTH_COLOR: Record<HealthTier, string> = {
-  critical: "var(--red)",
+  critical: "var(--amber)",
   heavy:    "var(--amber)",
   healthy:  "var(--green)",
   neutral:  "var(--text-3)",
 };
+
+// PR3-7: text never takes amber (light --amber is 2.68:1 on --bg-1), so a
+// warning tier's number stays in --text.
+export const HEALTH_TEXT_COLOR: Record<HealthTier, string> = {
+  critical: "var(--text)",
+  heavy:    "var(--text)",
+  healthy:  "var(--green)",
+  neutral:  "var(--text-3)",
+};
+
+// The warning tiers in words, since their colour no longer tells them apart
+// from each other or says which way a lane is off.
+export function healthWord(role: LiquidityRole, tier: HealthTier): string | null {
+  if (tier !== "critical" && tier !== "heavy") return null;
+  return role === "farmer" ? "Getting full" : "Low";
+}
 
 // Hard-coded external pubkeys (mirrors NetworkGraph.tsx today). ACINQ.
 export const EXTERNAL_PUBKEYS = new Set([

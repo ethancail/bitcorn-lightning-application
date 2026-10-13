@@ -164,6 +164,7 @@ export default function Peers() {
             Paste their Node URI to establish a direct peer connection. Once connected, you can open a channel to them from the Channels page.
           </div>
           <input
+            aria-label="Node URI"
             className="form-input"
             placeholder="pubkey@host:port"
             value={uri}

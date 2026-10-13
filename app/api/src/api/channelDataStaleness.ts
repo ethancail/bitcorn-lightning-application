@@ -84,6 +84,8 @@ export type ChannelStalenessInput = {
 
 export type ChannelStalenessAlert = {
   type: "CHANNEL_DATA_STALE";
+  /** Set where the alert is created (SH1; see TreasuryAlert in treasury-alerts.ts). */
+  heading: string;
   severity: AlertSeverity;
   message: string;
   data: Record<string, any>;
@@ -111,6 +113,7 @@ export function channelDataStalenessAlert(
     //     permissive input.
     return {
       type: "CHANNEL_DATA_STALE",
+      heading: "Channel data may be out of date",
       severity: nodeInfo.staleness === "never_synced" ? "warning" : "critical",
       message:
         nodeInfo.staleness === "never_synced"
@@ -140,6 +143,7 @@ export function channelDataStalenessAlert(
 
   return {
     type: "CHANNEL_DATA_STALE",
+    heading: "Channel data may be out of date",
     severity: channels.staleness === "very_stale" ? "critical" : "warning",
     message:
       `Channel data is ${channels.staleness} (${channels.age_seconds}s old) — capital guardrails ` +

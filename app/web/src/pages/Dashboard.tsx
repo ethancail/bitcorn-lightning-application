@@ -13,6 +13,9 @@ import {
   type FreshnessState,
 } from "../components/freshness";
 
+/** Printed when an alert arrives without a heading (SH1). */
+export const TREASURY_ALERT_FALLBACK_HEADING = "Treasury alert";
+
 function fmt(n: number) {
   return n.toLocaleString();
 }
@@ -178,7 +181,12 @@ export default function Dashboard() {
             <div key={i} className={`alert ${a.severity === "critical" ? "critical" : "warning"}`} style={{ marginBottom: 0 }}>
               <span className="alert-icon">{a.severity === "critical" ? "✕" : "⚠"}</span>
               <div className="alert-body">
-                <div className="alert-type">{a.type}</div>
+                {/* SH1: the server sets each heading where the alert is created
+                    (treasury-alerts.ts and the two modules it calls). This
+                    prints it, falling back to TREASURY_ALERT_FALLBACK_HEADING;
+                    it never branches on a.type to choose one. Decision:
+                    bitcorn-research decisions/2026-10-13-ui-redesign-shipping-plan-rulings-sh1-sh8.md */}
+                <div className="alert-type">{a.heading || TREASURY_ALERT_FALLBACK_HEADING}</div>
                 <div className="alert-msg">{a.message}</div>
               </div>
             </div>
@@ -243,7 +251,8 @@ export default function Dashboard() {
                     24h · paid to rebalance ops · all-time {formatSigned(-Math.abs(mAll?.rebalance_costs_sats ?? 0)).text}
                   </div>
                 </div>
-                <div className="policy-card-value" style={{ color: "var(--red)" }}>
+                {/* E: a cost is a negative number, and 0 is none — both in --text (D3). */}
+                <div className="policy-card-value" style={{ color: "var(--text)" }}>
                   {formatSigned(-Math.abs(m24?.rebalance_costs_sats ?? 0)).text}
                   <span className="unit">sats</span>
                 </div>
@@ -266,7 +275,7 @@ export default function Dashboard() {
                 </div>
                 <div className="stat-card" style={{ flex: "1 1 140px" }}>
                   <div className="stat-label">Revenue Yield</div>
-                  <div className="stat-value" style={{ fontSize: "1.125rem", color: (cap?.revenue_yield ?? 0) >= 0 ? "var(--green)" : "var(--red)" }}>
+                  <div className="stat-value" style={{ fontSize: "1.125rem", color: (cap?.revenue_yield ?? 0) >= 0 ? "var(--green)" : "var(--text)" }}>
                     {fmt(Math.round(cap?.revenue_yield ?? 0))}
                   </div>
                   <div className="stat-sub">sats per 1M deployed</div>

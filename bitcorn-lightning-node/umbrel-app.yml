@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.20"
+version: "1.18.21"
 port: 3200
 
 description: >
@@ -27,6 +27,20 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.21: Red now means only an error. Channel balance warnings follow your
+  Liquidity Advisor and show as an amber bar with a word ("Low" or "Getting
+  full"). Sent and Received payments are marked with an arrow instead of a
+  colour, the other side of a channel's balance bar is grey, and negative or
+  zero figures use the normal text colour. Your Merchant or Farmer role now
+  shows in the menu, Settings and the dashboard, even while your channel is
+  inactive. The System theme follows your device as it changes, the
+  light-theme logo is visible, and on a phone the top bar shows just your node
+  name. Every button now shows a focus ring and a press response, text size
+  now reaches the subscription screens, and more controls are named for
+  screen readers. On the Stablecoin page, "Copy address" now works when you
+  open your node at a plain http:// address. Treasury alerts have
+  plain-language headings. Nothing for you to do.
+
   v1.18.20: New in your sidebar: BitCorn Daybreak — a short morning briefing on
   corn, Bitcoin and the farm economy, with the day's Corn-Bitcoin Z-Score.
   Nothing for you to do.
