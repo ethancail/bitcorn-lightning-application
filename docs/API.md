@@ -156,15 +156,21 @@ Member-facing surface of the BASE/USDC rail (**pre-mainnet** — currently runs 
 **Alerts** (`GET /api/treasury/alerts`)
 
 Computed on read — nothing is persisted. Each entry is
-`{ type, severity: "info" \| "warning" \| "critical", message, data, at }`. Polled every
+`{ type, heading, severity: "info" \| "warning" \| "critical", message, data, at }`. Polled every
 60s by the treasury Dashboard, which renders only `critical` and `warning`, so an
 `info` alert is not shown in the alert list.
+
+`heading` is the plain-language title the Dashboard prints (e.g. "Keysend off for some
+member nodes"). The API sets it where each alert is created — `treasury-alerts.ts`,
+`channelDataStaleness.ts`, `lndFaultAlerts.ts` — and the Dashboard falls back to
+"Treasury alert" without it; it never derives a heading from `type`.
 
 Types: `ROTATION_CANDIDATES_PRESENT` · `DAILY_LOSS_CAP_EXCEEDED` ·
 `DAILY_LOSS_CAP_NEAR` · `DAILY_EXPANSION_LIMIT_REACHED` · `DAILY_DEPLOY_LIMIT_NEAR` ·
 `ONCHAIN_RESERVE_BREACHED` · `ONCHAIN_RESERVE_NEAR` · `SCHEDULER_SIMULATION_MODE` ·
 `LOOP_OUT_AVAILABLE` · `LOOP_NOT_INSTALLED` · `MEMBER_KEYSEND_DISABLED` ·
-`VALUATION_MANUAL_STALE` · **`LND_FAULT`** · **`ONCHAIN_RESERVE_CHECK_SKIPPED`**
+`VALUATION_MANUAL_STALE` · `CHANNEL_DATA_STALE` · **`LND_FAULT`** ·
+**`ONCHAIN_RESERVE_CHECK_SKIPPED`**
 
 The last two are emitted when the on-chain reserve check cannot complete. Before they
 existed, an LND fault made `ONCHAIN_RESERVE_BREACHED` / `_NEAR` silently vanish,

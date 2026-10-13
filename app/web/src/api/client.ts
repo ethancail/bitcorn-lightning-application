@@ -576,6 +576,9 @@ export type AlertSeverity = "info" | "warning" | "critical";
 
 export type TreasuryAlert = {
   type: string;
+  /** Plain-language heading, set by the API where the alert is created (SH1).
+   *  Optional here: the dashboard falls back to "Treasury alert" without it. */
+  heading?: string;
   severity: AlertSeverity;
   message: string;
   data: Record<string, unknown>;
