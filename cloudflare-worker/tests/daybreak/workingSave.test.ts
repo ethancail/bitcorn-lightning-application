@@ -2,7 +2,8 @@
 // Worker-owned fields from the DRAFT, server-side (I.1). An AVAILABLE Z, once
 // captured, pins — later saves keep the working key's own (J.3) — but an
 // UNAVAILABLE one does not: it is re-copied from the draft on the next save
-// (K.1). The editor can never set them.
+// (K.1), and when the draft's is unavailable too, the save re-fetches the
+// closes and recomputes it (ruled 2026-10-12). The editor can never set them.
 //
 // Drafts are produced by the real intake (runDraftIntake) against a mock
 // fetcher, so the Worker-owned fields under test are genuine stamped Zs.
@@ -13,6 +14,7 @@ import type { CloseFetcher, CloseFetchResult, PriceSymbol } from "../../src/dayb
 import { runDraftIntake, WORKER_OWNED_KEY } from "../../src/daybreak/intake";
 import { publishEdition, readDraft, readWorking, writeDraft, writeWorking } from "../../src/daybreak/store";
 import { saveWorking } from "../../src/daybreak/workingSave";
+import { POWER_LAW_BANDS_KV_KEY } from "../../src/valuation/powerLawBands";
 import { POWER_LAW_PARAMS_KV_KEY } from "../../src/valuation/powerLawParams";
 import { ORACLE_PARAMS } from "../fixtures/daybreakPowerLawOracle";
 
@@ -90,7 +92,7 @@ describe("test 18: an editor save whose payload includes a Z (and close dates)",
   it("permitting: the working key's Z block and close dates EQUAL the draft's", async () => {
     const { kv, store } = mockKV();
     await draftWith(kv, closesA);
-    const r = await saveWorking(kv, EDITION, { ...kevinFirst, [WORKER_OWNED_KEY]: FORGED });
+    const r = await saveWorking(kv, EDITION, { ...kevinFirst, [WORKER_OWNED_KEY]: FORGED }, closesFail);
     expect(r).toEqual({ ok: true, workerOwnedFrom: "draft" });
     expect(owned(stored(store, "working"))).toEqual(owned(stored(store, "draft")));
   });
@@ -98,7 +100,7 @@ describe("test 18: an editor save whose payload includes a Z (and close dates)",
   it("forbidding: the payload's values NEVER reach the working key; the editor's sections do", async () => {
     const { kv, store } = mockKV();
     await draftWith(kv, closesA);
-    await saveWorking(kv, EDITION, { ...kevinFirst, [WORKER_OWNED_KEY]: FORGED });
+    await saveWorking(kv, EDITION, { ...kevinFirst, [WORKER_OWNED_KEY]: FORGED }, closesFail);
     const working = stored(store, "working");
     expect(JSON.stringify(working[WORKER_OWNED_KEY])).not.toContain("7.77");
     expect(JSON.stringify(working[WORKER_OWNED_KEY])).not.toContain("2019-01-01");
@@ -109,9 +111,9 @@ describe("test 18: an editor save whose payload includes a Z (and close dates)",
   it("forbidding on a LATER save too: a forged Z on the second save never replaces the kept one", async () => {
     const { kv, store } = mockKV();
     await draftWith(kv, closesA);
-    await saveWorking(kv, EDITION, kevinFirst);
+    await saveWorking(kv, EDITION, kevinFirst, closesFail);
     const kept = owned(stored(store, "working"));
-    const r = await saveWorking(kv, EDITION, { ...kevinSecond, [WORKER_OWNED_KEY]: FORGED });
+    const r = await saveWorking(kv, EDITION, { ...kevinSecond, [WORKER_OWNED_KEY]: FORGED }, closesFail);
     expect(r).toEqual({ ok: true, workerOwnedFrom: "working" });
     expect(owned(stored(store, "working"))).toEqual(kept);
   });
@@ -119,7 +121,7 @@ describe("test 18: an editor save whose payload includes a Z (and close dates)",
   it("a payload WITHOUT a Z still produces a working key carrying the draft's Z", async () => {
     const { kv, store } = mockKV();
     await draftWith(kv, closesA);
-    await saveWorking(kv, EDITION, kevinFirst);
+    await saveWorking(kv, EDITION, kevinFirst, closesFail);
     const z = owned(stored(store, "working")).z;
     expect(z.status).toBe("available");
     expect(z).toEqual(owned(stored(store, "draft")).z);
@@ -132,7 +134,7 @@ describe("test 19: a drafting-agent re-run after Kevin's last save", () => {
   it("permitting: the draft key changes to the re-run's; forbidding: the working key's numbers are unchanged and publish carries Kevin's", async () => {
     const { kv, store } = mockKV();
     await draftWith(kv, closesA);
-    await saveWorking(kv, EDITION, kevinFirst);
+    await saveWorking(kv, EDITION, kevinFirst, closesFail);
     const savedAgainst = owned(stored(store, "working"));
 
     await draftWith(kv, closesB); // the late re-run
@@ -153,12 +155,12 @@ describe("test 22: a drafting-agent re-run BETWEEN two working saves", () => {
     const { kv, store, ops, reset } = mockKV();
     await draftWith(kv, closesA); // draft A
     const draftA = owned(stored(store, "draft"));
-    expect((await saveWorking(kv, EDITION, kevinFirst)).ok).toBe(true); // Kevin's first save
+    expect((await saveWorking(kv, EDITION, kevinFirst, closesFail)).ok).toBe(true); // Kevin's first save
     const copiedAtFirst = owned(stored(store, "working"));
     await draftWith(kv, closesB); // re-run writes draft B
     const draftB = owned(stored(store, "draft"));
     reset();
-    const second = await saveWorking(kv, EDITION, kevinSecond); // Kevin's second save
+    const second = await saveWorking(kv, EDITION, kevinSecond, closesFail); // Kevin's second save
     return { store, ops, draftA, draftB, copiedAtFirst, second };
   }
 
@@ -190,17 +192,17 @@ describe("test 23 (K.1): an outage at the first save, then recovery — an UNAVA
   async function sequence() {
     const { kv, store } = mockKV();
     await draftWith(kv, closesFail); // draft A: unavailable Z (I.2)
-    const first = await saveWorking(kv, EDITION, kevinFirst);
+    const first = await saveWorking(kv, EDITION, kevinFirst, closesFail); // the save's re-fetch fails too
     const afterFirst = owned(stored(store, "working"));
     await draftWith(kv, closesB); // successful re-run: draft B, available
     const draftB = owned(stored(store, "draft"));
-    const next = await saveWorking(kv, EDITION, kevinSecond);
+    const next = await saveWorking(kv, EDITION, kevinSecond, closesFail);
     return { store, first, afterFirst, draftB, next };
   }
 
   it("permitting: the first save captures UNAVAILABLE; the next save captures draft B's AVAILABLE Z and close dates", async () => {
     const { store, first, afterFirst, draftB, next } = await sequence();
-    expect(first).toEqual({ ok: true, workerOwnedFrom: "draft" });
+    expect(first).toEqual({ ok: true, workerOwnedFrom: "refetch" });
     expect(afterFirst.z.status).toBe("unavailable");
     expect(draftB.z.status).toBe("available"); // anti-vacuity: the re-run really succeeded
     expect(next).toEqual({ ok: true, workerOwnedFrom: "draft" });
@@ -219,12 +221,12 @@ describe("test 23 (K.1): an outage at the first save, then recovery — an UNAVA
     expect(sections).toEqual(kevinSecond);
   });
 
-  it("while the draft is STILL unavailable, a later save keeps re-copying the draft (still unavailable) — it never invents a Z", async () => {
+  it("while the draft is STILL unavailable and the re-fetch still fails, a later save stays unavailable — it never invents a Z", async () => {
     const { kv, store } = mockKV();
     await draftWith(kv, closesFail);
-    await saveWorking(kv, EDITION, kevinFirst);
-    const r = await saveWorking(kv, EDITION, { ...kevinSecond, [WORKER_OWNED_KEY]: { z: { status: "available", value: 1 } } });
-    expect(r).toEqual({ ok: true, workerOwnedFrom: "draft" });
+    await saveWorking(kv, EDITION, kevinFirst, closesFail);
+    const r = await saveWorking(kv, EDITION, { ...kevinSecond, [WORKER_OWNED_KEY]: { z: { status: "available", value: 1 } } }, closesFail);
+    expect(r).toEqual({ ok: true, workerOwnedFrom: "refetch" });
     expect(owned(stored(store, "working")).z.status).toBe("unavailable");
   });
 });
@@ -235,14 +237,14 @@ describe("test 24 (K.1): once an AVAILABLE Z is captured, a further re-run does 
   async function sequence() {
     const { kv, store, ops, reset } = mockKV();
     await draftWith(kv, closesFail); // outage first, so B is captured by RECOVERY, not by the first save
-    await saveWorking(kv, EDITION, kevinFirst);
+    await saveWorking(kv, EDITION, kevinFirst, closesFail);
     await draftWith(kv, closesB); // draft B: available
-    await saveWorking(kv, EDITION, kevinSecond); // captures B
+    await saveWorking(kv, EDITION, kevinSecond, closesFail); // captures B
     const capturedB = owned(stored(store, "working"));
     await draftWith(kv, closesA); // a further re-run: draft C, a different available Z
     const draftC = owned(stored(store, "draft"));
     reset();
-    const later = await saveWorking(kv, EDITION, kevinFirst);
+    const later = await saveWorking(kv, EDITION, kevinFirst, closesFail);
     return { store, ops, capturedB, draftC, later };
   }
 
@@ -275,7 +277,7 @@ describe("a working key with no reserved block yet copies it from the current dr
     const { kv, store } = mockKV();
     await draftWith(kv, closesA);
     expect((await writeWorking(kv, EDITION, { lead: "written around the save" })).ok).toBe(true);
-    const r = await saveWorking(kv, EDITION, { ...kevinFirst, [WORKER_OWNED_KEY]: { z: { status: "available", value: 7.77 } } });
+    const r = await saveWorking(kv, EDITION, { ...kevinFirst, [WORKER_OWNED_KEY]: { z: { status: "available", value: 7.77 } } }, closesFail);
     expect(r).toEqual({ ok: true, workerOwnedFrom: "draft" });
     expect(owned(stored(store, "working"))).toEqual(owned(stored(store, "draft")));
     expect(JSON.stringify(owned(stored(store, "working")))).not.toContain("7.77");
@@ -288,13 +290,13 @@ describe("no draft exists at the first save", () => {
   it("permitting: with a draft present the first save succeeds", async () => {
     const { kv, store } = mockKV();
     await draftWith(kv, closesA);
-    expect((await saveWorking(kv, EDITION, kevinFirst)).ok).toBe(true);
+    expect((await saveWorking(kv, EDITION, kevinFirst, closesFail)).ok).toBe(true);
     expect(store.has(`daybreak:${EDITION}:working`)).toBe(true);
   });
 
   it("forbidding: with no draft the save is an explicit error and NOTHING is written", async () => {
     const { kv, store, ops } = mockKV();
-    const r = await saveWorking(kv, EDITION, kevinFirst);
+    const r = await saveWorking(kv, EDITION, kevinFirst, closesFail);
     expect(r).toMatchObject({ ok: false, reason: "no_draft" });
     expect(ops.filter((o) => o.op !== "get")).toEqual([]);
     expect(store.has(`daybreak:${EDITION}:working`)).toBe(false);
@@ -304,7 +306,7 @@ describe("no draft exists at the first save", () => {
     const { kv, ops, reset } = mockKV();
     expect((await writeDraft(kv, EDITION, agentSections)).ok).toBe(true);
     reset();
-    const r = await saveWorking(kv, EDITION, { ...kevinFirst, [WORKER_OWNED_KEY]: { z: { status: "available", value: 1 } } });
+    const r = await saveWorking(kv, EDITION, { ...kevinFirst, [WORKER_OWNED_KEY]: { z: { status: "available", value: 1 } } }, closesFail);
     expect(r).toMatchObject({ ok: false, reason: "missing_worker_owned" });
     expect(ops.filter((o) => o.op !== "get")).toEqual([]);
   });
@@ -317,9 +319,9 @@ describe("working save input validation", () => {
     const { kv, ops } = mockKV();
     await draftWith(kv, closesA);
     const before = ops.filter((o) => o.op === "put").length;
-    expect(await saveWorking(kv, "2026-9-29", kevinFirst)).toMatchObject({ ok: false, reason: "invalid_date" });
-    expect(await saveWorking(kv, undefined as unknown as string, kevinFirst)).toMatchObject({ ok: false, reason: "invalid_date" });
-    expect(await saveWorking(kv, EDITION, [] as unknown as Record<string, unknown>)).toMatchObject({ ok: false, reason: "invalid_content" });
+    expect(await saveWorking(kv, "2026-9-29", kevinFirst, closesA)).toMatchObject({ ok: false, reason: "invalid_date" });
+    expect(await saveWorking(kv, undefined as unknown as string, kevinFirst, closesA)).toMatchObject({ ok: false, reason: "invalid_date" });
+    expect(await saveWorking(kv, EDITION, [] as unknown as Record<string, unknown>, closesA)).toMatchObject({ ok: false, reason: "invalid_content" });
     expect(ops.filter((o) => o.op === "put").length).toBe(before);
   });
 });
@@ -338,5 +340,105 @@ describe("store seam: readDraft / readWorking", () => {
     expect(await readWorking(kv, "nope")).toMatchObject({ ok: false, reason: "invalid_date" });
     store.set(`daybreak:${EDITION}:working`, "{not json");
     expect(await readWorking(kv, EDITION)).toMatchObject({ ok: false, reason: "unparseable" });
+  });
+});
+
+// ─── An unavailable Z is RE-FETCHED at the save (Ethan's ruling, 2026-10-12) ─
+//
+// Radar's 2026-10-12 draft arrived while Yahoo's 10-11 Bitcoin bar still had a
+// null close, so intake stored the Z unavailable (fetch_failed); the editor
+// save then copied that unavailable Z. Now a save that finds the Z unavailable
+// fetches the closes again through intake's own computation; an AVAILABLE Z
+// stays frozen and is never re-fetched.
+
+describe("an editor save that finds the Z unavailable re-fetches the closes and recomputes it", () => {
+  const BANDS = [
+    { lower: null, upper: 0, label: "below" },
+    { lower: 0, upper: null, label: "above" },
+  ];
+
+  function mockKVWithBands() {
+    const m = mockKV();
+    m.store.set(POWER_LAW_BANDS_KV_KEY, JSON.stringify({ bands: BANDS }));
+    return m;
+  }
+
+  /** Wraps a fetcher so the test can see whether the save asked it for anything. */
+  function counted(fetcher: CloseFetcher) {
+    const calls: PriceSymbol[] = [];
+    const wrapped: CloseFetcher = {
+      async latestCompletedClose(symbol: PriceSymbol) {
+        calls.push(symbol);
+        return fetcher.latestCompletedClose(symbol);
+      },
+    };
+    return { fetcher: wrapped, calls };
+  }
+
+  it("permitting: a draft with an unavailable Z (fetch_failed) and a fetcher that now answers → the working Z is AVAILABLE, with bands and the closes' dates", async () => {
+    const { kv, store } = mockKVWithBands();
+    await draftWith(kv, closesFail);
+    expect(owned(stored(store, "draft")).z).toMatchObject({ status: "unavailable", reason: "fetch_failed" }); // anti-vacuity
+    const draftBefore = store.get(`daybreak:${EDITION}:draft`);
+
+    const r = await saveWorking(kv, EDITION, kevinFirst, closesB);
+    const z = owned(stored(store, "working")).z as Record<string, any>;
+    expect(z.status).toBe("available");
+    expect(r).toEqual({ ok: true, workerOwnedFrom: "refetch" });
+    expect(typeof z.value).toBe("number");
+    expect(z.corn).toEqual({ date: "2026-09-28", close: 3.2, fetchedAt: at });
+    expect(z.btc).toEqual({ date: "2026-09-28", close: 140_000, fetchedAt: at });
+    expect(z.bands).toMatchObject({ status: "available", table: BANDS });
+    expect(typeof z.bands.index).toBe("number");
+    // The recomputed Z is intake's own: a draft made from the same closes holds the identical block.
+    const { kv: kv2, store: store2 } = mockKVWithBands();
+    await draftWith(kv2, closesB);
+    expect(z).toEqual(owned(stored(store2, "draft")).z);
+    // Kevin's sections landed, and the draft key itself is untouched.
+    const { [WORKER_OWNED_KEY]: _o, ...sections } = stored(store, "working");
+    expect(sections).toEqual(kevinFirst);
+    expect(store.get(`daybreak:${EDITION}:draft`)).toBe(draftBefore);
+  });
+
+  it("forbidding: a draft whose Z is AVAILABLE is copied — the save never calls the fetcher, and the Z is unchanged", async () => {
+    const { kv, store } = mockKVWithBands();
+    await draftWith(kv, closesA);
+    const spy = counted(closesB);
+    const r = await saveWorking(kv, EDITION, kevinFirst, spy.fetcher);
+    expect(spy.calls).toEqual([]);
+    expect(owned(stored(store, "working"))).toEqual(owned(stored(store, "draft")));
+    expect(r).toEqual({ ok: true, workerOwnedFrom: "draft" });
+  });
+
+  it("forbidding: once the working copy holds an AVAILABLE Z, a later save never calls the fetcher", async () => {
+    const { kv, store } = mockKVWithBands();
+    await draftWith(kv, closesFail);
+    await saveWorking(kv, EDITION, kevinFirst, closesB);
+    const kept = owned(stored(store, "working"));
+    expect(kept.z.status).toBe("available"); // anti-vacuity: the first save really recovered the Z
+
+    const spy = counted(closesA);
+    const r = await saveWorking(kv, EDITION, kevinSecond, spy.fetcher);
+    expect(spy.calls).toEqual([]);
+    expect(owned(stored(store, "working"))).toEqual(kept);
+    expect(r).toEqual({ ok: true, workerOwnedFrom: "working" });
+  });
+
+  it("a re-fetch that fails leaves the Z unavailable, with the NEW reason — never the draft's", async () => {
+    const { kv, store } = mockKVWithBands();
+    await draftWith(kv, closesFail);
+    expect(owned(stored(store, "draft")).z.reason).toBe("fetch_failed"); // anti-vacuity: the draft's reason differs
+    const staleCloses = fetcherFor(
+      { ok: true, symbol: "ZC=F", date: "2026-09-18", close: 4.1, fetchedAt: at },
+      { ok: true, symbol: "BTC-USD", date: "2026-09-18", close: 110_000, fetchedAt: at },
+    );
+    const spy = counted(staleCloses);
+    const r = await saveWorking(kv, EDITION, kevinFirst, spy.fetcher);
+    const z = owned(stored(store, "working")).z;
+    expect(z).toMatchObject({ status: "unavailable", reason: "stale_close" });
+    expect([...spy.calls].sort()).toEqual(["BTC-USD", "ZC=F"]);
+    expect(r).toEqual({ ok: true, workerOwnedFrom: "refetch" });
+    expect(z).not.toHaveProperty("value");
+    expect(z).not.toHaveProperty("bands");
   });
 });
