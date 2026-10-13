@@ -67,11 +67,9 @@ async function runSyncCheck(): Promise<void> {
   const localX = local.public_key_b64url;
 
   const url = `${ENV.coinbaseWorkerUrl.replace(/\/+$/, "")}/treasury-info`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   let body: TreasuryInfoPayload | null = null;
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) {
       console.info(
         `[SUBSCRIPTION_KEYPAIR_SYNC] /treasury-info returned ${res.status}; will retry next startup`,
@@ -84,8 +82,6 @@ async function runSyncCheck(): Promise<void> {
       `[SUBSCRIPTION_KEYPAIR_SYNC] could not reach Worker for sync check; will retry next startup (${err?.message ?? err})`,
     );
     return;
-  } finally {
-    clearTimeout(timer);
   }
 
   const publishedX = body?.subscription_public_key?.x ?? null;
