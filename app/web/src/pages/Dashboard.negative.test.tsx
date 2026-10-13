@@ -100,3 +100,23 @@ describe("D3: negative numbers are --text, not red", () => {
     expect(yieldValue().getAttribute("style")).toContain("color: var(--green)");
   });
 });
+
+describe("E: the 24h rebalance cost is --text, never red", () => {
+  const costValue = () => {
+    const card = [...host.querySelectorAll(".policy-card")].find((c) => c.textContent?.includes("Rebalance costs"));
+    expect(card, "the Rebalance costs card renders").toBeDefined();
+    return card!.querySelector(".policy-card-value")!;
+  };
+
+  it("a 0 cost renders \"0\" in --text", async () => {
+    await renderWith(metrics({ rebalance24: 0 }));
+    expect(costValue().textContent).toBe("0sats");
+    expect(costValue().getAttribute("style")).toBe("color: var(--text);");
+  });
+
+  it("a non-zero cost still renders signed, in --text", async () => {
+    await renderWith(metrics({ rebalance24: 1_234 }));
+    expect(costValue().textContent).toBe("−1,234sats");
+    expect(costValue().getAttribute("style")).toBe("color: var(--text);");
+  });
+});

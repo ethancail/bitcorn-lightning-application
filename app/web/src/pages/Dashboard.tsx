@@ -251,7 +251,8 @@ export default function Dashboard() {
                     24h · paid to rebalance ops · all-time {formatSigned(-Math.abs(mAll?.rebalance_costs_sats ?? 0)).text}
                   </div>
                 </div>
-                <div className="policy-card-value" style={{ color: "var(--red)" }}>
+                {/* E: a cost is a negative number, and 0 is none — both in --text (D3). */}
+                <div className="policy-card-value" style={{ color: "var(--text)" }}>
                   {formatSigned(-Math.abs(m24?.rebalance_costs_sats ?? 0)).text}
                   <span className="unit">sats</span>
                 </div>
