@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { api, fmtSats } from "../api/client";
-import type { SwapRequest, SwapQuoteResponse } from "../api/client";
+import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
+import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
@@ -91,14 +92,6 @@ function formatDate(epoch: number): string {
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-// ─── Channel state bar color ────────────────────────────────────────────────
-
-function pctColor(pct: number): string {
-  if (pct < 30) return "var(--red)";
-  if (pct < 60) return "var(--amber)";
-  return "var(--green)";
-}
-
 export default function RefillChannel() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -111,6 +104,8 @@ export default function RefillChannel() {
   // ─── Channel state ────────────────────────────────────────────────────
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
+  // V11: the bar's colour is the Liquidity Advisor's state, not a percentage.
+  const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
 
   // ─── On-chain balance ─────────────────────────────────────────────────
   const [onchainBalance, setOnchainBalance] = useState<number | null>(null);
@@ -163,6 +158,10 @@ export default function RefillChannel() {
         ), 0)
       : null;
 
+  const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
+  const tone = capacityTone(role, advisor?.classification);
+  const toneWord = capacityWord(role, tone);
+
   const projectedPct =
     channelLocal != null && channelCapacity != null && channelCapacity > 0 && amount > 0
       ? Math.round(((channelLocal + amount) / channelCapacity) * 100)
@@ -173,11 +172,13 @@ export default function RefillChannel() {
     async function init() {
       try {
         // Fetch channel info + on-chain balance in parallel
-        const [stats, balances, histResp] = await Promise.all([
+        const [stats, balances, histResp, liquidity] = await Promise.all([
           api.getMemberStats().catch(() => null),
           api.getNodeBalances().catch(() => null),
           api.getSwapHistory(5).catch(() => ({ swaps: [] as SwapRequest[] })),
+          api.getMemberLiquidityStatus().catch(() => null),
         ]);
+        setAdvisor(liquidity);
 
         if (stats?.treasury_channel) {
           setChannelLocal(stats.treasury_channel.local_sats);
@@ -432,18 +433,20 @@ export default function RefillChannel() {
                   marginBottom: 6, fontSize: "0.75rem", fontFamily: "var(--mono)",
                 }}>
                   <span style={{ color: "var(--text-3)" }}>Channel Balance</span>
-                  <span style={{ color: pctColor(channelPct), fontWeight: 600 }}>{channelPct}% local</span>
+                  <span data-testid="capacity-text" style={{ color: CAPACITY_TEXT_COLOR[tone], fontWeight: 600 }}>
+                    {toneWord && `${toneWord} · `}{channelPct}% local
+                  </span>
                 </div>
                 <div style={{
                   height: 8, borderRadius: 4,
                   background: "var(--bg-3)",
                   overflow: "hidden",
                 }}>
-                  <div style={{
+                  <div data-testid="capacity-bar" style={{
                     width: `${Math.min(channelPct, 100)}%`,
                     height: "100%",
                     borderRadius: 4,
-                    background: pctColor(channelPct),
+                    background: CAPACITY_BAR_COLOR[tone],
                     transition: "width 0.3s ease",
                   }} />
                 </div>
@@ -605,9 +608,9 @@ export default function RefillChannel() {
                 fontFamily: "var(--mono)",
                 color: "var(--text-2)",
               }}>
-                After top up: <span style={{ color: pctColor(channelPct) }}>{channelPct}%</span>
+                After top up: <span data-testid="capacity-text" style={{ color: CAPACITY_TEXT_COLOR[tone] }}>{channelPct}%</span>
                 {" → "}
-                <span style={{ color: pctColor(Math.min(projectedPct, 100)), fontWeight: 600 }}>
+                <span data-testid="capacity-text" style={{ color: "var(--text)", fontWeight: 600 }}>
                   {Math.min(projectedPct, 100)}%
                 </span> local
               </div>
@@ -711,9 +714,9 @@ export default function RefillChannel() {
                 fontFamily: "var(--mono)",
                 color: "var(--text-2)",
               }}>
-                After top up: <span style={{ color: pctColor(channelPct) }}>{channelPct}%</span>
+                After top up: <span data-testid="capacity-text" style={{ color: CAPACITY_TEXT_COLOR[tone] }}>{channelPct}%</span>
                 {" → "}
-                <span style={{ color: pctColor(Math.min(projectedPct, 100)), fontWeight: 600 }}>
+                <span data-testid="capacity-text" style={{ color: "var(--text)", fontWeight: 600 }}>
                   {Math.min(projectedPct, 100)}%
                 </span> local
               </div>
