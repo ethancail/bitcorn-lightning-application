@@ -193,3 +193,22 @@ describe("V11 — Cash Out", () => {
     expect(host.innerHTML).not.toContain("var(--red)");
   });
 });
+
+describe("PR3-3 — the advisor's alert", () => {
+  it("high urgency → the warning alert with ⚠, never the red critical", async () => {
+    setup(50_000, "merchant", "receive_exhausted");
+    stub.getMemberLiquidityStatus.mockResolvedValue({
+      ...status("merchant", "receive_exhausted"),
+      recommendation: {
+        action: "loop_in", suggestedAmountSats: 500_000, projectedMemberLocalPct: 0.5,
+        reason: "Your channel is nearly out of room to send.", urgency: "high",
+        loopAvailable: true, generatedAt: NOW,
+      },
+    });
+    await render(MemberDashboard);
+    const alert = [...host.querySelectorAll(".alert")].find((a) => a.textContent?.includes("nearly out of room"));
+    expect(alert, "the advisor alert renders").toBeDefined();
+    expect(alert!.className).toBe("alert warning");
+    expect(alert!.querySelector(".alert-icon")?.textContent).toBe("⚠");
+  });
+});

@@ -725,9 +725,10 @@ export default function MemberDashboard() {
         const refillUrl = rec?.action === "loop_in" && rec?.suggestedAmountSats
           ? `/refill?amount=${rec.suggestedAmountSats}` : "/refill";
 
-        // Advisor alert
-        const alertClass = rec?.urgency === "high" ? "critical" : rec?.urgency === "medium" ? "warning" : "info";
-        const alertIcon = rec?.urgency === "high" ? "✕" : rec?.urgency === "medium" ? "⚠" : "ℹ";
+        // Advisor alert. PR3-3: it reports capacity, which is never an error, so
+        // high urgency takes the warning, not the red critical.
+        const alertClass = rec?.urgency === "high" || rec?.urgency === "medium" ? "warning" : "info";
+        const alertIcon = rec?.urgency === "high" || rec?.urgency === "medium" ? "⚠" : "ℹ";
         const showAlert = rec && rec.action !== "none";
 
         return (
