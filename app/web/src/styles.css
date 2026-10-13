@@ -527,6 +527,8 @@ p + .settings-section-label { margin-top: 8px; }
 .member-gauge .labels {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
+  text-align: right;
   margin-bottom: 6px;
   font-size: 0.75rem;
   color: var(--text-3);
@@ -573,7 +575,8 @@ p + .settings-section-label { margin-top: 8px; }
   line-height: 1;
 }
 .revenue-hero-num.positive { color: var(--green); }
-.revenue-hero-num.negative { color: var(--red); }
+/* D3: a negative number is --text; its minus sign carries the meaning. */
+.revenue-hero-num.negative { color: var(--text); }
 .revenue-hero-num.neutral { color: var(--text); }
 .revenue-hero-caption {
   font-family: var(--mono);
@@ -630,7 +633,7 @@ p + .settings-section-label { margin-top: 8px; }
 }
 
 .stat-value.positive { color: var(--green); }
-.stat-value.negative { color: var(--red); }
+.stat-value.negative { color: var(--text); }
 .stat-value.amber    { color: var(--amber); }
 
 .stat-sub {
@@ -670,7 +673,9 @@ p + .settings-section-label { margin-top: 8px; }
 .channel-balance-bar {
   height: 8px;
   border-radius: var(--radius-full);
-  background: var(--red);
+  /* The remote side — the track behind the local fill. D3: neutral, not red;
+     its legend dot in ChannelsPage uses the same colour. */
+  background: var(--text-3);
   overflow: hidden;
   margin-bottom: 8px;
 }
@@ -971,6 +976,17 @@ p + .settings-section-label { margin-top: 8px; }
 .badge-blue   { background: var(--blue-glow);   color: var(--blue); }
 .badge-orange { background: var(--orange-glow); color: var(--orange); }
 .badge-muted  { background: var(--bg-3); color: var(--text-3); }
+/* A capacity warning (D3 / V11, PR3-7): amber on the dot only. The word stays
+   in --text, since light --amber is 2.68:1 on --bg-1 (tranche 2, N2). */
+.badge-caution { background: var(--bg-3); color: var(--text); gap: 5px; }
+.badge-caution::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--amber);
+  flex-shrink: 0;
+}
 
 .tag-pill {
   display: inline-flex;

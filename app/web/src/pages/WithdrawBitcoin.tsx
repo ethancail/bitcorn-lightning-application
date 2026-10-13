@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, fmtSats } from "../api/client";
-import type { SwapRequest, SwapQuoteResponse } from "../api/client";
+import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
+import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
@@ -142,6 +143,11 @@ export default function WithdrawBitcoin() {
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
   const [channelLocalPct, setChannelLocalPct] = useState<number | null>(null);
+  // V11: the bar's colour is the Liquidity Advisor's state, not a percentage.
+  const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
+  const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
+  const tone = capacityTone(role, advisor?.classification);
+  const toneWord = capacityWord(role, tone);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -166,6 +172,7 @@ export default function WithdrawBitcoin() {
         }
       })
       .catch(() => {});
+    api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
   }, []);
 
   // ─── Pending swap detection ───────────────────────────────────────────
@@ -406,10 +413,10 @@ export default function WithdrawBitcoin() {
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
-                      <div style={{ width: `${Math.min(channelLocalPct, 100)}%`, height: "100%", background: channelLocalPct > 60 ? "var(--green)" : channelLocalPct > 30 ? "var(--amber)" : "var(--red)" }} />
+                      <div data-testid="capacity-bar" style={{ width: `${Math.min(channelLocalPct, 100)}%`, height: "100%", background: CAPACITY_BAR_COLOR[tone] }} />
                     </div>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: channelLocalPct > 60 ? "var(--green)" : channelLocalPct > 30 ? "var(--amber)" : "var(--red)" }}>
-                      {channelLocalPct}% local
+                    <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: CAPACITY_TEXT_COLOR[tone] }}>
+                      {toneWord && `${toneWord} · `}{channelLocalPct}% local
                     </span>
                   </div>
                 </div>
@@ -490,7 +497,7 @@ export default function WithdrawBitcoin() {
               </div>
               {channelLocal != null && channelCapacity != null && channelCapacity > 0 && (
                 <div style={{ background: "var(--bg-2)", borderLeft: "2px solid var(--amber)", padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 10 }}>
-                  After withdrawal: <strong style={{ color: "var(--amber)" }}>
+                  After withdrawal: <strong data-testid="capacity-text" style={{ color: "var(--text)" }}>
                     {channelLocalPct}% → {Math.max(0, Math.round(((channelLocal - amount) / channelCapacity) * 100))}% local
                   </strong>
                 </div>

@@ -1652,19 +1652,21 @@ function ChannelsPage() {
           return labels[state] ?? state;
         }
 
+        // D3 / PR3-1: capacity is never red. The lane keeps its own states, and
+        // the tier that was red (exhausted, full_needs_withdrawal, critical)
+        // joins the amber warnings. PR3-7: amber on the bar and the badge's dot
+        // only — the badge's word and the percentage stay in --text.
         function stateBadge(state: LaneState): string {
           const green: LaneState[] = ["fresh", "active", "open_for_receiving", "earning", "healthy"];
-          const amber: LaneState[] = ["degrading", "renew_soon", "getting_full", "constrained"];
-          if (green.includes(state)) return "badge-green";
-          if (amber.includes(state)) return "badge-amber";
-          return "badge-red"; // exhausted, full_needs_withdrawal, critical
+          return green.includes(state) ? "badge-green" : "badge-caution";
         }
 
         function stateColor(state: LaneState): string {
-          const cls = stateBadge(state);
-          if (cls === "badge-green") return "var(--green)";
-          if (cls === "badge-amber") return "var(--amber)";
-          return "var(--red)";
+          return stateBadge(state) === "badge-green" ? "var(--green)" : "var(--amber)";
+        }
+
+        function stateTextColor(state: LaneState): string {
+          return stateBadge(state) === "badge-green" ? "var(--green)" : "var(--text)";
         }
 
         // ── Known external pubkeys ─────────────────────────────────────
@@ -1826,13 +1828,13 @@ function ChannelsPage() {
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
-                                  <div style={{ height: "100%", width: `${fwdLeftPct}%`, background: color, borderRadius: 3 }} />
+                                  <div data-testid="capacity-bar" style={{ height: "100%", width: `${fwdLeftPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
-                                <span style={{ fontFamily: "var(--mono)", color, fontSize: "0.75rem" }}>{fwdLeftPct}%</span>
+                                <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{fwdLeftPct}%</span>
                               </div>
                             </td>
                             <td>
-                              <span className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
+                              <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
                             <td>{closeBtn(c, actionLabel)}</td>
                           </tr>
@@ -1888,13 +1890,13 @@ function ChannelsPage() {
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
-                                  <div style={{ height: "100%", width: `${recvPct}%`, background: color, borderRadius: 3 }} />
+                                  <div data-testid="capacity-bar" style={{ height: "100%", width: `${recvPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
-                                <span style={{ fontFamily: "var(--mono)", color, fontSize: "0.75rem" }}>{recvPct}%</span>
+                                <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{recvPct}%</span>
                               </div>
                             </td>
                             <td>
-                              <span className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
+                              <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
                             <td>{closeBtn(c)}</td>
                           </tr>
@@ -1946,13 +1948,13 @@ function ChannelsPage() {
                             <td>
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
-                                  <div style={{ height: "100%", width: `${c.localPct}%`, background: color, borderRadius: 3 }} />
+                                  <div data-testid="capacity-bar" style={{ height: "100%", width: `${c.localPct}%`, background: color, borderRadius: 3 }} />
                                 </div>
-                                <span style={{ fontFamily: "var(--mono)", color, fontSize: "0.75rem" }}>{c.localPct}%</span>
+                                <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{c.localPct}%</span>
                               </div>
                             </td>
                             <td>
-                              <span className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
+                              <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
                             <td>{closeBtn(c)}</td>
                           </tr>
@@ -2075,7 +2077,8 @@ function ChannelsPage() {
                       {resolveContactName(c.peer_pubkey, contacts)}
                     </span>
                     {capStatus === "undersized" && (
-                      <span className="badge badge-red">Too small</span>
+                      // PR3-5: a size warning, not an error — the amber dot, the word in --text.
+                      <span data-testid="capacity-text" className="badge badge-caution">Too small</span>
                     )}
                     {c.active ? (
                       <span className="badge badge-green">active</span>
@@ -2099,7 +2102,7 @@ function ChannelsPage() {
                       <span className="channel-pct">({localPct.toFixed(0)}%)</span>
                     </span>
                     <span className="channel-label-remote">
-                      <span className="channel-dot" style={{ background: "var(--red)" }} />
+                      <span className="channel-dot" style={{ background: "var(--text-3)" }} />
                       Their side: {c.remote_balance_sat.toLocaleString()}
                       <span className="channel-pct">({remotePct.toFixed(0)}%)</span>
                     </span>

@@ -251,7 +251,8 @@ export default function Dashboard() {
                     24h · paid to rebalance ops · all-time {formatSigned(-Math.abs(mAll?.rebalance_costs_sats ?? 0)).text}
                   </div>
                 </div>
-                <div className="policy-card-value" style={{ color: "var(--red)" }}>
+                {/* E: a cost is a negative number, and 0 is none — both in --text (D3). */}
+                <div className="policy-card-value" style={{ color: "var(--text)" }}>
                   {formatSigned(-Math.abs(m24?.rebalance_costs_sats ?? 0)).text}
                   <span className="unit">sats</span>
                 </div>
@@ -274,7 +275,7 @@ export default function Dashboard() {
                 </div>
                 <div className="stat-card" style={{ flex: "1 1 140px" }}>
                   <div className="stat-label">Revenue Yield</div>
-                  <div className="stat-value" style={{ fontSize: "1.125rem", color: (cap?.revenue_yield ?? 0) >= 0 ? "var(--green)" : "var(--red)" }}>
+                  <div className="stat-value" style={{ fontSize: "1.125rem", color: (cap?.revenue_yield ?? 0) >= 0 ? "var(--green)" : "var(--text)" }}>
                     {fmt(Math.round(cap?.revenue_yield ?? 0))}
                   </div>
                   <div className="stat-sub">sats per 1M deployed</div>

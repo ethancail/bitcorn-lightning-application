@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useState } from "react";
-import { HEALTH_COLOR, ROLE_COLOR, type LiquidityPeer } from "./types";
+import { HEALTH_COLOR, HEALTH_TEXT_COLOR, ROLE_COLOR, healthWord, type LiquidityPeer } from "./types";
 import { formatSatsShort } from "./transform";
 
 type Props = {
@@ -12,6 +12,8 @@ const LiquidityLaneRow = forwardRef<HTMLDivElement, Props>(({ peer, isSelected, 
   const pct = peer.rolePct ?? 0;
   const pctInt = Math.round(pct * 100);
   const tierColor = HEALTH_COLOR[peer.healthTier];
+  const tierTextColor = HEALTH_TEXT_COLOR[peer.healthTier];
+  const word = healthWord(peer.role, peer.healthTier);
   const roleColor = ROLE_COLOR[peer.role];
   const [pulseClass, setPulseClass] = useState("");
 
@@ -36,20 +38,32 @@ const LiquidityLaneRow = forwardRef<HTMLDivElement, Props>(({ peer, isSelected, 
         {peer.name}
       </span>
       <span className="liq-lane-row-cap">{formatSatsShort(peer.capacity)}</span>
-      <div className="liq-health-bar">
-        <div
-          className="liq-health-bar-fill"
-          style={{
-            width: `${pctInt}%`,
-            background: tierColor,
-          }}
-        />
+      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+        <div className="liq-health-bar" style={{ flex: 1 }}>
+          <div
+            className="liq-health-bar-fill"
+            data-testid="capacity-bar"
+            style={{
+              width: `${pctInt}%`,
+              background: tierColor,
+            }}
+          />
+        </div>
+        {word && (
+          <span
+            data-testid="capacity-text"
+            style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text)", whiteSpace: "nowrap" }}
+          >
+            {word}
+          </span>
+        )}
       </div>
       <span
         className="liq-health-chip"
+        data-testid="capacity-text"
         style={{
-          color: tierColor,
-          background: `color-mix(in srgb, ${tierColor} 20%, transparent)`,
+          color: tierTextColor,
+          background: `color-mix(in srgb, ${tierTextColor} 20%, transparent)`,
         }}
       >
         {pctInt}%

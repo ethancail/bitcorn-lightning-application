@@ -847,6 +847,7 @@ function PaymentDetail({
   const canDelete = p.status !== "succeeded";
 
   const dirLabel = p.direction === "send" ? "Sent" : "Received";
+  const dirGlyph = p.direction === "send" ? "↑" : "↓";
   const statusBadge: Record<string, { label: string; cls: string }> = {
     pending: { label: "Pending", cls: "badge-amber" },
     succeeded: { label: "Success", cls: "badge-green" },
@@ -889,7 +890,7 @@ function PaymentDetail({
       <div className="payment-preview" style={{ marginBottom: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
           <span>Direction</span>
-          <span>{dirLabel}</span>
+          <span><span aria-hidden="true" style={{ marginRight: 4 }}>{dirGlyph}</span>{dirLabel}</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
           <span>Status</span>
@@ -977,10 +978,12 @@ function PaymentRow({
   selected: boolean;
   onSelect: () => void;
 }) {
+  // D3: direction is not an error or a success, so both badges are neutral
+  // and an arrow carries the direction.
   const dirBadge =
     p.direction === "send"
-      ? { label: "Sent", cls: "badge-red" }
-      : { label: "Received", cls: "badge-green" };
+      ? { label: "Sent", glyph: "↑", cls: "badge-muted" }
+      : { label: "Received", glyph: "↓", cls: "badge-muted" };
 
   const statusBadge: Record<string, { label: string; cls: string }> = {
     pending: { label: "Pending", cls: "badge-amber" },
@@ -996,8 +999,13 @@ function PaymentRow({
       className={selected ? "row-selected" : ""}
       style={{ cursor: "pointer" }}
     >
-      <td><span className={dirBadge.cls}>{dirBadge.label}</span></td>
-      <td><span className={sBadge.cls}>{sBadge.label}</span></td>
+      <td>
+        <span className={`badge ${dirBadge.cls}`}>
+          <span aria-hidden="true" style={{ marginRight: 4 }}>{dirBadge.glyph}</span>
+          {dirBadge.label}
+        </span>
+      </td>
+      <td><span className={`badge ${sBadge.cls}`}>{sBadge.label}</span></td>
       <td className="td-num">
         {fmtSats(p.amount_sats)}
         {p.amount_usd != null && (
