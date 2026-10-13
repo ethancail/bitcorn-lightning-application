@@ -47,9 +47,8 @@
      invoices, hashes). --sans and --mono both follow --font: --mono is
      kept as a name because 250+ rules and components read it (Daybreak
      among them), and every one of those is now numbers or labels in the
-     UI font with tabular digits. */
-  --font:        'IBM Plex Sans', sans-serif;
-  --font-id:     'IBM Plex Mono', monospace;
+     UI font with tabular digits. --font and --font-id themselves are set in
+     font.css (Z4), the only file that names a face. */
   --sans:        var(--font);
   --mono:        var(--font);
 

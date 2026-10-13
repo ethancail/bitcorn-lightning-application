@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Link, useNavigate, useSearchParams } from "react-router-dom";
+import "./font.css"; // Z4: the font faces and tokens, self-hosted; before styles.css
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
 import bitcornLogoLight from "./assets/bitcorn-logo-light.svg";
