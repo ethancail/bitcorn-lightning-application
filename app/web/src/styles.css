@@ -98,10 +98,14 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
 .mono { font-family: var(--mono); }
 
 /* ─── Layout ───────────────────────────────────────────────────── */
+/* The content row is minmax(0, 1fr), not 1fr: 1fr is minmax(auto, 1fr), so
+   the sidebar's content height floored the row and pushed the shell ~10px past
+   any window shorter than about 795px. The sidebar now scrolls in its own
+   column instead. */
 .app-shell {
   display: grid;
   grid-template-columns: 220px 1fr;
-  grid-template-rows: 56px 1fr;
+  grid-template-rows: 56px minmax(0, 1fr);
   height: 100vh;
 }
 
@@ -170,6 +174,7 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
   display: flex;
   flex-direction: column;
   gap: 4px;
+  overflow-y: auto;
 }
 
 .sidebar-section {
