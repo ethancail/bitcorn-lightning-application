@@ -2021,7 +2021,7 @@ function ChannelsPage() {
               return (
                 <div key={c.channel_id} className="channel-card">
                   <div className="channel-card-top">
-                    <span className="channel-peer mono">
+                    <span className="channel-peer mono ident">
                       {resolveContactName(c.peer_pubkey, contacts)}
                     </span>
                     {capStatus === "undersized" && (
@@ -2308,7 +2308,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                 border: "1px solid var(--border)",
                 borderRadius: 6,
                 padding: "8px 12px",
-                fontFamily: "var(--mono)",
+                fontFamily: "var(--font-id)",
                 fontSize: "0.75rem",
                 wordBreak: "break-all",
                 color: "var(--text-2)",
@@ -2355,7 +2355,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                       >
                         <div>
                           <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{c.name}</div>
-                          <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+                          <div style={{ fontFamily: "var(--font-id)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
                             {c.pubkey.slice(0, 16)}…{c.pubkey.slice(-8)}
                           </div>
                         </div>
@@ -2387,7 +2387,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                   value={manualPubkey}
                   onChange={(e) => setManualPubkey(e.target.value)}
                   placeholder="03..."
-                  style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
+                  style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
                 />
                 {contacts.length > 0 && (
                   <button

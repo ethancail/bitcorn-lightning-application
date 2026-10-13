@@ -88,7 +88,7 @@ export default function Peers() {
               background: "var(--bg-3)",
               border: "1px solid var(--border)",
               borderRadius: 6,
-              fontFamily: "var(--mono)",
+              fontFamily: "var(--font-id)",
               fontSize: "0.75rem",
               wordBreak: "break-all",
               color: "var(--text-2)",
@@ -169,7 +169,7 @@ export default function Peers() {
             placeholder="pubkey@host:port"
             value={uri}
             onChange={(e) => setUri(e.target.value)}
-            style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
+            style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
             onKeyDown={(e) => { if (e.key === "Enter") handleConnect(); }}
           />
           {connectError && (
@@ -225,12 +225,12 @@ export default function Peers() {
                           {isNamed ? name : truncPubkey(p.pubkey)}
                         </div>
                         {isNamed && (
-                          <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
+                          <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--font-id)" }}>
                             {truncPubkey(p.pubkey)}
                           </div>
                         )}
                       </td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-3)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <td style={{ fontFamily: "var(--font-id)", fontSize: "0.75rem", color: "var(--text-3)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {p.address || "—"}
                       </td>
                       <td>

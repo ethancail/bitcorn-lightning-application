@@ -121,7 +121,7 @@ export default function ProfilePanel() {
         ) : (
           <p style={{ fontSize: "0.875rem", margin: 0 }}>
             Your node is currently visible as{" "}
-            <strong style={{ fontFamily: "var(--mono)" }}>{truncPubkey(profile.pubkey)}</strong>. Set an
+            <strong style={{ fontFamily: "var(--font-id)" }}>{truncPubkey(profile.pubkey)}</strong>. Set an
             optional public alias to be identified on the Lightning network.
           </p>
         )}

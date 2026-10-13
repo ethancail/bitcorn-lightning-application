@@ -352,7 +352,7 @@ export default function Contacts() {
               placeholder="Node ID (long code starting 02 or 03)"
               value={addPubkey}
               onChange={(e) => setAddPubkey(e.target.value)}
-              style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
+              style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
             />
             <input
               aria-label="Name"
@@ -490,7 +490,7 @@ function ContactCard({
           <span className="panel-title"><span className="icon">◈</span>Editing</span>
         </div>
         <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-3)" }}>
+          <div style={{ fontFamily: "var(--font-id)", fontSize: "0.75rem", color: "var(--text-3)" }}>
             {c.pubkey}
           </div>
           <input
@@ -529,7 +529,7 @@ function ContactCard({
         {/* Header row */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
           <span style={{ color: "var(--amber)", fontWeight: 600 }}>{c.name}</span>
-          <span className="td-mono" style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>
+          <span className="td-mono ident" style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>
             {truncPubkey(c.pubkey)}
           </span>
           {c.source === "auto" && <span className="badge badge-muted">auto</span>}
@@ -657,7 +657,7 @@ function ChannelRow({
         flexWrap: "wrap",
       }}
     >
-      <span style={{ color: "var(--text-3)", minWidth: 110 }}>
+      <span className="ident" style={{ color: "var(--text-3)", minWidth: 110 }}>
         {ch.channel_id.slice(0, 12)}…
       </span>
       <span className={ch.is_active ? "badge badge-green" : "badge badge-muted"}>

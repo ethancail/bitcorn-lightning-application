@@ -42,8 +42,16 @@
   --text-2:      #9898b0;
   --text-3:      #5a5a70;
 
-  --mono:        'IBM Plex Mono', monospace;
-  --sans:        'IBM Plex Sans', sans-serif;
+  /* Round 1, Z1/Z2: ONE font. --font is the UI family; --font-id is the
+     monospace for identifiers ONLY (node IDs, pubkeys, txids, addresses,
+     invoices, hashes). --sans and --mono both follow --font: --mono is
+     kept as a name because 250+ rules and components read it (Daybreak
+     among them), and every one of those is now numbers or labels in the
+     UI font with tabular digits. */
+  --font:        'IBM Plex Sans', sans-serif;
+  --font-id:     'IBM Plex Mono', monospace;
+  --sans:        var(--font);
+  --mono:        var(--font);
 
   /* Radius scale — a 2px ladder. Every border-radius in this file uses it.
      --radius-full makes circles on square elements and pills on the rest. */
@@ -74,7 +82,9 @@
   /* --accent re-points to --amber in tranche 2, under notices N1/N2, once the
      light-theme --amber passes text contrast. */
 
-  font-family: var(--sans);
+  font-family: var(--font);
+  /* Z2: numbers use the font's TABULAR digits, so columns line up. */
+  font-variant-numeric: tabular-nums;
   font-size: calc(14px * var(--text-scale));
   line-height: 1.5;
   color: var(--text);
@@ -96,6 +106,9 @@ h2 { font-size: 1.125rem; font-weight: 600; letter-spacing: -0.01em; }
 h3 { font-size: 0.9375rem; font-weight: 500; }
 
 .mono { font-family: var(--mono); }
+/* .ident (Z2, identifiers in --font-id) is the LAST rule in this file — see there. */
+/* Form controls reset `font` in the UA stylesheet; give them the digits. */
+button, input, select, textarea { font-variant-numeric: tabular-nums; }
 
 /* ─── Layout ───────────────────────────────────────────────────── */
 /* The content row is minmax(0, 1fr), not 1fr: 1fr is minmax(auto, 1fr), so
@@ -165,7 +178,7 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
   font-size: 0.75rem;
   color: var(--text-2);
 }
-.topbar-node-id { color: var(--text-3); }
+.topbar-node-id { color: var(--text-3); font-family: var(--font-id); }
 
 .sidebar {
   background: var(--bg-1);
@@ -1844,7 +1857,7 @@ input[type="number"] {
 }
 
 .bolt11-text {
-  font-family: var(--mono);
+  font-family: var(--font-id);
   font-size: 0.7rem;
   line-height: 1.4;
   word-break: break-all;
@@ -2466,7 +2479,7 @@ input[type="number"] {
 }
 .sub-deposit-address {
   display: block;
-  font-family: var(--mono);
+  font-family: var(--font-id);
   font-size: 0.9286rem;
   line-height: 1.6;
   color: var(--text);
@@ -2671,7 +2684,7 @@ input[type="number"] {
 }
 .sub-pubkey {
   display: block;
-  font-family: var(--mono);
+  font-family: var(--font-id);
   font-size: 0.8571rem;
   color: var(--text);
   word-break: break-all;
@@ -3222,7 +3235,7 @@ input[type="number"] {
 
 .stablecoin-address,
 .stablecoin-mini-address {
-  font-family: var(--mono);
+  font-family: var(--font-id);
   font-size: 0.8125rem;
   color: var(--text);
   background: var(--bg-2);
@@ -3571,7 +3584,7 @@ input[type="number"] {
 }
 
 .stablecoin-row-address {
-  font-family: var(--mono);
+  font-family: var(--font-id);
   font-size: 0.8125rem;
   color: var(--text-2);
   flex: 1;
@@ -3586,7 +3599,7 @@ input[type="number"] {
 }
 
 .stablecoin-row-link {
-  font-family: var(--mono);
+  font-family: var(--font-id);
   font-size: 0.6875rem;
   color: var(--text-3);
   text-decoration: none;
@@ -3735,7 +3748,7 @@ input[type="number"] {
 }
 
 .stablecoin-empty-address {
-  font-family: var(--mono);
+  font-family: var(--font-id);
   font-size: 0.75rem;
   color: var(--text-2);
   background: var(--bg-2);
@@ -3847,3 +3860,10 @@ input[type="number"] {
      state itself (.stablecoin-row-failed) stays visible. */
   .stablecoin-row-just-failed { animation: none; }
 }
+
+/* Z2: an identifier inside text that is otherwise numbers or a name (a
+   name-or-pubkey display, a hash in a mixed row). It sits on elements that
+   also carry .mono or .td-mono (both --mono, the UI font), so it must come
+   AFTER every single-class rule that sets font-family: at equal specificity
+   the later rule wins. Keep it last (pinned in fontTokens.test.ts). */
+.ident { font-family: var(--font-id); }

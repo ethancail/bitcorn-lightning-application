@@ -77,7 +77,7 @@ function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> })
           onChange={(e) => setBlob(e.target.value)}
           placeholder={`{\n  "name": "organizations/.../apiKeys/...",\n  "privateKey": "-----BEGIN EC PRIVATE KEY-----\\n..."\n}`}
           rows={8}
-          style={{ width: "100%", fontFamily: "var(--mono)", fontSize: "0.75rem", marginBottom: 12, resize: "vertical" }}
+          style={{ width: "100%", fontFamily: "var(--font-id)", fontSize: "0.75rem", marginBottom: 12, resize: "vertical" }}
         />
         {toast && (
           <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "white", marginBottom: 12 }}>
@@ -176,7 +176,7 @@ function ConnectedNotWhitelistedState({ status, onRefresh }: { status: AutoBuySt
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingBottom: 16, borderBottom: "1px solid var(--border)" }}>
           <div>
             <div className="text-dim" style={{ fontSize: "0.75rem" }}>API Key</div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}>{maskKey(status.credentials?.key_name ?? "")}</div>
+            <div style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}>{maskKey(status.credentials?.key_name ?? "")}</div>
             <div className="text-dim" style={{ fontSize: "0.75rem", marginTop: 2 }}>
               {status.credentials?.last_verified_at
                 ? `Last verified ${new Date(status.credentials.last_verified_at * 1000).toLocaleString()}`
@@ -205,7 +205,7 @@ function ConnectedNotWhitelistedState({ status, onRefresh }: { status: AutoBuySt
           <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
             {qr && <img src={qr} alt="QR code" style={{ width: 160, height: 160, borderRadius: 4, background: "white", padding: 8 }} />}
             <div style={{ flex: 1 }}>
-              <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", wordBreak: "break-all", padding: 8, background: "var(--panel)", borderRadius: 4, marginBottom: 8 }}>
+              <div style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem", wordBreak: "break-all", padding: 8, background: "var(--panel)", borderRadius: 4, marginBottom: 8 }}>
                 {address || <em className="text-dim">address generating…</em>}
               </div>
               <div style={{ display: "flex", gap: 8 }}>
@@ -293,7 +293,7 @@ function ConnectedReadyState({ status, onRefresh }: { status: AutoBuyStatus; onR
         </div>
 
         <div style={{ fontSize: "0.8125rem", color: "var(--text-dim)" }}>
-          Deposit address (whitelisted): <span style={{ fontFamily: "var(--mono)" }}>{status.config?.withdraw_address}</span>
+          Deposit address (whitelisted): <span style={{ fontFamily: "var(--font-id)" }}>{status.config?.withdraw_address}</span>
         </div>
       </div>
     </div>

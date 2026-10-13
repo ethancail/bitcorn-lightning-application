@@ -365,7 +365,7 @@ function LoopOutTab({
               onChange={(e) => { setDestinationAddress(e.target.value); setDestVerified(false); }}
               onBlur={() => setDestTouched(true)}
               placeholder="bc1q…"
-              style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
+              style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
             />
             {destTouched && !destValid && (
               <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
@@ -412,7 +412,7 @@ function LoopOutTab({
               <div className="alert-body">
                 <div className="alert-msg">
                   Funds will be sent on-chain to:
-                  <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", margin: "6px 0", wordBreak: "break-all", color: "var(--text)" }}>
+                  <div style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem", margin: "6px 0", wordBreak: "break-all", color: "var(--text)" }}>
                     {chunkAddress(destTrimmed)}
                   </div>
                   On-chain sends cannot be reversed or refunded — a payment to a wrong address is unrecoverable.

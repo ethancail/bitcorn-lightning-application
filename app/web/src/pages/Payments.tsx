@@ -612,7 +612,7 @@ function PayInvoiceForm({
             )}
             <div style={{ marginTop: 8 }}>
               <TechnicalDetails>
-                <TechRow label="Payment hash">{result.payment_hash}</TechRow>
+                <TechRow label="Payment hash"><span className="ident">{result.payment_hash}</span></TechRow>
               </TechnicalDetails>
             </div>
           </>
@@ -723,7 +723,7 @@ function PayInvoiceForm({
         placeholder="lnbc..."
         value={bolt11}
         onChange={(e) => setBolt11(e.target.value)}
-        style={{ fontFamily: "var(--mono)", fontSize: "0.8rem", resize: "vertical", marginBottom: 12 }}
+        style={{ fontFamily: "var(--font-id)", fontSize: "0.8rem", resize: "vertical", marginBottom: 12 }}
       />
 
       {decoding && <div className="text-dim" style={{ marginBottom: 12 }}>Reading payment request…</div>}
@@ -739,7 +739,7 @@ function PayInvoiceForm({
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>To</span>
-            <span className="td-mono" style={{ fontSize: "0.8rem" }}>
+            <span className="td-mono ident" style={{ fontSize: "0.8rem" }}>
               {resolveContactName(decoded.destination, contacts)}
             </span>
           </div>
@@ -905,7 +905,7 @@ function PaymentDetail({
         {p.counterparty_pubkey && (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>{p.direction === "send" ? "To" : "From"}</span>
-            <span className="td-mono" style={{ fontSize: "0.8rem" }}>
+            <span className="td-mono ident" style={{ fontSize: "0.8rem" }}>
               {resolveContactName(p.counterparty_pubkey, contacts)}
             </span>
           </div>
@@ -930,7 +930,7 @@ function PaymentDetail({
 
       <div style={{ marginBottom: 12 }}>
         <TechnicalDetails>
-          <TechRow label="Payment hash">{p.payment_hash}</TechRow>
+          <TechRow label="Payment hash"><span className="ident">{p.payment_hash}</span></TechRow>
         </TechnicalDetails>
       </div>
 
@@ -1015,7 +1015,7 @@ function PaymentRow({
         )}
       </td>
       <td className="td-num">{p.fee_sats > 0 ? fmtSats(p.fee_sats) : "\u2014"}</td>
-      <td className="td-mono" style={{ fontSize: "0.8rem" }}>
+      <td className="td-mono ident" style={{ fontSize: "0.8rem" }}>
         {p.counterparty_pubkey
           ? resolveContactName(p.counterparty_pubkey, contacts)
           : "\u2014"}
