@@ -124,6 +124,14 @@ h3 { font-size: 0.9375rem; font-weight: 500; }
   gap: 10px;
 }
 
+/* V9: the logo comes as two assets — cream fills (bitcorn-logo.svg) for
+   dark, #1c1408 fills (bitcorn-logo-light.svg) for light — and the theme
+   shows one. display: none also drops the hidden one's alt text. */
+.topbar-logo-img { height: 22px; width: auto; }
+.topbar-logo-light { display: none; }
+[data-theme="light"] .topbar-logo-dark { display: none; }
+[data-theme="light"] .topbar-logo-light { display: block; }
+
 .topbar-wordmark {
   font-family: var(--mono);
   font-weight: 600;

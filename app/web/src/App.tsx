@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Link, useNavigate, useSearchParams } from "react-router-dom";
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
+import bitcornLogoLight from "./assets/bitcorn-logo-light.svg";
 import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
@@ -193,7 +194,10 @@ function Topbar({
         ☰
       </button>
       <div className="topbar-logo">
-        <img src={bitcornLogo} alt="Bitcorn" style={{ height: 22, width: "auto" }} />
+        {/* Two assets, one per theme; styles.css shows the one matching
+            [data-theme]. An <img> SVG cannot see the page's theme. */}
+        <img src={bitcornLogo} alt="Bitcorn" className="topbar-logo-img topbar-logo-dark" />
+        <img src={bitcornLogoLight} alt="Bitcorn" className="topbar-logo-img topbar-logo-light" />
         <span className="topbar-tag">{role}</span>
       </div>
       <div className="topbar-spacer" />
