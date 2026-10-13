@@ -8,7 +8,8 @@
 // by a class rule in styles.css. The count of checked elements is pinned, so a
 // surface that stops rendering its texts cannot pass vacuously.
 //
-// Harnesses: capacityV11.test.tsx's and App.treasuryCapacity.test.tsx's.
+// Harnesses: capacityV11.test.tsx's and App.treasuryCapacity.test.tsx's; for
+// Payments, Payments.direction.test.tsx's (PR 4 extends the guard to its send view).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -41,6 +42,9 @@ const stub = vi.hoisted(() => ({
   getNodeBalances: vi.fn(),
   getTreasuryInfo: vi.fn(),
   getSwapHistory: vi.fn(),
+  getNetworkPayments: vi.fn(),
+  syncSettlements: vi.fn(),
+  decodeInvoice: vi.fn(),
 }));
 
 vi.mock("./api/client", async (importOriginal) => {
@@ -55,6 +59,7 @@ vi.mock("./stablecoin/RailScope", () => ({
 import MemberDashboard from "./pages/MemberDashboard";
 import RefillChannel from "./pages/RefillChannel";
 import WithdrawBitcoin from "./pages/WithdrawBitcoin";
+import Payments from "./pages/Payments";
 import LiquidityLaneRow from "./components/liquidity/LiquidityLaneRow";
 import LiquidityKpiBanner from "./components/liquidity/LiquidityKpiBanner";
 
@@ -118,6 +123,11 @@ beforeEach(() => {
   stub.getNodeBalances.mockResolvedValue({ onchain_sats: 2_000_000, lightning_sats: 0, total_sats: 2_000_000 });
   stub.getTreasuryInfo.mockResolvedValue(null);
   stub.getSwapHistory.mockResolvedValue({ swaps: [] });
+  stub.getNetworkPayments.mockResolvedValue([]);
+  stub.syncSettlements.mockResolvedValue({});
+  stub.decodeInvoice.mockResolvedValue({
+    tokens: 100_000, destination: pk("b"), description: "", expires_at: null,
+  });
   vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
     ok: true, status: 200,
     json: async () => (String(url).endsWith("/api/channels") ? channels : []),
@@ -205,6 +215,25 @@ describe("PR3-7: no capacity text element uses --amber", () => {
     const r = checkCapacityTexts(await mount(page(WithdrawBitcoin)));
     expect(r.offenders).toEqual([]);
     expect(r.count).toBe(2); // N% local, after withdrawal
+  });
+
+  it("Payments send view, a decoded invoice (PR 4)", async () => {
+    stub.getMemberStats.mockResolvedValue(stats(900_000));
+    const el = await mount(React.createElement(MemoryRouter, null, React.createElement(Payments, { title: "Payments" })));
+    const tab = [...el.querySelectorAll("button")].find((b) => b.textContent === "Send a Payment")!;
+    await act(async () => { tab.click(); });
+    const box = el.querySelector('textarea[aria-label="Payment request"]') as HTMLTextAreaElement;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    await act(async () => {
+      setValue.call(box, "lnbcrt1u1" + "q".repeat(60));
+      box.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, 350)); }); // the 300ms decode debounce
+    for (let i = 0; i < 3; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(stub.decodeInvoice).toHaveBeenCalled();
+    const r = checkCapacityTexts(el);
+    expect(r.offenders).toEqual([]);
+    expect(r.count).toBe(3); // N% local, send capacity, after send: now → projected
   });
 
   it("treasury Channels, every lane in a warning state", async () => {

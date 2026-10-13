@@ -666,14 +666,15 @@ function PayInvoiceForm({
             <div style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
               <div style={{ width: `${Math.min(currentLocalPct, 100)}%`, height: "100%", background: "var(--amber)" }} />
             </div>
-            <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)" }}>
+            <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)" }}>
               {currentLocalPct}% local
             </span>
           </div>
         </div>
       )}
 
-      {/* Send capacity card (amber-tinted) */}
+      {/* Send capacity card (amber-tinted). PR3-7: the tint and border carry the
+          amber; the number is --text (light --amber is 2.68:1 on --bg-1). */}
       {channelLocal != null && (
         <div style={{
           border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
@@ -685,7 +686,7 @@ function PayInvoiceForm({
             <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
               Send capacity
             </div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--amber)", lineHeight: 1.2 }}>
+            <div data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
               {channelLocal.toLocaleString()}
               <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>sats</span>
             </div>
@@ -776,7 +777,7 @@ function PayInvoiceForm({
           background: "var(--bg-2)", borderLeft: "2px solid var(--amber)",
           padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 12,
         }}>
-          After send: <strong style={{ color: "var(--amber)" }}>
+          After send: <strong data-testid="capacity-text" style={{ color: "var(--text)" }}>
             {currentLocalPct}% → {projectedLocalPct}% local
           </strong>
         </div>
