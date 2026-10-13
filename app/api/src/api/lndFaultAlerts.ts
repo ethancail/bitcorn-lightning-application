@@ -190,6 +190,7 @@ export function lndFaultAlerts(
   // ── The guardrail did not run. Always. ──
   alerts.push({
     type: RESERVE_CHECK_SKIPPED_ALERT,
+    heading: "On-chain reserve not checked",
     severity: "critical",
     message: faulted.length
       ? `On-chain reserve check DID NOT RUN — LND fault (${kinds.join(", ")}). ` +
@@ -218,6 +219,7 @@ export function lndFaultAlerts(
 
     alerts.push({
       type: LND_FAULT_ALERT,
+      heading: "Lightning node check found a problem",
       severity,
       message:
         `LND fault: ` +

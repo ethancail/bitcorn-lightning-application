@@ -190,6 +190,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
           </div>
           <div style={{ position: "relative" }}>
             <input
+              aria-label="Channel Capacity"
               className="form-input"
               type="text"
               inputMode="numeric"
@@ -262,6 +263,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
               <span style={{ color: "var(--text-3)", fontWeight: 400 }}>(optional)</span>
             </label>
             <input
+              aria-label="Hub Address"
               className="form-input"
               type="text"
               placeholder="e.g. 203.0.113.5:9735 — ask your operator"
@@ -682,7 +684,9 @@ export default function MemberDashboard() {
       )}
 
       {hasChannel && (() => {
-        const role = advisor?.classification?.channelRole ?? "unknown";
+        // SH9: the DECLARED role, which the API returns whether or not the
+        // treasury channel is active (classification is null while it isn't).
+        const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
         const rec = advisor?.recommendation;
         const isMerchant = role === "merchant";
         const isFarmer = role === "farmer";

@@ -16,6 +16,20 @@ export type AlertSeverity = "info" | "warning" | "critical";
 
 export type TreasuryAlert = {
   type: string;
+  /**
+   * The plain-language heading the dashboard prints. SET WHERE EACH ALERT IS
+   * CREATED — here, in channelDataStaleness.ts and in lndFaultAlerts.ts — never
+   * derived from `type` by a consumer. Decision: SH1/SH2,
+   * bitcorn-research decisions/2026-10-13-ui-redesign-shipping-plan-rulings-sh1-sh8.md.
+   * The client prints this and falls back to "Treasury alert"; it does not
+   * branch on `type` to choose a heading, so the Loop decision's flip
+   * condition (decisions/2026-09-02-loop-unavailability-classification-taxonomy-and-copy.md,
+   * "the first consumer that branches on the value") is not met by headings.
+   * A heading states only what its type proves: LOOP_NOT_INSTALLED fires for
+   * missing credentials and an unreachable daemon alike, so its heading names
+   * no cause and no remediation.
+   */
+  heading: string;
   severity: AlertSeverity;
   message: string;
   data: Record<string, any>;
@@ -95,6 +109,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     const topScore = candidates[0].rotation_score;
     alerts.push({
       type: "ROTATION_CANDIDATES_PRESENT",
+      heading: "Channels suggested for rotation",
       severity: topScore >= 150 ? "critical" : "warning",
       message: `${candidates.length} channel(s) are candidates for rotation`,
       data: {
@@ -112,6 +127,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   if (dailyLoss >= policy.max_daily_loss_sats) {
     alerts.push({
       type: "DAILY_LOSS_CAP_EXCEEDED",
+      heading: "Daily loss limit reached",
       severity: "critical",
       message: `Daily loss cap exceeded — automation halted: ${dailyLoss} / ${policy.max_daily_loss_sats} sats`,
       data: { daily_loss_sats: dailyLoss, cap_sats: policy.max_daily_loss_sats },
@@ -120,6 +136,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   } else if (dailyLoss >= policy.max_daily_loss_sats * 0.8) {
     alerts.push({
       type: "DAILY_LOSS_CAP_NEAR",
+      heading: "Daily loss close to its limit",
       severity: "warning",
       message: `Daily loss approaching cap: ${dailyLoss} / ${policy.max_daily_loss_sats} sats (${Math.round(dailyLoss / policy.max_daily_loss_sats * 100)}%)`,
       data: {
@@ -136,6 +153,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   if (expansionsToday >= policy.max_expansions_per_day) {
     alerts.push({
       type: "DAILY_EXPANSION_LIMIT_REACHED",
+      heading: "Daily expansion limit reached",
       severity: "warning",
       message: `Daily expansion limit reached: ${expansionsToday} / ${policy.max_expansions_per_day}`,
       data: { expansions_today: expansionsToday, limit: policy.max_expansions_per_day },
@@ -147,6 +165,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   if (dailyDeploy >= policy.max_daily_deploy_sats * 0.8) {
     alerts.push({
       type: "DAILY_DEPLOY_LIMIT_NEAR",
+      heading: "Daily deployment close to its limit",
       severity: "warning",
       message: `Daily deploy approaching limit: ${dailyDeploy} / ${policy.max_daily_deploy_sats} sats`,
       data: {
@@ -165,6 +184,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     if (chain_balance < policy.min_onchain_reserve_sats) {
       alerts.push({
         type: "ONCHAIN_RESERVE_BREACHED",
+        heading: "On-chain reserve below its floor",
         severity: "critical",
         message: `On-chain reserve below minimum: ${chain_balance} < ${policy.min_onchain_reserve_sats} sats`,
         data: { chain_balance, min_reserve: policy.min_onchain_reserve_sats },
@@ -173,6 +193,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     } else if (reserveBuffer < 1.2) {
       alerts.push({
         type: "ONCHAIN_RESERVE_NEAR",
+        heading: "On-chain reserve close to its floor",
         severity: "warning",
         message: `On-chain reserve near minimum: ${chain_balance} sats (${Math.round(reserveBuffer * 100)}% of floor)`,
         data: { chain_balance, min_reserve: policy.min_onchain_reserve_sats, buffer_pct: Math.round(reserveBuffer * 100) },
@@ -233,6 +254,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
       console.warn("[treasury-alerts] LND probe failed:", probeErr?.message ?? probeErr);
       alerts.push({
         type: "ONCHAIN_RESERVE_CHECK_SKIPPED",
+        heading: "On-chain reserve not checked",
         severity: "critical",
         message:
           `On-chain reserve check DID NOT RUN and the follow-up LND probe itself failed. ` +
@@ -251,6 +273,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   if (ENV.rebalanceSchedulerEnabled && ENV.rebalanceSchedulerDryRun) {
     alerts.push({
       type: "SCHEDULER_SIMULATION_MODE",
+      heading: "Rebalance scheduler in simulation mode",
       severity: "info",
       message: "Rebalance scheduler is running in dry-run (simulation) mode — no rebalances are being executed",
       data: { interval_ms: ENV.rebalanceSchedulerIntervalMs },
@@ -269,6 +292,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     if (loop.available) {
       alerts.push({
         type: "LOOP_OUT_AVAILABLE",
+        heading: "Loop Out available for critical channels",
         severity: "info",
         message: `${criticalCount} critical channel(s) can be rebalanced via Loop Out`,
         data: { critical_channels: criticalCount, loop_version: loop.version },
@@ -277,6 +301,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     } else {
       alerts.push({
         type: "LOOP_NOT_INSTALLED",
+        heading: "Loop unavailable while channels need rebalancing",
         severity: "warning",
         message: `${criticalCount} critical channel(s) need rebalancing but Loop is not available. Check that loopd is running.`,
         data: { critical_channels: criticalCount, error: loop.error },
@@ -295,6 +320,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   if (keysendDisabled.length > 0) {
     alerts.push({
       type: "MEMBER_KEYSEND_DISABLED",
+      heading: "Keysend off for some member nodes",
       severity: "warning",
       message: `${keysendDisabled.length} member node(s) have keysend disabled and cannot be auto-rebalanced`,
       data: {
@@ -339,6 +365,7 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
     const allUnentered = neverEnteredMetrics.length === MANUAL_METRIC_KEYS.length;
     alerts.push({
       type: "VALUATION_MANUAL_STALE",
+      heading: "Valuation inputs need attention",
       severity: "warning",
       message: allUnentered
         ? "Valuation inputs not yet entered — open the Valuation Inputs page to enter today's values"

@@ -184,6 +184,7 @@ function AmountInput({ value, onChange }: { value: number; onChange: (v: number)
       </div>
       <div style={{ position: "relative" }}>
         <input
+          aria-label="Amount"
           className="form-input"
           type="text"
           inputMode="numeric"
@@ -359,6 +360,7 @@ function LoopOutTab({
           <div>
             <label className="form-label">Destination address</label>
             <input
+              aria-label="Destination address"
               type="text" className="form-input" value={destinationAddress}
               onChange={(e) => { setDestinationAddress(e.target.value); setDestVerified(false); }}
               onBlur={() => setDestTouched(true)}

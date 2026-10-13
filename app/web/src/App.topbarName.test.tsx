@@ -141,3 +141,15 @@ describe("P11 — the treasury top bar is unchanged", () => {
     expect(stub.getBitcornName).not.toHaveBeenCalled();
   });
 });
+
+// J8 (PR 2): the phone rule hides the node ID by class, so the two spans must
+// carry the classes styles.css targets. topbarPhone.test.ts pins the rule.
+describe("J8 — the top bar's name and node ID are separately styleable", () => {
+  it("the name is .topbar-node-name and the truncated pubkey is .topbar-node-id", async () => {
+    const el = await renderAppAt("/daybreak");
+    expect(el.querySelector("header.topbar .topbar-node-name")?.textContent).toBe("Green Acres");
+    const id = el.querySelector("header.topbar .topbar-node-id")?.textContent ?? "";
+    expect(id).toContain(PUBKEY.slice(0, 10));
+    expect(id).toContain(PUBKEY.slice(-4));
+  });
+});

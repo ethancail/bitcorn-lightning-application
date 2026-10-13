@@ -576,6 +576,9 @@ export type AlertSeverity = "info" | "warning" | "critical";
 
 export type TreasuryAlert = {
   type: string;
+  /** Plain-language heading, set by the API where the alert is created (SH1).
+   *  Optional here: the dashboard falls back to "Treasury alert" without it. */
+  heading?: string;
   severity: AlertSeverity;
   message: string;
   data: Record<string, unknown>;
@@ -1252,6 +1255,10 @@ export type MemberLoopAvailability = {
 };
 
 export type MemberLiquidityStatusResponse = {
+  /** The DECLARED role, whether or not the treasury channel is active (SH9).
+   *  Absent from an API older than PR 2, hence the classification fallback
+   *  at its readers. */
+  channelRole?: MemberChannelRole;
   classification: MemberChannelClassification | null;
   recommendation: MemberLiquidityRecommendation | null;
   loopAvailability: MemberLoopAvailability;

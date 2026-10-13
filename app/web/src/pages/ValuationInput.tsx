@@ -72,7 +72,7 @@ export default function ValuationInput() {
             Browse the calendar to add, edit, or audit Glassnode metric entries by date.
           </p>
         </div>
-        <button onClick={goToday} className="btn">Today</button>
+        <button onClick={goToday} className="btn btn-outline">Today</button>
       </div>
 
       {/* Breadcrumb */}
@@ -176,7 +176,7 @@ function RefreshWorkerButton({ onRefreshed }: { onRefreshed: () => void }) {
           {toast.msg}
         </span>
       )}
-      <button onClick={click} disabled={busy} style={{ padding: "6px 14px" }}>
+      <button onClick={click} disabled={busy} className="btn btn-outline btn-sm">
         {busy ? "Refreshing…" : "Refresh now"}
       </button>
     </div>

@@ -394,6 +394,7 @@ function RequestPaymentForm({
       <label className="form-label">Amount</label>
       <div style={{ position: "relative", marginBottom: 6 }}>
         <input
+          aria-label="Amount"
           type="text"
           inputMode="numeric"
           className="form-input"
@@ -441,6 +442,7 @@ function RequestPaymentForm({
 
       <label className="form-label">Memo (optional)</label>
       <input
+        aria-label="Memo"
         type="text"
         className="form-input"
         placeholder="What's this payment for?"
@@ -715,6 +717,7 @@ function PayInvoiceForm({
         Paste the payment request you were sent — it starts with lnbc.
       </div>
       <textarea
+        aria-label="Payment request"
         className="form-input"
         rows={4}
         placeholder="lnbc..."

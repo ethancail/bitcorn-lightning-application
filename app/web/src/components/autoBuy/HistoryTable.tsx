@@ -92,6 +92,7 @@ export default function HistoryTable({ sweepDayOfWeek }: Props) {
         <span>Upcoming & Recent Purchases</span>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <select
+            aria-label="Filter by status"
             value={statusFilter}
             onChange={(e) => { setOffset(0); setStatusFilter(e.target.value); }}
             style={{ fontSize: "0.75rem" }}
