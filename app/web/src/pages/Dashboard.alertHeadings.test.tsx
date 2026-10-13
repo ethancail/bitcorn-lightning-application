@@ -66,8 +66,8 @@ async function renderWith(alerts: unknown[]) {
 
 describe("treasury alert boxes print the server's heading", () => {
   it("prints the heading the API set", async () => {
-    const headings = await renderWith([alert("MEMBER_KEYSEND_DISABLED", "Keysend off for some member nodes")]);
-    expect(headings).toEqual(["Keysend off for some member nodes"]);
+    const headings = await renderWith([alert("DAILY_LOSS_CAP_EXCEEDED", "Daily loss limit reached")]);
+    expect(headings).toEqual(["Daily loss limit reached"]);
   });
 
   it("never prints the raw type", async () => {

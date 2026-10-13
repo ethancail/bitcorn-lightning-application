@@ -193,7 +193,7 @@ The associated tables (migrations 023–025) and `seeds/001_initial_clusters.sql
 
 ### Keysend Status
 
-Keysend push as a *rebalancing tool* was disabled at v1.3.5 — it permanently transfers sats in a hub-and-spoke topology rather than rebalancing the channel. The corresponding module (`lightning/rebalance-keysend.ts`) was removed in 2026-05. Keysend remains the execution mechanism for treasury push (see above) and for the keysend-feature pre-flight check on member onboarding via the retained `keysendPush()` primitive in `lightning/lnd.ts`. The `member_keysend_status` table tracks peers that reject keysend so treasury push attempts can skip them with a 24h backoff. The `MEMBER_KEYSEND_DISABLED` alert (warning severity) surfaces this on the treasury dashboard.
+Keysend push as a *rebalancing tool* was disabled at v1.3.5 — it permanently transfers sats in a hub-and-spoke topology rather than rebalancing the channel. The corresponding module (`lightning/rebalance-keysend.ts`) was removed in 2026-05. Keysend remains the execution mechanism for treasury push (see above) and for the keysend-feature pre-flight check on member onboarding via the retained `keysendPush()` primitive in `lightning/lnd.ts`. The `member_keysend_status` table tracks peers that reject keysend so treasury push attempts can skip them with a 24h backoff. (The `MEMBER_KEYSEND_DISABLED` treasury alert that surfaced it was removed 2026-10-13 — `decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`, D3, in bitcorn-research.)
 
 ## Lane Model
 
