@@ -35,7 +35,6 @@ const stub = vi.hoisted(() => ({
   getAutoBuyAlertBadge: vi.fn(),
   getDaybreakEdition: vi.fn(),
   getContacts: vi.fn(),
-  getLiquidityHealth: vi.fn(),
   getPendingChannels: vi.fn(),
   getMemberStats: vi.fn(),
   getExchangeRate: vi.fn(),
@@ -117,7 +116,6 @@ beforeEach(() => {
   stub.getAutoBuyAlertBadge.mockResolvedValue({ active_count: 0, highest_severity: null });
   stub.getDaybreakEdition.mockResolvedValue({ state: "unavailable" });
   stub.getContacts.mockResolvedValue(LANE_CONTACTS);
-  stub.getLiquidityHealth.mockResolvedValue([]);
   stub.getPendingChannels.mockResolvedValue([]);
   stub.getExchangeRate.mockResolvedValue({ usd: 60_000 });
   stub.getNodeBalances.mockResolvedValue({ onchain_sats: 2_000_000, lightning_sats: 0, total_sats: 2_000_000 });

@@ -184,7 +184,6 @@ export const api = {
     }),
   getRotationCandidates: () => apiFetch<RotationCandidate[]>("/api/treasury/rotation/candidates"),
   getDynamicFeePreview: () => apiFetch<ChannelFeeAdjustment[]>("/api/treasury/fees/dynamic-preview"),
-  getLiquidityHealth: () => apiFetch<ChannelLiquidityHealth[]>("/api/treasury/liquidity-health"),
   applyDynamicFees: () => apiFetch<{ ok: boolean; applied: number }>("/api/treasury/fees/apply-dynamic", { method: "POST", body: "{}" }),
   getCapitalPolicy: () => apiFetch<TreasuryCapitalPolicy>("/api/treasury/capital-policy"),
   setCapitalPolicy: (body: Partial<TreasuryCapitalPolicy>) =>
@@ -1049,19 +1048,6 @@ export type CommodityPrices = {
   corn: CommodityPrice;
   soybeans: CommodityPrice;
   wheat: CommodityPrice;
-};
-
-export type ChannelLiquidityHealth = {
-  channel_id: string;
-  peer_pubkey: string;
-  capacity_sats: number;
-  local_sats: number;
-  remote_sats: number;
-  imbalance_ratio: number;
-  health_classification: string;
-  velocity_24h_sats: number;
-  recommended_action: string;
-  is_active: boolean;
 };
 
 export type ContactChannel = {

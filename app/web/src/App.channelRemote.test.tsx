@@ -28,7 +28,6 @@ const stub = vi.hoisted(() => ({
   getAutoBuyAlertBadge: vi.fn(),
   getDaybreakEdition: vi.fn(),
   getContacts: vi.fn(),
-  getLiquidityHealth: vi.fn(),
   getPendingChannels: vi.fn(),
 }));
 
@@ -61,7 +60,6 @@ beforeEach(() => {
   stub.getDaybreakEdition.mockResolvedValue({ state: "unavailable" });
   stub.getMemberLiquidityStatus.mockImplementation(never);
   stub.getContacts.mockResolvedValue([{ pubkey: PEER, name: "Treasury", tags: [] }]);
-  stub.getLiquidityHealth.mockResolvedValue([]);
   stub.getPendingChannels.mockResolvedValue([]);
   vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
     ok: true,

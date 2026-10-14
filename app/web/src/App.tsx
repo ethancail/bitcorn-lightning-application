@@ -4,7 +4,7 @@ import "./font.css"; // Z4: the font faces and tokens, self-hosted; before style
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
 import bitcornLogoLight from "./assets/bitcorn-logo-light.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -1353,7 +1353,6 @@ function ChannelsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [health, setHealth] = useState<ChannelLiquidityHealth[]>([]);
   const [expandedHint, setExpandedHint] = useState<string | null>(null);
   const [nodeRole, setNodeRole] = useState<string | null>(null);
   const [closingChannel, setClosingChannel] = useState<string | null>(null);
@@ -1372,12 +1371,10 @@ function ChannelsPage() {
     Promise.all([
       fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
       api.getContacts().catch(() => [] as Contact[]),
-      api.getLiquidityHealth().catch(() => [] as ChannelLiquidityHealth[]),
       api.getPendingChannels().catch(() => [] as PendingChannel[]),
-    ]).then(([ch, ct, lh, pend]) => {
+    ]).then(([ch, ct, pend]) => {
       setChannels(ch);
       setContacts(ct);
-      setHealth(lh);
       setClosingPubkeys(new Set(pend.filter((p: PendingChannel) => p.status === "closing").map((p: PendingChannel) => p.peer_pubkey)));
       setLoadError(null);
       setLoading(false);
@@ -1393,10 +1390,9 @@ function ChannelsPage() {
     Promise.all([
       fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
       api.getContacts().catch(() => [] as Contact[]),
-      api.getLiquidityHealth().catch(() => [] as ChannelLiquidityHealth[]),
       api.getPendingChannels().catch(() => [] as PendingChannel[]),
-    ]).then(([ch, ct, lh, pend]) => {
-      setChannels(ch); setContacts(ct); setHealth(lh);
+    ]).then(([ch, ct, pend]) => {
+      setChannels(ch); setContacts(ct);
       setClosingPubkeys(new Set(pend.filter((p: PendingChannel) => p.status === "closing").map((p: PendingChannel) => p.peer_pubkey)));
       setLoadError(null);
     }).catch((e: any) => setLoadError(e?.detail ?? e?.message ?? "fetch failed"));
@@ -1423,14 +1419,6 @@ function ChannelsPage() {
       setClosingChannel(null);
     }
   }
-
-  const healthColor: Record<string, string> = {
-    outbound_starved: "var(--red)",
-    weak: "var(--yellow)",
-    healthy: "var(--green)",
-    inbound_heavy: "var(--blue)",
-    critical: "var(--text-3)",
-  };
 
   return (
     <div>
@@ -1973,7 +1961,6 @@ function ChannelsPage() {
             {channels.map((c) => {
               const localPct = c.capacity_sat > 0 ? (c.local_balance_sat / c.capacity_sat) * 100 : 0;
               const remotePct = c.capacity_sat > 0 ? (c.remote_balance_sat / c.capacity_sat) * 100 : 0;
-              const h = health.find((x) => x.channel_id === c.channel_id);
               const isTreasury = c.peer_pubkey === TREASURY_PUBKEY;
               const capStatus = classifyCapacity(c.capacity_sat, isTreasury);
               const upgradeSize = recommendedUpgradeSize(c.capacity_sat, isTreasury);
