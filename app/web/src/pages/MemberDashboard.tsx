@@ -419,7 +419,7 @@ export default function MemberDashboard() {
     api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
   }, []);
 
-  // Balance polling (replaces <NodeBalancePanel />).
+  // Balance polling.
   // U24 H8: poll results feed the freshness tracker — on repeated failures
   // the strip keeps the last-good numbers with a staleness marker instead of
   // clearing to "—" (which is indistinguishable from loading).

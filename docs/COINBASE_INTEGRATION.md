@@ -11,7 +11,7 @@ Coinbase Onramp requires a **server-side session token** (Secure Initialization 
 ## Flow
 
 ```
-FundNodePanel (browser)
+Fund Node button (browser)
   → GET /api/coinbase/onramp-url (API container)
     → src/api/coinbase-onramp.ts
       → POST https://bitcorn-onramp.ethancail.workers.dev  (Cloudflare Worker)
@@ -136,7 +136,7 @@ npx wrangler kv key delete commodity_prices --namespace-id=62c68c41830141cc8b0b6
 
 ## UI Integration
 
-`app/web/src/components/FundNodePanel.tsx` is rendered below `NodeBalancePanel` on both dashboards. One-shot fetch (no poll) on mount; falls back to `0 sats` on fetch error (no infinite shimmer). Maps the machine-readable `coinbase_not_configured` API error to an operator-readable message.
+Both dashboards (`app/web/src/pages/Dashboard.tsx`, `MemberDashboard.tsx`) carry a "Fund Node →" button that calls `api.getCoinbaseOnrampUrl()` on click and opens the returned URL in a new tab. Each maps the machine-readable `coinbase_not_configured` API error to an operator-readable message. Top Up (`RefillChannel.tsx`) and the shell's Buy Bitcoin button (`App.tsx`) call the same endpoint.
 
 ## Price Ticker (Worker `/prices`)
 

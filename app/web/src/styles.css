@@ -1340,15 +1340,6 @@ input[type="number"] {
   word-break: break-all;
 }
 
-/* ─── Dashboard page grid ──────────────────────────────────────── */
-.dashboard-grid {
-  display: grid;
-  gap: 20px;
-  grid-template-columns: 1fr 1fr;
-}
-
-.dashboard-grid .span-2 { grid-column: span 2; }
-
 /* ─── Inline preview result ────────────────────────────────────── */
 .preview-result {
   margin-top: 8px;
@@ -1532,11 +1523,6 @@ input[type="number"] {
     padding: calc(var(--topbar-h) + var(--d-page-py-ph)) var(--d-page-px-ph) 64px;
   }
   .panel-body { padding: var(--d-tile-pad-ph); }
-
-  /* Dashboard grid: single column on mobile */
-  .dashboard-grid {
-    grid-template-columns: 1fr !important;
-  }
 
   /* Stat grids: collapse to single column */
   .stat-grid-3, .stat-grid-4 {

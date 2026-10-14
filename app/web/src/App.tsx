@@ -242,7 +242,7 @@ function BuyBitcoinButton() {
       const { url } = await api.getCoinbaseOnrampUrl();
       window.open(url, "_blank", "noopener,noreferrer");
     } catch {
-      // Silently fail — FundNodePanel on the dashboard is the primary entry point
+      // Silently fail — the dashboards' Fund Node button is the primary entry point
     } finally {
       setLoading(false);
     }

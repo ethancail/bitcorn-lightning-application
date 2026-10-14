@@ -77,8 +77,6 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/api/client.ts` | `apiFetch<T>` helper, namespaced `api.*` object, all types |
 | `app/web/src/config/api.ts` | `API_BASE` constant |
 | `app/web/src/styles.css` | Full design system |
-| `app/web/src/components/NodeBalancePanel.tsx` | Balance panel (Total/Bitcoin/Lightning). No longer rendered: the dashboards poll `getNodeBalances()` themselves and show the numbers in their headline and detail tiles |
-| `app/web/src/components/FundNodePanel.tsx` | Coinbase Onramp panel — on-chain balance + "Fund Node via Coinbase →" |
 | `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph (recharts AreaChart, Coinbase public API). On all three dashboards it sits immediately beneath the headline numbers (CHART). It measures its plot and fits the time labels to the width (X5); the plot is `--d-chart-h` tall at every width (X5a) |
 | `app/web/src/components/AlertRow.tsx` | X3: a treasury alert as one compact row — icon, the server's heading (SH1), the detail in a closed `<details>`, an optional action. Used by the treasury dashboard and `ValuationInputAlertBanner` |
 | `app/web/src/components/subscriptionBannerSlot.ts` | J9/J9a: the member dashboard's slot for the subscription banner — `top` for `routing_lapsed`/`close_due`, `info` otherwise |

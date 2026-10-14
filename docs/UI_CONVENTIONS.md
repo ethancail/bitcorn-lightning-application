@@ -135,8 +135,6 @@ Placeholder while async data loads. Set a height via inline style:
 
 | Component | Purpose | Where used |
 |---|---|---|
-| `FundNodePanel` | Coinbase Onramp CTA + deposit address | Not rendered (the dashboards carry their own Fund Node button) |
-| `NodeBalancePanel` | On-chain + channel balance summary | Not rendered (the dashboards show balances in their headline and tiles) |
 | `CommodityPricesPanel` | BTC/gold/corn/soy/wheat ticker strip | Charts page |
 | `PowerLawChart` | BTC log-price with rainbow bands | Charts |
 | `MovingAveragesChart` | 50/100/200-day MA overlays | Charts |
