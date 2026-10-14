@@ -85,7 +85,6 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/components/CornBitcoinChart.tsx` | Bushels-per-BTC ratio; exports `interpolateCornPrices` |
 | `app/web/src/components/CornMovingAveragesChart.tsx` | Corn 50/100/200-day MAs; reuses `computeMA` + `interpolateCornPrices` |
 | `app/web/src/components/CommodityPricesPanel.tsx` | Price ticker strip (BTC + gold + corn + soy + wheat) |
-| `app/web/src/components/NetworkGraph.tsx` | SVG hub-and-spoke topology with zoom/pan (40–300%), role-colored |
 | `app/web/src/data/power-law-data.json` | ~10,000 daily entries, 2015-01-01 to 2042-05-31; bundled by Vite |
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
 | `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (revenue-focused) |
@@ -119,9 +118,13 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 
 ### Layout Constraints
 
-**Scroll:** `.app-shell` in `styles.css` uses `height: 100vh` (not `min-height`). This is intentional — it constrains the CSS grid to the viewport so that `overflow-y: auto` on `.main-content` triggers correctly. Changing to `min-height` breaks scrolling. `.main-content` uses `padding-bottom: 64px`.
+**Scroll:** `.app-shell` in `styles.css` uses `height: 100vh` (then `100dvh`), not `min-height`. This is intentional — it constrains the CSS grid to the viewport so that `overflow-y: auto` on `.main-content` and `.sidebar` triggers correctly. Changing to `min-height` breaks scrolling. The grid is two rows, `56px minmax(0, 1fr)` (`shellGrid.test.ts`); `minmax(0, …)` stops the sidebar's content height from pushing the shell past short windows.
 
-**Mobile (< 768px):** Sidebar hidden, hamburger in topbar slides sidebar in from the left (200ms ease) over a dark backdrop. Close via: X button, backdrop click, or any nav link. Both shells manage a `menuOpen` boolean, passed as `open`/`onClose` to their sidebar and `onMenuToggle` to `Topbar`. `.dashboard-grid` collapses to single column, `.data-table` gets `min-width: 600px` (horizontal scroll), `.main-content` padding reduced. Desktop (768px+) is unchanged — CSS-only via `@media`.
+**Top bar (4B/J10, by grid overlap):** the translucent `.topbar` keeps row 1; `.sidebar` and `.main-content` span both rows (`grid-row: 1 / -1`), so content scrolls *beneath* the bar. Their padding adds `--topbar-h` (56px, must equal row 1), and `.main-content`'s `scroll-padding-top` keeps focus moves and `scrollIntoView` below the bar. Translucency (`--chrome-bg`, `--chrome-blur`) is the bar's and the desktop sidebar's only, with solid fallbacks for `prefers-reduced-transparency` and for browsers without `backdrop-filter` (`shellChrome.test.ts`). `.main-content` uses `padding-bottom: 64px`; page content caps at `--d-maxw`, centred.
+
+**Density:** sizes that vary with density read `--d-*` tokens from the DENSITY block near the end of `styles.css` (round 1's variant b; `densityTokens.test.ts`). A token lands with the PR that first reads it.
+
+**Mobile (< 768px):** Sidebar hidden, hamburger in topbar slides sidebar in from the left (200ms ease) over a dark backdrop. Close via: X button, backdrop click, or any nav link. Both shells manage a `menuOpen` boolean, passed as `open`/`onClose` to their sidebar and `onMenuToggle` to `Topbar`. Both sidebars render one shared `Sidebar` component (items, the links after Buy Bitcoin, Settings' badge); member-only hooks stay in `MemberSidebar` (`App.navInventory.test.tsx`). The phone drawer is solid, not translucent. `.dashboard-grid` collapses to single column, `.data-table` gets `min-width: 600px` (horizontal scroll), `.main-content` padding reduced. Desktop (768px+) is unchanged — CSS-only via `@media`.
 
 ### Fund Node Panel
 
