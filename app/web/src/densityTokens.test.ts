@@ -1,7 +1,8 @@
-// PR 5: the density tokens — round 1's variant b, Balanced (J1, picked) —
-// and the shell, panel and table selectors that read them. A token lands
-// with the PR that first reads it, so this file also refuses a declared token
-// nothing reads: X2's label size, --d-label, lands with PR 6 (P5-5).
+// PR 5 and PR 6: the density tokens — round 1's variant b, Balanced (J1,
+// picked) — and the shell, panel, table and dashboard selectors that read
+// them. A token lands with the PR that first reads it, so this file also
+// refuses a declared token nothing reads. PR 6 added the dashboards' tokens
+// and X2's label size, --d-label (P5-5, P6-5).
 // Read from styles.css (jsdom does not evaluate @media).
 
 import { describe, expect, it } from "vitest";
@@ -9,7 +10,7 @@ import { cssRules, declsFor } from "./styleRules.testutil";
 
 const PHONE = "(max-width: 767px)";
 
-// b's values as PR 5 reads them (J1's Balanced column).
+// b's values (J1's Balanced column; --d-label is X2's 0.8125rem).
 const B: Record<string, string> = {
   "--d-page-py": "32px",
   "--d-page-px": "40px",
@@ -26,6 +27,14 @@ const B: Record<string, string> = {
   "--d-td-py": "12px",
   "--d-td-px": "14px",
   "--d-th-py": "10px",
+  // PR 6 (P5-5, P6-5): the dashboards.
+  "--d-gap-inner": "12px",
+  "--d-label-gap": "6px",
+  "--d-label": "0.8125rem",
+  "--d-body": "0.9375rem",
+  "--d-hl1": "2.25rem",
+  "--d-hl2": "1.625rem",
+  "--d-cols": "2",
 };
 
 const RULES = cssRules();
@@ -48,12 +57,12 @@ function readTokens(): string[] {
 }
 
 describe("density tokens (b, Balanced)", () => {
-  it("declares b's values, and only those PR 5 reads", () => {
+  it("declares b's values, and only those PR 5 and PR 6 read", () => {
     expect(declaredTokens()).toEqual(B);
   });
 
-  it("X2's label size is not declared here — it lands with PR 6 (P5-5)", () => {
-    expect(declaredTokens()["--d-label"]).toBeUndefined();
+  it("X2: labels are 0.8125rem, chart axis labels included (PR 6, P5-5)", () => {
+    expect(declaredTokens()["--d-label"]).toBe("0.8125rem");
   });
 
   it("every declared token is read, and every token read is declared", () => {
