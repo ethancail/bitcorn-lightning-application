@@ -867,7 +867,7 @@ export default function RefillChannel() {
             <div className="empty-state">No top ups yet</div>
           ) : (
             <div className="table-scroll">
-              <table className="data-table">
+              <table className="data-table phone-card">
                 <thead>
                   <tr>
                     <th>Date</th>

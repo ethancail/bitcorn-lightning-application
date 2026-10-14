@@ -3776,6 +3776,52 @@ input[type="number"] {
 .price-plot { height: var(--d-chart-h); font-size: var(--d-label); }
 .btn-group-tight { display: flex; gap: 4px; flex-wrap: wrap; }
 
+/* ═══ PHONE TABLES (PR 7: X4b, X4c, J14) ════════════════════════════════
+   On a phone a table is ONE line per row only if every row actually fits on
+   one line; otherwise it is a CARD (X4b). A card: the title cell (td-primary)
+   on its own line, then each value with its column's name (data-label)
+   beside it, nothing hidden. Opt-in, by class, on the J2 tables only (R4):
+   .phone-card is always a card on a phone. The other tables keep today's
+   sideways scroll (.data-table's 600px minimum above). Kept after every
+   table rule so it wins on order as well as specificity. */
+@media (max-width: 767px) {
+  :is(.data-table, .sub-history-table).phone-card { display: block; width: 100%; min-width: 0; }
+  :is(.data-table, .sub-history-table).phone-card :is(thead, colgroup) { display: none; }
+  :is(.data-table, .sub-history-table).phone-card tbody { display: block; width: 100%; }
+  :is(.data-table, .sub-history-table).phone-card tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  :is(.data-table, .sub-history-table).phone-card tr:last-child { border-bottom: none; }
+  /* Each cell is one unit, label beside value: in round 1 a label floated
+     away from its value when the cell shrank and wrapped between the two. */
+  :is(.data-table, .sub-history-table).phone-card td {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0;
+    border: none;
+    white-space: nowrap;
+  }
+  :is(.data-table, .sub-history-table).phone-card td.td-primary { flex: 1 0 100%; font-weight: 600; white-space: normal; }
+  :is(.data-table, .sub-history-table).phone-card td:not(.td-primary)::before {
+    content: attr(data-label);
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--d-label);
+    color: var(--text-3);
+  }
+  :is(.data-table, .sub-history-table).phone-card tr.row-detail td { flex: 1 0 100%; white-space: normal; }
+  :is(.data-table, .sub-history-table).phone-card tr.row-detail td::before { content: none; }
+  :is(.data-table, .sub-history-table).phone-card td:empty { display: none; }
+}
+
 /* ═══ DENSITY — round 1's variant b, Balanced (J1, picked) ═══════════════
    Every size that varies with density reads a --d-* token from here. A token
    lands with the PR that first reads it: PR 5 the shell, panels and tables;

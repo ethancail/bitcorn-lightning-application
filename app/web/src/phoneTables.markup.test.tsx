@@ -224,3 +224,15 @@ describe("J14 hooks: subscription payments", () => {
     expectHooked(table);
   });
 });
+
+describe("X4b: each J2 table opts in to the phone card (R4)", () => {
+  it("the four lane tables", async () => {
+    const tables = await channelsTables();
+    expect(tables.map((t) => t.classList.contains("phone-card"))).toEqual([true, true, true, true]);
+  });
+
+  it("subscription payments", async () => {
+    const el = await mount(page(SubscriptionPayments));
+    expect(el.querySelector("table")!.classList.contains("phone-card")).toBe(true);
+  });
+});

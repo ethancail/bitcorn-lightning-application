@@ -1,12 +1,30 @@
 // Test helper: styles.css as a list of rules, each with the @media condition
-// it sits in (null at top level). jsdom does not evaluate @media, so a test of
+// it sits in (null at top level) and any @container condition. jsdom
+// evaluates neither @media nor @container, so a test of
 // a phone-only rule has to read the rule rather than compute the style; the
 // browser captures are the evidence of what actually renders.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export type CssRule = { media: string | null; selectors: string[]; decls: Record<string, string>; line: number };
+// `container` is the @container condition a rule sits in (PR 7, X4c), with
+// `media` still the @media around it; null outside any container query.
+export type CssRule = { media: string | null; container: string | null; selectors: string[]; decls: Record<string, string>; line: number };
+
+/** A selector list split on its top-level commas only, so `:is(a, b) td`
+ *  stays one selector. */
+function splitSelectors(prelude: string): string[] {
+  const out: string[] = [];
+  let depth = 0, start = 0;
+  for (let k = 0; k < prelude.length; k++) {
+    const c = prelude[k];
+    if (c === "(") depth++;
+    else if (c === ")") depth--;
+    else if (c === "," && depth === 0) { out.push(prelude.slice(start, k).trim()); start = k + 1; }
+  }
+  out.push(prelude.slice(start).trim());
+  return out;
+}
 
 export function cssRules(file = join(__dirname, "styles.css")): CssRule[] {
   const raw = readFileSync(file, "utf8");
@@ -15,7 +33,7 @@ export function cssRules(file = join(__dirname, "styles.css")): CssRule[] {
   const rules: CssRule[] = [];
   const lineAt = (i: number) => src.slice(0, i).split("\n").length;
 
-  function walk(from: number, to: number, media: string | null) {
+  function walk(from: number, to: number, media: string | null, container: string | null = null) {
     let i = from;
     while (i < to) {
       const open = src.indexOf("{", i);
@@ -30,17 +48,19 @@ export function cssRules(file = join(__dirname, "styles.css")): CssRule[] {
       }
       const body = src.slice(open + 1, j - 1);
       if (prelude.startsWith("@media")) {
-        walk(open + 1, j - 1, prelude.replace(/^@media\s*/, "").trim());
+        walk(open + 1, j - 1, prelude.replace(/^@media\s*/, "").trim(), container);
       } else if (prelude.startsWith("@supports")) {
         // Rules under @supports carry the whole prelude as their condition.
-        walk(open + 1, j - 1, prelude.replace(/\s+/g, " "));
+        walk(open + 1, j - 1, prelude.replace(/\s+/g, " "), container);
+      } else if (prelude.startsWith("@container")) {
+        walk(open + 1, j - 1, media, prelude.replace(/^@container\s*/, "").replace(/\s+/g, " ").trim());
       } else if (!prelude.startsWith("@")) {
         const decls: Record<string, string> = {};
         for (const d of body.split(";")) {
           const k = d.indexOf(":");
           if (k > 0) decls[d.slice(0, k).trim()] = d.slice(k + 1).trim();
         }
-        rules.push({ media, selectors: prelude.split(",").map((s) => s.trim()), decls, line: lineAt(open) });
+        rules.push({ media, container, selectors: splitSelectors(prelude), decls, line: lineAt(open) });
       }
       i = j;
     }

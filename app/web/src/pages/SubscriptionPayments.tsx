@@ -145,7 +145,7 @@ function SubscriptionPaymentsBody({
 function PaymentsTable({ payments }: { payments: SubscriptionPaymentRow[] }) {
   return (
     <section className="sub-panel">
-      <table className="sub-history-table">
+      <table className="sub-history-table phone-card">
         <thead>
           <tr>
             <th>Date</th>

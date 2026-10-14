@@ -1690,7 +1690,7 @@ function ChannelsPage() {
                 <div className="empty-state">No merchant channels. Tag contacts as "merchant" to classify.</div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                  <table className="data-table phone-card" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
                       <col style={{ width: "25%" }} />
                       <col style={{ width: "12%" }} />
@@ -1752,7 +1752,7 @@ function ChannelsPage() {
                 <div className="empty-state">No farmer channels. Tag contacts as "farmer" to classify.</div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                  <table className="data-table phone-card" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
                       <col style={{ width: "25%" }} />
                       <col style={{ width: "12%" }} />
@@ -1812,7 +1812,7 @@ function ChannelsPage() {
                   <span className="badge badge-muted">{externalLanes.length}</span>
                 </div>
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                  <table className="data-table phone-card" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
                       <col style={{ width: "25%" }} />
                       <col style={{ width: "12%" }} />
@@ -1870,7 +1870,7 @@ function ChannelsPage() {
                   <span className="badge badge-muted">{unclassifiedLanes.length}</span>
                 </div>
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                  <table className="data-table phone-card" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
                       <col style={{ width: "25%" }} />
                       <col style={{ width: "12%" }} />
