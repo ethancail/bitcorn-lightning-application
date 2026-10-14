@@ -1,9 +1,8 @@
-// SH1: the treasury dashboard's alert boxes print the heading the API sends,
+// SH1: the treasury dashboard's alert rows print the heading the API sends,
 // fall back to "Treasury alert" without one, and never print the raw type.
-//
-// Today's boxes, unchanged otherwise: .alert-type is still mono uppercase
-// (ruling 5 — sentence case comes with PR 6's alert rows), so these assert the
-// rendered TEXT, not its case on screen.
+// X3 (PR 6): each alert is one compact row (AlertRow.tsx) whose detail is one
+// tap away, in a closed native <details>; the valuation banner is the same
+// row, with its action.
 //
 // The panels beside the alert list are stubbed out; only the list is under test.
 
@@ -11,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import React from "react";
+import { MemoryRouter } from "react-router-dom";
 
 const never = () => new Promise<never>(() => {});
 
@@ -59,9 +59,9 @@ const alert = (type: string, heading?: string) => ({
 
 async function renderWith(alerts: unknown[]) {
   stub.getAlerts.mockResolvedValue(alerts);
-  await act(async () => { root.render(React.createElement(Dashboard)); });
+  await act(async () => { root.render(React.createElement(MemoryRouter, null, React.createElement(Dashboard))); });
   await act(async () => { await Promise.resolve(); });
-  return [...host.querySelectorAll(".alert-type")].map((e) => e.textContent);
+  return [...host.querySelectorAll(".alert-row-heading")].map((e) => e.textContent);
 }
 
 describe("treasury alert boxes print the server's heading", () => {
@@ -80,5 +80,36 @@ describe("treasury alert boxes print the server's heading", () => {
     const headings = await renderWith([alert("SOMETHING_NEW")]);
     expect(headings).toEqual(["Treasury alert"]);
     expect(host.textContent).not.toContain("SOMETHING_NEW");
+  });
+});
+
+describe("X3: compact rows, the detail one tap away", () => {
+  it("each alert is one row: icon, heading, and its detail inside a closed <details>", async () => {
+    await renderWith([alert("DAILY_LOSS_CAP_EXCEEDED", "Daily loss limit reached")]);
+    const rows = host.querySelectorAll(".alert.alert-row");
+    expect(rows).toHaveLength(1);
+    const details = rows[0].querySelector("details")!;
+    expect(details, "a native disclosure").not.toBeNull();
+    expect(details.open).toBe(false);
+    expect(details.querySelector("summary")!.textContent).toContain("Daily loss limit reached");
+    expect(details.querySelector("summary")!.textContent).not.toContain("the alert's detail");
+    expect(details.querySelector(".alert-row-detail")!.textContent).toBe("the alert's detail");
+  });
+
+  it("the valuation banner is a row too: the server's heading, its detail folded, \"Enter now\" beside", async () => {
+    await renderWith([alert("VALUATION_MANUAL_STALE", "Valuation inputs need attention")]);
+    const rows = host.querySelectorAll(".alert.alert-row");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].querySelector(".alert-row-heading")!.textContent).toBe("Valuation inputs need attention");
+    expect(rows[0].querySelector("details .alert-row-detail")!.textContent).toBe("the alert's detail");
+    const link = rows[0].querySelector(".alert-row-action a")!;
+    expect(link.textContent).toBe("Enter now →");
+    expect(link.getAttribute("href")).toBe("/valuation-input");
+  });
+
+  it("the valuation banner falls back to its own wording when no heading arrives", async () => {
+    const headings = await renderWith([alert("VALUATION_MANUAL_STALE")]);
+    expect(headings).toEqual(["Valuation inputs need attention"]);
+    expect(host.textContent).not.toContain("VALUATION_MANUAL_STALE");
   });
 });

@@ -3828,6 +3828,38 @@ input[type="number"] {
 .btn-block { width: 100%; justify-content: center; }
 .status-line { color: var(--red); font-size: var(--d-label); }
 .alert-action { margin-top: 8px; font-size: var(--d-label); }
+
+/* X3: a treasury alert as one compact row — icon, plain-language heading
+   (the server's, SH1), action; the detail one tap away (AlertRow.tsx).
+   Severity colours are the .alert.{critical,warning} ones. */
+.alert.alert-row { align-items: center; padding: 8px 12px; }
+.alert-row-details { flex: 1; min-width: 0; }
+.alert-row-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  cursor: pointer;
+  list-style: none;
+}
+.alert-row-details > summary::-webkit-details-marker { display: none; }
+.alert-row-details > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.alert-row-heading { flex: 1; min-width: 0; font-weight: 600; }
+.alert-row-more { font-size: var(--d-label); opacity: 0.75; white-space: nowrap; }
+.alert-row-more::after { content: " ▾"; }
+.alert-row-details[open] .alert-row-more::after { content: " ▴"; }
+.alert-row-detail { margin-top: 8px; font-weight: 400; }
+.alert-row-action { flex-shrink: 0; }
+.alert-row-action .btn { white-space: nowrap; }
+@media (max-width: 767px) {
+  /* The chevron alone marks the disclosure on a phone; the heading keeps
+     the width. */
+  .alert-row-more-text { display: none; }
+}
 .tile-details { font-size: var(--d-label); color: var(--text-3); }
 .tile-details > summary { cursor: pointer; user-select: none; }
 .tile-details[open] > summary { margin-bottom: var(--d-gap-inner); }
