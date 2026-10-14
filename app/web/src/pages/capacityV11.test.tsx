@@ -162,7 +162,7 @@ describe("V11 — Top Up", () => {
     setup(500_000, "merchant", "receive_heavy");
     await render(RefillChannel);
     expect(bar()).toContain("var(--amber)");
-    expect(host.textContent).toContain("Low · 50% local");
+    expect(host.textContent).toContain("Low · 50% available to send");
     expect(texts().length).toBeGreaterThanOrEqual(3);
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
   });
@@ -187,7 +187,7 @@ describe("V11 — Cash Out", () => {
     setup(500_000, "farmer", "send_heavy");
     await render(WithdrawBitcoin);
     expect(bar()).toContain("var(--amber)");
-    expect(host.textContent).toContain("Getting full · 50% local");
+    expect(host.textContent).toContain("Getting full · 50% available to withdraw");
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
   });
 

@@ -206,7 +206,7 @@ describe("PR3-7: no capacity text element uses --amber", () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(warnStatus("merchant"));
     const r = checkCapacityTexts(await mount(page(RefillChannel)));
     expect(r.offenders).toEqual([]);
-    expect(r.count).toBe(3); // N% local, after top up: now → projected
+    expect(r.count).toBe(3); // N% available to send, after top up: now → projected
   });
 
   it("Cash Out, farmer in warning", async () => {
@@ -214,7 +214,7 @@ describe("PR3-7: no capacity text element uses --amber", () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(warnStatus("farmer"));
     const r = checkCapacityTexts(await mount(page(WithdrawBitcoin)));
     expect(r.offenders).toEqual([]);
-    expect(r.count).toBe(2); // N% local, after withdrawal
+    expect(r.count).toBe(2); // N% available to withdraw, after withdrawal
   });
 
   it("Payments send view, a decoded invoice (PR 4)", async () => {
@@ -233,7 +233,7 @@ describe("PR3-7: no capacity text element uses --amber", () => {
     expect(stub.decodeInvoice).toHaveBeenCalled();
     const r = checkCapacityTexts(el);
     expect(r.offenders).toEqual([]);
-    expect(r.count).toBe(3); // N% local, send capacity, after send: now → projected
+    expect(r.count).toBe(3); // N% available to send, send capacity, after send: now → projected
   });
 
   it("treasury Channels, every lane in a warning state", async () => {

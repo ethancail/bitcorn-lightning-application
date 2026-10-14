@@ -434,7 +434,7 @@ export default function RefillChannel() {
                 }}>
                   <span style={{ color: "var(--text-3)" }}>Channel Balance</span>
                   <span data-testid="capacity-text" style={{ color: CAPACITY_TEXT_COLOR[tone], fontWeight: 600 }}>
-                    {toneWord && `${toneWord} · `}{channelPct}% local
+                    {toneWord && `${toneWord} · `}{channelPct}% available to send
                   </span>
                 </div>
                 <div style={{
@@ -612,7 +612,7 @@ export default function RefillChannel() {
                 {" → "}
                 <span data-testid="capacity-text" style={{ color: "var(--text)", fontWeight: 600 }}>
                   {Math.min(projectedPct, 100)}%
-                </span> local
+                </span> available to send
               </div>
             )}
 
@@ -718,7 +718,7 @@ export default function RefillChannel() {
                 {" → "}
                 <span data-testid="capacity-text" style={{ color: "var(--text)", fontWeight: 600 }}>
                   {Math.min(projectedPct, 100)}%
-                </span> local
+                </span> available to send
               </div>
             )}
 
