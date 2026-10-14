@@ -31,6 +31,9 @@ export function cssRules(file = join(__dirname, "styles.css")): CssRule[] {
       const body = src.slice(open + 1, j - 1);
       if (prelude.startsWith("@media")) {
         walk(open + 1, j - 1, prelude.replace(/^@media\s*/, "").trim());
+      } else if (prelude.startsWith("@supports")) {
+        // Rules under @supports carry the whole prelude as their condition.
+        walk(open + 1, j - 1, prelude.replace(/\s+/g, " "));
       } else if (!prelude.startsWith("@")) {
         const decls: Record<string, string> = {};
         for (const d of body.split(";")) {

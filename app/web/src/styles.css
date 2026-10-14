@@ -113,21 +113,47 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 /* The content row is minmax(0, 1fr), not 1fr: 1fr is minmax(auto, 1fr), so
    the sidebar's content height floored the row and pushed the shell ~10px past
    any window shorter than about 795px. The sidebar now scrolls in its own
-   column instead. */
+   column instead.
+   4B + J10 (PR 5), by GRID OVERLAP (P5-1): the top bar stays in row 1; the
+   sidebar and the main column span both rows, so content scrolls BENEATH the
+   translucent bar. Row 1 is --topbar-h; the two must agree
+   (shellChrome.test.ts). The main column's scrollbar runs under the bar too:
+   its top 56px is covered, accepted (P5-7). */
+:root {
+  --topbar-h: 56px;
+  /* Translucent chrome, the top bar and the desktop sidebar only (TASTE A16),
+     never behind numbers. Derived from --bg-1, so each theme gets its own. */
+  --chrome-bg: color-mix(in srgb, var(--bg-1) 78%, transparent);
+  --chrome-blur: saturate(1.6) blur(14px);
+}
+/* Fallbacks: solid chrome for reduced transparency (LANG :59-61), and where
+   backdrop-filter is unsupported (a translucent bar with no blur would leave
+   text scrolling under the bar's text). */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --chrome-bg: var(--bg-1); --chrome-blur: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --chrome-bg: var(--bg-1); }
+}
+
 .app-shell {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 220px minmax(0, 1fr);
   grid-template-rows: 56px minmax(0, 1fr);
   height: 100vh;
+  height: 100dvh;
 }
 
 .topbar {
   grid-column: 1 / -1;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 0 24px;
-  background: var(--bg-1);
+  background: var(--chrome-bg);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -180,9 +206,13 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 .topbar-node-id { color: var(--text-3); font-family: var(--font-id); }
 
 .sidebar {
-  background: var(--bg-1);
+  grid-column: 1;
+  grid-row: 1 / -1;
+  background: var(--chrome-bg);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
   border-right: 1px solid var(--border);
-  padding: 20px 0;
+  padding: calc(var(--topbar-h) + 20px) 0 20px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -235,7 +265,11 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 .sidebar-item .icon { font-size: 1rem; opacity: 0.8; }
 
 .main-content {
-  padding: var(--d-page-py) var(--d-page-px) 64px;
+  grid-column: 2;
+  grid-row: 1 / -1;
+  padding: calc(var(--topbar-h) + var(--d-page-py)) var(--d-page-px) 64px;
+  /* Focus moves, scrollIntoView and in-page jumps land below the bar. */
+  scroll-padding-top: calc(var(--topbar-h) + 8px);
   overflow-y: auto;
   background: var(--bg);
 }
@@ -1526,6 +1560,7 @@ input[type="number"] {
   .app-shell {
     grid-template-columns: 1fr;
   }
+  .main-content { grid-column: 1; }
 
   /* Topbar: show hamburger */
   .hamburger-btn { display: flex; }
@@ -1558,6 +1593,13 @@ input[type="number"] {
     transform: translateX(-100%);
     transition: transform 200ms ease;
     box-shadow: none;
+    /* The drawer is SOLID (P5-4): it sits over the 60% overlay, where
+       translucency would grey the light theme. It covers the bar, so it
+       takes back today's top padding. */
+    background: var(--bg-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    padding-top: 20px;
   }
 
   .sidebar.open {
@@ -1585,7 +1627,7 @@ input[type="number"] {
 
   /* Main content: full width, the density's phone padding */
   .main-content {
-    padding: var(--d-page-py-ph) var(--d-page-px-ph) 64px;
+    padding: calc(var(--topbar-h) + var(--d-page-py-ph)) var(--d-page-px-ph) 64px;
   }
   .panel-body { padding: var(--d-tile-pad-ph); }
 
