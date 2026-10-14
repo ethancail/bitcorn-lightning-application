@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, NavLink, Link, useNavigate, useSearchParams } from "react-router-dom";
+import "./font.css"; // Z4: the font faces and tokens, self-hosted; before styles.css
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
 import bitcornLogoLight from "./assets/bitcorn-logo-light.svg";
@@ -65,20 +66,10 @@ document.addEventListener("wheel", (e) => {
 // ─── Theme initialization ─────────────────────────────────────────────────
 // Runs once on load — checks localStorage, falls back to OS preference.
 
-type FontPreset = { id: string; label: string; mono: string; sans: string; preview: string };
-
-const FONT_PRESETS: FontPreset[] = [
-  { id: "plex", label: "IBM Plex", mono: "'IBM Plex Mono', monospace", sans: "'IBM Plex Sans', sans-serif", preview: "The quick brown fox" },
-  { id: "inter", label: "Inter", mono: "'JetBrains Mono', monospace", sans: "'Inter', sans-serif", preview: "The quick brown fox" },
-  { id: "source", label: "Source", mono: "'Source Code Pro', monospace", sans: "'Source Sans 3', sans-serif", preview: "The quick brown fox" },
-  { id: "system", label: "System", mono: "ui-monospace, 'Cascadia Code', 'Fira Code', monospace", sans: "system-ui, -apple-system, sans-serif", preview: "The quick brown fox" },
-];
-
-function applyFont(presetId: string) {
-  const preset = FONT_PRESETS.find((p) => p.id === presetId) ?? FONT_PRESETS[0];
-  document.documentElement.style.setProperty("--mono", preset.mono);
-  document.documentElement.style.setProperty("--sans", preset.sans);
-}
+// Round 1, Z1: ONE font for the whole app. The font presets (FONT_PRESETS,
+// applyFont) and the Settings control are gone; the family is the --font
+// token. A previously stored "bitcorn_font" is simply ignored: nothing reads
+// it and nothing deletes it (no migration write).
 
 const SYSTEM_DARK_QUERY = "(prefers-color-scheme: dark)";
 
@@ -116,11 +107,6 @@ function initTheme() {
   const scale = localStorage.getItem("bitcorn_text_scale");
   if (scale) {
     document.documentElement.style.setProperty("--text-scale", scale);
-  }
-  // Restore font
-  const font = localStorage.getItem("bitcorn_font");
-  if (font) {
-    applyFont(font);
   }
 }
 initTheme();
@@ -768,7 +754,6 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
     return "system";
   });
   const [textScale, setTextScale] = useState(() => localStorage.getItem("bitcorn_text_scale") || "1");
-  const [fontId, setFontId] = useState(() => localStorage.getItem("bitcorn_font") || "plex");
 
   function changeTheme(value: ThemeChoice) {
     setTheme(value);
@@ -788,16 +773,6 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
       localStorage.removeItem("bitcorn_text_scale");
     } else {
       localStorage.setItem("bitcorn_text_scale", value);
-    }
-  }
-
-  function changeFont(id: string) {
-    setFontId(id);
-    applyFont(id);
-    if (id === "plex") {
-      localStorage.removeItem("bitcorn_font");
-    } else {
-      localStorage.setItem("bitcorn_font", id);
     }
   }
 
@@ -922,32 +897,6 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
               onChange={(e) => changeTextScale(e.target.value)}
               style={{ width: "100%", accentColor: "var(--amber)" }}
             />
-          </div>
-
-          {/* Font: compact 2x2 grid */}
-          <div>
-            <span style={{ fontSize: "0.8125rem", fontWeight: 500, marginBottom: 4, display: "block" }}>Font</span>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-              {FONT_PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  onClick={() => changeFont(preset.id)}
-                  style={{
-                    padding: "8px 10px", borderRadius: 8, cursor: "pointer",
-                    border: `2px solid ${fontId === preset.id ? "var(--amber)" : "var(--border)"}`,
-                    background: fontId === preset.id ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: "0.8125rem", color: fontId === preset.id ? "var(--amber)" : "var(--text)", fontFamily: preset.sans }}>
-                    {preset.label}
-                  </div>
-                  <div style={{ fontSize: "0.6875rem", fontFamily: preset.mono, color: "var(--text-3)", marginTop: 2 }}>
-                    0123456789
-                  </div>
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       </div>
@@ -1531,7 +1480,7 @@ function ChannelsPage() {
           <div className="dialog-card">
             <div className="dialog-title">Close Channel?</div>
             <div className="dialog-body">
-              This will cooperatively close the channel to <strong>{closeConfirm.peerName}</strong> ({closeConfirm.capacity.toLocaleString()} sats).
+              This will cooperatively close the channel to <strong className="ident">{closeConfirm.peerName}</strong> ({closeConfirm.capacity.toLocaleString()} sats).
               Funds will return to your on-chain wallet after confirmation. This cannot be undone.
             </div>
             <div style={{ marginTop: 14 }}>
@@ -1759,7 +1708,7 @@ function ChannelsPage() {
                 <div className="alert-body">
                   <div className="alert-type">{unclassifiedLanes.length} Unclassified Channel{unclassifiedLanes.length > 1 ? "s" : ""}</div>
                   <div className="alert-msg">
-                    {unclassifiedLanes.map((c) => c.peerName).join(", ")} — tag as
+                    <span className="ident">{unclassifiedLanes.map((c) => c.peerName).join(", ")}</span> — tag as
                     <strong> merchant</strong> or <strong>farmer</strong> in Contacts to classify.
                   </div>
                 </div>
@@ -1819,7 +1768,7 @@ function ChannelsPage() {
                         const actionLabel = c.state === "exhausted" ? "Renew Now" : c.state === "renew_soon" ? "Renew Soon" : "Close";
                         return (
                           <tr key={c.channel_id}>
-                            <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
                             <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                             <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {c.remote_balance_sat.toLocaleString()}
@@ -1881,7 +1830,7 @@ function ChannelsPage() {
                         const color = stateColor(c.state);
                         return (
                           <tr key={c.channel_id}>
-                            <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
                             <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                             <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {accumulated.toLocaleString()}
@@ -1939,7 +1888,7 @@ function ChannelsPage() {
                         const color = stateColor(c.state);
                         return (
                           <tr key={c.channel_id}>
-                            <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
                             <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                             <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {c.local_balance_sat.toLocaleString()}
@@ -1995,7 +1944,7 @@ function ChannelsPage() {
                     <tbody>
                       {unclassifiedLanes.map((c) => (
                         <tr key={c.channel_id}>
-                          <td style={{ fontWeight: 500 }}>{c.peerName}</td>
+                          <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
                           <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
                           <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
                             {c.local_balance_sat.toLocaleString()}
@@ -2072,7 +2021,7 @@ function ChannelsPage() {
               return (
                 <div key={c.channel_id} className="channel-card">
                   <div className="channel-card-top">
-                    <span className="channel-peer mono">
+                    <span className="channel-peer mono ident">
                       {resolveContactName(c.peer_pubkey, contacts)}
                     </span>
                     {capStatus === "undersized" && (
@@ -2301,7 +2250,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: "0.875rem", fontWeight: 500 }}>{resolveContactName(p.peer_pubkey, contacts)}</div>
+                      <div className="ident" style={{ fontSize: "0.875rem", fontWeight: 500 }}>{resolveContactName(p.peer_pubkey, contacts)}</div>
                       <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{p.capacity_sat.toLocaleString()} sats</div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -2326,7 +2275,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: "0.875rem", fontWeight: 500 }}>{resolveContactName(p.peer_pubkey, contacts)}</div>
+                      <div className="ident" style={{ fontSize: "0.875rem", fontWeight: 500 }}>{resolveContactName(p.peer_pubkey, contacts)}</div>
                       <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>{p.capacity_sat.toLocaleString()} sats</div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -2359,7 +2308,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                 border: "1px solid var(--border)",
                 borderRadius: 6,
                 padding: "8px 12px",
-                fontFamily: "var(--mono)",
+                fontFamily: "var(--font-id)",
                 fontSize: "0.75rem",
                 wordBreak: "break-all",
                 color: "var(--text-2)",
@@ -2406,7 +2355,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                       >
                         <div>
                           <div style={{ fontWeight: 500, fontSize: "0.875rem" }}>{c.name}</div>
-                          <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
+                          <div style={{ fontFamily: "var(--font-id)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
                             {c.pubkey.slice(0, 16)}…{c.pubkey.slice(-8)}
                           </div>
                         </div>
@@ -2438,7 +2387,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                   value={manualPubkey}
                   onChange={(e) => setManualPubkey(e.target.value)}
                   placeholder="03..."
-                  style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
+                  style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
                 />
                 {contacts.length > 0 && (
                   <button

@@ -1,0 +1,73 @@
+/* ═══ FONT (UI redesign: Z1, Z2, Z4, Z5, Z6) ═══════════════════════════════
+   The app's two font families and their two tokens. This is the ONLY file
+   that names a face; styles.css derives --sans and --mono from --font:
+
+     --font     the one UI font — text, labels and numbers, with tabular
+                digits (Z1, Z2, Z5): Inter
+     --font-id  monospace for identifiers only — node IDs, pubkeys, txids,
+                addresses, invoices, hashes (Z2, Z6): IBM Plex Mono
+
+   Both self-hosted, bundled into the app by Vite from ./fonts/; NO remote
+   @import — the app loads nothing from Google (Z4). Imported before
+   styles.css (App.tsx). The woff2 files' sha256 values are pinned in
+   fonts.guard.test.ts.
+
+   Inter — github.com/rsms/inter release v4.1 (2024-11-16), asset
+   Inter-4.1.zip, web/InterVariable.woff2 (352,240 B, sha256
+   693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3) and
+   web/InterVariable-Italic.woff2 (387,976 B, sha256
+   e564f652916db6c139570fefb9524a77c4d48f30c92928de9db19b6b5c7a262a); font
+   version 4.001; variable weight 100–900; tabular figures (tnum): yes.
+   Licence: SIL Open Font License 1.1 (fonts/inter/LICENSE.txt).
+
+   IBM Plex Mono — github.com/IBM/plex release @ibm/plex-mono@2.5.0
+   (2026-06-11), asset ibm-plex-mono.zip, fonts/complete/woff2/: Regular
+   (49,248 B, sha256
+   ba204497f16b6d334cee9d1e963a831b73e3a56e1d6300a8489d18df7214b350), Medium
+   (50,400 B, sha256
+   33faf307fa6031fb4062276d7320a6d632de890cbb347576fd80cfa01077bc25),
+   SemiBold (50,600 B, sha256
+   6a825b4824c01cbb401e829e5a066a1818411bcb3538b5a5792c5ca9b82343c3); font
+   version 2.005. Licence: SIL Open Font License 1.1
+   (fonts/ibm-plex-mono/LICENSE.txt; "Plex" is a Reserved Font Name). */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter/InterVariable.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter/InterVariable-Italic.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/IBMPlexMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/IBMPlexMono-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('./fonts/ibm-plex-mono/IBMPlexMono-SemiBold.woff2') format('woff2');
+}
+
+:root {
+  --font: 'Inter', sans-serif;
+  --font-id: 'IBM Plex Mono', monospace;
+}
+/* ═══ END FONT ═══════════════════════════════════════════════════════════ */

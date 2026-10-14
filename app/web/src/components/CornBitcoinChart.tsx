@@ -42,7 +42,7 @@ const BG_2 = "#17171e";
 const BORDER = "#2a2a38";
 const TEXT_3 = "#5a5a70";
 const TEXT = "#e8e8f0";
-const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "'IBM Plex Mono', monospace";
+const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 

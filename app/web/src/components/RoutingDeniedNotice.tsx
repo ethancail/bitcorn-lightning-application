@@ -75,7 +75,7 @@ export default function RoutingDeniedNotice({
             {payload.deposit_address && (
               <div style={{ marginTop: 6, fontSize: "0.75rem", opacity: 0.85 }}>
                 Deposit address:{" "}
-                <code title={payload.deposit_address}>
+                <code className="ident" title={payload.deposit_address}>
                   {truncPubkey(payload.deposit_address)}
                 </code>
               </div>

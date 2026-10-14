@@ -334,7 +334,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
       {/* Protocol reference — demoted per U2 (vocabulary record 2026-07-09) */}
       <div style={{ borderTop: "1px solid var(--border)", paddingTop: 12 }}>
         <TechnicalDetails>
-          <TechRow label="Hub node ID">{hubPubkey}</TechRow>
+          <TechRow label="Hub node ID"><span className="ident">{hubPubkey}</span></TechRow>
           <TechRow label="Fee rates">Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB</TechRow>
         </TechnicalDetails>
       </div>

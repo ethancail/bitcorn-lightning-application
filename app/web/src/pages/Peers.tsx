@@ -88,7 +88,7 @@ export default function Peers() {
               background: "var(--bg-3)",
               border: "1px solid var(--border)",
               borderRadius: 6,
-              fontFamily: "var(--mono)",
+              fontFamily: "var(--font-id)",
               fontSize: "0.75rem",
               wordBreak: "break-all",
               color: "var(--text-2)",
@@ -119,7 +119,7 @@ export default function Peers() {
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               <div style={{ display: "flex", gap: 8 }}>
                 <span style={{ color: "var(--amber)", fontWeight: 600, minWidth: 18 }}>1.</span>
-                <span>Their <strong>Node URI</strong> — a string in the format <code style={{ background: "var(--bg-3)", padding: "2px 6px", borderRadius: 3, fontSize: "0.75rem" }}>pubkey@host:port</code></span>
+                <span>Their <strong>Node URI</strong> — a string in the format <code className="ident" style={{ background: "var(--bg-3)", padding: "2px 6px", borderRadius: 3, fontSize: "0.75rem" }}>pubkey@host:port</code></span>
               </div>
               <div style={{ display: "flex", gap: 8, paddingLeft: 26, fontSize: "0.75rem", color: "var(--text-3)" }}>
                 Found in: Umbrel → Lightning Node → click the "..." menu → Copy Node URI
@@ -169,7 +169,7 @@ export default function Peers() {
             placeholder="pubkey@host:port"
             value={uri}
             onChange={(e) => setUri(e.target.value)}
-            style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem" }}
+            style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
             onKeyDown={(e) => { if (e.key === "Enter") handleConnect(); }}
           />
           {connectError && (
@@ -221,16 +221,16 @@ export default function Peers() {
                   return (
                     <tr key={p.pubkey}>
                       <td>
-                        <div style={{ fontWeight: isNamed ? 500 : 400 }}>
+                        <div className={isNamed ? undefined : "ident"} style={{ fontWeight: isNamed ? 500 : 400 }}>
                           {isNamed ? name : truncPubkey(p.pubkey)}
                         </div>
                         {isNamed && (
-                          <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
+                          <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--font-id)" }}>
                             {truncPubkey(p.pubkey)}
                           </div>
                         )}
                       </td>
-                      <td style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-3)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <td style={{ fontFamily: "var(--font-id)", fontSize: "0.75rem", color: "var(--text-3)", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         {p.address || "—"}
                       </td>
                       <td>

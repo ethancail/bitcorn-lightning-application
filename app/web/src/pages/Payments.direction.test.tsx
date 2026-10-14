@@ -1,6 +1,7 @@
 // D3 on Payments: "Sent" leaves badge-red and "Received" leaves badge-green.
 // Both are neutral badges, and an arrow carries the direction. PR3-6: the row's
-// direction and status spans carry the base .badge class, which they lacked.
+// direction and status spans carry the base .badge class, which they lacked;
+// PR 4: so does the detail view's Status badge.
 //
 // Harness: MemberDashboard.declaredRole.test.tsx's.
 
@@ -78,6 +79,15 @@ describe("D3 — the direction badges", () => {
   it("PR3-6: the status cell carries the base badge class too", async () => {
     await render();
     const status = rows()[0].querySelectorAll("td")[1].firstElementChild!;
+    expect(status.textContent).toBe("Success");
+    expect(status.className).toBe("badge badge-green");
+  });
+
+  it("PR 4: the detail view's Status badge carries the base badge class", async () => {
+    await render();
+    await act(async () => { (rows()[0] as HTMLElement).click(); });
+    const label = [...host.querySelectorAll("span")].find((s) => s.textContent === "Status")!;
+    const status = label.nextElementSibling!;
     expect(status.textContent).toBe("Success");
     expect(status.className).toBe("badge badge-green");
   });

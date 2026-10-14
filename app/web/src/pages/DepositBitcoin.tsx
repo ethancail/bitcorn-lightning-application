@@ -161,7 +161,7 @@ export default function DepositBitcoin() {
 
               <div
                 style={{
-                  fontFamily: "var(--mono)",
+                  fontFamily: "var(--font-id)",
                   fontSize: "0.8125rem",
                   color: "var(--text-2)",
                   wordBreak: "break-all",
@@ -290,7 +290,7 @@ export default function DepositBitcoin() {
                           border: "none",
                           padding: 0,
                           cursor: "pointer",
-                          fontFamily: "var(--mono)",
+                          fontFamily: "var(--font-id)",
                           fontSize: "0.6875rem",
                           color: "var(--text-3)",
                         }}

@@ -947,12 +947,12 @@ export default function RefillChannel() {
                                       </div>
                                     )}
                                     {expandedDetail.execution?.provider_swap_id && (
-                                      <div style={{ fontFamily: "var(--mono)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
+                                      <div style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
                                         Swap hash: {expandedDetail.execution.provider_swap_id}
                                       </div>
                                     )}
                                     {expandedDetail.execution?.onchain_txid && (
-                                      <div style={{ fontFamily: "var(--mono)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
+                                      <div style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
                                         On-chain TX: {expandedDetail.execution.onchain_txid}
                                       </div>
                                     )}

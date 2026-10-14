@@ -310,7 +310,7 @@ export default function NetworkGraph() {
                     textAnchor="middle" fill={color}
                     fontSize={node.name.length > 12 ? 8 : 10}
                     fontWeight={600}
-                    fontFamily="var(--mono)"
+                    fontFamily="var(--font-id)"
                   >
                     {node.name.length > 14 ? node.name.slice(0, 12) + "…" : node.name}
                   </text>
@@ -342,7 +342,7 @@ export default function NetworkGraph() {
             alignItems: "center",
           }}>
             <div>
-              <span style={{ fontWeight: 600, color: ROLE_COLORS[hovered.role] }}>{hovered.name}</span>
+              <span className="ident" style={{ fontWeight: 600, color: ROLE_COLORS[hovered.role] }}>{hovered.name}</span>
               <span className="badge" style={{ marginLeft: 8, fontSize: "0.625rem" }}>{ROLE_LABELS[hovered.role]}</span>
             </div>
             <div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)", display: "flex", gap: 16 }}>

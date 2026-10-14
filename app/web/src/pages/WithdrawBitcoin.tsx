@@ -532,7 +532,7 @@ export default function WithdrawBitcoin() {
                   <div
                     style={{
                       flex: 1,
-                      fontFamily: "var(--mono)",
+                      fontFamily: "var(--font-id)",
                       fontSize: "0.75rem",
                       color: "var(--text-2)",
                       wordBreak: "break-all",
@@ -638,7 +638,7 @@ export default function WithdrawBitcoin() {
               );
             })()}
 
-            <div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-3)", wordBreak: "break-all" }}>
+            <div style={{ fontFamily: "var(--font-id)", fontSize: "0.75rem", color: "var(--text-3)", wordBreak: "break-all" }}>
               To: {address}
             </div>
 
@@ -698,7 +698,7 @@ export default function WithdrawBitcoin() {
             </div>
 
             {trackingSwap.destination_address && (
-              <div style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-3)", wordBreak: "break-all" }}>
+              <div style={{ fontFamily: "var(--font-id)", fontSize: "0.75rem", color: "var(--text-3)", wordBreak: "break-all" }}>
                 To: {trackingSwap.destination_address}
               </div>
             )}
@@ -857,7 +857,7 @@ export default function WithdrawBitcoin() {
                                       {expandedDetail.swap_request.destination_address && (
                                         <div style={{ gridColumn: "1 / -1" }}>
                                           <span style={{ color: "var(--text-3)" }}>Destination:</span>{" "}
-                                          <span style={{ fontFamily: "var(--mono)", fontSize: "0.65rem", wordBreak: "break-all" }}>
+                                          <span style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", wordBreak: "break-all" }}>
                                             {expandedDetail.swap_request.destination_address}
                                           </span>
                                         </div>
@@ -869,12 +869,12 @@ export default function WithdrawBitcoin() {
                                       </div>
                                     )}
                                     {expandedDetail.execution?.provider_swap_id && (
-                                      <div style={{ fontFamily: "var(--mono)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
+                                      <div style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
                                         Swap hash: {expandedDetail.execution.provider_swap_id}
                                       </div>
                                     )}
                                     {expandedDetail.execution?.onchain_txid && (
-                                      <div style={{ fontFamily: "var(--mono)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
+                                      <div style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
                                         Bitcoin transaction: {expandedDetail.execution.onchain_txid}
                                       </div>
                                     )}

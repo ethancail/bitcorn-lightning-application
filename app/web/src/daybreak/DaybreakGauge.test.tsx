@@ -8,7 +8,9 @@
 //
 // jsdom does no layout (no getBBox), so the number's box is a CONSERVATIVE
 // estimate from those attributes: the full em box vertically, and 0.65em per
-// character horizontally (--mono is IBM Plex Mono, 0.6em per character). The
+// character horizontally. --mono is Inter with tabular digits since UI redesign
+// PR 4 (it was IBM Plex Mono, 0.6em per character): "−0.59" measured 2.85em
+// wide in Chromium, 0.57em per character, inside the 3.25em this allows. The
 // rem font size is resolved across a spread of root sizes wider than the app's
 // text-scale range (styles.css: 14px × 0.75…1.5), since the member chooses it.
 //
