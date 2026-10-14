@@ -9,6 +9,7 @@ import {
     consumeChallengeNonce,
     getChallengeNonce,
     getMemberOutstandingChallenges,
+    MAX_CHALLENGES_PER_MEMBER,
     sweepExpiredChallenges,
     upsertChallengeNonce,
 } from "./nonceStore";
@@ -66,6 +67,81 @@ describe("upsertChallengeNonce", () => {
         expect(() =>
             upsertChallengeNonce(MEMBER, WALLET, "tooshort", 1_000_000, 1_001_000, testDb),
         ).toThrow();
+    });
+});
+
+describe("upsertChallengeNonce — per-member row cap", () => {
+    const N = MAX_CHALLENGES_PER_MEMBER;
+    const FAR = 9_000_000_000;
+
+    // Distinct, CHECK-valid (0x + 40 hex) addresses.
+    const addr = (i: number) => "0x" + i.toString(16).padStart(40, "0");
+    const nonceFor = (i: number) => `nonce${String(i).padStart(12, "0")}`;
+
+    function memberRows(): Array<{ id: number; wallet_address: string; issued_at: number }> {
+        return testDb
+            .prepare(
+                `SELECT id, wallet_address, issued_at FROM siwe_challenge_nonce
+                 WHERE member_pubkey = ? ORDER BY id`,
+            )
+            .all(MEMBER) as Array<{ id: number; wallet_address: string; issued_at: number }>;
+    }
+
+    it("keeps at most N rows per member — the newest N, including the last write", () => {
+        for (let i = 1; i <= N + 3; i++) {
+            upsertChallengeNonce(MEMBER, addr(i), nonceFor(i), 1_000_000 + i * 1_000, FAR, testDb);
+        }
+        const rows = memberRows();
+        expect(rows.length).toBeLessThanOrEqual(N);
+        const survivors = rows.map((r) => r.wallet_address).sort();
+        const newestN = Array.from({ length: N }, (_, k) => addr(N + 3 - k)).sort();
+        expect(survivors).toEqual(newestN);
+        expect(survivors).toContain(addr(N + 3));
+    });
+
+    it("two wallets: challenge A then B, both still verifiable", () => {
+        const A = addr(0xa);
+        const B = addr(0xb);
+        upsertChallengeNonce(MEMBER, A, "nonceAAAAAAAAAAAA", 1_000_000, FAR, testDb);
+        upsertChallengeNonce(MEMBER, B, "nonceBBBBBBBBBBBB", 1_001_000, FAR, testDb);
+        expect(getChallengeNonce(MEMBER, A, 1_002_000, testDb)?.nonce).toBe("nonceAAAAAAAAAAAA");
+        expect(getChallengeNonce(MEMBER, B, 1_002_000, testDb)?.nonce).toBe("nonceBBBBBBBBBBBB");
+    });
+
+    it("same address twice updates in place: one row, same id, second nonce", () => {
+        upsertChallengeNonce(MEMBER, WALLET, "FIRSTNONCE12345678", 1_000_000, FAR, testDb);
+        const before = memberRows();
+        upsertChallengeNonce(MEMBER, WALLET, "SECONDNONCE9876543", 2_000_000, FAR, testDb);
+        const after = memberRows();
+        expect(after).toHaveLength(1);
+        expect(after[0].id).toBe(before[0].id);
+        expect(getChallengeNonce(MEMBER, WALLET, 2_000_500, testDb)?.nonce).toBe("SECONDNONCE9876543");
+    });
+
+    it("a same-millisecond issued_at tie is resolved by id (the later insert wins)", () => {
+        // addr(1) and addr(2) tie at t=1_000_000; the next N-1 writes are strictly
+        // newer, so the cap must evict exactly one of the tied pair — the lower id.
+        upsertChallengeNonce(MEMBER, addr(1), nonceFor(1), 1_000_000, FAR, testDb);
+        upsertChallengeNonce(MEMBER, addr(2), nonceFor(2), 1_000_000, FAR, testDb);
+        for (let i = 3; i <= N + 1; i++) {
+            upsertChallengeNonce(MEMBER, addr(i), nonceFor(i), 1_000_000 + i * 1_000, FAR, testDb);
+        }
+        const survivors = memberRows().map((r) => r.wallet_address).sort();
+        const expected = Array.from({ length: N }, (_, k) => addr(k + 2)).sort();
+        expect(survivors).toEqual(expected);
+    });
+
+    it("a just-written row with an older issued_at (clock stepped back) survives its own cap", () => {
+        for (let i = 1; i <= N; i++) {
+            upsertChallengeNonce(MEMBER, addr(i), nonceFor(i), 2_000_000 + i * 1_000, FAR, testDb);
+        }
+        const stepped = addr(0xbac);
+        upsertChallengeNonce(MEMBER, stepped, "nonceSTEPPEDBACK0", 1_000_000, FAR, testDb);
+        const rows = memberRows();
+        expect(rows.length).toBeLessThanOrEqual(N);
+        expect(getChallengeNonce(MEMBER, stepped, 1_000_500, testDb)?.nonce).toBe("nonceSTEPPEDBACK0");
+        // The cap evicted the oldest OTHER row, not the one just written.
+        expect(rows.map((r) => r.wallet_address)).not.toContain(addr(1));
     });
 });
 
