@@ -20,6 +20,7 @@ const B: Record<string, string> = {
   "--d-tile-pad-ph": "16px",
   "--d-gap": "16px",
   "--d-title-size": "0.8125rem",
+  "--d-title-gap": "12px",
   "--d-table": "0.875rem",
   "--d-th": "0.75rem",
   "--d-td-py": "12px",

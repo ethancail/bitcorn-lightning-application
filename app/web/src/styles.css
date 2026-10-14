@@ -255,14 +255,29 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
   overflow: hidden;
 }
 
+/* 3B (TASTE A15): ONE level of containment. The panel is the only box; its
+   header is a title row inside it, not a second strip with its own background
+   and rule. The title sits --d-title-gap above a .panel-body: the body's top
+   padding supplies the rest. ⚠ .panel and .panel-body are Daybreak's (F8,
+   F8a); .panel's own rule is unchanged. */
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-2);
+  gap: 8px;
+  padding: var(--d-tile-pad) var(--d-tile-pad) 0;
+  margin-bottom: calc(var(--d-title-gap) - var(--d-tile-pad));
 }
+/* Not followed by a .panel-body (a table, an empty state, a custom block —
+   17 headers at 5f37779): the header supplies its own gap, and pulls nothing
+   up into the title. */
+.panel-header:not(:has(+ .panel-body)) {
+  padding-bottom: var(--d-title-gap);
+  margin-bottom: 0;
+}
+/* Alone in its panel: the tile's full padding below, so .panel's
+   overflow: hidden never clips the title. */
+.panel-header:last-child { padding-bottom: var(--d-tile-pad); }
 
 .panel-title {
   display: flex;
@@ -313,9 +328,6 @@ p + .settings-section-label { margin-top: 8px; }
 /* ─── Settings page: operational panel variant ────────────────── */
 .panel.ops {
   border-top: 2px solid var(--amber);
-}
-.panel.ops .panel-header {
-  background: color-mix(in srgb, var(--amber) 6%, var(--bg-2));
 }
 .panel.ops .panel-title {
   color: var(--amber-dim);
@@ -1597,7 +1609,10 @@ input[type="number"] {
   .panel-header {
     flex-wrap: wrap;
     gap: 8px;
+    padding: var(--d-tile-pad-ph) var(--d-tile-pad-ph) 0;
+    margin-bottom: calc(var(--d-title-gap) - var(--d-tile-pad-ph));
   }
+  .panel-header:last-child { padding-bottom: var(--d-tile-pad-ph); }
 
   .btn-sm {
     padding: 4px 8px;
@@ -3651,7 +3666,7 @@ input[type="number"] {
   --d-maxw: 1280px;
   --d-tile-pad: 20px;        --d-tile-pad-ph: 16px;
   --d-gap: 16px;
-  --d-title-size: 0.8125rem;
+  --d-title-size: 0.8125rem; --d-title-gap: 12px;
   --d-table: 0.875rem;       --d-th: 0.75rem;
   --d-td-py: 12px;           --d-td-px: 14px;    --d-th-py: 10px;
 }
