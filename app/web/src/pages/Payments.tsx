@@ -603,7 +603,7 @@ function PayInvoiceForm({
               <strong>Fee:</strong> {fmtSats(result.fee_sats)}
             </div>
             <div>
-              <strong>To:</strong> {resolveContactName(result.destination, contacts)}
+              <strong>To:</strong> <span className="ident">{resolveContactName(result.destination, contacts)}</span>
             </div>
             {result.memo && (
               <div>
@@ -612,7 +612,7 @@ function PayInvoiceForm({
             )}
             <div style={{ marginTop: 8 }}>
               <TechnicalDetails>
-                <TechRow label="Payment hash">{result.payment_hash}</TechRow>
+                <TechRow label="Payment hash"><span className="ident">{result.payment_hash}</span></TechRow>
               </TechnicalDetails>
             </div>
           </>
@@ -666,14 +666,15 @@ function PayInvoiceForm({
             <div style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
               <div style={{ width: `${Math.min(currentLocalPct, 100)}%`, height: "100%", background: "var(--amber)" }} />
             </div>
-            <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)" }}>
+            <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)" }}>
               {currentLocalPct}% local
             </span>
           </div>
         </div>
       )}
 
-      {/* Send capacity card (amber-tinted) */}
+      {/* Send capacity card (amber-tinted). PR3-7: the tint and border carry the
+          amber; the number is --text (light --amber is 2.68:1 on --bg-1). */}
       {channelLocal != null && (
         <div style={{
           border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
@@ -685,7 +686,7 @@ function PayInvoiceForm({
             <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
               Send capacity
             </div>
-            <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--amber)", lineHeight: 1.2 }}>
+            <div data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
               {channelLocal.toLocaleString()}
               <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>sats</span>
             </div>
@@ -723,7 +724,7 @@ function PayInvoiceForm({
         placeholder="lnbc..."
         value={bolt11}
         onChange={(e) => setBolt11(e.target.value)}
-        style={{ fontFamily: "var(--mono)", fontSize: "0.8rem", resize: "vertical", marginBottom: 12 }}
+        style={{ fontFamily: "var(--font-id)", fontSize: "0.8rem", resize: "vertical", marginBottom: 12 }}
       />
 
       {decoding && <div className="text-dim" style={{ marginBottom: 12 }}>Reading payment request…</div>}
@@ -739,7 +740,7 @@ function PayInvoiceForm({
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>To</span>
-            <span className="td-mono" style={{ fontSize: "0.8rem" }}>
+            <span className="td-mono ident" style={{ fontSize: "0.8rem" }}>
               {resolveContactName(decoded.destination, contacts)}
             </span>
           </div>
@@ -776,7 +777,7 @@ function PayInvoiceForm({
           background: "var(--bg-2)", borderLeft: "2px solid var(--amber)",
           padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 12,
         }}>
-          After send: <strong style={{ color: "var(--amber)" }}>
+          After send: <strong data-testid="capacity-text" style={{ color: "var(--text)" }}>
             {currentLocalPct}% → {projectedLocalPct}% local
           </strong>
         </div>
@@ -894,7 +895,7 @@ function PaymentDetail({
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
           <span>Status</span>
-          <span className={sBadge.cls}>{sBadge.label}</span>
+          <span className={`badge ${sBadge.cls}`}>{sBadge.label}</span>
         </div>
         {p.fee_sats > 0 && (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -905,7 +906,7 @@ function PaymentDetail({
         {p.counterparty_pubkey && (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>{p.direction === "send" ? "To" : "From"}</span>
-            <span className="td-mono" style={{ fontSize: "0.8rem" }}>
+            <span className="td-mono ident" style={{ fontSize: "0.8rem" }}>
               {resolveContactName(p.counterparty_pubkey, contacts)}
             </span>
           </div>
@@ -930,7 +931,7 @@ function PaymentDetail({
 
       <div style={{ marginBottom: 12 }}>
         <TechnicalDetails>
-          <TechRow label="Payment hash">{p.payment_hash}</TechRow>
+          <TechRow label="Payment hash"><span className="ident">{p.payment_hash}</span></TechRow>
         </TechnicalDetails>
       </div>
 
@@ -1015,7 +1016,7 @@ function PaymentRow({
         )}
       </td>
       <td className="td-num">{p.fee_sats > 0 ? fmtSats(p.fee_sats) : "\u2014"}</td>
-      <td className="td-mono" style={{ fontSize: "0.8rem" }}>
+      <td className="td-mono ident" style={{ fontSize: "0.8rem" }}>
         {p.counterparty_pubkey
           ? resolveContactName(p.counterparty_pubkey, contacts)
           : "\u2014"}

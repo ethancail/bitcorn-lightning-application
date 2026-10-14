@@ -50,8 +50,10 @@ export type Challenge =
 export interface ActionSummary {
   /** Imperative, specific. Becomes the modal heading. */
   title: string;
-  /** Label → value rows. Amount and destination first where they exist. */
-  rows: Array<{ label: string; value: string }>;
+  /** Label → value rows. Amount and destination first where they exist.
+   *  `ident` marks a value that is an identifier (an ID, a pubkey, an
+   *  address): the modal sets it in the identifier monospace (UI redesign Z2). */
+  rows: Array<{ label: string; value: string; ident?: true }>;
   /**
    * Free prose beneath the rows, or undefined.
    *
@@ -149,7 +151,7 @@ export function summarizeOpenMemberChannel(p: {
     rows: [
       { label: "Capacity", value: fmtSats(p.capacitySats) },
       { label: "Peer", value: p.hubLabel ?? "Bitcorn treasury hub" },
-      ...(p.partnerSocket ? [{ label: "Address", value: p.partnerSocket }] : []),
+      ...(p.partnerSocket ? [{ label: "Address", value: p.partnerSocket, ident: true as const }] : []),
     ],
     irreversible:
       "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later.",
@@ -167,7 +169,7 @@ export function summarizeTreasuryOpenChannel(p: {
     title: "Open a treasury channel",
     rows: [
       { label: "Capacity", value: fmtSats(p.capacitySats) },
-      { label: "Peer", value: p.peerAlias ? `${p.peerAlias} (${truncId(p.peerPubkey)})` : truncId(p.peerPubkey) },
+      { label: "Peer", value: p.peerAlias ? `${p.peerAlias} (${truncId(p.peerPubkey)})` : truncId(p.peerPubkey), ident: true },
     ],
     irreversible: "On-chain funding transaction. The mining fee is not recoverable.",
     challenge: { kind: "amount", sats: p.capacitySats },
@@ -185,7 +187,7 @@ export function summarizeCloseChannel(p: {
   return {
     title: force ? "Force-close this channel" : "Close this channel",
     rows: [
-      { label: "Channel", value: truncId(p.channelId) },
+      { label: "Channel", value: truncId(p.channelId), ident: true },
       ...(p.peerAlias ? [{ label: "Peer", value: p.peerAlias }] : []),
       ...(p.capacitySats !== undefined ? [{ label: "Capacity", value: fmtSats(p.capacitySats) }] : []),
       { label: "Type", value: force ? "Force close" : "Cooperative close" },
@@ -209,7 +211,7 @@ export function summarizePayInvoice(p: {
     title: "Send this payment",
     rows: [
       { label: "Amount", value: fmtSats(p.amountSats) },
-      ...(p.destination ? [{ label: "To", value: truncId(p.destination) }] : []),
+      ...(p.destination ? [{ label: "To", value: truncId(p.destination), ident: true as const }] : []),
       ...(p.memo ? [{ label: "Memo", value: p.memo }] : []),
     ],
     irreversible: "A Lightning payment cannot be recalled once it settles.",
@@ -227,7 +229,7 @@ export function summarizeLoopOut(p: {
     title: "Move funds on-chain",
     rows: [
       { label: "Amount", value: fmtSats(p.amountSats) },
-      { label: "To address", value: truncId(p.destinationAddress, 10) },
+      { label: "To address", value: truncId(p.destinationAddress, 10), ident: true },
       ...(p.feeSats !== undefined ? [{ label: "Estimated fee", value: fmtSats(p.feeSats) }] : []),
     ],
     irreversible:
@@ -319,7 +321,7 @@ export function summarizeApproveLiquidity(p: {
     rows: [
       ...(p.amountSats !== undefined ? [{ label: "Amount", value: fmtSats(p.amountSats) }] : []),
       ...(p.peerAlias ? [{ label: "Peer", value: p.peerAlias }] : []),
-      { label: "Recommendation", value: truncId(p.recommendationId) },
+      { label: "Recommendation", value: truncId(p.recommendationId), ident: true },
     ],
     irreversible: "Approving moves funds. The routing fee is spent on completion.",
     challenge:

@@ -208,12 +208,12 @@ function SemicircleGauge({ z, zone }: { z: number; zone: ValuationZone }) {
         {clampedBands.map((b) => arcSegment(b.minZ, b.maxZ, b.color, b.zone))}
 
         {/* Axis labels */}
-        <text x={CX - R - 2} y={CY + 12} fontSize="10" fill="currentColor" fontFamily="var(--mono, monospace)" opacity="0.6">Z=−3</text>
-        <text x={CX} y={10} fontSize="10" fill="currentColor" fontFamily="var(--mono, monospace)" opacity="0.6" textAnchor="middle">Z=0</text>
-        <text x={CX + R + 2} y={CY + 12} fontSize="10" fill="currentColor" fontFamily="var(--mono, monospace)" opacity="0.6" textAnchor="end">Z=+3</text>
+        <text x={CX - R - 2} y={CY + 12} fontSize="10" fill="currentColor" fontFamily="var(--mono)" opacity="0.6">Z=−3</text>
+        <text x={CX} y={10} fontSize="10" fill="currentColor" fontFamily="var(--mono)" opacity="0.6" textAnchor="middle">Z=0</text>
+        <text x={CX + R + 2} y={CY + 12} fontSize="10" fill="currentColor" fontFamily="var(--mono)" opacity="0.6" textAnchor="end">Z=+3</text>
 
         {/* Center value */}
-        <text x={CX} y={CY - 18} fontSize="26" fontWeight="600" fill={zoneColor(zone)} textAnchor="middle" fontFamily="var(--mono, monospace)">
+        <text x={CX} y={CY - 18} fontSize="26" fontWeight="600" fill={zoneColor(zone)} textAnchor="middle" fontFamily="var(--mono)">
           {z.toFixed(2)}
         </text>
 
@@ -284,10 +284,10 @@ function ZoneDefinitions({ currentZone }: { currentZone: ValuationZone }) {
             >
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: b.color }} />
               <div style={{ fontWeight: isActive ? 600 : 400 }}>{b.label}</div>
-              <div className="text-dim" style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.75rem" }}>
+              <div className="text-dim" style={{ fontFamily: "var(--mono)", fontSize: "0.75rem" }}>
                 {fmtBand(b.minZ, b.maxZ)}
               </div>
-              <div className="text-dim" style={{ fontFamily: "var(--mono, monospace)", fontSize: "0.75rem" }}>
+              <div className="text-dim" style={{ fontFamily: "var(--mono)", fontSize: "0.75rem" }}>
                 {DEFAULT_MULTIPLIERS[b.zone]}×
               </div>
             </div>
@@ -335,7 +335,7 @@ function DistributionStats({
       {rows.map(([label, value, sub]) => (
         <div key={label} style={{ padding: "10px 14px", background: "var(--panel-alt, rgba(255,255,255,0.02))", borderRadius: 4, border: "1px solid var(--border)" }}>
           <div className="text-dim" style={{ fontSize: "0.7rem", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>{label}</div>
-          <div style={{ fontFamily: "var(--mono, monospace)", fontSize: "1rem", fontWeight: 600 }}>{value}</div>
+          <div style={{ fontFamily: "var(--mono)", fontSize: "1rem", fontWeight: 600 }}>{value}</div>
           {sub && <div className="text-dim" style={{ fontSize: "0.7rem", marginTop: 2 }}>{sub}</div>}
         </div>
       ))}

@@ -101,7 +101,7 @@ export default function ActionConfirmModal({
             {summary.rows.map((r) => (
               <div key={r.label} style={{ display: "contents" }}>
                 <dt style={{ opacity: 0.7 }}>{r.label}</dt>
-                <dd style={{ margin: 0, fontVariantNumeric: "tabular-nums", wordBreak: "break-word" }}>
+                <dd className={r.ident ? "ident" : undefined} style={{ margin: 0, fontVariantNumeric: "tabular-nums", wordBreak: "break-word" }}>
                   {r.value}
                 </dd>
               </div>

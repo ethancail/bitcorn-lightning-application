@@ -1025,7 +1025,7 @@ function PubkeyCell({
   const identified = identity.kind === "named";
 
   // Two-line layout when a contact exists: name on top (sans-serif,
-  // primary text), truncated pubkey on bottom (Plex Mono, muted).
+  // primary text), truncated pubkey on bottom (--font-id, muted).
   // Click still copies the full pubkey — operator's support-workflow
   // affordance preserved.
   //
@@ -1048,7 +1048,7 @@ function PubkeyCell({
             <code className="admin-members-pubkey-short">{short}</code>
           </span>
         ) : (
-          <code>{short}</code>
+          <code className="ident">{short}</code>
         )}
         {copied && <span className="admin-members-pubkey-copied">copied</span>}
       </button>
@@ -1127,7 +1127,7 @@ function formatPaidThrough(ms: number | null): React.ReactNode {
     : `(in ${days}d)`;
   return (
     <span>
-      <code>{date}</code> <span className="sub-muted">{annotation}</span>
+      <span>{date}</span> <span className="sub-muted">{annotation}</span>
     </span>
   );
 }
@@ -1140,7 +1140,7 @@ function formatRevenue(revenue: MemberRevenueRow | undefined): React.ReactNode {
   if (!revenue) return <span className="sub-muted">—</span>;
   return (
     <span>
-      <code>{revenue.total_sats.toLocaleString()} sats</code>{" "}
+      <span>{revenue.total_sats.toLocaleString()} sats</span>{" "}
       {revenue.total_usd_cents > 0 && (
         <span className="sub-muted">≈ {fmtUsdCents(revenue.total_usd_cents)}</span>
       )}
@@ -1158,7 +1158,7 @@ function formatLastPayment(ms: number | null, amountSats: number | null): React.
     daysAgo === 0 ? "(today)" : daysAgo === 1 ? "(yesterday)" : `(${daysAgo}d ago)`;
   return (
     <span>
-      <code>{date}</code>{" "}
+      <span>{date}</span>{" "}
       {amountSats !== null && (
         <span className="sub-muted">— {amountSats.toLocaleString()} sats </span>
       )}
