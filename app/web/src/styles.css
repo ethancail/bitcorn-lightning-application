@@ -235,9 +235,16 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 .sidebar-item .icon { font-size: 1rem; opacity: 0.8; }
 
 .main-content {
-  padding: 28px 32px 64px;
+  padding: var(--d-page-py) var(--d-page-px) 64px;
   overflow-y: auto;
   background: var(--bg);
+}
+/* Page content caps at the density's width, centred (P5-6). A page root with
+   its own inline max-width and margin (Settings, Daybreak) keeps them. */
+.main-content > * {
+  max-width: var(--d-maxw);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ─── Panel / Card ─────────────────────────────────────────────── */
@@ -262,7 +269,7 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
   align-items: center;
   gap: 8px;
   font-family: var(--mono);
-  font-size: 0.75rem;
+  font-size: var(--d-title-size);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -271,7 +278,7 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 
 .panel-title .icon { font-size: 0.875rem; }
 
-.panel-body { padding: 20px; }
+.panel-body { padding: var(--d-tile-pad); }
 
 /* ─── Settings page: section labels ───────────────────────────── */
 .settings-section-label {
@@ -914,16 +921,16 @@ p + .settings-section-label { margin-top: 8px; }
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8125rem;
+  font-size: var(--d-table);
 }
 
 .data-table th {
   font-family: var(--mono);
-  font-size: 0.625rem;
+  font-size: var(--d-th);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-3);
-  padding: 8px 12px;
+  padding: var(--d-th-py) var(--d-td-px);
   text-align: left;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -935,7 +942,7 @@ p + .settings-section-label { margin-top: 8px; }
 .data-table th.sorted { color: var(--amber); }
 
 .data-table td {
-  padding: 9px 12px;
+  padding: var(--d-td-py) var(--d-td-px);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
@@ -949,13 +956,10 @@ p + .settings-section-label { margin-top: 8px; }
 .data-table tr.negative-roi td { background: rgba(239,68,68,0.04); }
 .data-table tr.negative-roi:hover td { background: rgba(239,68,68,0.08); }
 
-/* ─── Channels page: lane table polish (scoped to .panel.ops) ─── */
+/* ─── Channels page: lane table polish (scoped to .panel.ops) ───
+   Cell padding is density's (.data-table th/td above), not a tighter copy. */
 .panel.ops .data-table th {
-  padding: 6px 10px;
   letter-spacing: 0.06em;
-}
-.panel.ops .data-table td {
-  padding: 7px 10px;
 }
 
 .td-mono {
@@ -968,6 +972,8 @@ p + .settings-section-label { margin-top: 8px; }
   font-size: 0.8125rem;
   text-align: right;
 }
+/* In a table these cells follow the density's table size. */
+.data-table td.td-num, .data-table td.td-mono { font-size: var(--d-table); }
 
 .td-right { text-align: right; }
 
@@ -1565,10 +1571,11 @@ input[type="number"] {
     color: var(--text-3);
   }
 
-  /* Main content: full width, reduced padding */
+  /* Main content: full width, the density's phone padding */
   .main-content {
-    padding: 20px 16px 64px;
+    padding: var(--d-page-py-ph) var(--d-page-px-ph) 64px;
   }
+  .panel-body { padding: var(--d-tile-pad-ph); }
 
   /* Dashboard grid: single column on mobile */
   .dashboard-grid {
@@ -2634,13 +2641,11 @@ input[type="number"] {
    the panel and the history page (the panel's "View payment history →"
    link is the entry point). */
 
+/* Page padding and width are .main-content's and its density (PR 5). */
 .sub-history-page {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  padding: 1.5rem;
-  max-width: 1100px;
-  margin: 0 auto;
+  gap: var(--d-gap);
 }
 
 .sub-history-header {
@@ -2658,20 +2663,20 @@ input[type="number"] {
 .sub-history-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9375rem;
+  font-size: var(--d-table);
 }
 .sub-history-table thead th {
   text-align: left;
-  font-size: 0.75rem;
+  font-size: var(--d-th);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--fg-2);
-  padding: 0.5rem 0.75rem;
+  padding: var(--d-th-py) var(--d-td-px);
   border-bottom: 1px solid var(--border);
 }
 .sub-history-table tbody td {
-  padding: 0.75rem;
+  padding: var(--d-td-py) var(--d-td-px);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   vertical-align: middle;
 }
@@ -3632,6 +3637,23 @@ input[type="number"] {
   .stablecoin-contract-row {
     gap: 16px;
   }
+}
+
+/* ═══ DENSITY — round 1's variant b, Balanced (J1, picked) ═══════════════
+   Every size that varies with density reads a --d-* token from here. A token
+   lands with the PR that first reads it: PR 5 the shell, panels and tables;
+   PR 6 the dashboards and X2's label size (P5-5). Spacing in px, type in rem,
+   nothing under 9px at text scale 1.0. Root font-size, h1/h2 and the radius
+   ladder are not density's (F6, F9). densityTokens.test.ts pins the values. */
+:root {
+  --d-page-py: 32px;         --d-page-px: 40px;
+  --d-page-py-ph: 20px;      --d-page-px-ph: 16px;
+  --d-maxw: 1280px;
+  --d-tile-pad: 20px;        --d-tile-pad-ph: 16px;
+  --d-gap: 16px;
+  --d-title-size: 0.8125rem;
+  --d-table: 0.875rem;       --d-th: 0.75rem;
+  --d-td-py: 12px;           --d-td-px: 14px;    --d-th-py: 10px;
 }
 
 /* ─── Reduced motion ───────────────────────────────────────────────
