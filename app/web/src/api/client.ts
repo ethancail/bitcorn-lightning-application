@@ -751,6 +751,14 @@ export type MemberStats = {
     last_24h_sats: number;
     last_30d_sats: number;
   };
+  /**
+   * Every settled inbound Lightning payment this node has recorded, summed
+   * (payments_inbound, written by the API's sync loop). The farmer
+   * dashboard's "Received, lifetime" detail (P6-1). Optional on the wire: an
+   * API older than PR 6 does not send it, and the dashboard then shows "—",
+   * never 0.
+   */
+  lifetime_received_sats?: number;
 };
 
 export type PreflightCheck = {

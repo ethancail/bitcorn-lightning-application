@@ -3271,6 +3271,17 @@ async function dispatchRequest(
         )
         .get(cutoff30d) as { total: number };
 
+      // Lifetime received (P6-1, PR 6): the farmer dashboard's "Received,
+      // lifetime" detail (J7 — never a headline number). payments_inbound holds
+      // every settled inbound invoice, written by the sync loop
+      // (lightning/persist-inbound.ts), so this is SQLite like the rest of the
+      // route: no LND read, and no dependence on the Payments page's
+      // settlement sync. It counts every settled receipt, a Loop In payment
+      // included, which is why the UI calls it "received", not "earnings".
+      const receivedLifetime = db
+        .prepare("SELECT COALESCE(SUM(tokens), 0) as total FROM payments_inbound")
+        .get() as { total: number };
+
       // ── The LND TLS certificate's expiry, read from local disk. ──
       //
       // WHY THIS FIELD RIDES THIS ENDPOINT AND NOT ANOTHER. An expired cert is
@@ -3345,6 +3356,7 @@ async function dispatchRequest(
           last_24h_sats: fees24h.total,
           last_30d_sats: fees30d.total,
         },
+        lifetime_received_sats: receivedLifetime.total,
       };
 
       res.writeHead(200, { "Content-Type": "application/json" });
