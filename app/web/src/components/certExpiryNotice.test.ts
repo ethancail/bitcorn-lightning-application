@@ -190,7 +190,7 @@ describe("CERT_EXPIRY_WARN_DAYS narrows the dashboard's window", () => {
 //
 // ⚠ THIS BLOCK USED TO BAN NAMING BITCORN HERE, and the ban is gone rather
 // than relaxed. Its reasoning was that v1.18.7's self-heal (the client rebuild
-// on a cert-bytes change, lnd.ts:114-151) had retired the follow-up restart —
+// on a cert-bytes change, lnd.ts:112-149) had retired the follow-up restart —
 // which is true ONLY for the API's own LND client. Loop is a separate service
 // in Bitcorn's own compose and does not self-heal, so the follow-up restart is
 // real for Loop and the cert notice now names it deliberately. Placement and

@@ -30,7 +30,7 @@
 // cleared, so no handle leaks per call, but the abandoned call is not reclaimed.
 // Bounding that would require an abortable client.
 //
-// This is also exactly why five calls are HELD below rather than bounded.
+// This is also exactly why four calls are HELD below rather than bounded.
 //
 // ⚠ COMPOSITION — A PER-CALL DEADLINE IS NOT A PER-OPERATION BOUND. Applying
 // this to N sequential calls makes the operation FINITE, not bounded by one
@@ -109,7 +109,6 @@ export const HELD_UNBOUNDED_CALLS: readonly string[] = Object.freeze([
   "sendLndToChainAddress",
   "openTreasuryChannel",
   "closeTreasuryChannel",
-  "payViaRoutes", // inside payLndViaRoutes
   // raw ln-service call site
   "payViaPaymentRequest", // pay.ts
 ]);

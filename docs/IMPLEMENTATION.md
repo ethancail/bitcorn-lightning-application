@@ -14,7 +14,6 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/lightning/loop.ts` | loopd gRPC client (standalone loopd sidecar, port 11010) |
 | `src/lightning/rebalance-loop.ts` | Loop Out rebalance execution + auto-select + monitoring |
 | `src/lightning/rebalance-scheduler.ts` | Scheduled Loop Out rebalance loop |
-| `src/lightning/rebalance-circular.ts` | Circular rebalance execution (legacy, unused in hub-and-spoke) |
 | `src/lightning/network-payments.ts` | Network payment business logic (create invoice, pay, history, settlement sync) |
 | `src/api/treasury.ts` | Aggregate treasury metrics |
 | `src/api/treasury-liquidity-health.ts` | Per-channel liquidity assessment |

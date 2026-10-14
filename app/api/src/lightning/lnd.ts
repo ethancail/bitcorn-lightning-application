@@ -2,7 +2,6 @@
 import {
   authenticatedLndGrpc,
   getWalletInfo,
-  getIdentity,
   getPeers,
   getChannels,
   getInvoices,
@@ -16,7 +15,6 @@ import {
   getPendingChannels,
   createInvoice,
   getRouteToDestination,
-  payViaRoutes,
   createChainAddress,
   getUtxos,
   signMessage,
@@ -357,19 +355,7 @@ export async function getLndChainBalance() {
 }
 
 /**
- * Gets our node's public key (for circular rebalance destination).
- */
-export async function getLndIdentity() {
-  const { lnd } = getLndClient();
-  return withDeadline(
-    "getLndIdentity",
-    () => getIdentity({ lnd }),
-    LND_FAST_CALL_TIMEOUT_MS,
-  );
-}
-
-/**
- * Creates an invoice on the treasury node (e.g. for self-pay rebalance).
+ * Creates an invoice on this node.
  */
 export async function createLndInvoice(tokens: number, description?: string) {
   const { lnd } = getLndClient();
@@ -378,42 +364,6 @@ export async function createLndInvoice(tokens: number, description?: string) {
     () => createInvoice({ lnd, tokens, description }),
     LND_FAST_CALL_TIMEOUT_MS,
   );
-}
-
-/**
- * Gets a route to a destination with optional outgoing channel and incoming peer (for circular rebalance).
- */
-export async function getLndRouteToDestination(options: {
-  destination: string;
-  tokens: number;
-  outgoing_channel?: string;
-  incoming_peer?: string;
-  max_fee?: number;
-  payment?: string;
-  total_mtokens?: string;
-}) {
-  const { lnd } = getLndClient();
-  return withDeadline(
-    "getLndRouteToDestination",
-    () => getRouteToDestination({ lnd, ...options }),
-    LND_GOSSIP_CALL_TIMEOUT_MS,
-  );
-}
-
-/**
- * Pays via a pre-built route (e.g. circular rebalance).
- *
- * ⚠ HELD — NO DEADLINE, DELIBERATELY. In HELD_UNBOUNDED_CALLS (callDeadline.ts).
- * A deadline cannot cancel the call, so giving up on an in-flight payment leaves
- * the outcome UNKNOWN: the HTLC may already have settled. Retrying is a double
- * spend, not retrying is a lost payment, and nothing local can tell which.
- * Slow is better than ambiguous here. Pinned by heldCalls.test.ts.
- */
-export type LndRoute = Awaited<ReturnType<typeof getLndRouteToDestination>>["route"];
-
-export async function payLndViaRoutes(id: string, routes: LndRoute[]) {
-  const { lnd } = getLndClient();
-  return payViaRoutes({ lnd, id, routes });
 }
 
 /**

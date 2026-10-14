@@ -152,3 +152,22 @@ describe("D2: the treasury keysend push routes are gone", () => {
     await expectLiveRouteStillClassified();
   });
 });
+
+describe("D1: the circular rebalance route is gone", () => {
+  it("POST /api/treasury/rebalance/circular is refused as unclassified", async () => {
+    const r = await call("POST", "/api/treasury/rebalance/circular", {
+      outgoing_channel: "842391119757312",
+      incoming_channel: "901234567890123",
+      tokens: 250000,
+    });
+    expect(r.status).toBe(400);
+    expect(r.raw).toBe(
+      '{"error":"confirmation_required","detail":"POST /api/treasury/rebalance/circular is not classified in action-confirmation.ts; refusing rather than guessing"}'
+    );
+    expect(egressCalls()).toEqual([]);
+  });
+
+  it("anti-vacuity: a live treasury route is still classified, and reaches no egress", async () => {
+    await expectLiveRouteStillClassified();
+  });
+});

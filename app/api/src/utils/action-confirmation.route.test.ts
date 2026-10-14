@@ -105,9 +105,9 @@ const isConfirmError = (c: Captured) =>
 // The middle state — present but WRONG — is what proves the value is verified.
 // ─────────────────────────────────────────────────────────────────────────────
 describe("a capital route: three states, not two", () => {
-  const url = "/api/treasury/rebalance/circular";
-  const body = { outgoing_channel: "111", incoming_channel: "222", tokens: 50000 };
-  const correct = sha("outgoing_channel=111&incoming_channel=222&tokens=50000");
+  const url = "/api/treasury/rebalance/loop-out";
+  const body = { channel_id: "111", amount_sats: 50000 };
+  const correct = sha("channel_id=111&amount_sats=50000");
 
   it("NO confirmation -> 400 confirmation_required", async () => {
     const r = await call("POST", url, body);
@@ -131,7 +131,7 @@ describe("a capital route: three states, not two", () => {
   });
 
   it("a confirmation valid for OTHER parameters -> 409 (the replay case)", async () => {
-    const r = await call("POST", url, { ...body, tokens: 5_000_000 }, {
+    const r = await call("POST", url, { ...body, amount_sats: 5_000_000 }, {
       [CONFIRMATION_HEADER]: correct,
     });
     expect(r.status).toBe(409);
@@ -192,25 +192,18 @@ describe("the documented shell idiom clears the gate", () => {
       { payment_request: "lnbc1pjxyzqqdq" },
       "ffd020f4084283dc2475e82ded9b66533f581c60d220d8e11dd1cfd44bef85b4",
     ],
-    // ── optional NUMBER: both branches of the jq conditional in docs/API.md
+    // ── optional TEXT: both branches of the jq conditional in docs/API.md
     [
-      "circular WITH max_fee_sats",
-      "/api/treasury/rebalance/circular",
-      {
-        outgoing_channel: "842391119757312",
-        incoming_channel: "901234567890123",
-        tokens: 250000,
-        max_fee_sats: 500,
-      },
-      "344efd60efa374ae42d6fb189567fafcefbd00120fa5cf568b635be66d6b19d3",
+      "admin/swaps/loop-out WITH destination_address",
+      "/api/admin/swaps/loop-out",
+      { swap_request_id: "swap-ghi", destination_address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq" },
+      "676cf893e23066c95bd83b0c5938f903fd277775940b8d82a768a5e5463740e6",
     ],
     [
-      "circular WITHOUT max_fee_sats (absent branch)",
-      "/api/treasury/rebalance/circular",
-      { outgoing_channel: "842391119757312", incoming_channel: "901234567890123", tokens: 250000 },
-      // Unchanged from before max_fee_sats joined the field list — the
-      // backwards-compatibility half of "absent contributes nothing".
-      "933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342",
+      "admin/swaps/loop-out WITHOUT destination_address (absent branch)",
+      "/api/admin/swaps/loop-out",
+      { swap_request_id: "swap-ghi" },
+      "f7e788fffb935543a4ce7215e04c2990c6cbe410d3efc5f3313525f03279aaac",
     ],
     // ── optional BOOLEAN: all three states must be distinct and pinned
     [
@@ -232,12 +225,6 @@ describe("the documented shell idiom clears the gate", () => {
       "c18ba191fb7e4cdcebc8b59d66e33a6ec00f6280769fd093f8d41ce8e5f7816f",
     ],
     // ── dry_run: the preview/execute distinction, both branches pinned
-    [
-      "circular, dry_run TRUE",
-      "/api/treasury/rebalance/circular",
-      { outgoing_channel: "842391119757312", incoming_channel: "901234567890123", tokens: 250000, dry_run: true },
-      "b921ea90378cbe9f215bbb1dd5a960c53cec8b2f5ae6bb450e5746a5c0923726",
-    ],
     [
       "rotation, dry_run TRUE",
       "/api/treasury/rotation/execute",
@@ -298,12 +285,6 @@ describe("the documented shell idiom clears the gate", () => {
         },
         "08fd5898f57826759cb81ecb19b3b5b52395f4b0b4323e24e03e7d34a1696aec",
       ],
-      [
-        "rebalance/circular",
-        "/api/treasury/rebalance/circular",
-        { outgoing_channel: "842391119757312", incoming_channel: "901234567890123", tokens: 250000 },
-        "933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342",
-      ],
     ];
 
     for (const [label, url, body, realHash] of FLIPS) {
@@ -347,21 +328,6 @@ describe("the documented shell idiom clears the gate", () => {
       "/api/treasury/rotation/execute",
       { channel_id: "842391119757312", is_force_close: true },
       { [CONFIRMATION_HEADER]: "0dafc2024c1ae41d5a774d5b660d7dfb91bd1abf6507c4e5aa205d6b366c7a59" }
-    );
-    expect(r.status).toBe(409);
-  });
-
-  it("and likewise for max_fee_sats: the fee ceiling cannot be raised after the fact", async () => {
-    const r = await call(
-      "POST",
-      "/api/treasury/rebalance/circular",
-      {
-        outgoing_channel: "842391119757312",
-        incoming_channel: "901234567890123",
-        tokens: 250000,
-        max_fee_sats: 999999,
-      },
-      { [CONFIRMATION_HEADER]: "933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342" }
     );
     expect(r.status).toBe(409);
   });

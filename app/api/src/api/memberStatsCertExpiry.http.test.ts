@@ -8,9 +8,9 @@
 //
 //   1. /api/member/stats answers 200 during an LND fault. Its two live LND
 //      reads sit in their own inner try/catch and only set lnd_live_read_ok
-//      false (index.ts:3291-3311); everything else is SQLite. Contrast
+//      false (index.ts:3214-3234); everything else is SQLite. Contrast
 //      /api/node/balances, where the live call is the FIRST statement in a
-//      single try and the route fails closed to 500 (index.ts:533-556).
+//      single try and the route fails closed to 500 (index.ts:532-555).
 //   2. The cert fact itself needs no LND. readCertExpiry.ts is a readFileSync
 //      plus a parse — /lnd is a live bind mount, so the bytes are there while
 //      every gRPC call is failing.
@@ -50,7 +50,7 @@ fs.copyFileSync(FIXTURE_CERT, SCRATCH_CERT);
 process.env.LND_DIR = TMP_LND;
 
 // The route only reaches getLndPeers when a hub pubkey is configured
-// (index.ts:3291). Set one so BOTH live reads run and both can be faulted.
+// (index.ts:3214). Set one so BOTH live reads run and both can be faulted.
 const HUB = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
 process.env.TREASURY_PUBKEY = HUB;
 
@@ -83,7 +83,7 @@ vi.mock("../api/read", async (importOriginal) => {
 
 const { handleRequest } = await import("../index");
 
-// Migrations run from main() behind the require.main guard (index.ts:262-264),
+// Migrations run from main() behind the require.main guard (index.ts:261-263),
 // so importing index.ts does NOT create tables. This route SELECTs from
 // lnd_channels and payments_forwarded, so the schema has to exist or the outer
 // catch turns every case into a 500 and the suite passes for the wrong reason.

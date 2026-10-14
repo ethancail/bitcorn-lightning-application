@@ -18,18 +18,36 @@ const route = (method: string, url: string) => {
   return r;
 };
 
+// SYNTHETIC descriptor for the optional-NUMBER rules. The only live route with
+// an optional number field (rebalance/circular's max_fee_sats) was deleted by
+// ruling D1 of decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md;
+// the derivation still supports one, so its rules are pinned against a
+// test-only route of the same shape.
+const SYNTH_OPTIONAL_NUMBER: ConfirmedRoute = {
+  method: "POST",
+  match: { kind: "exact", url: "/api/test-only/optional-number" },
+  shape: 1,
+  fields: [
+    { name: "from_channel", from: "body", kind: "text" },
+    { name: "to_channel", from: "body", kind: "text" },
+    { name: "amount_sats", from: "body", kind: "number" },
+    { name: "fee_cap_sats", from: "body", kind: "number", optional: true },
+  ],
+  note: "test-only",
+};
+
 describe("derivation", () => {
   it("hashes name=value pairs in MAP ORDER, not object-key order", () => {
-    const r = route("POST", "/api/treasury/rebalance/circular");
+    const r = route("POST", "/api/treasury/expansion/execute");
     // Body deliberately supplies the keys in a different order than the map.
     const d = deriveConfirmation(r, {
-      url: "/api/treasury/rebalance/circular",
-      body: { tokens: 50000, incoming_channel: "222", outgoing_channel: "111" },
+      url: "/api/treasury/expansion/execute",
+      body: { capacity_sats: 2000000, peer_pubkey: "02ab" },
     });
     expect(d.ok).toBe(true);
     if (!d.ok) return;
-    expect(d.canonical).toBe("outgoing_channel=111&incoming_channel=222&tokens=50000");
-    expect(d.value).toBe(sha("outgoing_channel=111&incoming_channel=222&tokens=50000"));
+    expect(d.canonical).toBe("peer_pubkey=02ab&capacity_sats=2000000");
+    expect(d.value).toBe(sha("peer_pubkey=02ab&capacity_sats=2000000"));
   });
 
   it("treats a numeric field the same whether sent as number or string", () => {
@@ -177,14 +195,13 @@ describe("empty is rejected on BOTH sides", () => {
   });
 
   it("an empty OPTIONAL numeric field is refused too, not silently hashed as 0", () => {
-    // max_fee_sats is this route's outflow amount. `Number("")` is 0, so a lax
-    // rule would let an empty field read as a deliberate zero fee ceiling.
-    const rr = route("POST", "/api/treasury/rebalance/circular");
-    const d = deriveConfirmation(rr, {
-      url: "/api/treasury/rebalance/circular",
-      body: { outgoing_channel: "111", incoming_channel: "222", tokens: 1, max_fee_sats: "" },
+    // `Number("")` is 0, so a lax rule would let an empty fee cap read as a
+    // deliberate zero. Synthetic route: see SYNTH_OPTIONAL_NUMBER.
+    const d = deriveConfirmation(SYNTH_OPTIONAL_NUMBER, {
+      url: "/api/test-only/optional-number",
+      body: { from_channel: "111", to_channel: "222", amount_sats: 1, fee_cap_sats: "" },
     });
-    expect(d).toEqual({ ok: false, reason: "bad_number", field: "max_fee_sats" });
+    expect(d).toEqual({ ok: false, reason: "bad_number", field: "fee_cap_sats" });
   });
 });
 
@@ -261,31 +278,42 @@ describe("absent vs present-and-empty", () => {
     });
   });
 
-  describe("optional NUMBER (max_fee_sats on rebalance/circular)", () => {
-    const r = route("POST", "/api/treasury/rebalance/circular");
-    const base = { outgoing_channel: "111", incoming_channel: "222", tokens: 250000 };
+  describe("optional NUMBER (synthetic — see SYNTH_OPTIONAL_NUMBER)", () => {
+    const r = SYNTH_OPTIONAL_NUMBER;
+    const url = "/api/test-only/optional-number";
+    const base = { from_channel: "111", to_channel: "222", amount_sats: 250000 };
 
     it("ABSENT contributes NO TOKEN — exact string", () => {
-      expect(canonicalOf(r, base)).toBe("outgoing_channel=111&incoming_channel=222&tokens=250000");
+      expect(canonicalOf(r, base)).toBe("from_channel=111&to_channel=222&amount_sats=250000");
     });
 
     it("PRESENT contributes a token in FIELD-LIST order — exact string", () => {
-      expect(canonicalOf(r, { ...base, max_fee_sats: 500 })).toBe(
-        "outgoing_channel=111&incoming_channel=222&tokens=250000&max_fee_sats=500"
+      expect(canonicalOf(r, { ...base, fee_cap_sats: 500 })).toBe(
+        "from_channel=111&to_channel=222&amount_sats=250000&fee_cap_sats=500"
       );
     });
 
     it("PRESENT zero is a real value, not an absence — exact string", () => {
-      // 0 is the route's own default AND its most restrictive ceiling. It must
-      // still hash as a supplied value, or a caller could send max_fee_sats: 0
-      // under a confirmation computed without it.
-      expect(canonicalOf(r, { ...base, max_fee_sats: 0 })).toBe(
-        "outgoing_channel=111&incoming_channel=222&tokens=250000&max_fee_sats=0"
+      // A zero fee cap is the most restrictive value a route could default to.
+      // It must still hash as a supplied value, or a caller could send 0 under
+      // a confirmation computed without it.
+      expect(canonicalOf(r, { ...base, fee_cap_sats: 0 })).toBe(
+        "from_channel=111&to_channel=222&amount_sats=250000&fee_cap_sats=0"
       );
     });
 
     it("PRESENT-and-EMPTY is REFUSED, never coerced to 0", () => {
-      expect(canonicalOf(r, { ...base, max_fee_sats: "" })).toBe("REFUSED:bad_number");
+      expect(canonicalOf(r, { ...base, fee_cap_sats: "" })).toBe("REFUSED:bad_number");
+    });
+
+    it("a fee cap cannot be raised after the fact: a confirmation computed without it is refused once it appears", () => {
+      // Positive half first, so the refusal below cannot be a broken hash.
+      const without = sha("from_channel=111&to_channel=222&amount_sats=250000");
+      expect(verifyConfirmation(r, { url, body: base }, without)).toEqual({ ok: true });
+      const v = verifyConfirmation(r, { url, body: { ...base, fee_cap_sats: 999999 } }, without);
+      expect(v.ok).toBe(false);
+      if (v.ok) return;
+      expect(v.status).toBe(409);
     });
   });
 
@@ -336,7 +364,7 @@ describe("absent vs present-and-empty", () => {
   // table. These assert both halves: that adding the field broke nothing, and
   // that it actually binds.
   // ───────────────────────────────────────────────────────────────────────────
-  describe("optional BOOLEAN dry_run, on all three routes that accept it", () => {
+  describe("optional BOOLEAN dry_run, on both routes that accept it", () => {
     const ROUTES: Array<[url: string, body: Record<string, unknown>, canonicalWithout: string]> = [
       [
         "/api/treasury/expansion/execute",
@@ -347,11 +375,6 @@ describe("absent vs present-and-empty", () => {
         "/api/treasury/rotation/execute",
         { channel_id: "842391119757312" },
         "channel_id=842391119757312",
-      ],
-      [
-        "/api/treasury/rebalance/circular",
-        { outgoing_channel: "111", incoming_channel: "222", tokens: 250000 },
-        "outgoing_channel=111&incoming_channel=222&tokens=250000",
       ],
     ];
 

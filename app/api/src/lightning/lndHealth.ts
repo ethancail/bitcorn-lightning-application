@@ -1,10 +1,10 @@
 // LND credential/connectivity health probing — per-scope, read-only, report-only.
 //
 // WHY THIS EXISTS. Nothing in this app can currently report an LND credential,
-// permission, or connectivity fault. `isLndAvailable()` (lnd.ts:95-103) checks
+// permission, or connectivity fault. `isLndAvailable()` (lnd.ts:93-101) checks
 // that tls.cert and the macaroon EXIST on disk — a present-but-wrong, revoked,
 // or under-scoped macaroon reads as available. The 15s sync loop swallows the
-// resulting failures into a console.warn (index.ts:302) which carries err.code
+// resulting failures into a console.warn (index.ts:301) which carries err.code
 // and err.details and then discards them; and its OTHER failure path
 // (`{ok:false, reason:"lnd_unavailable"}` from sync.ts:22) RESOLVES rather than
 // throwing, so it produces no output at all.
@@ -109,7 +109,7 @@ export function lndFaultDetail(err: unknown): string {
  *   16 UNAUTHENTICATED   — "I don't know who you are"      -> auth
  *    7 PERMISSION_DENIED — "I know you, and you may not"   -> permission
  *
- * They reach the catch site today (index.ts:302 logs err?.code) and are thrown
+ * They reach the catch site today (index.ts:301 logs err?.code) and are thrown
  * away. Looked for on the error itself, on a nested `.err`, and inside an
  * ln-service array payload.
  */
@@ -146,7 +146,7 @@ export function grpcStatusCode(err: unknown): number | null {
 // ─── Classification ─────────────────────────────────────────────────────────
 //
 // PRECEDENCE IS LOAD-BEARING AND IS TESTED. In particular the app's OWN error
-// from lnd.ts:111 — "LND files not available: missing TLS cert or readonly
+// from lnd.ts:109 — "LND files not available: missing TLS cert or readonly
 // macaroon" — contains the word "macaroon", so it MUST be matched as a
 // connect/file problem before any macaroon-text auth rule runs. Getting that
 // order wrong reports a missing file as a rejected credential.
@@ -175,7 +175,7 @@ export function grpcStatusCode(err: unknown): number | null {
 // member-node versions are UNKNOWN and these strings are NOT confirmed against
 // production LND. Re-derive with the harness recorded in the commit message.
 
-/** The app's own pre-flight failures (lnd.ts:111, lnd.ts:153). Checked FIRST. */
+/** The app's own pre-flight failures (lnd.ts:109, lnd.ts:151). Checked FIRST. */
 const APP_OWN_RE = /LND files not available|Failed to initialize LND client/i;
 
 /** Transport-level failure signatures. */
@@ -285,7 +285,7 @@ export interface LndHealthReport {
    * Whether tls.cert AND the macaroon are present on disk. Deliberately a
    * SEPARATE field from the per-scope kinds: files_absent is a filesystem
    * fact, the other five kinds are credential facts, and they can disagree —
-   * the lndClient singleton (lnd.ts:52,:125-126) means a deleted macaroon file
+   * the lndClient singleton (lnd.ts:50,:123-124) means a deleted macaroon file
    * can coexist with a cached client that still works.
    */
   files_present: boolean;

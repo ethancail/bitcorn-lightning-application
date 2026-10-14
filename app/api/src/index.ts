@@ -68,7 +68,6 @@ import { normalizeBitcornName, validateBitcornName } from "./profile/nameValidat
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury, assertNonEmpty, assertMember } from "./utils/role";
-import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
 import {
@@ -2947,82 +2946,6 @@ async function dispatchRequest(
       const code = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
       res.writeHead(code, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
-
-  if (req.method === "POST" && req.url === "/api/treasury/rebalance/circular") {
-    try {
-      const node = getNodeInfo();
-      if (!node) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Node info unavailable" }));
-        return;
-      }
-      assertTreasury(node.node_role);
-
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", async () => {
-        try {
-          const parsed = JSON.parse(body || "{}");
-          const tokens = Number(parsed.tokens);
-          const outgoing_channel = parsed.outgoing_channel;
-          const incoming_channel = parsed.incoming_channel;
-          const max_fee_sats = Number(parsed.max_fee_sats);
-          const isDryRun = parsed.dry_run === true;
-
-          // Daily loss cap check (skip for dry runs)
-          if (!isDryRun) {
-            try {
-              assertDailyLossCapNotExceeded(Number.isFinite(max_fee_sats) ? max_fee_sats : 0);
-            } catch (err: any) {
-              const isCapError = err instanceof DailyLossCapError;
-              res.writeHead(isCapError ? 429 : 500, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: String(err?.message ?? err) }));
-              return;
-            }
-          }
-
-          if (isDryRun) {
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({
-              dry_run: true,
-              would_rebalance: {
-                tokens: Number.isFinite(tokens) ? tokens : null,
-                outgoing_channel: outgoing_channel ?? "auto",
-                incoming_channel: incoming_channel ?? "auto",
-                max_fee_sats: Number.isFinite(max_fee_sats) ? max_fee_sats : 0,
-              },
-            }));
-            return;
-          }
-
-          const result = await executeCircularRebalance({
-            tokens,
-            outgoing_channel: outgoing_channel != null ? String(outgoing_channel) : undefined,
-            incoming_channel: incoming_channel != null ? String(incoming_channel) : undefined,
-            max_fee_sats: Number.isFinite(max_fee_sats) ? max_fee_sats : 0,
-          });
-
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(result));
-        } catch (err: any) {
-          const msg = String(err?.message ?? err);
-          if (err instanceof CircularRebalanceError) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: msg }));
-          } else {
-            res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: msg || "circular_rebalance_failed" }));
-          }
-        }
-      });
-    } catch (err: any) {
-      const msg = String(err?.message ?? err);
-      const code = msg.includes("Treasury privileges required") ? 403 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: msg }));
     }
     return;
   }

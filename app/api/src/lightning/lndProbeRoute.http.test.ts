@@ -13,7 +13,7 @@
 // Those are properties of index.ts, so they need index.ts.
 //
 // ⚠ NO LND CONTACT. LND_DIR points at an empty scratch dir, so isLndAvailable()
-// (lnd.ts:95-103, an fs.existsSync pair) is false and runLndHealthProbe
+// (lnd.ts:93-101, an fs.existsSync pair) is false and runLndHealthProbe
 // short-circuits to files_absent with probe_calls_attempted: 0 — before any
 // client is built or any socket is opened. That is what makes driving the real
 // route safe here, and it is asserted rather than assumed.

@@ -169,7 +169,6 @@ Do not reuse 3001 or 3009. Do not expose 3109 via Umbrel app-proxy. Port 3109 is
 - `LND_GRPC_HOST` — default `lightning_lnd_1:10009`
 - `REBALANCE_SCHEDULER_ENABLED` — default `false` (treasury-side Loop Out scheduler — edge-case + external-inbound maintenance only; off in steady state)
 - `RATE_LIMIT_MAX_SINGLE_PAYMENT` — default `250000` sats
-- `REBALANCE_MAX_FEE_PPM` — default `1000` (caps effective fee-to-amount ratio; prevents net-negative micro-rebalances)
 - `COINBASE_APP_ID` + `COINBASE_WORKER_URL` — required for Fund Node button (503 if either unset)
 
 ## Files to Share When Getting External AI Assistance

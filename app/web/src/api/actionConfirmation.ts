@@ -76,12 +76,14 @@ export type ConfirmedRoute = { method: string; match: Matcher; fields: Field[] }
  * Only the eight routes with a real UI caller are listed (nine from the
  * Auto-Buy catch-up's "Missed buys" block, 2026-09-18, until member-liquidity
  * approve was deleted by ruling D2, 2026-10-13). /api/pay and
- * /api/treasury/rebalance/{loop-out,circular} have no caller in this app (via
- * client methods nothing invokes), so listing them here would be dead data that
- * the parity test would then have to special-case.
+ * /api/treasury/rebalance/loop-out are confirmed on the server, but this app
+ * has no client method for either, so nothing here can call them; listing them
+ * would be dead data that the parity test would then have to special-case.
  *
- * /api/lightning/open-recommended-channel used to be a fourth such route. It
- * was deleted rather than wired up — see the tombstone in api/src/index.ts.
+ * /api/lightning/open-recommended-channel and /api/treasury/rebalance/circular
+ * used to be two more such routes. Both were deleted rather than wired up — the
+ * first is tombstoned in api/src/index.ts; the second went by ruling D1,
+ * 2026-10-13.
  */
 export const UI_CONFIRMED_ROUTES: ConfirmedRoute[] = [
   {

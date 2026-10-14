@@ -34,7 +34,7 @@
 // connectivity fault whose cert has lapsed), but a member node has no
 // member-facing surface to carry this message — fault detection is treasury-only
 // (/api/node/lnd-probe and /api/treasury/alerts are both assertTreasury-gated,
-// index.ts:3256-3264 and :2302-2305). Giving the farmer this message on their
+// index.ts:3179-3187 and :2301-2304). Giving the farmer this message on their
 // own dashboard is the NEXT piece of this arc, not an optional extra.
 
 import { readLocalCertExpiry } from "./readCertExpiry";

@@ -175,12 +175,11 @@ describe("deadline constants", () => {
     expect(LND_GOSSIP_CALL_TIMEOUT_MS).toBeLessThan(60_000);
   });
 
-  it("names exactly the five outcome-ambiguous calls as held", () => {
+  it("names exactly the four outcome-ambiguous calls as held", () => {
     expect([...HELD_UNBOUNDED_CALLS].sort()).toEqual([
       "closeTreasuryChannel",
       "openTreasuryChannel",
       "payViaPaymentRequest",
-      "payViaRoutes",
       "sendLndToChainAddress",
     ]);
   });

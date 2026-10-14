@@ -1,10 +1,10 @@
-// CONTROL 4 — the five outcome-ambiguous calls must NOT acquire a deadline.
+// CONTROL 4 — the four outcome-ambiguous calls must NOT acquire a deadline.
 //
 // ─── WHY THIS CONTROL EXISTS ────────────────────────────────────────────────
 //
 // The tempting way to bound LND calls is one wrapper at the client layer, so
 // every call is covered and nothing can be forgotten. That shape would sweep
-// the five held calls in SILENTLY — the diff would look like an improvement and
+// the four held calls in SILENTLY — the diff would look like an improvement and
 // the regression would be invisible until a member's on-chain send timed out
 // with the transaction already broadcast. This test is the thing that fails if
 // anyone does that, deliberately or by refactor.
@@ -102,11 +102,10 @@ const HELD_SITES: ReadonlyArray<[string, string, string]> = [
   ["sendLndToChainAddress", LND_TS, "sendToChainAddress"],
   ["openTreasuryChannel", LND_TS, "openChannel"],
   ["closeTreasuryChannel", LND_TS, "closeChannel"],
-  ["payLndViaRoutes", LND_TS, "payViaRoutes"],
   ["payInvoice", PAY_TS, "payViaPaymentRequest"],
 ];
 
-describe("the five outcome-ambiguous calls carry no deadline", () => {
+describe("the four outcome-ambiguous calls carry no deadline", () => {
   for (const [fn, file, lnServiceCall] of HELD_SITES) {
     it(`${fn} does not wrap ${lnServiceCall} in a deadline`, () => {
       const body = functionBody(fs.readFileSync(file, "utf8"), fn);

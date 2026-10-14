@@ -6,8 +6,8 @@ import { isAdminMemberQuery, ADMIN_QUERY_REJECTION } from "./adminQueryGuard";
 // check that passes for every caller on the treasury node — so any unauthenticated
 // caller could read any member's subscription state and full payment ledger.
 //
-// The member side already refused the parameter outright (index.ts:808-809 and
-// :978-980, error "admin_query_treasury_only"). This guard mirrors that decision
+// The member side already refused the parameter outright (index.ts:807-808 and
+// :977-979, error "admin_query_treasury_only"). This guard mirrors that decision
 // so the treasury refuses it too. It deliberately does NOT authenticate the
 // parameter and does NOT validate its format — presence alone is the rejection.
 //
@@ -43,7 +43,7 @@ describe("isAdminMemberQuery — presence is the rejection", () => {
 
 describe("ADMIN_QUERY_REJECTION — the shared response shape", () => {
   it("is 403 with the same error code the member side already returns", () => {
-    // Reuse is intentional: grep showed two producers (index.ts:809, :980) and
+    // Reuse is intentional: grep showed two producers (index.ts:808, :979) and
     // ZERO consumers, so the string is not load-bearing API. Pinning it here
     // makes any future divergence between the two sides a test failure.
     expect(ADMIN_QUERY_REJECTION.status).toBe(403);
