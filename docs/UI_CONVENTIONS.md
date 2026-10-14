@@ -100,6 +100,12 @@ For 2/3/4-column stat displays.
 </div>
 ```
 
+Write `.alert-type` headings in sentence case ("Channel opening submitted"); the rule no longer uppercases them (P6-2, `sentenceCase.test.ts`). `.panel-title` is still uppercase. On the treasury dashboard an alert is a compact `AlertRow` (heading on one line, detail one tap away) instead.
+
+```tsx
+<AlertRow severity="warning" heading={alert.heading || "Treasury alert"} detail={alert.message} action={<Link …>Enter now →</Link>} />
+```
+
 ### `.badge-green` / `-red` / `-amber` / `-blue` / `-muted`
 
 Pill tags for statuses. Used in history tables, peer tags, etc.
@@ -129,15 +135,16 @@ Placeholder while async data loads. Set a height via inline style:
 
 | Component | Purpose | Where used |
 |---|---|---|
-| `FundNodePanel` | Coinbase Onramp CTA + deposit address | Dashboards |
-| `NodeBalancePanel` | On-chain + channel balance summary | Dashboards |
+| `FundNodePanel` | Coinbase Onramp CTA + deposit address | Not rendered (the dashboards carry their own Fund Node button) |
+| `NodeBalancePanel` | On-chain + channel balance summary | Not rendered (the dashboards show balances in their headline and tiles) |
 | `CommodityPricesPanel` | BTC/gold/corn/soy/wheat ticker strip | Charts page |
 | `PowerLawChart` | BTC log-price with rainbow bands | Charts |
 | `MovingAveragesChart` | 50/100/200-day MA overlays | Charts |
 | `CornBitcoinChart` | Corn-bushels-per-BTC over time | Charts |
 | `CornMovingAveragesChart` | Corn MA overlays | Charts |
-| `BitcoinPriceGraph` | Standalone BTC price, 1M default | Dashboards |
-| `ValuationInputAlertBanner` | "Valuation inputs stale" banner | Dashboard |
+| `BitcoinPriceGraph` | Standalone BTC price; immediately beneath the headline numbers | Dashboards |
+| `AlertRow` | A treasury alert as one compact row, detail in `<details>` | Treasury dashboard |
+| `ValuationInputAlertBanner` | "Valuation inputs need attention" row with "Enter now →" | Treasury dashboard |
 
 Under `components/autoBuy/`: `CoinbaseCard`, `HistoryTable`, `InputsTab`, `StrategyTab`, `ValuationTab`. Do not import these outside the Auto-Buy page — they carry page-specific assumptions.
 
@@ -208,8 +215,8 @@ Both themes are supported. Never hardcode a color for one theme — always use C
 
 | Page | Last touched | Notes |
 |---|---|---|
-| `Dashboard.tsx` | v1.9.46 revamp | Treasury. Revenue-focused, could be more scannable. |
-| `MemberDashboard.tsx` | v1.9.0 earnings revamp | Member. Lots of conditional panels based on channel state. |
+| `Dashboard.tsx` | UI redesign PR 6 | Treasury. Headline numbers, price chart, alert rows, detail grid. |
+| `MemberDashboard.tsx` | UI redesign PR 6 | Member. Headline per declared role, price chart, notice slots; conditional channel tiles. |
 | `Charts.tsx` | Stable | Chart strip + power law. Clean already. |
 | `SwapOperations.tsx` | v1.9.37-38 revamp | Treasury. Channel picker is dense. |
 

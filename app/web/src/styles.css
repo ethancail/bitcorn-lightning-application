@@ -490,105 +490,7 @@ p + .settings-section-label { margin-top: 8px; }
   gap: 4px;
 }
 
-/* ─── Treasury Dashboard: compact top strip ─────────────── */
-.dashboard-top-strip {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  margin-bottom: 12px;
-}
-.dashboard-top-strip .bal-group {
-  display: flex;
-  gap: 24px;
-  font-family: var(--mono);
-  flex-wrap: wrap;
-  justify-content: space-between;
-  flex: 1;
-}
-.dashboard-top-strip .bal-item {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.dashboard-top-strip .bal-label {
-  font-size: 0.625rem;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.dashboard-top-strip .bal-value {
-  font-size: 0.9375rem;
-  font-weight: 700;
-  color: var(--text);
-}
-.dashboard-top-strip .bal-value .unit {
-  font-size: 0.625rem;
-  color: var(--text-3);
-  font-weight: 400;
-  margin-left: 3px;
-}
-.dashboard-top-strip .fund-error {
-  grid-column: 1 / -1;
-  font-size: 0.75rem;
-  color: var(--red);
-  margin-top: 4px;
-}
-
-/* ─── Member Dashboard: compressed status row ─────────── */
-.member-status-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 12px;
-  font-size: 0.8125rem;
-}
-.member-status-row .lbl {
-  color: var(--text-3);
-}
-
-/* ─── Member Dashboard: hero + gauge + action ────────── */
-.member-hero {
-  text-align: center;
-  padding: 8px 0;
-}
-.member-hero .lbl {
-  font-family: var(--mono);
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  margin-bottom: 6px;
-}
-.member-hero .val {
-  font-family: var(--mono);
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-}
-.member-hero .val .unit {
-  font-size: 0.875rem;
-  color: var(--text-3);
-  font-weight: 400;
-  margin-left: 4px;
-}
-.member-hero .usd {
-  font-family: var(--mono);
-  font-size: 1rem;
-  color: var(--text-2);
-  margin-top: 2px;
-}
-
+/* ─── Member Dashboard: gauge + action ──────────────── */
 .member-gauge .labels {
   display: flex;
   justify-content: space-between;
@@ -914,11 +816,11 @@ p + .settings-section-label { margin-top: 8px; }
 .alert-icon { font-size: 1rem; flex-shrink: 0; }
 
 .alert-body {}
+/* P6-2 (PR 6): alert headings are sentence case, written that way in the
+   copy — no text-transform, and no caps tracking. */
 .alert-type {
   font-family: var(--mono);
   font-size: 0.6875rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   opacity: 0.7;
   margin-bottom: 2px;
 }
@@ -3696,21 +3598,213 @@ input[type="number"] {
   }
 }
 
+/* ═══ DASHBOARDS (PR 6) ═══════════════════════════════════════════════
+   The three dashboards (Dashboard.tsx, MemberDashboard.tsx) are one column
+   of sections: notices, the page header, H2's headline numbers, the Bitcoin
+   price chart IMMEDIATELY beneath them (CHART), then the detail grid. Sizes
+   that vary with density read --d-* tokens from the DENSITY block below.
+   dashLayout.test.ts pins these rules. */
+.dash {
+  display: flex;
+  flex-direction: column;
+  gap: var(--d-gap);
+}
+/* Scoped to the dashboards: .page-header is app-wide (Stablecoin.tsx,
+   ValuationInput.tsx) and keeps its own layout. */
+.dash-header { display: flex; flex-direction: column; gap: 4px; }
+.dash-header h1 { margin: 0; }
+.dash-notices { display: flex; flex-direction: column; gap: 8px; }
+.dash-notices:empty { display: none; }
+.dash .member-sub-banner { margin-bottom: 0; }
+.headline-status:empty { display: none; }
+
+/* J9 / J9a: on a phone the name prompt and info notices (prepay,
+   worker_lapsed) go BELOW the headline numbers and the chart; the banners
+   that say payments are refused or a close is coming (routing_lapsed,
+   close_due), and the cert-expiry notice, stay on top. Desktop keeps the
+   source order. */
+@media (max-width: 767px) {
+  .dash > * { order: 5; }
+  .dash > .dash-notices-top { order: 0; }
+  .dash > .dash-header { order: 1; }
+  .dash > .headline,
+  .dash > .headline-status,
+  .dash > .price-tile { order: 2; }
+  .dash > .dash-notices-info { order: 3; }
+}
+
+/* H2: the headline numbers. Bare (no box): the user's own money, first and
+   largest, before any detail. */
+.headline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--d-gap-inner) var(--d-gap);
+  align-items: end;
+}
+/* X1: on a phone the headline numbers stack into one column. */
+@media (max-width: 767px) {
+  .dash > .headline { grid-template-columns: minmax(0, 1fr); }
+}
+.hl { display: flex; flex-direction: column; gap: var(--d-label-gap); min-width: 0; }
+.hl-label { font-size: var(--d-label); color: var(--text-3); }
+.hl-value {
+  font-family: var(--mono);
+  font-size: var(--d-hl2);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.hl-1 .hl-value { font-size: var(--d-hl1); }
+/* X1: a number NEVER splits, and nothing shrinks to fit (the member's text
+   scale is theirs). The number is its own nowrap box; the unit is an atomic
+   inline after it, so when both don't fit "sats" drops below the number. */
+.hl-num { white-space: nowrap; }
+.hl-value .unit {
+  display: inline-block;
+  font-size: var(--d-label);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-3);
+  margin-left: 4px;
+}
+/* D3: a negative number is not an error, so it stays --text, never red. */
+.hl-value.positive { color: var(--green); }
+.hl-value.negative { color: var(--text); }
+.hl-sub { font-size: var(--d-label); color: var(--text-2); }
+
+/* The detail grid: tiles flow in --d-cols columns; one on a phone. */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--d-cols), minmax(0, 1fr));
+  gap: var(--d-gap);
+  align-items: start;
+}
+@media (max-width: 767px) {
+  .dash-grid { grid-template-columns: minmax(0, 1fr); }
+}
+.dash-grid > .span-all { grid-column: 1 / -1; }
+/* SubscriptionRevenuePanel and RailFeeRevenuePanel carry an inline
+   marginBottom; inside the grid the gap does that job. */
+.dash-grid > .panel { margin: 0 !important; }
+
+/* Rows inside a tile: label left, value right, a hairline between (3B: a
+   rule, not a box). */
+.kv-list { display: flex; flex-direction: column; }
+.kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: var(--d-gap-inner) 0;
+  border-bottom: 1px solid var(--border);
+}
+.kv:first-child { padding-top: 0; }
+.kv:last-child { border-bottom: none; padding-bottom: 0; }
+.kv-label { font-size: var(--d-body); color: var(--text-2); }
+.kv-meta { font-size: var(--d-label); color: var(--text-3); }
+.kv-value {
+  font-family: var(--mono);
+  font-size: var(--d-body);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.kv-value .unit { font-size: var(--d-label); color: var(--text-3); font-weight: 400; margin-left: 3px; }
+
+/* A row of small figures inside a tile (no boxes). */
+.figure-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--d-gap-inner) var(--d-gap);
+  padding-top: var(--d-gap-inner);
+}
+.figure { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.figure-label { font-size: var(--d-label); color: var(--text-3); }
+.figure-value { font-family: var(--mono); font-size: var(--d-body); font-weight: 600; color: var(--text); }
+.figure-value.positive { color: var(--green); }
+.figure-value.negative { color: var(--text); }
+.figure-sub { font-size: var(--d-label); color: var(--text-3); }
+
+.stack { display: flex; flex-direction: column; gap: var(--d-gap-inner); }
+.btn-block { width: 100%; justify-content: center; }
+.status-line { color: var(--red); font-size: var(--d-label); }
+.alert-action { margin-top: 8px; font-size: var(--d-label); }
+
+/* X3: a treasury alert as one compact row — icon, plain-language heading
+   (the server's, SH1), action; the detail one tap away (AlertRow.tsx).
+   Severity colours are the .alert.{critical,warning} ones. */
+.alert.alert-row { align-items: center; padding: 8px 12px; }
+.alert-row-details { flex: 1; min-width: 0; }
+.alert-row-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  cursor: pointer;
+  list-style: none;
+}
+.alert-row-details > summary::-webkit-details-marker { display: none; }
+.alert-row-details > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.alert-row-heading { flex: 1; min-width: 0; font-weight: 600; }
+.alert-row-more { font-size: var(--d-label); opacity: 0.75; white-space: nowrap; }
+.alert-row-more::after { content: " ▾"; }
+.alert-row-details[open] .alert-row-more::after { content: " ▴"; }
+.alert-row-detail { margin-top: 8px; font-weight: 400; }
+.alert-row-action { flex-shrink: 0; }
+.alert-row-action .btn { white-space: nowrap; }
+@media (max-width: 767px) {
+  /* The chevron alone marks the disclosure on a phone; the heading keeps
+     the width. */
+  .alert-row-more-text { display: none; }
+}
+.tile-details { font-size: var(--d-label); color: var(--text-3); }
+.tile-details > summary { cursor: pointer; user-select: none; }
+.tile-details[open] > summary { margin-bottom: var(--d-gap-inner); }
+.field-hint { font-size: var(--d-label); color: var(--text-3); text-align: center; }
+
+/* The Bitcoin price tile (BitcoinPriceGraph.tsx). The price supports the
+   user's own numbers, so it is sized below them (--d-price). X5a: the plot is
+   full height at every width; X5's fewer, non-colliding time labels are the
+   component's (it measures .price-plot). The plot's font-size is the axis
+   label size, which the component reads back (X2: labels follow density). */
+.price-head { margin-bottom: var(--d-gap-inner); }
+.price-spot {
+  font-family: var(--mono);
+  font-size: var(--d-price);
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+.price-change { font-family: var(--mono); font-size: var(--d-label); font-weight: 500; margin-top: 4px; }
+.price-change-period { color: var(--text-3); font-weight: 400; margin-left: 8px; }
+.price-plot { height: var(--d-chart-h); font-size: var(--d-label); }
+.btn-group-tight { display: flex; gap: 4px; flex-wrap: wrap; }
+
 /* ═══ DENSITY — round 1's variant b, Balanced (J1, picked) ═══════════════
    Every size that varies with density reads a --d-* token from here. A token
    lands with the PR that first reads it: PR 5 the shell, panels and tables;
-   PR 6 the dashboards and X2's label size (P5-5). Spacing in px, type in rem,
-   nothing under 9px at text scale 1.0. Root font-size, h1/h2 and the radius
-   ladder are not density's (F6, F9). densityTokens.test.ts pins the values. */
+   PR 6 the dashboards and X2's label size (P5-5, P6-5). Spacing in px, type
+   in rem, nothing under 9px at text scale 1.0. Root font-size, h1/h2 and the
+   radius ladder are not density's (F6, F9). densityTokens.test.ts pins the
+   values. */
 :root {
   --d-page-py: 32px;         --d-page-px: 40px;
   --d-page-py-ph: 20px;      --d-page-px-ph: 16px;
   --d-maxw: 1280px;
   --d-tile-pad: 20px;        --d-tile-pad-ph: 16px;
-  --d-gap: 16px;
+  --d-gap: 16px;             --d-gap-inner: 12px;  --d-label-gap: 6px;
   --d-title-size: 0.8125rem; --d-title-gap: 12px;
   --d-table: 0.875rem;       --d-th: 0.75rem;
   --d-td-py: 12px;           --d-td-px: 14px;    --d-th-py: 10px;
+  --d-label: 0.8125rem;      --d-body: 0.9375rem;
+  --d-hl1: 2.25rem;          --d-hl2: 1.625rem;
+  --d-price: 1.25rem;        --d-chart-h: 120px;
+  --d-cols: 2;
 }
 
 /* ─── Reduced motion ───────────────────────────────────────────────

@@ -10,6 +10,7 @@ import {
 } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
+import { subscriptionBannerSlot } from "../components/subscriptionBannerSlot";
 import { useSubscriptionStatus } from "../components/useSubscriptionStatus";
 import ErrorState from "../components/ErrorState";
 import ActionConfirmModal, {
@@ -474,266 +475,302 @@ export default function MemberDashboard() {
   const noChannel = !loading && stats != null && ch == null;
   const balStatus = freshnessStatus(balFresh, balances != null);
 
+  // SH9: the DECLARED role, which the API returns whether or not the
+  // treasury channel is active (classification is null while it isn't).
+  // Read here, above the channel tile, because H2's headline labels depend on
+  // it too.
+  const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
+  const isMerchant = role === "merchant";
+  const isFarmer = role === "farmer";
+
+  // V11: the capacity colour comes from the advisor's state, never red; an
+  // unknown role or no classification is neutral (components/capacityTone.ts).
+  const tone = capacityTone(role, advisor?.classification);
+  // PR3-7: the headline's first number (the old hero) never turns amber — a
+  // warning stays in --text.
+  const heroColor = CAPACITY_TEXT_COLOR[tone];
+
+  // H2's headline numbers, ruled per role (P6-7 for the rest). Farmer: what
+  // they can withdraw, then room to receive. Merchant: what they can send,
+  // then their total. An undeclared role: the channel's two sides, neutrally.
+  // No channel: "—" with "No channel yet", never 0.
+  const hl1Label = isMerchant ? "Available to send" : isFarmer ? "Available to withdraw" : "Your balance";
+  const hl1Sats = ch ? ch.local_sats : null;
+  const hl2Label = isMerchant ? "Total" : "Room to receive";
+  const hl2Sats = isMerchant ? (balances ? balances.total_sats : null) : ch ? ch.remote_sats : null;
+  const hl2Sub = isMerchant ? "Bitcoin + channel" : "Inbound on your hub channel";
+
+  // J9 / J9a (P6-3): the subscription banner's slot. On a phone the top slot
+  // stays above the headline; the info slot goes below it and the chart.
+  const subSlot = subscriptionBannerSlot(subStatus);
+  const subBanner = <MemberSubscriptionBanner status={subStatus} />;
+
   return (
-    <div>
-      <MemberSubscriptionBanner status={subStatus} />
+    <div className="dash">
+      <div className="dash-notices dash-notices-top">
+        {subSlot === "top" && subBanner}
 
-      {/* Cert-expiry arc: the farmer's own node telling them its TLS
-          certificate is running out.
+        {/* Cert-expiry arc: the farmer's own node telling them its TLS
+            certificate is running out.
 
-          ⚠ PAGE-TOP, OUTSIDE ALL THREE STATE GATES — deliberately NOT inside
-          the {hasChannel && ...} block below, where the staleness notice
-          lives. That gate is correct for a notice ABOUT the channel numbers;
-          it is wrong here. A member with no channel still has an LND with a
-          cert, and a NEWLY-PROVISIONED member is exactly who is on the clock
-          of a cert issued at install time. Nesting this under hasChannel
-          would hide it from them.
+            ⚠ PAGE-TOP, OUTSIDE ALL THREE STATE GATES — deliberately NOT inside
+            the {hasChannel && ...} block below, where the staleness notice
+            lives. That gate is correct for a notice ABOUT the channel numbers;
+            it is wrong here. A member with no channel still has an LND with a
+            cert, and a NEWLY-PROVISIONED member is exactly who is on the clock
+            of a cert issued at install time. Nesting this under hasChannel
+            would hide it from them. J9 (P6-3): it stays in the top slot on a
+            phone too.
 
-          ⚠ RENDERS NOTHING BEFORE THE DATA ARRIVES. stats is null until the
-          first poll returns, so `stats?.cert_expiry` is undefined and the
-          helper returns null — chosen over the `?? true`-style default used
-          at the staleness call site below, because that one defaults a
-          HEALTH flag toward healthy while this would be defaulting a CLAIM
-          about the node. A dashboard that has not finished loading must not
-          accuse the node of anything.
+            ⚠ RENDERS NOTHING BEFORE THE DATA ARRIVES. stats is null until the
+            first poll returns, so `stats?.cert_expiry` is undefined and the
+            helper returns null — chosen over the `?? true`-style default used
+            at the staleness call site below, because that one defaults a
+            HEALTH flag toward healthy while this would be defaulting a CLAIM
+            about the node. A dashboard that has not finished loading must not
+            accuse the node of anything.
 
-          Silent on a healthy node: level "ok" returns null, as does
-          "unknown". Pinned by paired controls in certExpiryNotice.test.ts. */}
-      {(() => {
-        const notice = certExpiryNotice(stats?.cert_expiry, Date.now());
-        if (!notice) return null;
-        return (
-          <div className={`alert ${notice.severity === "critical" ? "critical" : "warning"}`}>
-            <span className="alert-icon" aria-hidden>
-              {notice.severity === "critical" ? "✕" : "⚠"}
-            </span>
-            <div className="alert-body">
-              <div className="alert-msg">{notice.text}</div>
+            Silent on a healthy node: level "ok" returns null, as does
+            "unknown". Pinned by paired controls in certExpiryNotice.test.ts. */}
+        {(() => {
+          const notice = certExpiryNotice(stats?.cert_expiry, Date.now());
+          if (!notice) return null;
+          return (
+            <div className={`alert ${notice.severity === "critical" ? "critical" : "warning"}`}>
+              <span className="alert-icon" aria-hidden>
+                {notice.severity === "critical" ? "✕" : "⚠"}
+              </span>
+              <div className="alert-body">
+                <div className="alert-msg">{notice.text}</div>
+              </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
+      </div>
 
-      {/* Member-name prompt (D6 §2, §4; spec 2026-09-23-member-name-prompt §7).
+      <div className="dash-notices dash-notices-info">
+        {subSlot === "info" && subBanner}
 
-          ⚠ PAGE-TOP, OUTSIDE ALL THREE STATE GATES — for the same reason as
-          the cert notice above, and do NOT "align" it with the role nudge,
-          which lives inside {hasChannel && ...}. Every member this prompt
-          exists for is channel-less (nine of nine, D6 §2); under hasChannel it
-          would render for none of them.
+        {/* Member-name prompt (D6 §2, §4; spec 2026-09-23-member-name-prompt §7).
 
-          ⚠ TRIGGERED ONLY BY THE STORED NAME — never subStatus, tier, stats,
-          channel or role. subStatus is null until the first token lands,
-          which is exactly the first-boot window this targets (D6 §4). A
-          failed or pending name read renders nothing (memberNamePrompt.ts).
-          No dismiss: it stays until a name is set. Pinned by
-          MemberDashboard.namePrompt.test.tsx.
+            ⚠ PAGE-TOP, OUTSIDE ALL THREE STATE GATES — for the same reason as
+            the cert notice above, and do NOT "align" it with the role nudge,
+            which lives inside {hasChannel && ...}. Every member this prompt
+            exists for is channel-less (nine of nine, D6 §2); under hasChannel it
+            would render for none of them. J9: on a phone it sits below the
+            headline numbers and the chart (the info slot); on desktop it keeps
+            its place above the page header.
 
-          The action deep-links to the name field (?focus=name — read by
-          SettingsPage in App.tsx; the receiving half is pinned by
-          App.settingsNameLink.test.tsx). */}
-      {(() => {
-        const prompt = memberNamePromptFor(nameRead);
-        if (!prompt.render) return null;
-        return (
-          <div className="alert info">
-            <span className="alert-icon" aria-hidden>◉</span>
-            <div className="alert-body">
-              <div className="alert-type">{prompt.headline}</div>
-              <div className="alert-msg">{prompt.body}</div>
-              <button
-                className="btn btn-outline"
-                style={{ marginTop: 8, fontSize: "0.75rem" }}
-                onClick={() => navigate("/settings?focus=name")}
-              >
-                {prompt.actionLabel}
-              </button>
+            ⚠ TRIGGERED ONLY BY THE STORED NAME — never subStatus, tier, stats,
+            channel or role. subStatus is null until the first token lands,
+            which is exactly the first-boot window this targets (D6 §4). A
+            failed or pending name read renders nothing (memberNamePrompt.ts).
+            No dismiss: it stays until a name is set. Pinned by
+            MemberDashboard.namePrompt.test.tsx.
+
+            The action deep-links to the name field (?focus=name — read by
+            SettingsPage in App.tsx; the receiving half is pinned by
+            App.settingsNameLink.test.tsx). */}
+        {(() => {
+          const prompt = memberNamePromptFor(nameRead);
+          if (!prompt.render) return null;
+          return (
+            <div className="alert info">
+              <span className="alert-icon" aria-hidden>◉</span>
+              <div className="alert-body">
+                <div className="alert-type">{prompt.headline}</div>
+                <div className="alert-msg">{prompt.body}</div>
+                <button
+                  className="btn btn-outline alert-action"
+                  onClick={() => navigate("/settings?focus=name")}
+                >
+                  {prompt.actionLabel}
+                </button>
+              </div>
             </div>
-          </div>
-        );
-      })()}
+          );
+        })()}
+      </div>
 
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ marginBottom: 4 }}>My Dashboard</h1>
+      <div className="dash-header">
+        <h1>My Dashboard</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
           Your connection to the Bitcorn Lightning hub
         </p>
       </div>
 
-      <div className="dashboard-top-strip fade-in">
-        <div className="bal-group">
-          <div className="bal-item">
-            <span className="bal-label">Bitcoin</span>
-            <span className="bal-value">
-              {balances ? balances.onchain_sats.toLocaleString() : "—"}
-              <span className="unit">sats</span>
-            </span>
+      {/* ── H2: the headline numbers, first and largest. ── */}
+      <section className="headline fade-in" aria-label="Headline numbers">
+        <div className="hl hl-1">
+          <div className="hl-label">{hl1Label}</div>
+          <div
+            className="hl-value"
+            {...(hl1Sats != null
+              ? {
+                  "data-testid": "capacity-text",
+                  style: { color: heroColor },
+                  "aria-label": `${hl1Label}: ${hl1Sats.toLocaleString()} sats`,
+                }
+              : {})}
+          >
+            <span className="hl-num">{hl1Sats != null ? hl1Sats.toLocaleString() : "—"}</span><span className="unit">sats</span>
           </div>
-          <div className="bal-item">
-            <span className="bal-label">Channel</span>
-            <span className="bal-value">
-              {balances ? balances.lightning_sats.toLocaleString() : "—"}
-              <span className="unit">sats</span>
-            </span>
-          </div>
-          <div className="bal-item">
-            <span className="bal-label">Total</span>
-            <span className="bal-value">
-              {balances ? balances.total_sats.toLocaleString() : "—"}
-              <span className="unit">sats</span>
-            </span>
+          <div className="hl-sub">
+            {hl1Sats != null ? (toUsd(hl1Sats) ?? " ") : noChannel ? "No channel yet" : " "}
           </div>
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={handleFund}
-          disabled={fundLoading}
-        >
-          {fundLoading ? "Opening…" : "Fund Node →"}
-        </button>
-        {fundError && <div className="fund-error">{fundError}</div>}
-      </div>
+        <div className="hl">
+          <div className="hl-label">{hl2Label}</div>
+          <div className="hl-value">
+            <span className="hl-num">{hl2Sats != null ? hl2Sats.toLocaleString() : "—"}</span><span className="unit">sats</span>
+          </div>
+          <div className="hl-sub">
+            {hl2Sats != null && toUsd(hl2Sats) ? `${toUsd(hl2Sats)} · ${hl2Sub}` : hl2Sub}
+          </div>
+        </div>
+      </section>
 
-      {/* U24 H8: Tier C — the strip above keeps last-good numbers; these
-          lines say when they can no longer be confirmed. */}
-      {balStatus === "stale" && (
-        <div style={{ marginTop: 6, marginBottom: 10 }}>
+      {/* U24 H8: Tier C — the numbers keep last-good values; these lines say
+          when they can no longer be confirmed. */}
+      <div className="headline-status">
+        {/* U24 / cert-expiry arc: the channel numbers come from SQLite via
+            /api/member/stats, which answers 200 even when LND is unreachable —
+            so components/freshness.ts (poll-outcome driven) can never mark
+            them. This is DATA-AGE driven, and it sits directly under the
+            numbers it describes: since H2 those are the headline's. Renders
+            nothing on a healthy node. */}
+        {hasChannel && (() => {
+          const notice = channelStalenessNotice(
+            ch!.freshness,
+            stats?.lnd_live_read_ok ?? true,
+            Date.now(),
+          );
+          if (!notice) return null;
+          return (
+            <div className={`alert ${notice.severity === "critical" ? "critical" : "warning"}`}>
+              <span className="alert-icon" aria-hidden>
+                {notice.severity === "critical" ? "✕" : "⚠"}
+              </span>
+              <div className="alert-body">
+                <div className="alert-msg">{notice.text}</div>
+              </div>
+            </div>
+          );
+        })()}
+        {balStatus === "stale" && (
           <StaleMarker state={balFresh} nowMs={Date.now()} noun="Balances" />
-        </div>
-      )}
-      {balStatus === "unavailable" && (
-        <div style={{ marginTop: 6, marginBottom: 10, fontSize: "0.75rem", color: "var(--red)", fontFamily: "var(--mono)" }} role="status">
-          Couldn't load balances — retrying automatically. Your funds are unaffected.
-        </div>
-      )}
-
-      <BitcoinPriceGraph />
-
-
-
-      {/* Membership status — compressed row */}
-      <div className="member-status-row">
-        <span className="lbl">Membership status</span>
-        {loading ? (
-          <div className="loading-shimmer" style={{ height: 20, width: 120 }} />
-        ) : (
-          <span className={`badge ${badge.cls}`}>{badge.text}</span>
+        )}
+        {balStatus === "unavailable" && (
+          <div className="status-line" role="status">
+            Couldn't load balances — retrying automatically. Your funds are unaffected.
+          </div>
         )}
       </div>
 
-      {/* U24 H2: stats fetch failed and nothing loaded yet — error state, NOT
-          the Connect-to-Hub onboarding form. */}
-      {statsUnavailable && (
-        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
-          <div className="panel-header">
-            <span className="panel-title"><span className="icon">◈</span>Your Channel</span>
-          </div>
-          <div className="panel-body">
-            <ErrorState
-              bare
-              message="Couldn't load your dashboard. Your channel and funds are unaffected — this is a display problem."
-              detail={statsError ?? undefined}
-              onRetry={() => void loadStats()}
-            />
-          </div>
-        </div>
-      )}
+      {/* ── CHART: the Bitcoin price, IMMEDIATELY beneath the headline numbers
+          and before any other section (Ethan, round 1: "our customers and
+          kevin want to know the price of bitcoin so I think they should be
+          underneath the balance of the node"). ── */}
+      <BitcoinPriceGraph />
 
-      {/* Channel — pending opening, connect CTA, or earnings panel */}
-      {noChannel && pendingTreasuryChannel && (
-        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
-          <div className="panel-header">
-            <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
+      <div className="dash-grid">
+        {/* U24 H2: stats fetch failed and nothing loaded yet — error state, NOT
+            the Connect-to-Hub onboarding form. */}
+        {statsUnavailable && (
+          <div className="panel ops fade-in">
+            <div className="panel-header">
+              <span className="panel-title"><span className="icon">◈</span>Your Channel</span>
+            </div>
+            <div className="panel-body">
+              <ErrorState
+                bare
+                message="Couldn't load your dashboard. Your channel and funds are unaffected — this is a display problem."
+                detail={statsError ?? undefined}
+                onRetry={() => void loadStats()}
+              />
+            </div>
           </div>
-          <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div className="alert healthy" style={{ marginBottom: 0 }}>
-              <span className="alert-icon">✓</span>
-              <div className="alert-body">
-                <div className="alert-type">Channel Opening Submitted</div>
-                <div className="alert-msg">
-                  Your channel to the hub is being broadcast. It will become active after 1–3 on-chain confirmations. This page will update automatically.
+        )}
+
+        {/* Channel — pending opening, connect CTA, or earnings panel */}
+        {noChannel && pendingTreasuryChannel && (
+          <div className="panel ops fade-in">
+            <div className="panel-header">
+              <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
+            </div>
+            <div className="panel-body">
+              <div className="alert healthy">
+                <span className="alert-icon">✓</span>
+                <div className="alert-body">
+                  <div className="alert-type">Channel opening submitted</div>
+                  <div className="alert-msg">
+                    Your channel to the hub is being broadcast. It will become active after 1–3 on-chain confirmations. This page will update automatically.
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-      {noChannel && !pendingTreasuryChannel && (
-        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
-          <div className="panel-header">
-            <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
+        )}
+        {noChannel && !pendingTreasuryChannel && (
+          <div className="panel ops fade-in span-all">
+            <div className="panel-header">
+              <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
+            </div>
+            <div className="panel-body">
+              <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} initialCapacity={upgradeCapacity} />
+            </div>
           </div>
-          <div className="panel-body">
-            <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} initialCapacity={upgradeCapacity} />
-          </div>
-        </div>
-      )}
+        )}
 
-      {loading && (
-        <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
-          <div className="panel-header">
-            <span className="panel-title"><span className="icon">◈</span>Your Earnings</span>
-          </div>
-          <div className="panel-body">
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {loading && (
+          <div className="panel ops fade-in">
+            <div className="panel-header">
+              <span className="panel-title"><span className="icon">◈</span>Your Earnings</span>
+            </div>
+            <div className="panel-body stack">
               {[100, 80, 90].map((w, i) => (
                 <div key={i} className="loading-shimmer" style={{ height: 16, width: `${w}%` }} />
               ))}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {hasChannel && (() => {
-        // SH9: the DECLARED role, which the API returns whether or not the
-        // treasury channel is active (classification is null while it isn't).
-        const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
-        const rec = advisor?.recommendation;
-        const isMerchant = role === "merchant";
-        const isFarmer = role === "farmer";
+        {hasChannel && (() => {
+          const rec = advisor?.recommendation;
 
-        // Role-aware gauge
-        // Merchant: outbound capacity (local%) — depletes as they spend
-        // Farmer: earnings accumulated (local%) — fills up like a grain bin
-        // Unknown: raw local/remote split
-        const gaugeLabel = isMerchant ? "Room to send" : isFarmer ? "Earnings accumulated" : "Channel balance";
-        const gaugePct = isMerchant ? localPct : isFarmer ? localPct : localPct;
-        const gaugeRemaining = isMerchant
-          ? `${localPct}% — ${ch!.local_sats.toLocaleString()} sats available to send`
-          : isFarmer
-            ? `${localPct}% full — ${ch!.local_sats.toLocaleString()} of ${ch!.capacity_sats.toLocaleString()} sats`
-            : `${localPct}% local — ${remotePct}% remote`;
-        // V11: the colour comes from the advisor's state, never red; an unknown
-        // role or no classification is neutral (components/capacityTone.ts).
-        const tone = capacityTone(role, advisor?.classification);
-        const gaugeColor = CAPACITY_BAR_COLOR[tone];
-        const gaugeWord = capacityWord(role, tone);
+          // Role-aware gauge
+          // Merchant: outbound capacity (local%) — depletes as they spend
+          // Farmer: earnings accumulated (local%) — fills up like a grain bin
+          // Unknown: raw local/remote split
+          const gaugeLabel = isMerchant ? "Room to send" : isFarmer ? "Earnings accumulated" : "Channel balance";
+          const gaugePct = localPct;
+          const gaugeRemaining = isMerchant
+            ? `${localPct}% — ${ch!.local_sats.toLocaleString()} sats available to send`
+            : isFarmer
+              ? `${localPct}% full — ${ch!.local_sats.toLocaleString()} of ${ch!.capacity_sats.toLocaleString()} sats`
+              : `${localPct}% local — ${remotePct}% remote`;
+          // V11: the colour comes from the advisor's state, never red; an unknown
+          // role or no classification is neutral (components/capacityTone.ts).
+          const gaugeColor = CAPACITY_BAR_COLOR[tone];
+          const gaugeWord = capacityWord(role, tone);
 
-        // PR3-7: the hero number never turns amber — a warning stays in --text.
-        const heroColor = CAPACITY_TEXT_COLOR[tone];
+          // Panel title
+          const panelTitle = isMerchant ? "Merchant Channel" : isFarmer ? "Your Earnings" : "Your Channel";
 
-        // Hero number
-        const heroLabel = isMerchant ? "Available to send" : isFarmer ? "Available to withdraw" : "Your balance";
-        const heroSats = ch!.local_sats;
+          // Advisor-aware navigation URLs
+          const cashOutUrl = rec?.action === "loop_out" && rec?.suggestedAmountSats
+            ? `/cashout?amount=${rec.suggestedAmountSats}` : "/cashout";
+          const refillUrl = rec?.action === "loop_in" && rec?.suggestedAmountSats
+            ? `/refill?amount=${rec.suggestedAmountSats}` : "/refill";
 
-        // Panel title
-        const panelTitle = isMerchant ? "Merchant Channel" : isFarmer ? "Your Earnings" : "Your Channel";
+          // Advisor alert. PR3-3: it reports capacity, which is never an error, so
+          // high urgency takes the warning, not the red critical.
+          const alertClass = rec?.urgency === "high" || rec?.urgency === "medium" ? "warning" : "info";
+          const alertIcon = rec?.urgency === "high" || rec?.urgency === "medium" ? "⚠" : "ℹ";
+          const showAlert = rec && rec.action !== "none";
 
-        // Advisor-aware navigation URLs
-        const cashOutUrl = rec?.action === "loop_out" && rec?.suggestedAmountSats
-          ? `/cashout?amount=${rec.suggestedAmountSats}` : "/cashout";
-        const refillUrl = rec?.action === "loop_in" && rec?.suggestedAmountSats
-          ? `/refill?amount=${rec.suggestedAmountSats}` : "/refill";
-
-        // Advisor alert. PR3-3: it reports capacity, which is never an error, so
-        // high urgency takes the warning, not the red critical.
-        const alertClass = rec?.urgency === "high" || rec?.urgency === "medium" ? "warning" : "info";
-        const alertIcon = rec?.urgency === "high" || rec?.urgency === "medium" ? "⚠" : "ℹ";
-        const showAlert = rec && rec.action !== "none";
-
-        return (
-          <>
-            <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
+          return (
+            <div className="panel ops fade-in">
               <div className="panel-header">
                 <span className="panel-title">
                   <span className="icon">◈</span>{panelTitle}
@@ -742,49 +779,7 @@ export default function MemberDashboard() {
                   {ch!.is_active ? "active" : "inactive"}
                 </span>
               </div>
-              <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {/* Hero number — role-aware color */}
-                <div className="member-hero">
-                  <div className="lbl">{heroLabel}</div>
-                  <div
-                    className="val"
-                    data-testid="capacity-text"
-                    style={{ color: heroColor }}
-                    aria-label={`${heroLabel}: ${heroSats.toLocaleString()} sats`}
-                  >
-                    {heroSats.toLocaleString()}<span className="unit">sats</span>
-                  </div>
-                  {toUsd(heroSats) && <div className="usd">{toUsd(heroSats)}</div>}
-                </div>
-
-                {/* U24 / cert-expiry arc: these numbers come from SQLite via
-                    /api/member/stats, which answers 200 even when LND is
-                    unreachable — so components/freshness.ts (poll-outcome
-                    driven) can never mark them. This is DATA-AGE driven, and it
-                    sits directly under the number it describes. Renders nothing
-                    on a healthy node. */}
-                {(() => {
-                  const notice = channelStalenessNotice(
-                    ch!.freshness,
-                    stats?.lnd_live_read_ok ?? true,
-                    Date.now(),
-                  );
-                  if (!notice) return null;
-                  return (
-                    <div
-                      className={`alert ${notice.severity === "critical" ? "critical" : "warning"}`}
-                      style={{ marginBottom: 0 }}
-                    >
-                      <span className="alert-icon" aria-hidden>
-                        {notice.severity === "critical" ? "✕" : "⚠"}
-                      </span>
-                      <div className="alert-body">
-                        <div className="alert-msg">{notice.text}</div>
-                      </div>
-                    </div>
-                  );
-                })()}
-
+              <div className="panel-body stack">
                 {/* Capacity gauge — role-aware color, ARIA progressbar */}
                 <div
                   className="member-gauge"
@@ -810,7 +805,7 @@ export default function MemberDashboard() {
 
                 {/* Advisor-driven alert */}
                 {showAlert && (
-                  <div className={`alert ${alertClass}`} style={{ marginBottom: 0 }}>
+                  <div className={`alert ${alertClass}`}>
                     <span className="alert-icon">{alertIcon}</span>
                     <div className="alert-body">
                       <div className="alert-msg">{rec!.reason}</div>
@@ -820,15 +815,14 @@ export default function MemberDashboard() {
 
                 {/* Role not set — prompt */}
                 {role === "unknown" && (
-                  <div className="alert info" style={{ marginBottom: 0 }}>
+                  <div className="alert info">
                     <span className="alert-icon">◈</span>
                     <div className="alert-body">
                       <div className="alert-msg">
                         Set your channel role to get tailored capacity recommendations.
                       </div>
                       <button
-                        className="btn btn-outline"
-                        style={{ marginTop: 8, fontSize: "0.75rem" }}
+                        className="btn btn-outline alert-action"
                         onClick={() => navigate("/settings")}
                       >
                         Set Role in Settings →
@@ -846,11 +840,7 @@ export default function MemberDashboard() {
                     role's CTA (unchanged). */}
                 {isMerchant && rec?.action === "loop_in" && (
                   <div className="member-action">
-                    <button
-                      className="btn btn-primary"
-                      style={{ width: "100%" }}
-                      onClick={() => navigate(refillUrl)}
-                    >
+                    <button className="btn btn-primary btn-block" onClick={() => navigate(refillUrl)}>
                       Top Up →
                     </button>
                     <div className="caption">
@@ -872,8 +862,7 @@ export default function MemberDashboard() {
                     return (
                       <div className="member-action">
                         <button
-                          className="btn btn-primary"
-                          style={{ width: "100%" }}
+                          className="btn btn-primary btn-block"
                           disabled={!withdrawGate.enabled}
                           onClick={() => navigate(cashOutUrl)}
                         >
@@ -890,58 +879,102 @@ export default function MemberDashboard() {
                   })()
                 )}
                 {isFarmer && ch!.local_sats > 0 && ch!.local_sats < 250_000 && (
-                  <div style={{ textAlign: "center", fontSize: "0.75rem", color: "var(--text-3)" }}>
+                  <div className="field-hint">
                     Minimum withdrawal: 250,000 sats. You have {ch!.local_sats.toLocaleString()} sats.
                   </div>
                 )}
 
                 {/* Channel details (collapsible) */}
-                <details style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>
-                  <summary style={{ cursor: "pointer", userSelect: "none" }}>Channel details</summary>
-                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Channel capacity</span>
-                      <span style={{ fontFamily: "var(--mono)" }}>{ch!.capacity_sats.toLocaleString()} sats</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Your side</span>
-                      <span style={{ fontFamily: "var(--mono)" }}>{ch!.local_sats.toLocaleString()} sats</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Room to receive</span>
-                      <span style={{ fontFamily: "var(--mono)" }}>{ch!.remote_sats.toLocaleString()} sats</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Channel role</span>
-                      <span style={{ fontFamily: "var(--mono)", textTransform: "capitalize" }}>{role}</span>
-                    </div>
+                <details className="tile-details">
+                  <summary>Channel details</summary>
+                  <div className="kv-list">
+                    <div className="kv"><span className="kv-label">Channel capacity</span><span className="kv-value">{ch!.capacity_sats.toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">Your side</span><span className="kv-value">{ch!.local_sats.toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">Room to receive</span><span className="kv-value">{ch!.remote_sats.toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">Channel role</span><span className="kv-value" style={{ textTransform: "capitalize" }}>{role}</span></div>
                   </div>
                 </details>
               </div>
             </div>
+          );
+        })()}
 
-            {/* Upgrade banner when navigated from Channels page */}
-            {upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
-              <div className="panel ops fade-in" style={{ marginBottom: 16 }}>
-                <div className="panel-body">
-                  <div className="alert info" style={{ marginBottom: 0 }}>
-                    <span className="alert-icon">⚠</span>
-                    <div className="alert-body">
-                      <div className="alert-type">Channel Upgrade Recommended</div>
-                      <div className="alert-msg">
-                        Your current channel is {ch.capacity_sats.toLocaleString()} sats.
-                        Open a larger replacement channel ({upgradeCapacity.toLocaleString()} sats) to increase capacity.
-                      </div>
-                      <ConnectToHub isPeered={true} initialCapacity={upgradeCapacity} />
-                    </div>
+        {/* ── Your node: the detail behind the headline. The membership badge
+            (it used to be its own row) sits in this tile's header. ── */}
+        <div className="panel fade-in">
+          <div className="panel-header">
+            <span className="panel-title"><span className="icon">₿</span>Your Node</span>
+            {loading ? (
+              <div className="loading-shimmer" style={{ height: 18, width: 100 }} />
+            ) : (
+              <span className={`badge ${badge.cls}`} aria-label={`Membership status: ${badge.text}`}>{badge.text}</span>
+            )}
+          </div>
+          <div className="panel-body stack">
+            <div className="kv-list">
+              {/* J7 (P6-1): the farmer's lifetime received, in the DETAIL —
+                  never a headline number. Every settled inbound payment the
+                  node has recorded (GET /api/member/stats). An API that does
+                  not send the field shows "—", never 0. */}
+              {isFarmer && (
+                <div className="kv">
+                  <div>
+                    <div className="kv-label">Received, lifetime</div>
+                    <div className="kv-meta">Settled Lightning payments</div>
                   </div>
+                  <span className="kv-value" data-testid="lifetime-received">
+                    {stats?.lifetime_received_sats != null ? stats.lifetime_received_sats.toLocaleString() : "—"}<span className="unit">sats</span>
+                  </span>
+                </div>
+              )}
+              <div className="kv">
+                <span className="kv-label">Bitcoin</span>
+                <span className="kv-value">
+                  {balances ? balances.onchain_sats.toLocaleString() : "—"}<span className="unit">sats</span>
+                </span>
+              </div>
+              <div className="kv">
+                <span className="kv-label">Channel</span>
+                <span className="kv-value">
+                  {balances ? balances.lightning_sats.toLocaleString() : "—"}<span className="unit">sats</span>
+                </span>
+              </div>
+              {/* The merchant's total is a headline number; nobody else's is. */}
+              {!isMerchant && (
+                <div className="kv">
+                  <span className="kv-label">Total</span>
+                  <span className="kv-value">
+                    {balances ? balances.total_sats.toLocaleString() : "—"}<span className="unit">sats</span>
+                  </span>
+                </div>
+              )}
+            </div>
+            <button className="btn btn-primary btn-block" onClick={handleFund} disabled={fundLoading}>
+              {fundLoading ? "Opening…" : "Fund Node →"}
+            </button>
+            {fundError && <div className="status-line">{fundError}</div>}
+          </div>
+        </div>
+
+        {/* Upgrade banner when navigated from Channels page */}
+        {hasChannel && upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
+          <div className="panel ops fade-in span-all">
+            <div className="panel-body">
+              <div className="alert info">
+                <span className="alert-icon">⚠</span>
+                <div className="alert-body">
+                  <div className="alert-type">Channel upgrade recommended</div>
+                  <div className="alert-msg">
+                    Your current channel is {ch.capacity_sats.toLocaleString()} sats.
+                    Open a larger replacement channel ({upgradeCapacity.toLocaleString()} sats) to increase capacity.
+                  </div>
+                  <ConnectToHub isPeered={true} initialCapacity={upgradeCapacity} />
                 </div>
               </div>
-            )}
-          </>
-        );
-      })()}
-
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

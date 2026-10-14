@@ -190,7 +190,7 @@ describe("PR3-7: no capacity text element uses --amber", () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(warnStatus("merchant"));
     const r = checkCapacityTexts(await mount(page(MemberDashboard)));
     expect(r.offenders).toEqual([]);
-    expect(r.count).toBe(2); // the hero number, the word
+    expect(r.count).toBe(2); // the headline's first number (the old hero, PR 6), the word
   });
 
   it("member dashboard, farmer in warning", async () => {

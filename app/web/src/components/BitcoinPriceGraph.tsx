@@ -7,7 +7,13 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { niceTicks, formatAxisPrice, formatTimeLabel, type Period } from "./priceChartFormat";
+import {
+  niceTicks,
+  formatAxisPrice,
+  formatTimeLabel,
+  fittingTickCount,
+  type Period,
+} from "./priceChartFormat";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -143,6 +149,58 @@ function sampleTicks(data: PricePoint[], maxTicks: number): number[] {
   return ticks;
 }
 
+// ─── Plot measurement (round 1, X5) ─────────────────────────────────────
+// The plot measures its own box and the label font size the stylesheet
+// gives it (.price-plot { font-size: var(--d-label) }), and the axes are
+// fitted to that: time labels never collide on a narrow screen, and axis
+// labels follow the density block's label size (X2) instead of a fixed 11px.
+
+type PlotBox = { width: number; height: number; fontPx: number };
+
+function usePlotBox() {
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
+  const [box, setBox] = useState<PlotBox | null>(null);
+  useEffect(() => {
+    if (!el) return;
+    const read = () => {
+      const r = el.getBoundingClientRect();
+      const fontPx = parseFloat(getComputedStyle(el).fontSize) || 11;
+      setBox((prev) =>
+        prev && prev.width === r.width && prev.height === r.height && prev.fontPx === fontPx
+          ? prev
+          : { width: r.width, height: r.height, fontPx },
+      );
+    };
+    read();
+    // Widths are measured in the app's font (--mono follows it, Z2); re-read
+    // once it has loaded.
+    document.fonts?.ready.then(read).catch(() => {});
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [el]);
+  return [setEl, box] as const;
+}
+
+let measureCtx: CanvasRenderingContext2D | null | undefined;
+function textWidth(text: string, fontPx: number, family: string): number {
+  if (measureCtx === undefined) {
+    try {
+      measureCtx = document.createElement("canvas").getContext("2d");
+    } catch {
+      measureCtx = null;
+    }
+  }
+  if (!measureCtx) return text.length * fontPx * 0.62; // tabular-digit advance, approx.
+  measureCtx.font = `${fontPx}px ${family}`;
+  return measureCtx.measureText(text).width;
+}
+
+// Recharts' default x-axis band and the AreaChart margins below.
+const X_AXIS_H = 30;
+const PLOT_MARGIN_X = 8;
+
 // ─── Component ───────────────────────────────────────────────────────────
 
 export default function BitcoinPriceGraph() {
@@ -151,6 +209,7 @@ export default function BitcoinPriceGraph() {
   const [data, setData] = useState<PricePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [plotRef, plot] = usePlotBox();
 
   const load = useCallback(async () => {
     try {
@@ -191,24 +250,41 @@ export default function BitcoinPriceGraph() {
   const prices = data.map((d) => d.price);
   const yMin = prices.length ? Math.min(...prices) : 0;
   const yMax = prices.length ? Math.max(...prices) : 0;
-  // Target 4 ticks: the panel chart is only 120px tall (~90px plot area),
-  // where ~4 y-labels fit without Recharts dropping any. A higher target
-  // can overshoot to 6 ticks after nice-rounding, and Recharts then hides
-  // labels non-uniformly — which reads as irregular spacing, the very bug
-  // this fixes.
-  const yTicks = niceTicks(yMin, yMax, 4);
+  // X5a: as many y-ticks as fit the plot's height (one label line plus half
+  // a line between labels, at most 5), so the price axis takes the finest
+  // round step that still labels cleanly and a day's movement fills the plot
+  // instead of a flat line on a coarse grid. niceTicks never exceeds the
+  // target it is given, so Recharts never has to hide a label.
+  const fontPx = plot?.fontPx ?? 11;
+  const family = getMono();
+  const yTarget = plot
+    ? fittingTickCount(plot.height - X_AXIS_H, fontPx * 1.2, fontPx * 0.5, 2, 5)
+    : 4;
+  const yTicks = niceTicks(yMin, yMax, yTarget);
   const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
+  const yAxisWidth = plot
+    ? Math.ceil(Math.max(...yTicks.map((t) => textWidth(formatAxisPrice(t), fontPx, family))) + fontPx)
+    : 54;
 
-  const xTicks = sampleTicks(data, 6);
+  // X5: as many time labels as fit the measured width without colliding
+  // (at most 6, at least 2), measured against the widest candidate label.
+  const candidates = sampleTicks(data, 6);
+  const labelWidth = plot
+    ? Math.max(0, ...candidates.map((t) => textWidth(formatTimeLabel(t, period), fontPx, family)))
+    : 0;
+  const xCount = plot
+    ? fittingTickCount(plot.width - yAxisWidth - PLOT_MARGIN_X, labelWidth, fontPx * 1.5, 2, 6)
+    : 6;
+  const xTicks = sampleTicks(data, xCount);
 
   return (
-    <div className="panel fade-in" style={{ marginBottom: 16 }}>
+    <div className="panel fade-in price-tile">
       {/* Header */}
       <div className="panel-header">
         <span className="panel-title">
           <span className="icon">₿</span>Bitcoin Price
         </span>
-        <div style={{ display: "flex", gap: 4 }}>
+        <div className="btn-group-tight">
           {PERIODS.map((p) => (
             <button
               key={p}
@@ -234,41 +310,26 @@ export default function BitcoinPriceGraph() {
         ) : (
           <>
             {/* Spot price + change */}
-            <div style={{ marginBottom: 20 }}>
-              <div
-                style={{
-                  fontFamily: getMono(),
-                  fontSize: "2rem",
-                  fontWeight: 600,
-                  color: "var(--text)",
-                  lineHeight: 1.2,
-                }}
-              >
+            {/* The price supports (TASTE A14): sized below the headline
+                numbers by the density block's --d-price. */}
+            <div className="price-head">
+              <div className="price-spot">
                 {spot != null ? formatUsd(spot) : "—"}
               </div>
               {changeAmt != null && changePct != null && (
-                <div
-                  style={{
-                    fontFamily: getMono(),
-                    fontSize: "0.875rem",
-                    fontWeight: 500,
-                    color: isPositive ? GREEN : RED,
-                    marginTop: 4,
-                  }}
-                >
+                <div className="price-change" style={{ color: isPositive ? GREEN : RED }}>
                   {isPositive ? "+" : ""}
                   {formatUsd(changeAmt)}{" "}
                   ({isPositive ? "+" : ""}
                   {changePct.toFixed(2)}%)
-                  <span style={{ color: TEXT_3, fontWeight: 400, marginLeft: 8 }}>
-                    {period}
-                  </span>
+                  <span className="price-change-period">{period}</span>
                 </div>
               )}
             </div>
 
             {/* Chart */}
-            <ResponsiveContainer width="100%" height={120}>
+            <div className="price-plot" ref={plotRef}>
+            <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="amberFill" x1="0" y1="0" x2="0" y2="1">
@@ -279,10 +340,11 @@ export default function BitcoinPriceGraph() {
                 <XAxis
                   dataKey="time"
                   ticks={xTicks}
+                  interval={0}
                   tickFormatter={(t: number) => formatTimeLabel(t, period)}
                   axisLine={{ stroke: BORDER }}
                   tickLine={false}
-                  tick={{ fill: TEXT_3, fontFamily: getMono(), fontSize: 11 }}
+                  tick={{ fill: TEXT_3, fontFamily: family, fontSize: fontPx }}
                 />
                 <YAxis
                   domain={yDomain}
@@ -290,8 +352,8 @@ export default function BitcoinPriceGraph() {
                   tickFormatter={formatAxisPrice}
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: TEXT_3, fontFamily: getMono(), fontSize: 11 }}
-                  width={54}
+                  tick={{ fill: TEXT_3, fontFamily: family, fontSize: fontPx }}
+                  width={yAxisWidth}
                 />
                 <Tooltip
                   content={<PriceTooltip period={period} />}
@@ -313,6 +375,7 @@ export default function BitcoinPriceGraph() {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            </div>
           </>
         )}
       </div>

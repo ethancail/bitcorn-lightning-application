@@ -23,7 +23,7 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 | GET | `/api/peers` | Persisted peers |
 | GET | `/api/channels` | Persisted channels |
 | GET | `/api/channels/pending` | Pending channel opens (for ConnectToHub reload persistence) |
-| GET | `/api/member/stats` | Hub pubkey, membership, role, is_peered_to_hub, treasury_channel, forwarded_fees (24h/30d/all-time), keysend_enabled |
+| GET | `/api/member/stats` | Hub pubkey, membership, role, is_peered_to_hub, treasury_channel, forwarded_fees (24h/30d/all-time), keysend_enabled, `lifetime_received_sats` (SUM of `payments_inbound.tokens`: every settled inbound invoice the sync loop has recorded; the farmer dashboard's "Received, lifetime") |
 | POST | `/api/member/open-channel` | Open channel to hub (`{ capacity_sats, partner_socket? }`, min 100k) |
 | GET | `/api/contacts` | List contacts |
 | POST | `/api/contacts` | Create contact |

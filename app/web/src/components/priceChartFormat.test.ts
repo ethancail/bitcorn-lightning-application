@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { niceTicks, formatAxisPrice, formatTimeLabel } from "./priceChartFormat";
+import { niceTicks, formatAxisPrice, formatTimeLabel, fittingTickCount } from "./priceChartFormat";
 
 describe("niceTicks", () => {
   it("turns the reported 5y range ($13k–$128k) into round $50k ticks", () => {
@@ -120,5 +120,25 @@ describe("formatTimeLabel", () => {
 
   it("24h is a clock time", () => {
     expect(formatTimeLabel(at(2026, 5, 8), "24h")).toMatch(/\d{1,2}:\d{2}\s?(AM|PM)/i);
+  });
+});
+
+describe("fittingTickCount", () => {
+  it("fits as many labels as the width allows, gaps included", () => {
+    // 3 × 60px labels + 2 × 20px gaps = 220px.
+    expect(fittingTickCount(220, 60, 20)).toBe(3);
+    expect(fittingTickCount(219, 60, 20)).toBe(2);
+  });
+  it("the round-1 phone plot (~270px, 24h labels ~62px) fits 3, not 6", () => {
+    expect(fittingTickCount(270, 62, 20)).toBe(3);
+  });
+  it("never more than max on a wide plot, never fewer than min on a tiny one", () => {
+    expect(fittingTickCount(2000, 60, 20)).toBe(6);
+    expect(fittingTickCount(40, 60, 20)).toBe(2);
+  });
+  it("an unmeasured plot keeps max", () => {
+    expect(fittingTickCount(0, 60, 20)).toBe(6);
+    expect(fittingTickCount(300, 0, 20)).toBe(6);
+    expect(fittingTickCount(NaN, 60, 20, 2, 4)).toBe(4);
   });
 });
