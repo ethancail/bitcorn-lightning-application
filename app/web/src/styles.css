@@ -493,6 +493,7 @@ p + .settings-section-label { margin-top: 8px; }
 /* ─── Member Dashboard: gauge + action ──────────────── */
 .member-gauge .labels {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   text-align: right;
@@ -501,6 +502,10 @@ p + .settings-section-label { margin-top: 8px; }
   color: var(--text-3);
   font-family: var(--mono);
 }
+/* When the label and the figure don't fit side by side (a phone at large
+   text), the figure takes its own line, still right-aligned, instead of
+   running past the tile. */
+.member-gauge .labels > :last-child { margin-left: auto; }
 .member-gauge .bar {
   height: 10px;
   border-radius: var(--radius-full);

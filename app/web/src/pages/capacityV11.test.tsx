@@ -217,3 +217,21 @@ describe("PR3-3 — the advisor's alert", () => {
     expect(alert!.querySelector(".alert-icon")?.textContent).toBe("⚠");
   });
 });
+
+describe("PR 7: the gauge's figure wraps instead of clipping", () => {
+  // At 1.5x on a phone the farmer's "71% full — 7,088,766 of 10,000,000 sats"
+  // ran past the tile. jsdom has no layout, so the rule is read; the browser
+  // matrix is the evidence of what renders.
+  it("the labels row wraps; the figure, last, keeps to the right on its own line", async () => {
+    setup(710_000, "farmer", "healthy");
+    await render(MemberDashboard);
+    const labels = host.querySelector(".member-gauge .labels")!;
+    expect(labels.lastElementChild!.textContent).toBe("71% full — 710,000 of 1,000,000 sats");
+    const rules = cssRules().filter((r) => r.media === null);
+    const decls = (sel: string) => Object.assign({}, ...rules.filter((r) => r.selectors.includes(sel)).map((r) => r.decls));
+    expect(decls(".member-gauge .labels")["flex-wrap"]).toBe("wrap");
+    expect(decls(".member-gauge .labels > :last-child")["margin-left"]).toBe("auto");
+    // PR 3 (5902f9b): the label and its word still never part.
+    expect(host.querySelector('[data-testid="gauge-label"]')!.getAttribute("style") ?? "").toContain("white-space: nowrap");
+  });
+});
