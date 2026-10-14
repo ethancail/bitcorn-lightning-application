@@ -364,7 +364,7 @@ export default function SettlementForm({
           <div className="sub-alert-body">
             Settlement submitted. It will appear in your history within about a minute of
             on-chain confirmation.
-            <div style={{ marginTop: 8, fontSize: "0.75rem", fontFamily: "var(--mono)", color: "var(--text-2)" }}>
+            <div style={{ marginTop: 8, fontSize: "0.75rem", fontFamily: "var(--font-id)", color: "var(--text-2)" }}>
               tx: {step.txHash}
             </div>
           </div>
@@ -390,7 +390,7 @@ export default function SettlementForm({
           <div className="sub-alert-body">
             <strong>Settlement reverted on-chain.</strong>{" "}
             <span>{step.reason}</span>
-            <div style={{ marginTop: 8, fontSize: "0.75rem", fontFamily: "var(--mono)", color: "var(--text-2)" }}>
+            <div style={{ marginTop: 8, fontSize: "0.75rem", fontFamily: "var(--font-id)", color: "var(--text-2)" }}>
               tx: {step.txHash}
             </div>
           </div>
@@ -435,6 +435,7 @@ export default function SettlementForm({
         <input
           type="text"
           className="stablecoin-input"
+          style={{ fontFamily: "var(--font-id)" }}
           placeholder="0x…"
           value={recipient}
           onChange={(e) => setRecipient(e.target.value)}

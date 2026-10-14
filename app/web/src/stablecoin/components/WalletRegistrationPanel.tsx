@@ -223,7 +223,7 @@ function ReplaceConfirmFlow({
       <div className="sub-alert sub-alert-amber">
         <span className="sub-alert-icon" aria-hidden>⚠</span>
         <div className="sub-alert-body">
-          You're about to replace <code>{truncate(currentAddress)}</code> with a new wallet.
+          You're about to replace <code className="ident">{truncate(currentAddress)}</code> with a new wallet.
           Settlements to the old address will not appear in your history view after this change.
         </div>
       </div>
@@ -381,7 +381,7 @@ function UnregisteredView({
       <div className="sub-alert sub-alert-emerald" style={{ marginBottom: 0 }}>
         <span className="sub-alert-icon" aria-hidden>✓</span>
         <div className="sub-alert-body">
-          Wallet <code>{truncate(step.address)}</code> registered. Your stablecoin settlement
+          Wallet <code className="ident">{truncate(step.address)}</code> registered. Your stablecoin settlement
           history will appear on the Stablecoin page within a minute.
         </div>
       </div>
@@ -451,7 +451,7 @@ function UnregisteredView({
         )}
       </div>
       <p className="stablecoin-network-hint">
-        Network: <code>{DEFAULT_CHAIN.name}</code> (chain ID {DEFAULT_CHAIN.id}). Make sure your
+        Network: <code className="stablecoin-network-name">{DEFAULT_CHAIN.name}</code> (chain ID {DEFAULT_CHAIN.id}). Make sure your
         wallet is set to this network — you'll be prompted to switch if needed.
       </p>
     </>
@@ -481,7 +481,7 @@ function ConfirmStepView({
   return (
     <>
       <p className="stablecoin-intro">
-        Register <code>{step.address}</code> as your BASE wallet?
+        Register <code className="ident">{step.address}</code> as your BASE wallet?
       </p>
       <p className="stablecoin-fineprint">
         Connected via <strong>{connectorName}</strong>. You'll be asked to sign a one-time

@@ -250,7 +250,7 @@ export default function PayFromNodeModal({
               Open in wallet ({fmtSats(status.price_sats)})
             </a>
             <p className="sub-fineprint" style={{ marginTop: 10 }}>
-              No Bitcoin wallet registered for <code>bitcoin:</code> links? This
+              No Bitcoin wallet registered for <code className="ident">bitcoin:</code> links? This
               button does nothing — use the deposit address and QR code in the
               panel instead.
             </p>

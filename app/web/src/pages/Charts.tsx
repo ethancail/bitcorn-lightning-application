@@ -138,7 +138,7 @@ export default function Charts() {
             >
               <div
                 style={{
-                  fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "'IBM Plex Mono', monospace",
+                  fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif",
                   color: "var(--text-3)",
                   fontSize: "0.8125rem",
                   letterSpacing: "0.06em",
@@ -160,7 +160,7 @@ export default function Charts() {
               flexWrap: "wrap",
               gap: "12px 20px",
               marginTop: 16,
-              fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "'IBM Plex Mono', monospace",
+              fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif",
               fontSize: "0.6875rem",
             }}
           >
@@ -220,7 +220,7 @@ export default function Charts() {
             >
               <div
                 style={{
-                  fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "'IBM Plex Mono', monospace",
+                  fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif",
                   color: "var(--text-3)",
                   fontSize: "0.8125rem",
                   letterSpacing: "0.06em",
@@ -242,7 +242,7 @@ export default function Charts() {
               flexWrap: "wrap",
               gap: "12px 20px",
               marginTop: 16,
-              fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "'IBM Plex Mono', monospace",
+              fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif",
               fontSize: "0.6875rem",
             }}
           >
@@ -297,7 +297,7 @@ export default function Charts() {
               flexWrap: "wrap",
               gap: "12px 20px",
               marginTop: 16,
-              fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "'IBM Plex Mono', monospace",
+              fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif",
               fontSize: "0.6875rem",
             }}
           >
@@ -345,7 +345,7 @@ export default function Charts() {
               flexWrap: "wrap",
               gap: "12px 20px",
               marginTop: 16,
-              fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "'IBM Plex Mono', monospace",
+              fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif",
               fontSize: "0.6875rem",
             }}
           >
