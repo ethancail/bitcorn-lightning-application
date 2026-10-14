@@ -19,7 +19,6 @@ import RefillChannel from "./pages/RefillChannel";
 import Peers from "./pages/Peers";
 import ValuationInput from "./pages/ValuationInput";
 import AutoBuy from "./pages/AutoBuy";
-import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
 import ErrorState from "./components/ErrorState";
 import ActionConfirmModal, {
