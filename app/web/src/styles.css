@@ -3820,6 +3820,58 @@ input[type="number"] {
   :is(.data-table, .sub-history-table).phone-card tr.row-detail td { flex: 1 0 100%; white-space: normal; }
   :is(.data-table, .sub-history-table).phone-card tr.row-detail td::before { content: none; }
   :is(.data-table, .sub-history-table).phone-card td:empty { display: none; }
+
+  /* X4c: Top Up's history (.phone-fit) is one line wherever every row fits
+     and a card otherwise, judged at the reader's own text size. Its wrapper
+     is a size container; a container query's em is the container's own font
+     size (14px × the text scale), so the threshold follows the text-size
+     setting. Measured, not guessed (X4c-1): the widest row the code can
+     produce — 3,000,000 sats (MEMBER_MAX_REFILL_SAT), the raw
+     "quote_created" status, every month at 12:58 AM/PM — needs
+     ≈ 17.05em + 100px in Chromium and WebKit at all 16 slider stops; the
+     px part is the cells' fixed padding. Rounded up. The card rules below
+     repeat the .phone-card block (phoneTables.css.test.ts pins them equal).
+     Without container queries the table keeps its sideways scroll. */
+  .phone-fit-wrap { container: topup-history / inline-size; }
+  @container topup-history (width >= calc(17.1em + 101px)) {
+    .data-table.phone-fit { min-width: 0; table-layout: auto; }
+    .data-table.phone-fit :is(colgroup, .col-secondary) { display: none; }
+  }
+  @container topup-history (width < calc(17.1em + 101px)) {
+    .data-table.phone-fit { display: block; width: 100%; min-width: 0; }
+    .data-table.phone-fit :is(thead, colgroup) { display: none; }
+    .data-table.phone-fit tbody { display: block; width: 100%; }
+    .data-table.phone-fit tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 16px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table.phone-fit tr:last-child { border-bottom: none; }
+    .data-table.phone-fit td {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+      max-width: 100%;
+      padding: 0;
+      border: none;
+      white-space: nowrap;
+    }
+    .data-table.phone-fit td.td-primary { flex: 1 0 100%; font-weight: 600; white-space: normal; }
+    .data-table.phone-fit td:not(.td-primary)::before {
+      content: attr(data-label);
+      flex: none;
+      font-family: var(--mono);
+      font-size: var(--d-label);
+      color: var(--text-3);
+    }
+    .data-table.phone-fit tr.row-detail td { flex: 1 0 100%; white-space: normal; }
+    .data-table.phone-fit tr.row-detail td::before { content: none; }
+    .data-table.phone-fit td:empty { display: none; }
+  }
 }
 
 /* ═══ DENSITY — round 1's variant b, Balanced (J1, picked) ═══════════════

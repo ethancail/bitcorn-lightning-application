@@ -866,8 +866,8 @@ export default function RefillChannel() {
           ) : history.length === 0 ? (
             <div className="empty-state">No top ups yet</div>
           ) : (
-            <div className="table-scroll">
-              <table className="data-table phone-card">
+            <div className="table-scroll phone-fit-wrap">
+              <table className="data-table phone-fit">
                 <thead>
                   <tr>
                     <th>Date</th>

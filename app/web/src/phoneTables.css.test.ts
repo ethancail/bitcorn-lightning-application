@@ -73,23 +73,78 @@ describe("X4b: a J2 table is a card on a phone", () => {
 
 describe("R4: the J2 tables only", () => {
   const files = sources(__dirname);
-  const uses = files.flatMap((f) => (readFileSync(f, "utf8").match(/phone-card/g) ?? []).map(() => f.replace(__dirname + "/", "")));
+  const usesOf = (cls: string) =>
+    files.flatMap((f) => (readFileSync(f, "utf8").match(new RegExp(`(?<![\\w-])${cls}(?![\\w-])`, "g")) ?? []).map(() => f.replace(__dirname + "/", "")));
 
-  it("six tables: ChannelsPage's four lanes, Top Up's history, subscription payments", () => {
-    const count = (f: string) => uses.filter((u) => u === f).length;
+  it("six tables: ChannelsPage's four lanes and subscription payments are cards; Top Up's history fits (X4c)", () => {
+    const cards = usesOf("phone-card");
+    const count = (f: string) => cards.filter((u) => u === f).length;
     expect(count("App.tsx")).toBe(4);
-    expect(count("pages/RefillChannel.tsx")).toBe(1);
     expect(count("pages/SubscriptionPayments.tsx")).toBe(1);
-    expect(new Set(uses)).toEqual(new Set(["App.tsx", "pages/RefillChannel.tsx", "pages/SubscriptionPayments.tsx"]));
+    expect(new Set(cards)).toEqual(new Set(["App.tsx", "pages/SubscriptionPayments.tsx"]));
+    expect(usesOf("phone-fit")).toEqual(["pages/RefillChannel.tsx"]);
+    expect(usesOf("phone-fit-wrap")).toEqual(["pages/RefillChannel.tsx"]);
   });
 
   it("no card rule reaches a table that has not opted in", () => {
     for (const r of RULES.filter((x) => x.media === PHONE)) {
       for (const s of r.selectors) {
         if (/::before|td:empty|tr\.row-detail|td\.td-primary/.test(s)) {
-          expect(s, `line ${r.line}`).toContain(".phone-card");
+          expect(s, `line ${r.line}`).toMatch(/\.phone-card|\.phone-fit/);
         }
       }
     }
+  });
+});
+
+describe("X4c: Top Up's history is one line where every row fits, a card otherwise", () => {
+  // The threshold as the stylesheet states it (read, not restated here).
+  const THRESHOLD =
+    RULES.map((r) => r.container?.match(/^topup-history \(width >= (calc\([^)]*\))\)$/)?.[1]).find(Boolean) ?? "(none)";
+  const WIDE = `topup-history (width >= ${THRESHOLD})`;
+  const NARROW = `topup-history (width < ${THRESHOLD})`;
+  const inWide = RULES.filter((r) => r.media === PHONE && r.container === WIDE);
+  const inNarrow = RULES.filter((r) => r.media === PHONE && r.container === NARROW);
+
+  it("the wrapper is the named size container, on a phone", () => {
+    const wrap = RULES.find((r) => r.media === PHONE && r.container === null && r.selectors.includes(".phone-fit-wrap"));
+    expect(wrap?.decls["container"]).toBe("topup-history / inline-size");
+  });
+
+  it("one threshold, in both directions, in em plus px: the two queries are complements", () => {
+    expect(THRESHOLD).toMatch(/^calc\([\d.]+em \+ \d+px\)$/);
+    const conditions = new Set(RULES.filter((r) => r.container?.startsWith("topup-history")).map((r) => r.container));
+    expect(conditions).toEqual(new Set([WIDE, NARROW]));
+  });
+
+  it("wide enough: one line, the secondary column (Fee) hidden, no 600px minimum", () => {
+    const decls = (sel: string) => inWide.find((r) => r.selectors.includes(sel))?.decls ?? {};
+    expect(decls(".data-table.phone-fit")["min-width"]).toBe("0");
+    expect(decls(".data-table.phone-fit")["table-layout"]).toBe("auto");
+    expect(decls(".data-table.phone-fit :is(colgroup, .col-secondary)")["display"]).toBe("none");
+  });
+
+  it("too narrow: exactly the .phone-card card, rule for rule", () => {
+    const cardRules = CARD.filter((r) => r.media === PHONE && r.container === null);
+    expect(inNarrow.length).toBe(cardRules.length);
+    for (const r of cardRules) {
+      const suffix = r.selectors[0].replace(":is(.data-table, .sub-history-table).phone-card", "");
+      const twin = inNarrow.find((n) => n.selectors.includes(`.data-table.phone-fit${suffix}`));
+      expect(twin, `the card rule "${suffix || "(table)"}" has its .phone-fit twin`).toBeDefined();
+      expect(twin!.decls, `"${suffix || "(table)"}"`).toEqual(r.decls);
+    }
+  });
+
+  it("the threshold covers every measured reading (X4c-1, both engines, all 16 stops)", () => {
+    // Widest one-line table, px, at each stop 0.75…1.50, from the measuring
+    // build (never committed): ~/.bitcorn-dev/audit/2026-10-14-ui-redesign-pr7/x4c-readings.md.
+    const CHROMIUM = [279, 291, 303, 315, 327, 339, 351, 363, 374, 386, 398, 410, 422, 434, 445, 457];
+    const WEBKIT = [280, 291, 303, 315, 327, 339, 351, 363, 375, 387, 399, 411, 423, 435, 447, 459];
+    const [, em, px] = THRESHOLD.match(/^calc\(([\d.]+)em \+ (\d+)px\)$/)!.map(Number);
+    CHROMIUM.forEach((c, i) => {
+      const s = 0.75 + i * 0.05;
+      const need = Math.max(c, WEBKIT[i]);
+      expect(em * 14 * s + px, `stop ${s.toFixed(2)}`).toBeGreaterThanOrEqual(need);
+    });
   });
 });

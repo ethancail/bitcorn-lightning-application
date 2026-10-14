@@ -206,6 +206,14 @@ describe("J14 hooks: Top Up's history", () => {
     expect([...table.querySelectorAll("tbody td.col-secondary")].map((td) => td.getAttribute("data-label"))).toEqual(["Fee", "Fee"]);
   });
 
+  it("X4c: the table is .phone-fit and its wrapper the size container", async () => {
+    const el = await mount(page(RefillChannel));
+    const table = el.querySelector("table")!;
+    expect(table.classList.contains("phone-fit")).toBe(true);
+    expect(table.classList.contains("phone-card")).toBe(false);
+    expect(table.parentElement!.classList.contains("phone-fit-wrap")).toBe(true);
+  });
+
   it("an expanded row's detail row is marked row-detail and carries no label", async () => {
     const el = await mount(page(RefillChannel));
     const first = el.querySelector("tbody tr") as HTMLTableRowElement;
