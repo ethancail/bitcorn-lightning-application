@@ -20,8 +20,22 @@ import type { SiweChallengeNonceRow } from "./types";
 type Db = Database.Database;
 
 /**
+ * Most outstanding challenges kept per member. The challenge route takes any
+ * wallet address, so without a cap distinct addresses would each add a row
+ * until expiry + the hourly sweep. Floor is 2 (migration 048: a member may
+ * challenge a second wallet before signing the first); 5 covers the UI's
+ * wallet tiles plus a Replace.
+ */
+export const MAX_CHALLENGES_PER_MEMBER = 5;
+
+/**
  * Insert or replace a challenge nonce. A second challenge for the same
  * (member, wallet) replaces the first — the older nonce is invalidated.
+ *
+ * In the same transaction, trims the member's rows to
+ * MAX_CHALLENGES_PER_MEMBER: the row just written plus the newest others by
+ * (issued_at DESC, id DESC). The just-written pair is never deleted, even if
+ * its issued_at is older than the rest (a wall-clock step backwards).
  */
 export function upsertChallengeNonce(
     memberPubkey: string,
@@ -31,24 +45,41 @@ export function upsertChallengeNonce(
     expiresAt: number,
     database: Db = defaultDb,
 ): void {
-    database
-        .prepare(
-            `INSERT INTO siwe_challenge_nonce
-                 (member_pubkey, wallet_address, nonce, issued_at, expires_at)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(member_pubkey, wallet_address) DO UPDATE SET
-                 nonce = excluded.nonce,
-                 issued_at = excluded.issued_at,
-                 expires_at = excluded.expires_at`,
-        )
-        .run(memberPubkey.toLowerCase(), walletAddress.toLowerCase(), nonce, issuedAt, expiresAt);
+    const member = memberPubkey.toLowerCase();
+    const wallet = walletAddress.toLowerCase();
+    const upsert = database.prepare(
+        `INSERT INTO siwe_challenge_nonce
+             (member_pubkey, wallet_address, nonce, issued_at, expires_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(member_pubkey, wallet_address) DO UPDATE SET
+             nonce = excluded.nonce,
+             issued_at = excluded.issued_at,
+             expires_at = excluded.expires_at`,
+    );
+    const cap = database.prepare(
+        `DELETE FROM siwe_challenge_nonce
+         WHERE member_pubkey = ?
+           AND wallet_address != ?
+           AND id NOT IN (
+               SELECT id FROM siwe_challenge_nonce
+               WHERE member_pubkey = ? AND wallet_address != ?
+               ORDER BY issued_at DESC, id DESC
+               LIMIT ?
+           )`,
+    );
+    const txn = database.transaction(() => {
+        upsert.run(member, wallet, nonce, issuedAt, expiresAt);
+        cap.run(member, wallet, member, wallet, MAX_CHALLENGES_PER_MEMBER - 1);
+    });
+    txn();
 }
 
 /**
  * Look up an outstanding challenge for a member+wallet pair. Returns null
  * if no row exists or if the row has expired. This read does NOT delete
  * expired rows — they linger until the hourly sweep that bootSideEffects
- * (index.ts) schedules, or until a new challenge UPSERTs over them.
+ * (index.ts) schedules, until a new challenge UPSERTs over them, or until
+ * the per-member cap in upsertChallengeNonce evicts them.
  */
 export function getChallengeNonce(
     memberPubkey: string,
@@ -85,14 +116,17 @@ export function getChallengeNonce(
 }
 
 /**
- * Look up a challenge by member alone — used by the verify endpoint
- * which receives just the message + signature (the wallet_address is
- * extracted from the parsed message). Returns the most recently issued
- * non-expired challenge for the member, or null.
+ * List a member's non-expired challenges, newest issued_at first. No
+ * production caller: the verify path (handleWalletRegister) looks up the
+ * exact (member, wallet) pair via getChallengeNonce. Only tests call this.
  *
  * This is a member-scoped lookup so a malicious caller can't substitute
- * another member's nonce. The member_pubkey is the local node's pubkey;
- * the API trusts the local origin.
+ * another member's nonce. member_pubkey is always the local node's pubkey,
+ * never caller-supplied, so a caller cannot reach another member's rows.
+ * This is not caller authentication: port 3101 has none, and its
+ * reachability depends on deployment (LAN/tailnet; a treasury on the
+ * `tunnel` profile also serves a public hostname, whose edge rules decide
+ * what passes).
  */
 export function getMemberOutstandingChallenges(
     memberPubkey: string,

@@ -2022,9 +2022,11 @@ async function dispatchRequest(
 
   // ─── Stablecoin rail (spec §8 + 2026-05-26 amendment) ─────────────────
   // All routes scoped under /api/stablecoin/*. Member identity is the local
-  // node's pubkey via getNodeInfo(); same trust model as the subscription
-  // endpoints above (local-network-only via CORS restriction at the top
-  // of this file). More specific routes (/wallet/challenge) must come
+  // node's pubkey via getNodeInfo(). These routes have no caller
+  // authentication; CORS (applyCorsAndPreflight) only stops a foreign page
+  // reading the response. Network reachability is a deployment property, not
+  // enforced here: LAN/tailnet always, plus whatever a tunnel's edge rules
+  // admit. More specific routes (/wallet/challenge) must come
   // before /wallet — the raw-http if/else chain matches by exact pathname.
   if (req.method === "POST" && req.url === "/api/stablecoin/wallet/challenge") {
     return handleStablecoinChallenge(req, res);
