@@ -56,7 +56,7 @@ export default function Dashboard() {
     return () => clearInterval(id);
   }, []);
 
-  // Balance polling (replaces <NodeBalancePanel />).
+  // Balance polling.
   // U24 H8 (treasury): poll results feed the freshness tracker — on repeated
   // failures the strip keeps last-good numbers with a staleness marker instead
   // of clearing to "—". Same treatment as the member dashboard (Batch A).

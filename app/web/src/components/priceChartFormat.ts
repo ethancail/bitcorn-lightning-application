@@ -122,3 +122,20 @@ export function fittingTickCount(
   const n = Math.floor((available + gap) / (labelWidth + gap));
   return Math.max(min, Math.min(max, n));
 }
+
+/** Recharts' default tick length: it offsets the time labels even with the tick line off. */
+export const X_TICK_SIZE = 6;
+
+/**
+ * The x-axis band for a label font of `fontPx`: the margin under the axis
+ * line and the band's height. PR 7: the lowest price label is centred on the
+ * axis line, so its lower half hangs into this band; at the default 2px margin
+ * the first time label sat on it (about 2px of overlap at 1.0x text, more at
+ * 1.5x). The margin grows with the label size so the time labels start below
+ * it, and the band grows to hold them; at 1.0x the band stays Recharts' 30px.
+ */
+export function xAxisBand(fontPx: number): { tickMargin: number; height: number } {
+  const tickMargin = Math.max(2, Math.ceil(fontPx * 0.9) - 5);
+  const height = Math.max(30, X_TICK_SIZE + tickMargin + Math.ceil(fontPx * 1.25));
+  return { tickMargin, height };
+}

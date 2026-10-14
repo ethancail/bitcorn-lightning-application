@@ -493,6 +493,7 @@ p + .settings-section-label { margin-top: 8px; }
 /* ─── Member Dashboard: gauge + action ──────────────── */
 .member-gauge .labels {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   text-align: right;
@@ -501,6 +502,10 @@ p + .settings-section-label { margin-top: 8px; }
   color: var(--text-3);
   font-family: var(--mono);
 }
+/* When the label and the figure don't fit side by side (a phone at large
+   text), the figure takes its own line, still right-aligned, instead of
+   running past the tile. */
+.member-gauge .labels > :last-child { margin-left: auto; }
 .member-gauge .bar {
   height: 10px;
   border-radius: var(--radius-full);
@@ -1340,15 +1345,6 @@ input[type="number"] {
   word-break: break-all;
 }
 
-/* ─── Dashboard page grid ──────────────────────────────────────── */
-.dashboard-grid {
-  display: grid;
-  gap: 20px;
-  grid-template-columns: 1fr 1fr;
-}
-
-.dashboard-grid .span-2 { grid-column: span 2; }
-
 /* ─── Inline preview result ────────────────────────────────────── */
 .preview-result {
   margin-top: 8px;
@@ -1532,11 +1528,6 @@ input[type="number"] {
     padding: calc(var(--topbar-h) + var(--d-page-py-ph)) var(--d-page-px-ph) 64px;
   }
   .panel-body { padding: var(--d-tile-pad-ph); }
-
-  /* Dashboard grid: single column on mobile */
-  .dashboard-grid {
-    grid-template-columns: 1fr !important;
-  }
 
   /* Stat grids: collapse to single column */
   .stat-grid-3, .stat-grid-4 {
@@ -3784,6 +3775,104 @@ input[type="number"] {
 .price-change-period { color: var(--text-3); font-weight: 400; margin-left: 8px; }
 .price-plot { height: var(--d-chart-h); font-size: var(--d-label); }
 .btn-group-tight { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* ═══ PHONE TABLES (PR 7: X4b, X4c, J14) ════════════════════════════════
+   On a phone a table is ONE line per row only if every row actually fits on
+   one line; otherwise it is a CARD (X4b). A card: the title cell (td-primary)
+   on its own line, then each value with its column's name (data-label)
+   beside it, nothing hidden. Opt-in, by class, on the J2 tables only (R4):
+   .phone-card is always a card on a phone. The other tables keep today's
+   sideways scroll (.data-table's 600px minimum above). Kept after every
+   table rule so it wins on order as well as specificity. */
+@media (max-width: 767px) {
+  :is(.data-table, .sub-history-table).phone-card { display: block; width: 100%; min-width: 0; }
+  :is(.data-table, .sub-history-table).phone-card :is(thead, colgroup) { display: none; }
+  :is(.data-table, .sub-history-table).phone-card tbody { display: block; width: 100%; }
+  :is(.data-table, .sub-history-table).phone-card tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  :is(.data-table, .sub-history-table).phone-card tr:last-child { border-bottom: none; }
+  /* Each cell is one unit, label beside value: in round 1 a label floated
+     away from its value when the cell shrank and wrapped between the two. */
+  :is(.data-table, .sub-history-table).phone-card td {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0;
+    border: none;
+    white-space: nowrap;
+  }
+  :is(.data-table, .sub-history-table).phone-card td.td-primary { flex: 1 0 100%; font-weight: 600; white-space: normal; }
+  :is(.data-table, .sub-history-table).phone-card td:not(.td-primary)::before {
+    content: attr(data-label);
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--d-label);
+    color: var(--text-3);
+  }
+  :is(.data-table, .sub-history-table).phone-card tr.row-detail td { flex: 1 0 100%; white-space: normal; }
+  :is(.data-table, .sub-history-table).phone-card tr.row-detail td::before { content: none; }
+  :is(.data-table, .sub-history-table).phone-card td:empty { display: none; }
+
+  /* X4c: Top Up's history (.phone-fit) is one line wherever every row fits
+     and a card otherwise, judged at the reader's own text size. Its wrapper
+     is a size container; a container query's em is the container's own font
+     size (14px × the text scale), so the threshold follows the text-size
+     setting. Measured, not guessed (X4c-1): the widest row the code can
+     produce — 3,000,000 sats (MEMBER_MAX_REFILL_SAT), the raw
+     "quote_created" status, every month at 12:58 AM/PM — needs
+     ≈ 17.05em + 100px in Chromium and WebKit at all 16 slider stops; the
+     px part is the cells' fixed padding. Rounded up. The card rules below
+     repeat the .phone-card block (phoneTables.css.test.ts pins them equal).
+     Without container queries the table keeps its sideways scroll. */
+  .phone-fit-wrap { container: topup-history / inline-size; }
+  @container topup-history (width >= calc(17.1em + 101px)) {
+    .data-table.phone-fit { min-width: 0; table-layout: auto; }
+    .data-table.phone-fit :is(colgroup, .col-secondary) { display: none; }
+  }
+  @container topup-history (width < calc(17.1em + 101px)) {
+    .data-table.phone-fit { display: block; width: 100%; min-width: 0; }
+    .data-table.phone-fit :is(thead, colgroup) { display: none; }
+    .data-table.phone-fit tbody { display: block; width: 100%; }
+    .data-table.phone-fit tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 16px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table.phone-fit tr:last-child { border-bottom: none; }
+    .data-table.phone-fit td {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+      max-width: 100%;
+      padding: 0;
+      border: none;
+      white-space: nowrap;
+    }
+    .data-table.phone-fit td.td-primary { flex: 1 0 100%; font-weight: 600; white-space: normal; }
+    .data-table.phone-fit td:not(.td-primary)::before {
+      content: attr(data-label);
+      flex: none;
+      font-family: var(--mono);
+      font-size: var(--d-label);
+      color: var(--text-3);
+    }
+    .data-table.phone-fit tr.row-detail td { flex: 1 0 100%; white-space: normal; }
+    .data-table.phone-fit tr.row-detail td::before { content: none; }
+    .data-table.phone-fit td:empty { display: none; }
+  }
+}
 
 /* ═══ DENSITY — round 1's variant b, Balanced (J1, picked) ═══════════════
    Every size that varies with density reads a --d-* token from here. A token

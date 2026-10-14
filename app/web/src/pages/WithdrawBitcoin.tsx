@@ -416,7 +416,7 @@ export default function WithdrawBitcoin() {
                       <div data-testid="capacity-bar" style={{ width: `${Math.min(channelLocalPct, 100)}%`, height: "100%", background: CAPACITY_BAR_COLOR[tone] }} />
                     </div>
                     <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: CAPACITY_TEXT_COLOR[tone] }}>
-                      {toneWord && `${toneWord} · `}{channelLocalPct}% local
+                      {toneWord && `${toneWord} · `}{channelLocalPct}% available to withdraw
                     </span>
                   </div>
                 </div>
@@ -498,7 +498,7 @@ export default function WithdrawBitcoin() {
               {channelLocal != null && channelCapacity != null && channelCapacity > 0 && (
                 <div style={{ background: "var(--bg-2)", borderLeft: "2px solid var(--amber)", padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 10 }}>
                   After withdrawal: <strong data-testid="capacity-text" style={{ color: "var(--text)" }}>
-                    {channelLocalPct}% → {Math.max(0, Math.round(((channelLocal - amount) / channelCapacity) * 100))}% local
+                    {channelLocalPct}% → {Math.max(0, Math.round(((channelLocal - amount) / channelCapacity) * 100))}% available to withdraw
                   </strong>
                 </div>
               )}

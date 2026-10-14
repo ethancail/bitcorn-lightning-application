@@ -419,7 +419,7 @@ export default function MemberDashboard() {
     api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
   }, []);
 
-  // Balance polling (replaces <NodeBalancePanel />).
+  // Balance polling.
   // U24 H8: poll results feed the freshness tracker — on repeated failures
   // the strip keeps the last-good numbers with a staleness marker instead of
   // clearing to "—" (which is indistinguishable from loading).
@@ -748,7 +748,7 @@ export default function MemberDashboard() {
             ? `${localPct}% — ${ch!.local_sats.toLocaleString()} sats available to send`
             : isFarmer
               ? `${localPct}% full — ${ch!.local_sats.toLocaleString()} of ${ch!.capacity_sats.toLocaleString()} sats`
-              : `${localPct}% local — ${remotePct}% remote`;
+              : `${localPct}% on your side — ${remotePct}% on the hub's side`;
           // V11: the colour comes from the advisor's state, never red; an unknown
           // role or no classification is neutral (components/capacityTone.ts).
           const gaugeColor = CAPACITY_BAR_COLOR[tone];

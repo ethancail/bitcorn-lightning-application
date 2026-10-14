@@ -12,6 +12,7 @@ import {
   formatAxisPrice,
   formatTimeLabel,
   fittingTickCount,
+  xAxisBand,
   type Period,
 } from "./priceChartFormat";
 
@@ -197,8 +198,7 @@ function textWidth(text: string, fontPx: number, family: string): number {
   return measureCtx.measureText(text).width;
 }
 
-// Recharts' default x-axis band and the AreaChart margins below.
-const X_AXIS_H = 30;
+// The AreaChart margins below. The x-axis band is xAxisBand's (PR 7).
 const PLOT_MARGIN_X = 8;
 
 // ─── Component ───────────────────────────────────────────────────────────
@@ -257,8 +257,10 @@ export default function BitcoinPriceGraph() {
   // target it is given, so Recharts never has to hide a label.
   const fontPx = plot?.fontPx ?? 11;
   const family = getMono();
+  // PR 7: the time labels start below the lowest price label at every text size.
+  const xBand = xAxisBand(fontPx);
   const yTarget = plot
-    ? fittingTickCount(plot.height - X_AXIS_H, fontPx * 1.2, fontPx * 0.5, 2, 5)
+    ? fittingTickCount(plot.height - xBand.height, fontPx * 1.2, fontPx * 0.5, 2, 5)
     : 4;
   const yTicks = niceTicks(yMin, yMax, yTarget);
   const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
@@ -344,6 +346,8 @@ export default function BitcoinPriceGraph() {
                   tickFormatter={(t: number) => formatTimeLabel(t, period)}
                   axisLine={{ stroke: BORDER }}
                   tickLine={false}
+                  tickMargin={xBand.tickMargin}
+                  height={xBand.height}
                   tick={{ fill: TEXT_3, fontFamily: family, fontSize: fontPx }}
                 />
                 <YAxis

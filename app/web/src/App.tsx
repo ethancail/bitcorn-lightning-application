@@ -4,7 +4,7 @@ import "./font.css"; // Z4: the font faces and tokens, self-hosted; before style
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
 import bitcornLogoLight from "./assets/bitcorn-logo-light.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type ChannelLiquidityHealth, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -242,7 +242,7 @@ function BuyBitcoinButton() {
       const { url } = await api.getCoinbaseOnrampUrl();
       window.open(url, "_blank", "noopener,noreferrer");
     } catch {
-      // Silently fail — FundNodePanel on the dashboard is the primary entry point
+      // Silently fail — the dashboards' Fund Node button is the primary entry point
     } finally {
       setLoading(false);
     }
@@ -1353,7 +1353,6 @@ function ChannelsPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
-  const [health, setHealth] = useState<ChannelLiquidityHealth[]>([]);
   const [expandedHint, setExpandedHint] = useState<string | null>(null);
   const [nodeRole, setNodeRole] = useState<string | null>(null);
   const [closingChannel, setClosingChannel] = useState<string | null>(null);
@@ -1372,12 +1371,10 @@ function ChannelsPage() {
     Promise.all([
       fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
       api.getContacts().catch(() => [] as Contact[]),
-      api.getLiquidityHealth().catch(() => [] as ChannelLiquidityHealth[]),
       api.getPendingChannels().catch(() => [] as PendingChannel[]),
-    ]).then(([ch, ct, lh, pend]) => {
+    ]).then(([ch, ct, pend]) => {
       setChannels(ch);
       setContacts(ct);
-      setHealth(lh);
       setClosingPubkeys(new Set(pend.filter((p: PendingChannel) => p.status === "closing").map((p: PendingChannel) => p.peer_pubkey)));
       setLoadError(null);
       setLoading(false);
@@ -1393,10 +1390,9 @@ function ChannelsPage() {
     Promise.all([
       fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
       api.getContacts().catch(() => [] as Contact[]),
-      api.getLiquidityHealth().catch(() => [] as ChannelLiquidityHealth[]),
       api.getPendingChannels().catch(() => [] as PendingChannel[]),
-    ]).then(([ch, ct, lh, pend]) => {
-      setChannels(ch); setContacts(ct); setHealth(lh);
+    ]).then(([ch, ct, pend]) => {
+      setChannels(ch); setContacts(ct);
       setClosingPubkeys(new Set(pend.filter((p: PendingChannel) => p.status === "closing").map((p: PendingChannel) => p.peer_pubkey)));
       setLoadError(null);
     }).catch((e: any) => setLoadError(e?.detail ?? e?.message ?? "fetch failed"));
@@ -1423,14 +1419,6 @@ function ChannelsPage() {
       setClosingChannel(null);
     }
   }
-
-  const healthColor: Record<string, string> = {
-    outbound_starved: "var(--red)",
-    weak: "var(--yellow)",
-    healthy: "var(--green)",
-    inbound_heavy: "var(--blue)",
-    critical: "var(--text-3)",
-  };
 
   return (
     <div>
@@ -1552,9 +1540,9 @@ function ChannelsPage() {
         function stateLabel(state: LaneState): string {
           const labels: Record<string, string> = {
             fresh: "Fresh", active: "Active", degrading: "Degrading",
-            renew_soon: "Renew Soon", exhausted: "Exhausted",
+            renew_soon: "Renew soon", exhausted: "Exhausted",
             open_for_receiving: "Receiving", earning: "Earning",
-            getting_full: "Getting Full", full_needs_withdrawal: "Needs Withdrawal",
+            getting_full: "Getting full", full_needs_withdrawal: "Needs withdrawal",
             healthy: "Healthy", constrained: "Constrained", critical: "Critical",
           };
           return labels[state] ?? state;
@@ -1702,7 +1690,7 @@ function ChannelsPage() {
                 <div className="empty-state">No merchant channels. Tag contacts as "merchant" to classify.</div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                  <table className="data-table phone-card" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
                       <col style={{ width: "25%" }} />
                       <col style={{ width: "12%" }} />
@@ -1728,12 +1716,12 @@ function ChannelsPage() {
                         const actionLabel = c.state === "exhausted" ? "Renew Now" : c.state === "renew_soon" ? "Renew Soon" : "Close";
                         return (
                           <tr key={c.channel_id}>
-                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
-                            <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                            <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                            <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td data-label="Capacity" className="td-mono">{fmtCap(c.capacity_sat)}</td>
+                            <td data-label="Forwarded" className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {c.remote_balance_sat.toLocaleString()}
                             </td>
-                            <td>
+                            <td data-label="Forwarding Left">
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                   <div data-testid="capacity-bar" style={{ height: "100%", width: `${fwdLeftPct}%`, background: color, borderRadius: 3 }} />
@@ -1741,10 +1729,10 @@ function ChannelsPage() {
                                 <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{fwdLeftPct}%</span>
                               </div>
                             </td>
-                            <td>
+                            <td data-label="State">
                               <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
-                            <td>{closeBtn(c, actionLabel)}</td>
+                            <td data-label="Action">{closeBtn(c, actionLabel)}</td>
                           </tr>
                         );
                       })}
@@ -1764,7 +1752,7 @@ function ChannelsPage() {
                 <div className="empty-state">No farmer channels. Tag contacts as "farmer" to classify.</div>
               ) : (
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                  <table className="data-table phone-card" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
                       <col style={{ width: "25%" }} />
                       <col style={{ width: "12%" }} />
@@ -1790,12 +1778,12 @@ function ChannelsPage() {
                         const color = stateColor(c.state);
                         return (
                           <tr key={c.channel_id}>
-                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
-                            <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                            <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                            <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td data-label="Capacity" className="td-mono">{fmtCap(c.capacity_sat)}</td>
+                            <td data-label="Accumulated" className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {accumulated.toLocaleString()}
                             </td>
-                            <td>
+                            <td data-label="Receive Capacity">
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                   <div data-testid="capacity-bar" style={{ height: "100%", width: `${recvPct}%`, background: color, borderRadius: 3 }} />
@@ -1803,10 +1791,10 @@ function ChannelsPage() {
                                 <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{recvPct}%</span>
                               </div>
                             </td>
-                            <td>
+                            <td data-label="State">
                               <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
-                            <td>{closeBtn(c)}</td>
+                            <td data-label="Action">{closeBtn(c)}</td>
                           </tr>
                         );
                       })}
@@ -1824,7 +1812,7 @@ function ChannelsPage() {
                   <span className="badge badge-muted">{externalLanes.length}</span>
                 </div>
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                  <table className="data-table phone-card" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
                       <col style={{ width: "25%" }} />
                       <col style={{ width: "12%" }} />
@@ -1848,12 +1836,12 @@ function ChannelsPage() {
                         const color = stateColor(c.state);
                         return (
                           <tr key={c.channel_id}>
-                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
-                            <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                            <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                            <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td data-label="Capacity" className="td-mono">{fmtCap(c.capacity_sat)}</td>
+                            <td data-label="Local" className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {c.local_balance_sat.toLocaleString()}
                             </td>
-                            <td>
+                            <td data-label="Balance">
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                   <div data-testid="capacity-bar" style={{ height: "100%", width: `${c.localPct}%`, background: color, borderRadius: 3 }} />
@@ -1861,10 +1849,10 @@ function ChannelsPage() {
                                 <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{c.localPct}%</span>
                               </div>
                             </td>
-                            <td>
+                            <td data-label="State">
                               <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
-                            <td>{closeBtn(c)}</td>
+                            <td data-label="Action">{closeBtn(c)}</td>
                           </tr>
                         );
                       })}
@@ -1882,7 +1870,7 @@ function ChannelsPage() {
                   <span className="badge badge-muted">{unclassifiedLanes.length}</span>
                 </div>
                 <div style={{ overflowX: "auto" }}>
-                  <table className="data-table" style={{ tableLayout: "fixed", width: "100%" }}>
+                  <table className="data-table phone-card" style={{ tableLayout: "fixed", width: "100%" }}>
                     <colgroup>
                       <col style={{ width: "25%" }} />
                       <col style={{ width: "12%" }} />
@@ -1904,12 +1892,12 @@ function ChannelsPage() {
                     <tbody>
                       {unclassifiedLanes.map((c) => (
                         <tr key={c.channel_id}>
-                          <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
-                          <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                          <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                          <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
+                          <td data-label="Capacity" className="td-mono">{fmtCap(c.capacity_sat)}</td>
+                          <td data-label="Local" className="td-num" style={{ fontFamily: "var(--mono)" }}>
                             {c.local_balance_sat.toLocaleString()}
                           </td>
-                          <td>
+                          <td data-label="Balance">
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                 <div style={{ height: "100%", width: `${c.localPct}%`, background: "var(--text-3)", borderRadius: 3 }} />
@@ -1918,7 +1906,7 @@ function ChannelsPage() {
                             </div>
                           </td>
                           <td></td>
-                          <td>{closeBtn(c)}</td>
+                          <td data-label="Action">{closeBtn(c)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1973,7 +1961,6 @@ function ChannelsPage() {
             {channels.map((c) => {
               const localPct = c.capacity_sat > 0 ? (c.local_balance_sat / c.capacity_sat) * 100 : 0;
               const remotePct = c.capacity_sat > 0 ? (c.remote_balance_sat / c.capacity_sat) * 100 : 0;
-              const h = health.find((x) => x.channel_id === c.channel_id);
               const isTreasury = c.peer_pubkey === TREASURY_PUBKEY;
               const capStatus = classifyCapacity(c.capacity_sat, isTreasury);
               const upgradeSize = recommendedUpgradeSize(c.capacity_sat, isTreasury);
