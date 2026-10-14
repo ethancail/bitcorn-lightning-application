@@ -1552,9 +1552,9 @@ function ChannelsPage() {
         function stateLabel(state: LaneState): string {
           const labels: Record<string, string> = {
             fresh: "Fresh", active: "Active", degrading: "Degrading",
-            renew_soon: "Renew Soon", exhausted: "Exhausted",
+            renew_soon: "Renew soon", exhausted: "Exhausted",
             open_for_receiving: "Receiving", earning: "Earning",
-            getting_full: "Getting Full", full_needs_withdrawal: "Needs Withdrawal",
+            getting_full: "Getting full", full_needs_withdrawal: "Needs withdrawal",
             healthy: "Healthy", constrained: "Constrained", critical: "Critical",
           };
           return labels[state] ?? state;

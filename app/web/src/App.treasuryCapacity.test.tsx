@@ -105,7 +105,7 @@ const rowOf = (el: Element, name: string) =>
   [...el.querySelectorAll("tr")].find((tr) => tr.textContent?.includes(name));
 
 describe("PR3-1: the treasury's lanes — the red tier turns amber, its words stay --text", () => {
-  for (const [name, label] of [["Merchant1", "Exhausted"], ["Farmer1", "Needs Withdrawal"], ["Ext1", "Critical"]]) {
+  for (const [name, label] of [["Merchant1", "Exhausted"], ["Farmer1", "Needs withdrawal"], ["Ext1", "Critical"]]) {
     it(`${name}: ${label} → amber bar, a caution badge, the % in --text`, async () => {
       const el = await renderAppAt("/channels", "treasury");
       const row = rowOf(el, name);
@@ -138,5 +138,31 @@ describe("PR3-5: \"Too small\" flags a size, not an error", () => {
     expect(badge, "the Too small badge renders").toBeDefined();
     expect(badge!.className).toContain("badge-caution");
     expect(badge!.className).not.toMatch(/badge-red|badge-amber/);
+  });
+});
+
+describe("R3 (PR 7): lane state badges in sentence case; the action buttons unchanged", () => {
+  // Treasury-local %s chosen for each multi-word state.
+  const lane = (id: string, peer: string, localPct: number) => ({
+    channel_id: id, peer_pubkey: peer, capacity_sat: 2_000_000,
+    local_balance_sat: localPct * 20_000, remote_balance_sat: (100 - localPct) * 20_000, active: 1,
+  });
+
+  it("Renew soon, Getting full, Needs withdrawal — and the Renew Soon / Renew Now buttons", async () => {
+    const M2 = pk("f"), F2 = pk("9");
+    channels = [lane("1", MERCHANT, 80), lane("2", FARMER, 20), lane("4", M2, 90), lane("5", F2, 10)];
+    stub.getContacts.mockResolvedValue([
+      ...CONTACTS,
+      { pubkey: M2, name: "Merchant2", tags: ["merchant"] },
+      { pubkey: F2, name: "Farmer2", tags: ["farmer"] },
+    ]);
+    const el = await renderAppAt("/channels", "treasury");
+    const badgeIn = (name: string) => rowOf(el, name)!.querySelector('.badge[data-testid="capacity-text"]')!.textContent;
+    expect(badgeIn("Merchant1")).toBe("Renew soon");
+    expect(badgeIn("Farmer1")).toBe("Getting full");
+    expect(badgeIn("Farmer2")).toBe("Needs withdrawal");
+    const button = (name: string) => rowOf(el, name)!.querySelector("button")!.textContent;
+    expect(button("Merchant1")).toBe("Renew Soon");
+    expect(button("Merchant2")).toBe("Renew Now");
   });
 });
