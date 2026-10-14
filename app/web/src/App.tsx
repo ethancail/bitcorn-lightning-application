@@ -1666,7 +1666,7 @@ function ChannelsPage() {
               <div className="alert info" style={{ marginBottom: 16 }}>
                 <span className="alert-icon">◈</span>
                 <div className="alert-body">
-                  <div className="alert-type">{unclassifiedLanes.length} Unclassified Channel{unclassifiedLanes.length > 1 ? "s" : ""}</div>
+                  <div className="alert-type">{unclassifiedLanes.length} unclassified channel{unclassifiedLanes.length > 1 ? "s" : ""}</div>
                   <div className="alert-msg">
                     <span className="ident">{unclassifiedLanes.map((c) => c.peerName).join(", ")}</span> — tag as
                     <strong> merchant</strong> or <strong>farmer</strong> in Contacts to classify.
@@ -1680,7 +1680,7 @@ function ChannelsPage() {
               <div className="alert warning" style={{ marginBottom: 16 }}>
                 <span className="alert-icon">⚠</span>
                 <div className="alert-body">
-                  <div className="alert-type">Merchant Channel Renewals Needed</div>
+                  <div className="alert-type">Merchant channel renewals needed</div>
                   <div className="alert-msg">
                     {needsRenewal.length} merchant channel{needsRenewal.length > 1 ? "s" : ""} approaching exhaustion.
                     Estimated on-chain capital needed: {projectedCapitalNeeded.toLocaleString()} sats.

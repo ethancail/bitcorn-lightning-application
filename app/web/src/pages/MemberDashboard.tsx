@@ -702,7 +702,7 @@ export default function MemberDashboard() {
               <div className="alert healthy">
                 <span className="alert-icon">✓</span>
                 <div className="alert-body">
-                  <div className="alert-type">Channel Opening Submitted</div>
+                  <div className="alert-type">Channel opening submitted</div>
                   <div className="alert-msg">
                     Your channel to the hub is being broadcast. It will become active after 1–3 on-chain confirmations. This page will update automatically.
                   </div>
@@ -963,7 +963,7 @@ export default function MemberDashboard() {
               <div className="alert info">
                 <span className="alert-icon">⚠</span>
                 <div className="alert-body">
-                  <div className="alert-type">Channel Upgrade Recommended</div>
+                  <div className="alert-type">Channel upgrade recommended</div>
                   <div className="alert-msg">
                     Your current channel is {ch.capacity_sats.toLocaleString()} sats.
                     Open a larger replacement channel ({upgradeCapacity.toLocaleString()} sats) to increase capacity.
