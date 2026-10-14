@@ -19,7 +19,6 @@ import RefillChannel from "./pages/RefillChannel";
 import Peers from "./pages/Peers";
 import ValuationInput from "./pages/ValuationInput";
 import AutoBuy from "./pages/AutoBuy";
-import NetworkGraph from "./components/NetworkGraph";
 import SubscriptionPanel from "./components/SubscriptionPanel";
 import ErrorState from "./components/ErrorState";
 import ActionConfirmModal, {
@@ -326,10 +325,81 @@ function SubscriptionNavBadge({ status }: { status: ReturnType<typeof useSubscri
   );
 }
 
-function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const autoBuyBadge = useAutoBuyBadge();
-  const navigate = useNavigate();
+type NavItem = { to: string; icon: string; label: string };
 
+function SidebarLink({ item, onClose, children }: { item: NavItem; onClose: () => void; children?: React.ReactNode }) {
+  return (
+    <div className="sidebar-section">
+      <NavLink
+        to={item.to}
+        className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
+        onClick={onClose}
+      >
+        <span className="icon">{item.icon}</span>
+        {item.label}
+        {children}
+      </NavLink>
+    </div>
+  );
+}
+
+// One sidebar for both shells (PR 5; App.navInventory.test.tsx pins what each
+// shell renders). A shell passes its items, the links that follow Buy Bitcoin
+// under the first item, and Settings' badge. Shell-only hooks stay in the
+// shell: the treasury must never start the member's subscription and
+// auto-pay polls.
+function Sidebar({
+  open,
+  onClose,
+  items,
+  afterFirst,
+  settingsBadge,
+}: {
+  open: boolean;
+  onClose: () => void;
+  items: NavItem[];
+  afterFirst: NavItem[];
+  settingsBadge?: React.ReactNode;
+}) {
+  const autoBuyBadge = useAutoBuyBadge();
+
+  return (
+    <nav className={`sidebar ${open ? "open" : ""}`}>
+      <div className="sidebar-mobile-header">
+        <span className="sidebar-mobile-title">Menu</span>
+        <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">✕</button>
+      </div>
+      <div className="sidebar-label">Navigate</div>
+      {items.map((item, i) => (
+        <React.Fragment key={item.to}>
+          <SidebarLink item={item} onClose={onClose}>
+            {item.to === "/auto-buy" && <NavAlertBadge badge={autoBuyBadge} />}
+          </SidebarLink>
+          {i === 0 && (
+            <>
+              <div className="sidebar-section">
+                <BuyBitcoinButton />
+              </div>
+              {afterFirst.map((extra) => (
+                <SidebarLink key={extra.to} item={extra} onClose={onClose} />
+              ))}
+            </>
+          )}
+        </React.Fragment>
+      ))}
+
+      <div style={{ flex: 1 }} />
+
+      <SidebarLink item={{ to: "/settings", icon: "⚙", label: "Settings" }} onClose={onClose}>
+        {settingsBadge}
+      </SidebarLink>
+    </nav>
+  );
+}
+
+const DEPOSIT: NavItem = { to: "/deposit", icon: "↙", label: "Deposit Bitcoin" };
+
+function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navItems = [
     { to: "/dashboard", icon: "▤", label: "Dashboard" },
     { to: "/charts", icon: "⟠", label: "Charts" },
@@ -346,60 +416,7 @@ function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void
     { to: "/admin/members", icon: "◆", label: "Members" },
   ];
 
-  return (
-    <nav className={`sidebar ${open ? "open" : ""}`}>
-      <div className="sidebar-mobile-header">
-        <span className="sidebar-mobile-title">Menu</span>
-        <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">✕</button>
-      </div>
-      <div className="sidebar-label">Navigate</div>
-      {navItems.map((item, i) => (
-        <React.Fragment key={item.to}>
-          <div className="sidebar-section">
-            <NavLink
-              to={item.to}
-              className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
-              onClick={onClose}
-            >
-              <span className="icon">{item.icon}</span>
-              {item.label}
-              {item.to === "/auto-buy" && <NavAlertBadge badge={autoBuyBadge} />}
-            </NavLink>
-          </div>
-          {i === 0 && (
-            <>
-              <div className="sidebar-section">
-                <BuyBitcoinButton />
-              </div>
-              <div className="sidebar-section">
-                <NavLink
-                  to="/deposit"
-                  className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
-                  onClick={onClose}
-                >
-                  <span className="icon">↙</span>
-                  Deposit Bitcoin
-                </NavLink>
-              </div>
-            </>
-          )}
-        </React.Fragment>
-      ))}
-
-      <div style={{ flex: 1 }} />
-
-      <div className="sidebar-section">
-        <NavLink
-          to="/settings"
-          className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
-          onClick={onClose}
-        >
-          <span className="icon">⚙</span>
-          Settings
-        </NavLink>
-      </div>
-    </nav>
-  );
+  return <Sidebar open={open} onClose={onClose} items={navItems} afterFirst={[DEPOSIT]} />;
 }
 
 function AppShell() {
@@ -444,14 +461,13 @@ function AppShell() {
 // ─── Member AppShell ───────────────────────────────────────────────────────
 
 function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose: () => void; channelRole: string }) {
-  const autoBuyBadge = useAutoBuyBadge();
   const subStatus = useSubscriptionStatus();
   const isMerchant = channelRole === "merchant";
   // Canonical operation names per decisions/2026-07-09-ui-vocabulary-canonical-terms.md
   // (Knot 2, updated: "Withdraw" = farmer Loop Out; "Top Up" = merchant Loop In).
-  const liquidityLabel = isMerchant ? "Top Up" : "Withdraw";
-  const liquidityIcon = isMerchant ? "↙" : "↗";
-  const liquidityRoute = isMerchant ? "/refill" : "/cashout";
+  const liquidity: NavItem = isMerchant
+    ? { to: "/refill", icon: "↙", label: "Top Up" }
+    : { to: "/cashout", icon: "↗", label: "Withdraw" };
 
   // ⚠ COSMETIC ONLY — THIS GATES NOTHING.
   //
@@ -486,69 +502,13 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
   ];
 
   return (
-    <nav className={`sidebar ${open ? "open" : ""}`}>
-      <div className="sidebar-mobile-header">
-        <span className="sidebar-mobile-title">Menu</span>
-        <button className="sidebar-close-btn" onClick={onClose} aria-label="Close menu">✕</button>
-      </div>
-      <div className="sidebar-label">Navigate</div>
-      {navItems.map((item, i) => (
-        <React.Fragment key={item.to}>
-          <div className="sidebar-section">
-            <NavLink
-              to={item.to}
-              className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
-              onClick={onClose}
-            >
-              <span className="icon">{item.icon}</span>
-              {item.label}
-              {item.to === "/auto-buy" && <NavAlertBadge badge={autoBuyBadge} />}
-            </NavLink>
-          </div>
-          {i === 0 && (
-            <>
-              <div className="sidebar-section">
-                <BuyBitcoinButton />
-              </div>
-              <div className="sidebar-section">
-                <NavLink
-                  to="/deposit"
-                  className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
-                  onClick={onClose}
-                >
-                  <span className="icon">↙</span>
-                  Deposit Bitcoin
-                </NavLink>
-              </div>
-              <div className="sidebar-section">
-                <NavLink
-                  to={liquidityRoute}
-                  className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
-                  onClick={onClose}
-                >
-                  <span className="icon">{liquidityIcon}</span>
-                  {liquidityLabel}
-                </NavLink>
-              </div>
-            </>
-          )}
-        </React.Fragment>
-      ))}
-
-      <div style={{ flex: 1 }} />
-
-      <div className="sidebar-section">
-        <NavLink
-          to="/settings"
-          className={({ isActive }) => `sidebar-item ${isActive ? "active" : ""}`}
-          onClick={onClose}
-        >
-          <span className="icon">⚙</span>
-          Settings
-          <SubscriptionNavBadge status={subStatus} />
-        </NavLink>
-      </div>
-    </nav>
+    <Sidebar
+      open={open}
+      onClose={onClose}
+      items={navItems}
+      afterFirst={[DEPOSIT, liquidity]}
+      settingsBadge={<SubscriptionNavBadge status={subStatus} />}
+    />
   );
 }
 

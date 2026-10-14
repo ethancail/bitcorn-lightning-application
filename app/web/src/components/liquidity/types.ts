@@ -55,7 +55,7 @@ export function healthWord(role: LiquidityRole, tier: HealthTier): string | null
   return role === "farmer" ? "Getting full" : "Low";
 }
 
-// Hard-coded external pubkeys (mirrors NetworkGraph.tsx today). ACINQ.
+// Hard-coded external pubkeys (mirrors ChannelsPage's list in App.tsx). ACINQ.
 export const EXTERNAL_PUBKEYS = new Set([
   "03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f",
 ]);

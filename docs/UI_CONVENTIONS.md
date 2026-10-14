@@ -60,7 +60,7 @@ Glow variants (`--green-glow`, `--red-glow`, etc.) are 10%-opacity backgrounds f
 
 ### `.panel` + `.panel-header` + `.panel-title` + `.panel-body`
 
-The standard containing element. Always use a panel instead of raw `<div>` for sectioning.
+The standard containing element. Always use a panel instead of raw `<div>` for sectioning. A panel is ONE level of containment (3B): `.panel-header` is a title row inside it, with no background strip or rule of its own, and its spacing assumes a `.panel-body` follows. A header followed by something else, or alone, still spaces correctly (`panelContainment.test.ts`), but don't put a box inside a panel to re-create a strip.
 
 ```tsx
 <div className="panel">
@@ -137,7 +137,6 @@ Placeholder while async data loads. Set a height via inline style:
 | `CornBitcoinChart` | Corn-bushels-per-BTC over time | Charts |
 | `CornMovingAveragesChart` | Corn MA overlays | Charts |
 | `BitcoinPriceGraph` | Standalone BTC price, 1M default | Dashboards |
-| `NetworkGraph` | Interactive Lightning topology | Liquidity page |
 | `ValuationInputAlertBanner` | "Valuation inputs stale" banner | Dashboard |
 
 Under `components/autoBuy/`: `CoinbaseCard`, `HistoryTable`, `InputsTab`, `StrategyTab`, `ValuationTab`. Do not import these outside the Auto-Buy page — they carry page-specific assumptions.
