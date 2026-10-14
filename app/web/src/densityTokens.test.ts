@@ -34,6 +34,8 @@ const B: Record<string, string> = {
   "--d-body": "0.9375rem",
   "--d-hl1": "2.25rem",
   "--d-hl2": "1.625rem",
+  "--d-price": "1.25rem",
+  "--d-chart-h": "120px",
   "--d-cols": "2",
 };
 

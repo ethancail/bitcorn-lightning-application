@@ -3833,6 +3833,24 @@ input[type="number"] {
 .tile-details[open] > summary { margin-bottom: var(--d-gap-inner); }
 .field-hint { font-size: var(--d-label); color: var(--text-3); text-align: center; }
 
+/* The Bitcoin price tile (BitcoinPriceGraph.tsx). The price supports the
+   user's own numbers, so it is sized below them (--d-price). X5a: the plot is
+   full height at every width; X5's fewer, non-colliding time labels are the
+   component's (it measures .price-plot). The plot's font-size is the axis
+   label size, which the component reads back (X2: labels follow density). */
+.price-head { margin-bottom: var(--d-gap-inner); }
+.price-spot {
+  font-family: var(--mono);
+  font-size: var(--d-price);
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+.price-change { font-family: var(--mono); font-size: var(--d-label); font-weight: 500; margin-top: 4px; }
+.price-change-period { color: var(--text-3); font-weight: 400; margin-left: 8px; }
+.price-plot { height: var(--d-chart-h); font-size: var(--d-label); }
+.btn-group-tight { display: flex; gap: 4px; flex-wrap: wrap; }
+
 /* ═══ DENSITY — round 1's variant b, Balanced (J1, picked) ═══════════════
    Every size that varies with density reads a --d-* token from here. A token
    lands with the PR that first reads it: PR 5 the shell, panels and tables;
@@ -3851,6 +3869,7 @@ input[type="number"] {
   --d-td-py: 12px;           --d-td-px: 14px;    --d-th-py: 10px;
   --d-label: 0.8125rem;      --d-body: 0.9375rem;
   --d-hl1: 2.25rem;          --d-hl2: 1.625rem;
+  --d-price: 1.25rem;        --d-chart-h: 120px;
   --d-cols: 2;
 }
 

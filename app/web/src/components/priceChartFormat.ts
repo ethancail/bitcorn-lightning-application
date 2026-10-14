@@ -103,3 +103,22 @@ export function niceTicks(min: number, max: number, maxTicks = 4): number[] {
   }
   return ticks;
 }
+
+/**
+ * How many evenly spaced axis labels fit across `available` px when the
+ * widest label is `labelWidth` px and neighbours need `gap` px between them.
+ * Round 1, X5: on a narrow screen the chart shows fewer time labels so they
+ * never collide ("2:00 AM6:00 AM" at 390px in round 1). Clamped to
+ * [min, max]; an unmeasured plot (no width yet) keeps `max`.
+ */
+export function fittingTickCount(
+  available: number,
+  labelWidth: number,
+  gap: number,
+  min = 2,
+  max = 6,
+): number {
+  if (!(available > 0) || !(labelWidth > 0)) return max;
+  const n = Math.floor((available + gap) / (labelWidth + gap));
+  return Math.max(min, Math.min(max, n));
+}

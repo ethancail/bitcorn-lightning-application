@@ -6,6 +6,7 @@
 //          lapse banners that refuse payments or close the channel stay on top).
 //   CHART — the price tile takes the headline's place in that order.
 //   D3   — a negative headline number is --text, never red.
+//   X5a  — the price plot is full height at every width.
 
 import { describe, expect, it } from "vitest";
 import { cssRules, declsFor } from "./styleRules.testutil";
@@ -96,5 +97,23 @@ describe("the detail grid", () => {
   it("--d-cols columns on desktop, one on a phone", () => {
     expect(declsFor(".dash-grid")["grid-template-columns"]).toBe("repeat(var(--d-cols), minmax(0, 1fr))");
     expect(declsFor(".dash-grid", PHONE)["grid-template-columns"]).toBe("minmax(0, 1fr)");
+  });
+});
+
+describe("X5 / X5a: the price chart", () => {
+  it("the plot reads the density chart height, and its axis labels read --d-label", () => {
+    expect(declsFor(".price-plot")).toMatchObject({ height: "var(--d-chart-h)", "font-size": "var(--d-label)" });
+  });
+
+  it("X5a: no rule anywhere cuts the plot's height on a phone", () => {
+    for (const r of RULES) {
+      if (r.media !== null && r.selectors.some((s) => s.includes("price-plot"))) {
+        expect(r.decls.height, `${r.media} ${r.selectors.join()}`).toBeUndefined();
+      }
+    }
+  });
+
+  it("the price supports: sized by --d-price, below the headline's --d-hl2", () => {
+    expect(declsFor(".price-spot")["font-size"]).toBe("var(--d-price)");
   });
 });
