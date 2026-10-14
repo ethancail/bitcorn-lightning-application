@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.21"
+version: "1.18.22"
 port: 3200
 
 description: >
@@ -27,6 +27,11 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.22: The app now uses one font, Inter, built into the app, so it no longer loads fonts from Google.
+  Node keys, transaction IDs and addresses stay in a fixed-width font so they are easy to compare, and numbers
+  line up in columns. The font choice in Settings is gone; text size stays. On Payments, your sending balance
+  now shows in the normal text colour. Nothing for you to do.
+
   v1.18.21: Red now means only an error. Channel balance warnings follow your
   Liquidity Advisor and show as an amber bar with a word ("Low" or "Getting
   full"). Sent and Received payments are marked with an arrow instead of a
