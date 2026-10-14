@@ -1716,12 +1716,12 @@ function ChannelsPage() {
                         const actionLabel = c.state === "exhausted" ? "Renew Now" : c.state === "renew_soon" ? "Renew Soon" : "Close";
                         return (
                           <tr key={c.channel_id}>
-                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
-                            <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                            <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                            <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td data-label="Capacity" className="td-mono">{fmtCap(c.capacity_sat)}</td>
+                            <td data-label="Forwarded" className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {c.remote_balance_sat.toLocaleString()}
                             </td>
-                            <td>
+                            <td data-label="Forwarding Left">
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                   <div data-testid="capacity-bar" style={{ height: "100%", width: `${fwdLeftPct}%`, background: color, borderRadius: 3 }} />
@@ -1729,10 +1729,10 @@ function ChannelsPage() {
                                 <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{fwdLeftPct}%</span>
                               </div>
                             </td>
-                            <td>
+                            <td data-label="State">
                               <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
-                            <td>{closeBtn(c, actionLabel)}</td>
+                            <td data-label="Action">{closeBtn(c, actionLabel)}</td>
                           </tr>
                         );
                       })}
@@ -1778,12 +1778,12 @@ function ChannelsPage() {
                         const color = stateColor(c.state);
                         return (
                           <tr key={c.channel_id}>
-                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
-                            <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                            <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                            <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td data-label="Capacity" className="td-mono">{fmtCap(c.capacity_sat)}</td>
+                            <td data-label="Accumulated" className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {accumulated.toLocaleString()}
                             </td>
-                            <td>
+                            <td data-label="Receive Capacity">
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                   <div data-testid="capacity-bar" style={{ height: "100%", width: `${recvPct}%`, background: color, borderRadius: 3 }} />
@@ -1791,10 +1791,10 @@ function ChannelsPage() {
                                 <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{recvPct}%</span>
                               </div>
                             </td>
-                            <td>
+                            <td data-label="State">
                               <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
-                            <td>{closeBtn(c)}</td>
+                            <td data-label="Action">{closeBtn(c)}</td>
                           </tr>
                         );
                       })}
@@ -1836,12 +1836,12 @@ function ChannelsPage() {
                         const color = stateColor(c.state);
                         return (
                           <tr key={c.channel_id}>
-                            <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
-                            <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                            <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                            <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
+                            <td data-label="Capacity" className="td-mono">{fmtCap(c.capacity_sat)}</td>
+                            <td data-label="Local" className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {c.local_balance_sat.toLocaleString()}
                             </td>
-                            <td>
+                            <td data-label="Balance">
                               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                 <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                   <div data-testid="capacity-bar" style={{ height: "100%", width: `${c.localPct}%`, background: color, borderRadius: 3 }} />
@@ -1849,10 +1849,10 @@ function ChannelsPage() {
                                 <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", color: stateTextColor(c.state), fontSize: "0.75rem" }}>{c.localPct}%</span>
                               </div>
                             </td>
-                            <td>
+                            <td data-label="State">
                               <span data-testid="capacity-text" className={`badge ${stateBadge(c.state)}`}>{stateLabel(c.state)}</span>
                             </td>
-                            <td>{closeBtn(c)}</td>
+                            <td data-label="Action">{closeBtn(c)}</td>
                           </tr>
                         );
                       })}
@@ -1892,12 +1892,12 @@ function ChannelsPage() {
                     <tbody>
                       {unclassifiedLanes.map((c) => (
                         <tr key={c.channel_id}>
-                          <td className="ident" style={{ fontWeight: 500 }}>{c.peerName}</td>
-                          <td className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                          <td className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                          <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
+                          <td data-label="Capacity" className="td-mono">{fmtCap(c.capacity_sat)}</td>
+                          <td data-label="Local" className="td-num" style={{ fontFamily: "var(--mono)" }}>
                             {c.local_balance_sat.toLocaleString()}
                           </td>
-                          <td>
+                          <td data-label="Balance">
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <div style={{ width: 60, height: 6, borderRadius: 3, background: "var(--bg-3)", overflow: "hidden", flexShrink: 0 }}>
                                 <div style={{ height: "100%", width: `${c.localPct}%`, background: "var(--text-3)", borderRadius: 3 }} />
@@ -1906,7 +1906,7 @@ function ChannelsPage() {
                             </div>
                           </td>
                           <td></td>
-                          <td>{closeBtn(c)}</td>
+                          <td data-label="Action">{closeBtn(c)}</td>
                         </tr>
                       ))}
                     </tbody>

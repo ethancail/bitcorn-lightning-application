@@ -169,19 +169,19 @@ function PaymentRow({ payment }: { payment: SubscriptionPaymentRow }) {
   const dateMs = payment.confirmed_at ?? payment.received_at;
   return (
     <tr>
-      <td>{formatDateTime(dateMs)}</td>
-      <td>
+      <td className="td-primary">{formatDateTime(dateMs)}</td>
+      <td data-label="Amount">
         <AmountCell payment={payment} />
       </td>
-      <td>
+      <td data-label="Transaction">
         <TxidCell payment={payment} />
       </td>
-      <td>
+      <td data-label="Membership extended">
         {payment.period_extension_days > 0
           ? `+${payment.period_extension_days}d`
           : <span className="sub-muted">—</span>}
       </td>
-      <td>
+      <td data-label="Status">
         <StatusPill status={payment.status} />
       </td>
     </tr>
