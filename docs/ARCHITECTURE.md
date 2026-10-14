@@ -246,7 +246,7 @@ The full per-version changelog lives in `git log`. Snapshot of capabilities curr
 - Treasury Channels page with lane sections
 - Treasury Peers page: connect by URI, onboarding guide, live peers table
 - Treasury Settings page (max-width 720px): Routing Fee Policy + Capital Guardrails + Appearance
-- Swap Operations page: Loop Out / Loop In tabs with visual channel picker
+- Swap Operations page: Loop Out tab with visual channel picker (the treasury Loop In tab was removed; those routes answer 410)
 - Network Topology graph (SVG hub-and-spoke, zoom/pan, role-colored)
 
 **Charts & commodities**
