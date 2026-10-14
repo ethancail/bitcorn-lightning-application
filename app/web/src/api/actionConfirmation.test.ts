@@ -145,19 +145,36 @@ describe("the server accepts what the client computes", () => {
     });
   }
 
+  // SYNTHETIC Shape-2 route, one descriptor per side. The only live path-field
+  // route (member-liquidity …/approve) was deleted by ruling D2 of
+  // decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md; both
+  // derivations still support `from: "path"` on a `wrap` matcher, so their
+  // agreement is pinned against the derivation code itself.
+  const SYNTH_MATCH = { kind: "wrap" as const, prefix: "/api/test-only/things/", suffix: "/act" };
+  const SYNTH_FIELDS = [{ name: "thing_id", from: "path" as const, kind: "text" as const }];
+  const synthClient = { method: "POST", match: SYNTH_MATCH, fields: SYNTH_FIELDS };
+  const synthServer: ServerRoute = {
+    method: "POST",
+    match: SYNTH_MATCH,
+    shape: 2,
+    fields: SYNTH_FIELDS,
+    note: "test-only",
+  };
+  const deriveSynth = (url: string, body: unknown) => confirmationFor(synthClient, url, JSON.stringify(body));
+
   it("the Shape-2 path field is read from the URL, and the server agrees", () => {
-    const url = "/api/member-liquidity/recommendations/rec-42/approve";
+    const url = "/api/test-only/things/rec-42/act";
     const body = { estimateId: "est-7" };
-    const d = derive(url, body);
+    const d = deriveSynth(url, body);
     expect(d.ok).toBe(true);
     if (!d.ok) return;
-    expect(d.canonical).toBe("recommendation_id=rec-42");
-    expect(verifyConfirmation(serverRoute("POST", url), { url, body }, d.value)).toEqual({ ok: true });
+    expect(d.canonical).toBe("thing_id=rec-42");
+    expect(verifyConfirmation(synthServer, { url, body }, d.value)).toEqual({ ok: true });
   });
 
-  it("a different recommendation id is a different confirmation", () => {
-    const a = derive("/api/member-liquidity/recommendations/rec-42/approve", {});
-    const b = derive("/api/member-liquidity/recommendations/rec-99/approve", {});
+  it("a different path id is a different confirmation", () => {
+    const a = deriveSynth("/api/test-only/things/rec-42/act", {});
+    const b = deriveSynth("/api/test-only/things/rec-99/act", {});
     expect(a.ok && b.ok).toBe(true);
     if (!a.ok || !b.ok) return;
     expect(a.value).not.toBe(b.value);

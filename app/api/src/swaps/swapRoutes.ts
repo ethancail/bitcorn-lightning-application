@@ -1,5 +1,5 @@
 // Swap API route handlers — member withdrawal + treasury swap operations.
-// Follows the same pattern as liquidityRoutes.ts and other route handlers.
+// Follows the same pattern as the other route handlers.
 
 import type { IncomingMessage, ServerResponse } from "http";
 import { getNodeInfo } from "../api/read";

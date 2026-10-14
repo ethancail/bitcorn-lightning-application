@@ -3,7 +3,6 @@ import {
   challengePrompt,
   challengeSatisfied,
   challengeTarget,
-  summarizeApproveLiquidity,
   summarizeCloseChannel,
   summarizeLoopIn,
   summarizeLoopOut,
@@ -25,8 +24,6 @@ const ALL: Array<[string, ActionSummary]> = [
   ["payInvoice", summarizePayInvoice({ amountSats: 25_000, destination: "02abcdef1234567890" })],
   ["loopOut", summarizeLoopOut({ amountSats: 500_000, destinationAddress: "bc1qxyzqabc123" })],
   ["loopIn", summarizeLoopIn({ amountSats: 250_000 })],
-  ["approveLiquidity", summarizeApproveLiquidity({ recommendationId: "rec-42", amountSats: 100_000 })],
-  ["approveLiquidity no amount", summarizeApproveLiquidity({ recommendationId: "rec-42" })],
 ];
 
 describe("the typed challenge", () => {
@@ -117,7 +114,6 @@ describe("every summary is usable", () => {
       summarizePayInvoice({ amountSats: 25_000 }),
       summarizeLoopOut({ amountSats: 500_000, destinationAddress: "bc1q" }),
       summarizeLoopIn({ amountSats: 250_000 }),
-      summarizeApproveLiquidity({ recommendationId: "r", amountSats: 100_000 }),
     ];
     for (const s of withAmounts) expect(s.challenge.kind, s.title).toBe("amount");
   });

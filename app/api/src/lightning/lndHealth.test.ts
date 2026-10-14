@@ -16,7 +16,7 @@ import {
 // payFromNode.ts:109-112. The gRPC error sits at err[2].err and carries .code
 // and .details. NOTE the top-level err.code / err.details / err.message are all
 // UNDEFINED on these shapes, which is why grpcStatusCode() traverses into the
-// nested .err (and why index.ts:248's `err?.code` logs an empty string —
+// nested .err (and why index.ts:301's `err?.code` logs an empty string —
 // reported, out of scope).
 //
 // ══ PROVENANCE ══════════════════════════════════════════════════════════════
@@ -131,7 +131,7 @@ const CONN_PLAIN = Object.assign(
 const CONN_ECONNREFUSED = new Error("connect ECONNREFUSED 127.0.0.1:10009");
 
 /**
- * The app's OWN error from lnd.ts:67. ⚠ It contains the word "macaroon", so a
+ * The app's OWN error from lnd.ts:109. ⚠ It contains the word "macaroon", so a
  * naive text order would classify it as `auth`. It is a file/connect problem.
  */
 const CONN_APP_OWN = new Error(
@@ -193,7 +193,7 @@ describe("grpcStatusCode — pulls the numeric status out of every shape", () =>
   // values live only at err[2].err.*. A grpcStatusCode() that read the top
   // level would return null for every real fault and every credential error
   // would fall to the text rules with no numeric signal at all. (This is also
-  // exactly why index.ts:248's `err?.code` logs an empty string — reported,
+  // exactly why index.ts:301's `err?.code` logs an empty string — reported,
   // out of scope.)
   it("extracts from err[2].err on the real shape, where the top level is undefined", () => {
     const real: any = REAL_UNDERSCOPED_OFFCHAIN;
@@ -297,7 +297,7 @@ describe("classifyLndError — connectivity", () => {
     );
   });
 
-  // PRECEDENCE TRAP: lnd.ts:67's own message contains the word "macaroon", so
+  // PRECEDENCE TRAP: lnd.ts:109's own message contains the word "macaroon", so
   // a naive text order classifies it as auth. The inequality against a GENUINE
   // macaroon-format error is the load-bearing half here.
   it("classifies the app's own 'missing TLS cert or readonly macaroon' as connectivity, NOT auth", () => {
@@ -551,7 +551,7 @@ describe("done-when 3: a rejected macaroon reports auth, distinctly", () => {
       "offchain:read": "auth",
       "onchain:read": "auth",
     });
-    // The discriminating data is PRESERVED, not discarded as at index.ts:248.
+    // The discriminating data is PRESERVED, not discarded as at index.ts:301.
     // Real 0.20.0-beta values: code 2, discriminated by the details text.
     for (const s of report.scopes) {
       expect(s.code).toBe(2);

@@ -160,15 +160,15 @@ Computed on read — nothing is persisted. Each entry is
 60s by the treasury Dashboard, which renders only `critical` and `warning`, so an
 `info` alert is not shown in the alert list.
 
-`heading` is the plain-language title the Dashboard prints (e.g. "Keysend off for some
-member nodes"). The API sets it where each alert is created — `treasury-alerts.ts`,
+`heading` is the plain-language title the Dashboard prints (e.g. "Daily loss limit
+reached"). The API sets it where each alert is created — `treasury-alerts.ts`,
 `channelDataStaleness.ts`, `lndFaultAlerts.ts` — and the Dashboard falls back to
 "Treasury alert" without it; it never derives a heading from `type`.
 
 Types: `ROTATION_CANDIDATES_PRESENT` · `DAILY_LOSS_CAP_EXCEEDED` ·
 `DAILY_LOSS_CAP_NEAR` · `DAILY_EXPANSION_LIMIT_REACHED` · `DAILY_DEPLOY_LIMIT_NEAR` ·
 `ONCHAIN_RESERVE_BREACHED` · `ONCHAIN_RESERVE_NEAR` · `SCHEDULER_SIMULATION_MODE` ·
-`LOOP_OUT_AVAILABLE` · `LOOP_NOT_INSTALLED` · `MEMBER_KEYSEND_DISABLED` ·
+`LOOP_OUT_AVAILABLE` · `LOOP_NOT_INSTALLED` ·
 `VALUATION_MANUAL_STALE` · `CHANNEL_DATA_STALE` · **`LND_FAULT`** ·
 **`ONCHAIN_RESERVE_CHECK_SKIPPED`**
 
@@ -266,11 +266,12 @@ mechanism, not introduced here.
 | GET | `/api/treasury/expansion/recommendations` | Recommendations derived from liquidity health |
 | POST | `/api/treasury/expansion/execute` | Open channel (`{ peer_pubkey, capacity_sats, is_private? }`) |
 
-**Circular rebalance (legacy — unused in hub-and-spoke)**
+**Rebalance executions**
+
+The manual circular rebalance route (`POST /api/treasury/rebalance/circular`) was deleted by ruling D1 of `decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md` (bitcorn-research); a POST to it is now refused as unclassified (400 `confirmation_required`).
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/treasury/rebalance/circular` | Manual circular rebalance. Body: `tokens`, `max_fee_sats` (required); `outgoing_channel`, `incoming_channel` (optional — auto-selects best donor/receiver if omitted) |
 | GET | `/api/treasury/rebalance/executions` | Rebalance execution history (query: `limit` default 50, max 500) |
 
 **Loop Out (submarine swap)**
@@ -300,18 +301,9 @@ mechanism, not introduced here.
 | POST | `/api/admin/members/public-aliases/refresh` | Button-driven gossip lookup of every roster pubkey (channel peers ∪ subscription rows), at most 4 in flight, each with the 10s gossip deadline. Returns `{ ok, total, alias, none_announced, not_in_graph, failed }`; `409 refresh_in_progress` if one is already running. Never writes `contacts`. Confirmation: EXEMPT |
 | GET | `/api/admin/members/private-names` | The treasury's store of members' Bitcorn-level names: `{ names: [{ pubkey, name, signed_at, received_at }] }` — each sent by the member under its own signature on `/api/subscription/token`, then verified, validated and blocklist-checked. `signed_at` is the challenge timestamp that signed it. 500 `private_name_read_failed`. Read separately by the roster so its failure degrades one column. A read — GETs are not classified for confirmation |
 
-**Member liquidity (treasury-side, edge-case only)**
+**Member liquidity (treasury-side) — removed 2026-10-13**
 
-Treasury-operator-approved push flow used for initial channel provisioning or edge-case maintenance; not part of steady-state rebalancing. Steady-state member rebalancing is driven by the Member Liquidity Advisor on the member node — see `/api/liquidity/*` above.
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/member-liquidity/clusters` | Cluster overview |
-| GET | `/api/member-liquidity/recommendations` | Pending top-up recommendations |
-| GET | `/api/member-liquidity/estimate` | Keysend push estimate (60s TTL) |
-| POST | `/api/member-liquidity/approve` | Approve and execute top-up |
-| POST | `/api/member-liquidity/reject` | Reject recommendation |
-| GET | `/api/member-liquidity/outcomes` | Top-up history |
+The treasury push routes under `/api/member-liquidity/*` were deleted by ruling D2 of `decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md` (bitcorn-research). A POST to one is now refused as unclassified (400 `confirmation_required`); a GET falls through to 404. Steady-state member rebalancing is the Member Liquidity Advisor on the member node — see `/api/liquidity/*` above.
 
 ## Write Requests: JSON only, no cross-site browsers
 
@@ -385,7 +377,8 @@ Consequences worth knowing before you write a caller:
   being reused for a force close, or a fee ceiling being raised after the fact.
 - **Adding an optional field to a route does not break existing callers** who
   never sent it, since absent contributes nothing.
-- **An optional *number* that arrives empty is refused** (400), not hashed —
+- **An optional *number* that arrives empty is refused** (400), not hashed (no
+  current route takes one; the rule is the mechanism's, pinned in its tests) —
   `Number("")` is `0`, and hashing that would read an empty field as a
   deliberate zero. An optional *text* field may legitimately be empty and
   hashes as the bare `name=`.
@@ -404,31 +397,24 @@ curl -sS -X POST http://localhost:3101/api/pay \
 ```
 
 ```bash
-# POST /api/treasury/rebalance/circular
-#   fields: outgoing_channel, incoming_channel, tokens, max_fee_sats (optional)
-# max_fee_sats is in the hash because the principal RETURNS to this node — the
-# routing fee is the only thing that actually leaves, so it is this route's
-# amount field. `tokens` is the field that does not go anywhere.
-BODY='{"outgoing_channel":"842391119757312","incoming_channel":"901234567890123","tokens":250000,"max_fee_sats":500}'
-CONFIRM=$(jq -rj '"outgoing_channel=" + .outgoing_channel
-                + "&incoming_channel=" + .incoming_channel
-                + "&tokens=" + (.tokens|tostring)
-                + (if .max_fee_sats == null then ""
-                   else "&max_fee_sats=" + (.max_fee_sats|tostring) end)
-                + (if .dry_run == null then ""
-                   else "&dry_run=" + (if .dry_run == true then "true" else "false" end) end)' \
+# POST /api/admin/swaps/loop-out
+#   fields: swap_request_id, destination_address (optional text)
+# destination_address is in the hash because it is where the coins land;
+# omitting it means the default sweep address, which is a different act.
+BODY='{"swap_request_id":"swap-ghi","destination_address":"bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"}'
+CONFIRM=$(jq -rj '"swap_request_id=" + .swap_request_id
+                + (if .destination_address == null then ""
+                   else "&destination_address=" + .destination_address end)' \
           <<<"$BODY" | sha256sum | cut -d' ' -f1)
-# with max_fee_sats:500      -> 344efd60efa374ae42d6fb189567fafcefbd00120fa5cf568b635be66d6b19d3
-# both omitted               -> 933e462d5924ffe5f35484297f8006e8968afe14dc374fef12877ba2377f2342
-# tokens only + dry_run:true -> b921ea90378cbe9f215bbb1dd5a960c53cec8b2f5ae6bb450e5746a5c0923726
+# with destination_address -> 676cf893e23066c95bd83b0c5938f903fd277775940b8d82a768a5e5463740e6
+# destination omitted      -> f7e788fffb935543a4ce7215e04c2990c6cbe410d3efc5f3313525f03279aaac
 ```
 
-### `dry_run` is hashed on the three routes that accept it
+### `dry_run` is hashed on the two routes that accept it
 
-`expansion/execute`, `rotation/execute` and `rebalance/circular` return a
-preview instead of acting when `dry_run` is `true`. Nothing else in the body
-distinguishes a preview from the real thing, so `dry_run` is part of the hash on
-all three: **a confirmation computed for a preview will not execute, and one
+`expansion/execute` and `rotation/execute` return a preview instead of acting
+when `dry_run` is `true`. Nothing else in the body distinguishes a preview from
+the real thing, so `dry_run` is part of the hash on both: **a confirmation computed for a preview will not execute, and one
 computed for the real act will not preview.** Both directions return 409.
 
 It is optional and hashed last, so a caller that never sends it is unaffected —

@@ -68,7 +68,7 @@ Do NOT:
 
 ### Liquidity
 - Steady-state rebalancing is member-driven via the Member Liquidity Advisor: farmers run Loop Out locally; merchants run Loop In locally
-- Treasury push (keysend-based) is reserved for initial channel provisioning and operator-approved edge cases
+- Treasury push (keysend-based) was removed 2026-10-13; there is no treasury-to-member push path
 - Treasury-side Loop Out is reserved for maintaining external inbound (so member Loop In can succeed) and edge-case treasury maintenance
 - Channel provisioning is asymmetric by role (high outbound for merchants, high inbound for farmers); rebalancing restores this asymmetry, never targets 50/50
 - Cluster rebalance engine v1 (circular rebalance, fee steering, topology monitor) is legacy and gated off by default

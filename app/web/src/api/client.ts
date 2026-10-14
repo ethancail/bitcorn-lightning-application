@@ -258,29 +258,6 @@ export const api = {
     if (limit) qs.set("limit", String(limit));
     return apiFetch<MemberLiquidityHistoryResponse>(`/api/liquidity/history?${qs}`);
   },
-  // Member Liquidity (treasury-only)
-  getLiquidityClusters: () => apiFetch<LiquidityClustersResponse>("/api/member-liquidity/clusters"),
-  getLiquidityRecommendations: () => apiFetch<LiquidityRecommendationsResponse>("/api/member-liquidity/recommendations"),
-  getLiquidityEstimate: (recId: string) =>
-    apiFetch<LiquidityEstimateResponse>(`/api/member-liquidity/recommendations/${recId}/estimate`),
-  approveLiquidity: (recId: string, estimateId: string) =>
-    apiFetch<LiquidityApproveResponse>(`/api/member-liquidity/recommendations/${recId}/approve`, {
-      method: "POST",
-      body: JSON.stringify({ estimateId }),
-    }),
-  rejectLiquidity: (recId: string) =>
-    apiFetch<{ ok: boolean }>(`/api/member-liquidity/recommendations/${recId}/reject`, {
-      method: "POST",
-      body: JSON.stringify({}),
-    }),
-  getLiquidityOutcomes: (params?: { clusterId?: string; status?: string; limit?: number }) => {
-    const qs = new URLSearchParams();
-    if (params?.clusterId) qs.set("clusterId", params.clusterId);
-    if (params?.status) qs.set("status", params.status);
-    if (params?.limit) qs.set("limit", String(params.limit));
-    const q = qs.toString();
-    return apiFetch<LiquidityOutcomesResponse>(`/api/member-liquidity/outcomes${q ? `?${q}` : ""}`);
-  },
   // Pending channels
   getPendingChannels: () => apiFetch<PendingChannel[]>("/api/channels/pending"),
   // Treasury channel operations
@@ -320,7 +297,7 @@ export const api = {
   // adminLoopInQuote / adminLoopIn — removed from active architecture (v1.7.1).
   // Treasury-INITIATED Loop In endpoints return 410 (treasury maintains its own inbound
   // via Loop OUT on external channels). Member-side Loop In (a merchant refilling their
-  // own channel) is a different flow — see /api/swaps/loop-in when implemented.
+  // own channel) is a different, live flow — getSwapLoopInQuote / initiateSwapLoopIn above.
   adminSwapList: (limit?: number) => {
     const q = limit ? `?limit=${limit}` : "";
     return apiFetch<{ swaps: SwapRequest[] }>(`/api/admin/swaps${q}`);
@@ -1143,74 +1120,6 @@ export type PaymentResult = {
 };
 
 export type ExchangeRate = { usd: number; source: string };
-
-// ─── Member Liquidity types ──────────────────────────────────────────────
-
-export type LiquidityCluster = {
-  clusterId: string;
-  label: string;
-  peerPubkey: string;
-  policyRole: string;
-  totalCapacitySats: number;
-  localBalanceSats: number;
-  remoteBalanceSats: number;
-  localPct: number;
-  targetMinPct: number;
-  targetMidPct: number;
-  targetMaxPct: number;
-  deviationDirection: "below" | "above" | "inside";
-  deviationPct: number;
-  channelCount: number;
-  activeChannelCount: number;
-};
-
-export type LiquidityClustersResponse = { clusters: LiquidityCluster[] };
-
-export type LiquidityRecommendation = {
-  recommendationId: string;
-  clusterId: string;
-  actionType: "treasury_push_topup";
-  triggerReason: string;
-  suggestedAmountSats: number;
-  projectedLocalPct: number | null;
-  status: string;
-  rejectedAt: number | null;
-  createdAt: number;
-  updatedAt: number;
-};
-
-export type LiquidityRecommendationsResponse = { recommendations: LiquidityRecommendation[] };
-
-export type LiquidityEstimate = {
-  estimateId: string;
-  recommendationId: string;
-  amountSats: number;
-  projectedTreasuryLocalPct: number;
-  projectedMemberLocalPct: number;
-  estimatedRoutingFeeSats: number;
-  estimatedAt: number;
-  estimateTtlSeconds: number;
-};
-
-export type LiquidityEstimateResponse = { estimate: LiquidityEstimate };
-
-export type LiquidityOutcome = {
-  outcomeId: string;
-  recommendationId: string;
-  clusterId: string;
-  actionType: string;
-  status: string;
-  actualAmountSats: number | null;
-  actualFeeSats: number | null;
-  paymentHash: string | null;
-  executionMethod: string | null;
-  failureReason: string | null;
-  executedAt: number;
-};
-
-export type LiquidityOutcomesResponse = { outcomes: LiquidityOutcome[] };
-
-export type LiquidityApproveResponse = { outcome: LiquidityOutcome };
 
 // ─── Member Liquidity Advisor types (member node) ────────────────────────
 

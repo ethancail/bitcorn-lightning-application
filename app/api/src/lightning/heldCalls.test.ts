@@ -1,10 +1,10 @@
-// CONTROL 4 — the six outcome-ambiguous calls must NOT acquire a deadline.
+// CONTROL 4 — the four outcome-ambiguous calls must NOT acquire a deadline.
 //
 // ─── WHY THIS CONTROL EXISTS ────────────────────────────────────────────────
 //
 // The tempting way to bound LND calls is one wrapper at the client layer, so
 // every call is covered and nothing can be forgotten. That shape would sweep
-// the six held calls in SILENTLY — the diff would look like an improvement and
+// the four held calls in SILENTLY — the diff would look like an improvement and
 // the regression would be invisible until a member's on-chain send timed out
 // with the transaction already broadcast. This test is the thing that fails if
 // anyone does that, deliberately or by refactor.
@@ -38,7 +38,7 @@ const PAY_TS = path.join(__dirname, "pay.ts");
  *
  * ⚠ THE RETURN-TYPE TRAP, FOUND BY THIS FILE'S OWN ANTI-VACUOUS GUARD. The
  * first version took `indexOf("{", indexOf(")"))` as the body. Three of the six
- * held functions declare an object return type —
+ * held functions of the time declared an object return type —
  * `): Promise<{ id: string; tokens: number; … }>` — so that found the brace of
  * the TYPE and "body" came back as the type literal. Every such case then
  * failed the contains-check rather than passing vacuously, which is the only
@@ -102,12 +102,10 @@ const HELD_SITES: ReadonlyArray<[string, string, string]> = [
   ["sendLndToChainAddress", LND_TS, "sendToChainAddress"],
   ["openTreasuryChannel", LND_TS, "openChannel"],
   ["closeTreasuryChannel", LND_TS, "closeChannel"],
-  ["payLndViaRoutes", LND_TS, "payViaRoutes"],
-  ["keysendPush", LND_TS, "payViaPaymentDetails"],
   ["payInvoice", PAY_TS, "payViaPaymentRequest"],
 ];
 
-describe("the six outcome-ambiguous calls carry no deadline", () => {
+describe("the four outcome-ambiguous calls carry no deadline", () => {
   for (const [fn, file, lnServiceCall] of HELD_SITES) {
     it(`${fn} does not wrap ${lnServiceCall} in a deadline`, () => {
       const body = functionBody(fs.readFileSync(file, "utf8"), fn);

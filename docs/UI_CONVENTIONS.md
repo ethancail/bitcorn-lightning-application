@@ -213,7 +213,6 @@ Both themes are supported. Never hardcode a color for one theme — always use C
 | `MemberDashboard.tsx` | v1.9.0 earnings revamp | Member. Lots of conditional panels based on channel state. |
 | `Charts.tsx` | Stable | Chart strip + power law. Clean already. |
 | `SwapOperations.tsx` | v1.9.37-38 revamp | Treasury. Channel picker is dense. |
-| `MemberLiquidity.tsx` | v1.6.2 | Treasury. Cluster overview + approve/reject modal. |
 
 ### 🔴 Rough — high polish impact
 

@@ -564,7 +564,7 @@ describe("runOneTick — Step 5 decode_errors handling", () => {
 //
 // Role is injected as a THUNK, not a value. node_role is written into
 // lnd_node_info by the LND sync (lightning/persist.ts) from an unawaited async
-// IIFE (index.ts:229) that races startBaseSyncLoop (index.ts:4355), and
+// IIFE (index.ts:284) that races startBaseSyncLoop (index.ts:4826), and
 // migration 010 defaults the column to 'external'. A treasury node whose LND is
 // slow at boot therefore reads as not-treasury for a while, and capturing the
 // role once would freeze that forever. The per-tick read is what makes it

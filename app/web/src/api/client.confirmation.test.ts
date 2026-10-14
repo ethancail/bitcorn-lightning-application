@@ -95,10 +95,6 @@ describe("every capital route the UI can reach sends a confirmation the server a
       () => api.treasuryCloseChannel({ channel_id: "842391119757312", is_force_close: true, fee_rate: 12 }),
     ],
     [
-      "member-liquidity approve",
-      () => api.approveLiquidity("rec-42", "est-7"),
-    ],
-    [
       "swaps/loop-out",
       () => api.initiateSwapLoopOut({ swap_request_id: "swap-abc", destination_address: "bc1qxyzq" }),
     ],

@@ -602,7 +602,7 @@ jobs:
     # is the designed one.
     #
     # WHY THIS IS NOT COSMETIC. Migrations are filename-keyed and run at API
-    # startup on every member node (app/api/src/index.ts:225 → runMigrations()).
+    # startup on every member node (app/api/src/index.ts:263 → runMigrations()).
     # A marker in a .sql throws a SQLite syntax error, which matches NEITHER
     # swallow condition in app/api/src/db/migrate.ts:46-57 ("duplicate column" /
     # "already exists"), so it rethrows and crashes the API at boot. And because
@@ -753,7 +753,7 @@ jobs:
             echo ""
             echo "WHY THIS BLOCKS"
             echo "Migrations are filename-keyed and run at API startup on every"
-            echo "member node (app/api/src/index.ts:225). A marker in a .sql throws a"
+            echo "member node (app/api/src/index.ts:263). A marker in a .sql throws a"
             echo "SQLite syntax error, which matches NEITHER swallow condition in"
             echo "app/api/src/db/migrate.ts:46-57, so it rethrows and crashes the API"
             echo "at boot. The applied-insert runs only after db.exec succeeds, so the"

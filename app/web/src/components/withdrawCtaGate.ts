@@ -29,13 +29,13 @@
 //
 // The flag rides the advisor object already in component state
 // (MemberDashboard.tsx:395, 60s poll), served whole by the API
-// (liquidityAdvisorRoutes.ts:47) and typed web-side at client.ts:1139. No new
+// (liquidityAdvisorRoutes.ts:47) and typed web-side at client.ts:1166. No new
 // fetch and no new endpoint.
 //
 // ─── DISABLED, NOT HIDDEN (decision C) ──────────────────────────────────────
 //
 // The caller keeps the button rendered and binds the native `disabled`
-// attribute. Hiding it was rejected: App.tsx:429-441 makes that argument on
+// attribute. Hiding it was rejected: App.tsx:472-482 makes that argument on
 // the same page for /stablecoin — hide the entry, keep the door, explain
 // inside — and the failure it names is that the member who most needs the
 // explanation becomes the only one who never sees it.

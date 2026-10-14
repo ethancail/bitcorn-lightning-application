@@ -12,7 +12,6 @@ import MemberDashboard from "./pages/MemberDashboard";
 import Charts from "./pages/Charts";
 import Contacts from "./pages/Contacts";
 import Payments from "./pages/Payments";
-import MemberLiquidity from "./pages/MemberLiquidity";
 import DepositBitcoin from "./pages/DepositBitcoin";
 import WithdrawBitcoin from "./pages/WithdrawBitcoin";
 import SwapOperations from "./pages/SwapOperations";

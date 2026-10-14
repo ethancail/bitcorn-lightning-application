@@ -21,7 +21,7 @@ import { act } from "react-dom/test-utils";
 import React, { useEffect } from "react";
 import ActionConfirmModal, { useActionConfirm } from "./components/actionConfirm/ActionConfirmModal";
 import {
-  summarizeCloseChannel, summarizeLoopOut, summarizeApproveLiquidity, summarizeOpenMemberChannel,
+  summarizeCloseChannel, summarizeLoopOut, summarizeOpenMemberChannel,
   summarizePayInvoice, summarizeTreasuryOpenChannel, type ActionSummary,
 } from "./components/actionConfirm/confirmAction";
 
@@ -115,7 +115,6 @@ describe("Z2: the confirm modal sets identifier rows in .ident, and only those",
     ["close channel", summarizeCloseChannel({ channelId: "123456789012345678", peerAlias: "M1", capacitySats: 1_000_000 }), ["Channel"]],
     ["payment", summarizePayInvoice({ amountSats: 1_000, destination: PK, memo: "m" }), ["To"]],
     ["loop out", summarizeLoopOut({ amountSats: 300_000, destinationAddress: "bcrt1q" + "x".repeat(38), feeSats: 500 }), ["To address"]],
-    ["liquidity approval", summarizeApproveLiquidity({ recommendationId: "rec-" + "9".repeat(20), amountSats: 1_000, peerAlias: "M1" }), ["Recommendation"]],
   ];
   for (const [name, summary, idents] of CASES) {
     it(name, async () => {

@@ -190,7 +190,7 @@ describe("CERT_EXPIRY_WARN_DAYS narrows the dashboard's window", () => {
 //
 // ⚠ THIS BLOCK USED TO BAN NAMING BITCORN HERE, and the ban is gone rather
 // than relaxed. Its reasoning was that v1.18.7's self-heal (the client rebuild
-// on a cert-bytes change, lnd.ts:115-152) had retired the follow-up restart —
+// on a cert-bytes change, lnd.ts:112-149) had retired the follow-up restart —
 // which is true ONLY for the API's own LND client. Loop is a separate service
 // in Bitcorn's own compose and does not self-heal, so the follow-up restart is
 // real for Loop and the cert notice now names it deliberately. Placement and
@@ -216,7 +216,7 @@ describe("the rendered remediation names the Lightning app restart", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 // ⚠ COPY RULE, ENFORCED. On a member node the farmer IS the operator, so
 // "ask your node operator" routes them back to themselves. Same shape as
-// ./actionConfirm/confirmAction.test.ts:160-170, including its anti-vacuity
+// ./actionConfirm/confirmAction.test.ts:156-171, including its anti-vacuity
 // check — without that, every regex could be wrong and the whole block would
 // pass silently.
 // ═══════════════════════════════════════════════════════════════════════════
@@ -247,7 +247,7 @@ describe("no copy tells the operator to ask an operator", () => {
 
   it("the ban list itself matches the phrases it is meant to catch", () => {
     // Without this the regexes could all be wrong and every check above would
-    // pass vacuously — the exact trap confirmAction.test.ts:167-170 guards.
+    // pass vacuously — the exact trap confirmAction.test.ts:166-170 guards.
     const PROBES = [
       "Please ask your node operator for help",
       "If this persists, contact your operator with the pubkey above",

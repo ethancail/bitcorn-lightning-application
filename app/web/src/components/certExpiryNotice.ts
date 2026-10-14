@@ -27,7 +27,7 @@
 // that phrasing routes them back to themselves. Same rule as
 // ./channelStaleness.ts:21-25, ./actionConfirm/confirmAction.ts:96 and
 // ../stablecoin/secureContext.ts:53, pinned by a test in the same shape as
-// ./actionConfirm/confirmAction.test.ts:160-170 — including that file's
+// ./actionConfirm/confirmAction.test.ts:156-171 — including that file's
 // anti-vacuity check, so the ban list cannot all be wrong and pass silently.
 //
 // ⚠ AND IT MUST READ CORRECTLY TO SOMEONE WHOSE NODE IS FINE. This ships as a

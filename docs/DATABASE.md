@@ -92,14 +92,14 @@ The migration set is contiguous from `001` through `059` with no gaps. Always al
 **Contacts**
 - `contacts` — address book with tags
 - `peer_public_alias` — treasury-only: what each roster member's node announces as its public alias (outcome + last attempt). NOT a name the treasury holds — the roster shows it in its own column, and it never feeds `contacts`
-- `member_keysend_status` — tracks peers that reject keysend (24h skip window)
+- `member_keysend_status` — tracked peers that reject keysend (24h skip window). No reader or writer since 2026-10-13; kept by decision (`decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`, D2/D3)
 
 **Cluster rebalance engine v1 (removed 2026-05; tables retained)**
 
-The cluster rebalance engine was removed in 2026-05 (see `decisions/2026-05-28-dormant-subsystems-disposition.md` in the bitcorn-research repo). Migrations 023–025 are retained because the kept `memberLiquidity` treasury-push code still `SELECT`s from `rebalance_clusters` and `rebalance_cluster_channels` — dropping the tables would break it at runtime. With the engine removed there is no writer; the tables are read but always empty (flagged as a latent finding in `docs/ARCHITECTURE.md` § Treasury Push).
+The cluster rebalance engine was removed in 2026-05 (see `decisions/2026-05-28-dormant-subsystems-disposition.md` in the bitcorn-research repo). Migrations 023–025 were first retained because the `memberLiquidity` treasury-push code still `SELECT`ed from `rebalance_clusters` and `rebalance_cluster_channels`. That code was deleted 2026-10-13 (`docs/ARCHITECTURE.md` § Treasury Push), so these tables now have no reader or writer; they are kept by decision (`decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`, D2).
 
-- `rebalance_clusters` — cluster definitions (read by retained `memberLiquidity` code; no writer)
-- `rebalance_cluster_channels` — channel → cluster membership (read by retained `memberLiquidity` code; no writer)
+- `rebalance_clusters` — cluster definitions. No reader or writer; kept by decision (`decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`)
+- `rebalance_cluster_channels` — channel → cluster membership. No reader or writer; kept by decision (`decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`)
 - `rebalance_fee_policy` — per-cluster fee bands and current state (orphaned)
 - `rebalance_fee_events` — fee steering history (orphaned)
 - `rebalance_runs` — per-execution run log (orphaned)
@@ -109,11 +109,14 @@ The cluster rebalance engine was removed in 2026-05 (see `decisions/2026-05-28-d
 - `rebalance_topology_recommendations` — topology monitor recommendations (orphaned)
 - `treasury_inventory_snapshots` — periodic inventory snapshots (orphaned)
 
-**Member liquidity (treasury-side)**
-- `member_liquidity_recommendations` — pending/resolved top-up recommendations
-- `member_liquidity_estimates` — keysend push fee/route estimates (60s TTL)
-- `member_liquidity_outcomes` — execution outcomes
-- `member_liquidity_config` — per-cluster thresholds
+**Member liquidity (treasury-side) — code removed 2026-10-13; tables kept**
+
+The treasury push that used these tables was deleted by ruling D2 of `decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md`. Each table below has no reader or writer and is kept by decision; no migration drops them.
+
+- `member_liquidity_recommendations` — pending/resolved top-up recommendations. No reader or writer; kept by decision
+- `member_liquidity_estimates` — keysend push fee/route estimates (60s TTL). No reader or writer; kept by decision
+- `member_liquidity_outcomes` — execution outcomes. No reader or writer; kept by decision
+- `member_liquidity_config` — per-cluster thresholds. No reader or writer; kept by decision
 
 **Member advisor (member-side)**
 - `member_channel_classifications` — per-run classification history

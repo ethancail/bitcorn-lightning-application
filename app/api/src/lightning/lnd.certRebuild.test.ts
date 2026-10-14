@@ -13,7 +13,7 @@
 //
 // ln-service is mocked wholesale, so no credentials are built and no socket is
 // opened. LND_DIR points at a scratch dir under os.tmpdir(). lnd.ts reads
-// LND_DIR at MODULE SCOPE (lnd.ts:34), so each case sets the env var and then
+// LND_DIR at MODULE SCOPE (lnd.ts:30), so each case sets the env var and then
 // dynamically imports through a reset module registry — a top-level import
 // would freeze the path at whatever the first test happened to set.
 //
@@ -187,7 +187,7 @@ describe("fix A — the client is rebuilt only when the cert BYTES change", () =
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  // The gate order at lnd.ts:66 must not move: isLndAvailable() runs BEFORE the
+  // The gate order at lnd.ts:108 must not move: isLndAvailable() runs BEFORE the
   // memo check, so an absent cert throws even while a working client is cached.
   // lndHealth.ts:285-291 documents that disagreement deliberately, and
   // APP_OWN_RE (lndHealth.ts:179) keys on this exact message.

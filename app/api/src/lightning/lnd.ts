@@ -2,7 +2,6 @@
 import {
   authenticatedLndGrpc,
   getWalletInfo,
-  getIdentity,
   getPeers,
   getChannels,
   getInvoices,
@@ -16,12 +15,10 @@ import {
   getPendingChannels,
   createInvoice,
   getRouteToDestination,
-  payViaRoutes,
   createChainAddress,
   getUtxos,
   signMessage,
   verifyMessage,
-  payViaPaymentDetails,
   sendToChainAddress,
   getChainFeeRate,
   updateAlias
@@ -358,19 +355,7 @@ export async function getLndChainBalance() {
 }
 
 /**
- * Gets our node's public key (for circular rebalance destination).
- */
-export async function getLndIdentity() {
-  const { lnd } = getLndClient();
-  return withDeadline(
-    "getLndIdentity",
-    () => getIdentity({ lnd }),
-    LND_FAST_CALL_TIMEOUT_MS,
-  );
-}
-
-/**
- * Creates an invoice on the treasury node (e.g. for self-pay rebalance).
+ * Creates an invoice on this node.
  */
 export async function createLndInvoice(tokens: number, description?: string) {
   const { lnd } = getLndClient();
@@ -379,42 +364,6 @@ export async function createLndInvoice(tokens: number, description?: string) {
     () => createInvoice({ lnd, tokens, description }),
     LND_FAST_CALL_TIMEOUT_MS,
   );
-}
-
-/**
- * Gets a route to a destination with optional outgoing channel and incoming peer (for circular rebalance).
- */
-export async function getLndRouteToDestination(options: {
-  destination: string;
-  tokens: number;
-  outgoing_channel?: string;
-  incoming_peer?: string;
-  max_fee?: number;
-  payment?: string;
-  total_mtokens?: string;
-}) {
-  const { lnd } = getLndClient();
-  return withDeadline(
-    "getLndRouteToDestination",
-    () => getRouteToDestination({ lnd, ...options }),
-    LND_GOSSIP_CALL_TIMEOUT_MS,
-  );
-}
-
-/**
- * Pays via a pre-built route (e.g. circular rebalance).
- *
- * ⚠ HELD — NO DEADLINE, DELIBERATELY. In HELD_UNBOUNDED_CALLS (callDeadline.ts).
- * A deadline cannot cancel the call, so giving up on an in-flight payment leaves
- * the outcome UNKNOWN: the HTLC may already have settled. Retrying is a double
- * spend, not retrying is a lost payment, and nothing local can tell which.
- * Slow is better than ambiguous here. Pinned by heldCalls.test.ts.
- */
-export type LndRoute = Awaited<ReturnType<typeof getLndRouteToDestination>>["route"];
-
-export async function payLndViaRoutes(id: string, routes: LndRoute[]) {
-  const { lnd } = getLndClient();
-  return payViaRoutes({ lnd, id, routes });
 }
 
 /**
@@ -690,51 +639,4 @@ export async function probeRouteToLoopServer(
     routable: false,
     error: `No route found from any Loop server (${servers.length} checked) to ${merchantPubkey.slice(0, 12)}... for ${amountSat} sats`,
   };
-}
-
-/**
- * Keysend push: sends sats directly to a peer via their pubkey using
- * payViaPaymentDetails. No invoice needed — the payment preimage is
- * generated locally and included via the keysend TLV (type 5482373484).
- *
- * @param destination - Peer's public key
- * @param tokens - Amount in sats to push
- * @param maxFee - Maximum routing fee in sats (usually 0 for direct peer)
- * @param outgoingChannel - Optional: force payment through this channel
- *
- * ⚠ HELD — NO DEADLINE, DELIBERATELY. In HELD_UNBOUNDED_CALLS (callDeadline.ts).
- * Keysend push permanently transfers sats. A deadline cannot cancel the payment,
- * so timing out leaves the treasury unsure whether the push landed — and the
- * member_liquidity_recommendations row would be marked failed against a transfer
- * that succeeded. Pinned by heldCalls.test.ts.
- */
-export async function keysendPush(options: {
-  destination: string;
-  tokens: number;
-  max_fee?: number;
-  outgoing_channel?: string;
-}): Promise<{
-  fee: number;
-  id: string;
-  is_confirmed: boolean;
-  tokens: number;
-  secret: string;
-}> {
-  const { lnd } = getLndClient();
-  const preimage = crypto.randomBytes(32);
-  const id = crypto.createHash("sha256").update(preimage).digest("hex");
-
-  return payViaPaymentDetails({
-    lnd,
-    destination: options.destination,
-    tokens: options.tokens,
-    id,
-    max_fee: options.max_fee ?? 0,
-    outgoing_channel: options.outgoing_channel,
-    features: [{ type: 9, is_required: true }],
-    messages: [{
-      type: "5482373484",
-      value: preimage.toString("hex"),
-    }],
-  });
 }

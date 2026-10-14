@@ -73,7 +73,7 @@ let intervalHandle: NodeJS.Timeout | null = null;
  *   a value. Injected rather than imported so this module keeps depending only
  *   on ./workerClient, ./store, ./types and ../config/env; the shape matches
  *   `startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null)`
- *   (index.ts:4347), which solves the same problem for the same reason.
+ *   (index.ts:4813), which solves the same problem for the same reason.
  */
 export async function runOneTick(
     getNodeRole: () => string | null,
@@ -149,8 +149,8 @@ export async function runOneTick(
         // known at boot. Migration 010 defaults the column to 'external', and
         // the value is written into lnd_node_info by the LND sync
         // (lightning/persist.ts) — from a fire-and-forget async IIFE
-        // (index.ts:229) that nothing awaits, racing startBaseSyncLoop
-        // (index.ts:4355). A treasury node whose LND is slow or unreachable at
+        // (index.ts:284) that nothing awaits, racing startBaseSyncLoop
+        // (index.ts:4826). A treasury node whose LND is slow or unreachable at
         // boot therefore genuinely reads as 'external' for a while. Capturing
         // the role once would freeze that: the treasury would skip forever and
         // look exactly like the bug this change fixes. Reading per tick makes
