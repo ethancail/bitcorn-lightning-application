@@ -481,7 +481,7 @@ p + .settings-section-label { margin-top: 8px; }
   text-align: right;
   font-variant-numeric: tabular-nums;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   padding: 4px 8px;
   color: var(--text);
@@ -1074,7 +1074,7 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
 
 .form-input {
   background: var(--bg-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius);
   padding: 10px 14px;
   font-family: var(--mono);
@@ -2715,7 +2715,7 @@ input[type="number"] {
 .admin-members-search {
   flex: 0 1 18rem;
   padding: 0.4rem 0.625rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   background: var(--bg-2);
   color: var(--fg-1);
@@ -3137,7 +3137,7 @@ input[type="number"] {
   font-size: 0.875rem;
   padding: 10px 12px;
   background: var(--bg-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius);
   color: var(--text);
 }

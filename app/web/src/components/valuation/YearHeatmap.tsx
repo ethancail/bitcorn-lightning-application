@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type CalendarSummary } from "../../api/client";
 import ErrorState from "../ErrorState";
+import { rampInk, rampMark } from "../rampInk";
 
 interface Props {
   year: number;
@@ -130,7 +131,7 @@ export default function YearHeatmap({ year, onSelectMonth, onPrevYear, onNextYea
                     width: "100%",
                     aspectRatio: "1",
                     background: cell.exists
-                      ? (cell.isFuture ? "transparent" : colorForCompleteness(cell.filled))
+                      ? (cell.isFuture ? "transparent" : rampMark(colorForCompleteness(cell.filled)))
                       : "transparent",
                     border: cell.exists && !cell.isFuture ? "1px solid var(--border)" : "1px solid transparent",
                     borderRadius: 2,
@@ -145,10 +146,10 @@ export default function YearHeatmap({ year, onSelectMonth, onPrevYear, onNextYea
       </div>
       <div style={{ marginTop: 12, display: "flex", gap: 12, fontSize: "0.75rem", color: "var(--text-3)" }}>
         <span>Empty</span>
-        <span style={{ color: "#fbbf24" }}>1–3</span>
-        <span style={{ color: "#facc15" }}>4–5</span>
-        <span style={{ color: "#84cc16" }}>6–7</span>
-        <span style={{ color: "#22c55e" }}>8/8</span>
+        <span style={{ color: rampInk("#fbbf24") }}>1–3</span>
+        <span style={{ color: rampInk("#facc15") }}>4–5</span>
+        <span style={{ color: rampInk("#84cc16") }}>6–7</span>
+        <span style={{ color: rampInk("#22c55e") }}>8/8</span>
       </div>
       </>
       )}

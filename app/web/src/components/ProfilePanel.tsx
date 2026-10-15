@@ -155,7 +155,7 @@ export default function ProfilePanel() {
               color: "var(--text)",
               fontFamily: "var(--sans)",
               fontSize: "0.875rem",
-              border: `2px solid ${showFormatError ? "var(--red, #ef4444)" : "var(--border)"}`,
+              border: `2px solid ${showFormatError ? "var(--red, #ef4444)" : "var(--border-control)"}`,
             }}
           />
           {showFormatError && (
