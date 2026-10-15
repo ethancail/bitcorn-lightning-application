@@ -567,7 +567,7 @@ function MasterControl({ status, onRefresh }: { status: AutoBuyStatus; onRefresh
                 : pausedReason ? `Paused: ${pausedReason}` : "Master switch is off"}
             </div>
             {cfg.consecutive_failures > 0 && (
-              <div style={{ fontSize: "0.75rem", color: "var(--amber)", marginTop: 2 }}>
+              <div className="warn-mark" style={{ fontSize: "0.75rem", color: "var(--text)", marginTop: 2 }}>
                 {cfg.consecutive_failures} consecutive failure{cfg.consecutive_failures === 1 ? "" : "s"} (auto-pause at 3)
               </div>
             )}

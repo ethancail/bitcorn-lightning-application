@@ -118,14 +118,14 @@ export default function Peers() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
               <div style={{ display: "flex", gap: 8 }}>
-                <span style={{ color: "var(--amber)", fontWeight: 600, minWidth: 18 }}>1.</span>
+                <span style={{ color: "var(--text-2)", fontWeight: 600, minWidth: 18 }}>1.</span>
                 <span>Their <strong>Node URI</strong> — a string in the format <code className="ident" style={{ background: "var(--bg-3)", padding: "2px 6px", borderRadius: 3, fontSize: "0.75rem" }}>pubkey@host:port</code></span>
               </div>
               <div style={{ display: "flex", gap: 8, paddingLeft: 26, fontSize: "0.75rem", color: "var(--text-3)" }}>
                 Found in: Umbrel → Lightning Node → click the "..." menu → Copy Node URI
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <span style={{ color: "var(--amber)", fontWeight: 600, minWidth: 18 }}>2.</span>
+                <span style={{ color: "var(--text-2)", fontWeight: 600, minWidth: 18 }}>2.</span>
                 <span>That's it — you just need their URI to connect and open a channel</span>
               </div>
             </div>
@@ -134,19 +134,19 @@ export default function Peers() {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div style={{ display: "flex", gap: 8 }}>
-                <span style={{ color: "var(--amber)", fontWeight: 600, minWidth: 18 }}>1.</span>
+                <span style={{ color: "var(--text-2)", fontWeight: 600, minWidth: 18 }}>1.</span>
                 <span>Install the <strong>BitCorn Lightning</strong> app from the Umbrel Community Store</span>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <span style={{ color: "var(--amber)", fontWeight: 600, minWidth: 18 }}>2.</span>
+                <span style={{ color: "var(--text-2)", fontWeight: 600, minWidth: 18 }}>2.</span>
                 <span>Open the app — it will auto-detect the treasury and show the member dashboard</span>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <span style={{ color: "var(--amber)", fontWeight: 600, minWidth: 18 }}>3.</span>
+                <span style={{ color: "var(--text-2)", fontWeight: 600, minWidth: 18 }}>3.</span>
                 <span>If they have funds, they can open a channel from the app directly</span>
               </div>
               <div style={{ display: "flex", gap: 8 }}>
-                <span style={{ color: "var(--amber)", fontWeight: 600, minWidth: 18 }}>4.</span>
+                <span style={{ color: "var(--text-2)", fontWeight: 600, minWidth: 18 }}>4.</span>
                 <span>If they don't have funds, you connect here and open a channel to them from the Channels page</span>
               </div>
             </div>

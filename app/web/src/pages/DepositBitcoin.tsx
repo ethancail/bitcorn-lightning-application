@@ -230,7 +230,7 @@ export default function DepositBitcoin() {
               </div>
               <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
                 <div className="stat-label">Pending</div>
-                <div className="stat-value" style={{ fontSize: "1.125rem", color: status.pending_balance_sat > 0 ? "var(--amber)" : undefined }}>
+                <div className="stat-value" style={{ fontSize: "1.125rem" }}>
                   {fmtSats(status.pending_balance_sat)}
                 </div>
               </div>

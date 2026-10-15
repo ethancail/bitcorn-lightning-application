@@ -205,7 +205,7 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
   font-family: var(--mono);
   font-weight: 600;
   font-size: 0.9375rem;
-  color: var(--amber);
+  color: var(--text);
   letter-spacing: 0.02em;
 }
 
@@ -287,8 +287,9 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 
 .sidebar-item.active {
   background: var(--amber-glow);
-  color: var(--amber);
+  color: var(--text);
   font-weight: 500;
+  box-shadow: inset 3px 0 0 var(--amber);
 }
 
 .sidebar-item .icon { font-size: 1rem; opacity: 0.8; }
@@ -379,7 +380,7 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
   opacity: 0.8;
 }
 .settings-section-label.ops {
-  color: var(--amber-dim);
+  color: var(--text-2);
 }
 .settings-section-label.ops::after {
   background: linear-gradient(to right, var(--amber) 0%, var(--border) 100%);
@@ -393,10 +394,10 @@ p + .settings-section-label { margin-top: 8px; }
   border-top: 2px solid var(--amber);
 }
 .panel.ops .panel-title {
-  color: var(--amber-dim);
+  color: var(--text);
 }
 .panel.ops .panel-title .icon {
-  color: var(--amber);
+  color: var(--amber);  /* a glyph marker, a mark */
 }
 
 /* ─── Settings page: policy cards (read + edit states) ───────── */
@@ -593,7 +594,7 @@ p + .settings-section-label { margin-top: 8px; }
   padding: 3px 8px;
   border-radius: var(--radius-sm);
   background: var(--amber-glow2);
-  color: var(--amber-dim);
+  color: var(--text);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -635,7 +636,7 @@ p + .settings-section-label { margin-top: 8px; }
 
 .stat-value.positive { color: var(--green); }
 .stat-value.negative { color: var(--text); }
-.stat-value.amber    { color: var(--amber); }
+.stat-value.amber    { color: var(--text); }
 
 .stat-sub {
   font-family: var(--mono);
@@ -921,7 +922,7 @@ p + .settings-section-label { margin-top: 8px; }
 }
 
 .data-table th:hover { color: var(--text-2); }
-.data-table th.sorted { color: var(--amber); }
+.data-table th.sorted { color: var(--text); box-shadow: inset 0 -2px 0 var(--amber); }
 
 .data-table td {
   padding: var(--d-td-py) var(--d-td-px);
@@ -972,7 +973,22 @@ p + .settings-section-label { margin-top: 8px; }
 
 .badge-green  { background: var(--green-glow);  color: var(--green); }
 .badge-red    { background: var(--red-glow);    color: var(--red); }
-.badge-amber  { background: var(--amber-glow);  color: var(--amber); }
+.badge-amber  { background: var(--amber-glow);  color: var(--text); gap: 5px; }
+/* Colour round: amber marks, never words. .badge-amber's word is --text beside an
+   amber dot, as .badge-caution's. ⚠ A shared class Daybreak consumes (N1). */
+.badge-amber::before,
+.warn-mark::before,
+.admin-members-unidentified-marker::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--amber);
+  flex-shrink: 0;
+}
+/* A warning said in words outside a badge: the same amber dot before it. */
+.warn-mark::before,
+.admin-members-unidentified-marker::before { display: inline-block; margin-right: 6px; vertical-align: 0.1em; }
 .badge-blue   { background: var(--blue-glow);   color: var(--blue); }
 .badge-orange { background: var(--orange-glow); color: var(--orange); }
 .badge-muted  { background: var(--bg-3); color: var(--text-3); }
@@ -996,7 +1012,7 @@ p + .settings-section-label { margin-top: 8px; }
   font-family: var(--mono);
   font-size: 0.625rem;
   background: var(--amber-glow);
-  color: var(--amber);
+  color: var(--text);
   letter-spacing: 0.02em;
 }
 
@@ -1030,10 +1046,15 @@ button:active:not(:disabled) { transform: scale(0.97); }
 button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 .btn-primary {
-  background: var(--amber);
-  color: #0a0a0c;
+  /* Colour round, as picked: the primary action is an ink button with an
+     amber rule, so amber stays a mark here too. (An amber fill would need
+     dark text in dark and light text in light: ink on dark --amber is 9.21:1,
+     white on light --amber 5.03:1.) */
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: inset 0 -2px 0 var(--amber);
 }
-.btn-primary:hover:not(:disabled) { background: #fbbf24; }
+.btn-primary:hover:not(:disabled) { background: var(--text-2); }
 
 .btn-outline {
   background: transparent;
@@ -1042,7 +1063,7 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
 }
 .btn-outline:hover:not(:disabled) {
   border-color: var(--amber-dim);
-  color: var(--amber);
+  color: var(--text);
 }
 
 .btn-ghost {
@@ -1134,7 +1155,7 @@ input[type="number"] {
 .text-right  { text-align: right; }
 .text-red    { color: var(--red); }
 .text-green  { color: var(--green); }
-.text-amber  { color: var(--amber); }
+.text-amber  { color: var(--text); }
 .truncate    { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .w-full      { width: 100%; }
 
@@ -1215,7 +1236,7 @@ input[type="number"] {
   font-family: var(--mono);
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--amber);
+  color: var(--text);
   letter-spacing: 0.03em;
 }
 
@@ -1251,14 +1272,14 @@ input[type="number"] {
 .wizard-rail-item .lbl {
   color: var(--text-3);
 }
-.wizard-rail-item.done .num { color: var(--amber-dim); }
+.wizard-rail-item.done .num { color: var(--text-2); }
 .wizard-rail-item.done .dot { background: var(--amber-dim); }
 .wizard-rail-item.done .lbl {
   color: var(--text-3);
   text-decoration: line-through;
   text-decoration-color: var(--text-3);
 }
-.wizard-rail-item.active .num { color: var(--amber); }
+.wizard-rail-item.active .num { color: var(--text); }
 .wizard-rail-item.active .dot {
   background: var(--amber);
   box-shadow: 0 0 0 3px var(--amber-glow);
@@ -1440,7 +1461,7 @@ input[type="number"] {
   border: 1px solid var(--border-hi);
   border-radius: var(--radius);
   background: transparent;
-  color: var(--amber);
+  color: var(--text);
   font-size: 1.25rem;
   cursor: pointer;
   flex-shrink: 0;
@@ -1612,7 +1633,7 @@ input[type="number"] {
   padding: 10px 16px;
   border: none;
   background: transparent;
-  color: rgba(245, 158, 11, 0.6);
+  color: var(--text-2);
   font-family: var(--mono);
   font-size: 0.875rem;
   cursor: pointer;
@@ -1621,12 +1642,13 @@ input[type="number"] {
 
 .payment-tab:hover {
   background: rgba(245, 158, 11, 0.05);
-  color: var(--amber);
+  color: var(--text);
 }
 
 .payment-tab.active {
   background: rgba(245, 158, 11, 0.1);
-  color: var(--amber);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--amber);
   font-weight: 600;
 }
 
@@ -1655,7 +1677,7 @@ input[type="number"] {
   max-height: 120px;
   overflow-y: auto;
   width: 100%;
-  color: rgba(245, 158, 11, 0.7);
+  color: var(--text-2);
   margin-top: 12px;
 }
 
@@ -1687,7 +1709,7 @@ input[type="number"] {
 .form-label {
   display: block;
   font-size: 0.8125rem;
-  color: rgba(245, 158, 11, 0.7);
+  color: var(--text-2);
   margin-bottom: 4px;
   font-family: var(--mono);
 }
@@ -1767,14 +1789,12 @@ input[type="number"] {
 
 /* Payment section — hardcoded rgba amber → adjusted for light bg */
 [data-theme="light"] .payment-tabs       { border-color: rgba(217,119,6,0.25); }
-[data-theme="light"] .payment-tab        { color: rgba(217,119,6,0.6); }
-[data-theme="light"] .payment-tab:hover  { background: rgba(217,119,6,0.08); color: var(--amber); }
-[data-theme="light"] .payment-tab.active { background: rgba(217,119,6,0.12); color: var(--amber); }
-[data-theme="light"] .bolt11-text        { background: rgba(0,0,0,0.04); border-color: rgba(217,119,6,0.2); color: var(--amber-dim); }
+[data-theme="light"] .payment-tab:hover  { background: rgba(217,119,6,0.08); }
+[data-theme="light"] .payment-tab.active { background: rgba(217,119,6,0.12); }
+[data-theme="light"] .bolt11-text        { background: rgba(0,0,0,0.04); border-color: rgba(217,119,6,0.2); }
 [data-theme="light"] .payment-preview    { background: rgba(217,119,6,0.06); border-color: rgba(217,119,6,0.15); }
 [data-theme="light"] .payment-result.success { background: rgba(21,128,61,0.08); border-color: rgba(21,128,61,0.2); }
 [data-theme="light"] .payment-result.failed  { background: rgba(220,38,38,0.08); border-color: rgba(220,38,38,0.2); }
-[data-theme="light"] .form-label         { color: var(--amber-dim); }
 
 /* Table row highlights */
 [data-theme="light"] .data-table tr.row-selected td       { background: rgba(217,119,6,0.08); }
@@ -1815,7 +1835,7 @@ input[type="number"] {
 .theme-option.selected {
   border-color: var(--amber);
   background: var(--amber-glow);
-  color: var(--amber);
+  color: var(--text);
 }
 
 /* ─── Liquidity page overhaul ────────────────────────────────── */
@@ -1839,7 +1859,7 @@ input[type="number"] {
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--amber-dim);
+  color: var(--text-2);
   font-weight: 600;
 }
 
@@ -2058,7 +2078,7 @@ input[type="number"] {
   gap: 8px;
 }
 .sub-panel-glyph {
-  color: var(--amber);
+  color: var(--amber);  /* a glyph marker, a mark */
   font-size: 0.8571rem;
 }
 .sub-panel-title h2 {
@@ -2067,7 +2087,7 @@ input[type="number"] {
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--amber);
+  color: var(--text);
   margin: 0;
 }
 
@@ -2097,8 +2117,8 @@ input[type="number"] {
 .sub-pill-gray-pulsing .sub-pill-dot {
   animation: sub-pill-pulse 1.6s ease-in-out infinite;
 }
-.sub-pill-muted-amber { color: var(--amber);  border-color: color-mix(in srgb, var(--amber) 30%, transparent);  background: var(--amber-glow2); }
-.sub-pill-amber       { color: var(--amber);  border-color: color-mix(in srgb, var(--amber) 45%, transparent);  background: var(--amber-glow); }
+.sub-pill-muted-amber { color: var(--text);  border-color: color-mix(in srgb, var(--amber) 30%, transparent);  background: var(--amber-glow2); }
+.sub-pill-amber       { color: var(--text);  border-color: color-mix(in srgb, var(--amber) 45%, transparent);  background: var(--amber-glow); }
 .sub-pill-orange      { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 50%, transparent); background: var(--orange-glow); }
 .sub-pill-red         { color: var(--red);    border-color: color-mix(in srgb, var(--red) 50%, transparent);    background: var(--red-glow); }
 .sub-pill-dim-red     { color: var(--red);    border-color: color-mix(in srgb, var(--red) 30%, transparent);    background: var(--red-glow); }
@@ -2179,7 +2199,7 @@ input[type="number"] {
 .sub-alert-amber {
   background: var(--amber-glow);
   border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
-  color: var(--amber);
+  color: var(--text);
 }
 .sub-alert-orange {
   background: var(--orange-glow);
@@ -2199,8 +2219,13 @@ input[type="number"] {
 .sub-alert-dashed {
   background: transparent;
   border: 1px dashed color-mix(in srgb, var(--amber) 45%, transparent);
-  color: var(--amber);
+  color: var(--text);
 }
+/* The amber pill's dot and the amber alert's icon are its marks. */
+.sub-pill-amber .sub-pill-dot,
+.sub-pill-muted-amber .sub-pill-dot { background: var(--amber); }
+.sub-alert-amber .sub-alert-icon,
+.sub-alert-dashed .sub-alert-icon { color: var(--amber); }
 
 /* Bracket heading */
 .sub-bracket-heading {
@@ -2213,7 +2238,7 @@ input[type="number"] {
   font-family: var(--mono);
   font-size: 0.7857rem;
   letter-spacing: 0.16em;
-  color: var(--amber);
+  color: var(--text-2);
 }
 .sub-bracket-rule {
   flex: 1;
@@ -2259,7 +2284,7 @@ input[type="number"] {
 /* "emerald" rendered amber until the colour round; it is green now. */
 .sub-stat-accent-emerald    { color: var(--green) !important; }
 .sub-stat-accent-blue       { color: var(--blue) !important; }
-.sub-stat-accent-amber      { color: var(--amber) !important; }
+.sub-stat-accent-amber      { color: var(--text) !important; }
 .sub-stat-accent-orange     { color: var(--orange) !important; }
 .sub-stat-accent-red        { color: var(--red) !important; }
 
@@ -2325,7 +2350,7 @@ input[type="number"] {
 }
 .sub-btn:hover:not(:disabled) {
   border-color: var(--amber);
-  color: var(--amber);
+  color: var(--text);
 }
 .sub-btn:disabled {
   opacity: 0.5;
@@ -2339,7 +2364,7 @@ input[type="number"] {
   text-decoration: none;
 }
 .sub-link:hover {
-  color: var(--amber);
+  color: var(--text);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
@@ -2461,7 +2486,7 @@ input[type="number"] {
 .sub-stuck-escalation {
   font-family: var(--mono);
   font-size: 0.9286rem;
-  color: var(--amber);
+  color: var(--text);
   margin-top: 12px;
 }
 .sub-pending-channel-age {
@@ -2530,9 +2555,6 @@ input[type="number"] {
 [data-theme="light"] .admin-members-distribution-pill.is-zero {
   opacity: 0.65;
 }
-
-/* Stuck-state escalation copy */
-[data-theme="light"] .sub-stuck-escalation { color: var(--amber-dim); }
 
 /* ─── Subscription payment history page ─────────────────────────────
    Stage 5a follow-up. Reuses .sub-panel chrome + .sub-pill family
@@ -2762,7 +2784,7 @@ input[type="number"] {
   color: var(--fg-1);
 }
 .admin-sortable.is-active {
-  color: var(--amber);
+  color: var(--text);
 }
 .admin-sort-arrow {
   font-size: 0.7rem;
@@ -2855,8 +2877,7 @@ input[type="number"] {
   font-size: 0.6875rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--amber);
-  opacity: 0.9;
+  color: var(--text);
 }
 .admin-members-unidentified-link {
   font-family: var(--mono);
@@ -2866,7 +2887,7 @@ input[type="number"] {
   border-bottom: 1px dotted currentColor;
 }
 .admin-members-unidentified-link:hover {
-  color: var(--amber);
+  color: var(--text);
 }
 
 /* ─── Stablecoin Rail (§8) — Briefing-Room-aligned ─────────────── */
@@ -2950,7 +2971,7 @@ input[type="number"] {
 .stablecoin-balance {
   font-family: var(--mono);
   font-size: 1rem;
-  color: var(--amber);
+  color: var(--text);
   display: flex;
   align-items: baseline;
   gap: 12px;
@@ -3068,12 +3089,12 @@ input[type="number"] {
 }
 
 .stablecoin-tile-recommended .stablecoin-tile-caption {
-  color: var(--amber);
+  color: var(--text);
 }
 
 .stablecoin-tile-status {
   font-size: 0.75rem;
-  color: var(--amber);
+  color: var(--text);
   margin-top: 4px;
   font-family: var(--mono);
 }
@@ -3172,7 +3193,7 @@ input[type="number"] {
 }
 
 .stablecoin-fee-value {
-  color: var(--amber);
+  color: var(--text);
   font-weight: 500;
 }
 
@@ -3296,7 +3317,7 @@ input[type="number"] {
 .stablecoin-row-amount {
   font-family: var(--mono);
   font-size: 0.9375rem;
-  color: var(--amber);
+  color: var(--text);
   font-weight: 500;
   margin-left: auto;
 }
@@ -3310,7 +3331,7 @@ input[type="number"] {
 }
 
 .stablecoin-row-link:hover {
-  color: var(--amber);
+  color: var(--text);
 }
 
 /* Primary external links (wallet address, contract router) — more
@@ -3322,10 +3343,10 @@ input[type="number"] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--amber-dim);
+  color: var(--text-2);
 }
 .stablecoin-extlink:hover {
-  color: var(--amber);
+  color: var(--text);
 }
 .stablecoin-extlink-icon {
   font-size: 0.95rem;

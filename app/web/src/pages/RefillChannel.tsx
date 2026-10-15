@@ -478,7 +478,7 @@ export default function RefillChannel() {
                   </div>
                   <div style={{
                     fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600,
-                    color: "var(--amber)", lineHeight: 1.2,
+                    color: "var(--text)", lineHeight: 1.2,
                   }}>
                     {onchainBalance.toLocaleString()}
                     <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>

@@ -153,9 +153,9 @@ function Figures({ data, doubted }: { data: RailFeeRevenueResponse; doubted: boo
       {doubted ? (
         <div
           role="status"
-          style={{ fontSize: "0.75rem", color: "var(--amber)", marginTop: 4 }}
+          style={{ fontSize: "0.75rem", color: "var(--text)", marginTop: 4 }}
         >
-          ⚠ Last indexed {ageLabel(freshness.staleness_seconds)} — newer settlements may
+          <span aria-hidden style={{ color: "var(--amber)" }}>⚠</span> Last indexed {ageLabel(freshness.staleness_seconds)} — newer settlements may
           not be counted yet.
         </div>
       ) : (

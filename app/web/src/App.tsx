@@ -840,7 +840,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
                   flex: 1, padding: "8px 12px", borderRadius: 8, cursor: "pointer",
                   border: `2px solid ${theme === opt.value ? "var(--amber)" : "var(--border)"}`,
                   background: theme === opt.value ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
-                  color: theme === opt.value ? "var(--amber)" : "var(--text-3)",
+                  color: theme === opt.value ? "var(--text)" : "var(--text-3)",
                   textAlign: "center", fontSize: "0.8125rem", fontWeight: 600, fontFamily: "var(--sans)",
                 }}
               >
@@ -1083,7 +1083,7 @@ function FeePolicyPanel() {
         <span className="panel-title">
           <span className="icon">↗</span>Routing Fee Policy
           {isEditing && (
-            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber)", letterSpacing: "0.04em", textTransform: "none" }}>
+            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-2)", letterSpacing: "0.04em", textTransform: "none" }}>
               · editing
             </span>
           )}
@@ -1245,7 +1245,7 @@ function CapitalPolicyPanel() {
         <span className="panel-title">
           <span className="icon">⊞</span>Capital Guardrails
           {isEditing && (
-            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber)", letterSpacing: "0.04em", textTransform: "none" }}>
+            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-2)", letterSpacing: "0.04em", textTransform: "none" }}>
               · editing
             </span>
           )}
@@ -1638,7 +1638,7 @@ function ChannelsPage() {
               </button>
             )}
             {closingChannel === c.channel_id && (
-              <span style={{ fontSize: "0.75rem", color: "var(--amber)" }}>Closing…</span>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-2)" }}>Closing…</span>
             )}
             {closeResult?.channelId === c.channel_id && (
               <span style={{ fontSize: "0.75rem", color: "var(--green)" }}>✓ Closing</span>
@@ -2048,7 +2048,7 @@ function ChannelsPage() {
                           </div>
                           <div>
                             <span style={{ color: "var(--text-3)" }}>Recommended: </span>
-                            <span style={{ fontFamily: "var(--mono)", color: "var(--amber)" }}>{upgradeSize.toLocaleString()} sats</span>
+                            <span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{upgradeSize.toLocaleString()} sats</span>
                           </div>
                           {isTreasury && (
                             <>
@@ -2421,10 +2421,10 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: feeRate === opt.rate ? "var(--amber)" : "var(--text)" }}>
+                  <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--text)" }}>
                     {opt.label}
                   </div>
-                  <div style={{ fontSize: "0.6875rem", color: feeRate === opt.rate ? "var(--amber)" : "var(--text-2)" }}>
+                  <div style={{ fontSize: "0.6875rem", color: "var(--text-2)" }}>
                     {opt.time}
                   </div>
                   <div style={{ fontSize: "0.625rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>

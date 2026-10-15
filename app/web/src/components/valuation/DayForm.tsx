@@ -231,7 +231,7 @@ export default function DayForm({ date, onSaved }: Props) {
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 16 }}>
         {toast && (
-          <span style={{ fontSize: "0.8125rem", color: toast.kind === "success" ? "var(--green)" : toast.kind === "partial" ? "var(--amber)" : "var(--red)" }}>
+          <span className={toast.kind === "partial" ? "warn-mark" : undefined} style={{ fontSize: "0.8125rem", color: toast.kind === "success" ? "var(--green)" : toast.kind === "partial" ? "var(--text)" : "var(--red)" }}>
             {toast.msg}
           </span>
         )}

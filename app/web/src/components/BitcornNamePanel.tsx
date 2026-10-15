@@ -258,7 +258,7 @@ function btnStyle(active: boolean): React.CSSProperties {
     opacity: active ? 1 : 0.5,
     border: "2px solid var(--amber)",
     background: "var(--bg-2)",
-    color: "var(--amber)",
+    color: "var(--text)",
     fontSize: "0.8125rem",
     fontWeight: 600,
     fontFamily: "var(--sans)",

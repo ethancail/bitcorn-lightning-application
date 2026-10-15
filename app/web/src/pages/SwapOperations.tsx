@@ -117,7 +117,7 @@ function ChannelPicker({
           padding: "10px 16px", borderRadius: 8, cursor: "pointer", border: "2px solid",
           borderColor: selected === "" ? "var(--amber)" : "var(--border)",
           background: selected === "" ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
-          color: selected === "" ? "var(--amber)" : "var(--text-3)",
+          color: selected === "" ? "var(--text)" : "var(--text-3)",
           fontFamily: "var(--mono)", fontSize: "0.8125rem", fontWeight: 600, minWidth: 100,
         }}
       >
@@ -139,7 +139,7 @@ function ChannelPicker({
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="ident" style={{ fontWeight: 600, fontSize: "0.8125rem", color: isSelected ? "var(--amber)" : "var(--text)" }}>
+              <span className="ident" style={{ fontWeight: 600, fontSize: "0.8125rem", color: "var(--text)" }}>
                 {ch.peerName}
               </span>
               <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>

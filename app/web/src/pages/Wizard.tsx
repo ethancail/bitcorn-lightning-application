@@ -215,7 +215,7 @@ function Screen2({
               <div className="stat-label">{row.label}</div>
               <div
                 className="stat-value"
-                style={{ fontSize: "1rem", color: "var(--amber)" }}
+                style={{ fontSize: "1rem", color: "var(--text)" }}
               >
                 {row.val} ppm
               </div>
@@ -535,7 +535,7 @@ export default function Wizard() {
           <div className="wizard-brand">
             <span style={{ fontSize: "1.25rem" }}>⚡</span>
             <span className="wizard-brand-mark">BITCORN LIGHTNING</span>
-            <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber-dim)", letterSpacing: "0.04em" }}>
+            <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-2)", letterSpacing: "0.04em" }}>
               · first-run setup
             </span>
           </div>

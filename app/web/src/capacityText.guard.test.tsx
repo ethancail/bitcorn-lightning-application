@@ -271,10 +271,14 @@ describe("PR3-7: no capacity text element uses --amber", () => {
     expect(r.count).toBe(6); // word + chip per row, two KPI counts
   });
 
-  it("the check itself sees a class rule's colour (.badge-amber → amber)", () => {
+  it("the check itself sees a class rule's colour (an amber glyph marker → amber)", () => {
+    // Since the colour round .badge-amber's word is --text, so the control
+    // uses a class that still colours its glyph amber.
     const span = document.createElement("span");
-    span.className = "badge badge-amber";
+    span.className = "sub-timeline-marker sub-timeline-marker-amber";
     expect(effectiveColor(span)).toBe("var(--amber)");
+    span.className = "badge badge-amber";
+    expect(effectiveColor(span)).toBe("var(--text)");
     span.className = "badge badge-caution";
     expect(effectiveColor(span)).toBe("var(--text)");
   });

@@ -163,7 +163,7 @@ function AutoPayHistoryRow({ alert }: { alert: AutoPayAlert }) {
         color: "var(--text-3)",
       }}
     >
-      <span style={{ color: ok ? "var(--green, #22c55e)" : "var(--amber)" }}>
+      <span className={ok ? undefined : "warn-mark"} style={{ color: ok ? "var(--green, #22c55e)" : "var(--text)" }}>
         {autoPayLabel(alert.type)}
       </span>
       <span>

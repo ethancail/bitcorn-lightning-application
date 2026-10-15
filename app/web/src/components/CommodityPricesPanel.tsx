@@ -151,7 +151,7 @@ export default function PriceTickerStrip({ btcPrice, btcLoading }: Props) {
             {item.icon}
           </div>
           <div className="price-ticker-info">
-            <div className="price-ticker-label" style={{ color: item.color }}>
+            <div className="price-ticker-label" style={{ color: "var(--text-2)" }}>
               {item.label}
             </div>
             {item.loading ? (

@@ -111,7 +111,7 @@ export default function ProfilePanel() {
                 padding: "1px 6px",
                 borderRadius: 6,
                 marginLeft: 4,
-                color: applied ? "var(--green, #22c55e)" : "var(--amber)",
+                color: applied ? "var(--green, #22c55e)" : "var(--text)",
                 border: `1px solid ${applied ? "var(--green, #22c55e)" : "var(--amber)"}`,
               }}
             >
