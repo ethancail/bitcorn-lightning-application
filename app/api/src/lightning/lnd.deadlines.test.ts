@@ -131,7 +131,6 @@ const FAST_CASES: ReadonlyArray<[string, () => Promise<unknown>]> = [
   ["getLndChainTransactions", () => lnd.getLndChainTransactions()],
   ["getLndInvoices", () => lnd.getLndInvoices()],
   ["getLndForwards", () => lnd.getLndForwards()],
-  ["getLndIdentity", () => lnd.getLndIdentity()],
   ["getLndUtxos", () => lnd.getLndUtxos()],
   ["getLndChainFeeRate", () => lnd.getLndChainFeeRate()],
   ["createLndChainAddress", () => lnd.createLndChainAddress()],
@@ -152,25 +151,6 @@ describe("CONTROL 1 — a wedged LND makes bounded calls reject at the fast dead
     });
   }
 
-  it("getLndRouteToDestination rejects at the LONGER gossip deadline, not the fast one", async () => {
-    // Also a control on the class split: if this were bound at 3s the first
-    // assertion would pass for the wrong reason, so check it is STILL PENDING
-    // just after the fast deadline.
-    vi.useFakeTimers();
-    rpc.wedged = true;
-    let done = false;
-    const p = lnd
-      .getLndRouteToDestination({ destination: "02bb", tokens: 1 })
-      .catch((e) => { done = true; return e; });
-
-    await vi.advanceTimersByTimeAsync(LND_FAST_CALL_TIMEOUT_MS + 50);
-    expect(done, "gossip call was bound at the fast deadline, not the gossip one").toBe(false);
-
-    await vi.advanceTimersByTimeAsync(
-      LND_GOSSIP_CALL_TIMEOUT_MS - LND_FAST_CALL_TIMEOUT_MS + 50,
-    );
-    expect((await p).message).toMatch(/^ETIMEDOUT:/);
-  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -229,8 +209,6 @@ describe("CONTROL 4 (behavioural) — held calls do not time out", () => {
     ["sendLndToChainAddress", () => lnd.sendLndToChainAddress("bcrt1qx", 1)],
     ["openTreasuryChannel", () => lnd.openTreasuryChannel("02bb", 100_000)],
     ["closeTreasuryChannel", () => lnd.closeTreasuryChannel("tx", 0)],
-    ["payLndViaRoutes", () => lnd.payLndViaRoutes("ff", [] as never[])],
-    ["keysendPush", () => lnd.keysendPush({ destination: "02bb", tokens: 1 })],
   ];
 
   for (const [name, call] of HELD_CASES) {

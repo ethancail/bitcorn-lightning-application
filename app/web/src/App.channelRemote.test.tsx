@@ -1,7 +1,8 @@
 // D3: the remote side of a channel's balance bar is a neutral track, not red.
 // The bar's track is .channel-balance-bar's background (styles.css); "Their
-// side"'s legend dot on the member Channels page matches it. The network
-// graph's "Remote:" line loses its red too.
+// side"'s legend dot on the member Channels page matches it. (A third case,
+// the network graph's "Remote:" line, went with NetworkGraph.tsx in PR 5: the
+// component was imported but never rendered.)
 //
 // Harness: App.treasuryCapacity.test.tsx's (the REAL App, member shell).
 
@@ -27,7 +28,6 @@ const stub = vi.hoisted(() => ({
   getAutoBuyAlertBadge: vi.fn(),
   getDaybreakEdition: vi.fn(),
   getContacts: vi.fn(),
-  getLiquidityHealth: vi.fn(),
   getPendingChannels: vi.fn(),
 }));
 
@@ -39,8 +39,6 @@ vi.mock("./api/client", async (importOriginal) => {
 vi.mock("./stablecoin/RailScope", () => ({
   RailScope: ({ children }: { children: React.ReactNode }) => children,
 }));
-
-import NetworkGraph from "./components/NetworkGraph";
 
 const PEER = "02" + "b".repeat(64);
 const CHANNELS = [
@@ -62,7 +60,6 @@ beforeEach(() => {
   stub.getDaybreakEdition.mockResolvedValue({ state: "unavailable" });
   stub.getMemberLiquidityStatus.mockImplementation(never);
   stub.getContacts.mockResolvedValue([{ pubkey: PEER, name: "Treasury", tags: [] }]);
-  stub.getLiquidityHealth.mockResolvedValue([]);
   stub.getPendingChannels.mockResolvedValue([]);
   vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
     ok: true,
@@ -108,15 +105,5 @@ describe("D3: the remote side of a channel bar is neutral", () => {
     expect(remote, "the remote legend renders").not.toBeNull();
     expect(remote!.getAttribute("style")).toBe(`background: ${trackBackground()};`);
     expect(local!.getAttribute("style")).toBe("background: var(--green);");
-  });
-
-  it("the network graph's \"Remote:\" line is not red", async () => {
-    const el = await mount(React.createElement(NetworkGraph));
-    const node = [...el.querySelectorAll("g")].find((g) => g.getAttribute("style")?.includes("cursor: pointer"));
-    expect(node, "a peer node renders").toBeDefined();
-    await act(async () => { node!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })); });
-    const remote = [...el.querySelectorAll("span")].find((s) => s.textContent?.startsWith("Remote:"));
-    expect(remote, "the hover card shows Remote:").toBeDefined();
-    expect(remote!.getAttribute("style") ?? "").not.toContain("red");
   });
 });

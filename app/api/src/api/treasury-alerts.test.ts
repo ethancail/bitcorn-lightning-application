@@ -39,7 +39,6 @@ const s = vi.hoisted(() => ({
   dailyLossSats: 0,
   liquidityHealth: [] as any[],
   loopAvailable: { available: true, version: "v0.9" } as any,
-  keysendDisabled: [] as any[],
   latestPerMetric: [] as any[],
   metricKeys: [] as string[],
   // Channel-data freshness fixture, as an AGE in ms rather than an absolute
@@ -95,7 +94,7 @@ vi.mock("../db", () => ({
         }
         return { v: 0 };
       },
-      all: () => s.keysendDisabled,
+      all: () => [],
       run: () => undefined,
     }),
   },
@@ -208,7 +207,6 @@ beforeEach(() => {
   s.dailyLossSats = 0;
   s.liquidityHealth = [];
   s.loopAvailable = { available: true, version: "v0.9" };
-  s.keysendDisabled = [];
   s.latestPerMetric = [];
   // In place: the manualInputStore mock captured this array at mock time, so a
   // reassignment here would leave the module reading the first one forever.
@@ -649,7 +647,6 @@ const RULED_HEADINGS: Record<string, string> = {
   SCHEDULER_SIMULATION_MODE: "Rebalance scheduler in simulation mode",
   LOOP_OUT_AVAILABLE: "Loop Out available for critical channels",
   LOOP_NOT_INSTALLED: "Loop unavailable while channels need rebalancing",
-  MEMBER_KEYSEND_DISABLED: "Keysend off for some member nodes",
   VALUATION_MANUAL_STALE: "Valuation inputs need attention",
 };
 
@@ -689,9 +686,6 @@ const SCENARIOS: Record<string, () => void> = {
     s.liquidityHealth = [{ is_active: true, health_classification: "critical" }];
     s.loopAvailable = { available: false, error: "unreachable" };
   },
-  "member keysend disabled": () => {
-    s.keysendDisabled = [{ peer_pubkey: "02" + "b".repeat(64), last_failure_at: Date.now() }];
-  },
   "valuation never entered": () => { s.metricKeys.push("mvrv"); },
 };
 
@@ -702,12 +696,12 @@ function resetState() {
   s.rotationCandidates = []; s.dailyLossSats = 0; s.expansionsToday = 0; s.dailyDeploySats = 0;
   s.env.rebalanceSchedulerEnabled = false; s.env.rebalanceSchedulerDryRun = false;
   s.liquidityHealth = []; s.loopAvailable = { available: true, version: "v0.9" };
-  s.keysendDisabled = []; s.metricKeys.length = 0;
+  s.metricKeys.length = 0;
 }
 
 describe("SH1/SH2: every alert carries its ruled heading", () => {
   it("the ruled table covers exactly the types the API can emit", () => {
-    expect(emittableTypes().length).toBe(15);
+    expect(emittableTypes().length).toBe(14);
     expect(Object.keys(RULED_HEADINGS).sort()).toEqual(emittableTypes());
   });
 
@@ -742,10 +736,6 @@ describe("SH1/SH2: every alert carries its ruled heading", () => {
 
   it("no heading prints a raw type identifier", () => {
     for (const h of Object.values(RULED_HEADINGS)) expect(h).not.toMatch(/[A-Z]{2,}_[A-Z]/);
-  });
-
-  it("SH2: the Keysend heading says 'off', not 'paused'", () => {
-    expect(RULED_HEADINGS.MEMBER_KEYSEND_DISABLED).toBe("Keysend off for some member nodes");
   });
 
   it("the Loop heading asserts no cause and names no remediation (Loop decision D3)", () => {

@@ -60,7 +60,7 @@ Glow variants (`--green-glow`, `--red-glow`, etc.) are 10%-opacity backgrounds f
 
 ### `.panel` + `.panel-header` + `.panel-title` + `.panel-body`
 
-The standard containing element. Always use a panel instead of raw `<div>` for sectioning.
+The standard containing element. Always use a panel instead of raw `<div>` for sectioning. A panel is ONE level of containment (3B): `.panel-header` is a title row inside it, with no background strip or rule of its own, and its spacing assumes a `.panel-body` follows. A header followed by something else, or alone, still spaces correctly (`panelContainment.test.ts`), but don't put a box inside a panel to re-create a strip.
 
 ```tsx
 <div className="panel">
@@ -100,6 +100,12 @@ For 2/3/4-column stat displays.
 </div>
 ```
 
+Write `.alert-type` headings in sentence case ("Channel opening submitted"); the rule no longer uppercases them (P6-2, `sentenceCase.test.ts`). `.panel-title` is still uppercase. On the treasury dashboard an alert is a compact `AlertRow` (heading on one line, detail one tap away) instead.
+
+```tsx
+<AlertRow severity="warning" heading={alert.heading || "Treasury alert"} detail={alert.message} action={<Link …>Enter now →</Link>} />
+```
+
 ### `.badge-green` / `-red` / `-amber` / `-blue` / `-muted`
 
 Pill tags for statuses. Used in history tables, peer tags, etc.
@@ -107,6 +113,16 @@ Pill tags for statuses. Used in history tables, peer tags, etc.
 ```tsx
 <span className="badge badge-green">CONFIRMED</span>
 ```
+
+### Phone tables: `.phone-card`, `.phone-fit` (UI redesign PR 7, X4b/X4c)
+
+On a phone (< 768px) a table is one line per row only if every row fits; otherwise it is a card — the title cell on its own line, then each value with its column's name beside it. Opt-in, by class:
+
+- `.phone-card` — always a card on a phone. On ChannelsPage's four lane tables and the subscription payments table.
+- `.phone-fit` inside a `.phone-fit-wrap` size container — one line where the widest possible row fits, a card otherwise, at the reader's text size. Only Top Up's history; its threshold `calc(17.1em + 101px)` was measured from the widest row the code can produce. Change that row (a higher refill cap, a new status label, the date format) and the threshold must be re-measured — `phoneTables.css.test.ts` holds the readings.
+- The hooks every opted-in table needs: `td-primary` on each row's title cell, `data-label="<column header>"` on every other cell, `col-secondary` on a column a one-line table may hide, `row-detail` on an expanded detail row (`phoneTables.markup.test.tsx` checks them against the headers).
+
+Any other `.data-table` keeps the old phone behaviour: a 600px minimum, scrolling sideways in its wrapper.
 
 ### `.channel-card` + balance bar primitives
 
@@ -129,16 +145,14 @@ Placeholder while async data loads. Set a height via inline style:
 
 | Component | Purpose | Where used |
 |---|---|---|
-| `FundNodePanel` | Coinbase Onramp CTA + deposit address | Dashboards |
-| `NodeBalancePanel` | On-chain + channel balance summary | Dashboards |
 | `CommodityPricesPanel` | BTC/gold/corn/soy/wheat ticker strip | Charts page |
 | `PowerLawChart` | BTC log-price with rainbow bands | Charts |
 | `MovingAveragesChart` | 50/100/200-day MA overlays | Charts |
 | `CornBitcoinChart` | Corn-bushels-per-BTC over time | Charts |
 | `CornMovingAveragesChart` | Corn MA overlays | Charts |
-| `BitcoinPriceGraph` | Standalone BTC price, 1M default | Dashboards |
-| `NetworkGraph` | Interactive Lightning topology | Liquidity page |
-| `ValuationInputAlertBanner` | "Valuation inputs stale" banner | Dashboard |
+| `BitcoinPriceGraph` | Standalone BTC price; immediately beneath the headline numbers | Dashboards |
+| `AlertRow` | A treasury alert as one compact row, detail in `<details>` | Treasury dashboard |
+| `ValuationInputAlertBanner` | "Valuation inputs need attention" row with "Enter now →" | Treasury dashboard |
 
 Under `components/autoBuy/`: `CoinbaseCard`, `HistoryTable`, `InputsTab`, `StrategyTab`, `ValuationTab`. Do not import these outside the Auto-Buy page — they carry page-specific assumptions.
 
@@ -209,11 +223,10 @@ Both themes are supported. Never hardcode a color for one theme — always use C
 
 | Page | Last touched | Notes |
 |---|---|---|
-| `Dashboard.tsx` | v1.9.46 revamp | Treasury. Revenue-focused, could be more scannable. |
-| `MemberDashboard.tsx` | v1.9.0 earnings revamp | Member. Lots of conditional panels based on channel state. |
+| `Dashboard.tsx` | UI redesign PR 6 | Treasury. Headline numbers, price chart, alert rows, detail grid. |
+| `MemberDashboard.tsx` | UI redesign PR 6 | Member. Headline per declared role, price chart, notice slots; conditional channel tiles. |
 | `Charts.tsx` | Stable | Chart strip + power law. Clean already. |
 | `SwapOperations.tsx` | v1.9.37-38 revamp | Treasury. Channel picker is dense. |
-| `MemberLiquidity.tsx` | v1.6.2 | Treasury. Cluster overview + approve/reject modal. |
 
 ### 🔴 Rough — high polish impact
 

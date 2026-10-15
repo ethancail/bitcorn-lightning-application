@@ -58,7 +58,7 @@ describe("client/server field-map parity", () => {
   }
 
   it("names the server routes the UI does NOT cover, so the gap stays visible", () => {
-    // Not a failure — three capital routes genuinely have no UI caller. This
+    // Not a failure — two capital routes genuinely have no UI caller. This
     // asserts the list rather than leaving it to memory, so a new UI caller for
     // one of them shows up here instead of silently 400ing.
     //
@@ -76,12 +76,16 @@ describe("client/server field-map parity", () => {
     // by gaining that caller, which is the departure this entry predicted and
     // the direction the paragraph above calls intended.
     // See bitcorn-research/specs/2026-09-14-autobuy-scheduler-catchup-clamp-spec.md §4 A1–A3.
+    //
+    // Was THREE until 2026-10-13. POST /api/treasury/rebalance/circular left by
+    // being DELETED (ruling D1 of
+    // decisions/2026-10-13-dormant-money-paths-dispositions-d1-d4.md) — the
+    // intended direction again.
     const uncovered = [...serverByKey.keys()]
       .filter((k) => !UI_CONFIRMED_ROUTES.some((r) => rkey(r.method, r.match) === k))
       .sort();
     expect(uncovered).toEqual([
       "POST =/api/pay",
-      "POST =/api/treasury/rebalance/circular",
       "POST =/api/treasury/rebalance/loop-out",
     ]);
   });

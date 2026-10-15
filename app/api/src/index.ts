@@ -23,14 +23,6 @@ import {
   getRotationExecutions,
 } from "./api/treasury-rotation";
 import { getTreasuryAlerts } from "./api/treasury-alerts";
-import {
-  getRecommendations as getLiquidityRecommendations,
-  getEstimateForRecommendation,
-  approveRecommendation,
-  rejectRecommendation,
-  getOutcomes as getLiquidityOutcomes,
-  getOutcomeById as getLiquidityOutcomeById,
-} from "./memberLiquidity/liquidityRoutes";
 import { assertDailyLossCapNotExceeded, DailyLossCapError } from "./utils/loss-cap";
 import {
   getTreasuryFeePolicy,
@@ -76,7 +68,6 @@ import { normalizeBitcornName, validateBitcornName } from "./profile/nameValidat
 import { ENV } from "./config/env";
 import { applyTreasuryFeePolicy } from "./lightning/fees";
 import { assertTreasury, assertNonEmpty, assertMember } from "./utils/role";
-import { executeCircularRebalance, CircularRebalanceError } from "./lightning/rebalance-circular";
 import { getRebalanceExecutions } from "./api/treasury-rebalance-executions";
 import { getCoinbaseSessionToken } from "./api/coinbase-onramp";
 import {
@@ -2031,9 +2022,11 @@ async function dispatchRequest(
 
   // ─── Stablecoin rail (spec §8 + 2026-05-26 amendment) ─────────────────
   // All routes scoped under /api/stablecoin/*. Member identity is the local
-  // node's pubkey via getNodeInfo(); same trust model as the subscription
-  // endpoints above (local-network-only via CORS restriction at the top
-  // of this file). More specific routes (/wallet/challenge) must come
+  // node's pubkey via getNodeInfo(). These routes have no caller
+  // authentication; CORS (applyCorsAndPreflight) only stops a foreign page
+  // reading the response. Network reachability is a deployment property, not
+  // enforced here: LAN/tailnet always, plus whatever a tunnel's edge rules
+  // admit. More specific routes (/wallet/challenge) must come
   // before /wallet — the raw-http if/else chain matches by exact pathname.
   if (req.method === "POST" && req.url === "/api/stablecoin/wallet/challenge") {
     return handleStablecoinChallenge(req, res);
@@ -2959,82 +2952,6 @@ async function dispatchRequest(
     return;
   }
 
-  if (req.method === "POST" && req.url === "/api/treasury/rebalance/circular") {
-    try {
-      const node = getNodeInfo();
-      if (!node) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Node info unavailable" }));
-        return;
-      }
-      assertTreasury(node.node_role);
-
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", async () => {
-        try {
-          const parsed = JSON.parse(body || "{}");
-          const tokens = Number(parsed.tokens);
-          const outgoing_channel = parsed.outgoing_channel;
-          const incoming_channel = parsed.incoming_channel;
-          const max_fee_sats = Number(parsed.max_fee_sats);
-          const isDryRun = parsed.dry_run === true;
-
-          // Daily loss cap check (skip for dry runs)
-          if (!isDryRun) {
-            try {
-              assertDailyLossCapNotExceeded(Number.isFinite(max_fee_sats) ? max_fee_sats : 0);
-            } catch (err: any) {
-              const isCapError = err instanceof DailyLossCapError;
-              res.writeHead(isCapError ? 429 : 500, { "Content-Type": "application/json" });
-              res.end(JSON.stringify({ error: String(err?.message ?? err) }));
-              return;
-            }
-          }
-
-          if (isDryRun) {
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({
-              dry_run: true,
-              would_rebalance: {
-                tokens: Number.isFinite(tokens) ? tokens : null,
-                outgoing_channel: outgoing_channel ?? "auto",
-                incoming_channel: incoming_channel ?? "auto",
-                max_fee_sats: Number.isFinite(max_fee_sats) ? max_fee_sats : 0,
-              },
-            }));
-            return;
-          }
-
-          const result = await executeCircularRebalance({
-            tokens,
-            outgoing_channel: outgoing_channel != null ? String(outgoing_channel) : undefined,
-            incoming_channel: incoming_channel != null ? String(incoming_channel) : undefined,
-            max_fee_sats: Number.isFinite(max_fee_sats) ? max_fee_sats : 0,
-          });
-
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(result));
-        } catch (err: any) {
-          const msg = String(err?.message ?? err);
-          if (err instanceof CircularRebalanceError) {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: msg }));
-          } else {
-            res.writeHead(500, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: msg || "circular_rebalance_failed" }));
-          }
-        }
-      });
-    } catch (err: any) {
-      const msg = String(err?.message ?? err);
-      const code = msg.includes("Treasury privileges required") ? 403 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: msg }));
-    }
-    return;
-  }
-
   // ─── Member liquidity advisor endpoints (member node) ─────────────────────
 
   if (req.method === "GET" && req.url === "/api/liquidity/status") {
@@ -3090,112 +3007,6 @@ async function dispatchRequest(
         res.end(JSON.stringify({ error: err?.message }));
       }
     });
-    return;
-  }
-
-  // ─── Member liquidity endpoints (treasury-only) ────────────────────────────
-
-  if (req.method === "GET" && req.url === "/api/member-liquidity/recommendations") {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const data = getLiquidityRecommendations();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
-
-  if (req.method === "GET" && req.url?.startsWith("/api/member-liquidity/recommendations/") && req.url?.endsWith("/estimate")) {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const recId = req.url.slice("/api/member-liquidity/recommendations/".length, -"/estimate".length);
-      const data = await getEstimateForRecommendation(recId);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : err?.message?.includes("not found") ? 404 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
-
-  if (req.method === "POST" && req.url?.startsWith("/api/member-liquidity/recommendations/") && req.url?.endsWith("/approve")) {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const recId = req.url.slice("/api/member-liquidity/recommendations/".length, -"/approve".length);
-      let body = "";
-      req.on("data", (chunk) => (body += chunk));
-      req.on("end", async () => {
-        try {
-          const parsed = JSON.parse(body || "{}");
-          const data = await approveRecommendation(recId, parsed);
-          res.writeHead(200, { "Content-Type": "application/json" });
-          res.end(JSON.stringify(data));
-        } catch (err: any) {
-          const code = err?.message?.includes("expired") ? 400 : err?.message?.includes("not found") ? 404 : 500;
-          res.writeHead(code, { "Content-Type": "application/json" });
-          res.end(JSON.stringify({ error: err?.message }));
-        }
-      });
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
-
-  if (req.method === "POST" && req.url?.startsWith("/api/member-liquidity/recommendations/") && req.url?.endsWith("/reject")) {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const recId = req.url.slice("/api/member-liquidity/recommendations/".length, -"/reject".length);
-      const data = rejectRecommendation(recId);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : err?.message?.includes("not found") ? 404 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
-    return;
-  }
-
-  if (req.method === "GET" && req.url?.startsWith("/api/member-liquidity/outcomes")) {
-    try {
-      const node = getNodeInfo();
-      assertTreasury(node?.node_role);
-      const urlObj = new URL(req.url, `http://localhost`);
-      const path = urlObj.pathname;
-
-      if (path !== "/api/member-liquidity/outcomes" && path.startsWith("/api/member-liquidity/outcomes/")) {
-        const outcomeId = decodeURIComponent(path.slice("/api/member-liquidity/outcomes/".length));
-        const data = getLiquidityOutcomeById(outcomeId);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(data));
-        return;
-      }
-
-      const data = getLiquidityOutcomes({
-        clusterId: urlObj.searchParams.get("clusterId") ?? undefined,
-        status: urlObj.searchParams.get("status") ?? undefined,
-        limit: urlObj.searchParams.has("limit") ? Number(urlObj.searchParams.get("limit")) : undefined,
-      });
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(data));
-    } catch (err: any) {
-      const code = err?.message?.includes("Treasury") ? 403 : err?.message?.includes("not found") ? 404 : 500;
-      res.writeHead(code, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message }));
-    }
     return;
   }
 
@@ -3462,6 +3273,17 @@ async function dispatchRequest(
         )
         .get(cutoff30d) as { total: number };
 
+      // Lifetime received (P6-1, PR 6): the farmer dashboard's "Received,
+      // lifetime" detail (J7 — never a headline number). payments_inbound holds
+      // every settled inbound invoice, written by the sync loop
+      // (lightning/persist-inbound.ts), so this is SQLite like the rest of the
+      // route: no LND read, and no dependence on the Payments page's
+      // settlement sync. It counts every settled receipt, a Loop In payment
+      // included, which is why the UI calls it "received", not "earnings".
+      const receivedLifetime = db
+        .prepare("SELECT COALESCE(SUM(tokens), 0) as total FROM payments_inbound")
+        .get() as { total: number };
+
       // ── The LND TLS certificate's expiry, read from local disk. ──
       //
       // WHY THIS FIELD RIDES THIS ENDPOINT AND NOT ANOTHER. An expired cert is
@@ -3536,6 +3358,7 @@ async function dispatchRequest(
           last_24h_sats: fees24h.total,
           last_30d_sats: fees30d.total,
         },
+        lifetime_received_sats: receivedLifetime.total,
       };
 
       res.writeHead(200, { "Content-Type": "application/json" });

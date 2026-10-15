@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.22"
+version: "1.18.23"
 port: 3200
 
 description: >
@@ -27,6 +27,15 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.23: A calmer layout. The top bar is now translucent, and pages scroll beneath it. Panels no longer
+  sit inside other panels, and spacing is a balanced density throughout. Dashboards now open with your own
+  money, with the Bitcoin price chart directly beneath; headline numbers never break across lines; treasury
+  alerts are one-line rows; and farmers see "Received, lifetime". On a phone, channel tables, top-up history
+  and subscription payments show as cards instead of scrolling sideways, and "available to send" and
+  "available to withdraw" replace "local". Removed two unused treasury tools, circular rebalancing and the
+  keysend member push, plus an alert that could never fire. Member cash-out and refill are unchanged. Bounds
+  the stablecoin wallet-challenge table at 5 outstanding challenges per node. Nothing for you to do.
+
   v1.18.22: The app now uses one font, Inter, built into the app, so it no longer loads fonts from Google.
   Node keys, transaction IDs and addresses stay in a fixed-width font so they are easy to compare, and numbers
   line up in columns. The font choice in Settings is gone; text size stays. On Payments, your sending balance

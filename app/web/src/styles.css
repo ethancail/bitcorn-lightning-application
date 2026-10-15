@@ -113,21 +113,47 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 /* The content row is minmax(0, 1fr), not 1fr: 1fr is minmax(auto, 1fr), so
    the sidebar's content height floored the row and pushed the shell ~10px past
    any window shorter than about 795px. The sidebar now scrolls in its own
-   column instead. */
+   column instead.
+   4B + J10 (PR 5), by GRID OVERLAP (P5-1): the top bar stays in row 1; the
+   sidebar and the main column span both rows, so content scrolls BENEATH the
+   translucent bar. Row 1 is --topbar-h; the two must agree
+   (shellChrome.test.ts). The main column's scrollbar runs under the bar too:
+   its top 56px is covered, accepted (P5-7). */
+:root {
+  --topbar-h: 56px;
+  /* Translucent chrome, the top bar and the desktop sidebar only (TASTE A16),
+     never behind numbers. Derived from --bg-1, so each theme gets its own. */
+  --chrome-bg: color-mix(in srgb, var(--bg-1) 78%, transparent);
+  --chrome-blur: saturate(1.6) blur(14px);
+}
+/* Fallbacks: solid chrome for reduced transparency (LANG :59-61), and where
+   backdrop-filter is unsupported (a translucent bar with no blur would leave
+   text scrolling under the bar's text). */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --chrome-bg: var(--bg-1); --chrome-blur: none; }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --chrome-bg: var(--bg-1); }
+}
+
 .app-shell {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 220px minmax(0, 1fr);
   grid-template-rows: 56px minmax(0, 1fr);
   height: 100vh;
+  height: 100dvh;
 }
 
 .topbar {
   grid-column: 1 / -1;
+  grid-row: 1;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 0 24px;
-  background: var(--bg-1);
+  background: var(--chrome-bg);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -180,9 +206,13 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 .topbar-node-id { color: var(--text-3); font-family: var(--font-id); }
 
 .sidebar {
-  background: var(--bg-1);
+  grid-column: 1;
+  grid-row: 1 / -1;
+  background: var(--chrome-bg);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
   border-right: 1px solid var(--border);
-  padding: 20px 0;
+  padding: calc(var(--topbar-h) + 20px) 0 20px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -235,9 +265,20 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 .sidebar-item .icon { font-size: 1rem; opacity: 0.8; }
 
 .main-content {
-  padding: 28px 32px 64px;
+  grid-column: 2;
+  grid-row: 1 / -1;
+  padding: calc(var(--topbar-h) + var(--d-page-py)) var(--d-page-px) 64px;
+  /* Focus moves, scrollIntoView and in-page jumps land below the bar. */
+  scroll-padding-top: calc(var(--topbar-h) + 8px);
   overflow-y: auto;
   background: var(--bg);
+}
+/* Page content caps at the density's width, centred (P5-6). A page root with
+   its own inline max-width and margin (Settings, Daybreak) keeps them. */
+.main-content > * {
+  max-width: var(--d-maxw);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 /* ─── Panel / Card ─────────────────────────────────────────────── */
@@ -248,21 +289,36 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
   overflow: hidden;
 }
 
+/* 3B (TASTE A15): ONE level of containment. The panel is the only box; its
+   header is a title row inside it, not a second strip with its own background
+   and rule. The title sits --d-title-gap above a .panel-body: the body's top
+   padding supplies the rest. ⚠ .panel and .panel-body are Daybreak's (F8,
+   F8a); .panel's own rule is unchanged. */
 .panel-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-2);
+  gap: 8px;
+  padding: var(--d-tile-pad) var(--d-tile-pad) 0;
+  margin-bottom: calc(var(--d-title-gap) - var(--d-tile-pad));
 }
+/* Not followed by a .panel-body (a table, an empty state, a custom block —
+   17 headers at 5f37779): the header supplies its own gap, and pulls nothing
+   up into the title. */
+.panel-header:not(:has(+ .panel-body)) {
+  padding-bottom: var(--d-title-gap);
+  margin-bottom: 0;
+}
+/* Alone in its panel: the tile's full padding below, so .panel's
+   overflow: hidden never clips the title. */
+.panel-header:last-child { padding-bottom: var(--d-tile-pad); }
 
 .panel-title {
   display: flex;
   align-items: center;
   gap: 8px;
   font-family: var(--mono);
-  font-size: 0.75rem;
+  font-size: var(--d-title-size);
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -271,7 +327,7 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 
 .panel-title .icon { font-size: 0.875rem; }
 
-.panel-body { padding: 20px; }
+.panel-body { padding: var(--d-tile-pad); }
 
 /* ─── Settings page: section labels ───────────────────────────── */
 .settings-section-label {
@@ -306,9 +362,6 @@ p + .settings-section-label { margin-top: 8px; }
 /* ─── Settings page: operational panel variant ────────────────── */
 .panel.ops {
   border-top: 2px solid var(--amber);
-}
-.panel.ops .panel-header {
-  background: color-mix(in srgb, var(--amber) 6%, var(--bg-2));
 }
 .panel.ops .panel-title {
   color: var(--amber-dim);
@@ -437,107 +490,10 @@ p + .settings-section-label { margin-top: 8px; }
   gap: 4px;
 }
 
-/* ─── Treasury Dashboard: compact top strip ─────────────── */
-.dashboard-top-strip {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 14px;
-  padding: 12px 14px;
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  margin-bottom: 12px;
-}
-.dashboard-top-strip .bal-group {
-  display: flex;
-  gap: 24px;
-  font-family: var(--mono);
-  flex-wrap: wrap;
-  justify-content: space-between;
-  flex: 1;
-}
-.dashboard-top-strip .bal-item {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.dashboard-top-strip .bal-label {
-  font-size: 0.625rem;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.dashboard-top-strip .bal-value {
-  font-size: 0.9375rem;
-  font-weight: 700;
-  color: var(--text);
-}
-.dashboard-top-strip .bal-value .unit {
-  font-size: 0.625rem;
-  color: var(--text-3);
-  font-weight: 400;
-  margin-left: 3px;
-}
-.dashboard-top-strip .fund-error {
-  grid-column: 1 / -1;
-  font-size: 0.75rem;
-  color: var(--red);
-  margin-top: 4px;
-}
-
-/* ─── Member Dashboard: compressed status row ─────────── */
-.member-status-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 12px;
-  font-size: 0.8125rem;
-}
-.member-status-row .lbl {
-  color: var(--text-3);
-}
-
-/* ─── Member Dashboard: hero + gauge + action ────────── */
-.member-hero {
-  text-align: center;
-  padding: 8px 0;
-}
-.member-hero .lbl {
-  font-family: var(--mono);
-  font-size: 0.6875rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-3);
-  margin-bottom: 6px;
-}
-.member-hero .val {
-  font-family: var(--mono);
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--text);
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-}
-.member-hero .val .unit {
-  font-size: 0.875rem;
-  color: var(--text-3);
-  font-weight: 400;
-  margin-left: 4px;
-}
-.member-hero .usd {
-  font-family: var(--mono);
-  font-size: 1rem;
-  color: var(--text-2);
-  margin-top: 2px;
-}
-
+/* ─── Member Dashboard: gauge + action ──────────────── */
 .member-gauge .labels {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 12px;
   text-align: right;
@@ -546,6 +502,10 @@ p + .settings-section-label { margin-top: 8px; }
   color: var(--text-3);
   font-family: var(--mono);
 }
+/* When the label and the figure don't fit side by side (a phone at large
+   text), the figure takes its own line, still right-aligned, instead of
+   running past the tile. */
+.member-gauge .labels > :last-child { margin-left: auto; }
 .member-gauge .bar {
   height: 10px;
   border-radius: var(--radius-full);
@@ -861,11 +821,11 @@ p + .settings-section-label { margin-top: 8px; }
 .alert-icon { font-size: 1rem; flex-shrink: 0; }
 
 .alert-body {}
+/* P6-2 (PR 6): alert headings are sentence case, written that way in the
+   copy — no text-transform, and no caps tracking. */
 .alert-type {
   font-family: var(--mono);
   font-size: 0.6875rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   opacity: 0.7;
   margin-bottom: 2px;
 }
@@ -914,16 +874,16 @@ p + .settings-section-label { margin-top: 8px; }
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.8125rem;
+  font-size: var(--d-table);
 }
 
 .data-table th {
   font-family: var(--mono);
-  font-size: 0.625rem;
+  font-size: var(--d-th);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-3);
-  padding: 8px 12px;
+  padding: var(--d-th-py) var(--d-td-px);
   text-align: left;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
@@ -935,7 +895,7 @@ p + .settings-section-label { margin-top: 8px; }
 .data-table th.sorted { color: var(--amber); }
 
 .data-table td {
-  padding: 9px 12px;
+  padding: var(--d-td-py) var(--d-td-px);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
@@ -949,13 +909,10 @@ p + .settings-section-label { margin-top: 8px; }
 .data-table tr.negative-roi td { background: rgba(239,68,68,0.04); }
 .data-table tr.negative-roi:hover td { background: rgba(239,68,68,0.08); }
 
-/* ─── Channels page: lane table polish (scoped to .panel.ops) ─── */
+/* ─── Channels page: lane table polish (scoped to .panel.ops) ───
+   Cell padding is density's (.data-table th/td above), not a tighter copy. */
 .panel.ops .data-table th {
-  padding: 6px 10px;
   letter-spacing: 0.06em;
-}
-.panel.ops .data-table td {
-  padding: 7px 10px;
 }
 
 .td-mono {
@@ -968,6 +925,8 @@ p + .settings-section-label { margin-top: 8px; }
   font-size: 0.8125rem;
   text-align: right;
 }
+/* In a table these cells follow the density's table size. */
+.data-table td.td-num, .data-table td.td-mono { font-size: var(--d-table); }
 
 .td-right { text-align: right; }
 
@@ -1386,15 +1345,6 @@ input[type="number"] {
   word-break: break-all;
 }
 
-/* ─── Dashboard page grid ──────────────────────────────────────── */
-.dashboard-grid {
-  display: grid;
-  gap: 20px;
-  grid-template-columns: 1fr 1fr;
-}
-
-.dashboard-grid .span-2 { grid-column: span 2; }
-
 /* ─── Inline preview result ────────────────────────────────────── */
 .preview-result {
   margin-top: 8px;
@@ -1508,6 +1458,7 @@ input[type="number"] {
   .app-shell {
     grid-template-columns: 1fr;
   }
+  .main-content { grid-column: 1; }
 
   /* Topbar: show hamburger */
   .hamburger-btn { display: flex; }
@@ -1540,6 +1491,13 @@ input[type="number"] {
     transform: translateX(-100%);
     transition: transform 200ms ease;
     box-shadow: none;
+    /* The drawer is SOLID (P5-4): it sits over the 60% overlay, where
+       translucency would grey the light theme. It covers the bar, so it
+       takes back today's top padding. */
+    background: var(--bg-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    padding-top: 20px;
   }
 
   .sidebar.open {
@@ -1565,15 +1523,11 @@ input[type="number"] {
     color: var(--text-3);
   }
 
-  /* Main content: full width, reduced padding */
+  /* Main content: full width, the density's phone padding */
   .main-content {
-    padding: 20px 16px 64px;
+    padding: calc(var(--topbar-h) + var(--d-page-py-ph)) var(--d-page-px-ph) 64px;
   }
-
-  /* Dashboard grid: single column on mobile */
-  .dashboard-grid {
-    grid-template-columns: 1fr !important;
-  }
+  .panel-body { padding: var(--d-tile-pad-ph); }
 
   /* Stat grids: collapse to single column */
   .stat-grid-3, .stat-grid-4 {
@@ -1590,7 +1544,10 @@ input[type="number"] {
   .panel-header {
     flex-wrap: wrap;
     gap: 8px;
+    padding: var(--d-tile-pad-ph) var(--d-tile-pad-ph) 0;
+    margin-bottom: calc(var(--d-title-gap) - var(--d-tile-pad-ph));
   }
+  .panel-header:last-child { padding-bottom: var(--d-tile-pad-ph); }
 
   .btn-sm {
     padding: 4px 8px;
@@ -1604,206 +1561,6 @@ input[type="number"] {
   .payment-tabs { flex-direction: column; }
   .payment-tab { flex: 1; }
   .invoice-qr { width: 200px; height: 200px; }
-}
-
-/* ═══════════════════════════════════════════════════════════════════════
-   TREASURY DASHBOARD — KPI Strip, Liquidity Posture, Action Summary
-   ═══════════════════════════════════════════════════════════════════════ */
-
-/* ─── KPI Strip ───────────────────────────────────────────────── */
-.kpi-strip {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.kpi-card {
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 12px 14px;
-}
-
-.kpi-label {
-  font-family: var(--mono);
-  font-size: 0.5625rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 4px;
-  line-height: 1.3;
-}
-
-.kpi-value {
-  font-family: var(--mono);
-  font-size: 1.125rem;
-  font-weight: 600;
-  color: var(--text);
-  line-height: 1.2;
-}
-
-.kpi-sub {
-  font-family: var(--mono);
-  font-size: 0.5625rem;
-  color: var(--text-3);
-  margin-top: 2px;
-}
-
-/* ─── Liquidity Posture ───────────────────────────────────────── */
-.liquidity-posture {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.posture-label {
-  font-family: var(--mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-right: 4px;
-}
-
-.posture-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-family: var(--mono);
-  font-size: 0.75rem;
-}
-
-.posture-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-full);
-  flex-shrink: 0;
-}
-
-/* ─── Action Summary ──────────────────────────────────────────── */
-.action-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.action-summary-label {
-  font-family: var(--mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-right: 4px;
-}
-
-.action-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border-radius: var(--radius-sm);
-  font-family: var(--mono);
-  font-size: 0.6875rem;
-  font-weight: 500;
-}
-
-/* ─── Freshness Hint ──────────────────────────────────────────── */
-.freshness-hint {
-  font-family: var(--mono);
-  font-size: 0.5625rem;
-  color: var(--text-3);
-  letter-spacing: 0.02em;
-  margin-left: 8px;
-  font-weight: 400;
-}
-
-/* ─── Rotation Preview (structured) ───────────────────────────── */
-.rotation-preview-structured {
-  margin-top: 8px;
-  padding: 12px;
-  background: var(--bg-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-}
-
-.rotation-preview-title {
-  font-family: var(--mono);
-  font-size: 0.625rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  margin-bottom: 8px;
-}
-
-.rotation-preview-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px 16px;
-}
-
-.rotation-preview-field {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.rotation-preview-label {
-  font-family: var(--mono);
-  font-size: 0.5625rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-3);
-}
-
-.rotation-preview-value {
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  color: var(--text);
-}
-
-.rotation-preview-raw-toggle {
-  font-family: var(--mono);
-  font-size: 0.625rem;
-  color: var(--text-3);
-  cursor: pointer;
-  user-select: none;
-}
-
-.rotation-preview-raw-toggle:hover {
-  color: var(--text-2);
-}
-
-.rotation-preview-raw {
-  margin-top: 6px;
-  font-family: var(--mono);
-  font-size: 0.625rem;
-  color: var(--text-2);
-  white-space: pre-wrap;
-  word-break: break-all;
-}
-
-/* ─── Treasury dashboard mobile (< 768px) ─────────────────────── */
-@media (max-width: 767px) {
-  .kpi-strip {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
-
-  .rotation-preview-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -2834,13 +2591,11 @@ input[type="number"] {
    the panel and the history page (the panel's "View payment history →"
    link is the entry point). */
 
+/* Page padding and width are .main-content's and its density (PR 5). */
 .sub-history-page {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  padding: 1.5rem;
-  max-width: 1100px;
-  margin: 0 auto;
+  gap: var(--d-gap);
 }
 
 .sub-history-header {
@@ -2858,20 +2613,20 @@ input[type="number"] {
 .sub-history-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.9375rem;
+  font-size: var(--d-table);
 }
 .sub-history-table thead th {
   text-align: left;
-  font-size: 0.75rem;
+  font-size: var(--d-th);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--fg-2);
-  padding: 0.5rem 0.75rem;
+  padding: var(--d-th-py) var(--d-td-px);
   border-bottom: 1px solid var(--border);
 }
 .sub-history-table tbody td {
-  padding: 0.75rem;
+  padding: var(--d-td-py) var(--d-td-px);
   border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
   vertical-align: middle;
 }
@@ -3832,6 +3587,313 @@ input[type="number"] {
   .stablecoin-contract-row {
     gap: 16px;
   }
+}
+
+/* ═══ DASHBOARDS (PR 6) ═══════════════════════════════════════════════
+   The three dashboards (Dashboard.tsx, MemberDashboard.tsx) are one column
+   of sections: notices, the page header, H2's headline numbers, the Bitcoin
+   price chart IMMEDIATELY beneath them (CHART), then the detail grid. Sizes
+   that vary with density read --d-* tokens from the DENSITY block below.
+   dashLayout.test.ts pins these rules. */
+.dash {
+  display: flex;
+  flex-direction: column;
+  gap: var(--d-gap);
+}
+/* Scoped to the dashboards: .page-header is app-wide (Stablecoin.tsx,
+   ValuationInput.tsx) and keeps its own layout. */
+.dash-header { display: flex; flex-direction: column; gap: 4px; }
+.dash-header h1 { margin: 0; }
+.dash-notices { display: flex; flex-direction: column; gap: 8px; }
+.dash-notices:empty { display: none; }
+.dash .member-sub-banner { margin-bottom: 0; }
+.headline-status:empty { display: none; }
+
+/* J9 / J9a: on a phone the name prompt and info notices (prepay,
+   worker_lapsed) go BELOW the headline numbers and the chart; the banners
+   that say payments are refused or a close is coming (routing_lapsed,
+   close_due), and the cert-expiry notice, stay on top. Desktop keeps the
+   source order. */
+@media (max-width: 767px) {
+  .dash > * { order: 5; }
+  .dash > .dash-notices-top { order: 0; }
+  .dash > .dash-header { order: 1; }
+  .dash > .headline,
+  .dash > .headline-status,
+  .dash > .price-tile { order: 2; }
+  .dash > .dash-notices-info { order: 3; }
+}
+
+/* H2: the headline numbers. Bare (no box): the user's own money, first and
+   largest, before any detail. */
+.headline {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--d-gap-inner) var(--d-gap);
+  align-items: end;
+}
+/* X1: on a phone the headline numbers stack into one column. */
+@media (max-width: 767px) {
+  .dash > .headline { grid-template-columns: minmax(0, 1fr); }
+}
+.hl { display: flex; flex-direction: column; gap: var(--d-label-gap); min-width: 0; }
+.hl-label { font-size: var(--d-label); color: var(--text-3); }
+.hl-value {
+  font-family: var(--mono);
+  font-size: var(--d-hl2);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.hl-1 .hl-value { font-size: var(--d-hl1); }
+/* X1: a number NEVER splits, and nothing shrinks to fit (the member's text
+   scale is theirs). The number is its own nowrap box; the unit is an atomic
+   inline after it, so when both don't fit "sats" drops below the number. */
+.hl-num { white-space: nowrap; }
+.hl-value .unit {
+  display: inline-block;
+  font-size: var(--d-label);
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-3);
+  margin-left: 4px;
+}
+/* D3: a negative number is not an error, so it stays --text, never red. */
+.hl-value.positive { color: var(--green); }
+.hl-value.negative { color: var(--text); }
+.hl-sub { font-size: var(--d-label); color: var(--text-2); }
+
+/* The detail grid: tiles flow in --d-cols columns; one on a phone. */
+.dash-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--d-cols), minmax(0, 1fr));
+  gap: var(--d-gap);
+  align-items: start;
+}
+@media (max-width: 767px) {
+  .dash-grid { grid-template-columns: minmax(0, 1fr); }
+}
+.dash-grid > .span-all { grid-column: 1 / -1; }
+/* SubscriptionRevenuePanel and RailFeeRevenuePanel carry an inline
+   marginBottom; inside the grid the gap does that job. */
+.dash-grid > .panel { margin: 0 !important; }
+
+/* Rows inside a tile: label left, value right, a hairline between (3B: a
+   rule, not a box). */
+.kv-list { display: flex; flex-direction: column; }
+.kv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: var(--d-gap-inner) 0;
+  border-bottom: 1px solid var(--border);
+}
+.kv:first-child { padding-top: 0; }
+.kv:last-child { border-bottom: none; padding-bottom: 0; }
+.kv-label { font-size: var(--d-body); color: var(--text-2); }
+.kv-meta { font-size: var(--d-label); color: var(--text-3); }
+.kv-value {
+  font-family: var(--mono);
+  font-size: var(--d-body);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.kv-value .unit { font-size: var(--d-label); color: var(--text-3); font-weight: 400; margin-left: 3px; }
+
+/* A row of small figures inside a tile (no boxes). */
+.figure-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--d-gap-inner) var(--d-gap);
+  padding-top: var(--d-gap-inner);
+}
+.figure { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.figure-label { font-size: var(--d-label); color: var(--text-3); }
+.figure-value { font-family: var(--mono); font-size: var(--d-body); font-weight: 600; color: var(--text); }
+.figure-value.positive { color: var(--green); }
+.figure-value.negative { color: var(--text); }
+.figure-sub { font-size: var(--d-label); color: var(--text-3); }
+
+.stack { display: flex; flex-direction: column; gap: var(--d-gap-inner); }
+.btn-block { width: 100%; justify-content: center; }
+.status-line { color: var(--red); font-size: var(--d-label); }
+.alert-action { margin-top: 8px; font-size: var(--d-label); }
+
+/* X3: a treasury alert as one compact row — icon, plain-language heading
+   (the server's, SH1), action; the detail one tap away (AlertRow.tsx).
+   Severity colours are the .alert.{critical,warning} ones. */
+.alert.alert-row { align-items: center; padding: 8px 12px; }
+.alert-row-details { flex: 1; min-width: 0; }
+.alert-row-details > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+  cursor: pointer;
+  list-style: none;
+}
+.alert-row-details > summary::-webkit-details-marker { display: none; }
+.alert-row-details > summary:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+.alert-row-heading { flex: 1; min-width: 0; font-weight: 600; }
+.alert-row-more { font-size: var(--d-label); opacity: 0.75; white-space: nowrap; }
+.alert-row-more::after { content: " ▾"; }
+.alert-row-details[open] .alert-row-more::after { content: " ▴"; }
+.alert-row-detail { margin-top: 8px; font-weight: 400; }
+.alert-row-action { flex-shrink: 0; }
+.alert-row-action .btn { white-space: nowrap; }
+@media (max-width: 767px) {
+  /* The chevron alone marks the disclosure on a phone; the heading keeps
+     the width. */
+  .alert-row-more-text { display: none; }
+}
+.tile-details { font-size: var(--d-label); color: var(--text-3); }
+.tile-details > summary { cursor: pointer; user-select: none; }
+.tile-details[open] > summary { margin-bottom: var(--d-gap-inner); }
+.field-hint { font-size: var(--d-label); color: var(--text-3); text-align: center; }
+
+/* The Bitcoin price tile (BitcoinPriceGraph.tsx). The price supports the
+   user's own numbers, so it is sized below them (--d-price). X5a: the plot is
+   full height at every width; X5's fewer, non-colliding time labels are the
+   component's (it measures .price-plot). The plot's font-size is the axis
+   label size, which the component reads back (X2: labels follow density). */
+.price-head { margin-bottom: var(--d-gap-inner); }
+.price-spot {
+  font-family: var(--mono);
+  font-size: var(--d-price);
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.2;
+}
+.price-change { font-family: var(--mono); font-size: var(--d-label); font-weight: 500; margin-top: 4px; }
+.price-change-period { color: var(--text-3); font-weight: 400; margin-left: 8px; }
+.price-plot { height: var(--d-chart-h); font-size: var(--d-label); }
+.btn-group-tight { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* ═══ PHONE TABLES (PR 7: X4b, X4c, J14) ════════════════════════════════
+   On a phone a table is ONE line per row only if every row actually fits on
+   one line; otherwise it is a CARD (X4b). A card: the title cell (td-primary)
+   on its own line, then each value with its column's name (data-label)
+   beside it, nothing hidden. Opt-in, by class, on the J2 tables only (R4):
+   .phone-card is always a card on a phone. The other tables keep today's
+   sideways scroll (.data-table's 600px minimum above). Kept after every
+   table rule so it wins on order as well as specificity. */
+@media (max-width: 767px) {
+  :is(.data-table, .sub-history-table).phone-card { display: block; width: 100%; min-width: 0; }
+  :is(.data-table, .sub-history-table).phone-card :is(thead, colgroup) { display: none; }
+  :is(.data-table, .sub-history-table).phone-card tbody { display: block; width: 100%; }
+  :is(.data-table, .sub-history-table).phone-card tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  :is(.data-table, .sub-history-table).phone-card tr:last-child { border-bottom: none; }
+  /* Each cell is one unit, label beside value: in round 1 a label floated
+     away from its value when the cell shrank and wrapped between the two. */
+  :is(.data-table, .sub-history-table).phone-card td {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    padding: 0;
+    border: none;
+    white-space: nowrap;
+  }
+  :is(.data-table, .sub-history-table).phone-card td.td-primary { flex: 1 0 100%; font-weight: 600; white-space: normal; }
+  :is(.data-table, .sub-history-table).phone-card td:not(.td-primary)::before {
+    content: attr(data-label);
+    flex: none;
+    font-family: var(--mono);
+    font-size: var(--d-label);
+    color: var(--text-3);
+  }
+  :is(.data-table, .sub-history-table).phone-card tr.row-detail td { flex: 1 0 100%; white-space: normal; }
+  :is(.data-table, .sub-history-table).phone-card tr.row-detail td::before { content: none; }
+  :is(.data-table, .sub-history-table).phone-card td:empty { display: none; }
+
+  /* X4c: Top Up's history (.phone-fit) is one line wherever every row fits
+     and a card otherwise, judged at the reader's own text size. Its wrapper
+     is a size container; a container query's em is the container's own font
+     size (14px × the text scale), so the threshold follows the text-size
+     setting. Measured, not guessed (X4c-1): the widest row the code can
+     produce — 3,000,000 sats (MEMBER_MAX_REFILL_SAT), the raw
+     "quote_created" status, every month at 12:58 AM/PM — needs
+     ≈ 17.05em + 100px in Chromium and WebKit at all 16 slider stops; the
+     px part is the cells' fixed padding. Rounded up. The card rules below
+     repeat the .phone-card block (phoneTables.css.test.ts pins them equal).
+     Without container queries the table keeps its sideways scroll. */
+  .phone-fit-wrap { container: topup-history / inline-size; }
+  @container topup-history (width >= calc(17.1em + 101px)) {
+    .data-table.phone-fit { min-width: 0; table-layout: auto; }
+    .data-table.phone-fit :is(colgroup, .col-secondary) { display: none; }
+  }
+  @container topup-history (width < calc(17.1em + 101px)) {
+    .data-table.phone-fit { display: block; width: 100%; min-width: 0; }
+    .data-table.phone-fit :is(thead, colgroup) { display: none; }
+    .data-table.phone-fit tbody { display: block; width: 100%; }
+    .data-table.phone-fit tr {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 16px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table.phone-fit tr:last-child { border-bottom: none; }
+    .data-table.phone-fit td {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: 0;
+      max-width: 100%;
+      padding: 0;
+      border: none;
+      white-space: nowrap;
+    }
+    .data-table.phone-fit td.td-primary { flex: 1 0 100%; font-weight: 600; white-space: normal; }
+    .data-table.phone-fit td:not(.td-primary)::before {
+      content: attr(data-label);
+      flex: none;
+      font-family: var(--mono);
+      font-size: var(--d-label);
+      color: var(--text-3);
+    }
+    .data-table.phone-fit tr.row-detail td { flex: 1 0 100%; white-space: normal; }
+    .data-table.phone-fit tr.row-detail td::before { content: none; }
+    .data-table.phone-fit td:empty { display: none; }
+  }
+}
+
+/* ═══ DENSITY — round 1's variant b, Balanced (J1, picked) ═══════════════
+   Every size that varies with density reads a --d-* token from here. A token
+   lands with the PR that first reads it: PR 5 the shell, panels and tables;
+   PR 6 the dashboards and X2's label size (P5-5, P6-5). Spacing in px, type
+   in rem, nothing under 9px at text scale 1.0. Root font-size, h1/h2 and the
+   radius ladder are not density's (F6, F9). densityTokens.test.ts pins the
+   values. */
+:root {
+  --d-page-py: 32px;         --d-page-px: 40px;
+  --d-page-py-ph: 20px;      --d-page-px-ph: 16px;
+  --d-maxw: 1280px;
+  --d-tile-pad: 20px;        --d-tile-pad-ph: 16px;
+  --d-gap: 16px;             --d-gap-inner: 12px;  --d-label-gap: 6px;
+  --d-title-size: 0.8125rem; --d-title-gap: 12px;
+  --d-table: 0.875rem;       --d-th: 0.75rem;
+  --d-td-py: 12px;           --d-td-px: 14px;    --d-th-py: 10px;
+  --d-label: 0.8125rem;      --d-body: 0.9375rem;
+  --d-hl1: 2.25rem;          --d-hl2: 1.625rem;
+  --d-price: 1.25rem;        --d-chart-h: 120px;
+  --d-cols: 2;
 }
 
 /* ─── Reduced motion ───────────────────────────────────────────────

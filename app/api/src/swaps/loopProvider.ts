@@ -118,10 +118,10 @@ export async function initiateLoopOut(params: {
   }));
 }
 
-// ─── Loop In provider (inactive — retained as low-level support) ─────────
-// Treasury Loop In removed from active product architecture (v1.7.1).
-// Merchant channels use lifecycle management instead. These functions are
-// retained for potential future use but are not called from active routes.
+// ─── Loop In provider (live — member Loop In) ────────────────────────────
+// LIVE: swapService.ts calls quoteLoopIn and initiateLoopIn for member Loop In (a
+// merchant refilling their own channel — POST /api/swaps/loop-in{,/quote}).
+// Treasury-initiated Loop In was removed in v1.7.1: /api/admin/swaps/loop-in{,/quote} → 410.
 
 export type LoopInQuoteResult = {
   amount_sat: number;

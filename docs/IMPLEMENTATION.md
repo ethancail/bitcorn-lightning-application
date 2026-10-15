@@ -14,7 +14,6 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/lightning/loop.ts` | loopd gRPC client (standalone loopd sidecar, port 11010) |
 | `src/lightning/rebalance-loop.ts` | Loop Out rebalance execution + auto-select + monitoring |
 | `src/lightning/rebalance-scheduler.ts` | Scheduled Loop Out rebalance loop |
-| `src/lightning/rebalance-circular.ts` | Circular rebalance execution (legacy, unused in hub-and-spoke) |
 | `src/lightning/network-payments.ts` | Network payment business logic (create invoice, pay, history, settlement sync) |
 | `src/api/treasury.ts` | Aggregate treasury metrics |
 | `src/api/treasury-liquidity-health.ts` | Per-channel liquidity assessment |
@@ -22,10 +21,6 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/api/treasury-expansion.ts` | Channel expansion recommendations & execution |
 | `src/utils/capital-guardrails.ts` | Pre-expansion policy enforcement |
 | `src/config/env.ts` | All environment variables with defaults — authoritative |
-| `src/memberLiquidity/liquidityDetector.ts` | Treasury-side: holds the `MemberLiquidityActionType` union (detection function removed 2026-05 alongside the cluster engine) |
-| `src/memberLiquidity/liquidityAdvisor.ts` | Treasury-side: computes keysend push estimates |
-| `src/memberLiquidity/liquidityExecutor.ts` | Treasury-side: executes keysend push to member |
-| `src/memberLiquidity/liquidityRoutes.ts` | Treasury-side: route handlers for `/api/member-liquidity/*` |
 | `src/memberAdvisor/channelClassifier.ts` | Member-side: classifies treasury channel state (5 states × 3 urgencies) |
 | `src/memberAdvisor/loopAvailability.ts` | Member-side: checks Loop daemon availability and terms |
 | `src/memberAdvisor/recommendationEngine.ts` | Member-side: role-aware recommendations (merchant/farmer/unknown) |
@@ -82,23 +77,21 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/api/client.ts` | `apiFetch<T>` helper, namespaced `api.*` object, all types |
 | `app/web/src/config/api.ts` | `API_BASE` constant |
 | `app/web/src/styles.css` | Full design system |
-| `app/web/src/components/NodeBalancePanel.tsx` | Shared balance panel (Total/Bitcoin/Lightning), rendered at top of both dashboards |
-| `app/web/src/components/FundNodePanel.tsx` | Coinbase Onramp panel — on-chain balance + "Fund Node via Coinbase →" |
-| `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph (recharts AreaChart, Coinbase public API) |
+| `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph (recharts AreaChart, Coinbase public API). On all three dashboards it sits immediately beneath the headline numbers (CHART). It measures its plot and fits the time labels to the width (X5); the plot is `--d-chart-h` tall at every width (X5a) |
+| `app/web/src/components/AlertRow.tsx` | X3: a treasury alert as one compact row — icon, the server's heading (SH1), the detail in a closed `<details>`, an optional action. Used by the treasury dashboard and `ValuationInputAlertBanner` |
+| `app/web/src/components/subscriptionBannerSlot.ts` | J9/J9a: the member dashboard's slot for the subscription banner — `top` for `routing_lapsed`/`close_due`, `info` otherwise |
 | `app/web/src/components/PowerLawChart.tsx` | Bitcoin Power Law chart (log Y, percentile bands, 2042 projection); fills gap days with live Coinbase price |
 | `app/web/src/components/MovingAveragesChart.tsx` | BTC 50/100/200-day MAs (1M/1Y/5Y/10Y); exports `computeMA` |
 | `app/web/src/components/CornBitcoinChart.tsx` | Bushels-per-BTC ratio; exports `interpolateCornPrices` |
 | `app/web/src/components/CornMovingAveragesChart.tsx` | Corn 50/100/200-day MAs; reuses `computeMA` + `interpolateCornPrices` |
 | `app/web/src/components/CommodityPricesPanel.tsx` | Price ticker strip (BTC + gold + corn + soy + wheat) |
-| `app/web/src/components/NetworkGraph.tsx` | SVG hub-and-spoke topology with zoom/pan (40–300%), role-colored |
 | `app/web/src/data/power-law-data.json` | ~10,000 daily entries, 2015-01-01 to 2042-05-31; bundled by Vite |
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
-| `app/web/src/pages/Dashboard.tsx` | Treasury dashboard (revenue-focused) |
-| `app/web/src/pages/MemberDashboard.tsx` | Member view: `ConnectToHub` form or role-aware earnings panel |
-| `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal — routes `/withdraw`, `/cashout` (farmer). **Note:** `/refill` (merchant) currently also points here. The merchant Loop In page exists in `RefillChannel.tsx` per `docs/plans/2026-04-14-merchant-refill-channel-design.md`; the route swap is pending. |
-| `app/web/src/pages/SwapOperations.tsx` | Treasury Loop Out / Loop In tabs, visual channel picker |
+| `app/web/src/pages/Dashboard.tsx` | Treasury dashboard: headline (24-hour net, total capital, capital deployed), the price chart, alert rows, then Treasury Revenue, Balances + Fund Node, subscription and rail-fee tiles |
+| `app/web/src/pages/MemberDashboard.tsx` | Member view: notice slots, a headline per declared role, the price chart, then the channel tile (`ConnectToHub` form when there's no channel) and a Your node tile (balances, Fund Node, the farmer's "Received, lifetime") |
+| `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal — routes `/withdraw`, `/cashout` (farmer). `/refill` (merchant) routes to `RefillChannel.tsx`, the member Loop In page (`docs/plans/2026-04-14-merchant-refill-channel-design.md`), which reaches `swaps/loopProvider.ts` through `swapService.ts`. |
+| `app/web/src/pages/SwapOperations.tsx` | Treasury Loop Out tab, visual channel picker. (Treasury Loop In tab removed — those routes answer 410.) |
 | `app/web/src/pages/Peers.tsx` | Treasury: connect by URI, onboarding guide, live peers table |
-| `app/web/src/pages/MemberLiquidity.tsx` | (Orphaned — imported in `App.tsx` but not currently rendered; displaced by the Liquidity page overhaul shipped in v1.13.8. Retained on disk pending a future cleanup PR.) |
 | `app/web/src/pages/Payments.tsx` | Invoice-based payments (Request Payment + Pay Invoice) with QR |
 | `app/web/src/pages/Charts.tsx` | PowerLawChart + PriceTickerStrip + MovingAverages + CornBitcoin + CornMAs |
 | `app/web/src/pages/Contacts.tsx` | CRUD address book with tag editor and sync-from-peers. Accepts `?pubkey=` to open the add form with the Node ID prefilled — the landing point for the admin roster's unidentified marker |
@@ -125,13 +118,19 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 
 ### Layout Constraints
 
-**Scroll:** `.app-shell` in `styles.css` uses `height: 100vh` (not `min-height`). This is intentional — it constrains the CSS grid to the viewport so that `overflow-y: auto` on `.main-content` triggers correctly. Changing to `min-height` breaks scrolling. `.main-content` uses `padding-bottom: 64px`.
+**Scroll:** `.app-shell` in `styles.css` uses `height: 100vh` (then `100dvh`), not `min-height`. This is intentional — it constrains the CSS grid to the viewport so that `overflow-y: auto` on `.main-content` and `.sidebar` triggers correctly. Changing to `min-height` breaks scrolling. The grid is two rows, `56px minmax(0, 1fr)` (`shellGrid.test.ts`); `minmax(0, …)` stops the sidebar's content height from pushing the shell past short windows.
 
-**Mobile (< 768px):** Sidebar hidden, hamburger in topbar slides sidebar in from the left (200ms ease) over a dark backdrop. Close via: X button, backdrop click, or any nav link. Both shells manage a `menuOpen` boolean, passed as `open`/`onClose` to their sidebar and `onMenuToggle` to `Topbar`. `.dashboard-grid` collapses to single column, `.data-table` gets `min-width: 600px` (horizontal scroll), `.main-content` padding reduced. Desktop (768px+) is unchanged — CSS-only via `@media`.
+**Top bar (4B/J10, by grid overlap):** the translucent `.topbar` keeps row 1; `.sidebar` and `.main-content` span both rows (`grid-row: 1 / -1`), so content scrolls *beneath* the bar. Their padding adds `--topbar-h` (56px, must equal row 1), and `.main-content`'s `scroll-padding-top` keeps focus moves and `scrollIntoView` below the bar. Translucency (`--chrome-bg`, `--chrome-blur`) is the bar's and the desktop sidebar's only, with solid fallbacks for `prefers-reduced-transparency` and for browsers without `backdrop-filter` (`shellChrome.test.ts`). `.main-content` uses `padding-bottom: 64px`; page content caps at `--d-maxw`, centred.
+
+**Density:** sizes that vary with density read `--d-*` tokens from the DENSITY block near the end of `styles.css` (round 1's variant b; `densityTokens.test.ts`). A token lands with the PR that first reads it.
+
+**Dashboards (PR 6):** all three are one `.dash` flex column, in this order: notice slots, `.dash-header`, the `.headline` numbers (H2 — the user's own money, first and largest), `.headline-status` (stale/unavailable lines; the member's channel-staleness notice), `<BitcoinPriceGraph />` immediately beneath (CHART), then `.dash-grid` (`--d-cols` columns, one on a phone). A headline number is a nowrap `.hl-num` with its unit as an atomic inline after it, so it never splits and "sats" drops below instead; on a phone the numbers stack, and nothing shrinks to fit (X1). On a phone, flex `order` puts `.dash-notices-info` (name prompt, `prepay`/`worker_lapsed`) after the headline and chart, while `.dash-notices-top` (`routing_lapsed`, `close_due`, cert expiry) stays first (J9/J9a). The header class is `.dash-header`, not the app-wide `.page-header`. The treasury's alerts are `AlertRow`s below the chart (SH7). The member headline follows the declared role (SH9): farmer "Available to withdraw"/"Room to receive", merchant "Available to send"/"Total", unknown "Your balance"/"Room to receive"; with no channel, "—" and "No channel yet". Pinned by `dashLayout.test.ts`, `Dashboard.headline.test.tsx` and `MemberDashboard.headline.test.tsx`.
+
+**Mobile (< 768px):** Sidebar hidden, hamburger in topbar slides sidebar in from the left (200ms ease) over a dark backdrop. Close via: X button, backdrop click, or any nav link. Both shells manage a `menuOpen` boolean, passed as `open`/`onClose` to their sidebar and `onMenuToggle` to `Topbar`. Both sidebars render one shared `Sidebar` component (items, the links after Buy Bitcoin, Settings' badge); member-only hooks stay in `MemberSidebar` (`App.navInventory.test.tsx`). The phone drawer is solid, not translucent. `.dashboard-grid` collapses to single column, `.data-table` gets `min-width: 600px` (horizontal scroll), `.main-content` padding reduced. Desktop (768px+) is unchanged — CSS-only via `@media`.
 
 ### Fund Node Panel
 
-Rendered below `NodeBalancePanel` on both dashboards. Calls `api.getNodeBalances()` on mount (one-shot, no poll). Button calls `api.getCoinbaseOnrampUrl()` → `window.open(url, '_blank', 'noopener,noreferrer')`. Maps `coinbase_not_configured` API error to operator-readable message. Falls back to `0 sats` on fetch error (no infinite shimmer).
+No longer rendered: the dashboards carry their own Fund Node button (the treasury's Balances tile, the member's Your node tile). The component calls `api.getNodeBalances()` on mount (one-shot, no poll). Button calls `api.getCoinbaseOnrampUrl()` → `window.open(url, '_blank', 'noopener,noreferrer')`. Maps `coinbase_not_configured` API error to operator-readable message. Falls back to `0 sats` on fetch error (no infinite shimmer).
 
 ### Pending Channel Detection
 
@@ -143,7 +142,7 @@ Role is derived from identity + treasury channel state — **not** bearer tokens
 
 - **Public**: health, node info, channels, pending channels, member stats, channel open, contacts, sync-peers, exchange rate, network invoice/decode/payments/sync-settlements, liquidity status/history/config, coinbase onramp URL, commodity prices, peers
 - **Member** (active treasury channel): `POST /api/pay`, `POST /api/network/pay`
-- **Treasury only**: all `/api/treasury/*` endpoints (metrics, fee policy, liquidity health, expansion, capital policy, rebalance Loop Out, peers), plus the treasury-only `/api/member-liquidity/*` endpoints (operator-approved treasury push for provisioning + edge cases — not steady-state rebalancing; see `docs/ARCHITECTURE.md` § Liquidity Management)
+- **Treasury only**: all `/api/treasury/*` endpoints (metrics, fee policy, liquidity health, expansion, capital policy, rebalance Loop Out, peers)
 
 See `docs/API.md` for the complete endpoint list and request/response shapes.
 

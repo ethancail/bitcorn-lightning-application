@@ -246,7 +246,7 @@ COPY --from=fetch /out/loop  /usr/local/bin/loop
 # EXPOSE publishes nothing by itself.
 #
 # NOTE FOR THE COMPOSE SWAP (next arc, not this one): the API currently expects
-# litd's unified endpoint, LOOP_GRPC_PORT=8443 (app/api/src/config/env.ts:72),
+# litd's unified endpoint, LOOP_GRPC_PORT=8443 (app/api/src/config/env.ts:64),
 # along with /loop-data/.lit/tls.cert and /loop-data/.loop/mainnet/loop.macaroon.
 # Standalone loopd serves gRPC on 11010, so the port and both paths move
 # together or Loop stays down.

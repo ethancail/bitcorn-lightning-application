@@ -84,9 +84,9 @@ export type ConfirmedRoute = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DRY-RUN — why `dry_run` is hashed on the three routes that accept it
+// DRY-RUN — why `dry_run` is hashed on the two routes that accept it
 //
-// expansion/execute, rotation/execute and rebalance/circular each read
+// expansion/execute and rotation/execute each read
 // `parsed.dry_run === true` and, when it is set, return a preview WITHOUT
 // moving anything. Nothing else in the body distinguishes a preview from the
 // real act — so before this field was hashed, a confirmation computed for
@@ -98,8 +98,8 @@ export type ConfirmedRoute = {
 // anywhere in the route table — preview versus execute — which is why it is
 // worth the field rather than being waved off as a modifier.
 //
-// All three sites test it IDENTICALLY (`=== true`, at index.ts:2172, :2328 and
-// :2636, each gating `if (isDryRun)` / `if (!isDryRun)`). That was checked, not
+// Both sites test it IDENTICALLY (`=== true`, at index.ts:2508 and :2664, each
+// gating `if (isDryRun)` / `if (!isDryRun)`). That was checked, not
 // assumed; had they diverged, the divergence would be the bug to fix rather
 // than something for this map to paper over.
 //
@@ -113,7 +113,7 @@ export type ConfirmedRoute = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * The twelve capital-moving routes that take a confirmation.
+ * The ten capital-moving routes that take a confirmation.
  *
  * Derived from dispatch reachability to an outflow primitive — see
  * action-confirmation.coverage.test.ts, which re-derives this set from the
@@ -169,30 +169,6 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
   },
   {
     method: "POST",
-    match: { kind: "exact", url: "/api/treasury/rebalance/circular" },
-    shape: 1,
-    fields: [
-      { name: "outgoing_channel", from: "body", kind: "text" },
-      { name: "incoming_channel", from: "body", kind: "text" },
-      { name: "tokens", from: "body", kind: "number" },
-      { name: "max_fee_sats", from: "body", kind: "number", optional: true },
-      { name: "dry_run", from: "body", kind: "boolean", optional: true },
-    ],
-    note:
-      "The principal returns to the same node, so the ROUTING FEE is the only " +
-      "thing that actually leaves — max_fee_sats is this route's amount field, and " +
-      "`tokens` is the field that does not go anywhere. Hashing tokens alone was " +
-      "the weakest classification in the set.\n" +
-      "Optional, not required, because the route already accepts its absence: " +
-      "`Number.isFinite(max_fee_sats) ? max_fee_sats : 0` defaults it to a ZERO " +
-      "fee ceiling — the most restrictive value, not the most permissive. Making " +
-      "it required would change which requests the route accepts, which is a " +
-      "validation change rather than a confirmation one. Omitting it cannot be " +
-      "used to raise the cap: adding the field changes the canonical form, so a " +
-      "replay that introduces it gets a 409.",
-  },
-  {
-    method: "POST",
     match: { kind: "exact", url: "/api/pay" },
     shape: 1,
     fields: [{ name: "payment_request", from: "body", kind: "text" }],
@@ -236,19 +212,6 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     shape: 1,
     fields: [{ name: "payment_request", from: "body", kind: "text" }],
     note: "As /api/pay — the invoice is the consequence.",
-  },
-  {
-    method: "POST",
-    match: {
-      kind: "wrap",
-      prefix: "/api/member-liquidity/recommendations/",
-      suffix: "/approve",
-    },
-    shape: 2,
-    fields: [{ name: "recommendation_id", from: "path", kind: "text" }],
-    note:
-      "Selector echo: the amount and peer live in the stored recommendation, not the " +
-      "request. The id is the only caller-supplied field, and choosing it IS the act.",
   },
   {
     method: "POST",
@@ -340,7 +303,6 @@ export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: stri
   { method: "POST", match: { kind: "exact", url: "/api/treasury/fees/apply-dynamic" }, why: "fee policy" },
   { method: "POST", match: { kind: "exact", url: "/api/treasury/capital-policy" }, why: "policy config" },
   { method: "PATCH", match: { kind: "exact", url: "/api/liquidity/config" }, why: "config" },
-  { method: "POST", match: { kind: "wrap", prefix: "/api/member-liquidity/recommendations/", suffix: "/reject" }, why: "declines, moves nothing" },
   { method: "POST", match: { kind: "exact", url: "/api/network/sync-settlements" }, why: "sync only" },
   { method: "DELETE", match: { kind: "prefix", url: "/api/network/payments/" }, why: "ledger row delete" },
   { method: "POST", match: { kind: "exact", url: "/api/network/decode" }, why: "decode only" },
@@ -401,7 +363,7 @@ export type Classification = "confirm" | "exempt" | "unknown";
  * FAILS CLOSED. A mutation matching neither table classifies as "unknown", and
  * the caller treats that as confirmation-required. A newly added mutation route
  * therefore refuses traffic until someone classifies it — which is the point of
- * default-require, and is why this is not opt-in on twelve routes.
+ * default-require, and is why this is not opt-in on ten routes.
  */
 export function classifyMutation(method: string, url: string): Classification {
   if (findConfirmedRoute(method, url)) return "confirm";

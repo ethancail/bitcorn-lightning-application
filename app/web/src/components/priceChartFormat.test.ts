@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { niceTicks, formatAxisPrice, formatTimeLabel } from "./priceChartFormat";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { niceTicks, formatAxisPrice, formatTimeLabel, fittingTickCount, xAxisBand, X_TICK_SIZE } from "./priceChartFormat";
 
 describe("niceTicks", () => {
   it("turns the reported 5y range ($13k–$128k) into round $50k ticks", () => {
@@ -120,5 +122,59 @@ describe("formatTimeLabel", () => {
 
   it("24h is a clock time", () => {
     expect(formatTimeLabel(at(2026, 5, 8), "24h")).toMatch(/\d{1,2}:\d{2}\s?(AM|PM)/i);
+  });
+});
+
+describe("fittingTickCount", () => {
+  it("fits as many labels as the width allows, gaps included", () => {
+    // 3 × 60px labels + 2 × 20px gaps = 220px.
+    expect(fittingTickCount(220, 60, 20)).toBe(3);
+    expect(fittingTickCount(219, 60, 20)).toBe(2);
+  });
+  it("the round-1 phone plot (~270px, 24h labels ~62px) fits 3, not 6", () => {
+    expect(fittingTickCount(270, 62, 20)).toBe(3);
+  });
+  it("never more than max on a wide plot, never fewer than min on a tiny one", () => {
+    expect(fittingTickCount(2000, 60, 20)).toBe(6);
+    expect(fittingTickCount(40, 60, 20)).toBe(2);
+  });
+  it("an unmeasured plot keeps max", () => {
+    expect(fittingTickCount(0, 60, 20)).toBe(6);
+    expect(fittingTickCount(300, 0, 20)).toBe(6);
+    expect(fittingTickCount(NaN, 60, 20, 2, 4)).toBe(4);
+  });
+});
+
+describe("xAxisBand (PR 7): the time labels clear the lowest price label", () => {
+  // Recharts' geometry (recharts 3, CartesianAxis + Text): a bottom-axis label's
+  // text starts tickSize + tickMargin below the axis line with its baseline a
+  // cap height (0.71em) lower; a left-axis label is centred on its tick, its
+  // baseline 0.355em below it, and the lowest tick IS the axis line. Font box
+  // taken conservatively: 1.0em above the baseline, 0.25em below (Inter's are
+  // 0.969 and 0.242).
+  const ASCENT = 1.0, DESCENT = 0.25;
+  // Every stop of the text-size slider (0.75–1.5, step 0.05) at the chart's
+  // label size, --d-label = 0.8125rem on a 14px root.
+  const STOPS = Array.from({ length: 16 }, (_, i) => +(0.75 + i * 0.05).toFixed(2));
+  for (const s of STOPS) {
+    const f = 0.8125 * 14 * s;
+    it(`text ${s}x (${f.toFixed(2)}px labels)`, () => {
+      const { tickMargin, height } = xAxisBand(f);
+      const timeTop = X_TICK_SIZE + tickMargin + 0.71 * f - ASCENT * f;
+      const lowestPriceBottom = 0.355 * f + DESCENT * f;
+      expect(timeTop, "the first time label starts below the lowest price label, 1px clear").toBeGreaterThanOrEqual(lowestPriceBottom + 1);
+      expect(height, "the band holds the time label").toBeGreaterThanOrEqual(X_TICK_SIZE + tickMargin + 0.71 * f + DESCENT * f);
+    });
+  }
+  it("at 1.0x the band is Recharts' 30px, so the default plot keeps its height", () => {
+    expect(xAxisBand(0.8125 * 14).height).toBe(30);
+  });
+  it("the price chart's x-axis takes the band, and the y-tick count leaves room for it", () => {
+    const src = readFileSync(join(__dirname, "BitcoinPriceGraph.tsx"), "utf8");
+    const xAxis = src.slice(src.indexOf("<XAxis"), src.indexOf("/>", src.indexOf("<XAxis")));
+    expect(xAxis).toContain("tickMargin={xBand.tickMargin}");
+    expect(xAxis).toContain("height={xBand.height}");
+    expect(src).toContain("const xBand = xAxisBand(fontPx);");
+    expect(src).toContain("plot.height - xBand.height");
   });
 });

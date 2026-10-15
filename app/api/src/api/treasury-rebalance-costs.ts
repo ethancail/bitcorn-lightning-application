@@ -1,12 +1,13 @@
 import { db } from "../db";
 
-export type RebalanceCostType = "circular" | "keysend" | "loop_out" | "loop_in" | "manual";
+export type RebalanceCostType = "keysend" | "loop_out" | "loop_in" | "manual";
 
 /**
  * Log a rebalance cost for true net accounting.
- * Call when recording any rebalance cost — Loop Out (current steady-state path),
- * legacy circular rebalance, treasury push (keysend), or manual channel open
- * costs. The cost ledger captures all sources for accurate `net_sats` accounting.
+ * Call when recording any rebalance cost — today that is Loop Out
+ * (rebalance-loop.ts). Rows written earlier can carry the types of removed paths
+ * (e.g. 'circular'); every reader sums all rows regardless of type, so they
+ * still count toward `net_sats` and the daily loss cap.
  */
 export function insertRebalanceCost(
   type: RebalanceCostType,

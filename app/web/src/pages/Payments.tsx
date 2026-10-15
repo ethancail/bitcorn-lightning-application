@@ -344,7 +344,7 @@ function RequestPaymentForm({
               <div style={{ width: `${Math.min(currentLocalPct, 100)}%`, height: "100%", background: "var(--amber)" }} />
             </div>
             <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)" }}>
-              {currentLocalPct}% local
+              {currentLocalPct}% available to send
             </span>
           </div>
         </div>
@@ -435,7 +435,7 @@ function RequestPaymentForm({
           padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 12,
         }}>
           After receive: <strong style={{ color: "var(--green)" }}>
-            {currentLocalPct}% → {projectedLocalPct}% local
+            {currentLocalPct}% → {projectedLocalPct}% available to send
           </strong>
         </div>
       )}
@@ -667,7 +667,7 @@ function PayInvoiceForm({
               <div style={{ width: `${Math.min(currentLocalPct, 100)}%`, height: "100%", background: "var(--amber)" }} />
             </div>
             <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)" }}>
-              {currentLocalPct}% local
+              {currentLocalPct}% available to send
             </span>
           </div>
         </div>
@@ -778,7 +778,7 @@ function PayInvoiceForm({
           padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 12,
         }}>
           After send: <strong data-testid="capacity-text" style={{ color: "var(--text)" }}>
-            {currentLocalPct}% → {projectedLocalPct}% local
+            {currentLocalPct}% → {projectedLocalPct}% available to send
           </strong>
         </div>
       )}

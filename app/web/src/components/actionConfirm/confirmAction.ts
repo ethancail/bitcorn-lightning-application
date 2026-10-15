@@ -310,24 +310,3 @@ export function summarizeCatchUp(p: {
     confirmLabel: "Buy now",
   };
 }
-
-export function summarizeApproveLiquidity(p: {
-  recommendationId: string;
-  amountSats?: number;
-  peerAlias?: string;
-}): ActionSummary {
-  return {
-    title: "Approve this liquidity action",
-    rows: [
-      ...(p.amountSats !== undefined ? [{ label: "Amount", value: fmtSats(p.amountSats) }] : []),
-      ...(p.peerAlias ? [{ label: "Peer", value: p.peerAlias }] : []),
-      { label: "Recommendation", value: truncId(p.recommendationId), ident: true },
-    ],
-    irreversible: "Approving moves funds. The routing fee is spent on completion.",
-    challenge:
-      p.amountSats !== undefined
-        ? { kind: "amount", sats: p.amountSats }
-        : { kind: "phrase", text: "APPROVE" },
-    confirmLabel: "Approve",
-  };
-}

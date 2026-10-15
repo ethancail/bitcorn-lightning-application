@@ -1,7 +1,7 @@
 // D3: negative numbers render in --text, with the minus sign carrying the
-// meaning, not in red. On the treasury dashboard that is the 24h net hero
-// (.revenue-hero-num.negative) and Revenue Yield; .stat-value.negative has no
-// consumer today and follows for consistency.
+// meaning, not in red. On the treasury dashboard that is the 24-hour net
+// headline number (.hl-value.negative, PR 6's H2) and Revenue Yield;
+// .stat-value.negative has no consumer here and follows for consistency.
 //
 // Harness: Dashboard.alertHeadings.test.tsx's.
 
@@ -34,6 +34,7 @@ const period = (net: number, rebalance: number) => ({
   rebalance_costs_sats: rebalance, net_sats: net,
 });
 
+// `yield` is revenue_per_1m_sats_deployed, the field the tile shows (J7).
 const metrics = (o: { net24?: number; yield?: number; rebalance24?: number } = {}) => ({
   as_of: 0,
   all_time: period(1_000, 0),
@@ -42,7 +43,7 @@ const metrics = (o: { net24?: number; yield?: number; rebalance24?: number } = {
     channels_total: { local_sats: 0, remote_sats: 0, capacity_sats: 0, active_count: 0, total_count: 0 },
     treasury_channel: null,
   },
-  capital_efficiency: { capital_deployed_sats: 1_000_000, revenue_yield: o.yield ?? 0, revenue_per_1m_sats_deployed: 0, runway_days: null },
+  capital_efficiency: { capital_deployed_sats: 1_000_000, revenue_yield: 0, revenue_per_1m_sats_deployed: o.yield ?? 0, runway_days: null },
 });
 
 let host: HTMLDivElement;
@@ -71,18 +72,18 @@ const colorOf = (selector: string) =>
   cssRules().find((r) => r.media === null && r.selectors.includes(selector))?.decls["color"];
 
 const yieldValue = () => {
-  const card = [...host.querySelectorAll(".stat-card")].find((c) => c.textContent?.includes("Revenue Yield"));
-  expect(card, "the Revenue Yield card renders").toBeDefined();
-  return card!.querySelector(".stat-value")!;
+  const card = [...host.querySelectorAll(".figure")].find((c) => c.textContent?.includes("Revenue yield"));
+  expect(card, "the Revenue Yield figure renders").toBeDefined();
+  return card!.querySelector(".figure-value")!;
 };
 
 describe("D3: negative numbers are --text, not red", () => {
-  it("the 24h net hero: a negative net carries .negative, and .negative is --text", async () => {
+  it("the 24-hour net headline: a negative net carries .negative, and .negative is --text", async () => {
     await renderWith(metrics({ net24: -500 }));
-    const hero = host.querySelector(".revenue-hero-num")!;
-    expect(hero.className).toBe("revenue-hero-num negative");
-    expect(hero.textContent).toBe("−500");
-    expect(colorOf(".revenue-hero-num.negative")).toBe("var(--text)");
+    const hl = host.querySelector(".hl-1 .hl-value")!;
+    expect(hl.className).toBe("hl-value negative");
+    expect(hl.querySelector(".hl-num")!.textContent).toBe("−500");
+    expect(colorOf(".hl-value.negative")).toBe("var(--text)");
   });
 
   it(".stat-value.negative is --text too", () => {
@@ -103,9 +104,9 @@ describe("D3: negative numbers are --text, not red", () => {
 
 describe("E: the 24h rebalance cost is --text, never red", () => {
   const costValue = () => {
-    const card = [...host.querySelectorAll(".policy-card")].find((c) => c.textContent?.includes("Rebalance costs"));
-    expect(card, "the Rebalance costs card renders").toBeDefined();
-    return card!.querySelector(".policy-card-value")!;
+    const row = [...host.querySelectorAll(".kv")].find((c) => c.textContent?.includes("Rebalance costs"));
+    expect(row, "the Rebalance costs row renders").toBeDefined();
+    return row!.querySelector(".kv-value")!;
   };
 
   it("a 0 cost renders \"0\" in --text", async () => {
