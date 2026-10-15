@@ -2,7 +2,9 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Palette — industrial amber-on-black terminal aesthetic */
+  /* Palette. Colour round (tranche 2): every text token passes 4.5:1 on
+     --bg…--bg-3, every state colour passes as a mark, and amber is a mark
+     only — bars, dots, fills, rules and glyph markers, never words. */
   --bg:          #0a0a0c;
   --bg-1:        #111115;
   --bg-2:        #17171e;
@@ -19,9 +21,9 @@
   --green-dim:   #16a34a;
   --green-glow:  rgba(34,197,94,0.10);
 
-  --red:         #ef4444;
+  --red:         #f26262;
   --red-dim:     #dc2626;
-  --red-glow:    rgba(239,68,68,0.12);
+  --red-glow:    rgba(242,98,98,0.12);
 
   --yellow:      #eab308;
   --yellow-glow: rgba(234,179,8,0.12);
@@ -39,8 +41,32 @@
   --orange-glow: rgba(251,146,60,0.12);
 
   --text:        #e8e8f0;
-  --text-2:      #9898b0;
-  --text-3:      #5a5a70;
+  /* --text-3 passes 4.5:1 as text on --bg…--bg-3 (it was 2.46–2.95:1), and
+     --text-2 moves up to stay a step above it. */
+  --text-2:      #a8a8bc;
+  --text-3:      #84849c;
+
+  /* The boundary of a form control: 3:1 against --bg-1…--bg-3 (WCAG 1.4.11).
+     --border stays for panels and dividers, which bound no control. */
+  --border-control: #66668c;
+
+  /* Chart series. Dark values are the charts' original hues; light values
+     are the same hues darkened to 3:1 on --bg and --bg-1. */
+  --chart-amber:  #f59e0b;
+  --chart-green:  #22c55e;
+  --chart-red:    #ef4444;
+  --chart-orange: #f97316;
+  --chart-blue:   #3b82f6;
+  --chart-indigo: #8b5cf6;
+  --chart-cyan:   #06b6d4;
+  --chart-violet: #a78bfa;
+
+  /* Valuation and Z ramps keep their own hex values (contrast only);
+     consumers mix them toward --text by these shares (components/rampInk.ts).
+     0% in dark, where every ramp colour already passes; in light, 58% makes
+     text pass 4.5:1 and 44% makes a mark pass 3:1 on --bg…--bg-2. */
+  --ramp-ink:   0%;
+  --ramp-mark:  0%;
 
   /* Round 1, Z1/Z2: ONE font. --font is the UI family; --font-id is the
      monospace for identifiers ONLY (node IDs, pubkeys, txids, addresses,
@@ -78,8 +104,9 @@
   --panel-alt:   var(--bg-2);    /* DEPRECATED alias (P2): owners migrate consumers to --bg-2 */
   --surface-2:   var(--bg-2);    /* DEPRECATED alias (P2): owners migrate consumers to --bg-2 */
   --accent:      var(--text-2);  /* DEPRECATED alias (P2): owners migrate consumers to --text-2 */
-  /* --accent re-points to --amber in tranche 2, under notices N1/N2, once the
-     light-theme --amber passes text contrast. */
+  /* V3 meant --accent to re-point to --amber in tranche 2. Amber is a mark
+     only since the colour round, and --accent's consumers are words, so it
+     stays on --text-2. */
 
   font-family: var(--font);
   /* Z2: numbers use the font's TABULAR digits, so columns line up. */
@@ -1673,38 +1700,54 @@ input[type="number"] {
   --border:      #cdc3b3;
   --border-hi:   #b5a998;
 
-  --amber:       #d97706;
+  /* Colour round: light --amber darkened at its own hue (32°, so no gauge
+     colour moves toward red) from #d97706 (2.16–2.98:1) to 3:1 as a mark on
+     --bg…--bg-3 and on its own glow. It is never a text colour. --amber-dim
+     already reaches 3:1 as a mark. */
+  --amber:       #a75c05;
   --amber-dim:   #b45309;
-  --amber-glow:  rgba(217,119,6,0.12);
-  --amber-glow2: rgba(217,119,6,0.06);
+  --amber-glow:  rgba(167,92,5,0.12);
+  --amber-glow2: rgba(167,92,5,0.06);
 
-  --green:       #15803d;
+  /* Each state colour darkened, at its own hue, to 4.5:1 as text on
+     --bg…--bg-3 and on its own glow (badges, alerts). None moves toward red. */
+  --green:       #10602e;
   --green-dim:   #166534;
-  --green-glow:  rgba(21,128,61,0.10);
+  --green-glow:  rgba(16,96,46,0.10);
 
-  --red:         #dc2626;
+  --red:         #a11a1a;
   --red-dim:     #b91c1c;
-  --red-glow:    rgba(220,38,38,0.10);
+  --red-glow:    rgba(161,26,26,0.10);
 
-  --yellow:      #a16207;
-  --yellow-glow: rgba(161,98,7,0.12);
+  --yellow:      #754705;
+  --yellow-glow: rgba(117,71,5,0.12);
 
-  --blue:        #2563eb;
-  --blue-glow:   rgba(37,99,235,0.10);
+  --blue:        #1248c1;
+  --blue-glow:   rgba(18,72,193,0.10);
 
-  --purple:      #7c3aed;
-  --purple-glow: rgba(124,58,237,0.10);
+  --purple:      #6f27eb;
+  --purple-glow: rgba(111,39,235,0.10);
 
-  --orange:      #c2410c;
-  --orange-glow: rgba(194,65,12,0.10);
+  --orange:      #953209;
+  --orange-glow: rgba(149,50,9,0.10);
 
   --text:        #1c1408;
-  --text-2:      #685a49;
-  --text-3:      #998a78;
+  --text-2:      #483f33;
+  --text-3:      #665a4d;
 
-  /* Light --amber is under 3:1 on these backgrounds; --amber-dim passes.
-     Drop this override when tranche 2 re-values light --amber. */
-  --focus-ring:  var(--amber-dim);
+  --border-control: #857560;
+
+  --chart-amber:  #bc7908;
+  --chart-green:  #1b9b4a;
+  --chart-red:    #ef4444;
+  --chart-orange: #e16006;
+  --chart-blue:   #3b82f6;
+  --chart-indigo: #8b5cf6;
+  --chart-cyan:   #0594ad;
+  --chart-violet: #926ff9;
+
+  --ramp-ink:   58%;
+  --ramp-mark:  44%;
 
   color: var(--text);
   background: var(--bg);
