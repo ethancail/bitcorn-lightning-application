@@ -687,7 +687,7 @@ function ChannelRolePanel() {
                 <span style={{ fontSize: "1.25rem" }}>{opt.icon}</span>
                 <div>
                   <div style={{ fontWeight: 600 }}>{opt.label}</div>
-                  <div style={{ fontSize: "0.75rem", color: role === opt.value ? "var(--amber-dim)" : "var(--text-3)" }}>
+                  <div style={{ fontSize: "0.75rem", color: role === opt.value ? "var(--text-2)" : "var(--text-3)" }}>
                     {opt.desc}
                   </div>
                 </div>
