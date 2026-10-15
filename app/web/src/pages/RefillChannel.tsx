@@ -654,7 +654,7 @@ export default function RefillChannel() {
               <span className="icon">≡</span>Top Up Quote
             </span>
             {countdown && (
-              <span className={`badge ${countdown === "Expired" ? "badge-red" : "badge-amber"}`}>
+              <span className={`badge ${countdown === "Expired" ? "badge-muted" : "badge-amber"}`}>
                 {countdown === "Expired" ? "Expired" : `Expires in ${countdown}`}
               </span>
             )}

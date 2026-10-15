@@ -2227,7 +2227,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span className="loading-shimmer" style={{ width: 10, height: 10, borderRadius: "50%" }} />
-                      <span className="badge badge-red">closing</span>
+                      <span className="badge badge-muted">closing</span>
                     </div>
                   </div>
                 ))}
