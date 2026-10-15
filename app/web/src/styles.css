@@ -2548,14 +2548,6 @@ input[type="number"] {
 /* Pill, alert, stat and marker colours come from the theme tokens above
    (colour round, CR-5), so they need no light-mode overrides here. */
 
-/* Admin distribution counter: the zero-count dimming via opacity:0.45
-   works on dark mode (contrast is high to begin with) but cuts below
-   readable on cream backgrounds. Lift the dimming in light mode so
-   zero pills stay scannable while still reading as "quiet." */
-[data-theme="light"] .admin-members-distribution-pill.is-zero {
-  opacity: 0.65;
-}
-
 /* ─── Subscription payment history page ─────────────────────────────
    Stage 5a follow-up. Reuses .sub-panel chrome + .sub-pill family
    from the subscription panel so visual continuity carries between
@@ -2669,9 +2661,16 @@ input[type="number"] {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-.admin-members-distribution-pill.is-zero {
-  opacity: 0.45;
+/* A zero count reads as quiet without fading its word: opacity took the
+   pills' words under 4.5:1 — all eight in dark (1.95–3.68:1 at 0.45), six of
+   eight in light (2.62–3.11:1 at 0.65). The pill keeps its form and its
+   word, in --text-3, with no fill. */
+.admin-members-distribution-pill.is-zero .sub-pill {
+  color: var(--text-3);
+  background: transparent;
+  border-color: var(--border-hi);
 }
+.admin-members-distribution-pill.is-zero .sub-pill-dot { background: var(--text-3); }
 .admin-members-distribution-total {
   font-family: var(--mono);
   font-size: 0.8125rem;
