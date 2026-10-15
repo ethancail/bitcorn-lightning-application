@@ -37,11 +37,11 @@ interface CornBitcoinChartProps {
 
 // ─── Constants ───────────────────────────────────────────────────────────
 
-const LINE_COLOR = "#f59e0b";
-const BG_2 = "#17171e";
-const BORDER = "#2a2a38";
-const TEXT_3 = "#5a5a70";
-const TEXT = "#e8e8f0";
+const LINE_COLOR = "var(--chart-amber)";
+const BG_2 = "var(--bg-2)";
+const BORDER = "var(--border)";
+const TEXT_3 = "var(--text-3)";
+const TEXT = "var(--text)";
 const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -185,19 +185,19 @@ function CBTooltip({
       </div>
       {point.btcPrice != null && (
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 2 }}>
-          <span style={{ color: "#f59e0b" }}>BTC Price</span>
+          <span style={{ color: "var(--text-2)" }}><span aria-hidden style={{ display: "inline-block", width: 8, height: 8, borderRadius: "var(--radius-full)", background: LINE_COLOR, marginRight: 6 }} />BTC Price</span>
           <span style={{ color: TEXT, fontWeight: 500 }}>{formatUsd(point.btcPrice)}</span>
         </div>
       )}
       {point.cornPrice != null && (
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 2 }}>
-          <span style={{ color: "#22c55e" }}>Corn Price</span>
+          <span style={{ color: "var(--text-2)" }}><span aria-hidden style={{ display: "inline-block", width: 8, height: 8, borderRadius: "var(--radius-full)", background: "var(--chart-green)", marginRight: 6 }} />Corn Price</span>
           <span style={{ color: TEXT, fontWeight: 500 }}>{formatUsd(point.cornPrice)}/bu</span>
         </div>
       )}
       {point.ratio != null && (
         <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginTop: 4, paddingTop: 4, borderTop: `1px solid ${BORDER}` }}>
-          <span style={{ color: "#f59e0b", fontWeight: 600 }}>Bushels / BTC</span>
+          <span style={{ color: "var(--text-2)", fontWeight: 600 }}><span aria-hidden style={{ display: "inline-block", width: 8, height: 8, borderRadius: "var(--radius-full)", background: LINE_COLOR, marginRight: 6 }} />Bushels / BTC</span>
           <span style={{ color: TEXT, fontWeight: 600 }}>{Math.round(point.ratio).toLocaleString()}</span>
         </div>
       )}
@@ -380,7 +380,7 @@ export default function CornBitcoinChart({ period, currentPrice, historicPrices 
           stroke={LINE_COLOR}
           strokeWidth={2}
           dot={false}
-          activeDot={{ r: 3, fill: LINE_COLOR, stroke: "#0a0a0c", strokeWidth: 2 }}
+          activeDot={{ r: 3, fill: LINE_COLOR, stroke: "var(--bg)", strokeWidth: 2 }}
           connectNulls={false}
           isAnimationActive={false}
         />
