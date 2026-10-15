@@ -231,6 +231,8 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
   color: var(--text-2);
 }
 .topbar-node-id { color: var(--text-3); font-family: var(--font-id); }
+.topbar-sync { color: var(--text-3); white-space: nowrap; }
+.topbar-sync:not(.is-synced) { color: var(--text); }
 
 .sidebar {
   grid-column: 1;
@@ -1506,6 +1508,8 @@ input[type="number"] {
     white-space: nowrap;
   }
   .topbar-node-id { display: none; }
+  /* Room is short on a phone: the healthy state's word goes; "Not synced" stays. */
+  .topbar-sync.is-synced { display: none; }
 
   /* Sidebar: off-screen by default, slides in when open */
   .sidebar {
@@ -3356,16 +3360,12 @@ input[type="number"] {
   border: 1px solid var(--red);
 }
 
-.stablecoin-pill-sent {
-  background: color-mix(in srgb, var(--blue) 12%, transparent);
-  color: var(--blue);
-  border: 1px solid var(--blue);
-}
-
+/* Direction is said by the word; neither side takes a hue (D8, as Payments). */
+.stablecoin-pill-sent,
 .stablecoin-pill-received {
-  background: var(--green-glow);
-  color: var(--green);
-  border: 1px solid var(--green);
+  background: var(--bg-3);
+  color: var(--text-2);
+  border: 1px solid var(--border-hi);
 }
 
 .stablecoin-row-secondary {
@@ -3440,9 +3440,11 @@ input[type="number"] {
   max-width: 360px;
 }
 
+/* A QR stays dark on white in both themes: scanners need a light quiet zone,
+   and --text is dark in the light theme. */
 .stablecoin-empty-qr {
   padding: 8px;
-  background: var(--text);
+  background: #ffffff;
   border-radius: var(--radius);
 }
 

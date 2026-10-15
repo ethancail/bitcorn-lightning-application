@@ -213,11 +213,16 @@ function Topbar({
         <div className="topbar-node">
           <span
             className="pulse-dot"
+            aria-hidden
             style={{
               background: syncColor,
               boxShadow: node.synced_to_chain ? undefined : "none",
             }}
           />
+          {/* CR-5: the dot's state in words, so colour never says it alone. */}
+          <span className={`topbar-sync${node.synced_to_chain ? " is-synced" : ""}`}>
+            {node.synced_to_chain ? "Synced" : "Not synced"}
+          </span>
           <span className="topbar-node-name">{displayName || node.alias || "—"}</span>
           <span className="topbar-node-id">
             ·{" "}

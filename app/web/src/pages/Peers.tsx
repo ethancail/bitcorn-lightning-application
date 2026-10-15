@@ -234,7 +234,7 @@ export default function Peers() {
                         {p.address || "—"}
                       </td>
                       <td>
-                        <span className={`badge ${p.is_inbound ? "badge-blue" : "badge-muted"}`}>
+                        <span className="badge badge-muted">
                           {p.is_inbound ? "inbound" : "outbound"}
                         </span>
                       </td>

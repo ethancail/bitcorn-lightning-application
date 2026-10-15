@@ -47,8 +47,8 @@ function statusBadge(status: string): { label: string; cls: string } {
 }
 
 function typeBadge(swapType: string): { label: string; cls: string } {
-  if (swapType === "loop_out" || swapType === "loopout") return { label: "Loop Out", cls: "badge-amber" };
-  if (swapType === "loop_in" || swapType === "loopin") return { label: "Loop In", cls: "badge-blue" };
+  if (swapType === "loop_out" || swapType === "loopout") return { label: "Loop Out", cls: "badge-muted" };
+  if (swapType === "loop_in" || swapType === "loopin") return { label: "Loop In", cls: "badge-muted" };
   return { label: swapType, cls: "badge-muted" };
 }
 
