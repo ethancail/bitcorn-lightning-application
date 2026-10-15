@@ -187,7 +187,18 @@ describe("colour round: every token pairing at its ruled ratio, both themes", ()
   it("none fails", () => {
     expect(failing(pairings())).toEqual([]);
   });
+
+  // WebKit (Safari, the iPhone) draws an unclassed field's edge at 1.2–1.9:1;
+  // the zero-specificity base rule gives every such field --border-control.
+  it("browser-drawn text fields and selects are bounded by --border-control", () => {
+    expect(browserFieldBorder()).toBe("1px solid var(--border-control)");
+  });
 });
+
+function browserFieldBorder(file = join(__dirname, "styles.css")): string | undefined {
+  const r = cssRules(file).find((x) => x.media === null && x.selectors.some((s) => s.startsWith(":where(input:not(")));
+  return r?.decls["border"];
+}
 
 describe("negative controls: each planted old value fails for its own pairing", () => {
   it("light --text-3 back to #998a78 fails as text", () => {
@@ -221,6 +232,14 @@ describe("negative controls: each planted old value fails for its own pairing", 
   it("a light state colour back to its old value fails on its glow", () => {
     const f = failing(pairings(mutated((c) => c.replace("--green:       #10602e;", "--green:       #15803d;"))));
     expect(f.some((x) => x.startsWith("light .badge-green word on its fill over --bg-1:"))).toBe(true);
+  });
+
+  it("the browser-drawn field rule losing --border-control is seen", () => {
+    const f = mutated((c) => c.replace(
+      /(:where\(input:not\([^{]*\{\s*)border: 1px solid var\(--border-control\);/,
+      "$1border: 1px solid var(--border);",
+    ));
+    expect(browserFieldBorder(f)).toBe("1px solid var(--border)");
   });
 
   it("a control boundary back on --border fails", () => {

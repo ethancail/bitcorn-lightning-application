@@ -1093,6 +1093,19 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
   color: var(--text-3);
 }
 
+/* Browser-drawn text fields and selects (the unclassed ones, as on the
+   auto-buy strategy): WebKit, the iPhone's engine, draws their edge at
+   1.2–1.9:1 against our surfaces (Chromium at 3.8–5.1:1). Every such control
+   gets --border-control, 3:1. :where() keeps this at zero specificity, so a
+   class or an inline style still wins; checkboxes, radios and sliders keep
+   their own drawing. */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"]), select, textarea) {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  color: var(--text);
+}
+
 .form-input {
   background: var(--bg-3);
   border: 1px solid var(--border-control);
@@ -2877,6 +2890,7 @@ input[type="number"] {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text);
+  white-space: nowrap;  /* keeps the amber dot on the word's line */
 }
 .admin-members-unidentified-link {
   font-family: var(--mono);
