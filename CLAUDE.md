@@ -63,7 +63,12 @@ Frontend deps: `react`, `react-dom`, `react-router-dom`, `recharts`, `date-fns`,
 
 **Verification stop-gate:** a committed Stop hook runs `scripts/verify-gate.mjs` at every turn end — with uncommitted `app/api`/`app/web` changes it runs that side's tsc + vitest and blocks completion on real failures (known-baseline tsc errors are allowlisted; a broken runner warns instead of blocking; clean/read-only sessions are never gated). Escape hatch: `VERIFY_GATE_SKIP=1`. Details in the script header.
 
-**Parallel sessions (worktrees):** `claude --worktree <name>` creates an isolated checkout at `.claude/worktrees/<name>/` on branch `worktree-<name>` — already gitignored by the existing `.claude/*` rule. `.worktreeinclude` copies in the gitignored files a fresh checkout can't regenerate (the four `.env.dev.*` files, `cloudflare-worker/.dev.vars`); dependencies are NOT copied — install per worktree, and note `better-sqlite3` compiles native bindings each time.
+**Parallel sessions (worktrees):** `claude --worktree <name>` creates an isolated checkout at `.claude/worktrees/<name>/` on branch `worktree-<name>` — already gitignored by the existing `.claude/*` rule. `.worktreeinclude` copies in the gitignored files a fresh checkout can't regenerate (the four `.env.dev.*` files, `cloudflare-worker/.dev.vars`); dependencies are NOT copied — install per worktree, and note `better-sqlite3` compiles native bindings each time. The worktree guard refuses `bash <script>` and unverifiable compound commands; run CI checks as single commands. After a fresh `app/web` install, `npx vite optimize --force` before several Vite servers (else "Invalid hook call").
+
+**This machine:**
+- Launch Claude Code with Node 20 first on PATH; Bash calls inherit it. The verify gate runs `npx` from PATH, so a Node 22 launch reports false reds.
+- 15 GB RAM, OOM-killed twice: one test suite at a time, none during a browser capture; one browser engine at a time; `free -h` first, stop under 3 GB.
+- Playwright MCP: one call per message — batched calls aren't ordered.
 
 ⚠ **`worktree.baseRef` is set to `"head"`, which makes branch hygiene load-bearing.** The default `"fresh"` branches from the *remote default branch* — predictable, and wrong here: it starts every worktree from `main`, so accumulated `develop` work is silently absent. That bit us for real: a worktree created while on `develop` landed two commits behind, on `main`, carrying a stale copy of the very script being fixed. `"head"` branches from your current local `HEAD` instead — correct when you're on a current `develop`, and **faithfully wrong when you're on a stale one.** This repo's standing rule is that branch position is a query, never a remembered fact, and `"head"` puts that rule directly in the path of worktree creation. So: **launch worktrees from a freshly-pulled `develop`, then run `git log --oneline -1` inside the new worktree before doing any work.** Inside a worktree, `"head"` resolves to *that* worktree's HEAD, not the main checkout's. (Set in `.claude/settings.json`, which is strict JSON and takes no comments — hence this note.)
 
@@ -168,7 +173,7 @@ Do not reuse 3001 or 3009. Do not expose 3109 via Umbrel app-proxy. Port 3109 is
 - `TREASURY_PUBKEY` — hard-coded in `docker-compose.yml` as `02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca`. Identifies the treasury node so all member installs get correct role detection automatically.
 - `LND_GRPC_HOST` — default `lightning_lnd_1:10009`
 - `REBALANCE_SCHEDULER_ENABLED` — default `false` (treasury-side Loop Out scheduler — edge-case + external-inbound maintenance only; off in steady state)
-- `RATE_LIMIT_MAX_SINGLE_PAYMENT` — default `250000` sats
+- `RATE_LIMIT_MAX_SINGLE_PAYMENT` — default `50000000` sats
 - `COINBASE_APP_ID` + `COINBASE_WORKER_URL` — required for Fund Node button (503 if either unset)
 
 ## Files to Share When Getting External AI Assistance
@@ -199,6 +204,7 @@ Things that cost hours to find. Read before debugging in that area.
 - **Formatting helpers need null guards:** `fmtSats`, `truncPubkey`, `resolveContactName` receive data from API/SQLite that may be undefined. Crashed historically on `pubkey.slice()` without a guard. Always handle falsy inputs. Reuse existing helpers — don't duplicate truncation logic.
 - **Sync loop must DELETE stale rows, not just upsert:** `persistChannels()` and `persistPeers()` previously used `INSERT OR REPLACE` only — closed channels stayed `active=1` forever. Now they `DELETE WHERE channel_id NOT IN (current IDs)` after upserting.
 - **Umbrel DB requires sudo:** `data/db/` is owned by root. All `sqlite3` commands need `sudo`. Without it, `ls` shows an empty directory.
+- **LND source:** `~/go/pkg/mod/github.com/lightningnetwork/lnd@v0.20.1-beta/` — answer byte-level questions from `rpcserver.go`, noting it may not be the nodes' version.
 
 ### Payments
 
@@ -215,6 +221,7 @@ See `docs/LOOP_SETUP.md` for the full gotcha list. Highlights that bite regularl
 - **ACINQ caps in-flight at 45% of capacity:** Need ≥556k channel for 250k minimum swap.
 - **Restart cascade:** Restarting LND requires restarting **Bitcorn** (`apps.restart.mutate --appId bitcorn-lightning-node`) — loopd is a service in Bitcorn's own compose, a different Umbrel app from Lightning, so only a Bitcorn restart reaches it. This used to say `--appId lightning-terminal`, which targets an app this stack has not used since v1.18.9 and did not reach loopd even before that. `certExpiry.ts:159-163` states the same model.
 - **Channel ID uint64 conversion:** `(block<<40)|(tx<<16)|output` via BigInt; `longs: String` in proto-loader.
+- **Loop In needs ≤1-sat base fee on treasury's external channel:** loopd's 1-sat L402 payment has a ~2–3 sat fee budget (10 sats caused every v1.10.x `no_route`); `queryroutes` ignores budgets.
 
 ### Rebalancing
 
@@ -235,4 +242,7 @@ See `docs/LOOP_SETUP.md` for the full gotcha list. Highlights that bite regularl
 - Read the relevant doc before making changes — `docs/` is current as of this CLAUDE.md rewrite
 - Don't add features, refactor, or "improve" code beyond what was asked
 - Don't add speculative error handling for scenarios that can't happen
+- **The vault is read-only to Claude Code:** read `bitcorn-research`; never write, commit or push there. Content for it goes in your report.
+- **Rulings are reported, not prompted:** for a question only Ethan can settle, finish what doesn't depend on it, then stop and report options plus a recommendation. A terminal-prompt selection is not a ruling.
+- **Verify `[RELAYED]` premises first:** confirm each named rule, file or entry exists and measure the gap before building; if the premise fails, keep the guardrail and say so.
 - When docs drift from code, **update the doc in the same PR** — the reason this file used to be 500 lines was that nobody updated `docs/` and it all piled up here
