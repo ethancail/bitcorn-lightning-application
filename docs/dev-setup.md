@@ -210,6 +210,18 @@ docker exec polar-n1-backend1 bitcoin-cli -regtest \
 ```
 `synced_to_chain` flips to `true` across all LND containers within a few seconds. Repeat once per dev session if Polar's been idle. Worth aliasing if you do this often.
 
+**After weeks idle: every channel inactive, LNDs have 0 peers.**
+*Diagnosis:* two stacked causes. (1) The bitcoind tip is months old (`initialblockdownload: true`), so LND loops on `Waiting for chain backend to finish sync` and never starts its peer server. (2) Containers got new IPs on restart, so LND redials stale addresses (`connection refused`, `EOF`, `chacha20poly1305: message authentication failed` = wrong node).
+*Workaround:* mine without a wallet — cookie auth only works as `-u bitcoin` with this datadir; `raw(6a)` is an unspendable OP_RETURN:
+```bash
+docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest -datadir=/home/bitcoin/.bitcoin generatetodescriptor 6 "raw(6a)#4mhr9ur5"
+```
+Then reconnect from Treasury by hostname (hostnames are stable): `lncli --lnddir=/home/lnd/.lnd --network regtest connect <pubkey>@polar-n1-<Name>:9735`.
+
+**`lncli` inside a Polar LND container fails to find its files.** Pass `--lnddir=/home/lnd/.lnd`; the default `/root/.lnd` doesn't exist there.
+
+**`npm run dev:loopserver` crash-loops.** If another project's Postgres holds port 5432, loopserver's `--network host` embedded Postgres can't bind it. Stop that container, or run the same image on Polar's bridge network (`polar-network-1_default`) with `-p 11009:11009`, `--lnd.host=polar-n1-External-Peer-1:10009` and `--bitcoin.host=polar-n1-backend1:18443`.
+
 **No `sqlite3` CLI on the host (or installed version too old).**
 *Symptom:* `sqlite3 ~/.bitcorn-dev/treasury/db/bitcorn.sqlite` returns `command not found`, or the installed CLI is older than the schema expects and some PRAGMA queries fail.
 *Diagnosis:* The Bitcorn API uses `better-sqlite3` (Node) as its SQLite driver, so there's no project requirement on a host `sqlite3` binary. Most dev environments don't have one installed.
