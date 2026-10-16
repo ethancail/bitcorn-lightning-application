@@ -5,6 +5,7 @@ import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } fr
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
+import { statusBadge } from "../components/swapStatus";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
@@ -23,25 +24,6 @@ import {
 type Stage = "loading" | "form" | "quoting" | "quoted" | "initiating" | "tracking";
 
 const AMOUNT_PRESETS = [250_000, 500_000, 1_000_000, 2_000_000];
-
-function statusBadge(status: string): { label: string; cls: string } {
-  switch (status) {
-    case "initiated":
-      return { label: "Processing", cls: "badge-amber" };
-    case "executing":
-      return { label: "In Progress", cls: "badge-amber" };
-    case "confirming":
-      return { label: "Confirming", cls: "badge-blue" };
-    case "completed":
-      return { label: "Complete", cls: "badge-green" };
-    case "failed":
-      return { label: "Failed", cls: "badge-red" };
-    case "expired":
-      return { label: "Expired", cls: "badge-muted" };
-    default:
-      return { label: status, cls: "badge-muted" };
-  }
-}
 
 function isTerminal(status: string): boolean {
   return status === "completed" || status === "failed" || status === "expired";
