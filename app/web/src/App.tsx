@@ -1718,7 +1718,7 @@ function ChannelsPage() {
                       {merchantLanes.map((c) => {
                         const fwdLeftPct = 100 - c.localPct;
                         const color = stateColor(c.state);
-                        const actionLabel = c.state === "exhausted" ? "Renew Now" : c.state === "renew_soon" ? "Renew Soon" : "Close";
+                        const actionLabel = "Close";
                         return (
                           <tr key={c.channel_id}>
                             <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
