@@ -289,7 +289,7 @@ function NavAlertBadge({ badge }: { badge: AutoBuyAlertBadge }) {
   return (
     <span
       className={`badge ${badge.highest_severity === "critical" ? "badge-red" : "badge-amber"}`}
-      style={{ marginLeft: "auto", fontSize: "0.625rem" }}
+      style={{ marginLeft: "auto", fontSize: "0.6875rem" }}
       aria-label={`${badge.active_count} active Auto-Buy alert${badge.active_count === 1 ? "" : "s"}`}
     >
       {badge.active_count}
@@ -322,7 +322,7 @@ function SubscriptionNavBadge({ status }: { status: ReturnType<typeof useSubscri
   return (
     <span
       className={`badge badge-${badge.severity}`}
-      style={{ marginLeft: "auto", fontSize: "0.625rem" }}
+      style={{ marginLeft: "auto", fontSize: "0.6875rem" }}
       aria-label={`Subscription status: ${badge.severity === "blue" ? "activation pending" : "action needed"}`}
     >
       {SUB_BADGE_GLYPH[badge.severity]}
@@ -1437,7 +1437,7 @@ function ChannelsPage() {
               Funds will return to your on-chain wallet after confirmation. This cannot be undone.
             </div>
             <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
+              <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
                 On-chain fee rate
               </div>
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -1456,7 +1456,7 @@ function ChannelsPage() {
                     >
                       <div style={{ fontWeight: 600 }}>{opt.label}</div>
                       <div style={{ fontSize: "0.65rem", opacity: 0.8 }}>{opt.desc}</div>
-                      <div style={{ fontSize: "0.6rem", opacity: 0.7 }}>{opt.time} · {opt.cost}</div>
+                      <div style={{ fontSize: "0.6875rem", opacity: 0.7 }}>{opt.time} · {opt.cost}</div>
                     </button>
                   );
                 })}
@@ -2023,7 +2023,7 @@ function ChannelsPage() {
                       >
                         <span>⚠</span>
                         <span>Upgrade recommended → {upgradeSize.toLocaleString()} sats</span>
-                        <span style={{ fontSize: "0.625rem", color: "var(--text-3)", marginLeft: 4 }}>
+                        <span style={{ fontSize: "0.6875rem", color: "var(--text-3)", marginLeft: 4 }}>
                           {isExpanded ? "▲" : "▼"}
                         </span>
                       </div>
@@ -2190,7 +2190,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
             )}
             {openingChannels.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ fontFamily: "var(--mono)", fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 2 }}>
+                <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 2 }}>
                   Opening ({openingChannels.length})
                 </div>
                 {openingChannels.map((p, i) => (
@@ -2215,7 +2215,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
             )}
             {closingChannels.length > 0 && (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <div style={{ fontFamily: "var(--mono)", fontSize: "0.625rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 2 }}>
+                <div style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 2 }}>
                   Closing ({closingChannels.length})
                 </div>
                 {closingChannels.map((p, i) => (
@@ -2427,7 +2427,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                   <div style={{ fontSize: "0.6875rem", color: "var(--text-2)" }}>
                     {opt.time}
                   </div>
-                  <div style={{ fontSize: "0.625rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
+                  <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
                     {opt.cost}
                   </div>
                 </button>

@@ -471,7 +471,7 @@ export default function RefillChannel() {
               }}>
                 <div>
                   <div style={{
-                    fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase",
+                    fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase",
                     letterSpacing: "0.06em", color: "var(--text-3)",
                   }}>
                     Bitcoin Balance
@@ -489,7 +489,7 @@ export default function RefillChannel() {
                 {maxRefill != null && maxRefill >= 100_000 && (
                   <div style={{ textAlign: "right" }}>
                     <div style={{
-                      fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase",
+                      fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase",
                       letterSpacing: "0.06em", color: "var(--text-3)",
                     }}>
                       Most you can add

@@ -684,7 +684,7 @@ function ChannelRow({
           }}
         />
       </div>
-      <span style={{ color: "var(--text-3)", fontSize: "0.625rem" }}>
+      <span style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
         {fmtSats(ch.local_sats)} / {fmtSats(ch.remote_sats)}
       </span>
     </div>

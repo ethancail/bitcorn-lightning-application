@@ -50,7 +50,7 @@ export default function AlertsTab() {
     const cls = a.status === "active"
       ? (a.severity === "critical" ? "badge-red" : "badge-amber")
       : a.status === "resolved" ? "badge-green" : "badge-muted";
-    return <span className={`badge ${cls}`} style={{ fontSize: "0.625rem" }}>{a.status}</span>;
+    return <span className={`badge ${cls}`} style={{ fontSize: "0.6875rem" }}>{a.status}</span>;
   };
 
   return (

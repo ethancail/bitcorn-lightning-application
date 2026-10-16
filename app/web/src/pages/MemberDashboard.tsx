@@ -313,7 +313,7 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
                 <div style={{ fontSize: "0.6875rem", color: "var(--text-2)" }}>
                   {opt.time}
                 </div>
-                <div style={{ fontSize: "0.625rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
+                <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
                   {opt.cost}
                 </div>
               </button>
