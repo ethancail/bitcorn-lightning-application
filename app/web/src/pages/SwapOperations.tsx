@@ -150,7 +150,7 @@ function ChannelPicker({
               <div style={{ flex: 1, height: 4, borderRadius: 2, background: "var(--bg-3)", overflow: "hidden" }}>
                 <div style={{ width: `${ch.localPct}%`, height: "100%", background: isSelected ? "var(--amber)" : "var(--green)", borderRadius: 2 }} />
               </div>
-              <span style={{ fontFamily: "var(--mono)", fontSize: "0.625rem", color: "var(--text-3)" }}>
+              <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
                 {ch.localPct}%
               </span>
             </div>
