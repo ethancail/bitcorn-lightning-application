@@ -28,6 +28,7 @@ import PayFromNodeModal from "./PayFromNodeModal";
 import AutoPaySection from "./AutoPaySection";
 import { actionsFor, type ActionDescriptor } from "./subscriptionActions";
 import { onrampErrorMessage } from "./subscriptionPayMessages";
+import { copyText } from "./copyText";
 import { bip21Uri } from "./bip21";
 
 /** Handlers for the four Onramp-primary states' action buttons. Lifted
@@ -837,7 +838,7 @@ function UnexpectedMissingRowRender({
   const memberPubkey = localPubkey ?? "—";
   const copyPubkey = useCallback(() => {
     if (!memberPubkey || memberPubkey === "—") return;
-    void navigator.clipboard?.writeText(memberPubkey).catch(() => {});
+    void copyText(memberPubkey);
   }, [memberPubkey]);
   return (
     <section className="sub-panel">
@@ -1005,13 +1006,11 @@ function DepositBlock({
 }) {
   const [copied, setCopied] = useState(false);
   const handleCopy = useCallback(() => {
-    navigator.clipboard?.writeText(status.deposit_address).then(
-      () => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1800);
-      },
-      () => { /* clipboard unavailable; fail silent */ },
-    );
+    void copyText(status.deposit_address).then((ok) => {
+      if (!ok) return;
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
   }, [status.deposit_address]);
   return (
     <>
