@@ -31,24 +31,28 @@ function isTerminal(status: string): boolean {
 
 // Plain-language status per the 2026-07-09 vocabulary record (U1/U2). The
 // protocol-register originals live in statusTechnical below — demoted into
-// the Technical details expander, not deleted.
+// the Technical details expander, not deleted. Neither returns a raw status:
+// anything they don't name reads as its badge label from the shared map
+// (humanized if unknown).
 function statusText(status: string, failureReason: string | null): string {
   switch (status) {
+    case "quote_created": return "Quote received. The withdrawal hasn't started yet.";
     case "initiated": return "Starting your withdrawal...";
     case "executing": return "Sending funds to your Bitcoin address...";
     case "confirming": return "Waiting for Bitcoin network confirmation...";
     case "completed": return "Withdrawal complete";
     case "failed": return `Withdrawal failed${failureReason ? `: ${failureReason}` : ""}`;
-    default: return status;
+    default: return statusBadge(status).label;
   }
 }
 
+// The Protocol status row: the protocol status beside its description.
 function statusTechnical(status: string): string {
   switch (status) {
-    case "initiated": return "Paying Lightning invoice to Loop server";
-    case "executing": return "Loop server publishing on-chain HTLC";
-    case "confirming": return "Waiting for on-chain confirmation";
-    default: return status;
+    case "initiated": return "initiated — Paying Lightning invoice to Loop server";
+    case "executing": return "executing — Loop server publishing on-chain HTLC";
+    case "confirming": return "confirming — Waiting for on-chain confirmation";
+    default: return statusBadge(status).label;
   }
 }
 
@@ -707,7 +711,7 @@ export default function WithdrawBitcoin() {
             {!isTerminal(trackingSwap.status) && (
               <TechnicalDetails>
                 <TechRow label="Protocol status">
-                  {trackingSwap.status} — {statusTechnical(trackingSwap.status)}
+                  {statusTechnical(trackingSwap.status)}
                 </TechRow>
               </TechnicalDetails>
             )}

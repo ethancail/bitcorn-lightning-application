@@ -120,6 +120,52 @@ for (const [page, C, swapType] of [
   });
 }
 
+// The tracking panel: an in-flight swap in the history opens it on mount, and
+// quote_created counts as in flight (only completed/failed/expired end it).
+// A quoted swap hasn't started — the member starts it with Confirm — so it
+// says so. TechnicalDetails is a <details>: its rows are in the DOM while
+// collapsed, so the whole-page check covers the Protocol status row.
+function trackingPanel(el: HTMLElement) {
+  const panel = [...el.querySelectorAll(".panel")].find((p) =>
+    /Status$/.test(p.querySelector(".panel-title")?.textContent ?? ""));
+  expect(panel, "the tracking panel renders").toBeDefined();
+  return panel!;
+}
+const protocolRow = (panel: Element) =>
+  [...panel.querySelectorAll("details span")].find((s) => s.textContent === "Protocol status")?.nextElementSibling?.textContent;
+
+for (const [page, C, swapType, sentence, initiatedRow] of [
+  ["Top Up (RefillChannel)", RefillChannel, "loop_in", "Quote received. The top-up hasn't started yet.",
+    "initiated — Publishing on-chain HTLC"],
+  ["Cash Out (WithdrawBitcoin)", WithdrawBitcoin, "loop_out", "Quote received. The withdrawal hasn't started yet.",
+    "initiated — Paying Lightning invoice to Loop server"],
+] as const) {
+  describe(`${page}: the tracking panel never shows a raw status`, () => {
+    it("quote_created: the page's sentence, a Quoted technical row, and quote_created nowhere on the page", async () => {
+      stub.getSwapHistory.mockResolvedValue({ swaps: [swap("q", swapType, "quote_created")] });
+      const el = await mount(C);
+      const panel = trackingPanel(el);
+      expect(panel.textContent).toContain(sentence);
+      expect(protocolRow(panel)).toBe("Quoted");
+      expect(el.textContent).not.toContain("quote_created");
+    });
+
+    it("an unknown status is humanized in the panel too", async () => {
+      stub.getSwapHistory.mockResolvedValue({ swaps: [swap("u", swapType, "some_new_status")] });
+      const el = await mount(C);
+      const panel = trackingPanel(el);
+      expect(panel.textContent).toContain("Some new status");
+      expect(protocolRow(panel)).toBe("Some new status");
+      expect(el.textContent).not.toContain("some_new_status");
+    });
+
+    it("PERMITTING: a known in-flight state's Protocol status row reads as it always has", async () => {
+      stub.getSwapHistory.mockResolvedValue({ swaps: [swap("i", swapType, "initiated")] });
+      expect(protocolRow(trackingPanel(await mount(C)))).toBe(initiatedRow);
+    });
+  });
+}
+
 describe("one label map, shared", () => {
   it("neither page defines its own statusBadge", async () => {
     const { readFileSync } = await import("node:fs");

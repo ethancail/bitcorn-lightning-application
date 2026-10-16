@@ -35,8 +35,12 @@ function isTerminal(status: string): boolean {
 // Plain-language status per the 2026-07-09 vocabulary record (U1/U2; Knot 2
 // updated: this operation is "Top Up"). Protocol-register originals live in
 // statusTechnical — demoted into the Technical details expander, not deleted.
+// Neither returns a raw status: anything they don't name reads as its badge
+// label from the shared map (humanized if unknown).
 function statusText(status: string, amount: number, failureReason: string | null): string {
   switch (status) {
+    case "quote_created":
+      return "Quote received. The top-up hasn't started yet.";
     case "initiated":
       return "Starting your top up...";
     case "executing":
@@ -48,16 +52,17 @@ function statusText(status: string, amount: number, failureReason: string | null
     case "failed":
       return `Top up failed${failureReason ? `: ${failureReason}` : ""}`;
     default:
-      return status;
+      return statusBadge(status).label;
   }
 }
 
+// The Protocol status row: the protocol status beside its description.
 function statusTechnical(status: string): string {
   switch (status) {
-    case "initiated": return "Publishing on-chain HTLC";
-    case "executing": return "Waiting for Lightning payment from Loop server";
-    case "confirming": return "Settling swap";
-    default: return status;
+    case "initiated": return "initiated — Publishing on-chain HTLC";
+    case "executing": return "executing — Waiting for Lightning payment from Loop server";
+    case "confirming": return "confirming — Settling swap";
+    default: return statusBadge(status).label;
   }
 }
 
@@ -782,7 +787,7 @@ export default function RefillChannel() {
             {!isTerminal(trackingSwap.status) && (
               <TechnicalDetails>
                 <TechRow label="Protocol status">
-                  {trackingSwap.status} — {statusTechnical(trackingSwap.status)}
+                  {statusTechnical(trackingSwap.status)}
                 </TechRow>
               </TechnicalDetails>
             )}
