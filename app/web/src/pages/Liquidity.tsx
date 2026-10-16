@@ -98,8 +98,8 @@ export default function Liquidity() {
         {/* Keep-last-good: a failed refresh keeps the previous book on screen
            with an explicit marker instead of failing silently. */}
         {loadError !== null && peers.length > 0 && (
-          <span style={{ fontSize: "0.75rem", color: "var(--amber)", fontFamily: "var(--mono)" }} role="status">
-            ⚠ Refresh failed — showing previous data
+          <span style={{ fontSize: "0.75rem", color: "var(--text)", fontFamily: "var(--mono)" }} role="status">
+            <span aria-hidden style={{ color: "var(--amber)" }}>⚠</span> Refresh failed — showing previous data
           </span>
         )}
         <button

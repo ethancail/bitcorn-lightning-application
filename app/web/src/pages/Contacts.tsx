@@ -528,7 +528,7 @@ function ContactCard({
       <div className="panel-body" style={{ padding: "12px 16px" }}>
         {/* Header row */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
-          <span style={{ color: "var(--amber)", fontWeight: 600 }}>{c.name}</span>
+          <span style={{ color: "var(--text)", fontWeight: 600 }}>{c.name}</span>
           <span className="td-mono ident" style={{ color: "var(--text-3)", fontSize: "0.75rem" }}>
             {truncPubkey(c.pubkey)}
           </span>
@@ -568,7 +568,7 @@ function ContactCard({
                   className="tag-pill"
                   style={isLane ? {
                     background: t === "merchant" ? "rgba(251, 191, 36, 0.15)" : "rgba(34, 197, 94, 0.15)",
-                    color: t === "merchant" ? "var(--amber)" : "var(--green)",
+                    color: t === "merchant" ? "var(--text)" : "var(--green)",
                     fontWeight: 600,
                   } : undefined}
                 >
@@ -684,7 +684,7 @@ function ChannelRow({
           }}
         />
       </div>
-      <span style={{ color: "var(--text-3)", fontSize: "0.625rem" }}>
+      <span style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
         {fmtSats(ch.local_sats)} / {fmtSats(ch.remote_sats)}
       </span>
     </div>

@@ -45,9 +45,9 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 
 ## Frontend
 
-**Stack:** React 18 + TypeScript + Vite, react-router-dom v6, amber-on-black design system.
+**Stack:** React 18 + TypeScript + Vite, react-router-dom v6.
 
-**Design system** lives entirely in `app/web/src/styles.css`. Key CSS custom properties: `--bg`, `--amber`, `--green`, `--red`, `--mono`, `--sans`.
+**Design system** lives entirely in `app/web/src/styles.css`, dark and light themes. Key CSS custom properties: `--bg`, `--text`, `--amber`, `--green`, `--red`, `--mono`, `--sans`. What each colour may mean (red for errors only, blue for information, amber a mark and never a word) is in `docs/UI_CONVENTIONS.md` § Colors.
 
 Key classes:
 - Panels: `.panel`, `.panel-header`, `.panel-title`, `.panel-body`

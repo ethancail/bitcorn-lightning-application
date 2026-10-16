@@ -408,7 +408,7 @@ export default function WithdrawBitcoin() {
                   background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
                   padding: "10px 14px", marginBottom: 10,
                 }}>
-                  <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
+                  <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
                     Current channel
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -429,17 +429,17 @@ export default function WithdrawBitcoin() {
                   border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
                 }}>
                   <div>
-                    <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+                    <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
                       In your channel
                     </div>
-                    <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--amber)", lineHeight: 1.2 }}>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
                       {channelLocal.toLocaleString()}
                       <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>sats</span>
                     </div>
                   </div>
                   {maxWithdrawable != null && maxWithdrawable >= 250_000 && (
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+                      <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
                         Most you can withdraw
                       </div>
                       <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
@@ -583,7 +583,7 @@ export default function WithdrawBitcoin() {
               <span className="icon">≡</span>Withdrawal Quote
             </span>
             {countdown && (
-              <span className={`badge ${countdown === "Expired" ? "badge-red" : "badge-amber"}`}>
+              <span className={`badge ${countdown === "Expired" ? "badge-muted" : "badge-amber"}`}>
                 {countdown === "Expired" ? "Expired" : `Expires in ${countdown}`}
               </span>
             )}

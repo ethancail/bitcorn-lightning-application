@@ -50,15 +50,14 @@ const PERIODS: Period[] = ["24h", "7d", "30d", "1y", "5y"];
 
 const REFRESH_MS = 60_000;
 
-// Colors from styles.css (can't use CSS vars in SVG attributes)
-const AMBER = "#f59e0b";
-const GREEN = "#22c55e";
-const RED = "#ef4444";
-const TEXT = "#e8e8f0";
-const TEXT_3 = "#5a5a70";
-const BG_2 = "#17171e";
-const BORDER = "#2a2a38";
-const BORDER_HI = "#3a3a50";
+// Theme tokens from styles.css. SVG presentation attributes resolve var(),
+// so the chart follows the theme (colour round, CR-4).
+const AMBER = "var(--chart-amber)";
+const TEXT = "var(--text)";
+const TEXT_3 = "var(--text-3)";
+const BG_2 = "var(--bg-2)";
+const BORDER = "var(--border)";
+const BORDER_HI = "var(--border-hi)";
 const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -319,7 +318,8 @@ export default function BitcoinPriceGraph() {
                 {spot != null ? formatUsd(spot) : "—"}
               </div>
               {changeAmt != null && changePct != null && (
-                <div className="price-change" style={{ color: isPositive ? GREEN : RED }}>
+                <div className="price-change">
+                  {/* CR-3: a change is a number, not a state: --text, its sign says which way. */}
                   {isPositive ? "+" : ""}
                   {formatUsd(changeAmt)}{" "}
                   ({isPositive ? "+" : ""}
@@ -373,7 +373,7 @@ export default function BitcoinPriceGraph() {
                   activeDot={{
                     r: 4,
                     fill: AMBER,
-                    stroke: "#0a0a0c",
+                    stroke: "var(--bg)",
                     strokeWidth: 2,
                   }}
                 />

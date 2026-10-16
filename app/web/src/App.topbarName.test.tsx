@@ -81,13 +81,12 @@ async function renderAppAt(path: string) {
   return host;
 }
 
-/** The node label in the top bar: the span right after the sync dot. */
+/** The node label in the top bar. Read by class, not position: since the
+ *  colour round the sync dot is followed by its words ("Synced"). */
 function topbarLabel(el: Element): string {
   const node = el.querySelector("header.topbar .topbar-node");
   if (!node) throw new Error("no .topbar-node rendered");
-  const spans = Array.from(node.children).filter((c) => c.tagName === "SPAN");
-  // [pulse-dot, label, pubkey]
-  return (spans[1]?.textContent ?? "").trim();
+  return (node.querySelector(".topbar-node-name")?.textContent ?? "").trim();
 }
 
 describe("P11 — the member top bar", () => {

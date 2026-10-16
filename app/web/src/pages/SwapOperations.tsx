@@ -47,8 +47,8 @@ function statusBadge(status: string): { label: string; cls: string } {
 }
 
 function typeBadge(swapType: string): { label: string; cls: string } {
-  if (swapType === "loop_out" || swapType === "loopout") return { label: "Loop Out", cls: "badge-amber" };
-  if (swapType === "loop_in" || swapType === "loopin") return { label: "Loop In", cls: "badge-blue" };
+  if (swapType === "loop_out" || swapType === "loopout") return { label: "Loop Out", cls: "badge-muted" };
+  if (swapType === "loop_in" || swapType === "loopin") return { label: "Loop In", cls: "badge-muted" };
   return { label: swapType, cls: "badge-muted" };
 }
 
@@ -117,7 +117,7 @@ function ChannelPicker({
           padding: "10px 16px", borderRadius: 8, cursor: "pointer", border: "2px solid",
           borderColor: selected === "" ? "var(--amber)" : "var(--border)",
           background: selected === "" ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
-          color: selected === "" ? "var(--amber)" : "var(--text-3)",
+          color: selected === "" ? "var(--text)" : "var(--text-3)",
           fontFamily: "var(--mono)", fontSize: "0.8125rem", fontWeight: 600, minWidth: 100,
         }}
       >
@@ -139,7 +139,7 @@ function ChannelPicker({
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span className="ident" style={{ fontWeight: 600, fontSize: "0.8125rem", color: isSelected ? "var(--amber)" : "var(--text)" }}>
+              <span className="ident" style={{ fontWeight: 600, fontSize: "0.8125rem", color: "var(--text)" }}>
                 {ch.peerName}
               </span>
               <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
@@ -150,7 +150,7 @@ function ChannelPicker({
               <div style={{ flex: 1, height: 4, borderRadius: 2, background: "var(--bg-3)", overflow: "hidden" }}>
                 <div style={{ width: `${ch.localPct}%`, height: "100%", background: isSelected ? "var(--amber)" : "var(--green)", borderRadius: 2 }} />
               </div>
-              <span style={{ fontFamily: "var(--mono)", fontSize: "0.625rem", color: "var(--text-3)" }}>
+              <span style={{ fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-3)" }}>
                 {ch.localPct}%
               </span>
             </div>
@@ -459,7 +459,7 @@ function LoopOutTab({
         <div className="panel-header">
           <span className="panel-title"><span className="icon">≡</span>Loop Out Quote</span>
           {countdown && (
-            <span className={`badge ${countdown === "Expired" ? "badge-red" : "badge-amber"}`}>
+            <span className={`badge ${countdown === "Expired" ? "badge-muted" : "badge-amber"}`}>
               {countdown === "Expired" ? "Expired" : `Expires in ${countdown}`}
             </span>
           )}

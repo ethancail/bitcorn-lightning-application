@@ -250,10 +250,10 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
               border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
               borderRadius: 6,
               fontSize: "0.8125rem",
-              color: "var(--amber)",
+              color: "var(--text)",
             }}
           >
-            <span>◈</span>
+            <span style={{ color: "var(--amber)" }}>◈</span>
             <span>Hub address available — will connect automatically when you open a channel</span>
           </div>
         ) : treasuryInfoLoading ? (
@@ -307,13 +307,13 @@ function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initia
                   textAlign: "center",
                 }}
               >
-                <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: feeRate === opt.rate ? "var(--amber)" : "var(--text)" }}>
+                <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--text)" }}>
                   {opt.label}
                 </div>
-                <div style={{ fontSize: "0.6875rem", color: feeRate === opt.rate ? "var(--amber)" : "var(--text-2)" }}>
+                <div style={{ fontSize: "0.6875rem", color: "var(--text-2)" }}>
                   {opt.time}
                 </div>
-                <div style={{ fontSize: "0.625rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
+                <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
                   {opt.cost}
                 </div>
               </button>

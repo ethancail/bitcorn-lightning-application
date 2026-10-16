@@ -1,6 +1,7 @@
 // app/web/src/components/autoBuy/ValuationTab.tsx
 import { useEffect, useState } from "react";
 import { api, type ValuationCurrent, type ValuationZone } from "../../api/client";
+import { rampInk, rampMark } from "../rampInk";
 
 interface Props {
   valuation: ValuationCurrent | null;
@@ -90,11 +91,11 @@ export default function ValuationTab({ valuation }: Props) {
     <div>
       {/* Hero cards row */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
-        <HeroCard label="Z-Score" value={valuation.z_score.toFixed(2)} sub={zoneLabel(valuation.zone)} color={zoneColor(valuation.zone)} />
+        <HeroCard label="Z-Score" value={valuation.z_score.toFixed(2)} sub={zoneLabel(valuation.zone)} color={rampInk(zoneColor(valuation.zone))} />
         <HeroCard label="Bitcoin Price" value={formatUsd(valuation.price_usd)} sub={ath ? `ATH ${formatUsd(ath)}` : ""} />
         <HeroCard label="Historical Percentile" value={percentile != null ? `${percentile.toFixed(1)}%` : "—"} sub={percentile != null ? "of days at/above current Z" : "loading…"} />
         <HeroCard label="Peak Z-Score" value={formatZ(peakZ)} sub={peakDate ?? ""} />
-        <HeroCard label="Current Multiplier" value={`${currentMultiplier}x`} sub="vs. base unit" color={zoneColor(valuation.zone)} />
+        <HeroCard label="Current Multiplier" value={`${currentMultiplier}x`} sub="vs. base unit" color={rampInk(zoneColor(valuation.zone))} />
       </div>
 
       {/* Zone gauge + zone definitions side by side */}
@@ -205,7 +206,7 @@ function SemicircleGauge({ z, zone }: { z: number; zone: ValuationZone }) {
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
       <svg viewBox={`0 0 ${VB_W} ${VB_H}`} style={{ width: "100%", maxWidth: 320, height: "auto" }} aria-label="Valuation Z-score gauge">
         {/* Arc segments */}
-        {clampedBands.map((b) => arcSegment(b.minZ, b.maxZ, b.color, b.zone))}
+        {clampedBands.map((b) => arcSegment(b.minZ, b.maxZ, rampMark(b.color), b.zone))}
 
         {/* Axis labels */}
         <text x={CX - R - 2} y={CY + 12} fontSize="10" fill="currentColor" fontFamily="var(--mono)" opacity="0.6">Z=−3</text>
@@ -213,7 +214,7 @@ function SemicircleGauge({ z, zone }: { z: number; zone: ValuationZone }) {
         <text x={CX + R + 2} y={CY + 12} fontSize="10" fill="currentColor" fontFamily="var(--mono)" opacity="0.6" textAnchor="end">Z=+3</text>
 
         {/* Center value */}
-        <text x={CX} y={CY - 18} fontSize="26" fontWeight="600" fill={zoneColor(zone)} textAnchor="middle" fontFamily="var(--mono)">
+        <text x={CX} y={CY - 18} fontSize="26" fontWeight="600" fill={rampInk(zoneColor(zone))} textAnchor="middle" fontFamily="var(--mono)">
           {z.toFixed(2)}
         </text>
 
@@ -231,7 +232,7 @@ function SemicircleGauge({ z, zone }: { z: number; zone: ValuationZone }) {
           padding: "4px 14px",
           borderRadius: 999,
           background: `${zoneColor(zone)}22`,
-          color: zoneColor(zone),
+          color: rampInk(zoneColor(zone)),
           border: `1px solid ${zoneColor(zone)}66`,
           fontSize: "0.875rem",
           fontWeight: 600,
@@ -282,7 +283,7 @@ function ZoneDefinitions({ currentZone }: { currentZone: ValuationZone }) {
                 fontSize: "0.8125rem",
               }}
             >
-              <div style={{ width: 10, height: 10, borderRadius: "50%", background: b.color }} />
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: rampMark(b.color) }} />
               <div style={{ fontWeight: isActive ? 600 : 400 }}>{b.label}</div>
               <div className="text-dim" style={{ fontFamily: "var(--mono)", fontSize: "0.75rem" }}>
                 {fmtBand(b.minZ, b.maxZ)}

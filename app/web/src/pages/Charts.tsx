@@ -165,12 +165,12 @@ export default function Charts() {
             }}
           >
             {[
-              { color: "#f59e0b", label: "BTC Price", solid: true },
-              { color: "#22c55e", label: "Power Law Trend", solid: true },
-              { color: "#ef4444", label: "97.5th Pctl", solid: false },
-              { color: "#f97316", label: "83.5th Pctl", solid: false },
-              { color: "#3b82f6", label: "16.5th Pctl", solid: false },
-              { color: "#8b5cf6", label: "2.5th Pctl", solid: false },
+              { color: "var(--chart-amber)", label: "BTC Price", solid: true },
+              { color: "var(--chart-green)", label: "Power Law Trend", solid: true },
+              { color: "var(--chart-red)", label: "97.5th Pctl", solid: false },
+              { color: "var(--chart-orange)", label: "83.5th Pctl", solid: false },
+              { color: "var(--chart-blue)", label: "16.5th Pctl", solid: false },
+              { color: "var(--chart-indigo)", label: "2.5th Pctl", solid: false },
             ].map((item) => (
               <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div
@@ -247,10 +247,10 @@ export default function Charts() {
             }}
           >
             {[
-              { color: "#f59e0b", label: "BTC Price" },
-              { color: "#06b6d4", label: "50-day MA" },
-              { color: "#a78bfa", label: "100-day MA" },
-              { color: "#22c55e", label: "200-day MA" },
+              { color: "var(--chart-amber)", label: "BTC Price" },
+              { color: "var(--chart-cyan)", label: "50-day MA" },
+              { color: "var(--chart-violet)", label: "100-day MA" },
+              { color: "var(--chart-green)", label: "200-day MA" },
             ].map((item) => (
               <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div
@@ -306,7 +306,7 @@ export default function Charts() {
                 style={{
                   width: 16,
                   height: 2,
-                  background: "#f59e0b",
+                  background: "var(--chart-amber)",
                   borderRadius: 1,
                 }}
               />
@@ -350,10 +350,10 @@ export default function Charts() {
             }}
           >
             {[
-              { color: "#22c55e", label: "Corn Price" },
-              { color: "#06b6d4", label: "50-day MA" },
-              { color: "#a78bfa", label: "100-day MA" },
-              { color: "#f59e0b", label: "200-day MA" },
+              { color: "var(--chart-green)", label: "Corn Price" },
+              { color: "var(--chart-cyan)", label: "50-day MA" },
+              { color: "var(--chart-violet)", label: "100-day MA" },
+              { color: "var(--chart-amber)", label: "200-day MA" },
             ].map((item) => (
               <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 <div

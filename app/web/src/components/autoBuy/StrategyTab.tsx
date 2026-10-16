@@ -251,7 +251,7 @@ function MissedBuysBlock({
       <div className="panel-header">Missed buys</div>
       <div className="panel-body">
         {toast && (
-          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "white", marginBottom: 16 }}>
+          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "var(--bg)", marginBottom: 16 }}>
             <div className="alert-body">{toast.message}</div>
           </div>
         )}
@@ -457,7 +457,7 @@ function MultipliersEditor({ config, onSaved }: { config: NonNullable<AutoBuySta
       <div className="panel-header">Strategy</div>
       <div className="panel-body">
         {toast && (
-          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "white", marginBottom: 16 }}>
+          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "var(--bg)", marginBottom: 16 }}>
             <div className="alert-body">{toast.message}</div>
           </div>
         )}
@@ -567,7 +567,7 @@ function MasterControl({ status, onRefresh }: { status: AutoBuyStatus; onRefresh
                 : pausedReason ? `Paused: ${pausedReason}` : "Master switch is off"}
             </div>
             {cfg.consecutive_failures > 0 && (
-              <div style={{ fontSize: "0.75rem", color: "var(--amber)", marginTop: 2 }}>
+              <div className="warn-mark" style={{ fontSize: "0.75rem", color: "var(--text)", marginTop: 2 }}>
                 {cfg.consecutive_failures} consecutive failure{cfg.consecutive_failures === 1 ? "" : "s"} (auto-pause at 3)
               </div>
             )}
@@ -586,7 +586,7 @@ function MasterControl({ status, onRefresh }: { status: AutoBuyStatus; onRefresh
           </div>
         </div>
         {toast && (
-          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "white", margin: "0 16px 16px" }}>
+          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "var(--bg)", margin: "0 16px 16px" }}>
             <div className="alert-body">{toast.message}</div>
           </div>
         )}

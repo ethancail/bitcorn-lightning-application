@@ -336,7 +336,7 @@ function RequestPaymentForm({
           background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
           padding: "10px 14px", marginBottom: 10,
         }}>
-          <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
+          <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
             Current channel
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -359,7 +359,7 @@ function RequestPaymentForm({
           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
         }}>
           <div>
-            <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+            <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
               Receive capacity
             </div>
             <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--green)", lineHeight: 1.2 }}>
@@ -369,7 +369,7 @@ function RequestPaymentForm({
           </div>
           {maxInvoice != null && maxInvoice > 0 && (
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+              <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
                 Most you can receive
               </div>
               <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
@@ -659,7 +659,7 @@ function PayInvoiceForm({
           background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
           padding: "10px 14px", marginBottom: 10,
         }}>
-          <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
+          <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
             Current channel
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -683,7 +683,7 @@ function PayInvoiceForm({
           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
         }}>
           <div>
-            <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+            <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
               Send capacity
             </div>
             <div data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
@@ -693,7 +693,7 @@ function PayInvoiceForm({
           </div>
           {maxSendable != null && maxSendable > 0 && (
             <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+              <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
                 Most you can send
               </div>
               <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>

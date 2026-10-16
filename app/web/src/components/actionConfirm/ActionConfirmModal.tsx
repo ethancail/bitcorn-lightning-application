@@ -148,7 +148,7 @@ export default function ActionConfirmModal({
           <div
             className="dialog-body"
             role="alert"
-            style={{ marginTop: 12, borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 12 }}
+            style={{ marginTop: 12, borderTop: "1px solid var(--border-hi)", paddingTop: 12 }}
           >
             <strong>{state.error?.title ?? "The action failed"}</strong>
             <p style={{ margin: "6px 0 0" }}>{state.error?.detail ?? state.message}</p>

@@ -118,7 +118,7 @@ export default function MonthGrid({ year, month, onSelectDay, onPrevMonth, onNex
           >
             <span>{cell.exists ? cell.day : ""}</span>
             {cell.exists && !cell.isFuture && (
-              <span style={{ fontSize: "0.625rem", color: "var(--text-3)", alignSelf: "flex-end" }}>
+              <span style={{ fontSize: "0.6875rem", color: "var(--text)", alignSelf: "flex-end" }}>
                 {cell.filled > 0 ? `${cell.filled}/8` : "—"}
               </span>
             )}

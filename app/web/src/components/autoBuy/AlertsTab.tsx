@@ -50,7 +50,7 @@ export default function AlertsTab() {
     const cls = a.status === "active"
       ? (a.severity === "critical" ? "badge-red" : "badge-amber")
       : a.status === "resolved" ? "badge-green" : "badge-muted";
-    return <span className={`badge ${cls}`} style={{ fontSize: "0.625rem" }}>{a.status}</span>;
+    return <span className={`badge ${cls}`} style={{ fontSize: "0.6875rem" }}>{a.status}</span>;
   };
 
   return (
@@ -125,7 +125,7 @@ export default function AlertsTab() {
                       <td style={{ padding: "8px 12px", whiteSpace: "nowrap", fontFamily: "var(--mono)", fontSize: "0.75rem" }}>{fmtTs(a.created_at)}</td>
                       <td style={{ padding: "8px 12px", whiteSpace: "nowrap" }}>{TYPE_LABELS[a.type] ?? a.type}</td>
                       <td style={{ padding: "8px 12px" }}>
-                        <span style={{ color: a.severity === "critical" ? "var(--red)" : "var(--amber)" }}>{a.severity}</span>
+                        <span className={a.severity === "critical" ? undefined : "warn-mark"} style={{ color: a.severity === "critical" ? "var(--red)" : "var(--text)" }}>{a.severity}</span>
                       </td>
                       <td style={{ padding: "8px 12px" }}>{statusBadge(a)}</td>
                       <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{a.consecutive_count}</td>

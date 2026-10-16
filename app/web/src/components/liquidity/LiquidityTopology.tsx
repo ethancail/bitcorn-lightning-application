@@ -9,7 +9,7 @@ type Props = {
   onSelect: (pubkey: string | null) => void;
 };
 
-const W = 800;
+const W = 240;
 const H = 220;
 const HUB_R = 22;
 const NODE_R = 10;
@@ -161,10 +161,10 @@ export default function LiquidityTopology({ peers, treasuryAlias, selectedPubkey
               >
                 <circle cx={x} cy={y} r={r + 3} fill="none" stroke={ringColor} strokeWidth={2} strokeOpacity={peer.healthTier === "neutral" ? 0.4 : 0.85} />
                 <circle cx={x} cy={y} r={r} fill={fillColor} strokeOpacity={0} />
-                <text x={x} y={y - r - 6} textAnchor="middle" fontSize={9} fill="var(--text-2)" fontFamily="var(--mono)">
+                <text x={x} y={y - r - 6} textAnchor="middle" fontSize={10} fill="var(--text-2)" fontFamily="var(--mono)">
                   {peer.name.length > 10 ? peer.name.slice(0, 9) + "…" : peer.name}
                 </text>
-                <text x={x} y={y + r + 12} textAnchor="middle" fontSize={8} fill="var(--text-3)" fontFamily="var(--mono)">
+                <text x={x} y={y + r + 12} textAnchor="middle" fontSize={10} fill="var(--text-3)" fontFamily="var(--mono)">
                   {formatSatsShort(peer.capacity)}
                 </text>
               </g>

@@ -471,14 +471,14 @@ export default function RefillChannel() {
               }}>
                 <div>
                   <div style={{
-                    fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase",
+                    fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase",
                     letterSpacing: "0.06em", color: "var(--text-3)",
                   }}>
                     Bitcoin Balance
                   </div>
                   <div style={{
                     fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600,
-                    color: "var(--amber)", lineHeight: 1.2,
+                    color: "var(--text)", lineHeight: 1.2,
                   }}>
                     {onchainBalance.toLocaleString()}
                     <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>
@@ -489,7 +489,7 @@ export default function RefillChannel() {
                 {maxRefill != null && maxRefill >= 100_000 && (
                   <div style={{ textAlign: "right" }}>
                     <div style={{
-                      fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase",
+                      fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase",
                       letterSpacing: "0.06em", color: "var(--text-3)",
                     }}>
                       Most you can add
@@ -654,7 +654,7 @@ export default function RefillChannel() {
               <span className="icon">≡</span>Top Up Quote
             </span>
             {countdown && (
-              <span className={`badge ${countdown === "Expired" ? "badge-red" : "badge-amber"}`}>
+              <span className={`badge ${countdown === "Expired" ? "badge-muted" : "badge-amber"}`}>
                 {countdown === "Expired" ? "Expired" : `Expires in ${countdown}`}
               </span>
             )}

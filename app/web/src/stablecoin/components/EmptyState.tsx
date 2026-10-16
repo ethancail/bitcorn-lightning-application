@@ -30,7 +30,7 @@ export default function EmptyState({
     QRCode.toDataURL(walletAddress, {
       width: 200,
       margin: 1,
-      color: { dark: "#0a0a0c", light: "#e8e8f0" },
+      color: { dark: "#0a0a0c", light: "#ffffff" },
     })
       .then((url) => { if (!cancelled) setQrUrl(url); })
       .catch(() => { /* QR unavailable — degrade gracefully */ });
