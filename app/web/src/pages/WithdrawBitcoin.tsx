@@ -432,7 +432,7 @@ export default function WithdrawBitcoin() {
                     <div style={{ fontSize: "0.625rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
                       In your channel
                     </div>
-                    <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--amber)", lineHeight: 1.2 }}>
+                    <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
                       {channelLocal.toLocaleString()}
                       <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>sats</span>
                     </div>
@@ -583,7 +583,7 @@ export default function WithdrawBitcoin() {
               <span className="icon">≡</span>Withdrawal Quote
             </span>
             {countdown && (
-              <span className={`badge ${countdown === "Expired" ? "badge-red" : "badge-amber"}`}>
+              <span className={`badge ${countdown === "Expired" ? "badge-muted" : "badge-amber"}`}>
                 {countdown === "Expired" ? "Expired" : `Expires in ${countdown}`}
               </span>
             )}

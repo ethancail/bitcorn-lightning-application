@@ -111,7 +111,7 @@ export default function ProfilePanel() {
                 padding: "1px 6px",
                 borderRadius: 6,
                 marginLeft: 4,
-                color: applied ? "var(--green, #22c55e)" : "var(--amber)",
+                color: applied ? "var(--green, #22c55e)" : "var(--text)",
                 border: `1px solid ${applied ? "var(--green, #22c55e)" : "var(--amber)"}`,
               }}
             >
@@ -155,7 +155,7 @@ export default function ProfilePanel() {
               color: "var(--text)",
               fontFamily: "var(--sans)",
               fontSize: "0.875rem",
-              border: `2px solid ${showFormatError ? "var(--red, #ef4444)" : "var(--border)"}`,
+              border: `2px solid ${showFormatError ? "var(--red, #ef4444)" : "var(--border-control)"}`,
             }}
           />
           {showFormatError && (

@@ -2,7 +2,9 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  /* Palette — industrial amber-on-black terminal aesthetic */
+  /* Palette. Colour round (tranche 2): every text token passes 4.5:1 on
+     --bg…--bg-3, every state colour passes as a mark, and amber is a mark
+     only — bars, dots, fills, rules and glyph markers, never words. */
   --bg:          #0a0a0c;
   --bg-1:        #111115;
   --bg-2:        #17171e;
@@ -19,9 +21,9 @@
   --green-dim:   #16a34a;
   --green-glow:  rgba(34,197,94,0.10);
 
-  --red:         #ef4444;
+  --red:         #f26262;
   --red-dim:     #dc2626;
-  --red-glow:    rgba(239,68,68,0.12);
+  --red-glow:    rgba(242,98,98,0.12);
 
   --yellow:      #eab308;
   --yellow-glow: rgba(234,179,8,0.12);
@@ -39,8 +41,32 @@
   --orange-glow: rgba(251,146,60,0.12);
 
   --text:        #e8e8f0;
-  --text-2:      #9898b0;
-  --text-3:      #5a5a70;
+  /* --text-3 passes 4.5:1 as text on --bg…--bg-3 (it was 2.46–2.95:1), and
+     --text-2 moves up to stay a step above it. */
+  --text-2:      #a8a8bc;
+  --text-3:      #84849c;
+
+  /* The boundary of a form control: 3:1 against --bg-1…--bg-3 (WCAG 1.4.11).
+     --border stays for panels and dividers, which bound no control. */
+  --border-control: #66668c;
+
+  /* Chart series. Dark values are the charts' original hues; light values
+     are the same hues darkened to 3:1 on --bg and --bg-1. */
+  --chart-amber:  #f59e0b;
+  --chart-green:  #22c55e;
+  --chart-red:    #ef4444;
+  --chart-orange: #f97316;
+  --chart-blue:   #3b82f6;
+  --chart-indigo: #8b5cf6;
+  --chart-cyan:   #06b6d4;
+  --chart-violet: #a78bfa;
+
+  /* Valuation and Z ramps keep their own hex values (contrast only);
+     consumers mix them toward --text by these shares (components/rampInk.ts).
+     0% in dark, where every ramp colour already passes; in light, 58% makes
+     text pass 4.5:1 and 44% makes a mark pass 3:1 on --bg…--bg-2. */
+  --ramp-ink:   0%;
+  --ramp-mark:  0%;
 
   /* Round 1, Z1/Z2: ONE font. --font is the UI family; --font-id is the
      monospace for identifiers ONLY (node IDs, pubkeys, txids, addresses,
@@ -78,8 +104,9 @@
   --panel-alt:   var(--bg-2);    /* DEPRECATED alias (P2): owners migrate consumers to --bg-2 */
   --surface-2:   var(--bg-2);    /* DEPRECATED alias (P2): owners migrate consumers to --bg-2 */
   --accent:      var(--text-2);  /* DEPRECATED alias (P2): owners migrate consumers to --text-2 */
-  /* --accent re-points to --amber in tranche 2, under notices N1/N2, once the
-     light-theme --amber passes text contrast. */
+  /* V3 meant --accent to re-point to --amber in tranche 2. Amber is a mark
+     only since the colour round, and --accent's consumers are words, so it
+     stays on --text-2. */
 
   font-family: var(--font);
   /* Z2: numbers use the font's TABULAR digits, so columns line up. */
@@ -178,7 +205,7 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
   font-family: var(--mono);
   font-weight: 600;
   font-size: 0.9375rem;
-  color: var(--amber);
+  color: var(--text);
   letter-spacing: 0.02em;
 }
 
@@ -204,6 +231,8 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
   color: var(--text-2);
 }
 .topbar-node-id { color: var(--text-3); font-family: var(--font-id); }
+.topbar-sync { color: var(--text-3); white-space: nowrap; }
+.topbar-sync:not(.is-synced) { color: var(--text); }
 
 .sidebar {
   grid-column: 1;
@@ -258,8 +287,9 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 
 .sidebar-item.active {
   background: var(--amber-glow);
-  color: var(--amber);
+  color: var(--text);
   font-weight: 500;
+  box-shadow: inset 3px 0 0 var(--amber);
 }
 
 .sidebar-item .icon { font-size: 1rem; opacity: 0.8; }
@@ -350,7 +380,7 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
   opacity: 0.8;
 }
 .settings-section-label.ops {
-  color: var(--amber-dim);
+  color: var(--text-2);
 }
 .settings-section-label.ops::after {
   background: linear-gradient(to right, var(--amber) 0%, var(--border) 100%);
@@ -364,10 +394,10 @@ p + .settings-section-label { margin-top: 8px; }
   border-top: 2px solid var(--amber);
 }
 .panel.ops .panel-title {
-  color: var(--amber-dim);
+  color: var(--text);
 }
 .panel.ops .panel-title .icon {
-  color: var(--amber);
+  color: var(--amber);  /* a glyph marker, a mark */
 }
 
 /* ─── Settings page: policy cards (read + edit states) ───────── */
@@ -452,7 +482,7 @@ p + .settings-section-label { margin-top: 8px; }
   text-align: right;
   font-variant-numeric: tabular-nums;
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   padding: 4px 8px;
   color: var(--text);
@@ -564,7 +594,7 @@ p + .settings-section-label { margin-top: 8px; }
   padding: 3px 8px;
   border-radius: var(--radius-sm);
   background: var(--amber-glow2);
-  color: var(--amber-dim);
+  color: var(--text);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -606,7 +636,7 @@ p + .settings-section-label { margin-top: 8px; }
 
 .stat-value.positive { color: var(--green); }
 .stat-value.negative { color: var(--text); }
-.stat-value.amber    { color: var(--amber); }
+.stat-value.amber    { color: var(--text); }
 
 .stat-sub {
   font-family: var(--mono);
@@ -892,7 +922,7 @@ p + .settings-section-label { margin-top: 8px; }
 }
 
 .data-table th:hover { color: var(--text-2); }
-.data-table th.sorted { color: var(--amber); }
+.data-table th.sorted { color: var(--text); box-shadow: inset 0 -2px 0 var(--amber); }
 
 .data-table td {
   padding: var(--d-td-py) var(--d-td-px);
@@ -943,7 +973,22 @@ p + .settings-section-label { margin-top: 8px; }
 
 .badge-green  { background: var(--green-glow);  color: var(--green); }
 .badge-red    { background: var(--red-glow);    color: var(--red); }
-.badge-amber  { background: var(--amber-glow);  color: var(--amber); }
+.badge-amber  { background: var(--amber-glow);  color: var(--text); gap: 5px; }
+/* Colour round: amber marks, never words. .badge-amber's word is --text beside an
+   amber dot, as .badge-caution's. ⚠ A shared class Daybreak consumes (N1). */
+.badge-amber::before,
+.warn-mark::before,
+.admin-members-unidentified-marker::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--amber);
+  flex-shrink: 0;
+}
+/* A warning said in words outside a badge: the same amber dot before it. */
+.warn-mark::before,
+.admin-members-unidentified-marker::before { display: inline-block; margin-right: 6px; vertical-align: 0.1em; }
 .badge-blue   { background: var(--blue-glow);   color: var(--blue); }
 .badge-orange { background: var(--orange-glow); color: var(--orange); }
 .badge-muted  { background: var(--bg-3); color: var(--text-3); }
@@ -967,7 +1012,7 @@ p + .settings-section-label { margin-top: 8px; }
   font-family: var(--mono);
   font-size: 0.625rem;
   background: var(--amber-glow);
-  color: var(--amber);
+  color: var(--text);
   letter-spacing: 0.02em;
 }
 
@@ -1001,10 +1046,15 @@ button:active:not(:disabled) { transform: scale(0.97); }
 button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
 .btn-primary {
-  background: var(--amber);
-  color: #0a0a0c;
+  /* Colour round, as picked: the primary action is an ink button with an
+     amber rule, so amber stays a mark here too. (An amber fill would need
+     dark text in dark and light text in light: ink on dark --amber is 9.21:1,
+     white on light --amber 5.03:1.) */
+  background: var(--text);
+  color: var(--bg);
+  box-shadow: inset 0 -2px 0 var(--amber);
 }
-.btn-primary:hover:not(:disabled) { background: #fbbf24; }
+.btn-primary:hover:not(:disabled) { background: var(--text-2); }
 
 .btn-outline {
   background: transparent;
@@ -1013,7 +1063,7 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
 }
 .btn-outline:hover:not(:disabled) {
   border-color: var(--amber-dim);
-  color: var(--amber);
+  color: var(--text);
 }
 
 .btn-ghost {
@@ -1043,9 +1093,22 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
   color: var(--text-3);
 }
 
+/* Browser-drawn text fields and selects (the unclassed ones, as on the
+   auto-buy strategy): WebKit, the iPhone's engine, draws their edge at
+   1.2–1.9:1 against our surfaces (Chromium at 3.8–5.1:1). Every such control
+   gets --border-control, 3:1. :where() keeps this at zero specificity, so a
+   class or an inline style still wins; checkboxes, radios and sliders keep
+   their own drawing. */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"]), select, textarea) {
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  color: var(--text);
+}
+
 .form-input {
   background: var(--bg-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius);
   padding: 10px 14px;
   font-family: var(--mono);
@@ -1105,7 +1168,7 @@ input[type="number"] {
 .text-right  { text-align: right; }
 .text-red    { color: var(--red); }
 .text-green  { color: var(--green); }
-.text-amber  { color: var(--amber); }
+.text-amber  { color: var(--text); }
 .truncate    { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .w-full      { width: 100%; }
 
@@ -1186,7 +1249,7 @@ input[type="number"] {
   font-family: var(--mono);
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--amber);
+  color: var(--text);
   letter-spacing: 0.03em;
 }
 
@@ -1222,14 +1285,14 @@ input[type="number"] {
 .wizard-rail-item .lbl {
   color: var(--text-3);
 }
-.wizard-rail-item.done .num { color: var(--amber-dim); }
+.wizard-rail-item.done .num { color: var(--text-2); }
 .wizard-rail-item.done .dot { background: var(--amber-dim); }
 .wizard-rail-item.done .lbl {
   color: var(--text-3);
   text-decoration: line-through;
   text-decoration-color: var(--text-3);
 }
-.wizard-rail-item.active .num { color: var(--amber); }
+.wizard-rail-item.active .num { color: var(--text); }
 .wizard-rail-item.active .dot {
   background: var(--amber);
   box-shadow: 0 0 0 3px var(--amber-glow);
@@ -1411,7 +1474,7 @@ input[type="number"] {
   border: 1px solid var(--border-hi);
   border-radius: var(--radius);
   background: transparent;
-  color: var(--amber);
+  color: var(--text);
   font-size: 1.25rem;
   cursor: pointer;
   flex-shrink: 0;
@@ -1479,6 +1542,8 @@ input[type="number"] {
     white-space: nowrap;
   }
   .topbar-node-id { display: none; }
+  /* Room is short on a phone: the healthy state's word goes; "Not synced" stays. */
+  .topbar-sync.is-synced { display: none; }
 
   /* Sidebar: off-screen by default, slides in when open */
   .sidebar {
@@ -1581,7 +1646,7 @@ input[type="number"] {
   padding: 10px 16px;
   border: none;
   background: transparent;
-  color: rgba(245, 158, 11, 0.6);
+  color: var(--text-2);
   font-family: var(--mono);
   font-size: 0.875rem;
   cursor: pointer;
@@ -1590,12 +1655,13 @@ input[type="number"] {
 
 .payment-tab:hover {
   background: rgba(245, 158, 11, 0.05);
-  color: var(--amber);
+  color: var(--text);
 }
 
 .payment-tab.active {
   background: rgba(245, 158, 11, 0.1);
-  color: var(--amber);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--amber);
   font-weight: 600;
 }
 
@@ -1624,7 +1690,7 @@ input[type="number"] {
   max-height: 120px;
   overflow-y: auto;
   width: 100%;
-  color: rgba(245, 158, 11, 0.7);
+  color: var(--text-2);
   margin-top: 12px;
 }
 
@@ -1656,7 +1722,7 @@ input[type="number"] {
 .form-label {
   display: block;
   font-size: 0.8125rem;
-  color: rgba(245, 158, 11, 0.7);
+  color: var(--text-2);
   margin-bottom: 4px;
   font-family: var(--mono);
 }
@@ -1673,38 +1739,54 @@ input[type="number"] {
   --border:      #cdc3b3;
   --border-hi:   #b5a998;
 
-  --amber:       #d97706;
+  /* Colour round: light --amber darkened at its own hue (32°, so no gauge
+     colour moves toward red) from #d97706 (2.16–2.98:1) to 3:1 as a mark on
+     --bg…--bg-3 and on its own glow. It is never a text colour. --amber-dim
+     already reaches 3:1 as a mark. */
+  --amber:       #a75c05;
   --amber-dim:   #b45309;
-  --amber-glow:  rgba(217,119,6,0.12);
-  --amber-glow2: rgba(217,119,6,0.06);
+  --amber-glow:  rgba(167,92,5,0.12);
+  --amber-glow2: rgba(167,92,5,0.06);
 
-  --green:       #15803d;
+  /* Each state colour darkened, at its own hue, to 4.5:1 as text on
+     --bg…--bg-3 and on its own glow (badges, alerts). None moves toward red. */
+  --green:       #10602e;
   --green-dim:   #166534;
-  --green-glow:  rgba(21,128,61,0.10);
+  --green-glow:  rgba(16,96,46,0.10);
 
-  --red:         #dc2626;
+  --red:         #a11a1a;
   --red-dim:     #b91c1c;
-  --red-glow:    rgba(220,38,38,0.10);
+  --red-glow:    rgba(161,26,26,0.10);
 
-  --yellow:      #a16207;
-  --yellow-glow: rgba(161,98,7,0.12);
+  --yellow:      #754705;
+  --yellow-glow: rgba(117,71,5,0.12);
 
-  --blue:        #2563eb;
-  --blue-glow:   rgba(37,99,235,0.10);
+  --blue:        #1248c1;
+  --blue-glow:   rgba(18,72,193,0.10);
 
-  --purple:      #7c3aed;
-  --purple-glow: rgba(124,58,237,0.10);
+  --purple:      #6f27eb;
+  --purple-glow: rgba(111,39,235,0.10);
 
-  --orange:      #c2410c;
-  --orange-glow: rgba(194,65,12,0.10);
+  --orange:      #953209;
+  --orange-glow: rgba(149,50,9,0.10);
 
   --text:        #1c1408;
-  --text-2:      #685a49;
-  --text-3:      #998a78;
+  --text-2:      #483f33;
+  --text-3:      #665a4d;
 
-  /* Light --amber is under 3:1 on these backgrounds; --amber-dim passes.
-     Drop this override when tranche 2 re-values light --amber. */
-  --focus-ring:  var(--amber-dim);
+  --border-control: #857560;
+
+  --chart-amber:  #bc7908;
+  --chart-green:  #1b9b4a;
+  --chart-red:    #ef4444;
+  --chart-orange: #e16006;
+  --chart-blue:   #3b82f6;
+  --chart-indigo: #8b5cf6;
+  --chart-cyan:   #0594ad;
+  --chart-violet: #926ff9;
+
+  --ramp-ink:   58%;
+  --ramp-mark:  44%;
 
   color: var(--text);
   background: var(--bg);
@@ -1720,14 +1802,12 @@ input[type="number"] {
 
 /* Payment section — hardcoded rgba amber → adjusted for light bg */
 [data-theme="light"] .payment-tabs       { border-color: rgba(217,119,6,0.25); }
-[data-theme="light"] .payment-tab        { color: rgba(217,119,6,0.6); }
-[data-theme="light"] .payment-tab:hover  { background: rgba(217,119,6,0.08); color: var(--amber); }
-[data-theme="light"] .payment-tab.active { background: rgba(217,119,6,0.12); color: var(--amber); }
-[data-theme="light"] .bolt11-text        { background: rgba(0,0,0,0.04); border-color: rgba(217,119,6,0.2); color: var(--amber-dim); }
+[data-theme="light"] .payment-tab:hover  { background: rgba(217,119,6,0.08); }
+[data-theme="light"] .payment-tab.active { background: rgba(217,119,6,0.12); }
+[data-theme="light"] .bolt11-text        { background: rgba(0,0,0,0.04); border-color: rgba(217,119,6,0.2); }
 [data-theme="light"] .payment-preview    { background: rgba(217,119,6,0.06); border-color: rgba(217,119,6,0.15); }
 [data-theme="light"] .payment-result.success { background: rgba(21,128,61,0.08); border-color: rgba(21,128,61,0.2); }
 [data-theme="light"] .payment-result.failed  { background: rgba(220,38,38,0.08); border-color: rgba(220,38,38,0.2); }
-[data-theme="light"] .form-label         { color: var(--amber-dim); }
 
 /* Table row highlights */
 [data-theme="light"] .data-table tr.row-selected td       { background: rgba(217,119,6,0.08); }
@@ -1768,7 +1848,7 @@ input[type="number"] {
 .theme-option.selected {
   border-color: var(--amber);
   background: var(--amber-glow);
-  color: var(--amber);
+  color: var(--text);
 }
 
 /* ─── Liquidity page overhaul ────────────────────────────────── */
@@ -1792,7 +1872,7 @@ input[type="number"] {
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--amber-dim);
+  color: var(--text-2);
   font-weight: 600;
 }
 
@@ -2011,7 +2091,7 @@ input[type="number"] {
   gap: 8px;
 }
 .sub-panel-glyph {
-  color: var(--amber);
+  color: var(--amber);  /* a glyph marker, a mark */
   font-size: 0.8571rem;
 }
 .sub-panel-title h2 {
@@ -2020,7 +2100,7 @@ input[type="number"] {
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--amber);
+  color: var(--text);
   margin: 0;
 }
 
@@ -2042,17 +2122,19 @@ input[type="number"] {
   border-radius: var(--radius-full);
   background: currentColor;
 }
-.sub-pill-emerald     { color: #34d399; border-color: rgba(52,211,153,0.32); background: rgba(52,211,153,0.10); }
-.sub-pill-blue        { color: #38bdf8; border-color: rgba(56,189,248,0.40); background: rgba(56,189,248,0.10); }
-.sub-pill-gray-pulsing{ color: #a1a1aa; border-color: #3f3f46;               background: rgba(63,63,70,0.30); }
+/* Colour round (CR-5): the signal system's hues are the app's tokens, in both
+   themes, so each pill's word passes 4.5:1 on its own glow. */
+.sub-pill-emerald     { color: var(--green);  border-color: color-mix(in srgb, var(--green) 40%, transparent);  background: var(--green-glow); }
+.sub-pill-blue        { color: var(--blue);   border-color: color-mix(in srgb, var(--blue) 40%, transparent);   background: var(--blue-glow); }
+.sub-pill-gray-pulsing{ color: var(--text-2); border-color: var(--border-hi);                                     background: var(--bg-3); }
 .sub-pill-gray-pulsing .sub-pill-dot {
   animation: sub-pill-pulse 1.6s ease-in-out infinite;
 }
-.sub-pill-muted-amber { color: #fde68a; border-color: rgba(253,230,138,0.35); background: rgba(253,230,138,0.06); }
-.sub-pill-amber       { color: #fbbf24; border-color: rgba(251,191,36,0.42); background: rgba(251,191,36,0.12); }
-.sub-pill-orange      { color: #fb923c; border-color: rgba(251,146,60,0.50); background: rgba(251,146,60,0.14); }
-.sub-pill-red         { color: #f87171; border-color: rgba(248,113,113,0.50); background: rgba(248,113,113,0.14); }
-.sub-pill-dim-red     { color: #f87171; border-color: rgba(220,38,38,0.40);  background: rgba(220,38,38,0.10); }
+.sub-pill-muted-amber { color: var(--text);  border-color: color-mix(in srgb, var(--amber) 30%, transparent);  background: var(--amber-glow2); }
+.sub-pill-amber       { color: var(--text);  border-color: color-mix(in srgb, var(--amber) 45%, transparent);  background: var(--amber-glow); }
+.sub-pill-orange      { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 50%, transparent); background: var(--orange-glow); }
+.sub-pill-red         { color: var(--red);    border-color: color-mix(in srgb, var(--red) 50%, transparent);    background: var(--red-glow); }
+.sub-pill-dim-red     { color: var(--red);    border-color: color-mix(in srgb, var(--red) 30%, transparent);    background: var(--red-glow); }
 
 @keyframes sub-pill-pulse {
   0%, 100% { opacity: 0.35; }
@@ -2083,13 +2165,13 @@ input[type="number"] {
   line-height: 1.5;
 }
 .sub-bullet-tick {
-  color: #34d399;
+  color: var(--green);
   font-weight: bold;
   position: absolute;
   left: 0;
 }
 .sub-bullet-plus {
-  color: #38bdf8;
+  color: var(--blue);
   font-weight: bold;
   position: absolute;
   left: 0;
@@ -2128,30 +2210,35 @@ input[type="number"] {
   flex: 1;
 }
 .sub-alert-amber {
-  background: rgba(120,53,15,0.22);
-  border: 1px solid rgba(251,191,36,0.32);
-  color: #fcd34d;
+  background: var(--amber-glow);
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  color: var(--text);
 }
 .sub-alert-orange {
-  background: rgba(124,45,18,0.30);
-  border: 1px solid rgba(251,146,60,0.40);
-  color: #fdba74;
+  background: var(--orange-glow);
+  border: 1px solid color-mix(in srgb, var(--orange) 45%, transparent);
+  color: var(--orange);
 }
 .sub-alert-red {
-  background: rgba(127,29,29,0.32);
-  border: 1px solid rgba(248,113,113,0.45);
-  color: #fca5a5;
+  background: var(--red-glow);
+  border: 1px solid color-mix(in srgb, var(--red) 50%, transparent);
+  color: var(--red);
 }
 .sub-alert-dim-red {
-  background: rgba(69,10,10,0.30);
-  border: 1px solid rgba(220,38,38,0.32);
-  color: #fca5a5;
+  background: var(--red-glow);
+  border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+  color: var(--red);
 }
 .sub-alert-dashed {
   background: transparent;
-  border: 1px dashed rgba(253,230,138,0.35);
-  color: #fde68a;
+  border: 1px dashed color-mix(in srgb, var(--amber) 45%, transparent);
+  color: var(--text);
 }
+/* The amber pill's dot and the amber alert's icon are its marks. */
+.sub-pill-amber .sub-pill-dot,
+.sub-pill-muted-amber .sub-pill-dot { background: var(--amber); }
+.sub-alert-amber .sub-alert-icon,
+.sub-alert-dashed .sub-alert-icon { color: var(--amber); }
 
 /* Bracket heading */
 .sub-bracket-heading {
@@ -2164,7 +2251,7 @@ input[type="number"] {
   font-family: var(--mono);
   font-size: 0.7857rem;
   letter-spacing: 0.16em;
-  color: var(--amber);
+  color: var(--text-2);
 }
 .sub-bracket-rule {
   flex: 1;
@@ -2207,11 +2294,12 @@ input[type="number"] {
 }
 
 /* Accent colors on Paid Through (per signal system §6) */
-.sub-stat-accent-emerald    { color: #fbbf24 !important; }
-.sub-stat-accent-blue       { color: #38bdf8 !important; }
-.sub-stat-accent-amber      { color: #fbbf24 !important; }
-.sub-stat-accent-orange     { color: #fb923c !important; }
-.sub-stat-accent-red        { color: #f87171 !important; }
+/* "emerald" rendered amber until the colour round; it is green now. */
+.sub-stat-accent-emerald    { color: var(--green) !important; }
+.sub-stat-accent-blue       { color: var(--blue) !important; }
+.sub-stat-accent-amber      { color: var(--text) !important; }
+.sub-stat-accent-orange     { color: var(--orange) !important; }
+.sub-stat-accent-red        { color: var(--red) !important; }
 
 /* Deposit block */
 .sub-deposit {
@@ -2275,7 +2363,7 @@ input[type="number"] {
 }
 .sub-btn:hover:not(:disabled) {
   border-color: var(--amber);
-  color: var(--amber);
+  color: var(--text);
 }
 .sub-btn:disabled {
   opacity: 0.5;
@@ -2289,7 +2377,7 @@ input[type="number"] {
   text-decoration: none;
 }
 .sub-link:hover {
-  color: var(--amber);
+  color: var(--text);
   text-decoration: underline;
   text-underline-offset: 4px;
 }
@@ -2337,10 +2425,10 @@ input[type="number"] {
   text-align: center;
   color: var(--text-3);
 }
-.sub-timeline-marker-amber   { color: #fbbf24; }
-.sub-timeline-marker-orange  { color: #fb923c; }
-.sub-timeline-marker-red     { color: #f87171; }
-.sub-timeline-marker-emerald { color: #34d399; }
+.sub-timeline-marker-amber   { color: var(--amber); }
+.sub-timeline-marker-orange  { color: var(--orange); }
+.sub-timeline-marker-red     { color: var(--red); }
+.sub-timeline-marker-emerald { color: var(--green); }
 
 /* Body copy (external_peer, no_channel) */
 .sub-body-copy {
@@ -2411,7 +2499,7 @@ input[type="number"] {
 .sub-stuck-escalation {
   font-family: var(--mono);
   font-size: 0.9286rem;
-  color: var(--amber);
+  color: var(--text);
   margin-top: 12px;
 }
 .sub-pending-channel-age {
@@ -2470,120 +2558,8 @@ input[type="number"] {
    the state-semantic colors that need light-mode variants.
    ──────────────────────────────────────────────────────────────── */
 
-/* Light-mode pill overrides. The dark-mode hex values (Tailwind
-   400 saturations) wash out on cream backgrounds — bright colors at
-   high saturation read fine against #0a0a0a but not against #fdfaf2.
-   Each light-mode override drops to a Tailwind 800-ish darker hue
-   for the text while keeping the same color family for border + bg.
-   The Stage 5b admin distribution counter surfaced this in a way
-   the single-pill subscription panel didn't, because eleven pills
-   side-by-side made the contrast issue scannable across the palette. */
-[data-theme="light"] .sub-pill-emerald {
-  color: #065f46;
-  border-color: rgba(6,95,70,0.45);
-  background: rgba(52,211,153,0.18);
-}
-[data-theme="light"] .sub-pill-blue {
-  color: #1e40af;
-  border-color: rgba(30,64,175,0.45);
-  background: rgba(56,189,248,0.18);
-}
-[data-theme="light"] .sub-pill-amber {
-  color: #92400e;
-  border-color: rgba(146,64,14,0.50);
-  background: rgba(251,191,36,0.22);
-}
-[data-theme="light"] .sub-pill-orange {
-  color: #9a3412;
-  border-color: rgba(154,52,18,0.50);
-  background: rgba(251,146,60,0.22);
-}
-[data-theme="light"] .sub-pill-red {
-  color: #991b1b;
-  border-color: rgba(153,27,27,0.55);
-  background: rgba(248,113,113,0.22);
-}
-[data-theme="light"] .sub-pill-gray-pulsing {
-  color: #525252;
-  border-color: #a3a3a3;
-  background: rgba(115,115,115,0.10);
-}
-[data-theme="light"] .sub-pill-muted-amber {
-  color: #92400e;
-  border-color: rgba(180,83,9,0.45);
-  background: rgba(253,230,138,0.40);
-}
-[data-theme="light"] .sub-pill-dim-red {
-  color: #991b1b;
-  border-color: rgba(185,28,28,0.50);
-  background: rgba(254,202,202,0.50);
-}
-
-/* Admin distribution counter: the zero-count dimming via opacity:0.45
-   works on dark mode (contrast is high to begin with) but cuts below
-   readable on cream backgrounds. Lift the dimming in light mode so
-   zero pills stay scannable while still reading as "quiet." */
-[data-theme="light"] .admin-members-distribution-pill.is-zero {
-  opacity: 0.65;
-}
-
-/* Alert fills — the dark-mode warm-dark backgrounds don't work on
-   cream. Use desaturated tints with the same hue, darker text. */
-[data-theme="light"] .sub-alert-amber {
-  background: rgba(251,191,36,0.18);
-  border-color: rgba(180,83,9,0.45);
-  color: #78350f;
-}
-[data-theme="light"] .sub-alert-orange {
-  background: rgba(251,146,60,0.18);
-  border-color: rgba(194,65,12,0.50);
-  color: #7c2d12;
-}
-[data-theme="light"] .sub-alert-red {
-  background: rgba(248,113,113,0.18);
-  border-color: rgba(185,28,28,0.55);
-  color: #7f1d1d;
-}
-[data-theme="light"] .sub-alert-dim-red {
-  background: rgba(248,113,113,0.10);
-  border-color: rgba(185,28,28,0.40);
-  color: #7f1d1d;
-}
-[data-theme="light"] .sub-alert-dashed {
-  border-color: rgba(180,83,9,0.50);
-  color: #78350f;
-}
-
-/* Stat accent colors on Paid Through — the dark-mode hex values (e.g.
-   #fbbf24 amber) are too pale to read on cream. Use the theme tokens
-   instead so the accent picks up the light-mode darker hues. */
-[data-theme="light"] .sub-stat-accent-emerald,
-[data-theme="light"] .sub-stat-accent-amber {
-  color: var(--amber) !important;
-}
-[data-theme="light"] .sub-stat-accent-blue {
-  color: var(--blue) !important;
-}
-[data-theme="light"] .sub-stat-accent-orange {
-  color: #c2410c !important;
-}
-[data-theme="light"] .sub-stat-accent-red {
-  color: var(--red) !important;
-}
-
-/* Bullet markers in prepay and reassurance lines — the emerald/blue
-   from dark mode work on cream too, but slightly darker reads better. */
-[data-theme="light"] .sub-bullet-tick { color: var(--green); }
-[data-theme="light"] .sub-bullet-plus { color: var(--blue); }
-
-/* Timeline marker tones */
-[data-theme="light"] .sub-timeline-marker-amber   { color: var(--amber); }
-[data-theme="light"] .sub-timeline-marker-orange  { color: #c2410c; }
-[data-theme="light"] .sub-timeline-marker-red     { color: var(--red); }
-[data-theme="light"] .sub-timeline-marker-emerald { color: var(--green); }
-
-/* Stuck-state escalation copy */
-[data-theme="light"] .sub-stuck-escalation { color: var(--amber-dim); }
+/* Pill, alert, stat and marker colours come from the theme tokens above
+   (colour round, CR-5), so they need no light-mode overrides here. */
 
 /* ─── Subscription payment history page ─────────────────────────────
    Stage 5a follow-up. Reuses .sub-panel chrome + .sub-pill family
@@ -2698,9 +2674,16 @@ input[type="number"] {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
-.admin-members-distribution-pill.is-zero {
-  opacity: 0.45;
+/* A zero count reads as quiet without fading its word: opacity took the
+   pills' words under 4.5:1 — all eight in dark (1.95–3.68:1 at 0.45), six of
+   eight in light (2.62–3.11:1 at 0.65). The pill keeps its form and its
+   word, in --text-3, with no fill. */
+.admin-members-distribution-pill.is-zero .sub-pill {
+  color: var(--text-3);
+  background: transparent;
+  border-color: var(--border-hi);
 }
+.admin-members-distribution-pill.is-zero .sub-pill-dot { background: var(--text-3); }
 .admin-members-distribution-total {
   font-family: var(--mono);
   font-size: 0.8125rem;
@@ -2766,7 +2749,7 @@ input[type="number"] {
 .admin-members-search {
   flex: 0 1 18rem;
   padding: 0.4rem 0.625rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius-sm);
   background: var(--bg-2);
   color: var(--fg-1);
@@ -2813,7 +2796,7 @@ input[type="number"] {
   color: var(--fg-1);
 }
 .admin-sortable.is-active {
-  color: var(--amber);
+  color: var(--text);
 }
 .admin-sort-arrow {
   font-size: 0.7rem;
@@ -2906,8 +2889,8 @@ input[type="number"] {
   font-size: 0.6875rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--amber);
-  opacity: 0.9;
+  color: var(--text);
+  white-space: nowrap;  /* keeps the amber dot on the word's line */
 }
 .admin-members-unidentified-link {
   font-family: var(--mono);
@@ -2917,7 +2900,7 @@ input[type="number"] {
   border-bottom: 1px dotted currentColor;
 }
 .admin-members-unidentified-link:hover {
-  color: var(--amber);
+  color: var(--text);
 }
 
 /* ─── Stablecoin Rail (§8) — Briefing-Room-aligned ─────────────── */
@@ -3001,7 +2984,7 @@ input[type="number"] {
 .stablecoin-balance {
   font-family: var(--mono);
   font-size: 1rem;
-  color: var(--amber);
+  color: var(--text);
   display: flex;
   align-items: baseline;
   gap: 12px;
@@ -3119,12 +3102,12 @@ input[type="number"] {
 }
 
 .stablecoin-tile-recommended .stablecoin-tile-caption {
-  color: var(--amber);
+  color: var(--text);
 }
 
 .stablecoin-tile-status {
   font-size: 0.75rem;
-  color: var(--amber);
+  color: var(--text);
   margin-top: 4px;
   font-family: var(--mono);
 }
@@ -3188,7 +3171,7 @@ input[type="number"] {
   font-size: 0.875rem;
   padding: 10px 12px;
   background: var(--bg-2);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   border-radius: var(--radius);
   color: var(--text);
 }
@@ -3223,7 +3206,7 @@ input[type="number"] {
 }
 
 .stablecoin-fee-value {
-  color: var(--amber);
+  color: var(--text);
   font-weight: 500;
 }
 
@@ -3347,7 +3330,7 @@ input[type="number"] {
 .stablecoin-row-amount {
   font-family: var(--mono);
   font-size: 0.9375rem;
-  color: var(--amber);
+  color: var(--text);
   font-weight: 500;
   margin-left: auto;
 }
@@ -3361,7 +3344,7 @@ input[type="number"] {
 }
 
 .stablecoin-row-link:hover {
-  color: var(--amber);
+  color: var(--text);
 }
 
 /* Primary external links (wallet address, contract router) — more
@@ -3373,10 +3356,10 @@ input[type="number"] {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--amber-dim);
+  color: var(--text-2);
 }
 .stablecoin-extlink:hover {
-  color: var(--amber);
+  color: var(--text);
 }
 .stablecoin-extlink-icon {
   font-size: 0.95rem;
@@ -3411,16 +3394,12 @@ input[type="number"] {
   border: 1px solid var(--red);
 }
 
-.stablecoin-pill-sent {
-  background: color-mix(in srgb, var(--blue) 12%, transparent);
-  color: var(--blue);
-  border: 1px solid var(--blue);
-}
-
+/* Direction is said by the word; neither side takes a hue (D8, as Payments). */
+.stablecoin-pill-sent,
 .stablecoin-pill-received {
-  background: var(--green-glow);
-  color: var(--green);
-  border: 1px solid var(--green);
+  background: var(--bg-3);
+  color: var(--text-2);
+  border: 1px solid var(--border-hi);
 }
 
 .stablecoin-row-secondary {
@@ -3495,9 +3474,11 @@ input[type="number"] {
   max-width: 360px;
 }
 
+/* A QR stays dark on white in both themes: scanners need a light quiet zone,
+   and --text is dark in the light theme. */
 .stablecoin-empty-qr {
   padding: 8px;
-  background: var(--text);
+  background: #ffffff;
   border-radius: var(--radius);
 }
 

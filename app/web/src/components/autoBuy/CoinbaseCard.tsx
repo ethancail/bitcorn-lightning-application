@@ -80,7 +80,7 @@ function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> })
           style={{ width: "100%", fontFamily: "var(--font-id)", fontSize: "0.75rem", marginBottom: 12, resize: "vertical" }}
         />
         {toast && (
-          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "white", marginBottom: 12 }}>
+          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "var(--bg)", marginBottom: 12 }}>
             <div className="alert-body">{toast.message}</div>
           </div>
         )}
@@ -167,7 +167,7 @@ function ConnectedNotWhitelistedState({ status, onRefresh }: { status: AutoBuySt
       <div className="panel-header">Coinbase Integration</div>
       <div className="panel-body">
         {toast && (
-          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "white", marginBottom: 16 }}>
+          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "var(--bg)", marginBottom: 16 }}>
             <div className="alert-body">{toast.message}</div>
           </div>
         )}
@@ -226,7 +226,7 @@ function ConnectedNotWhitelistedState({ status, onRefresh }: { status: AutoBuySt
         <button
           onClick={confirmWhitelist}
           disabled={busyConfirm || !address}
-          style={{ background: "var(--green)", color: "white", fontWeight: 600 }}
+          style={{ background: "var(--green)", color: "var(--bg)", fontWeight: 600 }}
         >
           {busyConfirm ? "Confirming…" : "I've whitelisted this in Coinbase"}
         </button>
@@ -272,7 +272,7 @@ function ConnectedReadyState({ status, onRefresh }: { status: AutoBuyStatus; onR
       <div className="panel-header">Coinbase Integration</div>
       <div className="panel-body">
         {toast && (
-          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "white", marginBottom: 16 }}>
+          <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "var(--bg)", marginBottom: 16 }}>
             <div className="alert-body">{toast.message}</div>
           </div>
         )}

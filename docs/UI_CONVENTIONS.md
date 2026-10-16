@@ -28,20 +28,29 @@ Use these — don't hardcode hex values.
 
 ### Colors
 
-| Token | Dark | Light | Use |
-|---|---|---|---|
-| `--bg` | `#0a0a0c` | `#faf7f2` | Page background |
-| `--panel` | darker slate | warm cream | Panel background |
-| `--border` | `#2a2a38` | `#cdc3b3` | Dividers, borders |
-| `--text` | `#e8e8f0` | `#1c1408` | Primary text |
-| `--text-dim` | ~70% opacity text | ~70% opacity text | Secondary labels |
-| `--green` | `#22c55e` | `#15803d` | Positive (gains, success, local balance) |
-| `--red` | `#ef4444` | `#dc2626` | Negative (loss, failure, remote balance) |
-| `--amber` | `#f59e0b` | `#d97706` | Warning (caution, consecutive failures) |
-| `--yellow` | `#eab308` | `#a16207` | Info-warning (rarely used) |
-| `--blue` | `#60a5fa` | `#2563eb` | Info, links, scheduled state |
+The values are in `styles.css` (`:root` for dark, `[data-theme="light"]`); read them there. What each colour may mean is ruled (the UI redesign's D3, D8 and the colour round):
 
-Glow variants (`--green-glow`, `--red-glow`, etc.) are 10%-opacity backgrounds for colored badges/alerts. Always pair `--green-glow` background with `--green` text.
+| Token | Use |
+|---|---|
+| `--bg`, `--bg-1`…`--bg-3` | Surfaces: page, panel, raised, inputs and bar tracks |
+| `--text`, `--text-2`, `--text-3` | Words. All three pass 4.5:1 on every surface, in both themes |
+| `--border` | Panels and dividers, which bound no control |
+| `--border-control` | The edge of a text input or field: 3:1 against its surface |
+| `--red` | **Errors and destructive actions only** (and the not-synced dot). A negative number, a closing channel, an expired quote are not errors: `--text` with a sign, or a neutral badge |
+| `--blue` | **Information only.** Not a direction (sent/received, inbound) and not a category (Loop In, a lane) |
+| `--green` | Healthy, success |
+| `--amber` | **A mark only — never a word.** Bars, dots, fills, rules and glyph markers (✓ ◈ ⚠ ↗). A warning is an amber mark beside `--text` (`.badge-amber`, `.badge-caution`, `.warn-mark`); the brand accent is `--text` with an amber marker (the active nav edge, the active tab's rule, the selected option's border) |
+| `--orange` | `routing_lapsed` only |
+| `--yellow` | The warning alert (`.alert.warning`) |
+| `--chart-*` | Chart series, per theme (3:1). Charts read these, never hex |
+
+Glow variants (`--green-glow`, `--red-glow`, etc.) are 10–12% backgrounds for coloured badges and alerts; each state colour passes 4.5:1 on its own glow.
+
+The primary button (`.btn-primary`) is an ink button: `--text` fill, `--bg` word, an amber rule beneath.
+
+Valuation and Z ramps keep their own hex values; render them through `rampInk()` (words) or `rampMark()` (marks) from `components/rampInk.ts`, which darken them in the light theme.
+
+The tests hold these: `colourContrast.test.ts` computes every ruled pairing in both themes; `amberWords.guard.test.ts` fails on any amber word outside a glyph marker (Daybreak's own files are exempt until Daybreak adapts); `capacityText.guard.test.tsx` checks the rendered capacity words.
 
 ### Typography
 
@@ -86,7 +95,7 @@ For 2/3/4-column stat displays.
 </div>
 ```
 
-`.stat-value` supports `.positive`, `.negative`, `.amber` modifiers for color.
+`.stat-value` takes `.positive` (green). `.negative` and `.amber` render in `--text`: a negative number is said by its sign, and amber is never a word.
 
 ### `.alert` (critical / warning / info / healthy)
 

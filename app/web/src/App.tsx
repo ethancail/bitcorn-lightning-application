@@ -213,11 +213,16 @@ function Topbar({
         <div className="topbar-node">
           <span
             className="pulse-dot"
+            aria-hidden
             style={{
               background: syncColor,
               boxShadow: node.synced_to_chain ? undefined : "none",
             }}
           />
+          {/* CR-5: the dot's state in words, so colour never says it alone. */}
+          <span className={`topbar-sync${node.synced_to_chain ? " is-synced" : ""}`}>
+            {node.synced_to_chain ? "Synced" : "Not synced"}
+          </span>
           <span className="topbar-node-name">{displayName || node.alias || "—"}</span>
           <span className="topbar-node-id">
             ·{" "}
@@ -682,7 +687,7 @@ function ChannelRolePanel() {
                 <span style={{ fontSize: "1.25rem" }}>{opt.icon}</span>
                 <div>
                   <div style={{ fontWeight: 600 }}>{opt.label}</div>
-                  <div style={{ fontSize: "0.75rem", color: role === opt.value ? "var(--amber-dim)" : "var(--text-3)" }}>
+                  <div style={{ fontSize: "0.75rem", color: role === opt.value ? "var(--text-2)" : "var(--text-3)" }}>
                     {opt.desc}
                   </div>
                 </div>
@@ -835,7 +840,7 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
                   flex: 1, padding: "8px 12px", borderRadius: 8, cursor: "pointer",
                   border: `2px solid ${theme === opt.value ? "var(--amber)" : "var(--border)"}`,
                   background: theme === opt.value ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
-                  color: theme === opt.value ? "var(--amber)" : "var(--text-3)",
+                  color: theme === opt.value ? "var(--text)" : "var(--text-3)",
                   textAlign: "center", fontSize: "0.8125rem", fontWeight: 600, fontFamily: "var(--sans)",
                 }}
               >
@@ -1078,7 +1083,7 @@ function FeePolicyPanel() {
         <span className="panel-title">
           <span className="icon">↗</span>Routing Fee Policy
           {isEditing && (
-            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber)", letterSpacing: "0.04em", textTransform: "none" }}>
+            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-2)", letterSpacing: "0.04em", textTransform: "none" }}>
               · editing
             </span>
           )}
@@ -1240,7 +1245,7 @@ function CapitalPolicyPanel() {
         <span className="panel-title">
           <span className="icon">⊞</span>Capital Guardrails
           {isEditing && (
-            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--amber)", letterSpacing: "0.04em", textTransform: "none" }}>
+            <span style={{ marginLeft: 8, fontFamily: "var(--mono)", fontSize: "0.6875rem", color: "var(--text-2)", letterSpacing: "0.04em", textTransform: "none" }}>
               · editing
             </span>
           )}
@@ -1633,7 +1638,7 @@ function ChannelsPage() {
               </button>
             )}
             {closingChannel === c.channel_id && (
-              <span style={{ fontSize: "0.75rem", color: "var(--amber)" }}>Closing…</span>
+              <span style={{ fontSize: "0.75rem", color: "var(--text-2)" }}>Closing…</span>
             )}
             {closeResult?.channelId === c.channel_id && (
               <span style={{ fontSize: "0.75rem", color: "var(--green)" }}>✓ Closing</span>
@@ -2043,7 +2048,7 @@ function ChannelsPage() {
                           </div>
                           <div>
                             <span style={{ color: "var(--text-3)" }}>Recommended: </span>
-                            <span style={{ fontFamily: "var(--mono)", color: "var(--amber)" }}>{upgradeSize.toLocaleString()} sats</span>
+                            <span style={{ fontFamily: "var(--mono)", color: "var(--text)" }}>{upgradeSize.toLocaleString()} sats</span>
                           </div>
                           {isTreasury && (
                             <>
@@ -2227,7 +2232,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span className="loading-shimmer" style={{ width: 10, height: 10, borderRadius: "50%" }} />
-                      <span className="badge badge-red">closing</span>
+                      <span className="badge badge-muted">closing</span>
                     </div>
                   </div>
                 ))}
@@ -2416,10 +2421,10 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                     textAlign: "center",
                   }}
                 >
-                  <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: feeRate === opt.rate ? "var(--amber)" : "var(--text)" }}>
+                  <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--text)" }}>
                     {opt.label}
                   </div>
-                  <div style={{ fontSize: "0.6875rem", color: feeRate === opt.rate ? "var(--amber)" : "var(--text-2)" }}>
+                  <div style={{ fontSize: "0.6875rem", color: "var(--text-2)" }}>
                     {opt.time}
                   </div>
                   <div style={{ fontSize: "0.625rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>

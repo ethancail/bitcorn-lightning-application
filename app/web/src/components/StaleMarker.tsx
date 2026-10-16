@@ -26,11 +26,11 @@ export default function StaleMarker({
         alignItems: "center",
         gap: 6,
         fontSize: "0.75rem",
-        color: "var(--amber)",
+        color: "var(--text)",
         fontFamily: "var(--mono)",
       }}
     >
-      <span aria-hidden>⚠</span>
+      <span aria-hidden style={{ color: "var(--amber)" }}>⚠</span>
       <span>
         {noun} may be out of date
         {state.lastSuccessAt != null && <> — last updated {ageLabel(state.lastSuccessAt, nowMs)}</>}

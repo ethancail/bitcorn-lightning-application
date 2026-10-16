@@ -25,7 +25,7 @@ export const HEALTH_HEAVY_MAX    = 0.30; // 15-30% → heavy; ≥30% → healthy
 export const ROLE_COLOR: Record<LiquidityRole, string> = {
   merchant: "var(--amber)",
   farmer:   "var(--green)",
-  external: "var(--blue)",
+  external: "var(--text-2)",  // a category, not information: no hue (D8)
   unknown:  "var(--text-3)",
 };
 

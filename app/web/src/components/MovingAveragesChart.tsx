@@ -43,10 +43,10 @@ interface MovingAveragesChartProps {
 // ─── Constants ───────────────────────────────────────────────────────────
 
 const COLORS = {
-  btc: "#f59e0b",
-  ma50: "#06b6d4",
-  ma100: "#a78bfa",
-  ma200: "#22c55e",
+  btc: "var(--chart-amber)",
+  ma50: "var(--chart-cyan)",
+  ma100: "var(--chart-violet)",
+  ma200: "var(--chart-green)",
 };
 
 const LABELS: Record<string, string> = {
@@ -56,10 +56,10 @@ const LABELS: Record<string, string> = {
   ma200: "200-day MA",
 };
 
-const BG_2 = "#17171e";
-const BORDER = "#2a2a38";
-const TEXT_3 = "#5a5a70";
-const TEXT = "#e8e8f0";
+const BG_2 = "var(--bg-2)";
+const BORDER = "var(--border)";
+const TEXT_3 = "var(--text-3)";
+const TEXT = "var(--text)";
 const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -352,7 +352,7 @@ export default function MovingAveragesChart({ period, currentPrice, historicPric
           stroke={COLORS.btc}
           strokeWidth={2}
           dot={false}
-          activeDot={{ r: 3, fill: COLORS.btc, stroke: "#0a0a0c", strokeWidth: 2 }}
+          activeDot={{ r: 3, fill: COLORS.btc, stroke: "var(--bg)", strokeWidth: 2 }}
           connectNulls={false}
           isAnimationActive={false}
         />

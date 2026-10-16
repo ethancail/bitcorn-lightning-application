@@ -368,9 +368,9 @@ export default function Stablecoin() {
                 <div className="stablecoin-label">STATUS</div>
                 <div className="stablecoin-contract-value">
                   {contractState.is_paused ? (
-                    <span style={{ color: "var(--red)" }}>Paused</span>
+                    <span className="badge badge-muted">Paused</span>
                   ) : (
-                    <span style={{ color: "var(--green)" }}>Active</span>
+                    <span className="badge badge-green">Active</span>
                   )}
                 </div>
               </div>

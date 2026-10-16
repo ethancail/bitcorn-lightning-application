@@ -1,6 +1,7 @@
 // app/web/src/components/autoBuy/InputsTab.tsx
 import { useEffect, useState } from "react";
 import { api, type ValuationInputsResponse } from "../../api/client";
+import { rampInk } from "../rampInk";
 
 const DISPLAY_ORDER: Array<{ key: string; label: string; category: string; source: string }> = [
   { key: "mvrv",              label: "MVRV Z-Score",          category: "On-chain",      source: "Manual entry" },
@@ -86,7 +87,7 @@ export default function InputsTab({ refreshKey = 0 }: InputsTabProps) {
                       <td style={{ padding: "8px 12px", color: "var(--text-dim)" }}>{category}</td>
                       <td style={{ padding: "8px 12px", color: "var(--text-dim)", fontSize: "0.75rem" }}>{row?.source ?? source}</td>
                       <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{fmtNum(row?.value)}</td>
-                      <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)", color: colorForZ(row?.z) }}>{fmtNum(row?.z)}</td>
+                      <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)", color: rampInk(colorForZ(row?.z)) }}>{fmtNum(row?.z)}</td>
                       <td style={{ padding: "8px 12px", textAlign: "right", fontFamily: "var(--mono)" }}>{row?.weight != null ? row.weight.toFixed(3) : "—"}</td>
                       <td style={{ padding: "8px 12px", color: "var(--text-dim)", fontSize: "0.75rem" }}>{fmtDate(row?.updated_at)}</td>
                     </tr>

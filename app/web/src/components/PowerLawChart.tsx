@@ -38,12 +38,12 @@ interface PowerLawChartProps {
 // ─── Constants ───────────────────────────────────────────────────────────
 
 const LINE_COLORS = {
-  p97_5: "#ef4444",
-  p83_5: "#f97316",
-  trend: "#22c55e",
-  p16_5: "#3b82f6",
-  p2_5: "#8b5cf6",
-  btcPrice: "#f59e0b",
+  p97_5: "var(--chart-red)",
+  p83_5: "var(--chart-orange)",
+  trend: "var(--chart-green)",
+  p16_5: "var(--chart-blue)",
+  p2_5: "var(--chart-indigo)",
+  btcPrice: "var(--chart-amber)",
 };
 
 const BAND_LABELS: Record<string, string> = {
@@ -55,10 +55,10 @@ const BAND_LABELS: Record<string, string> = {
   p2_5: "2.5th Percentile",
 };
 
-const BG_2 = "#17171e";
-const BORDER = "#2a2a38";
-const TEXT_3 = "#5a5a70";
-const TEXT = "#e8e8f0";
+const BG_2 = "var(--bg-2)";
+const BORDER = "var(--border)";
+const TEXT_3 = "var(--text-3)";
+const TEXT = "var(--text)";
 const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -340,7 +340,7 @@ export default function PowerLawChart({ period, currentPrice, historicPrices }: 
           stroke={LINE_COLORS.btcPrice}
           strokeWidth={2}
           dot={false}
-          activeDot={{ r: 3, fill: LINE_COLORS.btcPrice, stroke: "#0a0a0c", strokeWidth: 2 }}
+          activeDot={{ r: 3, fill: LINE_COLORS.btcPrice, stroke: "var(--bg)", strokeWidth: 2 }}
           connectNulls={false}
           isAnimationActive={false}
         />
