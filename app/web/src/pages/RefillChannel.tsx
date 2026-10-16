@@ -5,6 +5,7 @@ import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } fr
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
+import { statusBadge } from "../components/swapStatus";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
@@ -24,26 +25,8 @@ type Stage = "loading" | "form" | "quoting" | "quoted" | "initiating" | "trackin
 
 const AMOUNT_PRESETS = [250_000, 500_000, 1_000_000, 2_000_000];
 
-// ─── Helpers (mirrored from WithdrawBitcoin — acceptable duplication) ───────
-
-function statusBadge(status: string): { label: string; cls: string } {
-  switch (status) {
-    case "initiated":
-      return { label: "Processing", cls: "badge-amber" };
-    case "executing":
-      return { label: "In Progress", cls: "badge-amber" };
-    case "confirming":
-      return { label: "Confirming", cls: "badge-blue" };
-    case "completed":
-      return { label: "Complete", cls: "badge-green" };
-    case "failed":
-      return { label: "Failed", cls: "badge-red" };
-    case "expired":
-      return { label: "Expired", cls: "badge-muted" };
-    default:
-      return { label: status, cls: "badge-muted" };
-  }
-}
+// ─── Helpers (isTerminal mirrored from WithdrawBitcoin — acceptable
+//     duplication; statusBadge is shared, components/swapStatus.ts) ──────────
 
 function isTerminal(status: string): boolean {
   return status === "completed" || status === "failed" || status === "expired";
@@ -52,8 +35,12 @@ function isTerminal(status: string): boolean {
 // Plain-language status per the 2026-07-09 vocabulary record (U1/U2; Knot 2
 // updated: this operation is "Top Up"). Protocol-register originals live in
 // statusTechnical — demoted into the Technical details expander, not deleted.
+// Neither returns a raw status: anything they don't name reads as its badge
+// label from the shared map (humanized if unknown).
 function statusText(status: string, amount: number, failureReason: string | null): string {
   switch (status) {
+    case "quote_created":
+      return "Quote received. The top-up hasn't started yet.";
     case "initiated":
       return "Starting your top up...";
     case "executing":
@@ -65,16 +52,17 @@ function statusText(status: string, amount: number, failureReason: string | null
     case "failed":
       return `Top up failed${failureReason ? `: ${failureReason}` : ""}`;
     default:
-      return status;
+      return statusBadge(status).label;
   }
 }
 
+// The Protocol status row: the protocol status beside its description.
 function statusTechnical(status: string): string {
   switch (status) {
-    case "initiated": return "Publishing on-chain HTLC";
-    case "executing": return "Waiting for Lightning payment from Loop server";
-    case "confirming": return "Settling swap";
-    default: return status;
+    case "initiated": return "initiated — Publishing on-chain HTLC";
+    case "executing": return "executing — Waiting for Lightning payment from Loop server";
+    case "confirming": return "confirming — Settling swap";
+    default: return statusBadge(status).label;
   }
 }
 
@@ -799,7 +787,7 @@ export default function RefillChannel() {
             {!isTerminal(trackingSwap.status) && (
               <TechnicalDetails>
                 <TechRow label="Protocol status">
-                  {trackingSwap.status} — {statusTechnical(trackingSwap.status)}
+                  {statusTechnical(trackingSwap.status)}
                 </TechRow>
               </TechnicalDetails>
             )}

@@ -187,7 +187,7 @@ describe("J14 hooks: ChannelsPage's lane tables", () => {
     const tables = await channelsTables();
     for (const t of tables) {
       const action = t.querySelector('tbody td[data-label="Action"]')!;
-      expect(action.querySelector("button")?.textContent).toMatch(/Close|Renew/);
+      expect(action.querySelector("button")?.textContent).toBe("Close");
     }
   });
 });

@@ -3805,11 +3805,14 @@ input[type="number"] {
      and a card otherwise, judged at the reader's own text size. Its wrapper
      is a size container; a container query's em is the container's own font
      size (14px × the text scale), so the threshold follows the text-size
-     setting. Measured, not guessed (X4c-1): the widest row the code can
-     produce — 3,000,000 sats (MEMBER_MAX_REFILL_SAT), the raw
+     setting. Measured, not guessed (X4c-1): the widest row the code could
+     then produce — 3,000,000 sats (MEMBER_MAX_REFILL_SAT), the raw
      "quote_created" status, every month at 12:58 AM/PM — needs
      ≈ 17.05em + 100px in Chromium and WebKit at all 16 slider stops; the
-     px part is the cells' fixed padding. Rounded up. The card rules below
+     px part is the cells' fixed padding. Rounded up. Re-measured when
+     quote_created became "Quoted" (member-ui-fixes PR B): the widest
+     status is now "In Progress" and every stop is narrower or equal, so
+     the threshold stands. The card rules below
      repeat the .phone-card block (phoneTables.css.test.ts pins them equal).
      Without container queries the table keeps its sideways scroll. */
   .phone-fit-wrap { container: topup-history / inline-size; }
