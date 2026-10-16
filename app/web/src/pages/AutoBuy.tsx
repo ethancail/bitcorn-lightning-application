@@ -200,7 +200,7 @@ export default function AutoBuy() {
             {t === "alerts" && alertBadge.count > 0 && (
               <span
                 className={`badge ${alertBadge.severity === "critical" ? "badge-red" : "badge-amber"}`}
-                style={{ fontSize: "0.625rem" }}
+                style={{ fontSize: "0.6875rem" }}
               >
                 {alertBadge.count}
               </span>

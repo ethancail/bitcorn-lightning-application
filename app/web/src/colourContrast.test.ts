@@ -157,7 +157,7 @@ export function pairings(file = join(__dirname, "styles.css")): Pairing[] {
     }
     // The calendar's per-day count over its completeness tints (MonthGrid).
     const mg = read("components/valuation/MonthGrid.tsx");
-    const countColour = mg.match(/fontSize: "0\.625rem", color: "(var\(--[a-z0-9-]+\))"/)![1];
+    const countColour = mg.match(/fontSize: "0\.6875rem", color: "(var\(--[a-z0-9-]+\))"/)![1];
     for (const t of mg.match(/rgba\([^)]*\)/g) ?? []) {
       const cell = over(resolve(t, T), S["--bg-1"]);
       add(`${theme} calendar count on ${t}`, over(resolve(countColour, T), cell), cell, 4.5);
