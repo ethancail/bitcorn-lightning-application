@@ -202,6 +202,7 @@ export default function BitcornNamePanel({ focusOnMount = false }: { focusOnMoun
             aria-label={BITCORN_NAME_FIELD_LABEL}
             ref={inputRef}
             type="text"
+            className="identity-input"
             value={input}
             placeholder={BITCORN_NAME_PLACEHOLDER}
             disabled={inFlight || loadFailed}
@@ -213,7 +214,6 @@ export default function BitcornNamePanel({ focusOnMount = false }: { focusOnMoun
               background: "var(--bg-2)",
               color: "var(--text)",
               fontFamily: "var(--sans)",
-              fontSize: "0.875rem",
               border: `2px solid ${showFormatError ? "var(--red, #ef4444)" : "var(--border-control)"}`,
             }}
           />

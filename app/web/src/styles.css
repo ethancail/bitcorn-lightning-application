@@ -1120,6 +1120,30 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
 .form-input:focus { border-color: var(--amber-dim); }
 .form-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
+/* Text-entry sizes that were inline styles (member-ui-fixes item 2): a
+   control's size lives here so the coarse-pointer floor below can govern it.
+   Each is the inline value it replaced, so a desktop renders as before; they
+   follow .form-input so they win on order. */
+.form-input-sm { font-size: 0.8125rem; }
+.payment-request-input { font-size: 0.8rem; }
+.daybreak-editor-field { font-size: 1rem; }
+.identity-input { font-size: 0.875rem; }
+
+/* iOS Safari zooms the page when a text field under 16px takes focus, and the
+   14px root puts every control under it. On a touch screen, every text-entry
+   control is at least 16px, and never smaller than its own size (none is over
+   1rem, which inputZoom.test.ts holds). The viewport is not locked; the
+   root stays 14px (PR9-R1). :root body lifts this to (0,2,2) specificity, so
+   it beats every class rule that sizes a control (the deepest is
+   .policy-card .policy-card-edit input, (0,2,1)) wherever it sits, without
+   !important. An inline font size still wins, so controls carry none. Desktop
+   (a fine pointer) is untouched. Decision: member-ui-fixes item 2, S2. */
+@media (pointer: coarse) {
+  :root body :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), select, textarea) {
+    font-size: max(16px, 1rem);
+  }
+}
+
 /* Remove number input spinners and prevent scroll-to-change */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {

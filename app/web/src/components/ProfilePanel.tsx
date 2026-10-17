@@ -143,6 +143,7 @@ export default function ProfilePanel() {
           <input
             aria-label="Public alias"
             type="text"
+            className="identity-input"
             value={input}
             placeholder={`e.g. "Lazy Acres Farm"`}
             disabled={inFlight}
@@ -154,7 +155,6 @@ export default function ProfilePanel() {
               background: "var(--bg-2)",
               color: "var(--text)",
               fontFamily: "var(--sans)",
-              fontSize: "0.875rem",
               border: `2px solid ${showFormatError ? "var(--red, #ef4444)" : "var(--border-control)"}`,
             }}
           />
