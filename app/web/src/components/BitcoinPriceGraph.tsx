@@ -13,6 +13,7 @@ import {
   formatTimeLabel,
   fittingTickCount,
   xAxisBand,
+  PRICE_LABEL_GAP_EM,
   type Period,
 } from "./priceChartFormat";
 import ChartTooltip from "./ChartTooltip";
@@ -184,6 +185,7 @@ function textWidth(text: string, fontPx: number, family: string): number {
 
 // The AreaChart margins below. The x-axis band is xAxisBand's (PR 7).
 const PLOT_MARGIN_X = 8;
+const PLOT_MARGIN_TOP = 4;
 
 // ─── Component ───────────────────────────────────────────────────────────
 
@@ -234,18 +236,19 @@ export default function BitcoinPriceGraph() {
   const prices = data.map((d) => d.price);
   const yMin = prices.length ? Math.min(...prices) : 0;
   const yMax = prices.length ? Math.max(...prices) : 0;
-  // X5a: as many y-ticks as fit the plot's height (one label line plus half
-  // a line between labels, at most 5), so the price axis takes the finest
-  // round step that still labels cleanly. priceAxis never exceeds the target
+  // K4a: the price labels scale with the plot's height: as many as the y-axis
+  // takes with PRICE_LABEL_GAP_EM label sizes between neighbours, at the
+  // finest round step that keeps that gap. priceAxis never exceeds the target
   // it is given, so Recharts never has to hide a label.
   const fontPx = plot?.fontPx ?? 11;
   const family = getMono();
   // PR 7: the time labels start below the lowest price label at every text size.
   const xBand = xAxisBand(fontPx);
-  const yTarget = plot
-    ? fittingTickCount(plot.height - xBand.height, fontPx * 1.2, fontPx * 0.5, 2, 5)
-    : 4;
-  const { domain: yDomain, ticks: yTicks } = priceAxis(yMin, yMax, yTarget);
+  const yAxisPx = plot ? plot.height - xBand.height - PLOT_MARGIN_TOP : 0;
+  const yGapPx = PRICE_LABEL_GAP_EM * fontPx;
+  const yTarget = yAxisPx > 0 ? Math.floor(yAxisPx / yGapPx) + 1 : 4;
+  const yGap = yAxisPx > 0 ? yGapPx / yAxisPx : 0;
+  const { domain: yDomain, ticks: yTicks } = priceAxis(yMin, yMax, yTarget, yGap);
   const yAxisWidth = plot
     ? Math.ceil(Math.max(...yTicks.map((t) => textWidth(formatAxisPrice(t), fontPx, family))) + fontPx)
     : 54;
@@ -315,7 +318,7 @@ export default function BitcoinPriceGraph() {
             {/* Chart */}
             <div className="price-plot" ref={plotRef}>
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+              <AreaChart data={data} margin={{ top: PLOT_MARGIN_TOP, right: 4, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="amberFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={AMBER} stopOpacity={0.15} />

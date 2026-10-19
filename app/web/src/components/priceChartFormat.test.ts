@@ -63,12 +63,52 @@ describe("priceAxis: round labels inside a fitted domain", () => {
   it("does not throw on non-finite input", () => {
     expect(() => priceAxis(NaN, 5, 5)).not.toThrow();
     expect(() => priceAxis(10, Infinity, 5)).not.toThrow();
+    expect(() => priceAxis(60_000, 61_000, 5, NaN)).not.toThrow();
+    expect(() => priceAxis(60_000, 61_000, 5, Infinity)).not.toThrow();
+  });
+});
+
+describe("priceAxis (K4a): a minimum gap between labels", () => {
+  const RANGES: Array<[number, number]> = [
+    [13_000, 128_000], [62_000, 64_500], [58_500, 66_000], [18_000, 42_000],
+    [60_100, 130_900], [1_050, 9_990], [99_000, 101_000], [62_800, 63_700],
+    [60_407, 61_007], [3_000, 110_000], [80_809.275, 83_076.235],
+  ];
+  const GAPS = [0.1, 1 / 6, 0.25, 0.36, 0.5];
+
+  it("labels at least minGap apart, unless only the two-label fallback fits; K1's guarantees hold", () => {
+    for (const [lo, hi] of RANGES) {
+      for (const gap of GAPS) {
+        const cap = Math.floor(1 / gap) + 1;
+        const { domain, ticks } = priceAxis(lo, hi, cap, gap);
+        const at = `${lo}–${hi} gap ${gap}`;
+        expect(ticks.length, at).toBeGreaterThanOrEqual(2);
+        expect(ticks.length, at).toBeLessThanOrEqual(cap);
+        for (const t of ticks) {
+          expect(t, at).toBeGreaterThanOrEqual(domain[0]);
+          expect(t, at).toBeLessThanOrEqual(domain[1]);
+        }
+        expect(domain[0], at).toBeLessThanOrEqual(lo);
+        expect(domain[1], at).toBeGreaterThanOrEqual(hi);
+        // The two-label fallback is the only place the gap may give way.
+        const step = ticks[1] - ticks[0];
+        if (ticks.length > 2) expect(step / (domain[1] - domain[0]), at).toBeGreaterThanOrEqual(gap - 1e-9);
+        // Still a round step (or half of one, from the fallback), not a
+        // round step thinned to every third label.
+        const norm = step / Math.pow(10, Math.floor(Math.log10(step)));
+        expect([1, 1.25, 2, 2.5, 5, 10], `${at} step ${step}`).toContain(Math.round(norm * 1e6) / 1e6);
+      }
+    }
+  });
+
+  it("takes a finer round step when the cap allows (the K4 snapshot: $500, not $1,000)", () => {
+    expect(priceAxis(80_809.275, 83_076.235, 5).ticks).toEqual([81_000, 81_500, 82_000, 82_500, 83_000]);
   });
 });
 
 describe("priceAxis (Kevin item 1): the line fills the plot", () => {
-  // The reported 24h case: $60,407–$61,007 on the 120px panel (an 86px plot
-  // at 1.0x text fits 4 price labels; 5 is the most the plot ever takes).
+  // The reported 24h case: $60,407–$61,007 on the 120px panel of the time (an
+  // 86px plot at 1.0x text then fit 4 price labels, and 5 was the most).
   const LO = 60_407, HI = 61_007;
   for (const cap of [4, 5]) {
     it(`$60,407–$61,007 fills at least 80% of the domain, with at least two labels inside it (cap ${cap})`, () => {
@@ -89,7 +129,7 @@ describe("priceAxis (Kevin item 1): the line fills the plot", () => {
 
   it("the price chart plots priceAxis's domain and labels its ticks", () => {
     const src = readFileSync(join(__dirname, "BitcoinPriceGraph.tsx"), "utf8");
-    expect(src).toContain("const { domain: yDomain, ticks: yTicks } = priceAxis(yMin, yMax, yTarget);");
+    expect(src).toContain("const { domain: yDomain, ticks: yTicks } = priceAxis(yMin, yMax, yTarget, yGap);");
     const yAxis = src.slice(src.indexOf("<YAxis"), src.indexOf("/>", src.indexOf("<YAxis")));
     expect(yAxis).toContain("domain={yDomain}");
     expect(yAxis).toContain("ticks={yTicks}");
