@@ -9,6 +9,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { format, parseISO } from "date-fns";
+import ChartTooltip from "./ChartTooltip";
 import powerLawData from "../data/power-law-data.json";
 
 // ─── Types ───────────────────────────────────────────────────────────────
@@ -55,10 +56,8 @@ const BAND_LABELS: Record<string, string> = {
   p2_5: "2.5th Percentile",
 };
 
-const BG_2 = "var(--bg-2)";
 const BORDER = "var(--border)";
 const TEXT_3 = "var(--text-3)";
-const TEXT = "var(--text)";
 const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -117,7 +116,7 @@ function downsample(data: ChartPoint[]): ChartPoint[] {
 
 // ─── Custom Tooltip ──────────────────────────────────────────────────────
 
-function PowerLawTooltip({
+export function PowerLawTooltip({
   active,
   payload,
 }: {
@@ -136,40 +135,12 @@ function PowerLawTooltip({
   if (!point) return null;
 
   return (
-    <div
-      style={{
-        background: BG_2,
-        border: `1px solid ${BORDER}`,
-        borderRadius: 6,
-        padding: "10px 14px",
-        fontFamily: getMono(),
-        fontSize: "0.75rem",
-      }}
-    >
-      <div style={{ color: TEXT_3, marginBottom: 6 }}>
-        {format(parseISO(point.date), "MMMM d, yyyy")}
-      </div>
-      {payload.map((entry) => {
-        if (entry.value == null) return null;
-        const label = BAND_LABELS[entry.dataKey] ?? entry.dataKey;
-        return (
-          <div
-            key={entry.dataKey}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 16,
-              marginBottom: 2,
-            }}
-          >
-            <span style={{ color: entry.color }}>{label}</span>
-            <span style={{ color: TEXT, fontWeight: 500 }}>
-              {formatUsd(entry.value)}
-            </span>
-          </div>
-        );
-      })}
-    </div>
+    <ChartTooltip
+      date={format(parseISO(point.date), "MMMM d, yyyy")}
+      rows={payload
+        .filter((entry) => entry.value != null)
+        .map((entry) => ({ name: BAND_LABELS[entry.dataKey] ?? entry.dataKey, value: formatUsd(entry.value!), dot: entry.color }))}
+    />
   );
 }
 

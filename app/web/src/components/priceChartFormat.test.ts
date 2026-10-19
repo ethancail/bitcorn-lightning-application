@@ -1,80 +1,98 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { niceTicks, formatAxisPrice, formatTimeLabel, fittingTickCount, xAxisBand, X_TICK_SIZE } from "./priceChartFormat";
+import { priceAxis, formatAxisPrice, formatTimeLabel, fittingTickCount, xAxisBand, X_TICK_SIZE } from "./priceChartFormat";
 
-describe("niceTicks", () => {
-  it("turns the reported 5y range ($13k–$128k) into round $50k ticks", () => {
-    expect(niceTicks(13_000, 128_000, 5)).toEqual([0, 50_000, 100_000, 150_000]);
-  });
-
-  it("adapts the interval to a tight 24h range (~$900 → $250 step)", () => {
-    const ticks = niceTicks(62_800, 63_700, 5);
-    const step = ticks[1] - ticks[0];
-    expect(step).toBe(250);
-    expect(ticks[0]).toBe(62_750);
-    expect(ticks.at(-1)).toBe(63_750);
-  });
-
-  it("adapts to a lower-price 1y range ($18k–$42k → $10k step, not $1k)", () => {
-    const ticks = niceTicks(18_000, 42_000, 5);
-    const step = ticks[1] - ticks[0];
-    expect(step).toBe(10_000);
-    // every tick is a round multiple of the step
-    expect(ticks.every((t) => t % step === 0)).toBe(true);
-  });
-
-  it("always lands ticks on a round 1/2/2.5/5 × 10ⁿ interval", () => {
-    for (const [lo, hi] of [[13_000, 128_000], [62_800, 63_700], [18_000, 42_000], [1_000, 9_000]]) {
-      const ticks = niceTicks(lo, hi, 5);
-      const step = ticks[1] - ticks[0];
-      const norm = step / Math.pow(10, Math.floor(Math.log10(step)));
-      expect([1, 2, 2.5, 5, 10]).toContain(norm);
-    }
-  });
-
-  it("is order-independent (max,min == min,max)", () => {
-    expect(niceTicks(128_000, 13_000, 5)).toEqual(niceTicks(13_000, 128_000, 5));
-  });
-
-  it("returns a single value for a degenerate range (min === max)", () => {
-    expect(niceTicks(50_000, 50_000, 5)).toEqual([50_000]);
-  });
-
-  it("does not throw on non-finite input", () => {
-    expect(() => niceTicks(NaN, 5, 5)).not.toThrow();
-    expect(() => niceTicks(10, Infinity, 5)).not.toThrow();
-  });
+describe("priceAxis: round labels inside a fitted domain", () => {
+  const RANGES: Array<[number, number]> = [
+    [13_000, 128_000], [62_000, 64_500], [58_500, 66_000], [18_000, 42_000],
+    [60_100, 130_900], [1_050, 9_990], [99_000, 101_000], [62_800, 63_700],
+    [60_407, 61_007], [3_000, 110_000],
+  ];
 
   // The guarantee that keeps the 120px panel chart from dropping labels:
-  // the count must never exceed maxTicks (a naive nice-tick generator
-  // overshoots by 1–2 after snapping the domain to the grid).
-  it("NEVER exceeds maxTicks — guards against Recharts label-dropping", () => {
-    const ranges: Array<[number, number]> = [
-      [13_000, 128_000], [62_000, 64_500], [58_500, 66_000], [18_000, 42_000],
-      [60_100, 130_900], [1_050, 9_990], [99_000, 101_000], [62_800, 63_700],
-    ];
-    for (const [lo, hi] of ranges) {
-      for (const cap of [4, 5]) {
-        const ticks = niceTicks(lo, hi, cap);
-        expect(ticks.length).toBeLessThanOrEqual(cap);
-        // still uniform + still brackets the data
-        const step = ticks[1] - ticks[0];
-        expect(ticks.every((t, i) => i === 0 || t - ticks[i - 1] === step)).toBe(true);
-        expect(ticks[0]).toBeLessThanOrEqual(lo);
-        expect(ticks.at(-1)!).toBeGreaterThanOrEqual(hi);
+  // never more than maxTicks, never fewer than two, all inside the domain.
+  it("between 2 and maxTicks labels, every one inside the domain, the data inside too", () => {
+    for (const [lo, hi] of RANGES) {
+      for (const cap of [2, 3, 4, 5]) {
+        const { domain, ticks } = priceAxis(lo, hi, cap);
+        expect(ticks.length, `${lo}–${hi} cap ${cap}`).toBeGreaterThanOrEqual(2);
+        expect(ticks.length, `${lo}–${hi} cap ${cap}`).toBeLessThanOrEqual(cap);
+        expect(ticks[0]).toBeGreaterThanOrEqual(domain[0]);
+        expect(ticks.at(-1)!).toBeLessThanOrEqual(domain[1]);
+        expect(domain[0]).toBeLessThanOrEqual(lo);
+        expect(domain[1]).toBeGreaterThanOrEqual(hi);
       }
     }
   });
 
-  it("defaults to maxTicks=4, producing clean uniform labels for panel ranges", () => {
-    // The 7d-style range that previously overshot to 5 ticks (one label
-    // dropped by Recharts → looked irregular): now exactly 4 at $5k.
-    expect(niceTicks(58_500, 66_000)).toEqual([55_000, 60_000, 65_000, 70_000]);
-    // 24h-style tight range → 4 at $1k.
-    expect(niceTicks(62_000, 64_500)).toEqual([62_000, 63_000, 64_000, 65_000]);
-    // The documented 5y range is unchanged at the default cap.
-    expect(niceTicks(13_000, 128_000)).toEqual([0, 50_000, 100_000, 150_000]);
+  it("lands labels on a uniform round 1/2/2.5/5 × 10ⁿ step", () => {
+    for (const [lo, hi] of RANGES) {
+      const { ticks } = priceAxis(lo, hi, 5);
+      const step = ticks[1] - ticks[0];
+      const norm = step / Math.pow(10, Math.floor(Math.log10(step)));
+      expect([1, 1.25, 2, 2.5, 5, 10]).toContain(norm);
+      expect(ticks.every((t, i) => i === 0 || t - ticks[i - 1] === step)).toBe(true);
+      expect(ticks.every((t) => t % step === 0)).toBe(true);
+    }
+  });
+
+  it("pads the data range by about 8% on each side", () => {
+    const { domain } = priceAxis(62_000, 64_500);
+    expect(domain[0]).toBeCloseTo(62_000 - 200);
+    expect(domain[1]).toBeCloseTo(64_500 + 200);
+  });
+
+  it("never plots below $0 for a wide range that starts near zero", () => {
+    expect(priceAxis(3_000, 110_000).domain[0]).toBe(0);
+  });
+
+  it("a flat range still gets a readable domain, with distinct labels", () => {
+    const { domain, ticks } = priceAxis(50_000, 50_000);
+    expect(domain[1] - domain[0]).toBeGreaterThan(0);
+    expect(domain[0]).toBeLessThan(50_000);
+    expect(domain[1]).toBeGreaterThan(50_000);
+    expect(ticks.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(ticks.map(formatAxisPrice)).size).toBe(ticks.length);
+  });
+
+  it("is order-independent (max,min == min,max)", () => {
+    expect(priceAxis(128_000, 13_000, 5)).toEqual(priceAxis(13_000, 128_000, 5));
+  });
+
+  it("does not throw on non-finite input", () => {
+    expect(() => priceAxis(NaN, 5, 5)).not.toThrow();
+    expect(() => priceAxis(10, Infinity, 5)).not.toThrow();
+  });
+});
+
+describe("priceAxis (Kevin item 1): the line fills the plot", () => {
+  // The reported 24h case: $60,407–$61,007 on the 120px panel (an 86px plot
+  // at 1.0x text fits 4 price labels; 5 is the most the plot ever takes).
+  const LO = 60_407, HI = 61_007;
+  for (const cap of [4, 5]) {
+    it(`$60,407–$61,007 fills at least 80% of the domain, with at least two labels inside it (cap ${cap})`, () => {
+      const { domain, ticks } = priceAxis(LO, HI, cap);
+      const fill = (HI - LO) / (domain[1] - domain[0]);
+      expect(fill, `domain ${domain[0]}–${domain[1]}`).toBeGreaterThanOrEqual(0.8);
+      expect(domain[0]).toBeLessThanOrEqual(LO);
+      expect(domain[1]).toBeGreaterThanOrEqual(HI);
+      // Anti-vacuity: there are ticks, and every one is inside the domain.
+      expect(ticks.length).toBeGreaterThanOrEqual(2);
+      expect(ticks.length).toBeLessThanOrEqual(cap);
+      for (const t of ticks) {
+        expect(t).toBeGreaterThanOrEqual(domain[0]);
+        expect(t).toBeLessThanOrEqual(domain[1]);
+      }
+    });
+  }
+
+  it("the price chart plots priceAxis's domain and labels its ticks", () => {
+    const src = readFileSync(join(__dirname, "BitcoinPriceGraph.tsx"), "utf8");
+    expect(src).toContain("const { domain: yDomain, ticks: yTicks } = priceAxis(yMin, yMax, yTarget);");
+    const yAxis = src.slice(src.indexOf("<YAxis"), src.indexOf("/>", src.indexOf("<YAxis")));
+    expect(yAxis).toContain("domain={yDomain}");
+    expect(yAxis).toContain("ticks={yTicks}");
   });
 });
 

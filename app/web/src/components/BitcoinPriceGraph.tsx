@@ -8,13 +8,14 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import {
-  niceTicks,
+  priceAxis,
   formatAxisPrice,
   formatTimeLabel,
   fittingTickCount,
   xAxisBand,
   type Period,
 } from "./priceChartFormat";
+import ChartTooltip from "./ChartTooltip";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -53,9 +54,7 @@ const REFRESH_MS = 60_000;
 // Theme tokens from styles.css. SVG presentation attributes resolve var(),
 // so the chart follows the theme (colour round, CR-4).
 const AMBER = "var(--chart-amber)";
-const TEXT = "var(--text)";
 const TEXT_3 = "var(--text-3)";
-const BG_2 = "var(--bg-2)";
 const BORDER = "var(--border)";
 const BORDER_HI = "var(--border-hi)";
 const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif";
@@ -109,7 +108,7 @@ async function fetchHistoricPrices(period: Period): Promise<PricePoint[]> {
 
 // ─── Custom Tooltip ──────────────────────────────────────────────────────
 
-function PriceTooltip({
+export function PriceTooltip({
   active,
   payload,
   period,
@@ -120,21 +119,7 @@ function PriceTooltip({
 }) {
   if (!active || !payload?.length) return null;
   const pt = payload[0].payload;
-  return (
-    <div
-      style={{
-        background: BG_2,
-        border: `1px solid ${BORDER}`,
-        borderRadius: 6,
-        padding: "8px 12px",
-        fontFamily: getMono(),
-        fontSize: "0.75rem",
-      }}
-    >
-      <div style={{ color: TEXT, fontWeight: 600 }}>{formatUsd(pt.price)}</div>
-      <div style={{ color: TEXT_3, marginTop: 2 }}>{formatTooltipTime(pt.time, period)}</div>
-    </div>
-  );
+  return <ChartTooltip date={formatTooltipTime(pt.time, period)} rows={[{ value: formatUsd(pt.price) }]} />;
 }
 
 // ─── Tick Sampling ───────────────────────────────────────────────────────
@@ -242,18 +227,17 @@ export default function BitcoinPriceGraph() {
       : null;
   const isPositive = changeAmt != null && changeAmt >= 0;
 
-  // Y axis: round "nice" ticks bracketing the data range, with the domain
-  // snapped to those ticks so the axis shows clean numbers (e.g. $0/$50k/
-  // $100k/$150k) while still zooming to the data. The interval adapts to
-  // the price scale automatically (see priceChartFormat.niceTicks).
+  // Y axis (Kevin item 1): the domain is fitted to the data range plus a
+  // little padding, so the line fills the plot, and the labels are the round
+  // ticks (e.g. $60.4k/$60.6k/$60.8k) that fall inside it. The interval
+  // adapts to the price scale automatically (see priceChartFormat.priceAxis).
   const prices = data.map((d) => d.price);
   const yMin = prices.length ? Math.min(...prices) : 0;
   const yMax = prices.length ? Math.max(...prices) : 0;
   // X5a: as many y-ticks as fit the plot's height (one label line plus half
   // a line between labels, at most 5), so the price axis takes the finest
-  // round step that still labels cleanly and a day's movement fills the plot
-  // instead of a flat line on a coarse grid. niceTicks never exceeds the
-  // target it is given, so Recharts never has to hide a label.
+  // round step that still labels cleanly. priceAxis never exceeds the target
+  // it is given, so Recharts never has to hide a label.
   const fontPx = plot?.fontPx ?? 11;
   const family = getMono();
   // PR 7: the time labels start below the lowest price label at every text size.
@@ -261,8 +245,7 @@ export default function BitcoinPriceGraph() {
   const yTarget = plot
     ? fittingTickCount(plot.height - xBand.height, fontPx * 1.2, fontPx * 0.5, 2, 5)
     : 4;
-  const yTicks = niceTicks(yMin, yMax, yTarget);
-  const yDomain: [number, number] = [yTicks[0], yTicks[yTicks.length - 1]];
+  const { domain: yDomain, ticks: yTicks } = priceAxis(yMin, yMax, yTarget);
   const yAxisWidth = plot
     ? Math.ceil(Math.max(...yTicks.map((t) => textWidth(formatAxisPrice(t), fontPx, family))) + fontPx)
     : 54;
