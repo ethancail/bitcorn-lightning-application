@@ -183,6 +183,9 @@ export async function handleCornHistory(env: Env): Promise<Response> {
       statisticcat_desc: "PRICE RECEIVED",
       unit_desc: "$ / BU",
       freq_desc: "MONTHLY",
+      // Without this NASS returns the US TOTAL row plus one row per reporting state for
+      // every month, and each would become its own entry for that month.
+      agg_level_desc: "NATIONAL",
       year__GE: "2014",
       format: "JSON",
     });
@@ -193,7 +196,7 @@ export async function handleCornHistory(env: Env): Promise<Response> {
       return new Response("USDA API error", { status: 502, headers: CORS_HEADERS });
     }
     const data = (await res.json()) as {
-      data: Array<{ year: number; reference_period_desc: string; Value: string }>;
+      data: Array<{ year: number; reference_period_desc: string; agg_level_desc: string; Value: string }>;
     };
     if (!data.data || data.data.length === 0) {
       return new Response(JSON.stringify([]), {
@@ -208,6 +211,7 @@ export async function handleCornHistory(env: Env): Promise<Response> {
 
     const entries: CornHistoryEntry[] = [];
     for (const row of data.data) {
+      if (row.agg_level_desc !== "NATIONAL") continue;
       const monthKey = row.reference_period_desc?.toUpperCase().slice(0, 3);
       const month = MONTHS[monthKey];
       if (!month) continue;

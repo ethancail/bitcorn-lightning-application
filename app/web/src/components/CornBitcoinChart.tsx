@@ -9,6 +9,7 @@ import {
   CartesianGrid,
 } from "recharts";
 import { format, parseISO } from "date-fns";
+import ChartTooltip, { type ChartTooltipRow } from "./ChartTooltip";
 import powerLawData from "../data/power-law-data.json";
 import { api, type CornHistoryEntry } from "../api/client";
 
@@ -38,10 +39,8 @@ interface CornBitcoinChartProps {
 // ─── Constants ───────────────────────────────────────────────────────────
 
 const LINE_COLOR = "var(--chart-amber)";
-const BG_2 = "var(--bg-2)";
 const BORDER = "var(--border)";
 const TEXT_3 = "var(--text-3)";
-const TEXT = "var(--text)";
 const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -151,7 +150,7 @@ function downsample(data: ChartPoint[]): ChartPoint[] {
 
 // ─── Custom Tooltip ──────────────────────────────────────────────────────
 
-function CBTooltip({
+export function CBTooltip({
   active,
   payload,
 }: {
@@ -169,40 +168,14 @@ function CBTooltip({
   const point = payload[0]?.payload as ChartPoint | undefined;
   if (!point) return null;
 
-  return (
-    <div
-      style={{
-        background: BG_2,
-        border: `1px solid ${BORDER}`,
-        borderRadius: 6,
-        padding: "10px 14px",
-        fontFamily: getMono(),
-        fontSize: "0.75rem",
-      }}
-    >
-      <div style={{ color: TEXT_3, marginBottom: 6 }}>
-        {format(parseISO(point.date), "MMMM d, yyyy")}
-      </div>
-      {point.btcPrice != null && (
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 2 }}>
-          <span style={{ color: "var(--text-2)" }}><span aria-hidden style={{ display: "inline-block", width: 8, height: 8, borderRadius: "var(--radius-full)", background: LINE_COLOR, marginRight: 6 }} />BTC Price</span>
-          <span style={{ color: TEXT, fontWeight: 500 }}>{formatUsd(point.btcPrice)}</span>
-        </div>
-      )}
-      {point.cornPrice != null && (
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginBottom: 2 }}>
-          <span style={{ color: "var(--text-2)" }}><span aria-hidden style={{ display: "inline-block", width: 8, height: 8, borderRadius: "var(--radius-full)", background: "var(--chart-green)", marginRight: 6 }} />Corn Price</span>
-          <span style={{ color: TEXT, fontWeight: 500 }}>{formatUsd(point.cornPrice)}/bu</span>
-        </div>
-      )}
-      {point.ratio != null && (
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 16, marginTop: 4, paddingTop: 4, borderTop: `1px solid ${BORDER}` }}>
-          <span style={{ color: "var(--text-2)", fontWeight: 600 }}><span aria-hidden style={{ display: "inline-block", width: 8, height: 8, borderRadius: "var(--radius-full)", background: LINE_COLOR, marginRight: 6 }} />Bushels / BTC</span>
-          <span style={{ color: TEXT, fontWeight: 600 }}>{Math.round(point.ratio).toLocaleString()}</span>
-        </div>
-      )}
-    </div>
-  );
+  // K2a: only the ratio is drawn; BTC and corn prices are its inputs, no dot.
+  const rows: ChartTooltipRow[] = [];
+  if (point.btcPrice != null) rows.push({ name: "BTC Price", value: formatUsd(point.btcPrice) });
+  if (point.cornPrice != null) rows.push({ name: "Corn Price", value: `${formatUsd(point.cornPrice)}/bu` });
+  if (point.ratio != null) {
+    rows.push({ name: "Bushels / BTC", value: Math.round(point.ratio).toLocaleString(), dot: LINE_COLOR, total: true });
+  }
+  return <ChartTooltip date={format(parseISO(point.date), "MMMM d, yyyy")} rows={rows} />;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────

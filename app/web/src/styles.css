@@ -3780,6 +3780,24 @@ input[type="number"] {
 .price-change { font-family: var(--mono); font-size: var(--d-label); font-weight: 500; margin-top: 4px; }
 .price-change-period { color: var(--text-3); font-weight: 400; margin-left: 8px; }
 .price-plot { height: var(--d-chart-h); font-size: var(--d-label); }
+/* Kevin item 2 (K2/K2a): the one chart tooltip (ChartTooltip.tsx), at the
+   label size (X2). The date and the series names are text colours; a series
+   colour appears only as the dot of a line the chart draws. */
+.chart-tooltip {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: var(--mono);
+  font-size: var(--d-label);
+}
+.chart-tooltip-date { color: var(--text-2); margin-bottom: 6px; }
+.chart-tooltip-row { display: flex; justify-content: space-between; gap: 16px; margin-bottom: 2px; }
+.chart-tooltip-name { color: var(--text-2); }
+.chart-tooltip-value { color: var(--text); font-weight: 500; }
+.chart-tooltip-total { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--border); font-weight: 600; }
+.chart-tooltip-total .chart-tooltip-value { font-weight: 600; }
+.chart-tooltip-dot { display: inline-block; width: 8px; height: 8px; border-radius: var(--radius-full); margin-right: 6px; }
 .btn-group-tight { display: flex; gap: 4px; flex-wrap: wrap; }
 
 /* ═══ PHONE TABLES (PR 7: X4b, X4c, J14) ════════════════════════════════

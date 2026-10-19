@@ -65,43 +65,50 @@ function bumpStep(step: number): number {
   return 10 * mag;
 }
 
+// Kevin item 1: the domain is the data range plus this much on each side, so
+// a day's movement fills the plot instead of floating on a coarse grid.
+const AXIS_PAD = 0.08;
+// The narrowest domain, as a fraction of the price: a flat (or near-flat)
+// range still gets a readable axis, and its labels stay distinct ("$60.4k").
+const MIN_SPAN = 0.005;
+
 /**
- * "Nice numbers" y-axis tick generator with a GUARANTEED maximum count.
- * Returns evenly-spaced ticks on a round interval (1 / 2 / 2.5 / 5 × 10ⁿ)
- * bracketing [min, max], with at most `maxTicks` of them. The chart snaps
- * its domain to [first, last] and renders these as the y-axis ticks, so
- * the axis shows round numbers while still zooming to the data, and the
- * interval adapts to the price scale automatically.
+ * The price chart's y-axis: the domain it plots and the labelled ticks.
+ * The domain is FITTED to the data (range plus AXIS_PAD each side, at least
+ * MIN_SPAN wide, never below $0 for prices), not snapped out to round ticks:
+ * snapping could widen it by up to a step on each end, and the line then
+ * filled as little as 40% of the 120px plot.
  *
- * The cap matters: snapping the domain to the grid (floor/ceil) can widen
- * the range by up to one step on each end, so a naive "target N" can emit
- * N+1 or N+2 ticks. On the 120px panel chart that overflows the plot area
- * and Recharts then drops labels at irregular positions — reproducing the
- * very "irregular spacing" this fixes. So we bump to the next nice step
- * until the count fits, guaranteeing every tick has room to render.
+ * Labels are the round ticks (1 / 2 / 2.5 / 5 × 10ⁿ) that fall INSIDE the
+ * domain, at most `maxTicks` of them, so Recharts never has to drop a label
+ * on the small panel; the step is bumped to the next round step until the
+ * count fits. At least two are always shown: if fewer fit, the step is halved.
  */
-export function niceTicks(min: number, max: number, maxTicks = 4): number[] {
-  if (!Number.isFinite(min) || !Number.isFinite(max) || min === max) {
-    return [min];
-  }
+export function priceAxis(min: number, max: number, maxTicks = 4): { domain: [number, number]; ticks: number[] } {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return { domain: [min, max], ticks: [] };
   const [lo, hi] = min < max ? [min, max] : [max, min];
+  const pad = (hi - lo) * AXIS_PAD;
+  let dLo = lo - pad;
+  let dHi = hi + pad;
+  const minSpan = Math.max(Math.abs(lo), Math.abs(hi)) * MIN_SPAN || 1;
+  if (dHi - dLo < minSpan) {
+    const mid = (lo + hi) / 2;
+    dLo = mid - minSpan / 2;
+    dHi = mid + minSpan / 2;
+  }
+  if (lo >= 0 && dLo < 0) dLo = 0;
+
   const cap = Math.max(2, maxTicks);
-  const tickCount = (s: number) => Math.ceil(hi / s) - Math.floor(lo / s) + 1;
+  const inside = (s: number) => Math.floor(dHi / s) - Math.ceil(dLo / s) + 1;
+  let step = niceStepCeil((dHi - dLo) / cap);
+  for (let guard = 0; inside(step) > cap && guard < 24; guard++) step = bumpStep(step);
+  for (let guard = 0; inside(step) < 2 && guard < 24; guard++) step /= 2;
 
-  let step = niceStepCeil((hi - lo) / cap);
-  for (let guard = 0; tickCount(step) > cap && guard < 24; guard++) {
-    step = bumpStep(step);
-  }
-
-  const niceMin = Math.floor(lo / step) * step;
-  const niceMax = Math.ceil(hi / step) * step;
-  const n = Math.round((niceMax - niceMin) / step);
   const ticks: number[] = [];
-  for (let i = 0; i <= n; i++) {
-    // Snap each tick to the step grid to clear accumulated fp error.
-    ticks.push(Math.round((niceMin + i * step) / step) * step);
-  }
-  return ticks;
+  for (let i = Math.ceil(dLo / step); i <= Math.floor(dHi / step); i++) ticks.push(i * step);
+  // Halving can overshoot a tiny cap (1 label → 3); keep every k-th, still uniform.
+  const k = Math.ceil(ticks.length / cap);
+  return { domain: [dLo, dHi], ticks: ticks.filter((_, i) => i % k === 0) };
 }
 
 /**
