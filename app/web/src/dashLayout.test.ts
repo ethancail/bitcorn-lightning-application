@@ -9,19 +9,10 @@
 //   X5a  — the price plot is 480px tall on desktop, 240px on a phone (K4).
 
 import { describe, expect, it } from "vitest";
-import { cssRules, declsFor, type CssRule } from "./styleRules.testutil";
+import { cssRules, declsFor, specificity, type CssRule } from "./styleRules.testutil";
 
 const PHONE = "(max-width: 767px)";
 const RULES = cssRules();
-
-// Enough of CSS specificity for this file's selectors: ids, then classes,
-// attributes and pseudo-classes, then types.
-function specificity(sel: string): number {
-  const ids = (sel.match(/#[\w-]+/g) ?? []).length;
-  const classes = (sel.match(/\.[\w-]+|\[[^\]]*\]|:(?!:)[\w-]+/g) ?? []).length;
-  const types = (sel.replace(/[#.:][\w-]+|\[[^\]]*\]/g, " ").match(/[a-z][\w-]*/gi) ?? []).length;
-  return ids * 10_000 + classes * 100 + types;
-}
 
 /** The price plot's height where `media` applies (null: desktop), as the
  *  cascade resolves it: of the rules that apply there, the most specific wins,

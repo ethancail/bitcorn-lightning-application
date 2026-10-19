@@ -290,7 +290,9 @@ export default function BitcoinPriceGraph() {
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             <div className="loading-shimmer" style={{ height: 40, width: "50%" }} />
             <div className="loading-shimmer" style={{ height: 20, width: "30%" }} />
-            <div className="loading-shimmer" style={{ height: 200 }} />
+            {/* K4b: the plot's placeholder is sized by the plot's own rule, so
+                it holds the chart's height in both layouts. */}
+            <div className="loading-shimmer price-plot" />
           </div>
         ) : error ? (
           <div className="error-state">Price data unavailable</div>

@@ -15,6 +15,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import React from "react";
 import * as fmt from "./priceChartFormat";
+import { cssRules, specificity } from "../styleRules.testutil";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -52,11 +53,13 @@ let root: Root | null = null;
 let host: HTMLDivElement | null = null;
 let plotHeight = 0;
 let series = SNAPSHOT;
+let pending = false;
 
 beforeEach(() => {
   axes.length = 0;
   series = SNAPSHOT;
-  vi.stubGlobal("fetch", async (url: string) => ({
+  pending = false;
+  vi.stubGlobal("fetch", async (url: string) => pending ? new Promise(() => {}) : ({
     ok: true,
     json: async () =>
       url.endsWith("/spot")
@@ -141,5 +144,68 @@ describe("K4a: the price labels scale with the plot's height", () => {
 
   it("the gap is priceChartFormat's", () => {
     expect((fmt as Record<string, unknown>).PRICE_LABEL_GAP_EM).toBe(MIN_GAP_EM);
+  });
+});
+
+// Kevin K4b: while the price loads, the plot's placeholder holds the plot's
+// height, in both layouts, so the tile does not jump when the chart arrives.
+// The height of each element is resolved as the browser would for this
+// markup (jsdom applies no @media): its inline height, else the most specific,
+// then latest, rule it matches where `media` applies, through the :root tokens.
+const PHONE = "(max-width: 767px)";
+const RULES = cssRules();
+
+function heightOf(el: Element, media: string | null): string | undefined {
+  const applies = (r: (typeof RULES)[number]) => r.container === null && (r.media === null || r.media === media);
+  let win: { spec: number; line: number; value: string } | undefined;
+  for (const r of RULES) {
+    if (!applies(r) || r.decls.height === undefined) continue;
+    for (const s of r.selectors) {
+      let hit = false;
+      try { hit = el.matches(s); } catch { /* a pseudo-element selector: never this element */ }
+      if (!hit) continue;
+      const spec = specificity(s);
+      if (!win || spec > win.spec || (spec === win.spec && r.line > win.line)) win = { spec, line: r.line, value: r.decls.height };
+    }
+  }
+  const tokens: Record<string, string> = {};
+  for (const r of RULES) if (applies(r) && r.selectors.includes(":root")) Object.assign(tokens, r.decls);
+  const value = (el as HTMLElement).style.height || win?.value;
+  return value?.replace(/^var\((--[\w-]+)\)$/, (_, t: string) => tokens[t]);
+}
+
+async function rendered(loading: boolean): Promise<HTMLElement> {
+  pending = loading;
+  plotHeight = 480;
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+  await act(async () => root!.render(<BitcoinPriceGraph />));
+  for (let i = 0; i < 5; i++) await act(async () => new Promise((r) => setTimeout(r, 0)));
+  return host.querySelector(".price-tile") as HTMLElement;
+}
+
+function unmount() {
+  act(() => root?.unmount());
+  host?.remove();
+  root = null;
+  host = null;
+}
+
+describe("K4b: the loading placeholder is the plot's height", () => {
+  it("desktop and phone: the placeholder's height equals the loaded plot's", async () => {
+    const tile = await rendered(true);
+    const shimmers = tile.querySelectorAll(".loading-shimmer");
+    expect(shimmers.length, "the loading state rendered").toBeGreaterThan(0);
+    const placeholder = shimmers[shimmers.length - 1];
+    const loading = { desktop: heightOf(placeholder, null), phone: heightOf(placeholder, PHONE) };
+    unmount();
+
+    const plot = (await rendered(false)).querySelector(".price-plot");
+    expect(plot, "the chart rendered").not.toBeNull();
+    const loaded = { desktop: heightOf(plot!, null), phone: heightOf(plot!, PHONE) };
+
+    expect(loaded, "the loaded plot (K4)").toEqual({ desktop: "480px", phone: "240px" });
+    expect(loading).toEqual(loaded);
   });
 });
