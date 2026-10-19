@@ -123,12 +123,12 @@ function TagEditor({
       <div style={{ display: "flex", gap: 6 }}>
         <input
           aria-label="Add tag"
-          className="form-input"
+          className="form-input form-input-sm"
           placeholder="Add tag…"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          style={{ flex: 1, fontSize: "0.8125rem" }}
+          style={{ flex: 1 }}
         />
         <button
           type="button"
@@ -348,11 +348,11 @@ export default function Contacts() {
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <input
               aria-label="Node ID"
-              className="form-input"
+              className="form-input form-input-sm"
               placeholder="Node ID (long code starting 02 or 03)"
               value={addPubkey}
               onChange={(e) => setAddPubkey(e.target.value)}
-              style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
+              style={{ fontFamily: "var(--font-id)" }}
             />
             <input
               aria-label="Name"

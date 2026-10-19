@@ -95,7 +95,7 @@ export default function HistoryTable({ sweepDayOfWeek }: Props) {
             aria-label="Filter by status"
             value={statusFilter}
             onChange={(e) => { setOffset(0); setStatusFilter(e.target.value); }}
-            style={{ fontSize: "0.75rem" }}
+            className="autobuy-filter"
           >
             <option value="">All statuses</option>
             <option value="scheduled">Scheduled</option>

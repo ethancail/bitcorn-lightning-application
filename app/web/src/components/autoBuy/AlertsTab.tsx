@@ -62,7 +62,7 @@ export default function AlertsTab() {
             aria-label="Filter by status"
             value={filters.status}
             onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value as HistoryFilters["status"] }))}
-            style={{ fontSize: "0.75rem" }}
+            className="autobuy-filter"
           >
             <option value="all">All states</option>
             <option value="active">Active</option>
@@ -73,7 +73,7 @@ export default function AlertsTab() {
             aria-label="Filter by severity"
             value={filters.severity}
             onChange={(e) => setFilters((f) => ({ ...f, severity: e.target.value as HistoryFilters["severity"] }))}
-            style={{ fontSize: "0.75rem" }}
+            className="autobuy-filter"
           >
             <option value="all">All severities</option>
             <option value="warning">Warning</option>
@@ -83,7 +83,7 @@ export default function AlertsTab() {
             aria-label="Filter by type"
             value={filters.type}
             onChange={(e) => setFilters((f) => ({ ...f, type: e.target.value }))}
-            style={{ fontSize: "0.75rem" }}
+            className="autobuy-filter"
           >
             <option value="all">All types</option>
             {Object.entries(TYPE_LABELS).map(([k, label]) => (

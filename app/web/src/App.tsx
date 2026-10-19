@@ -1718,7 +1718,7 @@ function ChannelsPage() {
                       {merchantLanes.map((c) => {
                         const fwdLeftPct = 100 - c.localPct;
                         const color = stateColor(c.state);
-                        const actionLabel = c.state === "exhausted" ? "Renew Now" : c.state === "renew_soon" ? "Renew Soon" : "Close";
+                        const actionLabel = "Close";
                         return (
                           <tr key={c.channel_id}>
                             <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
@@ -2335,11 +2335,11 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                 <input
                   aria-label="Peer pubkey"
                   type="text"
-                  className="form-input"
+                  className="form-input form-input-sm"
                   value={manualPubkey}
                   onChange={(e) => setManualPubkey(e.target.value)}
                   placeholder="03..."
-                  style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
+                  style={{ fontFamily: "var(--font-id)" }}
                 />
                 {contacts.length > 0 && (
                   <button

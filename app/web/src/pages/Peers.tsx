@@ -165,11 +165,11 @@ export default function Peers() {
           </div>
           <input
             aria-label="Node URI"
-            className="form-input"
+            className="form-input form-input-sm"
             placeholder="pubkey@host:port"
             value={uri}
             onChange={(e) => setUri(e.target.value)}
-            style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
+            style={{ fontFamily: "var(--font-id)" }}
             onKeyDown={(e) => { if (e.key === "Enter") handleConnect(); }}
           />
           {connectError && (

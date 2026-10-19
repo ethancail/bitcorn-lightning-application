@@ -719,12 +719,12 @@ function PayInvoiceForm({
       </div>
       <textarea
         aria-label="Payment request"
-        className="form-input"
+        className="form-input payment-request-input"
         rows={4}
         placeholder="lnbc..."
         value={bolt11}
         onChange={(e) => setBolt11(e.target.value)}
-        style={{ fontFamily: "var(--font-id)", fontSize: "0.8rem", resize: "vertical", marginBottom: 12 }}
+        style={{ fontFamily: "var(--font-id)", resize: "vertical", marginBottom: 12 }}
       />
 
       {decoding && <div className="text-dim" style={{ marginBottom: 12 }}>Reading payment request…</div>}

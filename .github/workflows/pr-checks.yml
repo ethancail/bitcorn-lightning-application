@@ -39,10 +39,10 @@ jobs:
 
   api:
     name: API — typecheck + tests (hard gate)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
       - name: Install
@@ -116,10 +116,10 @@ jobs:
 
   web-build:
     name: Web — production build (hard gate)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
       - name: Install
@@ -134,10 +134,10 @@ jobs:
 
   web-typecheck:
     name: Web — typecheck (hard gate, error ceiling)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
       - name: Install
@@ -231,10 +231,10 @@ jobs:
 
   worker:
     name: Worker — typecheck + tests (hard gate)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
       - name: Install
@@ -472,9 +472,9 @@ jobs:
 
   version-triplet:
     name: Version triplet agrees
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: umbrel-app.yml version == every published image tag in compose
         # Drift here means umbreld offers version X while compose pins the old
         # tags, so a farmer "updates" to a new version number running the
@@ -594,7 +594,7 @@ jobs:
 
   conflict-markers:
     name: No conflict markers
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # An unresolved merge/cherry-pick hunk in a NON-TypeScript file passes every
     # other job in this workflow. Markers in .ts break tsc or the vite build, so
     # the coverage that exists today is an ACCIDENT OF THE TOOLCHAIN, not a
@@ -627,7 +627,7 @@ jobs:
       # below is what would CATCH it if this line were ever removed.
       LC_ALL: C
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Detector canary, then whole-tree scan
         run: |
           # ── SUBJECT: HEAD, NOT THE WORKING TREE ─────────────────────────
@@ -770,7 +770,7 @@ jobs:
 
   version-bump:
     name: Version bumped (PRs to main only)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # Scoped to main. PRs to develop publish nothing and must not require a
     # bump — requiring one there would make every feature PR bump the version.
     #
@@ -787,7 +787,7 @@ jobs:
       github.base_ref == 'main' &&
       !contains(github.event.pull_request.labels.*.name, 'allow-same-tag-republish')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # Needed for `git show BASE:file` — a shallow clone doesn't have the
           # base commit's blobs.
@@ -898,7 +898,7 @@ jobs:
 
   web-vitest:
     name: Web — tests (hard gate)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # PROMOTED FROM ADVISORY on 2026-08-07. It was non-blocking because main's
     # tree had no web test infrastructure at all — no `vitest` devDependency, no
     # `test` script, no app/web/vitest.config.ts — so on a main-based PR it
@@ -915,8 +915,8 @@ jobs:
     # is a good resting state, which is why advisory was always meant to be
     # temporary.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version-file: .nvmrc
       - name: Install

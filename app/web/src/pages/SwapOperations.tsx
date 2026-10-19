@@ -361,11 +361,11 @@ function LoopOutTab({
             <label className="form-label">Destination address</label>
             <input
               aria-label="Destination address"
-              type="text" className="form-input" value={destinationAddress}
+              type="text" className="form-input form-input-sm" value={destinationAddress}
               onChange={(e) => { setDestinationAddress(e.target.value); setDestVerified(false); }}
               onBlur={() => setDestTouched(true)}
               placeholder="bc1q…"
-              style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
+              style={{ fontFamily: "var(--font-id)" }}
             />
             {destTouched && !destValid && (
               <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>

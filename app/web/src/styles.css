@@ -1120,6 +1120,32 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
 .form-input:focus { border-color: var(--amber-dim); }
 .form-input:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
+/* Text-entry sizes that were inline styles (member-ui-fixes item 2): a
+   control's size lives here so the coarse-pointer floor below can govern it.
+   Each is the inline value it replaced, so a desktop renders as before; they
+   follow .form-input so they win on order. */
+.form-input-sm { font-size: 0.8125rem; }
+.payment-request-input { font-size: 0.8rem; }
+.daybreak-editor-field { font-size: 1rem; }
+.identity-input { font-size: 0.875rem; }
+.autobuy-filter { font-size: 0.75rem; }
+.coinbase-key-input { font-size: 0.75rem; }
+
+/* iOS Safari zooms the page when a text field under 16px takes focus, and the
+   14px root puts every control under it. On a touch screen, every text-entry
+   control is at least 16px, and never smaller than its own size (none is over
+   1rem, which inputZoom.test.ts holds). The viewport is not locked; the
+   root stays 14px (PR9-R1). :root body lifts this to (0,2,2) specificity, so
+   it beats every class rule that sizes a control (the deepest is
+   .policy-card .policy-card-edit input, (0,2,1)) wherever it sits, without
+   !important. An inline font size still wins, so controls carry none. Desktop
+   (a fine pointer) is untouched. Decision: member-ui-fixes item 2, S2. */
+@media (pointer: coarse) {
+  :root body :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"], [type="button"], [type="submit"], [type="reset"], [type="image"]), select, textarea) {
+    font-size: max(16px, 1rem);
+  }
+}
+
 /* Remove number input spinners and prevent scroll-to-change */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {
@@ -3805,11 +3831,14 @@ input[type="number"] {
      and a card otherwise, judged at the reader's own text size. Its wrapper
      is a size container; a container query's em is the container's own font
      size (14px × the text scale), so the threshold follows the text-size
-     setting. Measured, not guessed (X4c-1): the widest row the code can
-     produce — 3,000,000 sats (MEMBER_MAX_REFILL_SAT), the raw
+     setting. Measured, not guessed (X4c-1): the widest row the code could
+     then produce — 3,000,000 sats (MEMBER_MAX_REFILL_SAT), the raw
      "quote_created" status, every month at 12:58 AM/PM — needs
      ≈ 17.05em + 100px in Chromium and WebKit at all 16 slider stops; the
-     px part is the cells' fixed padding. Rounded up. The card rules below
+     px part is the cells' fixed padding. Rounded up. Re-measured when
+     quote_created became "Quoted" (member-ui-fixes PR B): the widest
+     status is now "In Progress" and every stop is narrower or equal, so
+     the threshold stands. The card rules below
      repeat the .phone-card block (phoneTables.css.test.ts pins them equal).
      Without container queries the table keeps its sideways scroll. */
   .phone-fit-wrap { container: topup-history / inline-size; }

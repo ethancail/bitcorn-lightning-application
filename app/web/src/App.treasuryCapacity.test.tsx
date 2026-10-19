@@ -139,14 +139,14 @@ describe("PR3-5: \"Too small\" flags a size, not an error", () => {
   });
 });
 
-describe("R3 (PR 7): lane state badges in sentence case; the action buttons unchanged", () => {
+describe("R3 (PR 7): lane state badges in sentence case; ruling 1A: the Merchant button reads Close", () => {
   // Treasury-local %s chosen for each multi-word state.
   const lane = (id: string, peer: string, localPct: number) => ({
     channel_id: id, peer_pubkey: peer, capacity_sat: 2_000_000,
     local_balance_sat: localPct * 20_000, remote_balance_sat: (100 - localPct) * 20_000, active: 1,
   });
 
-  it("Renew soon, Getting full, Needs withdrawal — and the Renew Soon / Renew Now buttons", async () => {
+  it("Renew soon, Getting full, Needs withdrawal — and both Merchant buttons read Close", async () => {
     const M2 = pk("f"), F2 = pk("9");
     channels = [lane("1", MERCHANT, 80), lane("2", FARMER, 20), lane("4", M2, 90), lane("5", F2, 10)];
     stub.getContacts.mockResolvedValue([
@@ -160,9 +160,31 @@ describe("R3 (PR 7): lane state badges in sentence case; the action buttons unch
     expect(badgeIn("Farmer1")).toBe("Getting full");
     expect(badgeIn("Farmer2")).toBe("Needs withdrawal");
     const button = (name: string) => rowOf(el, name)!.querySelector("button")!.textContent;
-    expect(button("Merchant1")).toBe("Renew Soon");
-    expect(button("Merchant2")).toBe("Renew Now");
+    expect(button("Merchant1")).toBe("Close");
+    expect(button("Merchant2")).toBe("Close");
   });
+
+  // Ruling 1A: the button closes the channel in every state, so it says so;
+  // the badge alone carries the renew signal.
+  for (const [state, localPct, badge] of [["exhausted", 90, "Exhausted"], ["renew_soon", 80, "Renew soon"]] as const) {
+    it(`${state}: the button reads Close and opens Close Channel?; the badge still reads ${badge}`, async () => {
+      channels = [lane("1", MERCHANT, localPct)];
+      const el = await renderAppAt("/channels", "treasury");
+      const row = rowOf(el, "Merchant1");
+      expect(row, "Merchant1's lane row renders").toBeDefined();
+      // Case-sensitive: the badge's sentence-case "Renew soon" is not a button label.
+      for (const table of el.querySelectorAll("table")) expect(table.textContent).not.toMatch(/Renew (Now|Soon)/);
+      const button = row!.querySelector("button")!;
+      expect(button.textContent).toBe("Close");
+      expect(el.querySelector(".dialog-title"), "no dialog before the click").toBeNull();
+      await act(async () => { button.click(); });
+      expect(el.querySelector(".dialog-title")?.textContent).toBe("Close Channel?");
+      // PERMITTING: the renew signal survives on the badge.
+      const stateBadgeEl = row!.querySelector('.badge[data-testid="capacity-text"]')!;
+      expect(stateBadgeEl.textContent).toBe(badge);
+      expect(stateBadgeEl.className).toContain("badge-caution");
+    });
+  }
 });
 
 describe("PR 7 cleanup: the Channels page reads no liquidity health", () => {
