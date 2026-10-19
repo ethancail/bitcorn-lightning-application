@@ -15,6 +15,7 @@ import {
   xAxisBand,
   type Period,
 } from "./priceChartFormat";
+import ChartTooltip from "./ChartTooltip";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -53,9 +54,7 @@ const REFRESH_MS = 60_000;
 // Theme tokens from styles.css. SVG presentation attributes resolve var(),
 // so the chart follows the theme (colour round, CR-4).
 const AMBER = "var(--chart-amber)";
-const TEXT = "var(--text)";
 const TEXT_3 = "var(--text-3)";
-const BG_2 = "var(--bg-2)";
 const BORDER = "var(--border)";
 const BORDER_HI = "var(--border-hi)";
 const getMono = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "sans-serif";
@@ -109,7 +108,7 @@ async function fetchHistoricPrices(period: Period): Promise<PricePoint[]> {
 
 // ─── Custom Tooltip ──────────────────────────────────────────────────────
 
-function PriceTooltip({
+export function PriceTooltip({
   active,
   payload,
   period,
@@ -120,21 +119,7 @@ function PriceTooltip({
 }) {
   if (!active || !payload?.length) return null;
   const pt = payload[0].payload;
-  return (
-    <div
-      style={{
-        background: BG_2,
-        border: `1px solid ${BORDER}`,
-        borderRadius: 6,
-        padding: "8px 12px",
-        fontFamily: getMono(),
-        fontSize: "0.75rem",
-      }}
-    >
-      <div style={{ color: TEXT, fontWeight: 600 }}>{formatUsd(pt.price)}</div>
-      <div style={{ color: TEXT_3, marginTop: 2 }}>{formatTooltipTime(pt.time, period)}</div>
-    </div>
-  );
+  return <ChartTooltip date={formatTooltipTime(pt.time, period)} rows={[{ value: formatUsd(pt.price) }]} />;
 }
 
 // ─── Tick Sampling ───────────────────────────────────────────────────────
