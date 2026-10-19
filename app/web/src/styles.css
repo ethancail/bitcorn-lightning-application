@@ -1128,6 +1128,8 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
 .payment-request-input { font-size: 0.8rem; }
 .daybreak-editor-field { font-size: 1rem; }
 .identity-input { font-size: 0.875rem; }
+.autobuy-filter { font-size: 0.75rem; }
+.coinbase-key-input { font-size: 0.75rem; }
 
 /* iOS Safari zooms the page when a text field under 16px takes focus, and the
    14px root puts every control under it. On a touch screen, every text-entry

@@ -77,7 +77,8 @@ function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> })
           onChange={(e) => setBlob(e.target.value)}
           placeholder={`{\n  "name": "organizations/.../apiKeys/...",\n  "privateKey": "-----BEGIN EC PRIVATE KEY-----\\n..."\n}`}
           rows={8}
-          style={{ width: "100%", fontFamily: "var(--font-id)", fontSize: "0.75rem", marginBottom: 12, resize: "vertical" }}
+          className="coinbase-key-input"
+          style={{ width: "100%", fontFamily: "var(--font-id)", marginBottom: 12, resize: "vertical" }}
         />
         {toast && (
           <div className="alert" style={{ background: toast.kind === "success" ? "var(--green)" : "var(--red)", color: "var(--bg)", marginBottom: 12 }}>

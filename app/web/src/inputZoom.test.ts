@@ -24,16 +24,6 @@ const FLOOR = "max(16px, 1rem)";
 const COARSE = /\(pointer:\s*coarse\)/;
 const NON_TEXT = ["checkbox", "radio", "range", "color", "file", "hidden", "button", "submit", "reset", "image"];
 
-// Not edited here: components/autoBuy/ is no-touch (UI_CONVENTIONS.md), so
-// its inline sizes stay until Ethan rules on them. Under a coarse pointer
-// these controls are still under 16px. Each entry is a file and how many of
-// its text-entry controls carry an inline size.
-const PENDING: Array<{ file: string; count: number }> = [
-  { file: "components/autoBuy/AlertsTab.tsx", count: 3 },
-  { file: "components/autoBuy/CoinbaseCard.tsx", count: 1 },
-  { file: "components/autoBuy/HistoryTable.tsx", count: 1 },
-];
-
 type Control = { where: string; el: string; type: string; classes: string[]; inlineSize: boolean };
 
 /** The text from `open` (the index after a "{") to its matching "}". */
@@ -104,16 +94,9 @@ function sources(dir: string): string[] {
   return out;
 }
 
-const pendingFile = (where: string) => PENDING.find((p) => where.startsWith(`${p.file}:`));
-
-/** Inline-sized controls, as messages; PENDING files are held to their count. */
+/** Inline-sized controls, as messages. */
 function inlineProblems(all: Control[]): string[] {
-  const out = all.filter((c) => c.inlineSize && !pendingFile(c.where)).map((c) => `${c.where} <${c.el}> carries an inline font size`);
-  for (const p of PENDING) {
-    const n = all.filter((c) => c.inlineSize && c.where.startsWith(`${p.file}:`)).length;
-    if (n !== p.count) out.push(`${p.file}: ${n} inline-sized controls, PENDING lists ${p.count} — update the list`);
-  }
-  return out;
+  return all.filter((c) => c.inlineSize).map((c) => `${c.where} <${c.el}> carries an inline font size`);
 }
 
 /** [a, b, c] specificity of one selector: ids, classes/attributes/pseudo-
@@ -228,7 +211,7 @@ describe("item 2: iOS input zoom — a 16px floor under a coarse pointer", () =>
     for (const el of ["input", "select", "textarea"]) expect(ALL.some((c) => c.el === el), el).toBe(true);
   });
 
-  it("no text-entry control carries an inline font size (components/autoBuy/ held to its PENDING count)", () => {
+  it("no text-entry control carries an inline font size, components/autoBuy/ included", () => {
     expect(inlineProblems(ALL)).toEqual([]);
   });
 
@@ -254,7 +237,7 @@ describe("item 2: iOS input zoom — a 16px floor under a coarse pointer", () =>
     expect(cascadeProblems(RULES, ALL, checked)).toEqual([]);
     // not vacuous: the class rules that size today's controls were among those checked
     for (const sel of [".form-input", ".policy-card .policy-card-edit input", ".admin-members-search", ".stablecoin-input",
-      ".form-input-sm", ".payment-request-input", ".daybreak-editor-field", ".identity-input"]) expect(checked, sel).toContain(sel);
+      ".form-input-sm", ".payment-request-input", ".daybreak-editor-field", ".identity-input", ".autobuy-filter", ".coinbase-key-input"]) expect(checked, sel).toContain(sel);
   });
 
   it("negative controls: the planted cases are caught, and checkboxes and ranges are ignored", () => {
@@ -276,7 +259,7 @@ describe("item 2: iOS input zoom — a 16px floor under a coarse pointer", () =>
       "textarea::true",
       "input::true",
     ]);
-    expect(inlineProblems(planted).filter((m) => m.startsWith("planted.tsx:"))).toHaveLength(2);
+    expect(inlineProblems(planted)).toHaveLength(2);
 
     // Against a planted floor of its own, so this reads the checker, not today's CSS.
     const rule = (selectors: string[], decls: Record<string, string>, media: string | null = null): CssRule => ({ media, container: null, selectors, decls, line: 0 });
