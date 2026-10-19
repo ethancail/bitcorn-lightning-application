@@ -69,7 +69,7 @@ import {
 
 type Toast = { kind: "success" | "error"; msg: string };
 
-const fieldStyle = { width: "100%", boxSizing: "border-box" as const, fontFamily: "var(--sans)", fontSize: "1rem" };
+const fieldStyle = { width: "100%", boxSizing: "border-box" as const, fontFamily: "var(--sans)" };
 const textareaStyle = { ...fieldStyle, minHeight: "7rem", resize: "vertical" as const, lineHeight: 1.5 };
 
 function ZStatus({ z }: { z: EditorZ }) {
@@ -257,7 +257,7 @@ export default function DaybreakEditor() {
       <textarea
         id={`editor-${name}`}
         data-field={name}
-        className="form-input"
+        className="form-input daybreak-editor-field"
         style={textareaStyle}
         value={form[name]}
         disabled={disabled}
@@ -318,15 +318,15 @@ export default function DaybreakEditor() {
         <legend className="form-label" style={{ padding: "0 4px" }}>{SECTION_HEADINGS.worthReading}</legend>
         <div className="form-group">
           <label className="form-label" htmlFor="editor-wrTitle">{FIELD_LABELS.wrTitle}</label>
-          <input id="editor-wrTitle" data-field="wrTitle" className="form-input" style={fieldStyle} value={form.wrTitle} disabled={disabled} onChange={(e) => setField("wrTitle", e.target.value)} />
+          <input id="editor-wrTitle" data-field="wrTitle" className="form-input daybreak-editor-field" style={fieldStyle} value={form.wrTitle} disabled={disabled} onChange={(e) => setField("wrTitle", e.target.value)} />
         </div>
         <div className="form-group">
           <label className="form-label" htmlFor="editor-wrNote">{FIELD_LABELS.wrNote}</label>
-          <textarea id="editor-wrNote" data-field="wrNote" className="form-input" style={textareaStyle} value={form.wrNote} disabled={disabled} onChange={(e) => setField("wrNote", e.target.value)} />
+          <textarea id="editor-wrNote" data-field="wrNote" className="form-input daybreak-editor-field" style={textareaStyle} value={form.wrNote} disabled={disabled} onChange={(e) => setField("wrNote", e.target.value)} />
         </div>
         <div className="form-group">
           <label className="form-label" htmlFor="editor-wrLink">{FIELD_LABELS.wrLink}</label>
-          <input id="editor-wrLink" data-field="wrLink" type="url" inputMode="url" autoCapitalize="off" className="form-input" style={fieldStyle} value={form.wrLink} disabled={disabled} onChange={(e) => setField("wrLink", e.target.value)} />
+          <input id="editor-wrLink" data-field="wrLink" type="url" inputMode="url" autoCapitalize="off" className="form-input daybreak-editor-field" style={fieldStyle} value={form.wrLink} disabled={disabled} onChange={(e) => setField("wrLink", e.target.value)} />
         </div>
       </fieldset>
 

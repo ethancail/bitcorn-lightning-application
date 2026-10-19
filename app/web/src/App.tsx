@@ -2335,11 +2335,11 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                 <input
                   aria-label="Peer pubkey"
                   type="text"
-                  className="form-input"
+                  className="form-input form-input-sm"
                   value={manualPubkey}
                   onChange={(e) => setManualPubkey(e.target.value)}
                   placeholder="03..."
-                  style={{ fontFamily: "var(--font-id)", fontSize: "0.8125rem" }}
+                  style={{ fontFamily: "var(--font-id)" }}
                 />
                 {contacts.length > 0 && (
                   <button
