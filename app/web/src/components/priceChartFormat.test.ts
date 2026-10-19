@@ -10,7 +10,7 @@ describe("priceAxis: round labels inside a fitted domain", () => {
     [60_407, 61_007], [3_000, 110_000],
   ];
 
-  // The guarantee that keeps the 120px panel chart from dropping labels:
+  // The guarantee that keeps the price chart from dropping labels:
   // never more than maxTicks, never fewer than two, all inside the domain.
   it("between 2 and maxTicks labels, every one inside the domain, the data inside too", () => {
     for (const [lo, hi] of RANGES) {
