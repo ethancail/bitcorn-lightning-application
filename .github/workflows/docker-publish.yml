@@ -23,7 +23,7 @@ env:
 jobs:
   get-version:
     name: Read app version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # contents: write is required by the tag step below and by nothing else.
     # The repo default is read-only — verified, not assumed:
     #   gh api repos/ethancail/bitcorn-lightning-application/actions/permissions/workflow
@@ -37,13 +37,13 @@ jobs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # The tag assert below reads refs/tags, and the default fetch-depth: 1
           # fetches NO tags — the assert would then find nothing and pass on every
           # duplicate. Same precedent and same reason as pr-checks.yml's
           # version-bump job (fetch-depth: 0 for `git show BASE:file`), and it does
-          # not depend on which v4.x the floating major tag resolves to.
+          # not depend on which v5.x the floating major tag resolves to.
           #
           # This line is load-bearing for a gate in a DIFFERENT step, so that step
           # does not trust it: it checks for itself that tags are present before
@@ -214,15 +214,18 @@ jobs:
              Existing tag points at: $EXISTING_SHA ($EXISTING_DATE)
 
           A release must carry a new version. This build was triggered by a merge
-          to main that touched a published path without bumping the version
-          triplet, so publishing now would republish $TAG's image tags with
-          different content under the same tag. That is the incident this gate
-          exists to prevent — see docs/RELEASE.md.
+          to main that touched a published path, but umbrel-app.yml's version
+          ($VERSION) already has a tag, so publishing now would republish $TAG's
+          image tags with different content under the same tag. That is the
+          incident this gate exists to prevent — see docs/RELEASE.md.
 
           NO IMAGES WERE PUSHED. Two ways forward:
 
-          1. INTENDED RELEASE — bump the version triplet (umbrel-app.yml +
-             both docker-compose.yml image tags) and re-merge.
+          1. INTENDED RELEASE — bump the version in umbrel-app.yml and every
+             ghcr.io image tag in docker-compose.yml to the same new value, in
+             one commit: one pin per image this workflow publishes (its images:
+             lines — api, loopd and web as of v1.18.25), which pr-checks.yml's
+             "Version triplet agrees" check enforces. Then re-merge.
 
           2. DELIBERATE SAME-TAG REPUBLISH — the documented hotfix technique.
              Delete the tag first, then re-run; the tag is recreated at the new
@@ -271,7 +274,7 @@ jobs:
 
   build-api:
     name: Build API image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: get-version
     permissions:
       contents: read
@@ -279,18 +282,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           driver-opts: image=moby/buildkit:v0.18.1
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -298,7 +301,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.REPO }}/api
           tags: |
@@ -307,7 +310,7 @@ jobs:
             type=sha,prefix=,format=short
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./app/api
           platforms: linux/amd64,linux/arm64
@@ -317,7 +320,7 @@ jobs:
 
   build-web:
     name: Build web image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: get-version
     permissions:
       contents: read
@@ -325,18 +328,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           driver-opts: image=moby/buildkit:v0.18.1
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -350,7 +353,7 @@ jobs:
       # guard tripped. The build-args below still consume the variable.
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.REPO }}/web
           tags: |
@@ -359,7 +362,7 @@ jobs:
             type=sha,prefix=,format=short
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./app/web
           platforms: linux/amd64,linux/arm64
@@ -406,7 +409,7 @@ jobs:
   # bytes under an unchanged Bitcorn tag.
   build-loopd:
     name: Build loopd image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: get-version
     permissions:
       contents: read
@@ -414,7 +417,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Kept for symmetry with build-api/build-web, and strictly unnecessary
       # here: app/loopd/Dockerfile's fetch stage runs on the build platform and
@@ -422,15 +425,15 @@ jobs:
       # emulated. Left in so the next reader does not wonder why this job is
       # shaped differently from the two above it.
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           driver-opts: image=moby/buildkit:v0.18.1
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -438,7 +441,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.REPO }}/loopd
           tags: |
@@ -454,7 +457,7 @@ jobs:
       # a local native build on the Pi, run BEFORE any release, because
       # get-version gates publishing behind one).
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./app/loopd
           platforms: linux/amd64,linux/arm64
