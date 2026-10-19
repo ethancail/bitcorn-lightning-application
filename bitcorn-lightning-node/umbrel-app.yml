@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.24"
+version: "1.18.25"
 port: 3200
 
 description: >
@@ -27,6 +27,13 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.25: On an iPhone, tapping a text box no longer zooms the page in. On the Subscription page, "Copy
+  address" and "Copy pubkey" now work when you open the app at a plain http:// address. Top Up and Cash Out
+  now show "Quoted" for a swap you have priced but not yet confirmed, instead of an internal code, and say
+  that it hasn't started yet. For the treasury, the button on Merchant Lanes now reads "Close", which is
+  what it does; the "Renew soon" and "Exhausted" badges still show when a lane needs attention. Nothing for
+  you to do.
+
   v1.18.24: Easier to read: all text now has strong contrast in both light and dark themes, and nothing is
   smaller than 9px at the normal text size. Amber now marks things — warnings, gauges, the active page — and
   the main buttons have a simpler look. Smaller fixes: the price change shows its + or − sign in normal text
