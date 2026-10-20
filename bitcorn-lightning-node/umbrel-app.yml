@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.26"
+version: "1.18.27"
 port: 3200
 
 description: >
@@ -27,6 +27,9 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.27: Dashboard: the Bitcoin price chart is now much taller (and taller on phones too), with more price
+  labels, so moves through the day stand out. Nothing for you to do.
+
   v1.18.26: Dashboard: the Bitcoin price chart's scale now fits the price range, so moves through the day are
   easier to see. Charts: hover details are easier to read — a brighter date, clearer series names, slightly
   larger text. The BitCorn logo in the top bar is larger. Nothing for you to do.
