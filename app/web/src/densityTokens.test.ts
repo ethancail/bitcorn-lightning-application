@@ -35,7 +35,9 @@ const B: Record<string, string> = {
   "--d-hl1": "2.25rem",
   "--d-hl2": "1.625rem",
   "--d-price": "1.25rem",
-  "--d-chart-h": "120px",
+  // K4: the price chart, desktop and phone.
+  "--d-chart-h": "480px",
+  "--d-chart-h-ph": "240px",
   "--d-cols": "2",
 };
 

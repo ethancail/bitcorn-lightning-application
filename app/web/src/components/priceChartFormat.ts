@@ -73,6 +73,15 @@ const AXIS_PAD = 0.08;
 const MIN_SPAN = 0.005;
 
 /**
+ * K4a: neighbouring price labels sit at least this many label sizes apart
+ * (73.9px at 1.0x text). The reference is the Power Law chart, which spaces
+ * its labels 73px apart at its densest (the 2042 view) at 11px labels: 6.6
+ * label sizes. In label sizes rather than px, so the spacing follows the
+ * text-size setting the way the labels do.
+ */
+export const PRICE_LABEL_GAP_EM = 6.5;
+
+/**
  * The price chart's y-axis: the domain it plots and the labelled ticks.
  * The domain is FITTED to the data (range plus AXIS_PAD each side, at least
  * MIN_SPAN wide, never below $0 for prices), not snapped out to round ticks:
@@ -80,11 +89,12 @@ const MIN_SPAN = 0.005;
  * filled as little as 40% of the 120px plot.
  *
  * Labels are the round ticks (1 / 2 / 2.5 / 5 × 10ⁿ) that fall INSIDE the
- * domain, at most `maxTicks` of them, so Recharts never has to drop a label
- * on the small panel; the step is bumped to the next round step until the
- * count fits. At least two are always shown: if fewer fit, the step is halved.
+ * domain: the finest round step that puts at most `maxTicks` inside, so
+ * Recharts never has to drop a label, and whose labels are at least `minGap`
+ * apart (a fraction of the domain, so of the axis's height; K4a). At least two
+ * are always shown: if fewer fit, the step is halved, and the gap gives way.
  */
-export function priceAxis(min: number, max: number, maxTicks = 4): { domain: [number, number]; ticks: number[] } {
+export function priceAxis(min: number, max: number, maxTicks = 4, minGap = 0): { domain: [number, number]; ticks: number[] } {
   if (!Number.isFinite(min) || !Number.isFinite(max)) return { domain: [min, max], ticks: [] };
   const [lo, hi] = min < max ? [min, max] : [max, min];
   const pad = (hi - lo) * AXIS_PAD;
@@ -100,14 +110,20 @@ export function priceAxis(min: number, max: number, maxTicks = 4): { domain: [nu
 
   const cap = Math.max(2, maxTicks);
   const inside = (s: number) => Math.floor(dHi / s) - Math.ceil(dLo / s) + 1;
-  let step = niceStepCeil((dHi - dLo) / cap);
+  // Any step under span / (cap + 1) puts more than `cap` labels inside, so the
+  // search starts there (K4a: the finest step the cap allows) or at the gap.
+  // A gap wider than the axis can only ever be met by the two-label fallback.
+  const span = dHi - dLo;
+  const gapStep = minGap > 0 ? span * Math.min(minGap, 1) : 0;
+  let step = niceStepCeil(Math.max(span / (cap + 1), gapStep));
   for (let guard = 0; inside(step) > cap && guard < 24; guard++) step = bumpStep(step);
   for (let guard = 0; inside(step) < 2 && guard < 24; guard++) step /= 2;
 
   const ticks: number[] = [];
   for (let i = Math.ceil(dLo / step); i <= Math.floor(dHi / step); i++) ticks.push(i * step);
-  // Halving can overshoot a tiny cap (1 label → 3); keep every k-th, still uniform.
-  const k = Math.ceil(ticks.length / cap);
+  // Halving can overshoot a tiny cap (1 label → 3) or close the gap; keep
+  // every k-th, still uniform, and never fewer than two.
+  const k = Math.max(1, Math.min(Math.max(Math.ceil(ticks.length / cap), Math.ceil(gapStep / step - 1e-9)), ticks.length - 1));
   return { domain: [dLo, dHi], ticks: ticks.filter((_, i) => i % k === 0) };
 }
 
