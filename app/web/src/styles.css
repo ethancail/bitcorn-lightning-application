@@ -1647,6 +1647,11 @@ input[type="number"] {
   /* Power law chart: shorter on mobile */
   .power-law-chart-container { height: 300px; }
 
+  /* The Bitcoin price chart (K4): the density's phone height. One class more
+     than the desktop .price-plot rule, which comes later in this file and
+     would otherwise win on order. */
+  .price-tile .price-plot { height: var(--d-chart-h-ph); }
+
   /* Payments: stack tabs, full-width QR */
   .payment-tabs { flex-direction: column; }
   .payment-tab { flex: 1; }
@@ -3765,8 +3770,9 @@ input[type="number"] {
 .field-hint { font-size: var(--d-label); color: var(--text-3); text-align: center; }
 
 /* The Bitcoin price tile (BitcoinPriceGraph.tsx). The price supports the
-   user's own numbers, so it is sized below them (--d-price). X5a: the plot is
-   full height at every width; X5's fewer, non-colliding time labels are the
+   user's own numbers, so it is sized below them (--d-price). X5a (K4): the plot
+   is --d-chart-h tall, --d-chart-h-ph on a phone (the phone block's rule);
+   X5's fewer, non-colliding time labels are the
    component's (it measures .price-plot). The plot's font-size is the axis
    label size, which the component reads back (X2: labels follow density). */
 .price-head { margin-bottom: var(--d-gap-inner); }
@@ -3919,7 +3925,7 @@ input[type="number"] {
   --d-td-py: 12px;           --d-td-px: 14px;    --d-th-py: 10px;
   --d-label: 0.8125rem;      --d-body: 0.9375rem;
   --d-hl1: 2.25rem;          --d-hl2: 1.625rem;
-  --d-price: 1.25rem;        --d-chart-h: 120px;
+  --d-price: 1.25rem;        --d-chart-h: 480px;   --d-chart-h-ph: 240px;
   --d-cols: 2;
 }
 

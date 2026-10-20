@@ -69,6 +69,15 @@ export function cssRules(file = join(__dirname, "styles.css")): CssRule[] {
   return rules;
 }
 
+/** Enough of CSS specificity for this stylesheet's selectors: ids, then
+ *  classes, attributes and pseudo-classes, then types. */
+export function specificity(sel: string): number {
+  const ids = (sel.match(/#[\w-]+/g) ?? []).length;
+  const classes = (sel.match(/\.[\w-]+|\[[^\]]*\]|:(?!:)[\w-]+/g) ?? []).length;
+  const types = (sel.replace(/[#.:][\w-]+|\[[^\]]*\]/g, " ").match(/[a-z][\w-]*/gi) ?? []).length;
+  return ids * 10_000 + classes * 100 + types;
+}
+
 /** The declarations for `selector` (exact selector match) in a given @media,
  *  later rules overriding earlier ones, as the cascade would for equal
  *  specificity. */

@@ -6,13 +6,32 @@
 //          lapse banners that refuse payments or close the channel stay on top).
 //   CHART — the price tile takes the headline's place in that order.
 //   D3   — a negative headline number is --text, never red.
-//   X5a  — the price plot is full height at every width.
+//   X5a  — the price plot is 480px tall on desktop, 240px on a phone (K4).
 
 import { describe, expect, it } from "vitest";
-import { cssRules, declsFor } from "./styleRules.testutil";
+import { cssRules, declsFor, specificity, type CssRule } from "./styleRules.testutil";
 
 const PHONE = "(max-width: 767px)";
 const RULES = cssRules();
+
+/** The price plot's height where `media` applies (null: desktop), as the
+ *  cascade resolves it: of the rules that apply there, the most specific wins,
+ *  then the later; a var() is read from the :root tokens that apply there.
+ *  jsdom evaluates no @media, so this reads the rules instead. */
+function plotHeight(media: string | null): string | undefined {
+  const applies = (r: CssRule) => r.media === null || r.media === media;
+  let win: { spec: number; line: number; value: string } | undefined;
+  for (const r of RULES) {
+    if (!applies(r) || r.decls.height === undefined) continue;
+    for (const s of r.selectors.filter((s) => s.includes("price-plot"))) {
+      const spec = specificity(s);
+      if (!win || spec > win.spec || (spec === win.spec && r.line > win.line)) win = { spec, line: r.line, value: r.decls.height };
+    }
+  }
+  const tokens: Record<string, string> = {};
+  for (const r of RULES) if (applies(r) && r.selectors.includes(":root")) Object.assign(tokens, r.decls);
+  return win?.value.replace(/^var\((--[\w-]+)\)$/, (_, t: string) => tokens[t]);
+}
 
 describe("the dashboard column", () => {
   it("is one flex column with the density gap between sections", () => {
@@ -105,12 +124,16 @@ describe("X5 / X5a: the price chart", () => {
     expect(declsFor(".price-plot")).toMatchObject({ height: "var(--d-chart-h)", "font-size": "var(--d-label)" });
   });
 
-  it("X5a: no rule anywhere cuts the plot's height on a phone", () => {
-    for (const r of RULES) {
-      if (r.media !== null && r.selectors.some((s) => s.includes("price-plot"))) {
-        expect(r.decls.height, `${r.media} ${r.selectors.join()}`).toBeUndefined();
-      }
-    }
+  it("X5a (K4): the plot is 480px tall on desktop and 240px on a phone", () => {
+    expect({ desktop: plotHeight(null), phone: plotHeight(PHONE) }).toEqual({ desktop: "480px", phone: "240px" });
+  });
+
+  it("X5a (K4): those are the only two rules that size the plot", () => {
+    const sizing = RULES.filter((r) => r.decls.height !== undefined && r.selectors.some((s) => s.includes("price-plot")));
+    expect(sizing.map((r) => [r.media, r.decls.height])).toEqual([
+      [PHONE, "var(--d-chart-h-ph)"],
+      [null, "var(--d-chart-h)"],
+    ]);
   });
 
   it("the price supports: sized by --d-price, below the headline's --d-hl2", () => {

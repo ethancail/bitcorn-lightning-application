@@ -77,7 +77,7 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/api/client.ts` | `apiFetch<T>` helper, namespaced `api.*` object, all types |
 | `app/web/src/config/api.ts` | `API_BASE` constant |
 | `app/web/src/styles.css` | Full design system |
-| `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph (recharts AreaChart, Coinbase public API). On all three dashboards it sits immediately beneath the headline numbers (CHART). It measures its plot and fits the time labels to the width (X5); the plot is `--d-chart-h` tall at every width (X5a) |
+| `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph (recharts AreaChart, Coinbase public API). On all three dashboards it sits immediately beneath the headline numbers (CHART). It measures its plot and fits the time labels to the width (X5); the plot is `--d-chart-h` (480px) tall, `--d-chart-h-ph` (240px) on a phone (X5a, K4) |
 | `app/web/src/components/AlertRow.tsx` | X3: a treasury alert as one compact row — icon, the server's heading (SH1), the detail in a closed `<details>`, an optional action. Used by the treasury dashboard and `ValuationInputAlertBanner` |
 | `app/web/src/components/subscriptionBannerSlot.ts` | J9/J9a: the member dashboard's slot for the subscription banner — `top` for `routing_lapsed`/`close_due`, `info` otherwise |
 | `app/web/src/components/PowerLawChart.tsx` | Bitcoin Power Law chart (log Y, percentile bands, 2042 projection); fills gap days with live Coinbase price |
