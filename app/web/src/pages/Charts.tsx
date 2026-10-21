@@ -271,7 +271,7 @@ export default function Charts() {
       <div className="panel fade-in" style={{ marginTop: 16 }}>
         <div className="panel-header">
           <span className="panel-title">
-            <span className="icon">🌽</span>Corn-Bitcoin Ratio
+            <span className="icon">🌽</span>Corn-Bitcoin Price (Bushels/Bitcoin)
           </span>
           <div style={{ display: "flex", gap: 4 }}>
             {CB_PERIODS.map((p) => (
