@@ -3255,9 +3255,14 @@ async function dispatchRequest(
             | undefined)
         : undefined;
 
-      const now = Math.floor(Date.now() / 1000);
-      const cutoff24h = now - 86400;
-      const cutoff30d = now - 86400 * 30;
+      // Milliseconds: payments_forwarded.created_at is written as
+      // `new Date(f.created_at).getTime()` (lightning/persist-forwarded.ts).
+      // Seconds-based cutoffs put every row inside both windows, so each
+      // reported the lifetime total. Pinned by
+      // api/memberStatsForwardedFees.http.test.ts.
+      const nowMs = Date.now();
+      const cutoff24h = nowMs - 86_400_000;
+      const cutoff30d = nowMs - 86_400_000 * 30;
 
       const feesTotal = db
         .prepare("SELECT COALESCE(SUM(fee), 0) as total FROM payments_forwarded")

@@ -1708,7 +1708,8 @@ function ChannelsPage() {
                       <tr>
                         <th>Merchant</th>
                         <th>Capacity</th>
-                        <th style={{ textAlign: "right" }}>Forwarded</th>
+                        {/* "Remaining": the merchant's remaining sats (remote_balance_sat), the sats form of Forwarding Left — not a forwarded total. Decision B, bitcorn-research decisions/2026-10-22-merchant-lanes-forwarded-column-relabelled-remaining.md */}
+                        <th style={{ textAlign: "right" }}>Remaining</th>
                         <th>Forwarding Left</th>
                         <th>State</th>
                         <th>Action</th>
@@ -1723,7 +1724,7 @@ function ChannelsPage() {
                           <tr key={c.channel_id}>
                             <td className="ident td-primary" style={{ fontWeight: 500 }}>{c.peerName}</td>
                             <td data-label="Capacity" className="td-mono">{fmtCap(c.capacity_sat)}</td>
-                            <td data-label="Forwarded" className="td-num" style={{ fontFamily: "var(--mono)" }}>
+                            <td data-label="Remaining" className="td-num" style={{ fontFamily: "var(--mono)" }}>
                               {c.remote_balance_sat.toLocaleString()}
                             </td>
                             <td data-label="Forwarding Left">

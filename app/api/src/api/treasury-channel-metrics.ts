@@ -7,7 +7,19 @@ export type ChannelMetric = {
   remote_sats: number;
   capacity_sats: number;
   is_active: boolean;
+  /**
+   * This channel's 50/50 share of forwarded tokens: half of each forward is
+   * attributed to its incoming channel and half to its outgoing channel, so
+   * the sum across channels equals SUM(tokens). Decision A, bitcorn-research
+   * decisions/2026-10-22-forwarding-fee-attribution-split-50-50.md.
+   */
   forwarded_volume_sats: number;
+  /**
+   * This channel's 50/50 attribution of forwarding revenue: half of each
+   * forward's fee to its incoming channel, half to its outgoing channel, so the
+   * sum across channels equals SUM(fee) — each fee earned is counted once.
+   * Decision A, as above.
+   */
   forwarded_fees_sats: number;
   /** Fee per 1,000 sats routed (fee / tokens * 1000). */
   fee_per_1k_sats: number;
@@ -51,14 +63,20 @@ function getRebalanceCostsByChannel(): Map<string, number> {
   return map;
 }
 
+/**
+ * The incoming channel's half of each forward: floor(x/2), per row. tokens and
+ * fee are INTEGER columns, so `/ 2` is SQLite integer division (a floor for
+ * these non-negative values). Splitting per row, not per sum, is what makes
+ * each forward's two shares add back to that forward exactly.
+ */
 function getIncomingAggregates(since?: number): ForwardAgg[] {
   if (since != null) {
     return db
       .prepare(
         `SELECT
            incoming_channel AS channel_id,
-           COALESCE(SUM(tokens), 0) AS volume,
-           COALESCE(SUM(fee), 0) AS fees
+           COALESCE(SUM(tokens / 2), 0) AS volume,
+           COALESCE(SUM(fee / 2), 0) AS fees
          FROM payments_forwarded
          WHERE created_at >= ?
          GROUP BY incoming_channel`
@@ -69,22 +87,26 @@ function getIncomingAggregates(since?: number): ForwardAgg[] {
     .prepare(
       `SELECT
          incoming_channel AS channel_id,
-         COALESCE(SUM(tokens), 0) AS volume,
-         COALESCE(SUM(fee), 0) AS fees
+         COALESCE(SUM(tokens / 2), 0) AS volume,
+         COALESCE(SUM(fee / 2), 0) AS fees
        FROM payments_forwarded
        GROUP BY incoming_channel`
     )
     .all() as ForwardAgg[];
 }
 
+/**
+ * The outgoing channel's half of each forward: the remainder, x − floor(x/2),
+ * per row — so incoming + outgoing shares sum to the forward exactly.
+ */
 function getOutgoingAggregates(since?: number): ForwardAgg[] {
   if (since != null) {
     return db
       .prepare(
         `SELECT
            outgoing_channel AS channel_id,
-           COALESCE(SUM(tokens), 0) AS volume,
-           COALESCE(SUM(fee), 0) AS fees
+           COALESCE(SUM(tokens - tokens / 2), 0) AS volume,
+           COALESCE(SUM(fee - fee / 2), 0) AS fees
          FROM payments_forwarded
          WHERE created_at >= ?
          GROUP BY outgoing_channel`
@@ -95,14 +117,24 @@ function getOutgoingAggregates(since?: number): ForwardAgg[] {
     .prepare(
       `SELECT
          outgoing_channel AS channel_id,
-         COALESCE(SUM(tokens), 0) AS volume,
-         COALESCE(SUM(fee), 0) AS fees
+         COALESCE(SUM(tokens - tokens / 2), 0) AS volume,
+         COALESCE(SUM(fee - fee / 2), 0) AS fees
        FROM payments_forwarded
        GROUP BY outgoing_channel`
     )
     .all() as ForwardAgg[];
 }
 
+/**
+ * Adds each channel's incoming-leg and outgoing-leg shares. The two shares
+ * are disjoint halves of each forward (see the aggregates above), so a forward
+ * is counted once across channels, not once per leg — decision A,
+ * bitcorn-research
+ * decisions/2026-10-22-forwarding-fee-attribution-split-50-50.md. The hub's
+ * lanes are one-directional, so neither leg alone may carry the whole forward:
+ * it would zero every merchant lane (outgoing only) or every farmer lane
+ * (incoming only).
+ */
 function mergeForwardAggregates(
   incoming: ForwardAgg[],
   outgoing: ForwardAgg[]
