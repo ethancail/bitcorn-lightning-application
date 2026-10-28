@@ -1,4 +1,4 @@
-import { resolveContactName, type Contact } from "../../api/client";
+import { findContact, resolveContactName, type Contact } from "../../api/client";
 import {
   EXTERNAL_PUBKEYS,
   HEALTH_CRITICAL_MAX,
@@ -46,7 +46,7 @@ export function buildLiquidityPeers(
 
   const peers: LiquidityPeer[] = [];
   for (const [pubkey, chs] of peerMap) {
-    const contact = contacts.find((c) => c.pubkey === pubkey);
+    const contact = findContact(pubkey, contacts);
     const role = classifyRole(pubkey, contact);
     const capacity = chs.reduce((s, c) => s + c.capacity_sat, 0);
     const treasuryLocal = chs.reduce((s, c) => s + c.local_balance_sat, 0);
