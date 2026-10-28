@@ -123,6 +123,20 @@ describe("DW-2: a pre-existing uppercase contacts row classifies by its tags", (
   });
 });
 
+describe("C1: the curated external list is matched in any case", () => {
+  // ACINQ, as the curated list holds it (lowercase), and as a caller might spell it.
+  const ACINQ = "03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f";
+
+  it("an UPPERCASE spelling of a curated external key classifies external_peer, with no contacts row", () => {
+    expect(classifyLanePurpose(ACINQ.toUpperCase())).toBe("external_peer");
+  });
+
+  it("ANTI-VACUITY: the lowercase spelling classifies external_peer, and an unlisted key does not", () => {
+    expect(classifyLanePurpose(ACINQ)).toBe("external_peer");
+    expect(classifyLanePurpose(ABSENT)).toBe("unclassified");
+  });
+});
+
 describe("DW-3: a case-duplicate pair classifies by the tie-break winner", () => {
   it.each([
     ["manual inserted first", ["manual", "auto"] as const],
@@ -165,6 +179,14 @@ describe("DW-14: resolveContact and classifyLanePurpose give one answer for a du
     seedContact(UPPER, "manual", "merchant", "Manual Mill");
 
     expect(await contactNameInPaymentError(LOWER)).toBe("Manual Mill");
+    expect(classifyLanePurpose(LOWER)).toBe("merchant_lane");
+  });
+
+  it("two auto rows → both name and lane come from the LOWER id", async () => {
+    seedContact(UPPER, "auto", "merchant", "First Auto"); // lower id
+    seedContact(MIXED, "auto", "farmer", "Second Auto");
+
+    expect(await contactNameInPaymentError(LOWER)).toBe("First Auto");
     expect(classifyLanePurpose(LOWER)).toBe("merchant_lane");
   });
 
