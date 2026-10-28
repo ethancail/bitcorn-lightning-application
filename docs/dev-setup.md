@@ -84,7 +84,7 @@ Create three `.env.dev.*` files at the repo root. Replace `<treasury-pubkey>` wi
 
 `.env.dev.treasury`:
 ```bash
-LND_GRPC_HOST=127.0.0.1:10001
+LND_GRPC_HOST=127.0.0.1:10005
 LND_DIR=/home/user/.polar/networks/1/volumes/lnd/treasury
 BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
@@ -95,7 +95,7 @@ SECRETS_DIR=/home/user/.bitcorn-dev/treasury/secrets
 
 `.env.dev.member-a`:
 ```bash
-LND_GRPC_HOST=127.0.0.1:10002
+LND_GRPC_HOST=127.0.0.1:10004
 LND_DIR=/home/user/.polar/networks/1/volumes/lnd/farmer
 BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
@@ -106,7 +106,7 @@ SECRETS_DIR=/home/user/.bitcorn-dev/member-a/secrets
 
 `.env.dev.member-b`:
 ```bash
-LND_GRPC_HOST=127.0.0.1:10003
+LND_GRPC_HOST=127.0.0.1:10006
 LND_DIR=/home/user/.polar/networks/1/volumes/lnd/merchant
 BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
@@ -119,7 +119,7 @@ A few notes:
 
 `TREASURY_PUBKEY` is the **same value across all three files** — it's the public identifier of the treasury node. The treasury instance recognizes itself because its local LND pubkey matches; the members detect themselves via the channel-to-treasury check.
 
-The Polar gRPC ports (`10001`, `10002`, `10003`) are Polar's defaults for the first three LND nodes in a network. Confirm in each node's Connect tab.
+The Polar gRPC ports are assigned per node by Polar — don't assume `10001`–`10003`. On the dev machine's `bitcorn-dev` network (id 1) the host gRPC ports are Farmer1 `10004`, Treasury `10005`, Merchant1 `10006` (External-Peer-1 `10007`), which is what the examples above use. Confirm in each node's Connect tab, or in the `ports:` mappings (`<host port>:10009`) of `~/.polar/networks/<id>/docker-compose.yml`.
 
 The exact `LND_DIR` paths depend on your Polar install. Verify with `ls ~/.polar/networks/<id>/volumes/lnd/` after Polar has started the network — directories will be named after the LND nodes (treasury, farmer, merchant after renaming).
 
@@ -195,10 +195,19 @@ To stop everything: `Ctrl+C` in the terminal running `dev:all`.
 
 **Port already in use.** Either `dev:all` is already running in another terminal, or another process has grabbed 3101–3103 / 5173–5175. The most common cause is orphan API processes from a prior `dev:all` that didn't shut down cleanly when you `Ctrl+C`'d the parent — `concurrently → npm → tsx → node` is enough indirection that SIGINT sometimes doesn't reach the leaf `node` processes. Run `npm run dev:kill` to force-clear all six dev ports, then re-run `dev:all`. `lsof -i :3101` shows what specifically owns a single port if you want to investigate before killing.
 
+**Polar regtest recovery — symptom → action.**
+Container names embed the Polar network id: `polar-n<id>-<Node>`, so `polar-n1-*` is network 1 (`ls ~/.polar/networks/`). The commands below use network 1 and the compose hostnames `Treasury`, `Farmer1`, `Merchant1`, `External-Peer-1`, `backend1` — substitute yours. Each symptom is something you observe directly; match on it, not on a similar-looking error.
+- *All LND containers crash-loop (`Restarting (1)`) and log `lookup polar-n1-backend1 … server misbehaving`* → bitcoind is down. `docker start polar-n1-backend1`. Details in the next entry.
+- *LNDs are up, `lncli getinfo` shows `synced_to_chain: false`, and the log shows `best_block_time` days old* → the tip is stale. Mine one block to an unspendable output: `docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest generatetodescriptor 1 "raw(6a)"`. All LNDs flip to synced within seconds.
+- *`-8: Block height out of range` after an unclean host stop* → bitcoind lost a block the LND wallet had already saved. Mine (same command, more blocks) until bitcoind's height is past the wallet's. Precedent: 2026-10-09.
+- *After **any** Docker daemon restart* → expect Treasury to be missing peers, and check every time. Container IPs change on restart and LND redials the IPs it cached, so the spokes reconnect on their own only sometimes (on 2026-10-28 it happened once; after the next daemon restart two peers needed a manual reconnect). Check with `docker exec -u lnd polar-n1-Treasury lncli --network regtest listpeers` (expect Farmer1, Merchant1 and External-Peer-1). For each missing peer, take its pubkey from `docker exec -u lnd polar-n1-<Node> lncli --network regtest getinfo` (`identity_pubkey`), then `docker exec -u lnd polar-n1-Treasury lncli --network regtest connect <pubkey>@<Node>:9735` — the hostname resolves to the container's current IP.
+- *Checking any of the above in logs* → always `docker logs --tail N <container>`. A full read (no `--tail`, or `--since`) can stop silently at a corrupt json-file log entry; on the dev machine it stops at 2026-09-29, so a grep over it misses everything since and looks like "nothing logged".
+
 **Polar bitcoind container exited; LND containers in restart loop.**
 *Symptom:* `docker ps` shows all four `polar-n1-*` LND containers in `Restarting (1) X seconds ago`. `docker ps -a` shows `polar-n1-backend1` as `Exited (0)` rather than `Up`. LND logs (`docker logs polar-n1-Treasury --tail 20`) show repeated lines like `unable to create partial chain control: lookup polar-n1-backend1 on 127.0.0.11:53: server misbehaving`.
-*Diagnosis:* The bitcoind backend container has stopped (host suspend, reboot, or Docker's idle-container threshold passing during a long break from dev work). LND containers can't reach it via Docker's internal DNS and crash-loop trying to connect on every restart.
-*Workaround:* `docker start polar-n1-backend1`. The four LND containers auto-recover within ~30 seconds without further intervention — they're configured to restart on failure and will succeed on their next attempt once bitcoind's DNS resolves. Confirm with `docker ps --format "{{.Names}} {{.Status}}" | grep polar`. Polar Desktop may briefly show the network as "stopped" in its UI until you click into it; the containers are running regardless.
+*Diagnosis:* A Docker daemon restart — routine `apt` upgrades of `docker-ce`/`containerd` trigger one — brings back only containers that have a restart policy; any container without one stays stopped. The LND containers have `restart: always`; bitcoind (`backend1`) had no policy, so it stayed `Exited (0)` and the LNDs crash-looped without a backend, unable to resolve it via Docker's internal DNS. On the dev machine this left bitcoind down from 2026-10-19 until 2026-10-28.
+*Workaround:* `docker start polar-n1-backend1`. The LND containers recover on their next restart attempt (about once a minute) once bitcoind's DNS resolves. If they then sit at `synced_to_chain: false`, the tip is stale — mine one block (see above). Confirm with `docker ps --format "{{.Names}} {{.Status}}" | grep polar`. Polar Desktop may briefly show the network as "stopped" in its UI until you click into it; the containers are running regardless.
+*Restart policy:* as of 2026-10-28, `backend1` has `restart: unless-stopped` on the dev machine — in `~/.polar/networks/1/docker-compose.yml` and on the live container (`docker update --restart unless-stopped polar-n1-backend1`) — and came back by itself through a daemon restart the same day. **Unverified:** starting the network from the Polar UI may regenerate the compose file and drop that line. After a Polar-UI start, check `docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' polar-n1-backend1`.
 
 **Regtest LND reports `synced_to_chain=false` even though `block_height` matches bitcoind exactly.**
 *Symptom:* `lncli getinfo` (or the application's `lnd_node_info.synced_to_chain` column) shows `synced_to_chain: false` with `block_height` matching bitcoind's tip. The API logs `membership_status: unsynced` for the local node, and downstream code that gates on sync status (e.g. the autobuy scheduler, the rate-limited payment endpoint) treats the node as not ready.
