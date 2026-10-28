@@ -180,11 +180,15 @@ describe("roster union — a subscription row is a member, channel or not", () =
 
 // ─── The case-normalization control (the binding constraint) ──────
 //
-// Lane classification GATES subscription scope. classifyLanePurpose does
-// NOT lowercase (lanePurpose.ts:40,42) and contacts.pubkey is binary-
-// collated, so the case the roster passes down decides the lane. The
-// roster must agree with every other subscription-scope consumer, all of
-// which classify on the LOWERCASE pubkey (statusHandler.ts:97,144).
+// Lane classification GATES subscription scope. The roster must agree
+// with every other subscription-scope consumer, all of which classify on
+// the LOWERCASE pubkey (statusHandler.ts:97,144).
+//
+// Since the billing-pubkey-case fix (bitcorn-research specs/2026-10-28-
+// billing-pubkey-case-normalization-spec.md), classifyLanePurpose matches
+// contacts case-insensitively, so a contacts row in any case classifies by
+// its tags. Before it, the lookup was a binary compare and a mixed-case
+// contacts row was unreachable — the defect the second test below pinned.
 
 describe("case normalization — the roster agrees with the subscription-scope path", () => {
   it("a MIXED-case channel row classifies on its lowercase form, like the scope path", () => {
@@ -204,8 +208,10 @@ describe("case normalization — the roster agrees with the subscription-scope p
         `${JSON.stringify(result.members.map((m) => m.member_pubkey))}`,
     ).toBeDefined();
 
-    // Right content: merchant_lane, which is ONLY reachable if the
-    // contacts lookup ran on the lowercase form.
+    // Right content: merchant_lane. Since the billing-pubkey-case fix the
+    // contacts lookup is case-insensitive, so this line no longer proves the
+    // roster lowercased anything — the canonical-pubkey assertion above is
+    // what pins that. It still pins that the roster row carries the lane.
     expect(row!.lane_purpose).toBe("merchant_lane");
 
     // And it agrees with what every scope consumer computes for this peer.
@@ -213,13 +219,16 @@ describe("case normalization — the roster agrees with the subscription-scope p
   });
 
   it("a MIXED-case contacts row and a lowercase subscription row classify identically", () => {
-    // The brief's named control. NOTE the honest expectation: because
-    // classifyLanePurpose does not lowercase its contacts lookup
-    // (lanePurpose.ts:42) and contacts.pubkey is binary-collated, a
-    // mixed-case contacts row is unmatchable by ANY lowercase caller.
-    // That is a PRE-EXISTING lanePurpose defect, out of scope here. What
-    // IS in scope, and what this pins, is that the roster and the
-    // subscription-scope path reach the SAME answer — no divergence.
+    // The brief's named control — the 2026-09-18 roster records' "same
+    // lane" control. It pins that the roster and the subscription-scope
+    // path reach the SAME answer — no divergence.
+    //
+    // DELIBERATELY UPDATED by the billing-pubkey-case fix (spec §5.2, §5.3):
+    // the shared answer for a mixed-case contacts row was `unclassified`,
+    // because the contacts lookup was a binary compare. The fix makes it
+    // case-insensitive, so the shared answer is now the row's own lane. This
+    // line went red with `merchant_lane` under the fix and was updated, not
+    // deleted; the relationship assertion is unchanged.
     const mixedContact = "03" + "C2".repeat(32);
     expect(mixedContact.toLowerCase()).toBe(CHANNELLESS); // fixture sanity
 
@@ -233,10 +242,9 @@ describe("case normalization — the roster agrees with the subscription-scope p
     expect(row!.member_pubkey).toBe(CHANNELLESS);
     // Identical to the scope path — the in-scope guarantee.
     expect(row!.lane_purpose).toBe(classifyLanePurpose(CHANNELLESS));
-    // ...and that shared answer is `unclassified`, stated explicitly so
-    // that fixing lanePurpose later breaks this line loudly rather than
-    // silently changing what the roster shows.
-    expect(row!.lane_purpose).toBe("unclassified");
+    // ...and that shared answer is the contact's own lane, `merchant_lane`:
+    // a member entered in mixed case is classified, and so in scope.
+    expect(row!.lane_purpose).toBe("merchant_lane");
   });
 });
 

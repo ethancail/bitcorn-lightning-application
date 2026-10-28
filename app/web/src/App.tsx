@@ -4,7 +4,7 @@ import "./font.css"; // Z4: the font faces and tokens, self-hosted; before style
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
 import bitcornLogoLight from "./assets/bitcorn-logo-light.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type PendingChannel, type AutoBuyAlertBadge, resolveContactName } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type PendingChannel, type AutoBuyAlertBadge, findContact, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -1590,7 +1590,7 @@ function ChannelsPage() {
           // Skip channels that are in the process of closing — they appear in the CLOSING section
           if (closingPubkeys.has(c.peer_pubkey)) continue;
 
-          const contact = contacts.find((ct) => ct.pubkey === c.peer_pubkey);
+          const contact = findContact(c.peer_pubkey, contacts);
           const tags = (contact?.tags ?? []).map((t) => t.toLowerCase());
           const localPct = c.capacity_sat > 0 ? Math.round((c.local_balance_sat / c.capacity_sat) * 100) : 0;
           const peerName = resolveContactName(c.peer_pubkey, contacts);

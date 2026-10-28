@@ -162,7 +162,8 @@ describe("what must stay untouched", () => {
   });
 
   it("a NON-CAPITAL mutation sends no confirmation header", async () => {
-    await api.createContact({ pubkey: "02ab", name: "Test" });
+    // A key the API accepts (66 hex, 02/03), so the request is a real create.
+    await api.createContact({ pubkey: "02" + "ab".repeat(32), name: "Test" });
     expect(captured[0]!.method).toBe("POST");
     expect(captured[0]!.headers[CONFIRMATION_HEADER]).toBeUndefined();
   });

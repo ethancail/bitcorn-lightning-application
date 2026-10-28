@@ -8,6 +8,12 @@ import { syncLndState } from "./lightning/sync";
 import { payInvoice } from "./lightning/pay";
 import { assertActiveMember } from "./utils/membership";
 import { assertRateLimit } from "./utils/rate-limit";
+import {
+  CONTACT_PUBKEY_REFUSAL,
+  findContactByPubkey,
+  normalizeContactPubkey,
+  type ContactRow,
+} from "./utils/contact-pubkey";
 import { insertOutboundPayment } from "./lightning/persist-payments";
 import { decodePaymentRequest } from "ln-service";
 import { getChannels, getPeers, getNodeInfo } from "./api/read";
@@ -3724,6 +3730,30 @@ async function dispatchRequest(
     };
   }
 
+  // Helper: the contact a PATCH/DELETE URL addresses. The row whose stored
+  // pubkey EQUALS the decoded parameter comes first — UNIQUE(pubkey) is
+  // binary, so at most one can — because the Contacts page sends each row's
+  // stored value, and an edit on a case twin's row must land on that twin.
+  // Only if none equals it: the case-insensitive tie-break winner, the row
+  // classification uses. The parameter is compared, never validated, so a
+  // legacy malformed row stays editable and deletable (spec 2026-10-28-
+  // billing-pubkey-case §2.2 C3/C4, O-1 as refined, O-4(b)).
+  function contactForParam(pubkey: string): ContactRow | undefined {
+    const exact = db.prepare("SELECT * FROM contacts WHERE pubkey = ?").get(pubkey) as ContactRow | undefined;
+    return exact ?? findContactByPubkey(pubkey);
+  }
+
+  // Helper: the decoded :pubkey of a PATCH/DELETE URL, or null when it does
+  // not URL-decode. A null is answered like no match (404) — it has no value
+  // to compare — and is not format validation.
+  function contactParam(url: string): string | null {
+    try {
+      return decodeURIComponent(url.slice("/api/contacts/".length));
+    } catch {
+      return null;
+    }
+  }
+
   // GET /api/contacts
   if (req.method === "GET" && req.url === "/api/contacts") {
     try {
@@ -3759,10 +3789,12 @@ async function dispatchRequest(
         ...livePeerPubkeys,
       ]);
 
+      // Lowercased on both sides: a contact entered in uppercase is the same
+      // peer as LND's lowercase key, and must not get an `auto` twin.
       const existing = new Set(
         (
           db.prepare("SELECT pubkey FROM contacts").all() as Array<{ pubkey: string }>
-        ).map((r) => r.pubkey)
+        ).map((r) => r.pubkey.toLowerCase())
       );
 
       let added = 0;
@@ -3773,7 +3805,7 @@ async function dispatchRequest(
       const now = Date.now();
 
       for (const peer_pubkey of allPubkeys) {
-        if (existing.has(peer_pubkey)) {
+        if (existing.has(peer_pubkey.toLowerCase())) {
           skipped++;
           continue;
         }
@@ -3799,7 +3831,7 @@ async function dispatchRequest(
 
         db.prepare(
           "INSERT INTO contacts (pubkey, name, notes, tags, source, created_at, updated_at) VALUES (?, ?, NULL, NULL, 'auto', ?, ?)"
-        ).run(peer_pubkey, result.alias, now, now);
+        ).run(peer_pubkey.toLowerCase(), result.alias, now, now);
         added++;
       }
 
@@ -3832,13 +3864,30 @@ async function dispatchRequest(
           return;
         }
 
+        // Stored lowercase, so it matches LND's spelling of the key.
+        const normalized = normalizeContactPubkey(pubkey);
+        if (!normalized) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: CONTACT_PUBKEY_REFUSAL }));
+          return;
+        }
+
+        // UNIQUE(pubkey) is binary, so it would accept a case variant of a
+        // legacy row as a second contact. Refuse it here; the UNIQUE catch
+        // below stays as the backstop.
+        if (db.prepare("SELECT 1 FROM contacts WHERE lower(pubkey) = ?").get(normalized)) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Contact with this pubkey already exists" }));
+          return;
+        }
+
         const tagsStr = Array.isArray(tags) ? tags.join(",") : tags ?? null;
         const now = Date.now();
 
         try {
           db.prepare(
             "INSERT INTO contacts (pubkey, name, notes, tags, source, created_at, updated_at) VALUES (?, ?, ?, ?, 'manual', ?, ?)"
-          ).run(pubkey.trim(), name.trim(), notes ?? null, tagsStr, now, now);
+          ).run(normalized, name.trim(), notes ?? null, tagsStr, now, now);
         } catch (sqlErr: any) {
           if (sqlErr?.message?.includes("UNIQUE constraint failed")) {
             res.writeHead(409, { "Content-Type": "application/json" });
@@ -3850,7 +3899,7 @@ async function dispatchRequest(
 
         const row = db
           .prepare("SELECT * FROM contacts WHERE pubkey = ?")
-          .get(pubkey.trim()) as any;
+          .get(normalized) as any;
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, contact: contactRow(row) }));
       } catch (err: any) {
@@ -3863,7 +3912,12 @@ async function dispatchRequest(
 
   // PATCH /api/contacts/:pubkey
   if (req.method === "PATCH" && req.url?.startsWith("/api/contacts/")) {
-    const pubkey = decodeURIComponent(req.url.slice("/api/contacts/".length));
+    const pubkey = contactParam(req.url);
+    if (pubkey === null) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Contact not found" }));
+      return;
+    }
     if (!pubkey) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "pubkey is required" }));
@@ -3897,21 +3951,21 @@ async function dispatchRequest(
           return;
         }
 
-        sets.push("updated_at = ?");
-        params.push(Date.now());
-        params.push(pubkey);
-
-        const result = db
-          .prepare(`UPDATE contacts SET ${sets.join(", ")} WHERE pubkey = ?`)
-          .run(...params);
-
-        if (result.changes === 0) {
+        const target = contactForParam(pubkey);
+        if (!target) {
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Contact not found" }));
           return;
         }
 
-        const row = db.prepare("SELECT * FROM contacts WHERE pubkey = ?").get(pubkey) as any;
+        sets.push("updated_at = ?");
+        params.push(Date.now());
+        params.push(target.id);
+
+        // One row, by id: a case twin is never touched.
+        db.prepare(`UPDATE contacts SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+
+        const row = db.prepare("SELECT * FROM contacts WHERE id = ?").get(target.id) as any;
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, contact: contactRow(row) }));
       } catch (err: any) {
@@ -3924,14 +3978,23 @@ async function dispatchRequest(
 
   // DELETE /api/contacts/:pubkey
   if (req.method === "DELETE" && req.url?.startsWith("/api/contacts/")) {
-    const pubkey = decodeURIComponent(req.url.slice("/api/contacts/".length));
+    const pubkey = contactParam(req.url);
+    if (pubkey === null) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Contact not found" }));
+      return;
+    }
     if (!pubkey) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "pubkey is required" }));
       return;
     }
     try {
-      const result = db.prepare("DELETE FROM contacts WHERE pubkey = ?").run(pubkey);
+      // One row, by id: a case twin is never touched.
+      const target = contactForParam(pubkey);
+      const result = target
+        ? db.prepare("DELETE FROM contacts WHERE id = ?").run(target.id)
+        : { changes: 0 };
       if (result.changes === 0) {
         res.writeHead(404, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Contact not found" }));

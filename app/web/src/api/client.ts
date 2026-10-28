@@ -205,13 +205,16 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+  // `pubkey` is the row's STORED value, unchanged — the API acts on the row
+  // that equals it before any case-insensitive match. Encoded, so a legacy
+  // value holding a URL-meaningful character ('#', '%', '?') arrives as stored.
   updateContact: (pubkey: string, body: { name?: string; notes?: string; tags?: string[] }) =>
-    apiFetch<{ ok: boolean; contact: Contact }>(`/api/contacts/${pubkey}`, {
+    apiFetch<{ ok: boolean; contact: Contact }>(`/api/contacts/${encodeURIComponent(pubkey)}`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
   deleteContact: (pubkey: string) =>
-    apiFetch<{ ok: boolean }>(`/api/contacts/${pubkey}`, { method: "DELETE" }),
+    apiFetch<{ ok: boolean }>(`/api/contacts/${encodeURIComponent(pubkey)}`, { method: "DELETE" }),
   // added = rows inserted (real aliases only); skipped = already in contacts.
   // The other three count peers deliberately NOT added.
   syncPeers: () =>
@@ -1264,11 +1267,44 @@ export type SwapDetailResponse = {
   events: SwapEvent[];
 };
 
+/**
+ * The contact for a peer pubkey, matched case-insensitively: LND reports keys
+ * lowercase, contacts may be stored in any case. Among case twins, the same
+ * row the API classifies by — `manual` first, then the lowest id
+ * (app/api/src/utils/contact-pubkey.ts, findContactByPubkey) — whatever order
+ * GET /api/contacts listed them in.
+ */
+export function findContact(pubkey: string, contacts: Contact[]): Contact | undefined {
+  if (!pubkey) return undefined;
+  const key = pubkey.toLowerCase();
+  const rank = (c: Contact) => (c.source === "manual" ? 0 : 1);
+  let best: Contact | undefined;
+  for (const c of contacts) {
+    if (!c.pubkey || c.pubkey.toLowerCase() !== key) continue;
+    if (!best || rank(c) < rank(best) || (rank(c) === rank(best) && c.id < best.id)) best = c;
+  }
+  return best;
+}
+
 /** Resolve a pubkey to a contact name, or fall back to truncated pubkey. */
 export function resolveContactName(pubkey: string, contacts: Contact[]): string {
   if (!pubkey) return "—";
-  const contact = contacts.find((c) => c.pubkey === pubkey);
+  const contact = findContact(pubkey, contacts);
   return contact ? contact.name : truncPubkey(pubkey);
+}
+
+export const CONTACT_PUBKEY_REFUSAL =
+  "Node ID must be 66 hexadecimal characters (0-9, a-f), starting with 02 or 03.";
+
+/**
+ * A Node ID typed or prefilled into the add form, as the API will store it —
+ * trimmed and lowercased — or null when the API would refuse it: not 66 hex
+ * characters starting 02 or 03. The API's own rule (normalizeContactPubkey),
+ * checked here so the reason shows without a round trip.
+ */
+export function normalizeContactPubkey(input: string): string | null {
+  const pubkey = input.trim().toLowerCase();
+  return /^0[23][0-9a-f]{64}$/.test(pubkey) ? pubkey : null;
 }
 
 
