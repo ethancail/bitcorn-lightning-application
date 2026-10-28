@@ -379,7 +379,8 @@ describe("what must stay untouched", () => {
   });
 
   it("a non-capital MUTATION needs no confirmation", async () => {
-    const r = await call("POST", "/api/contacts", { pubkey: "02ab", name: "x" });
+    // A valid key, so the POST reaches the handler rather than its 400 refusal.
+    const r = await call("POST", "/api/contacts", { pubkey: "02" + "ab".repeat(32), name: "x" });
     expect(isConfirmError(r)).toBe(false);
   });
 

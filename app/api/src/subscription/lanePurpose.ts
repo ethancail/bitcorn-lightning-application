@@ -15,7 +15,7 @@
 // intentional, because backend changes that touch payment paths must
 // not depend on a frontend bundle.
 
-import { db } from "../db";
+import { findContactByPubkey } from "../utils/contact-pubkey";
 
 /** The four lane-purpose values used across the codebase. */
 export type LanePurpose =
@@ -35,12 +35,13 @@ const EXTERNAL_PUBKEYS = new Set<string>([
  * Classifies a peer pubkey by lane purpose. Reads `contacts.tags`
  * directly from SQLite; no external dependency. Returns the same
  * vocabulary the rebalancing model uses.
+ *
+ * Case-insensitive: a contact stored in any case classifies, and among
+ * case twins the tie-break winner's tags decide (findContactByPubkey).
  */
 export function classifyLanePurpose(pubkey: string): LanePurpose {
-  if (EXTERNAL_PUBKEYS.has(pubkey)) return "external_peer";
-  const row = db
-    .prepare("SELECT tags FROM contacts WHERE pubkey = ?")
-    .get(pubkey) as { tags: string | null } | undefined;
+  if (EXTERNAL_PUBKEYS.has(pubkey.toLowerCase())) return "external_peer";
+  const row = findContactByPubkey(pubkey);
   if (!row) return "unclassified";
   const tags = (row.tags ?? "")
     .split(",")

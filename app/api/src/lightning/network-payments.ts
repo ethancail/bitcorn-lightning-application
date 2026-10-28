@@ -9,10 +9,11 @@ import { payInvoice } from "./pay";
 import { insertOutboundPayment } from "./persist-payments";
 import { assertRateLimit } from "../utils/rate-limit";
 import { ENV } from "../config/env";
+import { findContactByPubkey } from "../utils/contact-pubkey";
 
-/** Resolve a pubkey to a contact name for error messages. */
+/** Resolve a pubkey to a contact name for error messages — the same row lane classification uses. */
 function resolveContact(pubkey: string): string {
-  const row = db.prepare("SELECT name FROM contacts WHERE pubkey = ?").get(pubkey) as { name: string } | undefined;
+  const row = findContactByPubkey(pubkey);
   return row?.name ?? `${pubkey.slice(0, 12)}…`;
 }
 
