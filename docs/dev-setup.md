@@ -32,9 +32,11 @@ Launch Polar and click **Create a Lightning Network**. Configure as follows:
 Submit. You'll land on the network view with three LND nodes (`alice`, `bob`, `carol`) wired up to one Bitcoin Core node, all in `Stopped` state.
 
 **Rename the nodes** to match your role naming. Click each LND node, then click the pencil icon next to its name in the right-hand panel:
-- `alice` → `treasury`
-- `bob` → `farmer`
-- `carol` → `merchant`
+- `alice` → `Treasury`
+- `bob` → `Farmer1`
+- `carol` → `Merchant1`
+
+These are the names the dev machine's `bitcorn-dev` network uses, and the rest of this doc assumes them — Polar names each node's data directory and container after it.
 
 (The "farmer" vs "merchant" distinction here is for your benefit when configuring channels — at the app config level, both are just "member" instances. The distinction in the running app comes from per-channel settings users configure in the UI.)
 
@@ -42,13 +44,13 @@ Submit. You'll land on the network view with three LND nodes (`alice`, `bob`, `c
 
 **Fund each LND wallet.** Click each LND node → Actions tab → Deposit. Deposit `100000000` sats (1 BTC) per node.
 
-**Open channels** matching your prod topology. Drag from one node onto another in the diagram and a channel-creation dialog appears. Set capacity to `1000000` sats per channel. Recommended topology (hub-and-spoke):
-- treasury ↔ farmer
-- treasury ↔ merchant
+**Open channels** matching your prod topology. Drag from one node onto another in the diagram and a channel-creation dialog appears. Set capacity to `10000000` sats per channel. Recommended topology (hub-and-spoke):
+- Treasury ↔ Farmer1
+- Treasury ↔ Merchant1
 
 After opening channels, click the Bitcoin Core node → Actions tab → **Mine 6 Blocks** to confirm the channel openings.
 
-**Capture the treasury pubkey.** Click the `treasury` LND node → Connect tab → copy the **Pubkey** field. Save this — you'll set it as `TREASURY_PUBKEY` in every .env file in Step 3.
+**Capture the treasury pubkey.** Click the `Treasury` LND node → Connect tab → copy the **Pubkey** field. Save this — you'll set it as `TREASURY_PUBKEY` in every .env file in Step 3.
 
 ## Step 2: Required code changes
 
@@ -85,7 +87,7 @@ Create three `.env.dev.*` files at the repo root. Replace `<treasury-pubkey>` wi
 `.env.dev.treasury`:
 ```bash
 LND_GRPC_HOST=127.0.0.1:10005
-LND_DIR=/home/user/.polar/networks/1/volumes/lnd/treasury
+LND_DIR=/home/user/.polar/networks/1/volumes/lnd/Treasury
 BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
 PORT=3101
@@ -96,7 +98,7 @@ SECRETS_DIR=/home/user/.bitcorn-dev/treasury/secrets
 `.env.dev.member-a`:
 ```bash
 LND_GRPC_HOST=127.0.0.1:10004
-LND_DIR=/home/user/.polar/networks/1/volumes/lnd/farmer
+LND_DIR=/home/user/.polar/networks/1/volumes/lnd/Farmer1
 BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
 PORT=3102
@@ -107,7 +109,7 @@ SECRETS_DIR=/home/user/.bitcorn-dev/member-a/secrets
 `.env.dev.member-b`:
 ```bash
 LND_GRPC_HOST=127.0.0.1:10006
-LND_DIR=/home/user/.polar/networks/1/volumes/lnd/merchant
+LND_DIR=/home/user/.polar/networks/1/volumes/lnd/Merchant1
 BITCOIN_NETWORK=regtest
 TREASURY_PUBKEY=<treasury-pubkey>
 PORT=3103
@@ -121,7 +123,7 @@ A few notes:
 
 The Polar gRPC ports are assigned per node by Polar — don't assume `10001`–`10003`. On the dev machine's `bitcorn-dev` network (id 1) the host gRPC ports are Farmer1 `10004`, Treasury `10005`, Merchant1 `10006` (External-Peer-1 `10007`), which is what the examples above use. Confirm in each node's Connect tab, or in the `ports:` mappings (`<host port>:10009`) of `~/.polar/networks/<id>/docker-compose.yml`.
 
-The exact `LND_DIR` paths depend on your Polar install. Verify with `ls ~/.polar/networks/<id>/volumes/lnd/` after Polar has started the network — directories will be named after the LND nodes (treasury, farmer, merchant after renaming).
+The exact `LND_DIR` paths depend on your Polar install. Verify with `ls ~/.polar/networks/<id>/volumes/lnd/` after Polar has started the network — directories will be named after the LND nodes (`Treasury`, `Farmer1`, `Merchant1` after renaming; the names are case-sensitive).
 
 `DB_DIR` is the per-instance SQLite directory. Production on Umbrel uses `/data/db` (provided by a volume mount); locally you need a writable path. Use a per-role subdirectory so the three instances don't collide on shared state — the example above uses `~/.bitcorn-dev/<role>/db`. The directory is auto-created on startup (mode 0o700), so you don't need to `mkdir` it yourself.
 
@@ -198,9 +200,9 @@ To stop everything: `Ctrl+C` in the terminal running `dev:all`.
 **Polar regtest recovery — symptom → action.**
 Container names embed the Polar network id: `polar-n<id>-<Node>`, so `polar-n1-*` is network 1 (`ls ~/.polar/networks/`). The commands below use network 1 and the compose hostnames `Treasury`, `Farmer1`, `Merchant1`, `External-Peer-1`, `backend1` — substitute yours. Each symptom is something you observe directly; match on it, not on a similar-looking error.
 - *All LND containers crash-loop (`Restarting (1)`) and log `lookup polar-n1-backend1 … server misbehaving`* → bitcoind is down. `docker start polar-n1-backend1`. Details in the next entry.
-- *LNDs are up, `lncli getinfo` shows `synced_to_chain: false`, and the log shows `best_block_time` days old* → the tip is stale. Mine one block to an unspendable output: `docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest generatetodescriptor 1 "raw(6a)"`. All LNDs flip to synced within seconds.
+- *LNDs are up, `lncli getinfo` shows `synced_to_chain: false` even though `block_height` matches bitcoind, and the log shows `Syncing to block chain … best_block_time=<days ago> is_synced=false`* → the tip is stale. `synced_to_chain` isn't only about height: LND also requires the tip's wall-clock timestamp to be recent (roughly 2 hours), and regtest only mines when you tell it to, so an idle network goes stale with every node on the same block. Until it syncs, LND doesn't start its peer server, so every node shows 0 peers and every channel inactive; once the tip is over a day old, bitcoind's `getblockchaininfo` also reports `initialblockdownload: true`. In the app, the `lnd_node_info.synced_to_chain` column shows the same flag, the API logs `membership_status: unsynced` for the local node, and code that gates on sync status (e.g. the autobuy scheduler, the rate-limited payment endpoint) treats the node as not ready. Mine one block to an unspendable output: `docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest generatetodescriptor 1 "raw(6a)"` — `-u bitcoin` because cookie auth only works as that user, and `raw(6a)` is a bare OP_RETURN, so no wallet is needed and nothing spendable is created. All LNDs flip to synced within seconds. Repeat once per dev session if Polar's been idle.
 - *`-8: Block height out of range` after an unclean host stop* → bitcoind lost a block the LND wallet had already saved. Mine (same command, more blocks) until bitcoind's height is past the wallet's. Precedent: 2026-10-09.
-- *After **any** Docker daemon restart* → expect Treasury to be missing peers, and check every time. Container IPs change on restart and LND redials the IPs it cached, so the spokes reconnect on their own only sometimes (on 2026-10-28 it happened once; after the next daemon restart two peers needed a manual reconnect). Check with `docker exec -u lnd polar-n1-Treasury lncli --network regtest listpeers` (expect Farmer1, Merchant1 and External-Peer-1). For each missing peer, take its pubkey from `docker exec -u lnd polar-n1-<Node> lncli --network regtest getinfo` (`identity_pubkey`), then `docker exec -u lnd polar-n1-Treasury lncli --network regtest connect <pubkey>@<Node>:9735` — the hostname resolves to the container's current IP.
+- *After **any** Docker daemon restart* → expect Treasury to be missing peers, and check every time. Container IPs change on restart and LND redials the IPs it cached, so the spokes reconnect on their own only sometimes (on 2026-10-28 it happened once; after the next daemon restart two peers needed a manual reconnect). The redials show in the log as `connection refused`, `EOF`, or `chacha20poly1305: message authentication failed` — the last means the old IP now belongs to a different node. Check with `docker exec -u lnd polar-n1-Treasury lncli --network regtest listpeers` (expect Farmer1 and Merchant1, plus External-Peer-1 if you've added the Loop layer). For each missing peer, take its pubkey from `docker exec -u lnd polar-n1-<Node> lncli --network regtest getinfo` (`identity_pubkey`), then `docker exec -u lnd polar-n1-Treasury lncli --network regtest connect <pubkey>@<Node>:9735` — the hostname resolves to the container's current IP.
 - *Checking any of the above in logs* → always `docker logs --tail N <container>`. A full read (no `--tail`, or `--since`) can stop silently at a corrupt json-file log entry; on the dev machine it stops at 2026-09-29, so a grep over it misses everything since and looks like "nothing logged".
 
 **Polar bitcoind container exited; LND containers in restart loop.**
@@ -209,25 +211,7 @@ Container names embed the Polar network id: `polar-n<id>-<Node>`, so `polar-n1-*
 *Workaround:* `docker start polar-n1-backend1`. The LND containers recover on their next restart attempt (about once a minute) once bitcoind's DNS resolves. If they then sit at `synced_to_chain: false`, the tip is stale — mine one block (see above). Confirm with `docker ps --format "{{.Names}} {{.Status}}" | grep polar`. Polar Desktop may briefly show the network as "stopped" in its UI until you click into it; the containers are running regardless.
 *Restart policy:* as of 2026-10-28, `backend1` has `restart: unless-stopped` on the dev machine — in `~/.polar/networks/1/docker-compose.yml` and on the live container (`docker update --restart unless-stopped polar-n1-backend1`) — and came back by itself through a daemon restart the same day. **Unverified:** starting the network from the Polar UI may regenerate the compose file and drop that line. After a Polar-UI start, check `docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' polar-n1-backend1`.
 
-**Regtest LND reports `synced_to_chain=false` even though `block_height` matches bitcoind exactly.**
-*Symptom:* `lncli getinfo` (or the application's `lnd_node_info.synced_to_chain` column) shows `synced_to_chain: false` with `block_height` matching bitcoind's tip. The API logs `membership_status: unsynced` for the local node, and downstream code that gates on sync status (e.g. the autobuy scheduler, the rate-limited payment endpoint) treats the node as not ready.
-*Diagnosis:* LND's `synced_to_chain` flag isn't only about block height — it also requires the chain tip's *wall-clock timestamp* to be within a recent window (roughly 2 hours). On regtest, blocks only mine when you manually trigger them, so an idle regtest network has a stale tip even when every node has the same blocks. The flag won't flip until a fresh block extends the tip with a current timestamp.
-*Workaround:* Mine a single block to refresh the tip:
-```bash
-docker exec polar-n1-backend1 bitcoin-cli -regtest \
-  -rpcuser=polaruser -rpcpassword=polarpass -generate 1
-```
-`synced_to_chain` flips to `true` across all LND containers within a few seconds. Repeat once per dev session if Polar's been idle. Worth aliasing if you do this often.
-
-**After weeks idle: every channel inactive, LNDs have 0 peers.**
-*Diagnosis:* two stacked causes. (1) The bitcoind tip is months old (`initialblockdownload: true`), so LND loops on `Waiting for chain backend to finish sync` and never starts its peer server. (2) Containers got new IPs on restart, so LND redials stale addresses (`connection refused`, `EOF`, `chacha20poly1305: message authentication failed` = wrong node).
-*Workaround:* mine without a wallet — cookie auth only works as `-u bitcoin` with this datadir; `raw(6a)` is an unspendable OP_RETURN:
-```bash
-docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest -datadir=/home/bitcoin/.bitcoin generatetodescriptor 6 "raw(6a)#4mhr9ur5"
-```
-Then reconnect from Treasury by hostname (hostnames are stable): `lncli --lnddir=/home/lnd/.lnd --network regtest connect <pubkey>@polar-n1-<Name>:9735`.
-
-**`lncli` inside a Polar LND container fails to find its files.** Pass `--lnddir=/home/lnd/.lnd`; the default `/root/.lnd` doesn't exist there.
+**`lncli` inside a Polar LND container fails to find its files.** Run it as the `lnd` user: with `docker exec -u lnd polar-n1-<Node> lncli --network regtest …`, `--lnddir` isn't needed (observed 2026-10-28). Whether running as root needs `--lnddir=/home/lnd/.lnd` — the earlier advice, on the grounds that root's default `/root/.lnd` doesn't exist in the container — is unverified.
 
 **`npm run dev:loopserver` crash-loops.** If another project's Postgres holds port 5432, loopserver's `--network host` embedded Postgres can't bind it. Stop that container, or run the same image on Polar's bridge network (`polar-network-1_default`) with `-p 11009:11009`, `--lnd.host=polar-n1-External-Peer-1:10009` and `--bitcoin.host=polar-n1-backend1:18443`.
 
