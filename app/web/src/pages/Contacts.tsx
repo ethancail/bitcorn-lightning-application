@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, type Contact, truncPubkey, fmtSats } from "../api/client";
+import { api, type Contact, truncPubkey, fmtSats, normalizeContactPubkey, CONTACT_PUBKEY_REFUSAL } from "../api/client";
 
 // ⚠ PROPOSED COPY — spec 2026-09-24-public-alias-refresh §10, awaiting Ethan.
 // NOT accepted. sync-peers no longer adds a contact for a peer with no real
@@ -164,8 +164,11 @@ export default function Contacts() {
   // ⚠ Pubkey ONLY. Prefilling Name or Notes is out of scope, and prefilling a
   // GUESS at a name would invert the point of the nudge — the operator is
   // being asked to go and find out, not to confirm something already assumed.
+  //
+  // Lowercased, as the API stores it. Nothing else is rewritten: an invalid
+  // prefill is shown as it came, with the reason, and cannot be submitted.
   const [searchParams] = useSearchParams();
-  const prefillPubkey = searchParams.get("pubkey")?.trim() ?? "";
+  const prefillPubkey = searchParams.get("pubkey")?.trim().toLowerCase() ?? "";
 
   // Opened automatically when a pubkey arrives — otherwise the operator lands
   // on a collapsed form and the prefill is invisible.
@@ -181,7 +184,9 @@ export default function Contacts() {
   const [addName, setAddName] = useState("");
   const [addNotes, setAddNotes] = useState("");
   const [addTags, setAddTags] = useState<string[]>([]);
-  const [addError, setAddError] = useState("");
+  const [addError, setAddError] = useState(
+    prefillPubkey && !normalizeContactPubkey(prefillPubkey) ? CONTACT_PUBKEY_REFUSAL : "",
+  );
   const [addSaving, setAddSaving] = useState(false);
 
   // Edit form state
@@ -225,12 +230,19 @@ export default function Contacts() {
   };
 
   const handleAdd = () => {
-    if (!addPubkey.trim() || !addName.trim()) return;
+    if (!addName.trim()) return;
+    // The API's rule, checked first: a refused key shows its reason and makes
+    // no request. An empty Node ID is refused the same way.
+    const pubkey = normalizeContactPubkey(addPubkey);
+    if (!pubkey) {
+      setAddError(CONTACT_PUBKEY_REFUSAL);
+      return;
+    }
     setAddSaving(true);
     setAddError("");
     api
       .createContact({
-        pubkey: addPubkey.trim(),
+        pubkey,
         name: addName.trim(),
         notes: addNotes.trim() || undefined,
         tags: addTags.length > 0 ? addTags : undefined,
@@ -243,9 +255,12 @@ export default function Contacts() {
         setAddTags([]);
         loadContacts();
       })
-      .catch((err: { status?: number }) => {
+      .catch((err: { status?: number; message?: string }) => {
         if (err.status === 409) {
           setAddError("A contact with this pubkey already exists.");
+        } else if (err.status === 400 && err.message) {
+          // The API's own reason, for a refusal this form did not foresee.
+          setAddError(err.message);
         } else {
           setAddError("Failed to create contact.");
         }
@@ -377,7 +392,7 @@ export default function Contacts() {
               </div>
             )}
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="btn btn-primary" onClick={handleAdd} disabled={addSaving || !addPubkey.trim() || !addName.trim()}>
+              <button className="btn btn-primary" onClick={handleAdd} disabled={addSaving || !addName.trim()}>
                 {addSaving ? "Saving…" : "Save"}
               </button>
               <button className="btn btn-outline" onClick={() => setShowAddForm(false)}>

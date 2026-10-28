@@ -252,3 +252,28 @@ describe("POST /api/contacts/sync-peers — no pubkey-derived names (spec §9, �
     expect(n, "sync-peers runs on member nodes too; the store is the treasury refresh's alone").toBe(0);
   });
 });
+
+// billing-pubkey-case arc, DW-6 (bitcorn-research
+// specs/2026-10-28-billing-pubkey-case-normalization-spec.md): the duplicate
+// check compares case-insensitively, so an uppercase manual contact no longer
+// gets a lowercase `auto` twin with NULL tags.
+describe("POST /api/contacts/sync-peers — case-insensitive duplicate check (DW-6)", () => {
+  it("an UPPERCASE manual contact is skipped when LND reports its key lowercase; a peer with no contact still gets a row", async () => {
+    const TWIN = pk("b1"); // LND's spelling
+    seedContact(TWIN.toUpperCase(), "Uppercase Manual");
+    ln.livePeers = [TWIN, REAL];
+    // Scripted with a real alias, so a check that misses the uppercase row
+    // WOULD insert the twin — the absence below is not a failed lookup.
+    ln.scripts.set(TWIN, resolves("Twin Alias"));
+    ln.scripts.set(REAL, resolves("Lazy H Farms"));
+
+    const { status, body } = await syncPeers();
+    expect(status).toBe(200);
+
+    expect(body, "the uppercase contact counts as already present").toMatchObject({ added: 1, skipped: 1 });
+    expect(ln.calls, "an existing contact is skipped before any lookup").not.toContain(TWIN);
+    // Anti-vacuity: the peer with no contact IS inserted, so a sync that
+    // inserts nothing cannot pass.
+    expect(contactRows().map((r) => r.pubkey)).toEqual([TWIN.toUpperCase(), REAL].sort());
+  });
+});
