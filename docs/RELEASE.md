@@ -828,6 +828,10 @@ runs on pull requests. The narrower claim above still holds, and it is the one t
 matters here: **a PR gate is not a release gate.** Nothing re-checks anything
 between the merge and the image publish.
 
+**Money, subscription, rail and tier changes need the Polar regtest gate before
+merge.** No CI job runs it. The procedure is in
+[`docs/dev-setup.md`](dev-setup.md#polar-regtest-gate).
+
 Do not read the job list off this page — it has been rewritten twice already. Ask
 the file:
 

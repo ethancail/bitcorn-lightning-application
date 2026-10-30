@@ -120,3 +120,30 @@ node scripts/test-hooks.mjs --gate-src <path>  # alternate gate script (break-de
 
 Read-only toward real state: fixtures live under the OS temp dir and are removed
 on exit; the real repo, settings, and git state are never touched.
+
+## polar-preflight.mjs — Polar regtest gate pre-flight
+
+Checks the local Polar harness immediately before and after a gate run. The
+procedure, including what each check means, is `docs/dev-setup.md` § Polar regtest
+gate.
+
+```bash
+node scripts/polar-preflight.mjs            # report only, writes nothing
+node scripts/polar-preflight.mjs --repair   # opt-in: mine one block and/or
+                                            # reconnect missing expected peers
+```
+
+Exit codes are three-valued, as in `loopd-guard-exec.sh`: **0** every check passed,
+**1** at least one failed, **2** it could not look. 2 wins over 1, and a check that
+could not run never prints PASS.
+
+**polar-preflight.test.mjs** runs every probe through a fake, so it needs no
+harness. Run the Node 20 binary by its path; `npx` and `npm` re-resolve `node` from
+`PATH`:
+
+```bash
+~/.nvm/versions/node/v20.20.2/bin/node --test scripts/polar-preflight.test.mjs
+```
+
+No CI job runs it and the Stop hook does not watch `scripts/`, so run it by hand
+after changing the script.
