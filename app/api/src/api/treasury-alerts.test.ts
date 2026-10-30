@@ -63,6 +63,8 @@ const s = vi.hoisted(() => ({
   },
   /** Makes runTimeoutBoundLndProbe itself throw (the probe_failed site). */
   probeThrows: false,
+  /** lnd_channels' distinct peers. Empty, so a quiet treasury stays quiet. */
+  channelPeers: [] as string[],
 }));
 
 // ⚠ THE CHANNEL-DATA READS ARE ANSWERED SPECIFICALLY, NOT BY THE `{ v: 0 }`
@@ -92,9 +94,16 @@ vi.mock("../db", () => ({
         if (sql.includes("treasury_expansion_executions") && sql.includes("SUM(requested_capacity_sats)")) {
           return { v: s.dailyDeploySats };
         }
+        // A peer no name store knows. CHANNEL_PEERS_UNCLASSIFIED's behaviour is
+        // proven on a real DB in treasury-alerts.classification.test.ts; this
+        // only lets the heading cases below reach it.
+        if (/FROM (contacts|member_private_name|peer_public_alias)\b/.test(sql)) return undefined;
         return { v: 0 };
       },
-      all: () => [],
+      all: () =>
+        sql.includes("DISTINCT peer_pubkey")
+          ? s.channelPeers.map((peer_pubkey) => ({ peer_pubkey }))
+          : [],
       run: () => undefined,
     }),
   },
@@ -219,6 +228,7 @@ beforeEach(() => {
   s.env.rebalanceSchedulerEnabled = false;
   s.env.rebalanceSchedulerDryRun = false;
   s.probeThrows = false;
+  s.channelPeers = [];
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -636,6 +646,7 @@ describe("channel data staleness reaches the alerts surface", () => {
 const RULED_HEADINGS: Record<string, string> = {
   CHANNEL_DATA_STALE: "Channel data may be out of date",
   ROTATION_CANDIDATES_PRESENT: "Channels suggested for rotation",
+  CHANNEL_PEERS_UNCLASSIFIED: "Channel peers not tagged",
   DAILY_LOSS_CAP_EXCEEDED: "Daily loss limit reached",
   DAILY_LOSS_CAP_NEAR: "Daily loss close to its limit",
   DAILY_EXPANSION_LIMIT_REACHED: "Daily expansion limit reached",
@@ -667,6 +678,7 @@ const SCENARIOS: Record<string, () => void> = {
   "channel data never synced": () => { s.channelRowCount = 0; s.nodeInfoAgeMs = null; },
   "channel rows very stale": () => { s.channelAgeMs = 2 * 60 * 60 * 1000; },
   "rotation candidates": () => { s.rotationCandidates = [{ rotation_score: 200, channel_id: "1x1x1", reason: "idle" }]; },
+  "untagged channel peer": () => { s.channelPeers = ["02" + "c7".repeat(32)]; },
   "loss cap exceeded": () => { s.dailyLossSats = 2_000_000; },
   "loss cap near": () => { s.dailyLossSats = 900_000; },
   "expansion limit reached": () => { s.expansionsToday = 10; },
@@ -697,11 +709,12 @@ function resetState() {
   s.env.rebalanceSchedulerEnabled = false; s.env.rebalanceSchedulerDryRun = false;
   s.liquidityHealth = []; s.loopAvailable = { available: true, version: "v0.9" };
   s.metricKeys.length = 0;
+  s.channelPeers = [];
 }
 
 describe("SH1/SH2: every alert carries its ruled heading", () => {
   it("the ruled table covers exactly the types the API can emit", () => {
-    expect(emittableTypes().length).toBe(14);
+    expect(emittableTypes().length).toBe(15);
     expect(Object.keys(RULED_HEADINGS).sort()).toEqual(emittableTypes());
   });
 
