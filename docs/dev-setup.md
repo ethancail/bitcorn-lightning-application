@@ -200,16 +200,16 @@ To stop everything: `Ctrl+C` in the terminal running `dev:all`.
 **Polar regtest recovery — symptom → action.**
 Container names embed the Polar network id: `polar-n<id>-<Node>`, so `polar-n1-*` is network 1 (`ls ~/.polar/networks/`). The commands below use network 1 and the compose hostnames `Treasury`, `Farmer1`, `Merchant1`, `External-Peer-1`, `backend1` — substitute yours. Each symptom is something you observe directly; match on it, not on a similar-looking error.
 - *All LND containers crash-loop (`Restarting (1)`) and log `lookup polar-n1-backend1 … server misbehaving`* → bitcoind is down. `docker start polar-n1-backend1`. Details in the next entry.
-- *LNDs are up, `lncli getinfo` shows `synced_to_chain: false` even though `block_height` matches bitcoind, and the log shows `Syncing to block chain … best_block_time=<days ago> is_synced=false`* → the tip is stale. `synced_to_chain` isn't only about height: LND also requires the tip's wall-clock timestamp to be recent (roughly 2 hours), and regtest only mines when you tell it to, so an idle network goes stale with every node on the same block. Until it syncs, LND doesn't start its peer server, so every node shows 0 peers and every channel inactive; once the tip is over a day old, bitcoind's `getblockchaininfo` also reports `initialblockdownload: true`. In the app, the `lnd_node_info.synced_to_chain` column shows the same flag, the API logs `membership_status: unsynced` for the local node, and code that gates on sync status (e.g. the autobuy scheduler, the rate-limited payment endpoint) treats the node as not ready. Mine one block to an unspendable output: `docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest generatetodescriptor 1 "raw(6a)"` — `-u bitcoin` because cookie auth only works as that user, and `raw(6a)` is a bare OP_RETURN, so no wallet is needed and nothing spendable is created. All LNDs flip to synced within seconds. Repeat once per dev session if Polar's been idle.
-- *`-8: Block height out of range` after an unclean host stop* → bitcoind lost a block the LND wallet had already saved, so the wallet is ahead of bitcoind. Mine one block at a time (same command as the stale-tip bullet above) and after each, re-check `docker logs --tail 50 polar-n1-<Node>`, until the `-8` lines stop and LND logs `Chain backend is fully synced!`. Don't use the `start_height=` value in LND's log as a target: it is bitcoind's height, not the wallet's. Extra regtest blocks are harmless. Precedent: 2026-10-09, when six blocks mined at once cleared it and the wallet rolled back the orphaned block.
-- *After **any** Docker daemon restart* → expect Treasury to be missing peers, and check every time. Container IPs change on restart and LND redials the IPs it cached, so the spokes reconnect on their own only sometimes (on 2026-10-28 it happened once; after the next daemon restart two peers needed a manual reconnect). The redials show in the log as `connection refused`, `EOF`, or `chacha20poly1305: message authentication failed` — the last means the old IP now belongs to a different node. Check with `docker exec -u lnd polar-n1-Treasury lncli --network regtest listpeers` (expect Farmer1 and Merchant1, plus External-Peer-1 if you've added the Loop layer). For each missing peer, take its pubkey from `docker exec -u lnd polar-n1-<Node> lncli --network regtest getinfo` (`identity_pubkey`), then `docker exec -u lnd polar-n1-Treasury lncli --network regtest connect <pubkey>@<Node>:9735` — the hostname resolves to the container's current IP.
+- *LNDs are up, `lncli getinfo` shows `synced_to_chain: false` even though `block_height` matches bitcoind, and the log shows `Syncing to block chain … best_block_time=<days ago> is_synced=false`* → the tip is stale. See [Polar regtest gate: stale tip](#stale-tip).
+- *`-8: Block height out of range` after an unclean host stop* → bitcoind lost a block the LND wallet had already saved, so the wallet is ahead of bitcoind. Mine one block at a time (the command is in [Polar regtest gate: stale tip](#stale-tip)) and after each, re-check `docker logs --tail 50 polar-n1-<Node>`, until the `-8` lines stop and LND logs `Chain backend is fully synced!`. Don't use the `start_height=` value in LND's log as a target: it is bitcoind's height, not the wallet's. Extra regtest blocks are harmless. Precedent: 2026-10-09, when six blocks mined at once cleared it and the wallet rolled back the orphaned block.
+- *After **any** Docker daemon restart* → Treasury can be missing peers, so check every time. See [Polar regtest gate: stale-IP peer drop](#stale-ip-peer-drop).
 - *Checking any of the above in logs* → always `docker logs --tail N <container>`. A full read (no `--tail`, or `--since`) can stop silently at a corrupt json-file log entry; on the dev machine it stops at 2026-09-29, so a grep over it misses everything since and looks like "nothing logged".
 
 **Polar bitcoind container exited; LND containers in restart loop.**
 *Symptom:* `docker ps` shows all four `polar-n1-*` LND containers in `Restarting (1) X seconds ago`. `docker ps -a` shows `polar-n1-backend1` as `Exited (0)` rather than `Up`. LND logs (`docker logs polar-n1-Treasury --tail 20`) show repeated lines like `unable to create partial chain control: lookup polar-n1-backend1 on 127.0.0.11:53: server misbehaving`.
 *Diagnosis:* A Docker daemon restart — routine `apt` upgrades of `docker-ce`/`containerd` trigger one — brings back only containers that have a restart policy; any container without one stays stopped. The LND containers have `restart: always`; bitcoind (`backend1`) had no policy, so it stayed `Exited (0)` and the LNDs crash-looped without a backend, unable to resolve it via Docker's internal DNS. On the dev machine this left bitcoind down from 2026-10-19 until 2026-10-28.
-*Workaround:* `docker start polar-n1-backend1`. The LND containers recover on their next restart attempt (about once a minute) once bitcoind's DNS resolves. If they then sit at `synced_to_chain: false`, the tip is stale — mine one block (see above). Confirm with `docker ps --format "{{.Names}} {{.Status}}" | grep polar`. Polar Desktop may briefly show the network as "stopped" in its UI until you click into it; the containers are running regardless.
-*Restart policy:* as of 2026-10-28, `backend1` has `restart: unless-stopped` on the dev machine — in `~/.polar/networks/1/docker-compose.yml` and on the live container (`docker update --restart unless-stopped polar-n1-backend1`) — and came back by itself through a daemon restart the same day. **Unverified:** starting the network from the Polar UI may regenerate the compose file and drop that line. After a Polar-UI start, check `docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' polar-n1-backend1`.
+*Workaround:* `docker start polar-n1-backend1`. The LND containers recover on their next restart attempt (about once a minute) once bitcoind's DNS resolves. If they then sit at `synced_to_chain: false`, the tip is stale — mine one block (see [Polar regtest gate: stale tip](#stale-tip)). Confirm with `docker ps --format "{{.Names}} {{.Status}}" | grep polar`. Polar Desktop may briefly show the network as "stopped" in its UI until you click into it; the containers are running regardless.
+*Restart policy:* see [Polar regtest gate: restart policy](#restart-policy).
 
 **`lncli` inside a Polar LND container fails to find its files.** Run it as the `lnd` user: with `docker exec -u lnd polar-n1-<Node> lncli --network regtest …`, `--lnddir` isn't needed (observed 2026-10-28). Whether running as root needs `--lnddir=/home/lnd/.lnd` — the earlier advice, on the grounds that root's default `/root/.lnd` doesn't exist in the container — is unverified.
 
@@ -259,6 +259,92 @@ Should print the NEW base. **Never trust the absence of an error message** — `
 **Hard reset (clean keys, fresh wallets, no channels).** Stop the network in Polar, click the network's three-dot menu and delete it, then create a new network with the same name. You'll need to re-deposit funds and reopen channels.
 
 If you want to script a reset, the network state lives at `~/.polar/networks/<id>/` — Polar reconstructs from this on next start.
+
+## Polar regtest gate
+
+This section is the single statement of the gate procedure. `docs/RELEASE.md` only points here.
+
+**When it applies.** Changes to money, subscription, rail or tier state.
+
+**What it runs against.** The PR's own head, before merge. A Claude Code session carries it out.
+
+**Where its conditions come from.** The arc's spec writes the pass and fail conditions before the run. The gate session never writes its own, and never adds, drops or softens one.
+
+**The harness it expects.** Polar network 1 with the Step 1 nodes plus `External-Peer-1` and its Treasury channel (Steps A and B of the Loop Fidelity Layer below). That is five containers (`polar-n1-backend1`, `polar-n1-Treasury`, `polar-n1-Merchant1`, `polar-n1-Farmer1`, `polar-n1-External-Peer-1`) and three active Treasury channels, one to each other node. Polar itself stays closed, because a running Polar can rewrite the compose file.
+
+**The phases, in this order.**
+
+1. Pre-flight.
+2. DB backup.
+3. The spec's checks.
+4. Teardown with a sha256 restore.
+5. Post-run harness state.
+6. Pre-flight again.
+
+### The pre-flight
+
+```bash
+node scripts/polar-preflight.mjs
+```
+
+Run it immediately before each gate, not once per session, because a stale tip can arise while the nodes are up. It takes about 30 seconds, the window for comparing restart counts. It prints one timestamped line per check, then a summary, and writes nothing.
+
+| Exit | Meaning |
+|---|---|
+| 0 | Every check passed |
+| 1 | At least one check failed |
+| 2 | It could not look: docker unreachable, a container missing, or a command errored or printed output that does not parse. Wins over 1 |
+
+It checks the five containers against the pinned set, that Polar is not running, that the compose file still gives `backend1` `restart: unless-stopped`, that restart counts hold steady across the window, that bitcoind answers with `blocks` equal to `headers`, that all four LNDs report `synced_to_chain: true`, and that Treasury's peers and active channels are exactly the three other nodes. Those last two compare sets as well as counts, so a right count made of the wrong members fails. It uses the active docker context or `DOCKER_HOST`.
+
+`--repair` is opt-in and makes exactly two writes, re-checking after each. It mines one block, only when every LND was read and every unsynced LND matches bitcoind's best height and hash; one mismatch and it mines nothing. It runs `lncli connect` by hostname, only for an expected peer missing from Treasury. An unexpected peer stays a FAIL. It never restarts or stops a container or the daemon, never edits the compose file, and never opens or closes a channel. A mined block advances the regtest chain, and the teardown does not undo it.
+
+### Stale tip
+
+*Symptom:* LNDs are up, `lncli getinfo` shows `synced_to_chain: false` even though `block_height` matches bitcoind, and the log shows `Syncing to block chain … best_block_time=<days ago> is_synced=false`.
+
+`synced_to_chain` isn't only about height: LND also requires the tip's wall-clock timestamp to be recent (roughly 2 hours), and regtest only mines when you tell it to, so an idle network goes stale with every node on the same block. In the app, the `lnd_node_info.synced_to_chain` column shows the same flag, the API logs `membership_status: unsynced` for the local node, and code that gates on sync status (e.g. the autobuy scheduler, the rate-limited payment endpoint) treats the node as not ready.
+
+Mine one block to an unspendable output, with `--repair` or by hand: `docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest generatetodescriptor 1 "raw(6a)"`. `-u bitcoin` because cookie auth only works as that user, and `raw(6a)` is a bare OP_RETURN, so no wallet is needed and nothing spendable is created. All LNDs flip to synced within seconds.
+
+### Stale-IP peer drop
+
+After any Docker daemon restart, Treasury can be missing peers. Container IPs change on restart and LND redials the IPs it cached, so the spokes reconnect on their own only sometimes (on 2026-10-28 it happened once; after the next daemon restart two peers needed a manual reconnect). The redials show in the log as `connection refused`, `EOF`, or `chacha20poly1305: message authentication failed` — the last means the old IP now belongs to a different node.
+
+Reconnect with `--repair` or by hand. Check with `docker exec -u lnd polar-n1-Treasury lncli --network regtest listpeers` (Farmer1, Merchant1 and External-Peer-1 on the gate's harness; a network without the Loop layer has only the first two). For each missing peer, take its pubkey from `docker exec -u lnd polar-n1-<Node> lncli --network regtest getinfo` (`identity_pubkey`), then `docker exec -u lnd polar-n1-Treasury lncli --network regtest connect <pubkey>@<Node>:9735` — the hostname resolves to the container's current IP. This treats the symptom on each run; it does not prevent it.
+
+### Restart policy
+
+As of 2026-10-28, `backend1` has `restart: unless-stopped` on the dev machine — in `~/.polar/networks/1/docker-compose.yml` and on the live container (`docker update --restart unless-stopped polar-n1-backend1`) — and came back by itself through a daemon restart the same day. A Polar rewrite of the compose file drops that line, so the pre-flight checks the file. To check the live container, `docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' polar-n1-backend1`.
+
+### Evidence
+
+The gate session saves the pre-flight's full output to a dated file outside the repo. The gate record is a vault `investigations/` record. It holds that output verbatim, the DB backup path, its sha256 values and the session transcript id. If a run allocated (gate 1 advanced Treasury's regtest wallet address index by one) or mined a block under `--repair`, its record says the run is not fully restorable.
+
+### Gate prompt template
+
+Fill in the blanks and give it to a Claude Code session in this repo.
+
+```text
+Polar regtest gate for PR #<number>, head <sha>. Work against that head, before merge.
+
+Procedure: docs/dev-setup.md, section "Polar regtest gate". The phases are fixed:
+pre-flight; DB backup; the spec's checks; teardown with a sha256 restore; post-run
+harness state; pre-flight again.
+
+Arc spec: <path>
+Pass and fail conditions, quoted from the spec, not paraphrased:
+<conditions>
+
+Do not add, drop or soften a condition, and do not write your own.
+
+Backup target: <path>
+Evidence file, outside the repo: <path>
+Vault gate record: <investigations/ path>
+--repair allowed on this run: <yes or no>
+
+If a pre-flight exits non-zero, stop and report it before going on.
+```
 
 ## Optional: Loop Fidelity Layer
 
