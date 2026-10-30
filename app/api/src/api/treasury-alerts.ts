@@ -11,6 +11,9 @@ import { isLoopAvailable } from "../lightning/loop";
 import { ENV } from "../config/env";
 import { MANUAL_METRIC_KEYS, listLatestPerMetric } from "../valuation/manualInputStore";
 import { channelDataStalenessAlert } from "./channelDataStaleness";
+import { classifyLanePurpose } from "../subscription/lanePurpose";
+import { findContactByPubkey } from "../utils/contact-pubkey";
+import { classifyNodeLookup } from "../profile/publicAliasOutcome";
 
 export type AlertSeverity = "info" | "warning" | "critical";
 
@@ -89,6 +92,54 @@ function readChannelDataAges(): {
   };
 }
 
+/**
+ * Channel peers the server classifier calls `unclassified`. No `active`
+ * predicate: an offline peer is still an untagged channel peer, unlike Tier 3's
+ * lookup, which needs a channel it can close. Every peer goes through
+ * classifyLanePurpose rather than a join on `contacts`, because it is the only
+ * source of truth for a lane and contacts.pubkey is stored in any case.
+ */
+function readUnclassifiedChannelPeers(): string[] {
+  const rows = db
+    .prepare(`SELECT DISTINCT peer_pubkey FROM lnd_channels ORDER BY peer_pubkey`)
+    .all() as Array<{ peer_pubkey: string }>;
+  return rows.map((r) => r.peer_pubkey).filter((pubkey) => classifyLanePurpose(pubkey) === "unclassified");
+}
+
+/** Keys with a close_due subscription row. Compared exactly, as Tier 3 does. */
+function readCloseDuePubkeys(): Set<string> {
+  const rows = db
+    .prepare(`SELECT member_pubkey FROM subscription WHERE current_tier = 'close_due'`)
+    .all() as Array<{ member_pubkey: string }>;
+  return new Set(rows.map((r) => r.member_pubkey));
+}
+
+/**
+ * The best name this node holds for a channel peer. SQLite only: this runs on a
+ * surface polled every 60s, so it never makes a live gossip lookup.
+ *
+ * classifyNodeLookup is reused for the contact's name because older sync-peers
+ * runs stored pubkey-derived placeholders in contacts.name, and nothing has
+ * rewritten them. The other two stores key on the lowercased pubkey.
+ */
+function channelPeerName(pubkey: string): string {
+  const contact = findContactByPubkey(pubkey);
+  if (contact) {
+    const lookup = classifyNodeLookup(pubkey, { ok: true, alias: contact.name });
+    if (lookup.outcome === "alias") return lookup.alias;
+  }
+  const key = pubkey.toLowerCase();
+  const privateName = db
+    .prepare(`SELECT name FROM member_private_name WHERE pubkey = ?`)
+    .get(key) as { name: string } | undefined;
+  if (privateName) return privateName.name;
+  const publicAlias = db
+    .prepare(`SELECT alias FROM peer_public_alias WHERE pubkey = ? AND outcome = 'alias'`)
+    .get(key) as { alias: string } | undefined;
+  if (publicAlias) return publicAlias.alias;
+  return pubkey.slice(0, 16);
+}
+
 export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   const now = Date.now();
   const alerts: TreasuryAlert[] = [];
@@ -118,6 +169,27 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
         top_channel: candidates[0].channel_id,
         top_reason: candidates[0].reason,
       },
+      at: now,
+    });
+  }
+
+  // --- Channel peers outside subscription scope ---
+  // Tier 3's lane guard refuses the close of every peer that is neither merchant
+  // nor farmer, and /token allocates with no lane read, so tagging the contact
+  // is the only thing that brings such a peer into billing and enforcement.
+  // Report-only. No try/catch, like the other SQLite producers here: swallowing
+  // a failure would make this read clean because it did not run.
+  const unclassifiedPeers = readUnclassifiedChannelPeers();
+  if (unclassifiedPeers.length > 0) {
+    const closeDue = readCloseDuePubkeys();
+    alerts.push({
+      type: "CHANNEL_PEERS_UNCLASSIFIED",
+      heading: "Channel peers not tagged",
+      severity: unclassifiedPeers.some((pubkey) => closeDue.has(pubkey)) ? "critical" : "warning",
+      message:
+        `${unclassifiedPeers.length} channel peer(s) aren't tagged. Tag each one in Contacts as merchant, ` +
+        "farmer or external, so subscription billing and enforcement treat it correctly.",
+      data: { count: unclassifiedPeers.length, names: unclassifiedPeers.map(channelPeerName) },
       at: now,
     });
   }

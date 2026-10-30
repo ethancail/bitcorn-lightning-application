@@ -169,8 +169,8 @@ Types: `ROTATION_CANDIDATES_PRESENT` · `DAILY_LOSS_CAP_EXCEEDED` ·
 `DAILY_LOSS_CAP_NEAR` · `DAILY_EXPANSION_LIMIT_REACHED` · `DAILY_DEPLOY_LIMIT_NEAR` ·
 `ONCHAIN_RESERVE_BREACHED` · `ONCHAIN_RESERVE_NEAR` · `SCHEDULER_SIMULATION_MODE` ·
 `LOOP_OUT_AVAILABLE` · `LOOP_NOT_INSTALLED` ·
-`VALUATION_MANUAL_STALE` · `CHANNEL_DATA_STALE` · **`LND_FAULT`** ·
-**`ONCHAIN_RESERVE_CHECK_SKIPPED`**
+`VALUATION_MANUAL_STALE` · `CHANNEL_DATA_STALE` · `CHANNEL_PEERS_UNCLASSIFIED` ·
+**`LND_FAULT`** · **`ONCHAIN_RESERVE_CHECK_SKIPPED`**
 
 The last two are emitted when the on-chain reserve check cannot complete. Before they
 existed, an LND fault made `ONCHAIN_RESERVE_BREACHED` / `_NEAR` silently vanish,
@@ -203,6 +203,16 @@ distinction is readable in `data.scopes[].detail` (`ETIMEDOUT` for wedged,
 ⚠ The probe is deadline-bound (3s), but `getLndChainBalance()` — the reserve call
 itself, which runs *before* this path — still carries no deadline, so a wedged LND can
 still hang this endpoint. Pre-existing, not addressed by these alert types.
+
+**`CHANNEL_PEERS_UNCLASSIFIED`** — every peer in `lnd_channels`, whatever its `active`
+value, that the server classifier (`classifyLanePurpose`) calls `unclassified`. Such a
+peer is outside billing and enforcement until its contact is tagged. `warning`, or
+`critical` when an alerted peer's own subscription row is `close_due`. `data.count` is
+the number of peers, not channels. `data.names` holds one name per peer, in this order:
+`contacts.name` unless it is pubkey-derived, `member_private_name.name`,
+`peer_public_alias.alias`, then the first 16 hex characters of the key. SQLite only, with
+no LND call. The Dashboard prints the heading and message; `data.names` stays in the API
+response.
 
 **LND credential/connectivity probe**
 
