@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.30"
+version: "1.18.31"
 port: 3200
 
 description: >
@@ -27,6 +27,10 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
+  v1.18.31: For the treasury: the dashboard now warns when a channel peer isn't tagged as merchant,
+  farmer or external in Contacts. Tag the peer to clear the warning. It turns critical if an untagged
+  peer's subscription has reached the close stage. Member nodes: no change, and nothing for you to do.
+
   v1.18.30: Contacts: a node ID typed in capital letters is now recognised as the same node, so the
   contact is matched to its channel correctly. Node IDs are also checked when you add a contact; one
   that isn't valid is refused with a message saying why. Nothing for you to do.
