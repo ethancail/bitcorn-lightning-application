@@ -101,6 +101,9 @@ function rpcCall<T>(
           )
         );
       } else {
+        // B11's "connect": the first success after start, or after an
+        // unavailable spell, starts the autoloop check (F8, below).
+        noteLoopCallSucceeded();
         resolve(res);
       }
     });
@@ -163,6 +166,7 @@ export async function isLoopAvailable(): Promise<LoopAvailability> {
       // loopd deletes and regenerates the Loop macaroon on first start, and
       // start-to-listening measured 120ms/135ms on a Pi 5, so a check racing a
       // container restart lands here on a node that is otherwise fine.
+      noteLoopUnavailable();
       return {
         available: false,
         error: "Loop credentials not found",
@@ -175,12 +179,71 @@ export async function isLoopAvailable(): Promise<LoopAvailability> {
     // The catch branch: everything else, deliberately undifferentiated. An
     // expired or rotated LND cert lands here, as do a refused connection and
     // this call's own 5s deadline.
+    noteLoopUnavailable();
     return {
       available: false,
       error: err.message,
       unavailableReason: "unreachable",
     };
   }
+}
+
+// ─── F8: autoloop is switched off, whoever set it ───────────────────────────
+//
+// loop-fee-ceilings spec §4 "Every site", F8 and ruling (a). Bitcorn's
+// ceilings (F1–F3) bound Bitcorn's own calls only; autoloop's swaps would
+// not be bounded by them, so autoloop is turned off.
+//
+// WHEN (B11): on the first successful loopd call after the process starts,
+// and again on the first success after isLoopAvailable() has classified
+// loopd unavailable — the existing structural classification, no new hook.
+//
+// HOW (Q4, B12): `autoloop` is the master switch. SetLiquidityParams replaces
+// the whole parameter set, so the switch-off writes back exactly the set
+// GetLiquidityParams returned with only `autoloop` changed (D17). The proto
+// is vendored at the shipped v0.33.0-beta, so fields 25–27 survive the
+// round-trip. Two side effects are accepted (B12): loopd reports the sweep
+// fee rate in whole sat/vB, so a fractional rate is truncated on the way
+// back; and an autoloop swap already dispatched keeps its retries (loopd's
+// retry loop does not re-check autoloop).
+//
+// FAILURE (ruling 2): logged, never thrown and never awaited by a swap path,
+// so a loopd hiccup cannot block swaps. Retried at the next of B11's points.
+
+let loopReachability: "unknown" | "available" | "unavailable" = "unknown";
+let autoloopCheck: Promise<void> = Promise.resolve();
+
+function noteLoopCallSucceeded(): void {
+  if (loopReachability === "available") return;
+  loopReachability = "available";
+  autoloopCheck = ensureAutoloopOff();
+}
+
+function noteLoopUnavailable(): void {
+  loopReachability = "unavailable";
+}
+
+async function ensureAutoloopOff(): Promise<void> {
+  try {
+    const params = await rpcCall<Record<string, unknown>>("GetLiquidityParams", {});
+    if (!params.autoloop) return;
+    await rpcCall("SetLiquidityParams", { parameters: { ...params, autoloop: false } });
+    console.log(
+      "[loop] autoloop was on; switched it off (loop-fee-ceilings F8). " +
+        "The full parameter set was written back with only autoloop changed."
+    );
+  } catch (err: any) {
+    console.error(
+      "[loop] autoloop check failed; swaps are not blocked, and it is retried at the next connect:",
+      err?.message ?? String(err)
+    );
+  }
+}
+
+/** Resolves once the autoloop check in flight (if any) has finished. It never
+ *  rejects. For tests and diagnostics; no swap path waits on it. */
+export function whenAutoloopCheckSettles(): Promise<void> {
+  return autoloopCheck;
 }
 
 export type LoopOutTerms = {
