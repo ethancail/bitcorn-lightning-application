@@ -5,7 +5,7 @@
 // the same pre-checks executeLoopOut runs before any money moves (terms, the
 // 15% sanity check, the daily loss cap, the fee-rate check and the route
 // probe; the channel checks when a channel_id is given). It no longer reads
-// the deleted LOOP_MAX_MINER_FEE_SATS (ruling 12).
+// the deleted 20,000-sat miner-fee setting (ruling 12).
 //
 // Driven through the real handleRequest and the real executeLoopOut
 // pre-checks; only loopd and the LND probe/channel reads are replaced.
