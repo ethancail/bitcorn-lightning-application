@@ -68,7 +68,8 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
   const body = JSON.parse(await parseBody(req));
   const amountSat = Number(body.amount_sat);
   const destinationAddress = body.destination_address as string | undefined;
-  const maxFeeSat = body.max_fee_sat ? Number(body.max_fee_sat) : undefined;
+  // No max_fee_sat: the parameter is removed (loop-fee-ceilings B6). A body
+  // that still sends one is ignored.
 
   if (!amountSat || amountSat <= 0) return json(res, 400, { error: "invalid_amount" });
 
@@ -80,7 +81,6 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
     role: node.node_role === "treasury" ? "treasury" : "member",
     amountSat,
     destinationAddress,
-    maxFeeSat,
   });
 
   // Pre-check policy (non-blocking — quote still created)
@@ -90,7 +90,6 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
   const policy = await checkMemberLoopOutPolicy({
     nodePubkey: node.pubkey,
     amountSat,
-    maxFeeSat,
     quotedFeeSat: netFeeSat,
   });
 

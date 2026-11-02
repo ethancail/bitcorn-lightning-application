@@ -40,7 +40,13 @@ vi.mock("../utils/membership", () => ({ assertActiveMember: vi.fn() }));
 vi.mock("../utils/role", () => ({ assertTreasury: vi.fn() }));
 vi.mock("../utils/btc-address", () => ({ validateOnchainAddress: () => ({ ok: true }) }));
 
-import { handleMemberLoopOut, handleMemberLoopIn, handleAdminLoopOut, handleMemberLoopInQuote } from "./swapRoutes";
+import {
+  handleMemberLoopOut,
+  handleMemberLoopIn,
+  handleAdminLoopOut,
+  handleMemberLoopInQuote,
+  handleMemberLoopOutQuote,
+} from "./swapRoutes";
 
 function request(body: unknown): IncomingMessage {
   const s = new PassThrough();
@@ -90,6 +96,27 @@ describe("a SwapRefusalError is answered as 409 with its code", () => {
     stubs.initiateSwap.mockRejectedValue(new Error("Loop RPC LoopOut failed"));
     const { res } = response();
     await expect(handleMemberLoopIn(request({ swap_request_id: "r1" }), res)).rejects.toThrow("Loop RPC LoopOut failed");
+  });
+});
+
+// B6 at the route: the member Loop Out quote no longer reads max_fee_sat, so a
+// body carrying one reaches neither the quote nor the policy.
+describe("the member Loop Out quote route takes no max_fee_sat (B6)", () => {
+  it("a body max_fee_sat is passed to neither createLoopOutQuote nor the policy check", async () => {
+    const { createLoopOutQuote } = await import("./swapService");
+    const { checkMemberLoopOutPolicy } = await import("./swapPolicy");
+    const { isLoopAvailable } = await import("./loopProvider");
+    vi.mocked(isLoopAvailable).mockResolvedValue({ available: true });
+    vi.mocked(createLoopOutQuote).mockResolvedValue({
+      swapRequest: { id: "r1" } as any,
+      quote: { swap_fee_sat: 835, miner_fee_sat: 1_200 } as any,
+    });
+    stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "member", membership_status: "active" });
+    const { res, out } = response();
+    await handleMemberLoopOutQuote(request({ amount_sat: 250_000, max_fee_sat: 999_999 }), res);
+    expect(out.status).toBe(200);
+    expect(vi.mocked(createLoopOutQuote).mock.calls[0][0]).not.toHaveProperty("maxFeeSat");
+    expect(vi.mocked(checkMemberLoopOutPolicy).mock.calls[0][0]).not.toHaveProperty("maxFeeSat");
   });
 });
 

@@ -326,6 +326,39 @@ describe("D12 (Ruling Z): a failed or zero HTLC-fee estimate is unknown, and ref
   });
 });
 
+// D19 (item 30): no swap_request response carries max_fee_sat; the column
+// stays in the database, unread. Every swap_request a route returns comes from
+// getSwapRequest or listSwapRequests (createLoopOutQuote, createLoopInQuote
+// and initiateSwap all return getSwapRequest's row), so those two are the
+// boundary. The row needs a NON-NULL max_fee_sat, as a pre-fix row can have —
+// otherwise a restored echo of a null would be all this could catch.
+describe("D19: max_fee_sat is never in a swap_request", () => {
+  function insertRowWithMaxFee(): string {
+    const id = insertPreMigrationRow("loop_out");
+    db.prepare("UPDATE swap_requests SET max_fee_sat = 12345 WHERE id = ?").run(id);
+    return id;
+  }
+
+  it("getSwapRequest omits it", () => {
+    const id = insertRowWithMaxFee();
+    const row = svc.getSwapRequest(id)!;
+    expect(row.id).toBe(id);
+    expect(row).not.toHaveProperty("max_fee_sat");
+  });
+
+  it("listSwapRequests omits it", () => {
+    const id = insertRowWithMaxFee();
+    const rows = svc.listSwapRequests({ nodePubkey: MEMBER });
+    expect(rows.some((r) => r.id === id)).toBe(true);
+    for (const r of rows) expect(r).not.toHaveProperty("max_fee_sat");
+  });
+
+  it("the column itself stays in the database", () => {
+    const cols = (db.prepare("PRAGMA table_info(swap_requests)").all() as Array<{ name: string }>).map((c) => c.name);
+    expect(cols).toContain("max_fee_sat");
+  });
+});
+
 describe("D8: a pre-migration row requires a requote", () => {
   it.each(["loop_out", "loop_in"] as const)(
     "%s with null quote components is refused before any loopd call",

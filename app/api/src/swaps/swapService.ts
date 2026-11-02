@@ -31,7 +31,8 @@ export type SwapRequest = {
   direction: string;
   status: string;
   amount_sat: number;
-  max_fee_sat: number | null;
+  // No max_fee_sat: the column stays in the database, unread and unwritten,
+  // and never appears in a response (loop-fee-ceilings B6, item 30, D19).
   quoted_fee_sat: number | null;
   // The quote's components (migrations 060–062). NULL on a row quoted before
   // them, which execute refuses with requote_required (spec §5, D8).
@@ -66,7 +67,6 @@ export async function createLoopOutQuote(params: {
   role: "member" | "treasury";
   amountSat: number;
   destinationAddress?: string;
-  maxFeeSat?: number;
   channelId?: string;
 }): Promise<{ swapRequest: SwapRequest; quote: LoopOutQuoteResult }> {
   const quote = await quoteLoopOut(params.amountSat);
@@ -80,14 +80,14 @@ export async function createLoopOutQuote(params: {
   db.prepare(`
     INSERT INTO swap_requests
       (id, created_at, updated_at, node_pubkey, role, swap_type, direction,
-       status, amount_sat, max_fee_sat, quoted_fee_sat, destination_address,
+       status, amount_sat, quoted_fee_sat, destination_address,
        channel_id, quote_expires_at,
        quoted_swap_fee_sat, quoted_prepay_sat, quoted_miner_fee_sat)
     VALUES (?, ?, ?, ?, ?, 'loop_out', 'lightning_to_chain',
-            'quote_created', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            'quote_created', ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, now, now, params.nodePubkey, params.role,
-    params.amountSat, params.maxFeeSat ?? null,
+    params.amountSat,
     (quote.swap_fee_sat ?? 0) + (quote.miner_fee_sat ?? 0), // net fee (excludes prepay hold)
     destAddr, params.channelId ?? null, expiresAt,
     quote.swap_fee_sat, quote.prepay_sat, quote.miner_fee_sat
@@ -110,7 +110,6 @@ export async function createLoopInQuote(params: {
   nodePubkey: string;
   role: "member" | "treasury";
   amountSat: number;
-  maxFeeSat?: number;
 }): Promise<{ swapRequest: SwapRequest; quote: LoopInQuoteResult }> {
   const quote = await quoteLoopIn(params.amountSat);
   // Ruling Z (spec §4 D, D12): getLoopInQuote clamps loopd's −1 ("estimation
@@ -130,12 +129,12 @@ export async function createLoopInQuote(params: {
   db.prepare(`
     INSERT INTO swap_requests
       (id, created_at, updated_at, node_pubkey, role, swap_type, direction,
-       status, amount_sat, max_fee_sat, quoted_fee_sat, quote_expires_at,
+       status, amount_sat, quoted_fee_sat, quote_expires_at,
        quoted_swap_fee_sat, quoted_miner_fee_sat)
     VALUES (?, ?, ?, ?, ?, 'loop_in', 'chain_to_lightning',
-            'quote_created', ?, ?, ?, ?, ?, ?)
+            'quote_created', ?, ?, ?, ?, ?)
   `).run(id, now, now, params.nodePubkey, params.role, params.amountSat,
-    params.maxFeeSat ?? null, quote.total_fee_sat, expiresAt,
+    quote.total_fee_sat, expiresAt,
     quote.swap_fee_sat, quote.htlc_publish_fee_sat);
 
   recordSwapEvent(id, "quote_created", { amount_sat: params.amountSat, quote, expires_at: expiresAt });
@@ -350,8 +349,18 @@ async function assertLoopOutPrechecks(req: SwapRequest): Promise<void> {
 
 // ─── Status helpers ──────────────────────────────────────────────────────
 
+// Every column a SwapRequest carries, named. Not SELECT *: max_fee_sat stays
+// in the table, unread, and must not reach any swap_request response — every
+// route's swap_request comes through these two readers (loop-fee-ceilings
+// B6, item 30, D19).
+const SWAP_REQUEST_COLUMNS = `
+  id, created_at, updated_at, node_pubkey, role, swap_type, direction, status,
+  amount_sat, quoted_fee_sat, quoted_swap_fee_sat, quoted_prepay_sat,
+  quoted_miner_fee_sat, actual_fee_sat, destination_address, channel_id,
+  quote_expires_at, failure_reason, notes`;
+
 export function getSwapRequest(id: string): SwapRequest | null {
-  return db.prepare("SELECT * FROM swap_requests WHERE id = ?").get(id) as SwapRequest | null;
+  return db.prepare(`SELECT ${SWAP_REQUEST_COLUMNS} FROM swap_requests WHERE id = ?`).get(id) as SwapRequest | null;
 }
 
 export function getSwapExecution(swapRequestId: string): SwapExecution | null {
@@ -365,7 +374,7 @@ export function listSwapRequests(params: {
   role?: string;
   limit?: number;
 }): SwapRequest[] {
-  let sql = "SELECT * FROM swap_requests WHERE 1=1";
+  let sql = `SELECT ${SWAP_REQUEST_COLUMNS} FROM swap_requests WHERE 1=1`;
   const args: unknown[] = [];
   if (params.nodePubkey) { sql += " AND node_pubkey = ?"; args.push(params.nodePubkey); }
   if (params.role) { sql += " AND role = ?"; args.push(params.role); }

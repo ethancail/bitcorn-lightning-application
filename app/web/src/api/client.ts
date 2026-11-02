@@ -277,7 +277,7 @@ export const api = {
   // the server route it called; see the tombstone in api/src/index.ts.
   getRecommendedPeers: () => apiFetch<RecommendedPeer[]>("/api/network/recommended-peers"),
   // Swaps — member
-  getSwapLoopOutQuote: (body: { amount_sat: number; destination_address?: string; max_fee_sat?: number }) =>
+  getSwapLoopOutQuote: (body: { amount_sat: number; destination_address?: string }) =>
     apiFetch<SwapQuoteResponse>("/api/swaps/loop-out/quote", { method: "POST", body: JSON.stringify(body) }),
   initiateSwapLoopOut: (body: { swap_request_id: string; destination_address: string }) =>
     apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/swaps/loop-out", { method: "POST", body: JSON.stringify(body) }),
@@ -1217,8 +1217,12 @@ export type SwapRequest = {
   direction: string;
   status: string;
   amount_sat: number;
-  max_fee_sat: number | null;
   quoted_fee_sat: number | null;
+  // The quote's components (API migrations 060–062); null on a row quoted
+  // before them.
+  quoted_swap_fee_sat: number | null;
+  quoted_prepay_sat: number | null;
+  quoted_miner_fee_sat: number | null;
   actual_fee_sat: number | null;
   destination_address: string | null;
   channel_id: string | null;
