@@ -190,7 +190,8 @@ loopd enforces it.
 and after any unavailable → available transition, Bitcorn reads the liquidity
 parameters and, if `autoloop` is on, writes the same set back with only
 `autoloop=false` (logged). A failure is logged, never blocks swaps, and is
-retried at the next of those points. Two accepted side effects: the sweep fee
+retried at the next of those points — and also on the next successful loopd
+call at least 10 minutes after the failure, at most once per 10 minutes. Two accepted side effects: the sweep fee
 rate round-trips in whole sat/vB, and an autoloop swap already dispatched
 keeps its retries.
 

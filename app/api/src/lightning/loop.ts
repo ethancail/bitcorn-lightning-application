@@ -208,15 +208,41 @@ export async function isLoopAvailable(): Promise<LoopAvailability> {
 // retry loop does not re-check autoloop).
 //
 // FAILURE (ruling 2): logged, never thrown and never awaited by a swap path,
-// so a loopd hiccup cannot block swaps. Retried at the next of B11's points.
+// so a loopd hiccup cannot block swaps. Retried at the next of B11's points,
+// and also (Ethan's later ruling) on the next successful loopd call at least
+// AUTOLOOP_RETRY_INTERVAL_MS after the failure — at most once per interval,
+// so a persistent failure costs one GetLiquidityParams every 10 minutes.
+
+const AUTOLOOP_RETRY_INTERVAL_MS = 10 * 60_000;
 
 let loopReachability: "unknown" | "available" | "unavailable" = "unknown";
 let autoloopCheck: Promise<void> = Promise.resolve();
+let autoloopCheckRunning = false;
+/** When the last check failed; null once a check has succeeded (or none ran). */
+let autoloopCheckFailedAt: number | null = null;
 
 function noteLoopCallSucceeded(): void {
-  if (loopReachability === "available") return;
-  loopReachability = "available";
-  autoloopCheck = ensureAutoloopOff();
+  if (loopReachability !== "available") {
+    loopReachability = "available";
+    startAutoloopCheck();
+    return;
+  }
+  // The retry of a failed check, rate-limited. The check's own RPCs land here
+  // too; the running flag keeps them from starting another.
+  if (
+    autoloopCheckFailedAt !== null &&
+    !autoloopCheckRunning &&
+    Date.now() - autoloopCheckFailedAt >= AUTOLOOP_RETRY_INTERVAL_MS
+  ) {
+    startAutoloopCheck();
+  }
+}
+
+function startAutoloopCheck(): void {
+  autoloopCheckRunning = true;
+  autoloopCheck = ensureAutoloopOff().finally(() => {
+    autoloopCheckRunning = false;
+  });
 }
 
 function noteLoopUnavailable(): void {
@@ -226,13 +252,16 @@ function noteLoopUnavailable(): void {
 async function ensureAutoloopOff(): Promise<void> {
   try {
     const params = await rpcCall<Record<string, unknown>>("GetLiquidityParams", {});
-    if (!params.autoloop) return;
-    await rpcCall("SetLiquidityParams", { parameters: { ...params, autoloop: false } });
-    console.log(
-      "[loop] autoloop was on; switched it off (loop-fee-ceilings F8). " +
-        "The full parameter set was written back with only autoloop changed."
-    );
+    if (params.autoloop) {
+      await rpcCall("SetLiquidityParams", { parameters: { ...params, autoloop: false } });
+      console.log(
+        "[loop] autoloop was on; switched it off (loop-fee-ceilings F8). " +
+          "The full parameter set was written back with only autoloop changed."
+      );
+    }
+    autoloopCheckFailedAt = null;
   } catch (err: any) {
+    autoloopCheckFailedAt = Date.now();
     console.error(
       "[loop] autoloop check failed; swaps are not blocked, and it is retried at the next connect:",
       err?.message ?? String(err)

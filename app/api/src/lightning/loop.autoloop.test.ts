@@ -184,6 +184,64 @@ describe("B11: when the check runs", () => {
   });
 });
 
+// Ethan's ruling: besides B11's two points, a FAILED check is retried on the
+// next successful loopd call — at most once every 10 minutes.
+describe("retry of a failed check on a later successful call, at most once every 10 minutes", () => {
+  const T0 = new Date("2026-11-02T20:00:00Z").getTime();
+  const MIN = 60_000;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(T0);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function failThenRecover() {
+    t.getParams = (cb) => cb({ code: 2, details: "boom" });
+    await connect(); // the first check, at T0, fails
+    expect(t.getCalls).toBe(1);
+    t.getParams = (cb) => cb(null, paramsRead(true)); // loopd answers again
+  }
+
+  async function successfulCallAt(ms: number) {
+    vi.setSystemTime(T0 + ms);
+    await loop.getLoopOutTerms();
+    await settled();
+  }
+
+  it("a successful call within 10 minutes of the failure does not retry", async () => {
+    await failThenRecover();
+    await successfulCallAt(9 * MIN + 59_000);
+    expect(t.getCalls).toBe(1);
+    expect(t.setRequests).toHaveLength(0);
+  });
+
+  it("one after 10 minutes retries, once — and the switch-off then happens", async () => {
+    await failThenRecover();
+    await successfulCallAt(10 * MIN);
+    expect(t.getCalls).toBe(2);
+    expect(t.setRequests).toHaveLength(1);
+    expect(t.setRequests[0].parameters.autoloop).toBe(false);
+    // The retry succeeded, so later calls do not check again.
+    await successfulCallAt(10 * MIN + 1_000);
+    await successfulCallAt(40 * MIN);
+    expect(t.getCalls).toBe(2);
+  });
+
+  it("a retry that fails again waits another 10 minutes", async () => {
+    await failThenRecover();
+    t.getParams = (cb) => cb({ code: 2, details: "boom" });
+    await successfulCallAt(10 * MIN); // retry #1, fails
+    expect(t.getCalls).toBe(2);
+    await successfulCallAt(15 * MIN); // 5 min after that failure: no retry
+    expect(t.getCalls).toBe(2);
+    await successfulCallAt(20 * MIN); // 10 min after it: retry #2
+    expect(t.getCalls).toBe(3);
+  });
+});
+
 describe("D15: a failed read or switch-off logs, lets the call proceed, and retries at the next connect", () => {
   it("a failed read: logged, the triggering call still answers available, retried after the next transition", async () => {
     t.getParams = (cb) => cb({ code: 2, details: "boom" });
