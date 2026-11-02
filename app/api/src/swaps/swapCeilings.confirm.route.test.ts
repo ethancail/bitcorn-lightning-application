@@ -84,6 +84,7 @@ const cases = [
     canon: `swap_request_id=r1&destination_address=bc1qdest&${LO_CANON}`,
     alter: { max_prepay_amt_sat: 50000 },
     bare: { swap_request_id: "r1", destination_address: "bc1qdest" },
+    bareCanon: "swap_request_id=r1&destination_address=bc1qdest",
   },
   {
     site: "B, admin Loop Out",
@@ -92,6 +93,7 @@ const cases = [
     canon: `swap_request_id=r1&${LO_CANON}`,
     alter: { max_swap_routing_fee_sat: 37500 },
     bare: { swap_request_id: "r1" },
+    bareCanon: "swap_request_id=r1",
   },
   {
     site: "D, member Loop In",
@@ -100,6 +102,7 @@ const cases = [
     canon: `swap_request_id=r1&${LI_CANON}`,
     alter: { max_miner_fee_sat: 20000 },
     bare: { swap_request_id: "r1" },
+    bareCanon: "swap_request_id=r1",
   },
 ];
 
@@ -122,9 +125,23 @@ describe.each(cases)("D5 ($site): the confirmation covers the echoed ceilings", 
     expect(r.body?.error).toBe("confirmation_mismatch");
   });
 
-  it("a body without the ceilings → 400 confirmation_required", async () => {
-    const r = await post(c.url, c.bare, { [CONFIRMATION_HEADER]: sha(c.canon) });
-    expect(r.status).toBe(400);
-    expect(r.body?.error).toBe("confirmation_required");
+  // Ruling d: the ceilings are OPTIONAL in the hash, so a body without them
+  // (a client holding a pre-migration quote) passes the gate and the handler
+  // answers it (requote_required, or ceiling_mismatch — see
+  // requoteBeforeCeilings.route.test.ts and swapService.ceilings.test.ts).
+  // This replaced "a body without the ceilings → 400 confirmation_required".
+  it("a body without the ceilings, confirmed over what it carries, passes the gate", async () => {
+    const r = await post(c.url, c.bare, { [CONFIRMATION_HEADER]: sha(c.bareCanon) });
+    expect(r.status).not.toBe(-1);
+    expect(isConfirmError(r)).toBe(false);
+  });
+
+  it("a confirmation computed WITHOUT the ceilings does not authorise a body WITH them", async () => {
+    // absent ≠ present: adding the ceilings changes the value.
+    const ok = await post(c.url, c.bare, { [CONFIRMATION_HEADER]: sha(c.bareCanon) });
+    expect(isConfirmError(ok), "the header must clear the gate for the bare body").toBe(false);
+    const r = await post(c.url, c.body, { [CONFIRMATION_HEADER]: sha(c.bareCanon) });
+    expect(r.status).toBe(409);
+    expect(r.body?.error).toBe("confirmation_mismatch");
   });
 });

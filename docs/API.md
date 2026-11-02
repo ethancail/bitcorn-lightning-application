@@ -342,8 +342,11 @@ carries the stored components `quoted_swap_fee_sat`, `quoted_prepay_sat`
 
 **Execute bodies echo `ceilings` unchanged**, and the confirmation hash covers
 them: after the existing fields, in the order above (see the admin Loop Out
-shell idiom below). They are required — a body without them is refused at the
-gate (`400 confirmation_required`).
+shell idiom below). In the hash they are *optional* fields: when sent they are
+hashed like any other, and a confirmation computed without them does not
+authorise a body that carries them. A body without them passes the gate and is
+refused by the handler before any loopd call — `requote_required` for a quote
+stored before the ceilings existed, `ceiling_mismatch` for any other.
 
 **Refusals before initiation.** Each is `409 { error: <code>, detail }` (on the
 treasury manual route, the same codes, from its own in-call quote), and none
@@ -485,7 +488,7 @@ curl -sS -X POST http://localhost:3101/api/pay \
 ```bash
 # POST /api/admin/swaps/loop-out
 #   fields: swap_request_id, destination_address (optional text), then the
-#   quote's five ceilings (required numbers), echoed from the quote
+#   quote's five ceilings (optional numbers; send them), echoed from the quote
 #   response's `ceilings` object
 # destination_address is in the hash because it is where the coins land;
 # omitting it means the default sweep address, which is a different act.

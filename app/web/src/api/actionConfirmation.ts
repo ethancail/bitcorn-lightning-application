@@ -88,16 +88,17 @@ export type ConfirmedRoute = { method: string; match: Matcher; fields: Field[] }
 // The swap execute routes' echoed quote ceilings (loop-fee-ceilings F4), in the
 // server's order. The callers spread the quote response's `ceilings` into the
 // body; this table only has to agree with the server (the parity test).
+// Optional, as on the server (ruling d): a quote without ceilings sends none.
 const LOOP_OUT_CEILING_FIELDS: Field[] = [
-  { name: "max_swap_fee_sat", from: "body", kind: "number" },
-  { name: "max_prepay_amt_sat", from: "body", kind: "number" },
-  { name: "max_miner_fee_sat", from: "body", kind: "number" },
-  { name: "max_swap_routing_fee_sat", from: "body", kind: "number" },
-  { name: "max_prepay_routing_fee_sat", from: "body", kind: "number" },
+  { name: "max_swap_fee_sat", from: "body", kind: "number", optional: true },
+  { name: "max_prepay_amt_sat", from: "body", kind: "number", optional: true },
+  { name: "max_miner_fee_sat", from: "body", kind: "number", optional: true },
+  { name: "max_swap_routing_fee_sat", from: "body", kind: "number", optional: true },
+  { name: "max_prepay_routing_fee_sat", from: "body", kind: "number", optional: true },
 ];
 const LOOP_IN_CEILING_FIELDS: Field[] = [
-  { name: "max_swap_fee_sat", from: "body", kind: "number" },
-  { name: "max_miner_fee_sat", from: "body", kind: "number" },
+  { name: "max_swap_fee_sat", from: "body", kind: "number", optional: true },
+  { name: "max_miner_fee_sat", from: "body", kind: "number", optional: true },
 ];
 
 export const UI_CONFIRMED_ROUTES: ConfirmedRoute[] = [
