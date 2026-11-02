@@ -179,9 +179,11 @@ export async function initiateSwap(swapRequestId: string, destinationAddress?: s
       const result = await initiateLoopOut({
         amountSat: updatedReq.amount_sat,
         destinationAddress: dest,
-        maxSwapFee: Math.ceil(updatedReq.amount_sat * ENV.loopMaxSwapFeePct / 100),
-        maxMinerFee: ENV.loopMaxMinerFeeSats,
-        maxPrepay: 50_000, // prepay is a temporary hold (~30k), not a fee — safe ceiling
+        // Ceilings are the stored quote's components, with no margin (F1, F3).
+        // Non-null: rows missing them were refused above.
+        maxSwapFee: updatedReq.quoted_swap_fee_sat!,
+        maxMinerFee: updatedReq.quoted_miner_fee_sat!,
+        maxPrepay: updatedReq.quoted_prepay_sat!,
         confTarget: ENV.loopConfTarget,
         channelIds: updatedReq.channel_id ? [updatedReq.channel_id] : undefined,
       });

@@ -70,6 +70,12 @@ export const ENV = {
     // Loop has a ~30k sat fixed prepay component, so small swaps (250k) have ~12% effective fee.
     // Default 15% accommodates the fixed cost; larger swaps have much lower effective rates.
     loopMaxSwapFeePct: Number(process.env.LOOP_MAX_SWAP_FEE_PCT ?? "15"),
+    // Routing-fee cap for a Loop Out's two off-chain payments, in ppm, applied
+    // separately to the swap amount and to the prepay (default 10,000 = 1%).
+    // Sent to loopd as max_swap_routing_fee / max_prepay_routing_fee, and the
+    // pre-initiation route probe refuses a route over it
+    // (loop-fee-ceilings spec §4, §13 item 3).
+    loopRoutingFeeCapPpm: Number(process.env.LOOP_ROUTING_FEE_CAP_PPM ?? "10000"),
     // Max miner fee in sats for the on-chain sweep (default: 20,000)
     loopMaxMinerFeeSats: Number(process.env.LOOP_MAX_MINER_FEE_SATS ?? "20000"),
     // Minimum sats to rebalance via Loop Out (default: 50,000)

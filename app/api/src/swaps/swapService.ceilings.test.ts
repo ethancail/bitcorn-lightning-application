@@ -114,6 +114,37 @@ describe("quote components are stored (§5)", () => {
   });
 });
 
+// D1 for A and B: the ceilings handed to loopd are the stored quote's
+// components. B (admin) shares initiateSwap with A; both roles are driven.
+// One test per component, so each of B10's three controls has its own red:
+// (i) the 15% swap-fee formula, (ii) the fixed 50,000 prepay, (iii) the
+// constant miner fee.
+describe.each([
+  { site: "A", role: "member" as const },
+  { site: "B", role: "treasury" as const },
+])("D1 ($site): Loop Out ceilings are the stored quote's components", ({ role }) => {
+  async function initiate() {
+    const { swapRequest } = await svc.createLoopOutQuote({
+      nodePubkey: MEMBER, role, amountSat: 250_000, destinationAddress: DEST,
+    });
+    await svc.initiateSwap(swapRequest.id, DEST);
+    expect(stubs.initiateLoopOut).toHaveBeenCalledTimes(1);
+    return stubs.initiateLoopOut.mock.calls[0][0];
+  }
+
+  it("max_swap_fee is the quoted swap fee, with no margin", async () => {
+    expect((await initiate()).maxSwapFee).toBe(835);
+  });
+
+  it("max_prepay_amt is the quoted prepay", async () => {
+    expect((await initiate()).maxPrepay).toBe(30_000);
+  });
+
+  it("max_miner_fee is the quoted miner fee", async () => {
+    expect((await initiate()).maxMinerFee).toBe(1_200);
+  });
+});
+
 describe("D8: a pre-migration row requires a requote", () => {
   it.each(["loop_out", "loop_in"] as const)(
     "%s with null quote components is refused before any loopd call",

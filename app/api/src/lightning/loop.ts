@@ -239,6 +239,16 @@ export type LoopOutSwapResult = {
   server_message: string;
 };
 
+/**
+ * The routing-fee ceiling for one Loop Out payment (the swap or the prepay):
+ * the cap setting times that payment's amount, rounded down so it never
+ * exceeds the cap (loop-fee-ceilings spec §4, D13). Also the bound the
+ * pre-initiation route probe checks against.
+ */
+export function routingFeeCeilingSat(amountSat: number): number {
+  return Math.floor((amountSat * ENV.loopRoutingFeeCapPpm) / 1_000_000);
+}
+
 /** Initiate a Loop Out swap. */
 export async function executeLoopOutSwap(params: {
   amt: number;
@@ -264,8 +274,10 @@ export async function executeLoopOutSwap(params: {
       max_miner_fee: params.max_miner_fee,
       max_prepay_amt: params.max_prepay_amt,
       sweep_conf_target: params.sweep_conf_target,
-      max_prepay_routing_fee: params.max_swap_fee,
-      max_swap_routing_fee: params.max_swap_fee,
+      // Each routing ceiling is the cap on its own payment, separate from
+      // max_swap_fee (which used to be reused for both).
+      max_prepay_routing_fee: routingFeeCeilingSat(params.max_prepay_amt),
+      max_swap_routing_fee: routingFeeCeilingSat(params.amt),
     },
     60_000 // longer deadline for swap initiation
   );
