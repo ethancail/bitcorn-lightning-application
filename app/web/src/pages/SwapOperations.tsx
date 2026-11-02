@@ -38,8 +38,10 @@ type ChannelInfo = {
   localPct: number;
 };
 
-function statusBadge(status: string): { label: string; cls: string } {
+// Exported for the 'initiating' mapping test (swapStatus.initiating.test.ts).
+export function statusBadge(status: string): { label: string; cls: string } {
   switch (status) {
+    case "initiating": return { label: "Starting…", cls: "badge-amber" };
     case "initiated": return { label: "Processing", cls: "badge-amber" };
     case "executing": return { label: "In Progress", cls: "badge-amber" };
     case "confirming": return { label: "Confirming", cls: "badge-blue" };
@@ -61,8 +63,9 @@ function isTerminal(status: string): boolean {
   return status === "completed" || status === "failed" || status === "expired";
 }
 
-function statusText(status: string, failureReason: string | null): string {
+export function statusText(status: string, failureReason: string | null): string {
   switch (status) {
+    case "initiating": return "Starting…";
     case "initiated": return "Swap initiated, processing...";
     case "executing": return "Swap in progress...";
     case "confirming": return "Confirming on-chain...";

@@ -38,9 +38,11 @@ function isTerminal(status: string): boolean {
 // the Technical details expander, not deleted. Neither returns a raw status:
 // anything they don't name reads as its badge label from the shared map
 // (humanized if unknown).
-function statusText(status: string, failureReason: string | null): string {
+// Exported for the 'initiating' mapping test (swapStatus.initiating.test.ts).
+export function statusText(status: string, failureReason: string | null): string {
   switch (status) {
     case "quote_created": return "Quote received. The withdrawal hasn't started yet.";
+    case "initiating": return "Starting…";
     case "initiated": return "Starting your withdrawal...";
     case "executing": return "Sending funds to your Bitcoin address...";
     case "confirming": return "Waiting for Bitcoin network confirmation...";
@@ -51,8 +53,9 @@ function statusText(status: string, failureReason: string | null): string {
 }
 
 // The Protocol status row: the protocol status beside its description.
-function statusTechnical(status: string): string {
+export function statusTechnical(status: string): string {
   switch (status) {
+    case "initiating": return "initiating — Checking fees and route before the swap starts";
     case "initiated": return "initiated — Paying Lightning invoice to Loop server";
     case "executing": return "executing — Loop server publishing on-chain HTLC";
     case "confirming": return "confirming — Waiting for on-chain confirmation";

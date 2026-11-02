@@ -37,10 +37,13 @@ function isTerminal(status: string): boolean {
 // statusTechnical — demoted into the Technical details expander, not deleted.
 // Neither returns a raw status: anything they don't name reads as its badge
 // label from the shared map (humanized if unknown).
-function statusText(status: string, amount: number, failureReason: string | null): string {
+// Exported for the 'initiating' mapping test (swapStatus.initiating.test.ts).
+export function statusText(status: string, amount: number, failureReason: string | null): string {
   switch (status) {
     case "quote_created":
       return "Quote received. The top-up hasn't started yet.";
+    case "initiating":
+      return "Starting…";
     case "initiated":
       return "Starting your top up...";
     case "executing":
@@ -57,8 +60,9 @@ function statusText(status: string, amount: number, failureReason: string | null
 }
 
 // The Protocol status row: the protocol status beside its description.
-function statusTechnical(status: string): string {
+export function statusTechnical(status: string): string {
   switch (status) {
+    case "initiating": return "initiating — Checking fees and route before the swap starts";
     case "initiated": return "initiated — Publishing on-chain HTLC";
     case "executing": return "executing — Waiting for Lightning payment from Loop server";
     case "confirming": return "confirming — Settling swap";

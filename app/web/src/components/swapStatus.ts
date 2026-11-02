@@ -11,6 +11,10 @@ export function statusBadge(status: string): { label: string; cls: string } {
   switch (status) {
     case "quote_created":
       return { label: "Quoted", cls: "badge-muted" };
+    // The API's claim on a quote while its pre-checks run (loop-fee-ceilings).
+    // Shorter than "In Progress", so the measured width above still holds.
+    case "initiating":
+      return { label: "Starting…", cls: "badge-amber" };
     case "initiated":
       return { label: "Processing", cls: "badge-amber" };
     case "executing":
