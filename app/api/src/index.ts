@@ -2922,7 +2922,11 @@ async function dispatchRequest(
       req.on("end", async () => {
         try {
           const parsed = JSON.parse(body || "{}");
-          const { channel_id, amount_sats, max_swap_fee_sats, max_miner_fee_sats, conf_target } = parsed;
+          // Only the channel and the amount are read. The body's ceiling
+          // overrides and conf_target are dropped: the ceilings come from the
+          // swap's own in-call quote, and the sweep targets the default
+          // (loop-fee-ceilings spec §4 C1–C3, F6, ruling 1).
+          const { channel_id, amount_sats } = parsed;
           if (!channel_id || !amount_sats) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "channel_id and amount_sats are required" }));
@@ -2931,14 +2935,15 @@ async function dispatchRequest(
           const result = await executeLoopOut({
             channel_id: String(channel_id),
             amount_sats: Number(amount_sats),
-            max_swap_fee_sats: max_swap_fee_sats != null ? Number(max_swap_fee_sats) : undefined,
-            max_miner_fee_sats: max_miner_fee_sats != null ? Number(max_miner_fee_sats) : undefined,
-            conf_target: conf_target != null ? Number(conf_target) : undefined,
           });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(result));
         } catch (err: any) {
-          if (err instanceof LoopOutError) {
+          if (err instanceof LoopOutError && err.code) {
+            // A refusal before initiation, with its own code.
+            res.writeHead(409, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err.code, detail: err.message }));
+          } else if (err instanceof LoopOutError) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: err.message }));
           } else if (err instanceof DailyLossCapError) {
