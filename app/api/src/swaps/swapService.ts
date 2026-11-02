@@ -157,45 +157,82 @@ export async function initiateSwap(
 ): Promise<SwapRequest> {
   const req = getSwapRequest(swapRequestId);
   if (!req) throw new Error("Swap request not found");
-  if (req.status !== "quote_created" && req.status !== "awaiting_confirmation") {
-    throw new Error(`Cannot initiate swap in status: ${req.status}`);
-  }
-  if (req.quote_expires_at && Date.now() > req.quote_expires_at) {
-    updateSwapStatus(swapRequestId, "expired");
-    throw new Error("Quote has expired");
-  }
 
-  // A row quoted before migrations 060–062 has no components to bind the
-  // ceilings to. Refuse and requote; never fall back to the 15% formula
-  // (spec §5, D8). Loop In has no prepay, so only its two are required.
-  const missingComponents =
-    req.quoted_swap_fee_sat == null ||
-    req.quoted_miner_fee_sat == null ||
-    (req.swap_type === "loop_out" && req.quoted_prepay_sat == null);
-  if (missingComponents) {
-    recordSwapEvent(swapRequestId, "initiation_refused", { code: "requote_required" });
-    throw new SwapRefusalError(
-      "requote_required",
-      "This quote was made before an update and can't be used. Get a new quote."
-    );
+  // THE CLAIM (Ethan's ruling on the double-initiation race). Atomically move
+  // the row from an executable state to 'initiating', before any loopd call,
+  // and proceed only if exactly one row changed. The read above and this
+  // UPDATE run with no await between them; the WHERE guards against any other
+  // writer. A second execute of the same quote finds 'initiating' and is
+  // refused, so loopd is reached once per quote.
+  const claimed = db.prepare(`
+    UPDATE swap_requests SET status = 'initiating', updated_at = ?
+    WHERE id = ? AND status IN (${EXECUTABLE_STATUSES.map(() => "?").join(", ")})
+  `).run(Date.now(), swapRequestId, ...EXECUTABLE_STATUSES);
+  if (claimed.changes !== 1) {
+    const current = getSwapRequest(swapRequestId);
+    if (current?.status === "initiating") {
+      throw new SwapRefusalError(
+        "swap_in_progress",
+        "This swap is already being started. Check its status before trying again."
+      );
+    }
+    throw new Error(`Cannot initiate swap in status: ${current?.status ?? req.status}`);
   }
+  recordSwapEvent(swapRequestId, "status_changed", { new_status: "initiating", claimed_from: req.status });
 
-  // F4 (spec §6): the ceilings the caller confirmed must be the ones this
-  // quote authorises. A mismatch — altered, missing, or computed under a
-  // different routing-cap setting — is refused and requoted.
-  const expected = ceilingsFor(req)!;
-  if (!ceilingsMatch(expected, echoed)) {
-    recordSwapEvent(swapRequestId, "initiation_refused", { code: "ceiling_mismatch", expected });
-    throw new SwapRefusalError(
-      "ceiling_mismatch",
-      "The fee limits sent don't match this quote. Get a new quote."
-    );
-  }
+  // Every refusal from here to the loopd call either RELEASES the claim
+  // (back to req.status; the same quote may be retried) or marks the row
+  // TERMINAL (expired, failure_reason = the code; the quote cannot succeed as
+  // is). Nothing is left 'initiating'. Which is which:
+  //   terminal: requote_required, fee_rate_over_quote, miner_fee_unknown,
+  //             and quote expiry (as before)
+  //   release:  ceiling_mismatch, route_fee_over_cap, route_not_found, and any
+  //             other error before initiation (e.g. the fresh quote failing)
+  try {
+    if (req.quote_expires_at && Date.now() > req.quote_expires_at) {
+      updateSwapStatus(swapRequestId, "expired");
+      throw new Error("Quote has expired");
+    }
 
-  if (req.swap_type === "loop_out") {
-    await assertLoopOutPrechecks(req);
-  } else if (req.swap_type === "loop_in") {
-    await assertLoopInPrechecks(req);
+    // A row quoted before migrations 060–062 has no components to bind the
+    // ceilings to. Refuse and requote; never fall back to the 15% formula
+    // (spec §5, D8). Loop In has no prepay, so only its two are required.
+    const missingComponents =
+      req.quoted_swap_fee_sat == null ||
+      req.quoted_miner_fee_sat == null ||
+      (req.swap_type === "loop_out" && req.quoted_prepay_sat == null);
+    if (missingComponents) {
+      recordSwapEvent(swapRequestId, "initiation_refused", { code: "requote_required" });
+      throw new SwapRefusalError(
+        "requote_required",
+        "This quote was made before an update and can't be used. Get a new quote."
+      );
+    }
+
+    // F4 (spec §6): the ceilings the caller confirmed must be the ones this
+    // quote authorises. A mismatch — altered, missing, or computed under a
+    // different routing-cap setting — is refused and requoted.
+    const expected = ceilingsFor(req)!;
+    if (!ceilingsMatch(expected, echoed)) {
+      recordSwapEvent(swapRequestId, "initiation_refused", { code: "ceiling_mismatch", expected });
+      throw new SwapRefusalError(
+        "ceiling_mismatch",
+        "The fee limits sent don't match this quote. Get a new quote."
+      );
+    }
+
+    if (req.swap_type === "loop_out") {
+      await assertLoopOutPrechecks(req);
+    } else if (req.swap_type === "loop_in") {
+      await assertLoopInPrechecks(req);
+    }
+  } catch (err) {
+    if (err instanceof SwapRefusalError && TERMINAL_REFUSALS.has(err.code)) {
+      updateSwapStatus(swapRequestId, "expired", err.code);
+    } else {
+      releaseClaim(swapRequestId, req.status);
+    }
+    throw err;
   }
 
   const now = Date.now();
@@ -270,6 +307,29 @@ export async function initiateSwap(
   }
 
   return getSwapRequest(swapRequestId)!;
+}
+
+/** The states initiateSwap may claim a row from. */
+const EXECUTABLE_STATUSES = ["quote_created", "awaiting_confirmation"] as const;
+
+/** Refusals after the claim that end the quote (the row is marked expired,
+ *  with the code as failure_reason). Every other pre-initiation refusal or
+ *  error releases the claim instead. */
+const TERMINAL_REFUSALS: ReadonlySet<SwapRefusalCode> = new Set<SwapRefusalCode>([
+  "requote_required",
+  "fee_rate_over_quote",
+  "miner_fee_unknown",
+]);
+
+/** Undo initiateSwap's claim: back to the status it was claimed from. Only
+ *  touches a row still 'initiating' (an expiry already marked it otherwise). */
+function releaseClaim(swapRequestId: string, priorStatus: string): void {
+  const r = db.prepare(`
+    UPDATE swap_requests SET status = ?, updated_at = ? WHERE id = ? AND status = 'initiating'
+  `).run(priorStatus, Date.now(), swapRequestId);
+  if (r.changes === 1) {
+    recordSwapEvent(swapRequestId, "status_changed", { new_status: priorStatus, claim_released: true });
+  }
 }
 
 /** Builds a refusal for one swap request, recording why before it is thrown. */

@@ -306,6 +306,113 @@ describe("F4: a ceiling echoed differently from the stored quote is refused", ()
   });
 });
 
+// ─── The claim: one execute per quote (Ethan's ruling, double-initiation race) ─
+//
+// initiateSwap claims the row atomically (status → 'initiating', only from an
+// executable state) before any loopd call, and proceeds only if it changed
+// exactly one row. Every refusal AFTER the claim either RELEASES the row to
+// its prior status (the same quote may be retried) or marks it TERMINAL
+// (expired, with the code as failure_reason). Pinned per refusal below.
+
+const statusOf = (id: string) => db.prepare("SELECT status, failure_reason FROM swap_requests WHERE id = ?").get(id) as
+  { status: string; failure_reason: string | null };
+
+describe("the claim: two concurrent executes of one quote reach loopd once", () => {
+  it("Loop Out: one initiation; the loser gets swap_in_progress; the row ends initiated", async () => {
+    const { id, run } = await quoteAndInitiate();
+    const results = await Promise.allSettled([run(), run()]);
+    expect(stubs.initiateLoopOut).toHaveBeenCalledTimes(1);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+    expect(lost?.reason).toMatchObject({ code: "swap_in_progress" });
+    expect(statusOf(id).status).toBe("initiated");
+  });
+
+  it("Loop In: one initiation; the loser gets swap_in_progress", async () => {
+    const { run } = await quoteAndInitiateLoopIn();
+    const results = await Promise.allSettled([run(), run()]);
+    expect(stubs.initiateLoopIn).toHaveBeenCalledTimes(1);
+    const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+    expect(lost?.reason).toMatchObject({ code: "swap_in_progress" });
+  });
+});
+
+describe("the claim: every refusal after it releases or terminally marks the row", () => {
+  // RELEASED → back to the prior status, and the same quote can be retried.
+  it("ceiling_mismatch → released; a correct retry then succeeds", async () => {
+    const { swapRequest } = await svc.createLoopOutQuote({
+      nodePubkey: MEMBER, role: "member", amountSat: 250_000, destinationAddress: DEST,
+    });
+    await expect(svc.initiateSwap(swapRequest.id, DEST, { ...LOOP_OUT_CEILINGS, max_swap_fee_sat: 1 }))
+      .rejects.toMatchObject({ code: "ceiling_mismatch" });
+    expect(statusOf(swapRequest.id).status).toBe("quote_created");
+    await svc.initiateSwap(swapRequest.id, DEST, LOOP_OUT_CEILINGS);
+    expect(statusOf(swapRequest.id).status).toBe("initiated");
+  });
+
+  it("route_fee_over_cap → released", async () => {
+    routes({ [PAYMENT_DEST]: { routable: true, feeSat: 9_999 } });
+    const { id, run } = await quoteAndInitiate();
+    await expect(run()).rejects.toMatchObject({ code: "route_fee_over_cap" });
+    expect(statusOf(id).status).toBe("quote_created");
+  });
+
+  it("route_not_found → released", async () => {
+    routes({});
+    const { id, run } = await quoteAndInitiate();
+    await expect(run()).rejects.toMatchObject({ code: "route_not_found" });
+    expect(statusOf(id).status).toBe("quote_created");
+  });
+
+  it("a loopd error in the pre-checks (the fresh quote fails) → released, error propagates", async () => {
+    stubs.quoteLoopOut
+      .mockResolvedValueOnce({ amount_sat: 250_000, swap_fee_sat: 835, prepay_sat: 30_000, miner_fee_sat: 1_200, total_fee_sat: 32_035, conf_target: 6, swap_payment_dest: PAYMENT_DEST })
+      .mockRejectedValueOnce(new Error("Loop RPC LoopOutQuote failed: unavailable (code 14)"));
+    const { id, run } = await quoteAndInitiate();
+    await expect(run()).rejects.toThrow("LoopOutQuote failed");
+    expect(statusOf(id).status).toBe("quote_created");
+  });
+
+  // TERMINAL → expired, failure_reason = the code. The quote cannot succeed as is.
+  it("fee_rate_over_quote (Loop Out) → expired", async () => {
+    stubs.quoteLoopOut
+      .mockResolvedValueOnce({ amount_sat: 250_000, swap_fee_sat: 835, prepay_sat: 30_000, miner_fee_sat: 1_200, total_fee_sat: 32_035, conf_target: 6, swap_payment_dest: PAYMENT_DEST })
+      .mockResolvedValueOnce({ amount_sat: 250_000, swap_fee_sat: 835, prepay_sat: 30_000, miner_fee_sat: 5_000, total_fee_sat: 0, conf_target: 6, swap_payment_dest: PAYMENT_DEST });
+    const { id, run } = await quoteAndInitiate();
+    await expect(run()).rejects.toMatchObject({ code: "fee_rate_over_quote" });
+    expect(statusOf(id)).toEqual({ status: "expired", failure_reason: "fee_rate_over_quote" });
+  });
+
+  it("fee_rate_over_quote (Loop In) → expired", async () => {
+    stubs.quoteLoopIn.mockResolvedValueOnce(loopInQuote(900)).mockResolvedValueOnce(loopInQuote(5_000));
+    const { id, run } = await quoteAndInitiateLoopIn();
+    await expect(run()).rejects.toMatchObject({ code: "fee_rate_over_quote" });
+    expect(statusOf(id)).toEqual({ status: "expired", failure_reason: "fee_rate_over_quote" });
+  });
+
+  it("miner_fee_unknown at execute → expired", async () => {
+    stubs.quoteLoopIn.mockResolvedValueOnce(loopInQuote(900)).mockResolvedValueOnce(loopInQuote(0));
+    const { id, run } = await quoteAndInitiateLoopIn();
+    await expect(run()).rejects.toMatchObject({ code: "miner_fee_unknown" });
+    expect(statusOf(id)).toEqual({ status: "expired", failure_reason: "miner_fee_unknown" });
+  });
+
+  it("requote_required → expired", async () => {
+    const id = insertPreMigrationRow("loop_out");
+    await expect(svc.initiateSwap(id, DEST, {})).rejects.toMatchObject({ code: "requote_required" });
+    expect(statusOf(id)).toEqual({ status: "expired", failure_reason: "requote_required" });
+  });
+
+  it("a quote past its expiry → expired (as before), never left initiating", async () => {
+    const { swapRequest } = await svc.createLoopOutQuote({
+      nodePubkey: MEMBER, role: "member", amountSat: 250_000, destinationAddress: DEST,
+    });
+    db.prepare("UPDATE swap_requests SET quote_expires_at = ? WHERE id = ?").run(Date.now() - 1, swapRequest.id);
+    await expect(svc.initiateSwap(swapRequest.id, DEST, LOOP_OUT_CEILINGS)).rejects.toThrow("Quote has expired");
+    expect(statusOf(swapRequest.id).status).toBe("expired");
+  });
+});
+
 // ─── D (member Loop In), spec §4 D ──────────────────────────────────────────
 
 async function quoteAndInitiateLoopIn() {

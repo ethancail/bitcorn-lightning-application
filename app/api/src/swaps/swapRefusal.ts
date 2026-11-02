@@ -24,7 +24,10 @@ export type SwapRefusalCode =
   | "miner_fee_unknown"
   /** The ceilings echoed in the execute body differ from the stored quote's
    *  (spec §6, F4). */
-  | "ceiling_mismatch";
+  | "ceiling_mismatch"
+  /** Another execute of the same quote holds the claim (the row is
+   *  'initiating'); this one never reaches loopd. */
+  | "swap_in_progress";
 
 export class SwapRefusalError extends Error {
   readonly code: SwapRefusalCode;

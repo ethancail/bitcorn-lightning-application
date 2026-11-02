@@ -24,6 +24,9 @@ import { createLndChainAddress } from "../lightning/lnd";
 export type AppSwapStatus =
   | "quote_created"
   | "awaiting_confirmation"
+  // Claimed by initiateSwap; the pre-initiation checks and the loopd call are
+  // in progress. Only ever set by the atomic claim, and always left again.
+  | "initiating"
   | "initiated"
   | "executing"
   | "confirming"

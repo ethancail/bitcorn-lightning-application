@@ -357,6 +357,13 @@ reaches a loopd call that moves money:
 | `route_fee_over_cap` | Loop Out | A probed route for the swap or the prepay costs more than the routing cap |
 | `route_not_found` | Loop Out | Neither the quote's `swap_payment_dest` nor any `LOOP_SERVER_PUBKEYS` entry routes |
 | `miner_fee_unknown` | D | The HTLC-fee estimate failed or is zero; refused at the Loop In quote too, so 0 is never shown as the fee |
+| `swap_in_progress` | A, B, D | Another execute of the same quote already holds it: the first execute atomically claims the quote (status `initiating`) before any loopd call, so a quote reaches loopd once |
+
+After the claim, `ceiling_mismatch`, `route_fee_over_cap`, `route_not_found`
+and any other pre-initiation error release the quote back to its prior status
+(it can be retried until it expires); `requote_required`,
+`fee_rate_over_quote` and `miner_fee_unknown` mark it `expired` with the code
+as `failure_reason` (get a new quote).
 
 The Loop Out route probe tries the quote's `swap_payment_dest` first and falls
 back to the configured Loop servers; on the fallback branch the final hop
