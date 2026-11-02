@@ -95,3 +95,32 @@ export function classifyConfirmError(err: unknown): ConfirmErrorView | null {
  */
 export const MISMATCH_NEXT_STEP =
   "If the dashboard was just updated, reload the page. If it keeps happening, the API and web versions differ — check them in Settings.";
+
+/**
+ * The swap refusals a member can meet before a swap starts (loop-fee-ceilings).
+ * Each arrives as 409 { error: <code>, detail: <plain sentence> }.
+ */
+export const SWAP_REFUSAL_CODES: ReadonlySet<string> = new Set([
+  "requote_required",
+  "ceiling_mismatch",
+  "miner_fee_unknown",
+  "fee_rate_over_quote",
+  "route_not_found",
+  "route_fee_over_cap",
+  "swap_in_progress",
+  "swap_not_executable",
+]);
+
+/**
+ * What a member page puts on screen for a swap error. For the refusal codes
+ * above, ONLY the detail sentence — apiFetch's message is "<code>: <detail>",
+ * and the code is jargon to a member (ruling a). Anything else keeps its
+ * message, as before. Operator surfaces (treasury pages, the API) keep codes.
+ */
+export function memberSwapErrorText(err: unknown, fallback: string): string {
+  const e = (err ?? {}) as { code?: unknown; detail?: unknown; message?: unknown };
+  if (typeof e.code === "string" && SWAP_REFUSAL_CODES.has(e.code) && typeof e.detail === "string" && e.detail) {
+    return e.detail;
+  }
+  return typeof e.message === "string" && e.message ? e.message : fallback;
+}

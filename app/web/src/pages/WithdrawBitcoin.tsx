@@ -14,7 +14,7 @@ import {
   authorizedMaxSats,
   loopOutEstimatedFeeSats,
 } from "../components/actionConfirm/confirmAction";
-import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
+import { classifyConfirmError, memberSwapErrorText } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
   ageLabel,
@@ -303,7 +303,7 @@ export default function WithdrawBitcoin() {
       setQuoteResp(resp);
       setStage("quoted");
     } catch (e: any) {
-      setError(e.message ?? "Failed to get quote");
+      setError(memberSwapErrorText(e, "Failed to get quote"));
       setStage("form");
     }
   }
@@ -344,7 +344,7 @@ export default function WithdrawBitcoin() {
     } catch (e: any) {
       setStage("quoted");
       if (classifyConfirmError(e)) throw e;
-      setError(e.message ?? "Failed to initiate withdrawal");
+      setError(memberSwapErrorText(e, "Failed to initiate withdrawal"));
     }
   }
 

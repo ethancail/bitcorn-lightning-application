@@ -10,7 +10,7 @@ import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
 import { summarizeLoopIn, authorizedMaxSats } from "../components/actionConfirm/confirmAction";
-import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
+import { classifyConfirmError, memberSwapErrorText } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
   ageLabel,
@@ -309,7 +309,7 @@ export default function RefillChannel() {
       } else if (msg.includes("route_unavailable") || e.status === 503) {
         setWarning(`Treasury has no inbound capacity for ${amount.toLocaleString()} sats right now. Try a smaller amount or check back shortly.`);
       } else {
-        setError(msg || "Failed to get quote");
+        setError(memberSwapErrorText(e, "Failed to get quote"));
       }
       setStage("form");
     }
@@ -345,7 +345,7 @@ export default function RefillChannel() {
     } catch (e: any) {
       setStage("quoted");
       if (classifyConfirmError(e)) throw e;
-      setError(e.message ?? "Failed to start the top up");
+      setError(memberSwapErrorText(e, "Failed to start the top up"));
     }
   }
 
