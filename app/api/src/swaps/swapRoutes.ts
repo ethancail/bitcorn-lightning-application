@@ -13,7 +13,9 @@ import {
   getSwapExecution,
   getSwapEvents,
   listSwapRequests,
+  type SwapRequest,
 } from "./swapService";
+import { SwapRefusalError } from "./swapRefusal";
 import {
   checkMemberLoopOutPolicy,
   checkTreasuryLoopOutPolicy,
@@ -28,6 +30,24 @@ type Res = ServerResponse;
 function json(res: Res, status: number, data: unknown) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(data));
+}
+
+/** initiateSwap, with a refusal before initiation answered as a 409 carrying
+ *  its own code. Returns null when it has already answered. */
+async function initiateOrRefuse(
+  res: Res,
+  swapRequestId: string,
+  destinationAddress?: string
+): Promise<SwapRequest | null> {
+  try {
+    return await initiateSwap(swapRequestId, destinationAddress);
+  } catch (e) {
+    if (e instanceof SwapRefusalError) {
+      json(res, 409, { error: e.code, detail: e.message });
+      return null;
+    }
+    throw e;
+  }
 }
 
 function parseBody(req: IncomingMessage): Promise<string> {
@@ -106,7 +126,8 @@ export async function handleMemberLoopOut(req: IncomingMessage, res: Res): Promi
   });
   if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
 
-  const result = await initiateSwap(swapRequestId, destinationAddress);
+  const result = await initiateOrRefuse(res, swapRequestId, destinationAddress);
+  if (!result) return;
   json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
 }
 
@@ -172,7 +193,8 @@ export async function handleMemberLoopIn(req: IncomingMessage, res: Res): Promis
   });
   if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
 
-  const result = await initiateSwap(swapRequestId);
+  const result = await initiateOrRefuse(res, swapRequestId);
+  if (!result) return;
   json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
 }
 
@@ -259,7 +281,8 @@ export async function handleAdminLoopOut(req: IncomingMessage, res: Res): Promis
   });
   if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
 
-  const result = await initiateSwap(swapRequestId, destinationAddress);
+  const result = await initiateOrRefuse(res, swapRequestId, destinationAddress);
+  if (!result) return;
   json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
 }
 

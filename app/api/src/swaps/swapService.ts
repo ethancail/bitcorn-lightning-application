@@ -16,6 +16,7 @@ import {
   type LoopOutQuoteResult,
   type LoopInQuoteResult,
 } from "./loopProvider";
+import { SwapRefusalError } from "./swapRefusal";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -31,6 +32,11 @@ export type SwapRequest = {
   amount_sat: number;
   max_fee_sat: number | null;
   quoted_fee_sat: number | null;
+  // The quote's components (migrations 060–062). NULL on a row quoted before
+  // them, which execute refuses with requote_required (spec §5, D8).
+  quoted_swap_fee_sat: number | null;
+  quoted_prepay_sat: number | null; // Loop Out only; NULL for Loop In by design
+  quoted_miner_fee_sat: number | null; // Loop Out: sweep fee; Loop In: HTLC fee
   actual_fee_sat: number | null;
   destination_address: string | null;
   channel_id: string | null;
@@ -74,14 +80,16 @@ export async function createLoopOutQuote(params: {
     INSERT INTO swap_requests
       (id, created_at, updated_at, node_pubkey, role, swap_type, direction,
        status, amount_sat, max_fee_sat, quoted_fee_sat, destination_address,
-       channel_id, quote_expires_at)
+       channel_id, quote_expires_at,
+       quoted_swap_fee_sat, quoted_prepay_sat, quoted_miner_fee_sat)
     VALUES (?, ?, ?, ?, ?, 'loop_out', 'lightning_to_chain',
-            'quote_created', ?, ?, ?, ?, ?, ?)
+            'quote_created', ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, now, now, params.nodePubkey, params.role,
     params.amountSat, params.maxFeeSat ?? null,
     (quote.swap_fee_sat ?? 0) + (quote.miner_fee_sat ?? 0), // net fee (excludes prepay hold)
-    destAddr, params.channelId ?? null, expiresAt
+    destAddr, params.channelId ?? null, expiresAt,
+    quote.swap_fee_sat, quote.prepay_sat, quote.miner_fee_sat
   );
 
   recordSwapEvent(id, "quote_created", {
@@ -111,11 +119,13 @@ export async function createLoopInQuote(params: {
   db.prepare(`
     INSERT INTO swap_requests
       (id, created_at, updated_at, node_pubkey, role, swap_type, direction,
-       status, amount_sat, max_fee_sat, quoted_fee_sat, quote_expires_at)
+       status, amount_sat, max_fee_sat, quoted_fee_sat, quote_expires_at,
+       quoted_swap_fee_sat, quoted_miner_fee_sat)
     VALUES (?, ?, ?, ?, ?, 'loop_in', 'chain_to_lightning',
-            'quote_created', ?, ?, ?, ?)
+            'quote_created', ?, ?, ?, ?, ?, ?)
   `).run(id, now, now, params.nodePubkey, params.role, params.amountSat,
-    params.maxFeeSat ?? null, quote.total_fee_sat, expiresAt);
+    params.maxFeeSat ?? null, quote.total_fee_sat, expiresAt,
+    quote.swap_fee_sat, quote.htlc_publish_fee_sat);
 
   recordSwapEvent(id, "quote_created", { amount_sat: params.amountSat, quote, expires_at: expiresAt });
 
@@ -133,6 +143,21 @@ export async function initiateSwap(swapRequestId: string, destinationAddress?: s
   if (req.quote_expires_at && Date.now() > req.quote_expires_at) {
     updateSwapStatus(swapRequestId, "expired");
     throw new Error("Quote has expired");
+  }
+
+  // A row quoted before migrations 060–062 has no components to bind the
+  // ceilings to. Refuse and requote; never fall back to the 15% formula
+  // (spec §5, D8). Loop In has no prepay, so only its two are required.
+  const missingComponents =
+    req.quoted_swap_fee_sat == null ||
+    req.quoted_miner_fee_sat == null ||
+    (req.swap_type === "loop_out" && req.quoted_prepay_sat == null);
+  if (missingComponents) {
+    recordSwapEvent(swapRequestId, "initiation_refused", { code: "requote_required" });
+    throw new SwapRefusalError(
+      "requote_required",
+      "This quote was made before an update and can't be used. Get a new quote."
+    );
   }
 
   const now = Date.now();
