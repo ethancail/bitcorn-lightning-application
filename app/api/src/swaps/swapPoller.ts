@@ -111,7 +111,48 @@ export async function pollSwapStatuses(): Promise<void> {
 }
 
 /** Start the swap poller on a 15s interval. */
+/** How long a row may sit in 'initiating' before the startup sweep treats it
+ *  as interrupted. */
+const INTERRUPTED_AFTER_MS = 10 * 60_000;
+
+/**
+ * Ruling e: mark rows left 'initiating' for more than 10 minutes as TERMINAL —
+ * failed, failure_reason 'interrupted'. 'initiating' is set only by
+ * initiateSwap's atomic claim and always left again by a running process, so a
+ * row still there after 10 minutes was orphaned by a crash or restart
+ * mid-initiation.
+ *
+ * ⚠ NEVER RELEASED back to an executable state: loopd may already have started
+ * the swap before the process died, and releasing would let the same quote be
+ * executed again. ⚠ A swap loopd started in that window is NOT TRACKED by
+ * Bitcorn: no swap_executions row was written, so the poller cannot match it.
+ * It still runs in loopd and is visible there (`loop listswaps`).
+ *
+ * Runs once at startup, from startSwapPoller.
+ */
+export function sweepInterruptedInitiations(now = Date.now()): void {
+  const rows = db.prepare(`
+    SELECT id FROM swap_requests WHERE status = 'initiating' AND updated_at < ?
+  `).all(now - INTERRUPTED_AFTER_MS) as Array<{ id: string }>;
+  for (const { id } of rows) {
+    const r = db.prepare(`
+      UPDATE swap_requests SET status = 'failed', failure_reason = 'interrupted', updated_at = ?
+      WHERE id = ? AND status = 'initiating'
+    `).run(now, id);
+    if (r.changes === 1) {
+      recordSwapEvent(id, "status_changed", { new_status: "failed", failure_reason: "interrupted" });
+    }
+  }
+  if (rows.length > 0) {
+    console.warn(
+      `[swap-poller] marked ${rows.length} interrupted initiation(s) failed; ` +
+        "a swap loopd started in that window is not tracked by Bitcorn"
+    );
+  }
+}
+
 export function startSwapPoller(): void {
+  sweepInterruptedInitiations();
   setInterval(() => {
     pollSwapStatuses().catch((err) =>
       console.warn("[swap-poller] tick error:", err.message)

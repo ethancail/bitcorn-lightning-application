@@ -369,6 +369,14 @@ and any other pre-initiation error release the quote back to its prior status
 `fee_rate_over_quote` and `miner_fee_unknown` mark it `expired` with the code
 as `failure_reason` (get a new quote).
 
+**Interrupted initiations.** A quote left `initiating` by a crash or restart
+mid-initiation is marked `failed` with `failure_reason: "interrupted"` by a
+sweep at startup, once it is more than 10 minutes old. It is never released,
+because loopd may already have started the swap. ⚠ **A swap loopd started in
+that window is not tracked by Bitcorn**: no execution row was written, so the
+swap poller cannot match it, and its `swap_request` reads `failed`. The swap
+itself still runs in loopd and is visible there (`loop listswaps`).
+
 The Loop Out route probe tries the quote's `swap_payment_dest` first and falls
 back to the configured Loop servers; on the fallback branch the final hop
 (Loop server → destination) is Loop's own channel and is not probed.

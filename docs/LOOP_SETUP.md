@@ -179,6 +179,15 @@ takes them from its own in-call quote and accepts no body overrides.
 - **unknown HTLC fee (Loop In)** — loopd's failed estimate (−1, clamped to 0)
   or a zero estimate is refused at the quote and before initiation.
 
+**One execute per quote.** The member and admin paths claim a quote
+atomically (status `initiating`) before any loopd call, so a double-submit
+reaches loopd once. If the API crashes or restarts mid-initiation, the
+startup sweep marks a quote still `initiating` after 10 minutes as `failed`,
+`failure_reason: "interrupted"` — never released, since loopd may already
+have started the swap. ⚠ **A swap loopd started in that window is not
+tracked by Bitcorn** (no execution row exists for the poller to match). It
+still runs in loopd; check `loop listswaps` on the node.
+
 **What stays unbounded once a swap has started:** the Loop Out sweep follows
 the market, capped by loopd at 20% of the amount; the Loop In HTLC is
 published at the wallet's estimate with no cap. Both are disclosed in the
