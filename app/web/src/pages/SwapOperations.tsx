@@ -321,9 +321,15 @@ function LoopOutTab({
       setPhase("tracking");
     } catch (e: any) {
       setPhase("quoted");
-      // A confirmation refusal gets its own wording. A 409 here means the
-      // dashboard and API disagree about this action, so the copy must not
-      // read as a transient glitch the operator should retry.
+      // A confirmation refusal gets its own wording: a 409 with the code
+      // confirmation_mismatch means the dashboard and API disagree about this
+      // action, so that copy must not read as a transient glitch the operator
+      // should retry. Not every 409 is that: the swap refusals before
+      // initiation (requote_required, ceiling_mismatch, fee_rate_over_quote,
+      // route_not_found, route_fee_over_cap, swap_in_progress,
+      // swap_not_executable) are 409s too. classifyConfirmError keys on the
+      // code, not the status, so those fall through to e.message, which keeps
+      // the code on this operator page.
       const cf = classifyConfirmError(e);
       setError(cf ? cf.title + " \u2014 " + cf.detail : (e.message ?? "Failed to execute"));
     }
