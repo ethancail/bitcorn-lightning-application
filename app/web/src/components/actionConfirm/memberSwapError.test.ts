@@ -27,6 +27,7 @@ const REFUSALS: Array<[code: string, detail: string]> = [
   ["route_fee_over_cap", "Routing this payment would cost more than the allowed routing fee. Try again later."],
   ["swap_in_progress", "This swap is already being started. Check its status before trying again."],
   ["swap_not_executable", "This quote has already been used or has ended. Get a new quote."],
+  ["quote_expired", "This quote has expired. Get a new quote."],
 ];
 
 function answer(status: number, body: unknown) {

@@ -362,12 +362,14 @@ reaches a loopd call that moves money:
 | `miner_fee_unknown` | D | The HTLC-fee estimate failed or is zero; refused at the Loop In quote too, so 0 is never shown as the fee |
 | `swap_in_progress` | A, B, D | Another execute of the same quote already holds it: the first execute atomically claims the quote (status `initiating`) before any loopd call, so a quote reaches loopd once |
 | `swap_not_executable` | A, B, D | The quote is in any other non-executable status (`initiated`, `expired`, `failed`, `completed`, …): already used or ended. The row is not touched |
+| `quote_expired` | A, B, D | The quote is past its expiry (`SWAP_QUOTE_EXPIRY_SEC`, 300 s). The row is marked `expired` |
 
 After the claim, `ceiling_mismatch`, `route_fee_over_cap`, `route_not_found`
 and any other pre-initiation error release the quote back to its prior status
 (it can be retried until it expires); `requote_required`,
 `fee_rate_over_quote` and `miner_fee_unknown` mark it `expired` with the code
-as `failure_reason` (get a new quote).
+as `failure_reason` (get a new quote). `quote_expired` marks it `expired` too,
+with no `failure_reason`, as before.
 
 **Interrupted initiations.** A quote left `initiating` by a crash or restart
 mid-initiation is marked `failed` with `failure_reason: "interrupted"` by a

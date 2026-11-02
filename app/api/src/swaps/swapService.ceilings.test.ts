@@ -435,13 +435,19 @@ describe("the claim: every refusal after it releases or terminally marks the row
     expect(statusOf(id)).toEqual({ status: "expired", failure_reason: "requote_required" });
   });
 
-  it("a quote past its expiry → expired (as before), never left initiating", async () => {
+  // Ruling i: a 409 with its own code, quote_expired (a SwapRefusalError, so
+  // the execute handlers answer it as 409 { error, detail }), instead of the
+  // plain Error the dispatcher turned into a 500. Row handling unchanged.
+  it("a quote past its expiry → quote_expired refusal; the row is expired (as before), never left initiating", async () => {
     const { swapRequest } = await svc.createLoopOutQuote({
       nodePubkey: MEMBER, role: "member", amountSat: 250_000, destinationAddress: DEST,
     });
     db.prepare("UPDATE swap_requests SET quote_expires_at = ? WHERE id = ?").run(Date.now() - 1, swapRequest.id);
-    await expect(svc.initiateSwap(swapRequest.id, DEST, LOOP_OUT_CEILINGS)).rejects.toThrow("Quote has expired");
-    expect(statusOf(swapRequest.id).status).toBe("expired");
+    const err = await svc.initiateSwap(swapRequest.id, DEST, LOOP_OUT_CEILINGS).then(() => null, (e) => e);
+    expect(err).toBeInstanceOf(SwapRefusalError);
+    expect(err).toMatchObject({ code: "quote_expired" });
+    expect(statusOf(swapRequest.id)).toEqual({ status: "expired", failure_reason: null });
+    expect(stubs.initiateLoopOut).not.toHaveBeenCalled();
   });
 });
 

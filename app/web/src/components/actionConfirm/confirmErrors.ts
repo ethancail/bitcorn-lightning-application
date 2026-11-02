@@ -109,6 +109,7 @@ export const SWAP_REFUSAL_CODES: ReadonlySet<string> = new Set([
   "route_fee_over_cap",
   "swap_in_progress",
   "swap_not_executable",
+  "quote_expired",
 ]);
 
 /**

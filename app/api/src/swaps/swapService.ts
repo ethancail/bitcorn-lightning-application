@@ -197,7 +197,9 @@ export async function initiateSwap(
   try {
     if (req.quote_expires_at && Date.now() > req.quote_expires_at) {
       updateSwapStatus(swapRequestId, "expired");
-      throw new Error("Quote has expired");
+      // Ruling i: its own 409 code, not a plain Error (a 500). Row handling
+      // unchanged: marked expired above; the catch's release is then a no-op.
+      throw new SwapRefusalError("quote_expired", "This quote has expired. Get a new quote.");
     }
 
     // A row quoted before migrations 060–062 has no components to bind the

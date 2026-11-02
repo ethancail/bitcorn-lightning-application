@@ -30,7 +30,9 @@ export type SwapRefusalCode =
   | "swap_in_progress"
   /** The quote is in any other non-executable status (initiated, expired,
    *  failed, completed, …): already used or ended (ruling g). */
-  | "swap_not_executable";
+  | "swap_not_executable"
+  /** The quote is past its expiry (ruling i). The row is marked expired. */
+  | "quote_expired";
 
 export class SwapRefusalError extends Error {
   readonly code: SwapRefusalCode;
