@@ -66,9 +66,9 @@ export const ENV = {
     loopTlsCertPath: process.env.LOOP_TLS_CERT_PATH || "/loop-data/.loop/mainnet/tls.cert",
     // Loop macaroon for authentication (same directory as the cert)
     loopMacaroonPath: process.env.LOOP_MACAROON_PATH || "/loop-data/.loop/mainnet/loop.macaroon",
-    // Max swap fee as a percentage of the swap amount.
-    // Loop has a ~30k sat fixed prepay component, so small swaps (250k) have ~12% effective fee.
-    // Default 15% accommodates the fixed cost; larger swaps have much lower effective rates.
+    // Policy sanity check on a quote's swap fee, as a percentage of the swap
+    // amount (default 15%). Only a check on the quote: the max_swap_fee sent to
+    // loopd is the quoted swap fee itself (loop-fee-ceilings spec F1, F5).
     loopMaxSwapFeePct: Number(process.env.LOOP_MAX_SWAP_FEE_PCT ?? "15"),
     // Routing-fee cap for a Loop Out's two off-chain payments, in ppm, applied
     // separately to the swap amount and to the prepay (default 10,000 = 1%).
@@ -81,8 +81,9 @@ export const ENV = {
     // refuses the swap with fee_rate_over_quote; that costs only a requote
     // (loop-fee-ceilings spec §4 "The margin", ruling 7).
     loopMinerFeeMarginPct: Number(process.env.LOOP_MINER_FEE_MARGIN_PCT ?? "50"),
-    // Max miner fee in sats for the on-chain sweep (default: 20,000)
-    loopMaxMinerFeeSats: Number(process.env.LOOP_MAX_MINER_FEE_SATS ?? "20000"),
+    // (No miner-fee setting: max_miner_fee is the quoted miner fee on every
+    // Loop path. The old fixed 20,000-sat miner-fee ceiling was deleted —
+    // loop-fee-ceilings spec ruling 12.)
     // Minimum sats to rebalance via Loop Out (default: 50,000)
     loopMinRebalanceSats: Number(process.env.LOOP_MIN_REBALANCE_SATS ?? "50000"),
     // On-chain confirmation target for the sweep transaction (default: 6 blocks)

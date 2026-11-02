@@ -11,6 +11,7 @@ import {
   isLoopAvailable,
   getLoopOutTerms,
   getLoopOutQuote,
+  type LoopOutQuote,
   executeLoopOutSwap,
   listLoopSwaps,
 } from "./loop";
@@ -61,7 +62,14 @@ export class LoopOutError extends Error {
 // ─── Single swap execution ───────────────────────────────────────────────────
 
 /**
- * Execute a Loop Out swap through a specific channel.
+ * Every check executeLoopOut runs before money moves, steps 1–6 below. Throws
+ * LoopOutError (coded for the pre-initiation refusals) or DailyLossCapError;
+ * returns the in-call quote whose components become the ceilings.
+ *
+ * Shared with the treasury quote preview, so its `acceptable` flag means
+ * "execute would not refuse at this moment" (loop-fee-ceilings spec §4, B7).
+ * Without a channel_id (the preview's channel is optional) steps 1 and 3 are
+ * skipped and the probe is not pinned to a channel.
  *
  * 1. Validate channel exists and is active
  * 2. Check swap amount is within Loop terms
@@ -69,17 +77,11 @@ export class LoopOutError extends Error {
  * 4. Get quote and sanity-check its swap fee
  * 5. Check daily loss cap
  * 6. Fee-rate check and route probe (before any money-moving loopd call)
- * 7. Generate on-chain address
- * 8. Initiate swap, with ceilings from the step-4 quote
- *
- * Takes no ceiling overrides and no conf_target: every ceiling comes from the
- * in-call quote, and the sweep targets ENV.loopConfTarget (loop-fee-ceilings
- * spec §4 C1–C3, F6, ruling 1).
  */
-export async function executeLoopOut(params: {
-  channel_id: string;
+export async function checkLoopOutPreconditions(params: {
+  channel_id?: string;
   amount_sats: number;
-}): Promise<LoopOutResult> {
+}): Promise<LoopOutQuote> {
   const { channel_id, amount_sats } = params;
 
   if (!Number.isFinite(amount_sats) || amount_sats <= 0) {
@@ -87,11 +89,14 @@ export async function executeLoopOut(params: {
   }
 
   // 1. Find channel
-  const { channels } = await getLndChannels();
-  const channel = channels.find((c: any) => c.id === channel_id);
-  if (!channel) throw new LoopOutError(`Channel not found: ${channel_id}`);
-  if (!channel.is_active)
-    throw new LoopOutError(`Channel is not active: ${channel_id}`);
+  let channel: any = null;
+  if (channel_id !== undefined) {
+    const { channels } = await getLndChannels();
+    channel = channels.find((c: any) => c.id === channel_id);
+    if (!channel) throw new LoopOutError(`Channel not found: ${channel_id}`);
+    if (!channel.is_active)
+      throw new LoopOutError(`Channel is not active: ${channel_id}`);
+  }
 
   // 2. Check Loop terms
   const terms = await getLoopOutTerms();
@@ -107,11 +112,13 @@ export async function executeLoopOut(params: {
   }
 
   // 3. Safety: never swap more than 50% of channel capacity
-  const maxSafe = Math.floor(channel.capacity * 0.5);
-  if (amount_sats > maxSafe) {
-    throw new LoopOutError(
-      `Amount ${amount_sats} exceeds 50% of channel capacity (${channel.capacity}). Max: ${maxSafe}`
-    );
+  if (channel) {
+    const maxSafe = Math.floor(channel.capacity * 0.5);
+    if (amount_sats > maxSafe) {
+      throw new LoopOutError(
+        `Amount ${amount_sats} exceeds 50% of channel capacity (${channel.capacity}). Max: ${maxSafe}`
+      );
+    }
   }
 
   // 4. Get quote and sanity-check it. The 15% stays only as this policy
@@ -153,7 +160,7 @@ export async function executeLoopOut(params: {
   if (!route.ok) {
     if (route.reason === "no_route") {
       throw new LoopOutError(
-        `No route to the Loop server for ${amount_sats} sats over ${channel_id} (${route.checked.length} checked)`,
+        `No route to the Loop server for ${amount_sats} sats${channel_id ? ` over ${channel_id}` : ""} (${route.checked.length} checked)`,
         "route_not_found"
       );
     }
@@ -164,12 +171,34 @@ export async function executeLoopOut(params: {
   }
   // Which probe branch ran, for the audit trail (spec §10, post-deploy (4)).
   console.log("[rebalance-loop] Loop Out route probed:", {
-    channel_id,
+    channel_id: channel_id ?? null,
     branch: route.branch,
     target: route.target,
     swap_route_fee_sat: route.swapRouteFeeSat,
     prepay_route_fee_sat: route.prepayRouteFeeSat,
   });
+
+  return quote;
+}
+
+/**
+ * Execute a Loop Out swap through a specific channel.
+ *
+ * 1–6. checkLoopOutPreconditions (above)
+ * 7. Generate on-chain address
+ * 8. Initiate swap, with ceilings from the step-4 quote
+ *
+ * Takes no ceiling overrides and no conf_target: every ceiling comes from the
+ * in-call quote, and the sweep targets ENV.loopConfTarget (loop-fee-ceilings
+ * spec §4 C1–C3, F6, ruling 1).
+ */
+export async function executeLoopOut(params: {
+  channel_id: string;
+  amount_sats: number;
+}): Promise<LoopOutResult> {
+  const { channel_id, amount_sats } = params;
+  const quote = await checkLoopOutPreconditions({ channel_id, amount_sats });
+  const confTarget = ENV.loopConfTarget;
 
   // 7. Generate fresh on-chain address
   const { address } = await createLndChainAddress();

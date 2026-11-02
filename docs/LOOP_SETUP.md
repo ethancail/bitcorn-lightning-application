@@ -134,11 +134,12 @@ forward. That file is authoritative; this table is a copy and can drift.
 | `LOOP_GRPC_PORT` | `11010` | loopd gRPC port |
 | `LOOP_TLS_CERT_PATH` | `/loop-data/.loop/mainnet/tls.cert` | loopd's self-generated TLS cert, under `loopdir/<network>/` |
 | `LOOP_MACAROON_PATH` | `/loop-data/.loop/mainnet/loop.macaroon` | Loop macaroon, same directory as the cert |
-| `LOOP_MAX_SWAP_FEE_PCT` | `15` | Ceiling on the **swap-fee component**, as a % of swap amount |
-| `LOOP_MAX_MINER_FEE_SATS` | `20000` | Ceiling on the on-chain sweep fee |
+| `LOOP_MAX_SWAP_FEE_PCT` | `15` | Sanity check on a quote's **swap-fee component**, as a % of swap amount. Not a ceiling sent to loopd: `max_swap_fee` is the quoted swap fee |
+| `LOOP_ROUTING_FEE_CAP_PPM` | `10000` | Routing-fee cap (1%), applied separately to the swap payment and the prepay; sent as both routing ceilings, and the pre-initiation route probe refuses a route over it |
+| `LOOP_MINER_FEE_MARGIN_PCT` | `50` | Before initiation, a fresh quote's miner fee above the quoted one plus this % refuses the swap |
 | `LOOP_MIN_REBALANCE_SATS` | `50000` | Minimum swap amount in auto mode |
 | `LOOP_CONF_TARGET` | `6` | On-chain confirmation target, in blocks |
-| `LOOP_SERVER_PUBKEYS` | Lightning Labs mainnet Loop server | Comma-separated pubkeys for the Loop In route-probe preflight |
+| `LOOP_SERVER_PUBKEYS` | Lightning Labs mainnet Loop server | Comma-separated pubkeys for the Loop In route-probe preflight, and the Loop Out route probe's fallback when the quote's `swap_payment_dest` finds no route |
 
 **`LOOP_MAX_SWAP_FEE_PCT` is 15, and 15 is not a typo.** It read `0.5` until
 v1.18.9 and the *documentation* read `0.5` long after the code moved — a 30×
