@@ -17,7 +17,11 @@ export type SwapRefusalCode =
   | "route_not_found"
   /** A fresh miner-fee estimate exceeds the quoted one plus the margin
    *  (spec §4, F3, D3). */
-  | "fee_rate_over_quote";
+  | "fee_rate_over_quote"
+  /** Loop In: the HTLC-fee estimate failed or is zero, so the on-chain fee is
+   *  unknown. Refused at quote and before initiation; 0 is never shown as the
+   *  fee (spec §4 D, Ruling Z, D12). */
+  | "miner_fee_unknown";
 
 export class SwapRefusalError extends Error {
   readonly code: SwapRefusalCode;

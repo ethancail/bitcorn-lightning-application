@@ -40,7 +40,7 @@ vi.mock("../utils/membership", () => ({ assertActiveMember: vi.fn() }));
 vi.mock("../utils/role", () => ({ assertTreasury: vi.fn() }));
 vi.mock("../utils/btc-address", () => ({ validateOnchainAddress: () => ({ ok: true }) }));
 
-import { handleMemberLoopOut, handleMemberLoopIn, handleAdminLoopOut } from "./swapRoutes";
+import { handleMemberLoopOut, handleMemberLoopIn, handleAdminLoopOut, handleMemberLoopInQuote } from "./swapRoutes";
 
 function request(body: unknown): IncomingMessage {
   const s = new PassThrough();
@@ -90,5 +90,20 @@ describe("a SwapRefusalError is answered as 409 with its code", () => {
     stubs.initiateSwap.mockRejectedValue(new Error("Loop RPC LoopOut failed"));
     const { res } = response();
     await expect(handleMemberLoopIn(request({ swap_request_id: "r1" }), res)).rejects.toThrow("Loop RPC LoopOut failed");
+  });
+});
+
+describe("the Loop In quote route answers Ruling Z's refusal as 409 with its code", () => {
+  it("D quote: miner_fee_unknown", async () => {
+    const { createLoopInQuote } = await import("./swapService");
+    const { isLoopAvailable } = await import("./loopProvider");
+    vi.mocked(isLoopAvailable).mockResolvedValue({ available: true });
+    vi.mocked(createLoopInQuote).mockRejectedValue(
+      new SwapRefusalError("miner_fee_unknown", "Try again in a few minutes."),
+    );
+    stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "member", membership_status: "active" });
+    const { res, out } = response();
+    await handleMemberLoopInQuote(request({ amount_sat: 250_000 }), res);
+    expect(out).toEqual({ status: 409, body: { error: "miner_fee_unknown", detail: "Try again in a few minutes." } });
   });
 });

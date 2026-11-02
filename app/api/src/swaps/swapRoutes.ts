@@ -155,12 +155,20 @@ export async function handleMemberLoopInQuote(req: IncomingMessage, res: Res): P
     return json(res, status, { error: "policy_violation", detail: preCheck.reason, code: preCheck.code });
   }
 
-  // Create quote (calls loopd GetLoopInQuote)
-  const { swapRequest, quote } = await createLoopInQuote({
-    nodePubkey: node.pubkey,
-    role: node.node_role === "treasury" ? "treasury" : "member",
-    amountSat,
-  });
+  // Create quote (calls loopd GetLoopInQuote). A failed or zero HTLC-fee
+  // estimate is refused here with its own code (Ruling Z).
+  let created: Awaited<ReturnType<typeof createLoopInQuote>>;
+  try {
+    created = await createLoopInQuote({
+      nodePubkey: node.pubkey,
+      role: node.node_role === "treasury" ? "treasury" : "member",
+      amountSat,
+    });
+  } catch (e) {
+    if (e instanceof SwapRefusalError) return json(res, 409, { error: e.code, detail: e.message });
+    throw e;
+  }
+  const { swapRequest, quote } = created;
 
   // Phase 2: post-quote policy check (fee cap — advisory)
   const postCheck = await checkMemberLoopInPolicy({

@@ -264,6 +264,68 @@ describe("D21: the probe's three branches", () => {
   });
 });
 
+// ─── D (member Loop In), spec §4 D ──────────────────────────────────────────
+
+async function quoteAndInitiateLoopIn() {
+  const { swapRequest } = await svc.createLoopInQuote({ nodePubkey: MEMBER, role: "member", amountSat: 250_000 });
+  return { id: swapRequest.id, run: () => svc.initiateSwap(swapRequest.id) };
+}
+
+function loopInQuote(htlcFeeSat: number) {
+  return { amount_sat: 250_000, swap_fee_sat: 500, htlc_publish_fee_sat: htlcFeeSat, total_fee_sat: 500 + Math.max(0, htlcFeeSat), conf_target: 6 };
+}
+
+describe("D16 and §4 D: Loop In ceilings", () => {
+  it("D16: max_swap_fee is the quoted swap fee alone, without the HTLC fee", async () => {
+    const { run } = await quoteAndInitiateLoopIn();
+    await run();
+    expect(stubs.initiateLoopIn.mock.calls[0][0].maxSwapFee).toBe(500);
+  });
+
+  it("max_miner_fee is the quoted HTLC fee", async () => {
+    const { run } = await quoteAndInitiateLoopIn();
+    await run();
+    expect(stubs.initiateLoopIn.mock.calls[0][0].maxMinerFee).toBe(900);
+  });
+});
+
+describe("D3 (D): the fee-rate refusal fires before Loop In initiation", () => {
+  // Stored HTLC fee 900; margin 50% → a fresh estimate above 1,350 refuses.
+  it("fresh HTLC fee 1,351 → fee_rate_over_quote, no loopd initiation", async () => {
+    stubs.quoteLoopIn.mockResolvedValueOnce(loopInQuote(900)).mockResolvedValueOnce(loopInQuote(1_351));
+    const { run } = await quoteAndInitiateLoopIn();
+    await expect(run()).rejects.toMatchObject({ code: "fee_rate_over_quote" });
+    expect(stubs.initiateLoopIn).not.toHaveBeenCalled();
+  });
+
+  it("fresh HTLC fee 1,350 (exactly quote + 50%) proceeds", async () => {
+    stubs.quoteLoopIn.mockResolvedValueOnce(loopInQuote(900)).mockResolvedValueOnce(loopInQuote(1_350));
+    const { run } = await quoteAndInitiateLoopIn();
+    await run();
+    expect(stubs.initiateLoopIn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("D12 (Ruling Z): a failed or zero HTLC-fee estimate is unknown, and refused", () => {
+  // getLoopInQuote clamps loopd's −1 ("estimation failed") to 0, so 0 is what
+  // a failed estimate looks like here; a genuine 0 is refused the same way.
+  it("a quote with a zero HTLC fee is refused with miner_fee_unknown, and no quote is stored", async () => {
+    stubs.quoteLoopIn.mockResolvedValueOnce(loopInQuote(0));
+    const before = (db.prepare("SELECT COUNT(*) AS n FROM swap_requests").get() as { n: number }).n;
+    await expect(svc.createLoopInQuote({ nodePubkey: MEMBER, role: "member", amountSat: 250_000 }))
+      .rejects.toMatchObject({ code: "miner_fee_unknown" });
+    const after = (db.prepare("SELECT COUNT(*) AS n FROM swap_requests").get() as { n: number }).n;
+    expect(after).toBe(before);
+  });
+
+  it("a fresh estimate that fails at execute is refused with miner_fee_unknown before initiation", async () => {
+    stubs.quoteLoopIn.mockResolvedValueOnce(loopInQuote(900)).mockResolvedValueOnce(loopInQuote(0));
+    const { run } = await quoteAndInitiateLoopIn();
+    await expect(run()).rejects.toMatchObject({ code: "miner_fee_unknown" });
+    expect(stubs.initiateLoopIn).not.toHaveBeenCalled();
+  });
+});
+
 describe("D8: a pre-migration row requires a requote", () => {
   it.each(["loop_out", "loop_in"] as const)(
     "%s with null quote components is refused before any loopd call",

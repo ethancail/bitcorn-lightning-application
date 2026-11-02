@@ -113,6 +113,16 @@ export async function createLoopInQuote(params: {
   maxFeeSat?: number;
 }): Promise<{ swapRequest: SwapRequest; quote: LoopInQuoteResult }> {
   const quote = await quoteLoopIn(params.amountSat);
+  // Ruling Z (spec §4 D, D12): getLoopInQuote clamps loopd's −1 ("estimation
+  // failed") to 0, so 0 here means failed OR zero — unknown either way. Refuse
+  // before anything is stored, so no executable quote carries a 0 miner fee
+  // and the confirmation never shows one.
+  if (!(quote.htlc_publish_fee_sat > 0)) {
+    throw new SwapRefusalError(
+      "miner_fee_unknown",
+      "The network fee for this refill couldn't be estimated right now. Try again in a few minutes."
+    );
+  }
   const now = Date.now();
   const id = crypto.randomUUID();
   const expiresAt = now + ENV.swapQuoteExpirySec * 1000;
@@ -163,6 +173,8 @@ export async function initiateSwap(swapRequestId: string, destinationAddress?: s
 
   if (req.swap_type === "loop_out") {
     await assertLoopOutPrechecks(req);
+  } else if (req.swap_type === "loop_in") {
+    await assertLoopInPrechecks(req);
   }
 
   const now = Date.now();
@@ -205,8 +217,11 @@ export async function initiateSwap(swapRequestId: string, destinationAddress?: s
     } else if (updatedReq.swap_type === "loop_in") {
       const result = await initiateLoopIn({
         amountSat: updatedReq.amount_sat,
-        maxSwapFee: updatedReq.quoted_fee_sat ?? Math.ceil(updatedReq.amount_sat * ENV.loopMaxSwapFeePct / 100),
-        maxMinerFee: ENV.loopMaxMinerFeeSats,
+        // The quoted swap fee alone, without the HTLC fee (ruling 10, D16), and
+        // the quoted HTLC fee as the miner ceiling (F3). Non-null: rows
+        // missing them were refused above.
+        maxSwapFee: updatedReq.quoted_swap_fee_sat!,
+        maxMinerFee: updatedReq.quoted_miner_fee_sat!,
         confTarget: ENV.loopConfTarget,
         lastHop: ENV.treasuryPubkey || undefined, // hub-and-spoke: tell Loop server to route through treasury
       });
@@ -236,6 +251,42 @@ export async function initiateSwap(swapRequestId: string, destinationAddress?: s
   return getSwapRequest(swapRequestId)!;
 }
 
+/** Builds a refusal for one swap request, recording why before it is thrown. */
+function refuser(swapRequestId: string) {
+  return (code: SwapRefusalCode, message: string, data: Record<string, unknown>) => {
+    recordSwapEvent(swapRequestId, "initiation_refused", { code, ...data });
+    return new SwapRefusalError(code, message);
+  };
+}
+
+/**
+ * Loop In (site D): the fee-rate refusal before initiation, at the HTLC conf
+ * target (spec §4 D, F3), from one fresh quote at the same amount and conf
+ * target. A fresh estimate that failed or is zero is unknown and refused
+ * (Ruling Z) — otherwise 0 would pass any margin. There is no route probe on
+ * D here: the Loop In pre-quote probe (probeRouteToLoopServer, in
+ * checkMemberLoopInPolicy) is unchanged.
+ */
+async function assertLoopInPrechecks(req: SwapRequest): Promise<void> {
+  const refuse = refuser(req.id);
+  const fresh = await quoteLoopIn(req.amount_sat);
+  const quotedMinerFee = req.quoted_miner_fee_sat!;
+  if (!(fresh.htlc_publish_fee_sat > 0)) {
+    throw refuse(
+      "miner_fee_unknown",
+      "The network fee for this refill couldn't be estimated right now. Try again in a few minutes.",
+      { quoted_miner_fee_sat: quotedMinerFee, fresh_miner_fee_sat: fresh.htlc_publish_fee_sat }
+    );
+  }
+  if (minerFeeExceedsMargin(fresh.htlc_publish_fee_sat, quotedMinerFee)) {
+    throw refuse(
+      "fee_rate_over_quote",
+      "Network fees have gone up since this quote. Get a new quote.",
+      { quoted_miner_fee_sat: quotedMinerFee, fresh_miner_fee_sat: fresh.htlc_publish_fee_sat }
+    );
+  }
+}
+
 /**
  * Loop Out (sites A and B): the fee-rate check and the route probe, before any
  * money-moving loopd call (spec §4 A and B). Both use one fresh loopd quote at
@@ -248,10 +299,7 @@ export async function initiateSwap(swapRequestId: string, destinationAddress?: s
  * also before initiation.
  */
 async function assertLoopOutPrechecks(req: SwapRequest): Promise<void> {
-  const refuse = (code: SwapRefusalCode, message: string, data: Record<string, unknown>) => {
-    recordSwapEvent(req.id, "initiation_refused", { code, ...data });
-    return new SwapRefusalError(code, message);
-  };
+  const refuse = refuser(req.id);
 
   const fresh = await quoteLoopOut(req.amount_sat);
   const quotedMinerFee = req.quoted_miner_fee_sat!;
