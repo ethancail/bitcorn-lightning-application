@@ -373,7 +373,11 @@ with no `failure_reason`, as before.
 
 **Interrupted initiations.** A quote left `initiating` by a crash or restart
 mid-initiation is marked `failed` with `failure_reason: "interrupted"` by a
-sweep at startup, once it is more than 10 minutes old. It is never released,
+sweep at startup, once it is more than 10 minutes old. **The sweep runs once,
+at startup only** — not on a timer. A quote orphaned while the API keeps
+running (which nothing in a running process should cause) stays `initiating`
+until the next restart; one less than 10 minutes old at a restart waits for
+the restart after that. It is never released,
 because loopd may already have started the swap. ⚠ **A swap loopd started in
 that window is not tracked by Bitcorn**: no execution row was written, so the
 swap poller cannot match it, and its `swap_request` reads `failed`. The swap

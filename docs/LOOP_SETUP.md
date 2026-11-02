@@ -184,7 +184,9 @@ atomically (status `initiating`) before any loopd call, so a double-submit
 reaches loopd once. If the API crashes or restarts mid-initiation, the
 startup sweep marks a quote still `initiating` after 10 minutes as `failed`,
 `failure_reason: "interrupted"` — never released, since loopd may already
-have started the swap. ⚠ **A swap loopd started in that window is not
+have started the swap. **The sweep runs once, at startup only**, not on a
+timer: a quote orphaned without a restart stays `initiating` until the next
+restart, and one under 10 minutes old at a restart waits for the one after. ⚠ **A swap loopd started in that window is not
 tracked by Bitcorn** (no execution row exists for the poller to match). It
 still runs in loopd; check `loop listswaps` on the node.
 
