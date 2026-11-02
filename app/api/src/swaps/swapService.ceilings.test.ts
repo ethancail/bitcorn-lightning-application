@@ -17,6 +17,8 @@ import crypto from "crypto";
 import type Database from "better-sqlite3";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { ENV } from "../config/env";
+// Pure (no db import), so a static import is safe here.
+import { SwapRefusalError } from "./swapRefusal";
 
 process.env.DB_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "bitcorn-swap-ceilings-test-"));
 
@@ -334,6 +336,36 @@ describe("the claim: two concurrent executes of one quote reach loopd once", () 
     expect(stubs.initiateLoopIn).toHaveBeenCalledTimes(1);
     const lost = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
     expect(lost?.reason).toMatchObject({ code: "swap_in_progress" });
+  });
+});
+
+// Ruling g: any non-executable status (initiated included) is its own 409
+// refusal, swap_not_executable; swap_in_progress stays for 'initiating'.
+describe("ruling g: a late execute of a used quote is refused with its own code", () => {
+  it.each(["initiated", "expired", "failed", "completed"])(
+    "status %s → swap_not_executable, a SwapRefusalError, no loopd call",
+    async (status) => {
+      const { id, run } = await quoteAndInitiate();
+      db.prepare("UPDATE swap_requests SET status = ? WHERE id = ?").run(status, id);
+      const err = await run().then(() => null, (e) => e);
+      expect(err).toBeInstanceOf(SwapRefusalError);
+      expect(err).toMatchObject({ code: "swap_not_executable" });
+      expect(stubs.initiateLoopOut).not.toHaveBeenCalled();
+      expect(statusOf(id).status).toBe(status); // the row is not touched
+    },
+  );
+
+  it("a late loser, arriving after the winner finished, gets it too", async () => {
+    const { run } = await quoteAndInitiate();
+    await run();
+    await expect(run()).rejects.toMatchObject({ code: "swap_not_executable" });
+    expect(stubs.initiateLoopOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("'initiating' itself still gets swap_in_progress", async () => {
+    const { id, run } = await quoteAndInitiate();
+    db.prepare("UPDATE swap_requests SET status = 'initiating' WHERE id = ?").run(id);
+    await expect(run()).rejects.toMatchObject({ code: "swap_in_progress" });
   });
 });
 

@@ -27,7 +27,10 @@ export type SwapRefusalCode =
   | "ceiling_mismatch"
   /** Another execute of the same quote holds the claim (the row is
    *  'initiating'); this one never reaches loopd. */
-  | "swap_in_progress";
+  | "swap_in_progress"
+  /** The quote is in any other non-executable status (initiated, expired,
+   *  failed, completed, …): already used or ended (ruling g). */
+  | "swap_not_executable";
 
 export class SwapRefusalError extends Error {
   readonly code: SwapRefusalCode;

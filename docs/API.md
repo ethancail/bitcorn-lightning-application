@@ -358,6 +358,7 @@ reaches a loopd call that moves money:
 | `route_not_found` | Loop Out | Neither the quote's `swap_payment_dest` nor any `LOOP_SERVER_PUBKEYS` entry routes |
 | `miner_fee_unknown` | D | The HTLC-fee estimate failed or is zero; refused at the Loop In quote too, so 0 is never shown as the fee |
 | `swap_in_progress` | A, B, D | Another execute of the same quote already holds it: the first execute atomically claims the quote (status `initiating`) before any loopd call, so a quote reaches loopd once |
+| `swap_not_executable` | A, B, D | The quote is in any other non-executable status (`initiated`, `expired`, `failed`, `completed`, …): already used or ended. The row is not touched |
 
 After the claim, `ceiling_mismatch`, `route_fee_over_cap`, `route_not_found`
 and any other pre-initiation error release the quote back to its prior status

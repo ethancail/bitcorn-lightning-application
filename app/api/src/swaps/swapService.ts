@@ -176,7 +176,13 @@ export async function initiateSwap(
         "This swap is already being started. Check its status before trying again."
       );
     }
-    throw new Error(`Cannot initiate swap in status: ${current?.status ?? req.status}`);
+    // Ruling g: every other non-executable status (initiated, expired,
+    // failed, completed, …) is its own refusal, not a generic error. The row
+    // is not touched.
+    throw new SwapRefusalError(
+      "swap_not_executable",
+      "This quote has already been used or has ended. Get a new quote."
+    );
   }
   recordSwapEvent(swapRequestId, "status_changed", { new_status: "initiating", claimed_from: req.status });
 

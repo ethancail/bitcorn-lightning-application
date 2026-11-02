@@ -92,6 +92,19 @@ describe("a SwapRefusalError is answered as 409 with its code", () => {
     expect(out).toEqual({ status: 409, body: { error: "requote_required", detail: "Get a new quote." } });
   });
 
+  it("ruling g: a late loser's swap_not_executable is a 409 too", async () => {
+    stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "member", membership_status: "active" });
+    stubs.initiateSwap.mockRejectedValue(
+      new SwapRefusalError("swap_not_executable", "This quote has already been used or has ended. Get a new quote."),
+    );
+    const { res, out } = response();
+    await handleMemberLoopOut(request({ swap_request_id: "r1", destination_address: "bc1qx" }), res);
+    expect(out).toEqual({
+      status: 409,
+      body: { error: "swap_not_executable", detail: "This quote has already been used or has ended. Get a new quote." },
+    });
+  });
+
   it("any other error still propagates to the dispatcher", async () => {
     stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "member", membership_status: "active" });
     stubs.initiateSwap.mockRejectedValue(new Error("Loop RPC LoopOut failed"));
