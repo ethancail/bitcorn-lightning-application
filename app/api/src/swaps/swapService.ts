@@ -18,6 +18,7 @@ import {
 } from "./loopProvider";
 import { SwapRefusalError, type SwapRefusalCode } from "./swapRefusal";
 import { checkLoopOutRoutes, minerFeeExceedsMargin } from "../lightning/loopOutPrechecks";
+import { ceilingsFor, ceilingsMatch } from "./swapCeilings";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -144,7 +145,16 @@ export async function createLoopInQuote(params: {
 
 // ─── Swap initiation ─────────────────────────────────────────────────────
 
-export async function initiateSwap(swapRequestId: string, destinationAddress?: string): Promise<SwapRequest> {
+/**
+ * @param echoed The execute request's body. Its ceilings (the quote response's
+ *   `ceilings`, F4) must equal the stored quote's; the confirmation hash
+ *   covers them too. Other keys in it are ignored.
+ */
+export async function initiateSwap(
+  swapRequestId: string,
+  destinationAddress: string | undefined,
+  echoed: Record<string, unknown>
+): Promise<SwapRequest> {
   const req = getSwapRequest(swapRequestId);
   if (!req) throw new Error("Swap request not found");
   if (req.status !== "quote_created" && req.status !== "awaiting_confirmation") {
@@ -167,6 +177,18 @@ export async function initiateSwap(swapRequestId: string, destinationAddress?: s
     throw new SwapRefusalError(
       "requote_required",
       "This quote was made before an update and can't be used. Get a new quote."
+    );
+  }
+
+  // F4 (spec §6): the ceilings the caller confirmed must be the ones this
+  // quote authorises. A mismatch — altered, missing, or computed under a
+  // different routing-cap setting — is refused and requoted.
+  const expected = ceilingsFor(req)!;
+  if (!ceilingsMatch(expected, echoed)) {
+    recordSwapEvent(swapRequestId, "initiation_refused", { code: "ceiling_mismatch", expected });
+    throw new SwapRefusalError(
+      "ceiling_mismatch",
+      "The fee limits sent don't match this quote. Get a new quote."
     );
   }
 

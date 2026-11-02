@@ -21,7 +21,10 @@ export type SwapRefusalCode =
   /** Loop In: the HTLC-fee estimate failed or is zero, so the on-chain fee is
    *  unknown. Refused at quote and before initiation; 0 is never shown as the
    *  fee (spec §4 D, Ruling Z, D12). */
-  | "miner_fee_unknown";
+  | "miner_fee_unknown"
+  /** The ceilings echoed in the execute body differ from the stored quote's
+   *  (spec §6, F4). */
+  | "ceiling_mismatch";
 
 export class SwapRefusalError extends Error {
   readonly code: SwapRefusalCode;

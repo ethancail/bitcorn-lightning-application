@@ -83,6 +83,22 @@ export type ConfirmedRoute = {
   note: string;
 };
 
+// The swap execute routes' echoed ceilings (loop-fee-ceilings spec §6, F4), in
+// the order the quote response's `ceilings` lists them. Required: a body
+// without them is refused (400), so a client that predates them cannot reach
+// loopd. The handler also compares each with the stored quote.
+const LOOP_OUT_CEILING_FIELDS: Field[] = [
+  { name: "max_swap_fee_sat", from: "body", kind: "number" },
+  { name: "max_prepay_amt_sat", from: "body", kind: "number" },
+  { name: "max_miner_fee_sat", from: "body", kind: "number" },
+  { name: "max_swap_routing_fee_sat", from: "body", kind: "number" },
+  { name: "max_prepay_routing_fee_sat", from: "body", kind: "number" },
+];
+const LOOP_IN_CEILING_FIELDS: Field[] = [
+  { name: "max_swap_fee_sat", from: "body", kind: "number" },
+  { name: "max_miner_fee_sat", from: "body", kind: "number" },
+];
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DRY-RUN — why `dry_run` is hashed on the two routes that accept it
 //
@@ -220,17 +236,22 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     fields: [
       { name: "swap_request_id", from: "body", kind: "text" },
       { name: "destination_address", from: "body", kind: "text" },
+      ...LOOP_OUT_CEILING_FIELDS,
     ],
     note:
       "Selector echo plus destination: the amount comes from the stored quote, but " +
-      "destination_address is caller-supplied and is where the coins land.",
+      "destination_address is caller-supplied and is where the coins land. The quote's " +
+      "ceilings are echoed and hashed too (loop-fee-ceilings F4), and the handler refuses " +
+      "any that differ from the stored quote.",
   },
   {
     method: "POST",
     match: { kind: "exact", url: "/api/swaps/loop-in" },
     shape: 2,
-    fields: [{ name: "swap_request_id", from: "body", kind: "text" }],
-    note: "Selector echo: amount comes from the stored quote; Loop In has no destination.",
+    fields: [{ name: "swap_request_id", from: "body", kind: "text" }, ...LOOP_IN_CEILING_FIELDS],
+    note:
+      "Selector echo: amount comes from the stored quote; Loop In has no destination. The " +
+      "quote's ceilings are echoed and hashed (loop-fee-ceilings F4).",
   },
   {
     method: "POST",
@@ -239,6 +260,7 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     fields: [
       { name: "swap_request_id", from: "body", kind: "text" },
       { name: "destination_address", from: "body", kind: "text", optional: true },
+      ...LOOP_OUT_CEILING_FIELDS,
     ],
     note:
       "As /api/swaps/loop-out, but destination_address is optional here (absent = default " +

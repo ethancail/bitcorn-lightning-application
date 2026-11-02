@@ -46,6 +46,7 @@ import {
   handleAdminLoopOut,
   handleMemberLoopInQuote,
   handleMemberLoopOutQuote,
+  handleAdminLoopOutQuote,
 } from "./swapRoutes";
 
 function request(body: unknown): IncomingMessage {
@@ -96,6 +97,85 @@ describe("a SwapRefusalError is answered as 409 with its code", () => {
     stubs.initiateSwap.mockRejectedValue(new Error("Loop RPC LoopOut failed"));
     const { res } = response();
     await expect(handleMemberLoopIn(request({ swap_request_id: "r1" }), res)).rejects.toThrow("Loop RPC LoopOut failed");
+  });
+});
+
+// F4 (spec §6): the quote response carries the ceilings, computed from the
+// stored row (swapCeilings.ts is real here; only the service is mocked).
+describe("F4: quote responses carry the ceilings", () => {
+  const loopOutRow = {
+    id: "r1", swap_type: "loop_out", amount_sat: 250_000,
+    quoted_swap_fee_sat: 835, quoted_prepay_sat: 30_000, quoted_miner_fee_sat: 1_200,
+  };
+  const LO = {
+    max_swap_fee_sat: 835, max_prepay_amt_sat: 30_000, max_miner_fee_sat: 1_200,
+    max_swap_routing_fee_sat: 2_500, max_prepay_routing_fee_sat: 300,
+  };
+
+  it("A: the member Loop Out quote", async () => {
+    const { createLoopOutQuote } = await import("./swapService");
+    const { isLoopAvailable } = await import("./loopProvider");
+    vi.mocked(isLoopAvailable).mockResolvedValue({ available: true });
+    vi.mocked(createLoopOutQuote).mockResolvedValue({ swapRequest: loopOutRow as any, quote: { swap_fee_sat: 835, miner_fee_sat: 1_200 } as any });
+    stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "member", membership_status: "active" });
+    const { res, out } = response();
+    await handleMemberLoopOutQuote(request({ amount_sat: 250_000 }), res);
+    expect(out.body.ceilings).toEqual(LO);
+  });
+
+  it("B: the admin Loop Out quote", async () => {
+    const { createLoopOutQuote } = await import("./swapService");
+    vi.mocked(createLoopOutQuote).mockResolvedValue({ swapRequest: loopOutRow as any, quote: { swap_fee_sat: 835, miner_fee_sat: 1_200 } as any });
+    stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "treasury" });
+    const { res, out } = response();
+    await handleAdminLoopOutQuote(request({ amount_sat: 250_000 }), res);
+    expect(out.body.ceilings).toEqual(LO);
+  });
+
+  it("D: the member Loop In quote", async () => {
+    const { createLoopInQuote } = await import("./swapService");
+    const { isLoopAvailable } = await import("./loopProvider");
+    vi.mocked(isLoopAvailable).mockResolvedValue({ available: true });
+    vi.mocked(createLoopInQuote).mockResolvedValue({
+      swapRequest: { id: "r2", swap_type: "loop_in", amount_sat: 250_000, quoted_swap_fee_sat: 500, quoted_prepay_sat: null, quoted_miner_fee_sat: 900 } as any,
+      quote: { total_fee_sat: 1_400 } as any,
+    });
+    stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "member", membership_status: "active" });
+    const { res, out } = response();
+    await handleMemberLoopInQuote(request({ amount_sat: 250_000 }), res);
+    expect(out.body.ceilings).toEqual({ max_swap_fee_sat: 500, max_miner_fee_sat: 900 });
+  });
+});
+
+// F4 (spec §6): the execute handlers hand the echoed ceilings to initiateSwap.
+describe("F4: execute handlers pass the echoed ceilings through", () => {
+  const LO = {
+    max_swap_fee_sat: 835, max_prepay_amt_sat: 30_000, max_miner_fee_sat: 1_200,
+    max_swap_routing_fee_sat: 2_500, max_prepay_routing_fee_sat: 300,
+  };
+
+  it("A", async () => {
+    stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "member", membership_status: "active" });
+    stubs.initiateSwap.mockResolvedValue({ id: "r1" });
+    const { res } = response();
+    await handleMemberLoopOut(request({ swap_request_id: "r1", destination_address: "bc1qx", ...LO }), res);
+    expect(stubs.initiateSwap).toHaveBeenCalledWith("r1", "bc1qx", { swap_request_id: "r1", destination_address: "bc1qx", ...LO });
+  });
+
+  it("D", async () => {
+    stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "member", membership_status: "active" });
+    stubs.initiateSwap.mockResolvedValue({ id: "r1" });
+    const { res } = response();
+    await handleMemberLoopIn(request({ swap_request_id: "r1", max_swap_fee_sat: 500, max_miner_fee_sat: 900 }), res);
+    expect(stubs.initiateSwap).toHaveBeenCalledWith("r1", undefined, { swap_request_id: "r1", max_swap_fee_sat: 500, max_miner_fee_sat: 900 });
+  });
+
+  it("B", async () => {
+    stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "treasury" });
+    stubs.initiateSwap.mockResolvedValue({ id: "r1" });
+    const { res } = response();
+    await handleAdminLoopOut(request({ swap_request_id: "r1", ...LO }), res);
+    expect(stubs.initiateSwap).toHaveBeenCalledWith("r1", undefined, { swap_request_id: "r1", ...LO });
   });
 });
 

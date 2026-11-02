@@ -192,18 +192,30 @@ describe("the documented shell idiom clears the gate", () => {
       { payment_request: "lnbc1pjxyzqqdq" },
       "ffd020f4084283dc2475e82ded9b66533f581c60d220d8e11dd1cfd44bef85b4",
     ],
-    // ── optional TEXT: both branches of the jq conditional in docs/API.md
+    // ── optional TEXT: both branches of the jq conditional in docs/API.md.
+    // Since loop-fee-ceilings F4 the body also echoes the quote's five
+    // ceilings, which are required and hashed after the destination; both
+    // values were recomputed with the docs/API.md jq idiom (jq 1.7).
     [
       "admin/swaps/loop-out WITH destination_address",
       "/api/admin/swaps/loop-out",
-      { swap_request_id: "swap-ghi", destination_address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq" },
-      "676cf893e23066c95bd83b0c5938f903fd277775940b8d82a768a5e5463740e6",
+      {
+        swap_request_id: "swap-ghi",
+        destination_address: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+        max_swap_fee_sat: 835, max_prepay_amt_sat: 30000, max_miner_fee_sat: 1200,
+        max_swap_routing_fee_sat: 2500, max_prepay_routing_fee_sat: 300,
+      },
+      "de271ca2e7ab251f673c7a333797b82f648d74eb81df779fa258ed8bb5482810",
     ],
     [
       "admin/swaps/loop-out WITHOUT destination_address (absent branch)",
       "/api/admin/swaps/loop-out",
-      { swap_request_id: "swap-ghi" },
-      "f7e788fffb935543a4ce7215e04c2990c6cbe410d3efc5f3313525f03279aaac",
+      {
+        swap_request_id: "swap-ghi",
+        max_swap_fee_sat: 835, max_prepay_amt_sat: 30000, max_miner_fee_sat: 1200,
+        max_swap_routing_fee_sat: 2500, max_prepay_routing_fee_sat: 300,
+      },
+      "93d76c7c03566e4de6593c5232d6c024f6c985caee5c2bc0d3d57f3405906d64",
     ],
     // ── optional BOOLEAN: all three states must be distinct and pinned
     [

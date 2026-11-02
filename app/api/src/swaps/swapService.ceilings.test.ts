@@ -56,6 +56,18 @@ let db: Database.Database;
 const MEMBER = "02" + "11".repeat(32);
 const DEST = "bcrt1qexampleexampleexampleexampleexample0";
 
+// The ceilings the quote response carries and the execute body echoes (F4),
+// for the default stub quotes below — written out, not computed by the code
+// under test. Routing: 1% of 250,000 and 1% of 30,000.
+const LOOP_OUT_CEILINGS = {
+  max_swap_fee_sat: 835,
+  max_prepay_amt_sat: 30_000,
+  max_miner_fee_sat: 1_200,
+  max_swap_routing_fee_sat: 2_500,
+  max_prepay_routing_fee_sat: 300,
+};
+const LOOP_IN_CEILINGS = { max_swap_fee_sat: 500, max_miner_fee_sat: 900 };
+
 beforeAll(async () => {
   const { runMigrations } = await import("../db/migrate");
   runMigrations();
@@ -143,7 +155,7 @@ describe.each([
     const { swapRequest } = await svc.createLoopOutQuote({
       nodePubkey: MEMBER, role, amountSat: 250_000, destinationAddress: DEST,
     });
-    await svc.initiateSwap(swapRequest.id, DEST);
+    await svc.initiateSwap(swapRequest.id, DEST, LOOP_OUT_CEILINGS);
     expect(stubs.initiateLoopOut).toHaveBeenCalledTimes(1);
     return stubs.initiateLoopOut.mock.calls[0][0];
   }
@@ -167,7 +179,7 @@ async function quoteAndInitiate(role: "member" | "treasury" = "member") {
   const { swapRequest } = await svc.createLoopOutQuote({
     nodePubkey: MEMBER, role, amountSat: 250_000, destinationAddress: DEST,
   });
-  return { id: swapRequest.id, run: () => svc.initiateSwap(swapRequest.id, DEST) };
+  return { id: swapRequest.id, run: () => svc.initiateSwap(swapRequest.id, DEST, LOOP_OUT_CEILINGS) };
 }
 
 /** Route the probe by destination: what each pubkey answers, for any amount. */
@@ -264,11 +276,41 @@ describe("D21: the probe's three branches", () => {
   });
 });
 
+// ─── F4: the echoed ceilings must match the stored quote (spec §6) ──────────
+
+describe("F4: a ceiling echoed differently from the stored quote is refused", () => {
+  it.each(Object.keys(LOOP_OUT_CEILINGS))("Loop Out: %s altered → ceiling_mismatch, no loopd call", async (key) => {
+    const { swapRequest } = await svc.createLoopOutQuote({
+      nodePubkey: MEMBER, role: "member", amountSat: 250_000, destinationAddress: DEST,
+    });
+    const altered = { ...LOOP_OUT_CEILINGS, [key]: (LOOP_OUT_CEILINGS as any)[key] + 1 };
+    await expect(svc.initiateSwap(swapRequest.id, DEST, altered)).rejects.toMatchObject({ code: "ceiling_mismatch" });
+    expect(stubs.initiateLoopOut).not.toHaveBeenCalled();
+    expect(stubs.probeLoopOutPaymentRoute).not.toHaveBeenCalled();
+  });
+
+  it.each(Object.keys(LOOP_IN_CEILINGS))("Loop In: %s altered → ceiling_mismatch, no loopd call", async (key) => {
+    const { swapRequest } = await svc.createLoopInQuote({ nodePubkey: MEMBER, role: "member", amountSat: 250_000 });
+    const altered = { ...LOOP_IN_CEILINGS, [key]: (LOOP_IN_CEILINGS as any)[key] - 1 };
+    await expect(svc.initiateSwap(swapRequest.id, undefined, altered)).rejects.toMatchObject({ code: "ceiling_mismatch" });
+    expect(stubs.initiateLoopIn).not.toHaveBeenCalled();
+  });
+
+  it("a missing echo is refused the same way", async () => {
+    const { swapRequest } = await svc.createLoopOutQuote({
+      nodePubkey: MEMBER, role: "member", amountSat: 250_000, destinationAddress: DEST,
+    });
+    const { max_miner_fee_sat: _omitted, ...partial } = LOOP_OUT_CEILINGS;
+    await expect(svc.initiateSwap(swapRequest.id, DEST, partial)).rejects.toMatchObject({ code: "ceiling_mismatch" });
+    expect(stubs.initiateLoopOut).not.toHaveBeenCalled();
+  });
+});
+
 // ─── D (member Loop In), spec §4 D ──────────────────────────────────────────
 
 async function quoteAndInitiateLoopIn() {
   const { swapRequest } = await svc.createLoopInQuote({ nodePubkey: MEMBER, role: "member", amountSat: 250_000 });
-  return { id: swapRequest.id, run: () => svc.initiateSwap(swapRequest.id) };
+  return { id: swapRequest.id, run: () => svc.initiateSwap(swapRequest.id, undefined, LOOP_IN_CEILINGS) };
 }
 
 function loopInQuote(htlcFeeSat: number) {
@@ -364,7 +406,7 @@ describe("D8: a pre-migration row requires a requote", () => {
     "%s with null quote components is refused before any loopd call",
     async (swapType) => {
       const id = insertPreMigrationRow(swapType);
-      await expect(svc.initiateSwap(id, swapType === "loop_out" ? DEST : undefined))
+      await expect(svc.initiateSwap(id, swapType === "loop_out" ? DEST : undefined, {}))
         .rejects.toMatchObject({ code: "requote_required" });
       expect(stubs.initiateLoopOut).not.toHaveBeenCalled();
       expect(stubs.initiateLoopIn).not.toHaveBeenCalled();

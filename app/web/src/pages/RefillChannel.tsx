@@ -335,6 +335,8 @@ export default function RefillChannel() {
     try {
       const resp = await api.initiateSwapLoopIn({
         swap_request_id: quoteResp.swap_request.id,
+        // Echo the quote's ceilings unchanged (loop-fee-ceilings F4).
+        ...quoteResp.ceilings,
       });
       setTrackingId(resp.swap_request.id);
       setTrackingSwap(resp.swap_request);

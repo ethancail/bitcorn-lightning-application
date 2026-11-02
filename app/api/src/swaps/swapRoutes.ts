@@ -16,6 +16,7 @@ import {
   type SwapRequest,
 } from "./swapService";
 import { SwapRefusalError } from "./swapRefusal";
+import { ceilingsFor } from "./swapCeilings";
 import {
   checkMemberLoopOutPolicy,
   checkTreasuryLoopOutPolicy,
@@ -37,10 +38,13 @@ function json(res: Res, status: number, data: unknown) {
 async function initiateOrRefuse(
   res: Res,
   swapRequestId: string,
-  destinationAddress?: string
+  destinationAddress: string | undefined,
+  body: Record<string, unknown>
 ): Promise<SwapRequest | null> {
   try {
-    return await initiateSwap(swapRequestId, destinationAddress);
+    // The body carries the echoed ceilings (F4); initiateSwap checks them
+    // against the stored quote.
+    return await initiateSwap(swapRequestId, destinationAddress, body);
   } catch (e) {
     if (e instanceof SwapRefusalError) {
       json(res, 409, { error: e.code, detail: e.message });
@@ -93,7 +97,7 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
     quotedFeeSat: netFeeSat,
   });
 
-  json(res, 200, { swap_request: swapRequest, quote, policy_check: policy });
+  json(res, 200, { swap_request: swapRequest, quote, ceilings: ceilingsFor(swapRequest), policy_check: policy });
 }
 
 export async function handleMemberLoopOut(req: IncomingMessage, res: Res): Promise<void> {
@@ -125,7 +129,7 @@ export async function handleMemberLoopOut(req: IncomingMessage, res: Res): Promi
   });
   if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
 
-  const result = await initiateOrRefuse(res, swapRequestId, destinationAddress);
+  const result = await initiateOrRefuse(res, swapRequestId, destinationAddress, body);
   if (!result) return;
   json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
 }
@@ -176,7 +180,7 @@ export async function handleMemberLoopInQuote(req: IncomingMessage, res: Res): P
     quotedFeeSat: quote.total_fee_sat,
   });
 
-  json(res, 200, { swap_request: swapRequest, quote, policy_check: postCheck });
+  json(res, 200, { swap_request: swapRequest, quote, ceilings: ceilingsFor(swapRequest), policy_check: postCheck });
 }
 
 export async function handleMemberLoopIn(req: IncomingMessage, res: Res): Promise<void> {
@@ -200,7 +204,7 @@ export async function handleMemberLoopIn(req: IncomingMessage, res: Res): Promis
   });
   if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
 
-  const result = await initiateOrRefuse(res, swapRequestId);
+  const result = await initiateOrRefuse(res, swapRequestId, undefined, body);
   if (!result) return;
   json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
 }
@@ -257,7 +261,7 @@ export async function handleAdminLoopOutQuote(req: IncomingMessage, res: Res): P
 
   const treasuryNetFee = (quote.swap_fee_sat ?? 0) + (quote.miner_fee_sat ?? 0);
   const policy = await checkTreasuryLoopOutPolicy({ amountSat, quotedFeeSat: treasuryNetFee });
-  json(res, 200, { swap_request: swapRequest, quote, policy_check: policy });
+  json(res, 200, { swap_request: swapRequest, quote, ceilings: ceilingsFor(swapRequest), policy_check: policy });
 }
 
 export async function handleAdminLoopOut(req: IncomingMessage, res: Res): Promise<void> {
@@ -288,7 +292,7 @@ export async function handleAdminLoopOut(req: IncomingMessage, res: Res): Promis
   });
   if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
 
-  const result = await initiateOrRefuse(res, swapRequestId, destinationAddress);
+  const result = await initiateOrRefuse(res, swapRequestId, destinationAddress, body);
   if (!result) return;
   json(res, 200, { swap_request: result, execution: getSwapExecution(swapRequestId) });
 }

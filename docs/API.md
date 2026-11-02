@@ -408,16 +408,28 @@ curl -sS -X POST http://localhost:3101/api/pay \
 
 ```bash
 # POST /api/admin/swaps/loop-out
-#   fields: swap_request_id, destination_address (optional text)
+#   fields: swap_request_id, destination_address (optional text), then the
+#   quote's five ceilings (required numbers), echoed from the quote
+#   response's `ceilings` object
 # destination_address is in the hash because it is where the coins land;
 # omitting it means the default sweep address, which is a different act.
-BODY='{"swap_request_id":"swap-ghi","destination_address":"bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"}'
+# The ceilings are in the hash so a confirmation cannot be reused with
+# raised fee limits; the server also refuses any that differ from the
+# stored quote (ceiling_mismatch).
+BODY='{"swap_request_id":"swap-ghi","destination_address":"bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+       "max_swap_fee_sat":835,"max_prepay_amt_sat":30000,"max_miner_fee_sat":1200,
+       "max_swap_routing_fee_sat":2500,"max_prepay_routing_fee_sat":300}'
 CONFIRM=$(jq -rj '"swap_request_id=" + .swap_request_id
                 + (if .destination_address == null then ""
-                   else "&destination_address=" + .destination_address end)' \
+                   else "&destination_address=" + .destination_address end)
+                + "&max_swap_fee_sat=" + (.max_swap_fee_sat|tostring)
+                + "&max_prepay_amt_sat=" + (.max_prepay_amt_sat|tostring)
+                + "&max_miner_fee_sat=" + (.max_miner_fee_sat|tostring)
+                + "&max_swap_routing_fee_sat=" + (.max_swap_routing_fee_sat|tostring)
+                + "&max_prepay_routing_fee_sat=" + (.max_prepay_routing_fee_sat|tostring)' \
           <<<"$BODY" | sha256sum | cut -d' ' -f1)
-# with destination_address -> 676cf893e23066c95bd83b0c5938f903fd277775940b8d82a768a5e5463740e6
-# destination omitted      -> f7e788fffb935543a4ce7215e04c2990c6cbe410d3efc5f3313525f03279aaac
+# with destination_address -> de271ca2e7ab251f673c7a333797b82f648d74eb81df779fa258ed8bb5482810
+# destination omitted      -> 93d76c7c03566e4de6593c5232d6c024f6c985caee5c2bc0d3d57f3405906d64
 ```
 
 ### `dry_run` is hashed on the two routes that accept it

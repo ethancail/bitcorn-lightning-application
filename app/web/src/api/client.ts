@@ -279,12 +279,12 @@ export const api = {
   // Swaps — member
   getSwapLoopOutQuote: (body: { amount_sat: number; destination_address?: string }) =>
     apiFetch<SwapQuoteResponse>("/api/swaps/loop-out/quote", { method: "POST", body: JSON.stringify(body) }),
-  initiateSwapLoopOut: (body: { swap_request_id: string; destination_address: string }) =>
+  initiateSwapLoopOut: (body: { swap_request_id: string; destination_address: string } & SwapCeilings) =>
     apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/swaps/loop-out", { method: "POST", body: JSON.stringify(body) }),
   // Loop In (member refill)
   getSwapLoopInQuote: (body: { amount_sat: number }) =>
     apiFetch<SwapQuoteResponse>("/api/swaps/loop-in/quote", { method: "POST", body: JSON.stringify(body) }),
-  initiateSwapLoopIn: (body: { swap_request_id: string }) =>
+  initiateSwapLoopIn: (body: { swap_request_id: string } & SwapCeilings) =>
     apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/swaps/loop-in", { method: "POST", body: JSON.stringify(body) }),
   getSwap: (id: string) => apiFetch<SwapDetailResponse>(`/api/swaps/${id}`),
   getSwapHistory: (limit?: number) => {
@@ -294,7 +294,7 @@ export const api = {
   // Swaps — admin
   adminLoopOutQuote: (body: { amount_sat: number; channel_id?: string }) =>
     apiFetch<SwapQuoteResponse>("/api/admin/swaps/loop-out/quote", { method: "POST", body: JSON.stringify(body) }),
-  adminLoopOut: (body: { swap_request_id: string; destination_address?: string }) =>
+  adminLoopOut: (body: { swap_request_id: string; destination_address?: string } & SwapCeilings) =>
     apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/admin/swaps/loop-out", { method: "POST", body: JSON.stringify(body) }),
   // adminLoopInQuote / adminLoopIn — removed from active architecture (v1.7.1).
   // Treasury-INITIATED Loop In endpoints return 410 (treasury maintains its own inbound
@@ -1262,7 +1262,23 @@ export type SwapQuoteResponse = {
     miner_fee_sat?: number;
     htlc_publish_fee_sat?: number;
   };
+  /**
+   * The fee ceilings this quote authorises — exactly what is sent to loopd
+   * (loop-fee-ceilings F4). Echo them unchanged in the execute body: the
+   * confirmation hash covers them and the server refuses any that differ.
+   * Loop Out carries all five; Loop In carries max_swap_fee_sat and
+   * max_miner_fee_sat. null on a quote stored before the ceilings existed.
+   */
+  ceilings: SwapCeilings | null;
   policy_check: { ok: true } | { ok: false; reason: string; code: string };
+};
+
+export type SwapCeilings = {
+  max_swap_fee_sat?: number;
+  max_prepay_amt_sat?: number;
+  max_miner_fee_sat?: number;
+  max_swap_routing_fee_sat?: number;
+  max_prepay_routing_fee_sat?: number;
 };
 
 export type SwapDetailResponse = {
