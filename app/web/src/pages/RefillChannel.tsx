@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { api, fmtSats } from "../api/client";
+import { api, fmtSats, swapExecuteBody } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
@@ -334,11 +334,10 @@ export default function RefillChannel() {
     setError(null);
     setStage("initiating");
     try {
-      const resp = await api.initiateSwapLoopIn({
-        swap_request_id: quoteResp.swap_request.id,
-        // Echo the quote's ceilings unchanged (loop-fee-ceilings F4).
-        ...quoteResp.ceilings,
-      });
+      // The shared builder echoes the quote's ceilings unchanged (F4).
+      const resp = await api.initiateSwapLoopIn(
+        swapExecuteBody(quoteResp, { swap_request_id: quoteResp.swap_request.id }),
+      );
       setTrackingId(resp.swap_request.id);
       setTrackingSwap(resp.swap_request);
       setStage("tracking");

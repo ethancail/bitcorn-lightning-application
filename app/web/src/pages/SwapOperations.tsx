@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { api, fmtSats, resolveContactName, type Contact } from "../api/client";
-import type { SwapRequest, SwapQuoteResponse, SwapCeilings } from "../api/client";
+import { api, fmtSats, resolveContactName, swapExecuteBody, type Contact } from "../api/client";
+import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 import { API_BASE } from "../config/api";
 import ErrorState from "../components/ErrorState";
 // Reusing the pure challenge helpers rather than the generic modal: this dialog
@@ -309,12 +309,12 @@ function LoopOutTab({
     setError(null);
     setPhase("initiating");
     try {
-      const body: { swap_request_id: string; destination_address?: string } & SwapCeilings = {
+      const fields: { swap_request_id: string; destination_address?: string } = {
         swap_request_id: quoteResp.swap_request.id,
-        // Echo the quote's ceilings unchanged (loop-fee-ceilings F4).
-        ...quoteResp.ceilings,
       };
-      if (destinationAddress.trim()) body.destination_address = destinationAddress.trim();
+      if (destinationAddress.trim()) fields.destination_address = destinationAddress.trim();
+      // The shared builder echoes the quote's ceilings unchanged (F4).
+      const body = swapExecuteBody(quoteResp, fields);
       const resp = await api.adminLoopOut(body);
       setTrackingId(resp.swap_request.id);
       setTrackingSwap(resp.swap_request);

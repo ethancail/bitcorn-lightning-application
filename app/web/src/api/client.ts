@@ -1281,6 +1281,20 @@ export type SwapCeilings = {
   max_prepay_routing_fee_sat?: number;
 };
 
+/**
+ * The execute request body for a quoted swap: the caller's fields plus the
+ * quote's ceilings, unchanged (loop-fee-ceilings F4). The ONE builder every
+ * swap page uses (WithdrawBitcoin, RefillChannel, SwapOperations), so no page
+ * can forget or alter a ceiling. A quote without ceilings (stored before they
+ * existed) adds none, and the server answers requote_required.
+ */
+export function swapExecuteBody<T extends { swap_request_id: string }>(
+  quoteResp: Pick<SwapQuoteResponse, "ceilings">,
+  fields: T,
+): T & SwapCeilings {
+  return { ...fields, ...(quoteResp.ceilings ?? {}) };
+}
+
 export type SwapDetailResponse = {
   swap_request: SwapRequest;
   execution: SwapExecution | null;
