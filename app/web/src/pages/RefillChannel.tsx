@@ -9,7 +9,7 @@ import { statusBadge } from "../components/swapStatus";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
-import { summarizeLoopIn } from "../components/actionConfirm/confirmAction";
+import { summarizeLoopIn, authorizedMaxSats } from "../components/actionConfirm/confirmAction";
 import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
@@ -324,6 +324,7 @@ export default function RefillChannel() {
       summarizeLoopIn({
         amountSats: quoteResp.quote.amount_sat,
         feeSats: quoteResp.quote.total_fee_sat,
+        authorizedMaxSats: authorizedMaxSats(quoteResp.ceilings),
       }),
     );
   }

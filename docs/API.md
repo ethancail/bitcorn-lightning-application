@@ -289,10 +289,78 @@ The manual circular rebalance route (`POST /api/treasury/rebalance/circular`) wa
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/treasury/rebalance/loop-out/terms` | Min/max swap amounts from loopd |
-| GET | `/api/treasury/rebalance/loop-out/quote?amount_sats=N` | Quote breakdown (swap fee, miner fee, prepay hold) |
+| GET | `/api/treasury/rebalance/loop-out/quote?amount_sats=N[&channel_id=…]` | Quote breakdown (swap fee, prepay, miner fee, `swap_payment_dest`), plus `acceptable` and `refusal` — see below |
 | GET | `/api/treasury/rebalance/loop-out/status` | Loop availability + in-flight swaps |
-| POST | `/api/treasury/rebalance/loop-out` | Manual swap (`{ channel_id, amount_sats }`) |
+| POST | `/api/treasury/rebalance/loop-out` | Manual swap (`{ channel_id, amount_sats }` — nothing else is read) |
 | POST | `/api/treasury/rebalance/loop-out/auto` | Auto-rebalance all critical channels |
+
+**The preview's `acceptable`** means the manual swap would not be refused at
+that moment: the preview runs the same pre-checks the swap runs before any
+money moves (Loop terms; the channel checks when `channel_id` is given; the
+15% swap-fee sanity check; the daily loss cap; the fee-rate check; the route
+probe). When `acceptable` is `false`, `refusal` is `{ code, detail }` — `code`
+is one of the refusal codes below, `daily_loss_cap`, or `null` for an
+uncoded check (terms, channel, 15%). Running it costs two loopd quotes and up
+to a few route queries; it moves nothing.
+
+**Manual swap body.** Only `channel_id` and `amount_sats` are read. The
+`max_swap_fee_sats`, `max_miner_fee_sats` and `conf_target` body fields were
+dropped (loop-fee-ceilings F6, ruling 1): the ceilings come from the swap's
+own in-call quote and the sweep targets `LOOP_CONF_TARGET` (default 6). A
+coded refusal answers `409 { error: <code>, detail }`; other refusals keep
+`400 { error }`.
+
+### Loop fee ceilings (swaps)
+
+Every Loop call that moves money sends loopd ceilings taken from the quote,
+never a fixed default (loop-fee-ceilings spec, bitcorn-research). For Loop Out
+(member `/api/swaps/loop-out`, admin `/api/admin/swaps/loop-out`, and the
+treasury rebalance paths): `max_swap_fee` = the quoted swap fee;
+`max_prepay_amt` = the quoted prepay; `max_miner_fee` = the quoted sweep fee;
+`max_swap_routing_fee` / `max_prepay_routing_fee` = `LOOP_ROUTING_FEE_CAP_PPM`
+(default 1%) of the swap amount / of the prepay. For Loop In
+(`/api/swaps/loop-in`): `max_swap_fee` = the quoted swap fee alone, and
+`max_miner_fee` = the quoted HTLC fee.
+
+**Quote responses** (`POST /api/swaps/loop-out/quote`,
+`POST /api/admin/swaps/loop-out/quote`, `POST /api/swaps/loop-in/quote`) carry
+`ceilings` beside `quote`:
+
+```json
+"ceilings": {
+  "max_swap_fee_sat": 835, "max_prepay_amt_sat": 30000, "max_miner_fee_sat": 1200,
+  "max_swap_routing_fee_sat": 2500, "max_prepay_routing_fee_sat": 300
+}
+```
+
+Loop In's carries only `max_swap_fee_sat` and `max_miner_fee_sat`. The member
+Loop Out quote no longer takes `max_fee_sat` (it used to replace the 15%
+sanity check; nothing sent it), and no `swap_request` in any response carries
+`max_fee_sat` — the column stays in the database, unread. A `swap_request` now
+carries the stored components `quoted_swap_fee_sat`, `quoted_prepay_sat`
+(Loop Out only) and `quoted_miner_fee_sat`.
+
+**Execute bodies echo `ceilings` unchanged**, and the confirmation hash covers
+them: after the existing fields, in the order above (see the admin Loop Out
+shell idiom below). They are required — a body without them is refused at the
+gate (`400 confirmation_required`).
+
+**Refusals before initiation.** Each is `409 { error: <code>, detail }` (on the
+treasury manual route, the same codes, from its own in-call quote), and none
+reaches a loopd call that moves money:
+
+| Code | Sites | When |
+|---|---|---|
+| `requote_required` | A, B, D | The stored quote predates the quote-component columns |
+| `ceiling_mismatch` | A, B, D | The echoed ceilings differ from the stored quote's (altered, missing, or computed under a different routing-cap setting) |
+| `fee_rate_over_quote` | all | A fresh quote's miner fee exceeds the quoted one plus `LOOP_MINER_FEE_MARGIN_PCT` (default 50%) |
+| `route_fee_over_cap` | Loop Out | A probed route for the swap or the prepay costs more than the routing cap |
+| `route_not_found` | Loop Out | Neither the quote's `swap_payment_dest` nor any `LOOP_SERVER_PUBKEYS` entry routes |
+| `miner_fee_unknown` | D | The HTLC-fee estimate failed or is zero; refused at the Loop In quote too, so 0 is never shown as the fee |
+
+The Loop Out route probe tries the quote's `swap_payment_dest` first and falls
+back to the configured Loop servers; on the fallback branch the final hop
+(Loop server → destination) is Loop's own channel and is not probed.
 
 **Peers**
 
@@ -480,6 +548,8 @@ CONFIRM=$(jq -rj '"peer_pubkey=" + .peer_pubkey
 
 ```bash
 # POST /api/treasury/rebalance/loop-out   (fields: channel_id, amount_sats)
+# max_swap_fee_sats is sent below only to show an extra field is not hashed;
+# the route no longer reads it (loop-fee-ceilings F6).
 BODY='{"channel_id":"842391119757312","amount_sats":500000,"max_swap_fee_sats":5000}'
 CONFIRM=$(jq -rj '"channel_id=" + .channel_id
                 + "&amount_sats=" + (.amount_sats|tostring)' <<<"$BODY" | sha256sum | cut -d' ' -f1)

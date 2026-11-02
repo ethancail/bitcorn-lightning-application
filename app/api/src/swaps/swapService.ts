@@ -89,7 +89,7 @@ export async function createLoopOutQuote(params: {
   `).run(
     id, now, now, params.nodePubkey, params.role,
     params.amountSat,
-    (quote.swap_fee_sat ?? 0) + (quote.miner_fee_sat ?? 0), // net fee (excludes prepay hold)
+    (quote.swap_fee_sat ?? 0) + (quote.miner_fee_sat ?? 0), // swap + miner, without the prepay (P1 open; see swapRoutes.ts)
     destAddr, params.channelId ?? null, expiresAt,
     quote.swap_fee_sat, quote.prepay_sat, quote.miner_fee_sat
   );

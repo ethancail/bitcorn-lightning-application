@@ -7,7 +7,12 @@ import ErrorState from "../components/ErrorState";
 // is already stronger than the generic one (chunked address + verify checkbox),
 // so swapping it out would lose those. Only the typed-amount gate was missing,
 // and that logic stays in one place.
-import { challengeSatisfied, challengePrompt } from "../components/actionConfirm/confirmAction";
+import {
+  challengeSatisfied,
+  challengePrompt,
+  authorizedMaxSats,
+  loopOutEstimatedFeeSats,
+} from "../components/actionConfirm/confirmAction";
 import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
@@ -393,7 +398,8 @@ function LoopOutTab({
 
   if ((phase === "quoted" || phase === "initiating") && quoteResp) {
     const q = quoteResp.quote;
-    const netFee = (q.swap_fee_sat ?? 0) + (q.miner_fee_sat ?? 0);
+    const netFee = loopOutEstimatedFeeSats(q);
+    const maxFees = authorizedMaxSats(quoteResp.ceilings);
     return (
       <>
       {/* Execute confirmation — same dialog pattern as the ChannelsPage close-
@@ -407,6 +413,10 @@ function LoopOutTab({
             <div className="dialog-body">
               This swaps <strong>{q.amount_sat.toLocaleString()} sats</strong> of channel balance
               into an on-chain payment. Estimated fee: ~{netFee.toLocaleString()} sats (swap + miner).
+              {maxFees !== undefined && (
+                <> Most you authorize in fees: {maxFees.toLocaleString()} sats.</>
+              )}{" "}
+              Once the swap starts, the Bitcoin network fee follows the market, capped at 20% of the amount.
             </div>
             {/* Destination is always operator-supplied on this path (no
                auto-generate — see the note above destValid), so the warning

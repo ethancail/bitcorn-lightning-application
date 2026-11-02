@@ -220,10 +220,38 @@ export function summarizePayInvoice(p: {
   };
 }
 
+// ─── Loop fee ceilings (loop-fee-ceilings spec §7, F4) ───────────────────────
+
+/**
+ * The most a swap authorises before it starts: every ceiling the quote sends
+ * loopd, summed. ⚠ The prepay is counted as ADDITIVE (ruling 11) until Polar
+ * confirms prediction P1 (that the prepay sits inside the swap fee), so this
+ * can overstate the maximum but never understate it. Undefined when the quote
+ * carries no ceilings — never a 0 presented as a maximum.
+ */
+export function authorizedMaxSats(
+  ceilings: Record<string, number | undefined> | null | undefined,
+): number | undefined {
+  if (!ceilings) return undefined;
+  const values = Object.values(ceilings).filter((v): v is number => typeof v === "number");
+  return values.length ? values.reduce((a, b) => a + b, 0) : undefined;
+}
+
+/**
+ * The Loop Out fee estimate: swap fee + miner fee. The one figure both the
+ * Withdraw panel and its confirmation show (they used to disagree: the modal
+ * added the prepay). The prepay's own wording is unchanged until P1 is
+ * measured; the authorised maximum above already counts it.
+ */
+export function loopOutEstimatedFeeSats(q: { swap_fee_sat?: number; miner_fee_sat?: number }): number {
+  return (q.swap_fee_sat ?? 0) + (q.miner_fee_sat ?? 0);
+}
+
 export function summarizeLoopOut(p: {
   amountSats: number;
   destinationAddress: string;
   feeSats?: number;
+  authorizedMaxSats?: number;
 }): ActionSummary {
   return {
     title: "Move funds on-chain",
@@ -231,7 +259,13 @@ export function summarizeLoopOut(p: {
       { label: "Amount", value: fmtSats(p.amountSats) },
       { label: "To address", value: truncId(p.destinationAddress, 10), ident: true },
       ...(p.feeSats !== undefined ? [{ label: "Estimated fee", value: fmtSats(p.feeSats) }] : []),
+      ...(p.authorizedMaxSats !== undefined
+        ? [{ label: "Most you authorize in fees", value: fmtSats(p.authorizedMaxSats) }]
+        : []),
     ],
+    body:
+      "Once the withdrawal starts, the Bitcoin network fee follows the market, " +
+      "capped at 20% of the amount.",
     irreversible:
       "The address above is where the coins land. A wrong address cannot be reversed by anyone.",
     challenge: { kind: "amount", sats: p.amountSats },
@@ -239,13 +273,22 @@ export function summarizeLoopOut(p: {
   };
 }
 
-export function summarizeLoopIn(p: { amountSats: number; feeSats?: number }): ActionSummary {
+export function summarizeLoopIn(p: {
+  amountSats: number;
+  feeSats?: number;
+  authorizedMaxSats?: number;
+}): ActionSummary {
   return {
     title: "Refill this channel",
     rows: [
       { label: "Amount", value: fmtSats(p.amountSats) },
       ...(p.feeSats !== undefined ? [{ label: "Estimated fee", value: fmtSats(p.feeSats) }] : []),
+      ...(p.authorizedMaxSats !== undefined
+        ? [{ label: "Most you authorize in fees", value: fmtSats(p.authorizedMaxSats) }]
+        : []),
     ],
+    // No 20% clause: that clamp exists only on the Loop Out sweep (ruling 5).
+    body: "Once the refill starts, the Bitcoin network fee follows the market.",
     irreversible: "The swap fee is spent even if the swap does not complete.",
     challenge: { kind: "amount", sats: p.amountSats },
     confirmLabel: "Refill",

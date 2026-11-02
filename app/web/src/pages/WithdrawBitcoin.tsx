@@ -9,7 +9,11 @@ import { statusBadge } from "../components/swapStatus";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
-import { summarizeLoopOut } from "../components/actionConfirm/confirmAction";
+import {
+  summarizeLoopOut,
+  authorizedMaxSats,
+  loopOutEstimatedFeeSats,
+} from "../components/actionConfirm/confirmAction";
 import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
@@ -316,7 +320,9 @@ export default function WithdrawBitcoin() {
       summarizeLoopOut({
         amountSats: quoteResp.quote.amount_sat,
         destinationAddress: address,
-        feeSats: quoteResp.quote.total_fee_sat,
+        // The same estimate the quote panel shows (loop-fee-ceilings §7).
+        feeSats: loopOutEstimatedFeeSats(quoteResp.quote),
+        authorizedMaxSats: authorizedMaxSats(quoteResp.ceilings),
       }),
     );
   }
@@ -581,7 +587,7 @@ export default function WithdrawBitcoin() {
               const q = quoteResp.quote;
               const swapFee = q.swap_fee_sat ?? 0;
               const minerFee = q.miner_fee_sat ?? 0;
-              const netFee = swapFee + minerFee;
+              const netFee = loopOutEstimatedFeeSats(q);
               const prepay = q.prepay_sat ?? 0;
               return (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

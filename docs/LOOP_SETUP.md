@@ -141,13 +141,58 @@ forward. That file is authoritative; this table is a copy and can drift.
 | `LOOP_CONF_TARGET` | `6` | On-chain confirmation target, in blocks |
 | `LOOP_SERVER_PUBKEYS` | Lightning Labs mainnet Loop server | Comma-separated pubkeys for the Loop In route-probe preflight, and the Loop Out route probe's fallback when the quote's `swap_payment_dest` finds no route |
 
-**`LOOP_MAX_SWAP_FEE_PCT` is 15, and 15 is not a typo.** It read `0.5` until
-v1.18.9 and the *documentation* read `0.5` long after the code moved — a 30×
-error in a fee guardrail. The reason for 15 is the fixed prepay component: Loop
-carries a ~30k sat prepay regardless of swap size, so a 250k swap has a ~12%
-effective rate before anything is wrong. A 0.5% ceiling rejects every swap near
-the 250k minimum. Larger swaps amortise the fixed cost and land far below the
-ceiling. The check applies to `quote.swap_fee_sat` alone, not to the total.
+**`LOOP_MAX_SWAP_FEE_PCT` is 15, and since loop-fee-ceilings it is only a
+sanity check.** It applies to `quote.swap_fee_sat` alone, not to the total,
+and it is never sent to loopd: `max_swap_fee` is the quoted swap fee itself.
+(It read `0.5` until v1.18.9 and the documentation read `0.5` long after the
+code moved. The old rationale for 15 — the ~30k prepay making a 250k swap look
+like ~12% — never applied to this check, which does not include the prepay.)
+
+## Fee ceilings, as built
+
+Every Loop call that moves money sends loopd ceilings from the quote, with no
+margin and no fixed defaults (loop-fee-ceilings spec F1–F3, bitcorn-research):
+
+| Ceiling | Loop Out (member, admin, treasury rebalance) | Loop In (member) |
+|---|---|---|
+| `max_swap_fee` | quoted swap fee | quoted swap fee alone (not the HTLC fee) |
+| `max_prepay_amt` | quoted prepay | — |
+| `max_miner_fee` | quoted sweep fee | quoted HTLC fee |
+| `max_swap_routing_fee` | `LOOP_ROUTING_FEE_CAP_PPM` × swap amount (default 1%) | — |
+| `max_prepay_routing_fee` | `LOOP_ROUTING_FEE_CAP_PPM` × prepay | — |
+
+The member and admin paths store the quote's components on the
+`swap_requests` row (migrations 060–062); the member sees them as `ceilings`
+on the quote, echoes them, and the confirmation hash covers them. A row quoted
+before those migrations is refused and requoted. The treasury rebalance path
+takes them from its own in-call quote and accepts no body overrides.
+
+**Before initiation**, each path refuses with its own code:
+- **fee rate** — a fresh quote's miner fee above the quoted one plus
+  `LOOP_MINER_FEE_MARGIN_PCT` (50%). On the treasury path this is close to
+  vacuous: its quote is seconds old, so the probe is its real protection.
+- **route probe (Loop Out)** — the quote's `swap_payment_dest` is probed for
+  the swap amount and the prepay; if that finds no route, the
+  `LOOP_SERVER_PUBKEYS` are probed instead. A route over the cap, or no route
+  at all, refuses. ⚠ On the fallback branch the final hop (Loop server →
+  destination) is Loop's own channel and is not probed.
+- **unknown HTLC fee (Loop In)** — loopd's failed estimate (−1, clamped to 0)
+  or a zero estimate is refused at the quote and before initiation.
+
+**What stays unbounded once a swap has started:** the Loop Out sweep follows
+the market, capped by loopd at 20% of the amount; the Loop In HTLC is
+published at the wallet's estimate with no cap. Both are disclosed in the
+confirmation; neither is bounded by Bitcorn. `max_miner_fee` does not bind at
+loopd v0.33 and is sent because it is harmless now and correct if a later
+loopd enforces it.
+
+**Autoloop is switched off.** On the first successful loopd call after start,
+and after any unavailable → available transition, Bitcorn reads the liquidity
+parameters and, if `autoloop` is on, writes the same set back with only
+`autoloop=false` (logged). A failure is logged, never blocks swaps, and is
+retried at the next of those points. Two accepted side effects: the sweep fee
+rate round-trips in whole sat/vB, and an autoloop swap already dispatched
+keeps its retries.
 
 ## Safety guardrails
 
@@ -159,34 +204,40 @@ ceiling. The check applies to `quote.swap_fee_sat` alone, not to the total.
   (`src/lightning/rebalance-loop.ts`).
 - **Auto mode skips channels with an in-flight swap**, so a slow swap cannot be
   double-issued.
-- **Fee ceilings** reject swaps whose swap fee or miner fee exceeds the limits
-  above, before any money moves.
+- **Fee ceilings** are bound to the quote, and the pre-initiation checks
+  (fee rate, route probe) refuse before any loopd call that moves money — see
+  "Fee ceilings, as built" above. They do not bound the on-chain fee once a
+  swap has started.
 - **Graceful degradation:** with loopd unreachable, the app runs normally and
   Loop surfaces report unavailable. Nothing else is blocked.
 
 ## Prepay model (important)
 
-The ~30,000 sat prepay is a **temporary hold**, sent during the swap and
-returned as part of the on-chain payment. It is **not** an additional fee.
+⚠ **UNVERIFIED, pending P1.** This section has long said the ~30,000 sat
+prepay is a **temporary hold**, sent during the swap and returned as part of
+the on-chain payment, and **not** an additional fee. The loop-fee-ceilings
+arc does not treat that as established: prediction P1 is that the prepay sits
+inside the server's swap fee, and Polar gate 1 (L3) measures it from the
+amounts actually paid; the post-deploy real Loop Out measures it on mainnet.
+Until then the "most you authorize" figure in the confirmation counts the
+prepay as additive (it can overstate, never understate), while the
+withdrawal panel's prepay row still reads "returned" — that label changes
+only once P1 is settled.
 
-- Real net cost = `swap_fee + miner_fee` (~1–2k sats typical).
-- The withdrawal UI shows the prepay on its own row, labelled as returned, so
-  what the farmer reads is honest.
+- Net cost if P1 holds = `swap_fee + miner_fee` (~1–2k sats typical).
 
-⚠ **But `total_cost_sats` / `total_fee_sat` / the stored `quoted_fee_sat` all
-INCLUDE the prepay.** So does the value handed to the daily loss cap
+⚠ **`total_cost_sats` / `total_fee_sat` INCLUDE the prepay.** So does the value
+handed to the daily loss cap
 (`assertDailyLossCapNotExceeded(quote.total_cost_sats)`), and so does the
-`max_fee_sats` recorded on the rebalance execution row. Treat any of those as
-"the fee" and you overstate a 250k swap's cost by roughly 30k sats. (This
-document previously claimed the opposite — that policy checks and
-`quoted_fee_sat` used the net figure. They do not.)
+`max_fee_sats` recorded on the rebalance execution row. The stored
+`quoted_fee_sat` does **not** for Loop Out — it is `swap_fee + miner_fee`
+(`src/swaps/swapService.ts`) — and for Loop In it is swap fee + HTLC fee.
+(This document previously said `quoted_fee_sat` included the prepay; for Loop
+Out it does not.)
 
-The `max_prepay_amt` sent to loopd differs by path, deliberately:
-
-- **Treasury Loop Out** passes `quote.prepay_amt_sat` — the quoted prepay.
-- **Member swaps** pass a flat `50_000` ceiling (`src/swaps/swapService.ts`).
-
-Either way the default is too low to leave unset; the ~30k prepay will not fit.
+`max_prepay_amt` is the quoted prepay on every path (it used to be a flat
+`50_000` on member swaps). The loopd default is too low to leave unset; the
+~30k prepay will not fit.
 
 ## Minimum channel capacity
 

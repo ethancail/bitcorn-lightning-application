@@ -88,8 +88,13 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
   });
 
   // Pre-check policy (non-blocking — quote still created)
-  // Use net fee (swap + miner) for policy check — prepay is a temporary hold
-  // that's returned as part of the on-chain payment, not an additional cost.
+  // The policy's fee is swap + miner, without the prepay. Whether the prepay
+  // is an extra cost is NOT established: prediction P1 (loop-fee-ceilings
+  // spec §12) is that it sits inside the server's swap fee, and Polar gate 1
+  // (L3) measures that. Until then the authorised maximum shown to the member
+  // counts the prepay as additive (ruling 11), and max_prepay_amt is bound to
+  // the quoted prepay. (This comment used to call the prepay a returned hold;
+  // F4 rejects that claim — B15.)
   const netFeeSat = (quote.swap_fee_sat ?? 0) + (quote.miner_fee_sat ?? 0);
   const policy = await checkMemberLoopOutPolicy({
     nodePubkey: node.pubkey,
