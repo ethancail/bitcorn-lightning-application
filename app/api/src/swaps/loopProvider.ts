@@ -80,6 +80,7 @@ export type LoopOutQuoteResult = {
   miner_fee_sat: number;
   total_fee_sat: number;
   conf_target: number;
+  swap_payment_dest: string;
 };
 
 export async function quoteLoopOut(amountSat: number, confTarget?: number): Promise<LoopOutQuoteResult> {
@@ -91,6 +92,7 @@ export async function quoteLoopOut(amountSat: number, confTarget?: number): Prom
     miner_fee_sat: q.miner_fee,
     total_fee_sat: q.total_cost_sats,
     conf_target: q.conf_target,
+    swap_payment_dest: q.swap_payment_dest,
   };
 }
 

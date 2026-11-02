@@ -8,7 +8,16 @@
 
 export type SwapRefusalCode =
   /** The stored quote predates the quote-component columns (spec §5, D8). */
-  | "requote_required";
+  | "requote_required"
+  /** A probed route for the swap or the prepay costs more than the routing
+   *  cap (spec §4, F2, D2). */
+  | "route_fee_over_cap"
+  /** Neither the quote's swap_payment_dest nor any configured Loop server
+   *  routes (spec §4, item B, D21). */
+  | "route_not_found"
+  /** A fresh miner-fee estimate exceeds the quoted one plus the margin
+   *  (spec §4, F3, D3). */
+  | "fee_rate_over_quote";
 
 export class SwapRefusalError extends Error {
   readonly code: SwapRefusalCode;

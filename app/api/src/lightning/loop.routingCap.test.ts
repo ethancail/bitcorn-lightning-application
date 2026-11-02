@@ -14,6 +14,14 @@ const sent: Record<string, any> = {};
 vi.mock("@grpc/proto-loader", () => ({ loadSync: () => ({}) }));
 vi.mock("@grpc/grpc-js", () => {
   class FakeSwapClient {
+    LoopOutQuote(_req: unknown, _opts: unknown, cb: (e: unknown, r?: unknown) => void) {
+      cb(null, {
+        swap_fee_sat: "835",
+        prepay_amt_sat: "30000",
+        htlc_sweep_fee_sat: "1200",
+        swap_payment_dest: Buffer.from("03" + "fb".repeat(32), "hex"),
+      });
+    }
     LoopOut(req: unknown, _opts: unknown, cb: (e: unknown, r?: unknown) => void) {
       sent.LoopOut = req;
       cb(null, { id_bytes: "ab", server_message: "" });
@@ -35,7 +43,7 @@ vi.mock("fs", () => {
   return { default: { existsSync, readFileSync }, existsSync, readFileSync };
 });
 
-import { executeLoopOutSwap } from "./loop";
+import { executeLoopOutSwap, getLoopOutQuote } from "./loop";
 import { ENV } from "../config/env";
 
 beforeEach(() => {
@@ -60,5 +68,14 @@ describe("D13: routing ceilings are the cap times each payment", () => {
     expect(sent.LoopOut.max_swap_routing_fee).toBe(2_500);
     // 1% of 30,123 is 301.23: rounded DOWN, so the ceiling never exceeds 1%.
     expect(sent.LoopOut.max_prepay_routing_fee).toBe(301);
+  });
+});
+
+// The probe's first target comes from here (spec §4, B13): loopd sends
+// swap_payment_dest as bytes; the quote carries it as a hex pubkey.
+describe("LoopOutQuote's swap_payment_dest", () => {
+  it("is mapped from bytes to a hex pubkey", async () => {
+    const q = await getLoopOutQuote(250_000);
+    expect(q.swap_payment_dest).toBe("03" + "fb".repeat(32));
   });
 });

@@ -16,7 +16,8 @@ import {
   type LoopOutQuoteResult,
   type LoopInQuoteResult,
 } from "./loopProvider";
-import { SwapRefusalError } from "./swapRefusal";
+import { SwapRefusalError, type SwapRefusalCode } from "./swapRefusal";
+import { checkLoopOutRoutes, minerFeeExceedsMargin } from "../lightning/loopOutPrechecks";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
@@ -160,6 +161,10 @@ export async function initiateSwap(swapRequestId: string, destinationAddress?: s
     );
   }
 
+  if (req.swap_type === "loop_out") {
+    await assertLoopOutPrechecks(req);
+  }
+
   const now = Date.now();
   const execId = crypto.randomUUID();
 
@@ -229,6 +234,70 @@ export async function initiateSwap(swapRequestId: string, destinationAddress?: s
   }
 
   return getSwapRequest(swapRequestId)!;
+}
+
+/**
+ * Loop Out (sites A and B): the fee-rate check and the route probe, before any
+ * money-moving loopd call (spec §4 A and B). Both use one fresh loopd quote at
+ * the same amount and conf target: its miner fee for the fee-rate check, and
+ * its swap_payment_dest as the probe's first target. The ceilings themselves
+ * stay the STORED quote's — the fresh quote only checks.
+ *
+ * A refusal throws SwapRefusalError and records why, leaving the row as it
+ * was. Any other error (the fresh quote failing) propagates the same way,
+ * also before initiation.
+ */
+async function assertLoopOutPrechecks(req: SwapRequest): Promise<void> {
+  const refuse = (code: SwapRefusalCode, message: string, data: Record<string, unknown>) => {
+    recordSwapEvent(req.id, "initiation_refused", { code, ...data });
+    return new SwapRefusalError(code, message);
+  };
+
+  const fresh = await quoteLoopOut(req.amount_sat);
+  const quotedMinerFee = req.quoted_miner_fee_sat!;
+  if (minerFeeExceedsMargin(fresh.miner_fee_sat, quotedMinerFee)) {
+    throw refuse(
+      "fee_rate_over_quote",
+      "Network fees have gone up since this quote. Get a new quote.",
+      { quoted_miner_fee_sat: quotedMinerFee, fresh_miner_fee_sat: fresh.miner_fee_sat }
+    );
+  }
+
+  const route = await checkLoopOutRoutes({
+    swapPaymentDest: fresh.swap_payment_dest,
+    amountSat: req.amount_sat,
+    prepaySat: req.quoted_prepay_sat!,
+    outgoingChannel: req.channel_id ?? undefined,
+  });
+  if (!route.ok) {
+    if (route.reason === "no_route") {
+      throw refuse(
+        "route_not_found",
+        "No payment route to the swap service was found. Try again later.",
+        { checked: route.checked }
+      );
+    }
+    throw refuse(
+      "route_fee_over_cap",
+      "Routing this payment would cost more than the allowed routing fee. Try again later.",
+      {
+        branch: route.branch,
+        target: route.target,
+        swap_route_fee_sat: route.swapRouteFeeSat,
+        prepay_route_fee_sat: route.prepayRouteFeeSat,
+        swap_cap_sat: route.swapCapSat,
+        prepay_cap_sat: route.prepayCapSat,
+      }
+    );
+  }
+  // Which branch ran is recorded: the post-deploy real Loop Out reads it
+  // (spec §10, post-deploy (4)).
+  recordSwapEvent(req.id, "route_probed", {
+    branch: route.branch,
+    target: route.target,
+    swap_route_fee_sat: route.swapRouteFeeSat,
+    prepay_route_fee_sat: route.prepayRouteFeeSat,
+  });
 }
 
 // ─── Status helpers ──────────────────────────────────────────────────────

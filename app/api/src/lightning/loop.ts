@@ -206,6 +206,10 @@ export type LoopOutQuote = {
   miner_fee: number;
   total_cost_sats: number;
   conf_target: number;
+  /** The node the swap payment goes to, hex pubkey. loopd documents it for
+   *  testing connectivity before initiating; the pre-initiation route probe
+   *  targets it first (loop-fee-ceilings spec §4, B13). "" if loopd sent none. */
+  swap_payment_dest: string;
 };
 
 /** Get a cost quote for a Loop Out swap of a given amount. */
@@ -218,6 +222,7 @@ export async function getLoopOutQuote(
     swap_fee_sat: number;
     prepay_amt_sat: number;
     htlc_sweep_fee_sat: number;
+    swap_payment_dest?: Buffer | Uint8Array;
   }>("LoopOutQuote", { amt: amountSats, conf_target: target });
 
   const swapFee = Number(res.swap_fee_sat);
@@ -230,6 +235,7 @@ export async function getLoopOutQuote(
     miner_fee: minerFee,
     total_cost_sats: swapFee + prepay + minerFee,
     conf_target: target,
+    swap_payment_dest: Buffer.from(res.swap_payment_dest ?? []).toString("hex"),
   };
 }
 

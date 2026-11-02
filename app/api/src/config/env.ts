@@ -76,6 +76,11 @@ export const ENV = {
     // pre-initiation route probe refuses a route over it
     // (loop-fee-ceilings spec §4, §13 item 3).
     loopRoutingFeeCapPpm: Number(process.env.LOOP_ROUTING_FEE_CAP_PPM ?? "10000"),
+    // Miner-fee margin, in percent over the quoted miner fee (default 50).
+    // Before initiation a fresh quote's miner fee above quoted × (1 + margin)
+    // refuses the swap with fee_rate_over_quote; that costs only a requote
+    // (loop-fee-ceilings spec §4 "The margin", ruling 7).
+    loopMinerFeeMarginPct: Number(process.env.LOOP_MINER_FEE_MARGIN_PCT ?? "50"),
     // Max miner fee in sats for the on-chain sweep (default: 20,000)
     loopMaxMinerFeeSats: Number(process.env.LOOP_MAX_MINER_FEE_SATS ?? "20000"),
     // Minimum sats to rebalance via Loop Out (default: 50,000)

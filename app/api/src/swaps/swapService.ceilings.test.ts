@@ -16,6 +16,7 @@ import path from "path";
 import crypto from "crypto";
 import type Database from "better-sqlite3";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { ENV } from "../config/env";
 
 process.env.DB_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "bitcorn-swap-ceilings-test-"));
 
@@ -25,6 +26,7 @@ const stubs = vi.hoisted(() => ({
   initiateLoopOut: vi.fn(),
   initiateLoopIn: vi.fn(),
   recordSwapEvent: vi.fn(),
+  probeLoopOutPaymentRoute: vi.fn(),
 }));
 
 vi.mock("./loopProvider", () => ({
@@ -35,6 +37,17 @@ vi.mock("./loopProvider", () => ({
   recordSwapEvent: stubs.recordSwapEvent,
   generateDestinationAddress: vi.fn(),
 }));
+
+// The LND route-probe primitive. Everything above it — the three-step order,
+// the cap check and the refusal — runs for real.
+vi.mock("../lightning/lnd", () => ({
+  probeLoopOutPaymentRoute: stubs.probeLoopOutPaymentRoute,
+}));
+
+// The quote's swap_payment_dest, and the configured Loop server (the
+// fallback). Neither is the other.
+const PAYMENT_DEST = "03" + "fb".repeat(32);
+const LOOP_SERVER = ENV.loopServerPubkeys[0];
 
 type Svc = typeof import("./swapService");
 let svc: Svc;
@@ -59,7 +72,10 @@ beforeEach(() => {
     miner_fee_sat: 1_200,
     total_fee_sat: 32_035,
     conf_target: 6,
+    swap_payment_dest: PAYMENT_DEST,
   });
+  // Default: the quote's destination routes, cheaply, for both payments.
+  stubs.probeLoopOutPaymentRoute.mockResolvedValue({ routable: true, feeSat: 3 });
   stubs.quoteLoopIn.mockResolvedValue({
     amount_sat: 250_000,
     swap_fee_sat: 500,
@@ -142,6 +158,109 @@ describe.each([
 
   it("max_miner_fee is the quoted miner fee", async () => {
     expect((await initiate()).maxMinerFee).toBe(1_200);
+  });
+});
+
+// ─── Pre-initiation checks on A and B (spec §4 A and B) ─────────────────────
+
+async function quoteAndInitiate(role: "member" | "treasury" = "member") {
+  const { swapRequest } = await svc.createLoopOutQuote({
+    nodePubkey: MEMBER, role, amountSat: 250_000, destinationAddress: DEST,
+  });
+  return { id: swapRequest.id, run: () => svc.initiateSwap(swapRequest.id, DEST) };
+}
+
+/** Route the probe by destination: what each pubkey answers, for any amount. */
+function routes(answers: Record<string, { routable: boolean; feeSat?: number } | ((amt: number) => any)>) {
+  stubs.probeLoopOutPaymentRoute.mockImplementation(async (dest: string, amt: number) => {
+    const a = answers[dest] ?? { routable: false };
+    return typeof a === "function" ? a(amt) : a;
+  });
+}
+
+function probedTargets(): string[] {
+  return stubs.probeLoopOutPaymentRoute.mock.calls.map((c) => `${c[0]}@${c[1]}`);
+}
+
+describe.each(["member", "treasury"] as const)("D2 (%s): a probed route fee above the 1% cap refuses", (role) => {
+  it("swap payment's route over cap (2,501 > 2,500) → route_fee_over_cap, no loopd initiation", async () => {
+    routes({ [PAYMENT_DEST]: (amt) => ({ routable: true, feeSat: amt === 250_000 ? 2_501 : 3 }) });
+    const { run } = await quoteAndInitiate(role);
+    await expect(run()).rejects.toMatchObject({ code: "route_fee_over_cap" });
+    expect(stubs.initiateLoopOut).not.toHaveBeenCalled();
+  });
+
+  it("prepay's route over cap (301 > 300) → route_fee_over_cap, no loopd initiation", async () => {
+    routes({ [PAYMENT_DEST]: (amt) => ({ routable: true, feeSat: amt === 30_000 ? 301 : 3 }) });
+    const { run } = await quoteAndInitiate(role);
+    await expect(run()).rejects.toMatchObject({ code: "route_fee_over_cap" });
+    expect(stubs.initiateLoopOut).not.toHaveBeenCalled();
+  });
+
+  it("both routes at the cap exactly proceed", async () => {
+    routes({ [PAYMENT_DEST]: (amt) => ({ routable: true, feeSat: amt === 250_000 ? 2_500 : 300 }) });
+    const { run } = await quoteAndInitiate(role);
+    await run();
+    expect(stubs.initiateLoopOut).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe.each(["member", "treasury"] as const)("D3 (%s): the fee-rate refusal fires before initiation", (role) => {
+  // Stored miner fee 1,200; margin 50% → a fresh estimate above 1,800 refuses.
+  function freshMinerFee(sat: number) {
+    stubs.quoteLoopOut
+      .mockResolvedValueOnce({ amount_sat: 250_000, swap_fee_sat: 835, prepay_sat: 30_000, miner_fee_sat: 1_200, total_fee_sat: 32_035, conf_target: 6, swap_payment_dest: PAYMENT_DEST })
+      .mockResolvedValueOnce({ amount_sat: 250_000, swap_fee_sat: 835, prepay_sat: 30_000, miner_fee_sat: sat, total_fee_sat: 0, conf_target: 6, swap_payment_dest: PAYMENT_DEST });
+  }
+
+  it("fresh miner fee 1,801 > 1,200 + 50% → fee_rate_over_quote, no loopd initiation", async () => {
+    freshMinerFee(1_801);
+    const { run } = await quoteAndInitiate(role);
+    await expect(run()).rejects.toMatchObject({ code: "fee_rate_over_quote" });
+    expect(stubs.initiateLoopOut).not.toHaveBeenCalled();
+  });
+
+  it("fresh miner fee 1,800 (exactly quote + 50%) proceeds", async () => {
+    freshMinerFee(1_800);
+    const { run } = await quoteAndInitiate(role);
+    await run();
+    expect(stubs.initiateLoopOut).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("D21: the probe's three branches", () => {
+  it("(a) direct: the quote's swap_payment_dest routes; it alone is probed, for both amounts", async () => {
+    routes({ [PAYMENT_DEST]: { routable: true, feeSat: 3 }, [LOOP_SERVER]: { routable: true, feeSat: 3 } });
+    const { id, run } = await quoteAndInitiate();
+    await run();
+    expect(probedTargets()).toEqual([`${PAYMENT_DEST}@250000`, `${PAYMENT_DEST}@30000`]);
+    expect(stubs.recordSwapEvent).toHaveBeenCalledWith(id, "route_probed",
+      expect.objectContaining({ branch: "direct", target: PAYMENT_DEST }));
+    expect(stubs.initiateLoopOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("(b) fallback: swap_payment_dest finds no route; the Loop server routes and the swap proceeds", async () => {
+    routes({ [PAYMENT_DEST]: { routable: false }, [LOOP_SERVER]: { routable: true, feeSat: 5 } });
+    const { id, run } = await quoteAndInitiate();
+    await run();
+    expect(probedTargets()).toEqual(expect.arrayContaining([`${LOOP_SERVER}@250000`, `${LOOP_SERVER}@30000`]));
+    expect(stubs.recordSwapEvent).toHaveBeenCalledWith(id, "route_probed",
+      expect.objectContaining({ branch: "fallback", target: LOOP_SERVER }));
+    expect(stubs.initiateLoopOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("(b) fallback: the cap applies to the fallback route's fee", async () => {
+    routes({ [PAYMENT_DEST]: { routable: false }, [LOOP_SERVER]: { routable: true, feeSat: 2_501 } });
+    const { run } = await quoteAndInitiate();
+    await expect(run()).rejects.toMatchObject({ code: "route_fee_over_cap" });
+    expect(stubs.initiateLoopOut).not.toHaveBeenCalled();
+  });
+
+  it("(c) neither routes → route_not_found before initiation, no loopd initiation", async () => {
+    routes({});
+    const { run } = await quoteAndInitiate();
+    await expect(run()).rejects.toMatchObject({ code: "route_not_found" });
+    expect(stubs.initiateLoopOut).not.toHaveBeenCalled();
   });
 });
 
