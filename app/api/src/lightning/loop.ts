@@ -10,9 +10,9 @@ import { ENV } from "../config/env";
 
 // ─── Proto loading ───────────────────────────────────────────────────────────
 
-const PROTO_DIR = path.resolve(__dirname, "../../proto");
+export const PROTO_DIR = path.resolve(__dirname, "../../proto");
 
-const packageDef = protoLoader.loadSync(
+export const packageDef = protoLoader.loadSync(
   path.join(PROTO_DIR, "looprpc/client.proto"),
   {
     includeDirs: [PROTO_DIR],
