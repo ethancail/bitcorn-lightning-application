@@ -100,7 +100,9 @@ async function rowsOf(summary: ActionSummary) {
   document.body.appendChild(host);
   root = createRoot(host);
   await act(async () => { root!.render(React.createElement(Harness, { summary })); });
-  return [...host.querySelectorAll("dt")].map((dt) => ({
+  // The modal portals to document.body (ruling ll), so its rows are not under `host`.
+  const dialog = document.querySelector('[role="dialog"]');
+  return [...(dialog?.querySelectorAll("dt") ?? [])].map((dt) => ({
     label: dt.textContent,
     ident: (dt.nextElementSibling as HTMLElement | null)?.classList.contains("ident") ?? false,
   }));

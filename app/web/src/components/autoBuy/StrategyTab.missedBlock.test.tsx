@@ -129,6 +129,8 @@ const statusWithError = (err: string, over: Record<string, unknown> = {}): AutoB
 
 const valuation = { z_score: -0.4, zone: "fair_value", price_usd: 60000, updated_at: new Date(NOW * 1000).toISOString() } as any;
 
+// `host` mounts the tab; queries read document.body, because the confirm modal
+// portals there (ruling ll) — a host-scoped "no modal" check would pass vacuously.
 let host: HTMLDivElement;
 let root: Root;
 
@@ -139,7 +141,7 @@ async function render(node: React.ReactElement): Promise<void> {
 
 /** Find a button by its exact visible text. */
 const btn = (text: string): HTMLButtonElement | undefined =>
-  Array.from(host.querySelectorAll("button")).find((b) => b.textContent?.trim() === text) as HTMLButtonElement | undefined;
+  Array.from(document.body.querySelectorAll("button")).find((b) => b.textContent?.trim() === text) as HTMLButtonElement | undefined;
 
 /**
  * The Missed-buys panel's own text, scoped.
@@ -155,7 +157,7 @@ const btn = (text: string): HTMLButtonElement | undefined =>
  * `zoneLabelFor`, and the page-wide assertion lives in the last describe below.
  */
 function block(): string {
-  const panel = Array.from(host.querySelectorAll(".panel")).find(
+  const panel = Array.from(document.body.querySelectorAll(".panel")).find(
     (p) => p.querySelector(".panel-header")?.textContent?.trim() === "Missed buys",
   );
   return panel?.textContent ?? "";
@@ -193,7 +195,7 @@ afterEach(async () => {
 describe("the Missed buys block renders real values", () => {
   it("renders the header and B-full verbatim, with the amounts filled in", async () => {
     await render(React.createElement(StrategyTab, { status: status(MISSED_FULL), valuation, onRefresh: async () => {} }));
-    const text = host.textContent ?? "";
+    const text = document.body.textContent ?? "";
 
     expect(text).toContain("Missed buys");
     // The accepted body, with every placeholder resolved. Asserting the whole
@@ -217,7 +219,7 @@ describe("the Missed buys block renders real values", () => {
 
   it("renders NOTHING when there are no unclaimed intervals — no empty state, no '0 missed' (A1)", async () => {
     await render(React.createElement(StrategyTab, { status: status(null), valuation, onRefresh: async () => {} }));
-    expect(host.textContent ?? "").not.toContain("Missed buys");
+    expect(document.body.textContent ?? "").not.toContain("Missed buys");
     expect(btn("Buy missed intervals")).toBeUndefined();
   });
 
@@ -226,7 +228,7 @@ describe("the Missed buys block renders real values", () => {
       status: status(MISSED_FULL, { enabled: false, paused_reason: "user_paused" }),
       valuation, onRefresh: async () => {},
     }));
-    expect(host.textContent ?? "").toContain("Missed buys");
+    expect(document.body.textContent ?? "").toContain("Missed buys");
   });
 });
 
@@ -236,7 +238,7 @@ describe("the Missed buys block renders real values", () => {
 describe("the partial offer names the binding window", () => {
   it("renders B-partial with the fitting portion, the remainder, and the 7-day window", async () => {
     await render(React.createElement(StrategyTab, { status: status(MISSED_PARTIAL), valuation, onRefresh: async () => {} }));
-    const text = host.textContent ?? "";
+    const text = document.body.textContent ?? "";
 
     expect(text).toContain(
       "10 of 11 missed buys fit within this 7-day limit: about $1,000.00. 1 missed buy (about $100.00) remains and can be bought once the limit frees up.",
@@ -252,7 +254,7 @@ describe("the partial offer names the binding window", () => {
       remainder: { intervals: 1, estimated_usd: 100, binding_window: "30d" },
     };
     await render(React.createElement(StrategyTab, { status: status(thirty), valuation, onRefresh: async () => {} }));
-    expect(host.textContent ?? "").toContain("fit within this 30-day limit");
+    expect(document.body.textContent ?? "").toContain("fit within this 30-day limit");
   });
 });
 
@@ -262,7 +264,7 @@ describe("the partial offer names the binding window", () => {
 describe("the degraded body renders when the valuation is null", () => {
   it("states count and dates, claims NO amount and NO cause (B-degraded verbatim)", async () => {
     await render(React.createElement(StrategyTab, { status: status(MISSED_DEGRADED), valuation: null, onRefresh: async () => {} }));
-    const text = host.textContent ?? "";
+    const text = document.body.textContent ?? "";
 
     expect(text).toContain("Missed buys");
     expect(text).toContain("11 weekly buys were missed between");
@@ -291,7 +293,7 @@ describe("the confirm modal's challenge is the two-decimal amount, and it GATES"
   it("shows the FORMATTED amount as a row value and demands the BARE two-decimal target", async () => {
     await render(React.createElement(StrategyTab, { status: status(MISSED_FULL), valuation, onRefresh: async () => {} }));
     await click(btn("Buy missed intervals")!);
-    const text = host.textContent ?? "";
+    const text = document.body.textContent ?? "";
 
     // CH-FMT: the row shows the formatted amount…
     expect(text).toContain("$1,100.00");
@@ -306,7 +308,7 @@ describe("the confirm modal's challenge is the two-decimal amount, and it GATES"
   it("the target is a NON-EMPTY two-decimal form — an empty challenge would pass a weaker test", async () => {
     await render(React.createElement(StrategyTab, { status: status(MISSED_FULL), valuation, onRefresh: async () => {} }));
     await click(btn("Buy missed intervals")!);
-    const label = host.querySelector("label[for='action-confirm-challenge']");
+    const label = document.body.querySelector("label[for='action-confirm-challenge']");
     expect(label?.textContent).toBe("Type 1100.00 to confirm");
   });
 
@@ -315,7 +317,7 @@ describe("the confirm modal's challenge is the two-decimal amount, and it GATES"
     await click(btn("Buy missed intervals")!);
 
     const confirm = btn("Buy now")!;
-    const input = host.querySelector("#action-confirm-challenge") as HTMLInputElement;
+    const input = document.body.querySelector("#action-confirm-challenge") as HTMLInputElement;
     expect(confirm.disabled, "untouched").toBe(true);
 
     await type(input, "1100");
@@ -334,7 +336,7 @@ describe("the confirm modal's challenge is the two-decimal amount, and it GATES"
     await render(React.createElement(StrategyTab, { status: status(MISSED_FULL), valuation, onRefresh: async () => {} }));
     await click(btn("Buy missed intervals")!);
 
-    const input = host.querySelector("#action-confirm-challenge") as HTMLInputElement;
+    const input = document.body.querySelector("#action-confirm-challenge") as HTMLInputElement;
     await click(btn("Buy now")!);
     expect(stub.catchUpAutoBuy, "fired on a disabled button").not.toHaveBeenCalled();
 
@@ -348,7 +350,7 @@ describe("the confirm modal's challenge is the two-decimal amount, and it GATES"
   it("the PARTIAL modal challenges on the fitting portion, not the whole", async () => {
     await render(React.createElement(StrategyTab, { status: status(MISSED_PARTIAL), valuation, onRefresh: async () => {} }));
     await click(btn("Buy missed intervals")!);
-    const text = host.textContent ?? "";
+    const text = document.body.textContent ?? "";
 
     expect(text).toContain("Buy 10 of 11 missed intervals now?");
     expect(text).toContain("Type 1000.00 to confirm");
@@ -374,7 +376,7 @@ async function refuse(body: unknown, missed: AutoBuyMissed = MISSED_FULL): Promi
   stub.catchUpAutoBuy.mockRejectedValue(Object.assign(new Error("refused"), { body }));
   await render(React.createElement(StrategyTab, { status: status(missed), valuation, onRefresh: async () => {} }));
   await click(btn("Buy missed intervals")!);
-  const input = host.querySelector("#action-confirm-challenge") as HTMLInputElement;
+  const input = document.body.querySelector("#action-confirm-challenge") as HTMLInputElement;
   await type(input, catchUpTarget(missed));
   await click(btn("Buy now")!);
   return block();
@@ -522,14 +524,14 @@ describe("singular and plural both render correctly", () => {
   it("one missed interval: the modal title is singular", async () => {
     await render(React.createElement(StrategyTab, { status: status(ONE_MISSED), valuation, onRefresh: async () => {} }));
     await click(btn("Buy missed intervals")!);
-    expect(host.textContent ?? "").toContain("Buy 1 missed interval?");
-    expect(host.textContent ?? "").not.toContain("Buy 1 missed intervals?");
+    expect(document.body.textContent ?? "").toContain("Buy 1 missed interval?");
+    expect(document.body.textContent ?? "").not.toContain("Buy 1 missed intervals?");
   });
 
   it("many missed intervals: the modal title stays plural — the other direction", async () => {
     await render(React.createElement(StrategyTab, { status: status(MISSED_FULL), valuation, onRefresh: async () => {} }));
     await click(btn("Buy missed intervals")!);
-    expect(host.textContent ?? "").toContain("Buy 11 missed intervals?");
+    expect(document.body.textContent ?? "").toContain("Buy 11 missed intervals?");
   });
 
   it("one of three fits: the verb agrees with the ONE, and the remainder is plural", async () => {
@@ -547,14 +549,14 @@ describe("singular and plural both render correctly", () => {
   it("the partial modal inflects its remainder sentence too", async () => {
     await render(React.createElement(StrategyTab, { status: status(TWO_FIT_OF_THREE), valuation, onRefresh: async () => {} }));
     await click(btn("Buy missed intervals")!);
-    expect(host.textContent ?? "").toContain("1 missed buy remains and can be bought once the limit frees up.");
+    expect(document.body.textContent ?? "").toContain("1 missed buy remains and can be bought once the limit frees up.");
   });
 
   it("the success toast inflects its remainder clause", async () => {
     stub.catchUpAutoBuy.mockResolvedValue({ ok: true, intervals: 2, usd: 200, remainder_intervals: 1 });
     await render(React.createElement(StrategyTab, { status: status(TWO_FIT_OF_THREE), valuation, onRefresh: async () => {} }));
     await click(btn("Buy missed intervals")!);
-    const input = host.querySelector("#action-confirm-challenge") as HTMLInputElement;
+    const input = document.body.querySelector("#action-confirm-challenge") as HTMLInputElement;
     await type(input, "200.00");
     await click(btn("Buy now")!);
     expect(block()).toContain("Order placed for $200.00. 1 missed buy remains and can be bought once the limit frees up. Check history.");
@@ -567,7 +569,7 @@ describe("singular and plural both render correctly", () => {
 describe("no raw zone token survives anywhere on the Strategy tab", () => {
   it("the summary banner one panel above the block reads the label too", async () => {
     await render(React.createElement(StrategyTab, { status: status(MISSED_FULL), valuation, onRefresh: async () => {} }));
-    const text = host.textContent ?? "";
+    const text = document.body.textContent ?? "";
     expect(text).toContain("Fair Value");
     // Page-wide now: the block was already correct, the pre-existing summary
     // banner one panel above it was not.
@@ -623,7 +625,7 @@ describe("B-error · the block renders when the summary could not be computed", 
     }));
     expect(btn("Buy missed intervals")).toBeUndefined();
     expect(block()).not.toContain("were missed between");
-    expect(host.querySelector("#action-confirm-challenge")).toBeNull();
+    expect(document.body.querySelector("#action-confirm-challenge")).toBeNull();
   });
 });
 
@@ -654,7 +656,7 @@ describe("B-error · the mount change did not break the other two states", () =>
     await render(React.createElement(StrategyTab, {
       status: status(null), valuation, onRefresh: async () => {},
     }));
-    expect(host.textContent ?? "").not.toContain("Missed buys");
+    expect(document.body.textContent ?? "").not.toContain("Missed buys");
     expect(block()).toBe("");
   });
 });
@@ -672,13 +674,13 @@ describe("NS still reaches the member after the dead arm is removed", () => {
       valuation, onRefresh: async () => {},
     }));
     await click(btn("Buy missed intervals")!);
-    const input = host.querySelector("#action-confirm-challenge") as HTMLInputElement;
+    const input = document.body.querySelector("#action-confirm-challenge") as HTMLInputElement;
     await type(input, "1100.00");
     await click(btn("Buy now")!);
 
     expect(block()).toContain("Not placed: Auto-Buy is paused — see the notice above. Nothing was bought; the missed intervals are still listed.");
     // …and the banner it points at is genuinely on this surface.
-    expect(host.textContent ?? "").toContain("Paused by operator");
+    expect(document.body.textContent ?? "").toContain("Paused by operator");
   });
 
   it("not_schedulable WITHOUT a paused_reason still takes the generic frame", async () => {
@@ -690,7 +692,7 @@ describe("NS still reaches the member after the dead arm is removed", () => {
       status: status(MISSED_FULL, { paused_reason: null }), valuation, onRefresh: async () => {},
     }));
     await click(btn("Buy missed intervals")!);
-    const input = host.querySelector("#action-confirm-challenge") as HTMLInputElement;
+    const input = document.body.querySelector("#action-confirm-challenge") as HTMLInputElement;
     await type(input, "1100.00");
     await click(btn("Buy now")!);
 
