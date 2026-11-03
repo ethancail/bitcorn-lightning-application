@@ -359,24 +359,34 @@ export async function executeLoopOutSwap(params: {
 }): Promise<LoopOutSwapResult> {
   // Convert short channel IDs (e.g. "939318x1492x1") to uint64 strings for loopd proto
   const chanSet = params.outgoing_chan_set.map(shortChannelIdToUint64);
+  const request = {
+    amt: params.amt,
+    dest: params.dest,
+    outgoing_chan_set: chanSet,
+    max_swap_fee: params.max_swap_fee,
+    max_miner_fee: params.max_miner_fee,
+    max_prepay_amt: params.max_prepay_amt,
+    sweep_conf_target: params.sweep_conf_target,
+    // Each routing ceiling is the cap on its own payment, separate from
+    // max_swap_fee (which used to be reused for both).
+    max_prepay_routing_fee: routingFeeCeilingSat(params.max_prepay_amt),
+    max_swap_routing_fee: routingFeeCeilingSat(params.amt),
+  };
+  // Ruling r (D25): the ceilings sent, from the request itself, amounts only.
+  console.log("[loop] LoopOut initiation, ceilings sent (sats):", {
+    amt: request.amt,
+    max_swap_fee: request.max_swap_fee,
+    max_miner_fee: request.max_miner_fee,
+    max_prepay_amt: request.max_prepay_amt,
+    max_swap_routing_fee: request.max_swap_routing_fee,
+    max_prepay_routing_fee: request.max_prepay_routing_fee,
+  });
   const res = await rpcCall<{
     id_bytes: Buffer | string;
     server_message: string;
   }>(
     "LoopOut",
-    {
-      amt: params.amt,
-      dest: params.dest,
-      outgoing_chan_set: chanSet,
-      max_swap_fee: params.max_swap_fee,
-      max_miner_fee: params.max_miner_fee,
-      max_prepay_amt: params.max_prepay_amt,
-      sweep_conf_target: params.sweep_conf_target,
-      // Each routing ceiling is the cap on its own payment, separate from
-      // max_swap_fee (which used to be reused for both).
-      max_prepay_routing_fee: routingFeeCeilingSat(params.max_prepay_amt),
-      max_swap_routing_fee: routingFeeCeilingSat(params.amt),
-    },
+    request,
     60_000 // longer deadline for swap initiation
   );
 
@@ -516,26 +526,29 @@ export async function executeLoopInSwap(params: {
   last_hop?: string;
   label?: string;
 }): Promise<LoopInSwapResult> {
+  const request = {
+    amt: params.amt,
+    max_swap_fee: params.max_swap_fee,
+    max_miner_fee: params.max_miner_fee,
+    htlc_conf_target: params.htlc_conf_target,
+    last_hop: params.last_hop ? Buffer.from(params.last_hop, "hex") : undefined,
+    label: params.label || `bitcorn-loop-in-${Date.now()}`,
+    initiator: "bitcorn",
+    private: true, // hub-and-spoke: loopd auto-generates route hints from local channels
+  };
+  // Ruling r (D25): the ceilings sent, from the request itself, amounts only.
+  console.log("[loop] LoopIn initiation, ceilings sent (sats):", {
+    amt: request.amt,
+    max_swap_fee: request.max_swap_fee,
+    max_miner_fee: request.max_miner_fee,
+  });
   const res = await rpcCall<{
     id_bytes: Buffer | string;
     server_message: string;
     htlc_address: string;
     htlc_address_p2wsh: string;
     htlc_address_p2tr: string;
-  }>(
-    "LoopIn",
-    {
-      amt: params.amt,
-      max_swap_fee: params.max_swap_fee,
-      max_miner_fee: params.max_miner_fee,
-      htlc_conf_target: params.htlc_conf_target,
-      last_hop: params.last_hop ? Buffer.from(params.last_hop, "hex") : undefined,
-      label: params.label || `bitcorn-loop-in-${Date.now()}`,
-      initiator: "bitcorn",
-      private: true, // hub-and-spoke: loopd auto-generates route hints from local channels
-    },
-    60_000
-  );
+  }>("LoopIn", request, 60_000);
 
   const hashHex =
     typeof res.id_bytes === "string"
