@@ -72,6 +72,15 @@ declare module "ln-service" {
     is_private?: boolean;
     transaction_id: string;
     transaction_vout: number;
+    // lightning/lnd_responses/rpc_channel_as_channel.js (lightning 11.1.0).
+    // Read by persist-channels.ts for drive-mode P1 items 2 and 8.
+    local_reserve?: number;
+    remote_reserve?: number;
+    commit_transaction_fee?: number;
+    /** "anchor" | "original" | "anchor_with_lease_constraint" |
+     *  "simplified_taproot" | "original_with_static_to_remote" */
+    type?: string;
+    pending_payments?: Array<{ id: string; is_outgoing: boolean; tokens: number }>;
   }
 
   export function getChannels(options: {
