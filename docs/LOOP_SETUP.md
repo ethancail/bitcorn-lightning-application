@@ -225,18 +225,25 @@ keeps its retries.
 
 ## Prepay model (important)
 
-⚠ **UNVERIFIED, pending P1.** This section has long said the ~30,000 sat
-prepay is a **temporary hold**, sent during the swap and returned as part of
-the on-chain payment, and **not** an additional fee. The loop-fee-ceilings
-arc does not treat that as established: prediction P1 is that the prepay sits
-inside the server's swap fee, and Polar gate 1 (L3) measures it from the
-amounts actually paid; the post-deploy real Loop Out measures it on mainnet.
-Until then the "most you authorize" figure in the confirmation counts the
-prepay as additive (it can overstate, never understate), while the
-withdrawal panel's prepay row still reads "returned" — that label changes
-only once P1 is settled.
+**The prepay is an advance on the principal, not a fee.** It is a separate
+Lightning payment the server takes up front (~30,000 sats on mainnet), and
+together with the swap invoice it pays for the on-chain HTLC: swap invoice +
+prepay − on-chain HTLC = the swap fee. So it is counted toward the amount
+withdrawn — neither an extra cost nor a hold returned later. If the swap fails
+after it starts, the prepay may not be refunded.
 
-- Net cost if P1 holds = `swap_fee + miner_fee` (~1–2k sats typical).
+Measured by Polar gate 1's L3 on loopserver v0.9.221-beta (regtest, not
+production): swap invoice 248,688 + prepay 1,337 − HTLC 250,000 = 25, the
+quoted swap fee. The post-deploy real Loop Out confirms it on mainnet; if it
+disagrees, mainnet governs and the copy is fixed in a follow-up release
+(loop-fee-ceilings spec §7, §12 P1). (This section used to call the prepay a
+"temporary hold … returned as part of the on-chain payment", and then marked
+that UNVERIFIED pending P1.)
+
+- Net cost = `swap_fee + miner_fee` plus the routing fees paid (~1–2k sats typical).
+- The confirmation's "Most you authorize in fees" is swap fee + miner fee + the
+  two routing ceilings, the prepay **excluded**; the withdrawal panel's prepay
+  row reads "Prepay (part of your withdrawal)".
 
 ⚠ **`total_cost_sats` / `total_fee_sat` INCLUDE the prepay.** So does the value
 handed to the daily loss cap

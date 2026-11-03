@@ -63,6 +63,31 @@ export function statusTechnical(status: string): string {
   }
 }
 
+/**
+ * The Withdraw panel's prepay sentence and its fee breakdown. The prepay is an
+ * advance on the principal, counted toward the amount withdrawn — not a fee
+ * and not a returned hold (Polar gate 1's L3); label and sentence are P12 p's,
+ * verbatim. Exported for its render test (WithdrawBitcoin.prepay.test.tsx).
+ */
+export function QuoteFeeDetails({ swapFee, minerFee, prepay }: { swapFee: number; minerFee: number; prepay: number }) {
+  return (
+    <>
+      {prepay > 0 && (
+        <div style={{ fontSize: "0.75rem", color: "var(--text-3)", padding: "8px 12px", background: "var(--bg-3)", borderRadius: 6 }}>
+          Paid to the swap service up front and counted toward the amount you withdraw — not an extra fee.
+          If the withdrawal fails after it starts, the prepay may not be refunded.
+        </div>
+      )}
+      {/* Protocol fee breakdown — demoted per U2/Knot 3 */}
+      <TechnicalDetails>
+        {swapFee > 0 && <TechRow label="Swap service fee">{fmtSats(swapFee)}</TechRow>}
+        {minerFee > 0 && <TechRow label="Bitcoin network (miner) fee">{fmtSats(minerFee)}</TechRow>}
+        {prepay > 0 && <TechRow label="Prepay (part of your withdrawal)">{fmtSats(prepay)}</TechRow>}
+      </TechnicalDetails>
+    </>
+  );
+}
+
 function formatCountdown(expiresAt: number): string {
   const diff = expiresAt - Date.now();
   if (diff <= 0) return "Expired";
@@ -620,18 +645,7 @@ export default function WithdrawBitcoin() {
                       </div>
                     </div>
                   </div>
-                  {prepay > 0 && (
-                    <div style={{ fontSize: "0.75rem", color: "var(--text-3)", padding: "8px 12px", background: "var(--bg-3)", borderRadius: 6 }}>
-                      <strong style={{ color: "var(--text-2)" }}>{fmtSats(prepay)}</strong> is held temporarily
-                      while the withdrawal runs and returned with your funds — not an extra fee.
-                    </div>
-                  )}
-                  {/* Protocol fee breakdown — demoted per U2/Knot 3 */}
-                  <TechnicalDetails>
-                    {swapFee > 0 && <TechRow label="Swap service fee">{fmtSats(swapFee)}</TechRow>}
-                    {minerFee > 0 && <TechRow label="Bitcoin network (miner) fee">{fmtSats(minerFee)}</TechRow>}
-                    {prepay > 0 && <TechRow label="Prepay hold (returned)">{fmtSats(prepay)}</TechRow>}
-                  </TechnicalDetails>
+                  <QuoteFeeDetails swapFee={swapFee} minerFee={minerFee} prepay={prepay} />
                 </div>
               );
             })()}

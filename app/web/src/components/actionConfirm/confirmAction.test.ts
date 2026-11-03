@@ -189,9 +189,10 @@ describe("truncId", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // loop-fee-ceilings §7 (F4): the confirmation shows the most the member
 // authorises, and what happens to the on-chain fee once the swap has started.
-// The figure counts the prepay as ADDITIVE until Polar confirms P1 (ruling 11):
-// it can overstate the maximum, never understate it. The 20% clause is Loop
-// Out's only (ruling 5): the clamp is the Loop Out sweep's.
+// The figure is swap fee + miner fee + the two routing ceilings, the prepay
+// EXCLUDED (P12 p, superseding ruling 11): Polar's L3 found the prepay to be an
+// advance on the principal, not a fee. The 20% clause is Loop Out's only
+// (ruling 5): the clamp is the Loop Out sweep's.
 // ─────────────────────────────────────────────────────────────────────────────
 describe("loop-fee-ceilings: the authorised maximum and the post-start disclosure", () => {
   // Through the namespace, so a missing helper fails on its value rather than
@@ -206,8 +207,23 @@ describe("loop-fee-ceilings: the authorised maximum and the post-start disclosur
     max_prepay_routing_fee_sat: 300,
   };
 
-  it("the authorised maximum is every ceiling summed, the prepay included", () => {
-    expect(helpers.authorizedMaxSats?.(LO_CEILINGS)).toBe(34_835);
+  // Gate 1's Loop Out ceilings (spec §7, §10.1): 25 + 3,793 + 2,500 + 13 =
+  // 6,331, with the 1,337 prepay left out. Written out, not computed by the
+  // code under test.
+  const GATE1_CEILINGS = {
+    max_swap_fee_sat: 25,
+    max_prepay_amt_sat: 1_337,
+    max_miner_fee_sat: 3_793,
+    max_swap_routing_fee_sat: 2_500,
+    max_prepay_routing_fee_sat: 13,
+  };
+
+  it("p: Loop Out's maximum is swap + miner + the two routing ceilings, the prepay excluded", () => {
+    expect(helpers.authorizedMaxSats?.(GATE1_CEILINGS)).toBe(6_331);
+    expect(helpers.authorizedMaxSats?.(LO_CEILINGS)).toBe(4_835);
+  });
+
+  it("p: Loop In (no prepay) is swap + miner", () => {
     expect(helpers.authorizedMaxSats?.({ max_swap_fee_sat: 500, max_miner_fee_sat: 900 })).toBe(1_400);
   });
 
@@ -223,9 +239,9 @@ describe("loop-fee-ceilings: the authorised maximum and the post-start disclosur
 
   it("Loop Out: shows the maximum and says the network fee follows the market, capped at 20%", () => {
     const s = summarizeLoopOut({
-      amountSats: 250_000, destinationAddress: "bc1qabc", feeSats: 2_035, authorizedMaxSats: 34_835,
+      amountSats: 250_000, destinationAddress: "bc1qabc", feeSats: 2_035, authorizedMaxSats: 4_835,
     } as Parameters<typeof summarizeLoopOut>[0]);
-    expect(s.rows.find((r) => /most you authori[sz]e/i.test(r.label))?.value).toBe("34,835 sats");
+    expect(s.rows.find((r) => /most you authori[sz]e/i.test(r.label))?.value).toBe("4,835 sats");
     expect(s.body).toMatch(/follows the market/i);
     expect(s.body).toMatch(/20% of the amount/);
   });

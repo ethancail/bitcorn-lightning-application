@@ -223,25 +223,36 @@ export function summarizePayInvoice(p: {
 // ─── Loop fee ceilings (loop-fee-ceilings spec §7, F4) ───────────────────────
 
 /**
- * The most a swap authorises before it starts: every ceiling the quote sends
- * loopd, summed. ⚠ The prepay is counted as ADDITIVE (ruling 11) until Polar
- * confirms prediction P1 (that the prepay sits inside the swap fee), so this
- * can overstate the maximum but never understate it. Undefined when the quote
- * carries no ceilings — never a 0 presented as a maximum.
+ * The most a swap authorises in fees before it starts ("Most you authorize in
+ * fees"): the swap fee + the miner fee + the two routing ceilings (P12 p,
+ * superseding ruling 11). The prepay (max_prepay_amt) is EXCLUDED: it is an
+ * advance on the principal, counted toward the amount withdrawn, not a fee
+ * (Polar gate 1's L3). Loop In carries no prepay or routing ceilings, so its
+ * figure is swap + miner. Undefined when the quote carries no ceilings —
+ * never a 0 presented as a maximum.
  */
+const AUTHORIZED_FEE_CEILINGS = [
+  "max_swap_fee_sat",
+  "max_miner_fee_sat",
+  "max_swap_routing_fee_sat",
+  "max_prepay_routing_fee_sat",
+] as const;
+
 export function authorizedMaxSats(
   ceilings: Record<string, number | undefined> | null | undefined,
 ): number | undefined {
   if (!ceilings) return undefined;
-  const values = Object.values(ceilings).filter((v): v is number => typeof v === "number");
+  const values = AUTHORIZED_FEE_CEILINGS.map((k) => ceilings[k]).filter(
+    (v): v is number => typeof v === "number",
+  );
   return values.length ? values.reduce((a, b) => a + b, 0) : undefined;
 }
 
 /**
  * The Loop Out fee estimate: swap fee + miner fee. The one figure both the
  * Withdraw panel and its confirmation show (they used to disagree: the modal
- * added the prepay). The prepay's own wording is unchanged until P1 is
- * measured; the authorised maximum above already counts it.
+ * added the prepay). Neither counts the prepay, which is part of the
+ * withdrawal, not a fee (P12 p).
  */
 export function loopOutEstimatedFeeSats(q: { swap_fee_sat?: number; miner_fee_sat?: number }): number {
   return (q.swap_fee_sat ?? 0) + (q.miner_fee_sat ?? 0);
