@@ -312,6 +312,8 @@ txid) in `lncli listchannels`, with `scid` (uint64 string) and `scid_str`
 
 - **2026-03-11, mainnet:** 250k Loop Out through ACINQ succeeded end to end.
   Total cost 31,437 sats (1.26% — prepay included in that figure).
+  *[Note, 2026-11-03, ruling gg:]* under ruling p the prepay is an advance on
+  the principal, not a cost, so this swap's net cost was 1,437 sats, not 31,437.
 - **2026-08-31, both architectures:** loopd 0.33.0-beta from the Bitcorn image
   verified on an aarch64 Pi 5 and the x86_64 treasury ahead of the v1.18.9
   swap. Reaches listening state 120ms from process start, dials LND, serves
