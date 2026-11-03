@@ -8,6 +8,8 @@ import {
   type PendingChannel,
   type NodeBalances,
 } from "../api/client";
+import { rateNote } from "../api/rate";
+import type { ExchangeRate } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
 import { subscriptionBannerSlot } from "../components/subscriptionBannerSlot";
@@ -352,6 +354,8 @@ export default function MemberDashboard() {
   const [loading, setLoading] = useState(true);
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
   const [usdRate, setUsdRate] = useState<number | null>(null);
+  // The rate's state, for its note (drive-mode P1 item 3).
+  const [rateInfo, setRateInfo] = useState<ExchangeRate | null>(null);
   const [pendingTreasuryChannel, setPendingTreasuryChannel] = useState(false);
   const [balances, setBalances] = useState<NodeBalances | null>(null);
   const [balFresh, setBalFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
@@ -416,7 +420,7 @@ export default function MemberDashboard() {
 
   // Exchange rate for USD display
   useEffect(() => {
-    api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
+    api.getExchangeRate().then((r) => { setRateInfo(r); setUsdRate(r.usd); }).catch(() => {});
   }, []);
 
   // Balance polling.
@@ -597,6 +601,9 @@ export default function MemberDashboard() {
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
           Your connection to the Bitcorn Lightning hub
         </p>
+        {rateNote(rateInfo) && (
+          <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rateInfo)}</p>
+        )}
       </div>
 
       {/* ── H2: the headline numbers, first and largest. ── */}

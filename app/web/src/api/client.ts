@@ -1133,7 +1133,15 @@ export type PaymentResult = {
   error?: string;
 };
 
-export type ExchangeRate = { usd: number; source: string };
+/** The server's cached rate (drive-mode P1 item 3). usd is null when state is
+ *  "none" — past 6 hours, or no rate at all; the route still answers 200. */
+export type ExchangeRate = {
+  usd: number | null;
+  source: string;
+  fetched_at: number | null;
+  age_ms: number | null;
+  state: "fresh" | "stale" | "none";
+};
 
 // ─── Member Liquidity Advisor types (member node) ────────────────────────
 

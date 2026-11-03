@@ -12,6 +12,7 @@ import { insertOutboundPayment } from "./persist-payments";
 import { assertRateLimit } from "../utils/rate-limit";
 import { ENV } from "../config/env";
 import { findContactByPubkey } from "../utils/contact-pubkey";
+import { getBtcUsd } from "../price/btcUsdCache";
 
 /** Resolve a pubkey to a contact name for error messages — the same row lane classification uses. */
 function resolveContact(pubkey: string): string {
@@ -21,23 +22,16 @@ function resolveContact(pubkey: string): string {
 
 // ─── Exchange rate ───────────────────────────────────────────────────────────
 
-export async function getBtcExchangeRate(): Promise<{ usd: number; source: string }> {
-  const res = await fetch("https://api.coinbase.com/v2/prices/BTC-USD/spot");
-  if (!res.ok) throw new Error(`Coinbase API error: ${res.status}`);
-  const data = (await res.json()) as { data: { amount: string } };
-  return { usd: parseFloat(data.data.amount), source: "coinbase" };
-}
-
 function satsToUsd(sats: number, rateUsd: number): number {
   return Math.round(((sats / 100_000_000) * rateUsd) * 100) / 100;
 }
 
-async function fetchRateSafe(): Promise<{ usd: number } | null> {
-  try {
-    return await getBtcExchangeRate();
-  } catch {
-    return null;
-  }
+/** The cached rate, for a per-record USD amount — only when it is fresh
+ *  (R18(9), drive-mode P1 item 3). Read, never fetched: no payment waits on
+ *  Coinbase. */
+function freshRateUsd(): number | null {
+  const r = getBtcUsd();
+  return r.state === "fresh" ? r.usd : null;
 }
 
 // ─── Invoice creation (Request Payment) ──────────────────────────────────────
@@ -57,9 +51,7 @@ export async function createPaymentInvoice(
   if (amountSats <= 0) throw new Error("Amount must be positive");
 
   const invoice = await createLndInvoice(amountSats, memo);
-  const rate = await fetchRateSafe();
-
-  const exchangeRate = rate?.usd ?? null;
+  const exchangeRate = freshRateUsd();
   const amountUsd = exchangeRate ? satsToUsd(amountSats, exchangeRate) : null;
 
   db.prepare(`
@@ -197,8 +189,7 @@ export async function payNetworkInvoice(
     }
   }
 
-  const rate = await fetchRateSafe();
-  const exchangeRate = rate?.usd ?? null;
+  const exchangeRate = freshRateUsd();
   const amountUsd = exchangeRate ? satsToUsd(tokens, exchangeRate) : null;
 
   // Record pending payment

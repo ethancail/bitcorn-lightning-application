@@ -23,6 +23,8 @@ import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
 import { summarizePayInvoice } from "../components/actionConfirm/confirmAction";
+import { rateNote } from "../api/rate";
+import type { ExchangeRate } from "../api/client";
 import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 
 type Tab = "request" | "pay";
@@ -51,6 +53,9 @@ export default function Payments({ title }: { title: string }) {
   const [payments, setPayments] = useState<NetworkPayment[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [rate, setRate] = useState<number | null>(null);
+  // The rate's state, for its note (drive-mode P1 item 3).
+  const [rateInfo, setRateInfo] = useState<ExchangeRate | null>(null);
+  const applyRate = (r: ExchangeRate) => { setRateInfo(r); setRate(r.usd); };
   const [loading, setLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<NetworkPayment | null>(null);
@@ -71,13 +76,13 @@ export default function Payments({ title }: { title: string }) {
   useEffect(() => {
     Promise.all([
       api.getContacts().then(setContacts).catch(() => {}),
-      api.getExchangeRate().then((r) => setRate(r.usd)).catch(() => {}),
+      api.getExchangeRate().then(applyRate).catch(() => {}),
       api.syncSettlements().catch(() => {}),
       loadPayments(),
     ]).finally(() => setLoading(false));
 
     const rateInterval = setInterval(() => {
-      api.getExchangeRate().then((r) => setRate(r.usd)).catch(() => {});
+      api.getExchangeRate().then(applyRate).catch(() => {});
     }, 60_000);
     return () => clearInterval(rateInterval);
   }, [loadPayments]);
@@ -89,6 +94,9 @@ export default function Payments({ title }: { title: string }) {
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
           Request and send Lightning payments
         </p>
+        {rateNote(rateInfo) && (
+          <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rateInfo)}</p>
+        )}
       </div>
 
       {selectedPayment ? (

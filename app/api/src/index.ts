@@ -8,6 +8,7 @@ import { syncLndState } from "./lightning/sync";
 import { payInvoice } from "./lightning/pay";
 import { getHubChannelForDisplay } from "./lightning/hubChannel";
 import { capacityOf } from "./lightning/capacity";
+import { getBtcUsd, startBtcUsdRefresh } from "./price/btcUsdCache";
 import { assertActiveMember } from "./utils/membership";
 import { assertRateLimit } from "./utils/rate-limit";
 import {
@@ -152,7 +153,6 @@ function mapValuationErrorToHttp(error: ValuationFetchError): {
   }
 }
 import {
-  getBtcExchangeRate,
   createPaymentInvoice,
   payNetworkInvoice,
   getNetworkPayments,
@@ -3533,15 +3533,11 @@ async function dispatchRequest(
   // NETWORK PAYMENTS
   // ═══════════════════════════════════════════════════════════════════════
 
+  // The cached rate with its age and state (drive-mode P1 item 3). Always
+  // 200: "no rate" is state "none" with usd null, not an error (R18(9)).
   if (req.method === "GET" && req.url === "/api/exchange-rate") {
-    try {
-      const rate = await getBtcExchangeRate();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(rate));
-    } catch (err: any) {
-      res.writeHead(502, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message ?? "exchange_rate_unavailable" }));
-    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(getBtcUsd()));
     return;
   }
 
@@ -4887,6 +4883,8 @@ function main(): void {
     startMemberAdvisorScheduler();
     // Swap poller — monitors in-flight Loop swaps and updates status every 15s.
     startSwapPoller();
+    // BTC/USD cache — background refresh every 60 s (drive-mode P1 item 3).
+    startBtcUsdRefresh();
     // Coinbase Auto-Buy scheduler — 15-min tick that runs the 5-step state
     // machine. Gated by autobuy_config.enabled and ENV.autoBuyEnabled.
     startScheduler(db);

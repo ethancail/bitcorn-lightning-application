@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, fmtSats, swapExecuteBody } from "../api/client";
+import { rateNote } from "../api/rate";
+import type { ExchangeRate } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
@@ -150,6 +152,8 @@ export default function WithdrawBitcoin() {
   // the dashboard (Knot 3, vocabulary record 2026-07-09; Coinbase spot via
   // /api/exchange-rate).
   const [usdRate, setUsdRate] = useState<number | null>(null);
+  // The rate's state, for its note (drive-mode P1 item 3).
+  const [rateInfo, setRateInfo] = useState<ExchangeRate | null>(null);
   // U24 H5: tracking-poll freshness — after 3 consecutive failed polls the
   // tracking panel says it can't confirm status instead of spinning silently.
   const [pollFresh, setPollFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
@@ -213,7 +217,7 @@ export default function WithdrawBitcoin() {
   useEffect(() => {
     generateAddress();
     loadHistory();
-    api.getExchangeRate().then((r) => setUsdRate(r.usd)).catch(() => {});
+    api.getExchangeRate().then((r) => { setRateInfo(r); setUsdRate(r.usd); }).catch(() => {});
   }, []);
 
   const toUsd = (sats: number) =>
@@ -412,6 +416,9 @@ export default function WithdrawBitcoin() {
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
           Move funds from Bitcorn to a Bitcoin wallet
         </p>
+        {rateNote(rateInfo) && (
+          <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rateInfo)}</p>
+        )}
       </div>
 
       {/* ─── Withdrawal Amount + Destination Address ──────────────────── */}
