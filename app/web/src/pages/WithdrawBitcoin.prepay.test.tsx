@@ -1,6 +1,6 @@
 // P12 p (loop-fee-ceilings spec §1.6, §7): the Withdraw panel's prepay copy.
 // Polar gate 1's L3 found the prepay to be an advance on the principal —
-// counted toward the amount withdrawn — not a returned hold and not a fee.
+// counted toward the amount withdrawn — not a fee.
 // The label and the sentence are ruled verbatim; this pins them as rendered.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";

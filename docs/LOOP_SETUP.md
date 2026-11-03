@@ -236,9 +236,9 @@ Measured by Polar gate 1's L3 on loopserver v0.9.221-beta (regtest, not
 production): swap invoice 248,688 + prepay 1,337 − HTLC 250,000 = 25, the
 quoted swap fee. The post-deploy real Loop Out confirms it on mainnet; if it
 disagrees, mainnet governs and the copy is fixed in a follow-up release
-(loop-fee-ceilings spec §7, §12 P1). (This section used to call the prepay a
-"temporary hold … returned as part of the on-chain payment", and then marked
-that UNVERIFIED pending P1.)
+(loop-fee-ceilings spec §7, §12 P1). (This section used to state a different
+reading of the prepay, then marked it UNVERIFIED pending P1; `git log -p
+docs/LOOP_SETUP.md` has it.)
 
 - Net cost = `swap_fee + miner_fee` plus the routing fees paid (~1–2k sats typical).
 - The confirmation's "Most you authorize in fees" is swap fee + miner fee + the

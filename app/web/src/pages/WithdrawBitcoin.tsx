@@ -66,7 +66,7 @@ export function statusTechnical(status: string): string {
 /**
  * The Withdraw panel's prepay sentence and its fee breakdown. The prepay is an
  * advance on the principal, counted toward the amount withdrawn — not a fee
- * and not a returned hold (Polar gate 1's L3); label and sentence are P12 p's,
+ * (Polar gate 1's L3); label and sentence are P12 p's,
  * verbatim. Exported for its render test (WithdrawBitcoin.prepay.test.tsx).
  */
 export function QuoteFeeDetails({ swapFee, minerFee, prepay }: { swapFee: number; minerFee: number; prepay: number }) {

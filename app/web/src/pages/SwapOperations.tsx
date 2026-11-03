@@ -508,7 +508,7 @@ function LoopOutTab({
 
           {q.prepay_sat != null && q.prepay_sat > 0 && (
             <div style={{ fontSize: "0.75rem", color: "var(--text-3)", padding: "6px 10px", background: "var(--bg-3)", borderRadius: 6 }}>
-              Prepay hold: {fmtSats(q.prepay_sat)} — temporary, returned in the on-chain payment.
+              Prepay: {fmtSats(q.prepay_sat)} — paid to the swap service up front and counted toward the swapped amount, not a fee.
             </div>
           )}
 
