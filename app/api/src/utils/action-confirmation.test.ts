@@ -76,13 +76,18 @@ describe("derivation", () => {
 
   it("covers PRESENCE of an optional field: omitting it changes the value", () => {
     const r = route("POST", "/api/admin/swaps/loop-out");
+    // The route's required ceilings (loop-fee-ceilings F4), the same in both.
+    const ceilings = {
+      max_swap_fee_sat: 835, max_prepay_amt_sat: 30000, max_miner_fee_sat: 1200,
+      max_swap_routing_fee_sat: 2500, max_prepay_routing_fee_sat: 300,
+    };
     const without = deriveConfirmation(r, {
       url: "/api/admin/swaps/loop-out",
-      body: { swap_request_id: "abc" },
+      body: { swap_request_id: "abc", ...ceilings },
     });
     const with_ = deriveConfirmation(r, {
       url: "/api/admin/swaps/loop-out",
-      body: { swap_request_id: "abc", destination_address: "bc1qxyz" },
+      body: { swap_request_id: "abc", destination_address: "bc1qxyz", ...ceilings },
     });
     expect(without.ok && with_.ok).toBe(true);
     if (!without.ok || !with_.ok) return;

@@ -24,6 +24,9 @@ vi.mock("./lnd", () => ({
     channels: [{ id: "842391119757312", is_active: true, capacity: 2_000_000 }],
   })),
   createLndChainAddress: vi.fn(async () => ({ address: "bc1qtestonly" })),
+  // The pre-initiation route probe (loop-fee-ceilings), routable and cheap, so
+  // the admitted half of this pin still reaches the swap.
+  probeLoopOutPaymentRoute: vi.fn(async () => ({ routable: true, feeSat: 1 })),
 }));
 vi.mock("./loop", () => ({
   isLoopAvailable: vi.fn(),
@@ -33,7 +36,9 @@ vi.mock("./loop", () => ({
     miner_fee: 1_000,
     total_cost_sats: 3_000,
     prepay_amt_sat: 30_000,
+    swap_payment_dest: "03" + "fb".repeat(32),
   })),
+  routingFeeCeilingSat: (amountSat: number) => Math.floor(amountSat / 100),
   executeLoopOutSwap: vi.fn(async () => ({ id: "swap-1", swap_hash: "ab", server_message: "" })),
   listLoopSwaps: vi.fn(),
 }));
@@ -58,12 +63,11 @@ import { createLndChainAddress } from "./lnd";
 import { executeLoopOutSwap, getLoopOutQuote } from "./loop";
 import { createRebalanceExecution } from "../api/treasury-rebalance-executions";
 
+// executeLoopOut takes the channel and the amount only since loop-fee-ceilings
+// (spec §4 C1–C3): its ceilings come from its own in-call quote.
 const request = {
   channel_id: "842391119757312",
   amount_sats: 500_000,
-  max_swap_fee_sats: 5_000,
-  max_miner_fee_sats: 5_000,
-  conf_target: 6,
 };
 
 beforeEach(() => {

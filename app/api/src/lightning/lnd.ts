@@ -640,3 +640,57 @@ export async function probeRouteToLoopServer(
     error: `No route found from any Loop server (${servers.length} checked) to ${merchantPubkey.slice(0, 12)}... for ${amountSat} sats`,
   };
 }
+
+/**
+ * Loop Out sibling of probeRouteToLoopServer (above), which serves Loop In
+ * and is NOT edited: per the "build a sibling" precedent
+ * (CROSS_ARC_CONSTRAINTS.md, the withProbeTimeout entry), a base another path
+ * stands on is not changed. This sibling records its divergence here:
+ *
+ *  · DIRECTION: local node → `destination`, the way a Loop Out's swap and
+ *    prepay payments travel. The Loop In probe runs server → local.
+ *  · ONE DESTINATION per call, chosen by the caller (the quote's
+ *    swap_payment_dest first, then the configured Loop servers — see
+ *    loopOutPrechecks.ts). The Loop In probe loops over ENV.loopServerPubkeys
+ *    itself.
+ *  · RETURNS THE ROUTE'S FEE, which the caller checks against the routing cap.
+ *  · OPTIONAL outgoing channel, so a swap pinned to a channel is probed over
+ *    that channel.
+ *
+ * No max_fee is passed: a route over the cap must come back as a route over
+ * the cap, not as "no route". Never throws; an error is reported as not
+ * routable (the caller then falls back or refuses — fail closed).
+ */
+export async function probeLoopOutPaymentRoute(
+  destination: string,
+  amountSat: number,
+  outgoingChannel?: string,
+): Promise<{ routable: true; feeSat: number } | { routable: false; error?: string }> {
+  let lnd: any;
+  try {
+    ({ lnd } = getLndClient());
+  } catch (err) {
+    return {
+      routable: false,
+      error: `LND unavailable: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  try {
+    const result = await withDeadline(
+      "probeLoopOutPaymentRoute",
+      () => getRouteToDestination({
+        lnd,
+        destination,
+        tokens: amountSat,
+        ...(outgoingChannel ? { outgoing_channel: outgoingChannel } : {}),
+      }),
+      LND_GOSSIP_CALL_TIMEOUT_MS,
+    );
+    if (result?.route) {
+      return { routable: true, feeSat: Number(result.route.fee) };
+    }
+    return { routable: false };
+  } catch (err) {
+    return { routable: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}

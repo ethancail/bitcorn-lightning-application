@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { api, fmtSats } from "../api/client";
+import { api, fmtSats, swapExecuteBody } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
@@ -9,8 +9,8 @@ import { statusBadge } from "../components/swapStatus";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
-import { summarizeLoopIn } from "../components/actionConfirm/confirmAction";
-import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
+import { summarizeLoopIn, authorizedMaxSats } from "../components/actionConfirm/confirmAction";
+import { classifyConfirmError, memberSwapErrorText } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
   ageLabel,
@@ -37,10 +37,13 @@ function isTerminal(status: string): boolean {
 // statusTechnical — demoted into the Technical details expander, not deleted.
 // Neither returns a raw status: anything they don't name reads as its badge
 // label from the shared map (humanized if unknown).
-function statusText(status: string, amount: number, failureReason: string | null): string {
+// Exported for the 'initiating' mapping test (swapStatus.initiating.test.ts).
+export function statusText(status: string, amount: number, failureReason: string | null): string {
   switch (status) {
     case "quote_created":
       return "Quote received. The top-up hasn't started yet.";
+    case "initiating":
+      return "Starting…";
     case "initiated":
       return "Starting your top up...";
     case "executing":
@@ -57,8 +60,9 @@ function statusText(status: string, amount: number, failureReason: string | null
 }
 
 // The Protocol status row: the protocol status beside its description.
-function statusTechnical(status: string): string {
+export function statusTechnical(status: string): string {
   switch (status) {
+    case "initiating": return "initiating — Checking fees and route before the swap starts";
     case "initiated": return "initiated — Publishing on-chain HTLC";
     case "executing": return "executing — Waiting for Lightning payment from Loop server";
     case "confirming": return "confirming — Settling swap";
@@ -309,7 +313,7 @@ export default function RefillChannel() {
       } else if (msg.includes("route_unavailable") || e.status === 503) {
         setWarning(`Treasury has no inbound capacity for ${amount.toLocaleString()} sats right now. Try a smaller amount or check back shortly.`);
       } else {
-        setError(msg || "Failed to get quote");
+        setError(memberSwapErrorText(e, "Failed to get quote"));
       }
       setStage("form");
     }
@@ -324,6 +328,7 @@ export default function RefillChannel() {
       summarizeLoopIn({
         amountSats: quoteResp.quote.amount_sat,
         feeSats: quoteResp.quote.total_fee_sat,
+        authorizedMaxSats: authorizedMaxSats(quoteResp.ceilings),
       }),
     );
   }
@@ -333,16 +338,17 @@ export default function RefillChannel() {
     setError(null);
     setStage("initiating");
     try {
-      const resp = await api.initiateSwapLoopIn({
-        swap_request_id: quoteResp.swap_request.id,
-      });
+      // The shared builder echoes the quote's ceilings unchanged (F4).
+      const resp = await api.initiateSwapLoopIn(
+        swapExecuteBody(quoteResp, { swap_request_id: quoteResp.swap_request.id }),
+      );
       setTrackingId(resp.swap_request.id);
       setTrackingSwap(resp.swap_request);
       setStage("tracking");
     } catch (e: any) {
       setStage("quoted");
       if (classifyConfirmError(e)) throw e;
-      setError(e.message ?? "Failed to start the top up");
+      setError(memberSwapErrorText(e, "Failed to start the top up"));
     }
   }
 

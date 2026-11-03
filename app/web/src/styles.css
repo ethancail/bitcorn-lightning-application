@@ -1374,6 +1374,23 @@ input[type="number"] {
   width: 90%;
 }
 
+/* ActionConfirmModal's card (ruling ll): capped at the viewport, with only the
+   middle scrolling, so the title and the buttons stay on screen at any content
+   height. The modal is portalled to <body>, so the viewport is the overlay's
+   containing block. */
+.action-confirm-card {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+}
+.action-confirm-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .dialog-title {
   font-size: 1rem;
   font-weight: 600;
