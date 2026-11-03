@@ -96,6 +96,10 @@ export default function RefillChannel() {
   // ─── Channel state ────────────────────────────────────────────────────
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
+  // Room to receive, the server's one figure (drive-mode P1 item 2): remote −
+  // the channel reserve. Not capacity − local, which counts the commitment fee,
+  // anchors and reserve as room.
+  const [channelRemote, setChannelRemote] = useState<number | null>(null);
   // V11: the bar's colour is the Liquidity Advisor's state, not a percentage.
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
 
@@ -139,8 +143,6 @@ export default function RefillChannel() {
       ? Math.round((channelLocal / channelCapacity) * 100)
       : null;
 
-  const channelRemote = channelCapacity != null && channelLocal != null
-    ? channelCapacity - channelLocal : null;
   const maxRefill =
     onchainBalance != null
       ? Math.max(Math.min(
@@ -175,6 +177,7 @@ export default function RefillChannel() {
         if (stats?.treasury_channel) {
           setChannelLocal(stats.treasury_channel.local_sats);
           setChannelCapacity(stats.treasury_channel.capacity_sats);
+          setChannelRemote(stats.treasury_channel.room_to_receive_sats);
         }
         if (balances) {
           setOnchainBalance(balances.onchain_sats);
@@ -369,6 +372,7 @@ export default function RefillChannel() {
       if (s.treasury_channel) {
         setChannelLocal(s.treasury_channel.local_sats);
         setChannelCapacity(s.treasury_channel.capacity_sats);
+        setChannelRemote(s.treasury_channel.room_to_receive_sats);
       }
     }).catch(() => {});
     api.getNodeBalances().then((b) => setOnchainBalance(b.onchain_sats)).catch(() => {});

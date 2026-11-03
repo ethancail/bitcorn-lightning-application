@@ -70,6 +70,12 @@ const stats = (localSats: number) => ({
   treasury_channel: {
     channel_id: "1", local_sats: localSats, remote_sats: 1_000_000 - localSats, capacity_sats: 1_000_000,
     is_active: true, freshness: { updated_at_ms: NOW, age_seconds: 0, staleness: "fresh" },
+    // The capacity figures the server returns since drive-mode P1 item 2
+    // (lnd's default 1% reserve each side).
+    room_to_send_sats: Math.max(0, localSats - 10_000),
+    room_to_receive_sats: Math.max(0, 1_000_000 - localSats - 10_000),
+    local_reserve_sats: 10_000, remote_reserve_sats: 10_000,
+    pending_outgoing_sats: 0, pending_incoming_sats: 0, commit_fee_sats: null,
   },
   forwarded_fees: { total_sats: 0, last_24h_sats: 0, last_30d_sats: 0 },
 });

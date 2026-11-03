@@ -7,6 +7,7 @@ import { persistNodeInfo } from "./lightning/persist";
 import { syncLndState } from "./lightning/sync";
 import { payInvoice } from "./lightning/pay";
 import { getHubChannelForDisplay } from "./lightning/hubChannel";
+import { capacityOf } from "./lightning/capacity";
 import { assertActiveMember } from "./utils/membership";
 import { assertRateLimit } from "./utils/rate-limit";
 import {
@@ -3369,6 +3370,11 @@ async function dispatchRequest(
               remote_sats: treasuryChannel.remote_balance_sat,
               capacity_sats: treasuryChannel.capacity_sat,
               is_active: Boolean(treasuryChannel.active),
+              // Both capacity figures and their components (drive-mode P1
+              // item 2, spec §3.3): room_to_send_sats / room_to_receive_sats,
+              // the reserves, in-flight HTLCs (reported, not subtracted,
+              // R18(4)) and the commitment fee (reported only).
+              ...capacityOf(treasuryChannel),
               // Provenance travels WITH the numbers it describes, rather than
               // as a sibling field a consumer has to remember to join.
               freshness: channelDataFreshness(treasuryChannel.updated_at, Date.now()),

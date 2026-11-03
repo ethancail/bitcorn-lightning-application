@@ -737,6 +737,20 @@ export type MemberStats = {
     capacity_sats: number;
     is_active: boolean;
     /**
+     * One capacity figure per direction, computed once on the server
+     * (drive-mode P1 item 2): room to send = local − local reserve; room to
+     * receive = remote − remote reserve. The parts are reported; in-flight
+     * HTLCs and the commitment fee are NOT subtracted (lnd's balances already
+     * exclude them).
+     */
+    room_to_send_sats: number;
+    room_to_receive_sats: number;
+    local_reserve_sats: number;
+    remote_reserve_sats: number;
+    pending_outgoing_sats: number;
+    pending_incoming_sats: number;
+    commit_fee_sats: number | null;
+    /**
      * How old these numbers are. DATA-AGE driven, not poll-outcome driven:
      * this endpoint returns 200 even when LND is down, so components/freshness.ts
      * (which counts failed polls) can never mark it. Derived from

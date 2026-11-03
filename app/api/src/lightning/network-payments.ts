@@ -7,6 +7,7 @@ import { createLndInvoice, getLndClient } from "./lnd";
 import { withDeadline, LND_GOSSIP_CALL_TIMEOUT_MS } from "./callDeadline";
 import { payInvoice } from "./pay";
 import { getHubChannel } from "./hubChannel";
+import { capacityOf } from "./capacity";
 import { insertOutboundPayment } from "./persist-payments";
 import { assertRateLimit } from "../utils/rate-limit";
 import { ENV } from "../config/env";
@@ -144,9 +145,9 @@ export async function payNetworkInvoice(
   // Pre-flight: check if we have enough channel capacity to send this payment.
   // Look at channels to the destination (direct peer) and total spendable across all channels.
   const directChannels = db.prepare(`
-    SELECT channel_id, local_balance_sat, capacity_sat, active
+    SELECT channel_id, local_balance_sat, remote_balance_sat, capacity_sat, active, local_reserve_sat
     FROM lnd_channels WHERE peer_pubkey = ? AND active = 1
-  `).all(destination) as Array<{ channel_id: string; local_balance_sat: number; capacity_sat: number; active: number }>;
+  `).all(destination) as Array<{ channel_id: string; local_balance_sat: number; remote_balance_sat: number; capacity_sat: number; active: number; local_reserve_sat: number | null }>;
 
   const allActiveChannels = db.prepare(`
     SELECT COALESCE(SUM(local_balance_sat), 0) AS total_local
@@ -160,8 +161,8 @@ export async function payNetworkInvoice(
     const hub = destination === ENV.treasuryPubkey ? getHubChannel() : null;
     const bestChannel = hub ?? directChannels.reduce((best, ch) =>
       ch.local_balance_sat > best.local_balance_sat ? ch : best, directChannels[0]);
-    const reserve = Math.ceil(bestChannel.capacity_sat * 0.01); // ~1% channel reserve
-    const spendable = Math.max(0, bestChannel.local_balance_sat - reserve);
+    // Room to send: local − the channel's real reserve (drive-mode P1 item 2).
+    const spendable = capacityOf(bestChannel).room_to_send_sats;
 
     if (spendable < tokens) {
       const totalDirectLocal = directChannels.reduce((sum, ch) => sum + ch.local_balance_sat, 0);
@@ -180,8 +181,8 @@ export async function payNetworkInvoice(
     const treasuryChannel = getHubChannel() ?? undefined;
 
     if (treasuryChannel) {
-      const reserve = Math.ceil(treasuryChannel.capacity_sat * 0.01);
-      const spendable = Math.max(0, treasuryChannel.local_balance_sat - reserve);
+      // Room to send: local − the channel's real reserve (drive-mode P1 item 2).
+      const spendable = capacityOf(treasuryChannel).room_to_send_sats;
       if (spendable < tokens) {
         throw new Error(
           `Insufficient outbound on treasury channel to send ${tokens.toLocaleString()} sats. ` +
