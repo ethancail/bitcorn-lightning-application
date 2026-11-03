@@ -460,10 +460,20 @@ export type LoopInQuote = {
   total_cost_sats: number;
 };
 
-/** Get a cost quote for a Loop In swap of a given amount. */
+/**
+ * Get a cost quote for a Loop In swap of a given amount.
+ *
+ * Ruling l (spec §4 D, D26): the quote asks what executeLoopInSwap will ask —
+ * the same last hop (QuoteRequest.loop_in_last_hop = 5, LoopInRequest.last_hop
+ * = 4) and the same private setting (private = 7 / = 10, so loopd generates
+ * the hop hints on both; explicit route hints are sent on neither). The
+ * ceiling is bound to this quote, so a quote that priced a different request
+ * than execute would let loopd's re-quote at LoopIn exceed it.
+ */
 export async function getLoopInQuote(
   amountSats: number,
-  confTarget?: number
+  confTarget?: number,
+  lastHop?: string
 ): Promise<LoopInQuote> {
   const target = confTarget ?? ENV.loopConfTarget;
   const res = await rpcCall<{
@@ -471,7 +481,12 @@ export async function getLoopInQuote(
     htlc_publish_fee_sat: number;
     cltv_delta: number;
     conf_target: number;
-  }>("GetLoopInQuote", { amt: amountSats, conf_target: target });
+  }>("GetLoopInQuote", {
+    amt: amountSats,
+    conf_target: target,
+    loop_in_last_hop: lastHop ? Buffer.from(lastHop, "hex") : undefined,
+    private: true, // as executeLoopInSwap
+  });
 
   const swapFee = Number(res.swap_fee_sat);
   const htlcFee = Number(res.htlc_publish_fee_sat);

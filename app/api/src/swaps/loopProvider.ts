@@ -136,8 +136,12 @@ export type LoopInQuoteResult = {
   conf_target: number;
 };
 
-export async function quoteLoopIn(amountSat: number, confTarget?: number): Promise<LoopInQuoteResult> {
-  const q = await getLoopInQuote(amountSat, confTarget);
+export async function quoteLoopIn(
+  amountSat: number,
+  confTarget?: number,
+  lastHop?: string
+): Promise<LoopInQuoteResult> {
+  const q = await getLoopInQuote(amountSat, confTarget, lastHop);
   return {
     amount_sat: amountSat,
     swap_fee_sat: q.swap_fee_sat,

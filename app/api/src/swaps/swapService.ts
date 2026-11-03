@@ -106,13 +106,23 @@ export async function createLoopOutQuote(params: {
   };
 }
 
+/**
+ * Loop In's last hop: hub-and-spoke, so the Loop server routes through the
+ * treasury. Ruling l (spec §4 D, D26): the stored quote, execute's fresh quote
+ * and the LoopIn itself all take it from here, so the quote prices the same
+ * request execute makes.
+ */
+function loopInLastHop(): string | undefined {
+  return ENV.treasuryPubkey || undefined;
+}
+
 // Loop In quote creation — used by both member refill and (future) treasury operations.
 export async function createLoopInQuote(params: {
   nodePubkey: string;
   role: "member" | "treasury";
   amountSat: number;
 }): Promise<{ swapRequest: SwapRequest; quote: LoopInQuoteResult }> {
-  const quote = await quoteLoopIn(params.amountSat);
+  const quote = await quoteLoopIn(params.amountSat, undefined, loopInLastHop());
   // Ruling Z (spec §4 D, D12): getLoopInQuote clamps loopd's −1 ("estimation
   // failed") to 0, so 0 here means failed OR zero — unknown either way. Refuse
   // before anything is stored, so no executable quote carries a 0 miner fee
@@ -289,7 +299,7 @@ export async function initiateSwap(
         maxSwapFee: updatedReq.quoted_swap_fee_sat!,
         maxMinerFee: updatedReq.quoted_miner_fee_sat!,
         confTarget: ENV.loopConfTarget,
-        lastHop: ENV.treasuryPubkey || undefined, // hub-and-spoke: tell Loop server to route through treasury
+        lastHop: loopInLastHop(), // the same last hop both quotes asked with (ruling l)
       });
 
       db.prepare(`
@@ -358,7 +368,7 @@ function refuser(swapRequestId: string) {
  */
 async function assertLoopInPrechecks(req: SwapRequest): Promise<void> {
   const refuse = refuser(req.id);
-  const fresh = await quoteLoopIn(req.amount_sat);
+  const fresh = await quoteLoopIn(req.amount_sat, undefined, loopInLastHop());
   const quotedMinerFee = req.quoted_miner_fee_sat!;
   if (!(fresh.htlc_publish_fee_sat > 0)) {
     throw refuse(
