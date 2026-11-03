@@ -321,6 +321,21 @@ export interface NetworkPayment {
   payment_request: string | null;
   created_at: number;
   settled_at: number | null;
+  /** Drive-mode P1 item 5: what fee_sats means for this row, derived from
+   *  status (fee_sats is NOT NULL DEFAULT 0, so 0 alone is ambiguous). */
+  fee_state: FeeState;
+}
+
+/** paid: a send that settled with a fee > 0; zero: a send that settled for no
+ *  fee; pending: a send not yet settled; failed: a send that failed or
+ *  expired, which pays no fee; none: a receive, which pays none. */
+export type FeeState = "paid" | "zero" | "pending" | "failed" | "none";
+
+export function feeStateOf(p: { direction: string; status: string; fee_sats: number }): FeeState {
+  if (p.direction !== "send") return "none";
+  if (p.status === "pending") return "pending";
+  if (p.status === "failed" || p.status === "expired") return "failed";
+  return p.fee_sats > 0 ? "paid" : "zero";
 }
 
 export function getNetworkPayments(options?: {
@@ -345,12 +360,13 @@ export function getNetworkPayments(options?: {
   const limit = options?.limit ?? 50;
   const offset = options?.offset ?? 0;
 
-  return db.prepare(`
+  const rows = db.prepare(`
     SELECT * FROM network_payments
     ${where}
     ORDER BY created_at DESC
     LIMIT ? OFFSET ?
-  `).all(...params, limit, offset) as NetworkPayment[];
+  `).all(...params, limit, offset) as Omit<NetworkPayment, "fee_state">[];
+  return rows.map((r) => ({ ...r, fee_state: feeStateOf(r) }));
 }
 
 // ─── Settlement sync ─────────────────────────────────────────────────────────

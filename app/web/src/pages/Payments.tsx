@@ -771,6 +771,20 @@ function PayInvoiceForm({
   );
 }
 
+// ─── Fee text ────────────────────────────────────────────────────────────────
+
+/** One string per fee state (drive-mode P1 item 5): a zero fee, a pending
+ *  payment and a failed one read differently, where all three used to be "—". */
+function feeText(p: NetworkPayment): string {
+  switch (p.fee_state) {
+    case "paid": return fmtSats(p.fee_sats);
+    case "zero": return fmtSats(0);
+    case "pending": return "Pending";
+    case "failed": return "None (failed)";
+    default: return "\u2014";
+  }
+}
+
 // ─── Payment Detail ──────────────────────────────────────────────────────────
 
 function PaymentDetail({
@@ -862,10 +876,10 @@ function PaymentDetail({
           <span>Status</span>
           <span className={`badge ${sBadge.cls}`}>{sBadge.label}</span>
         </div>
-        {p.fee_sats > 0 && (
+        {p.direction === "send" && (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>Fee</span>
-            <span>{fmtSats(p.fee_sats)}</span>
+            <span>{feeText(p)}</span>
           </div>
         )}
         {p.counterparty_pubkey && (
@@ -980,7 +994,7 @@ function PaymentRow({
           </div>
         )}
       </td>
-      <td className="td-num">{p.fee_sats > 0 ? fmtSats(p.fee_sats) : "\u2014"}</td>
+      <td className="td-num">{feeText(p)}</td>
       <td className="td-mono ident" style={{ fontSize: "0.8rem" }}>
         {p.counterparty_pubkey
           ? resolveContactName(p.counterparty_pubkey, contacts)

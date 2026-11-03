@@ -1101,6 +1101,9 @@ export type NetworkPayment = {
   payment_request: string | null;
   created_at: number;
   settled_at: number | null;
+  /** Drive-mode P1 item 5: what fee_sats means for this row, derived on the
+   *  server from status (0 alone is ambiguous). */
+  fee_state: "paid" | "zero" | "pending" | "failed" | "none";
 };
 
 export type InvoiceResult = {
