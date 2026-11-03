@@ -1,16 +1,13 @@
 import { payViaPaymentRequest } from "ln-service";
 import { getLndClient } from "./lnd";
-import { db } from "../db";
-import { ENV } from "../config/env";
+import { getHubChannel } from "./hubChannel";
 import { assertTier2RoutingAllowed } from "../subscription/tier2Gate";
 
-/** Look up the active treasury channel ID (returns null on treasury node or if no channel). */
+/** The hub channel's ID (drive-mode P1 item 1): null on the treasury node,
+ *  which has no channel to itself, and when no hub channel is active — the
+ *  payment then carries no pin (R18(2), C8). */
 function getTreasuryChannelId(): string | null {
-  if (!ENV.treasuryPubkey) return null;
-  const row = db.prepare(
-    "SELECT channel_id FROM lnd_channels WHERE peer_pubkey = ? AND active = 1 LIMIT 1"
-  ).get(ENV.treasuryPubkey) as { channel_id: string } | undefined;
-  return row?.channel_id ?? null;
+  return getHubChannel()?.channel_id ?? null;
 }
 
 export async function payInvoice(paymentRequest: string) {

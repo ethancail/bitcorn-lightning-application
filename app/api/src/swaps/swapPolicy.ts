@@ -8,6 +8,7 @@ import { db } from "../db";
 import { ENV } from "../config/env";
 import { getLndChainBalance } from "../lightning/lnd";
 import { getLoopOutTerms, getLoopInTerms } from "../lightning/loop";
+import { getHubChannel } from "../lightning/hubChannel";
 
 export type PolicyResult = { ok: true } | { ok: false; reason: string; code: string };
 
@@ -49,17 +50,8 @@ export async function checkMemberLoopOutPolicy(params: {
   // Uses the single largest active Treasury channel only (not summed).
   // In the Bitcorn hub-and-spoke model, members are leaf nodes with one
   // canonical Treasury channel. If multiple exist, the largest is used
-  // as the most likely routing path.
-  const treasuryPubkey = ENV.treasuryPubkey;
-  const memberChannelRow = treasuryPubkey
-    ? db.prepare(`
-        SELECT local_balance_sat, capacity_sat, active
-        FROM lnd_channels
-        WHERE peer_pubkey = ? AND active = 1
-        ORDER BY capacity_sat DESC
-        LIMIT 1
-      `).get(treasuryPubkey) as { local_balance_sat: number; capacity_sat: number; active: number } | undefined
-    : undefined;
+  // as the most likely routing path. The hub rule (drive-mode P1 item 1).
+  const memberChannelRow = getHubChannel();
 
   if (!memberChannelRow) {
     return { ok: false, reason: "No active Treasury channel found", code: "no_treasury_channel" };

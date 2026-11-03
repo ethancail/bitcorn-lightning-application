@@ -6,6 +6,7 @@ import { runMigrations } from "./db/migrate";
 import { persistNodeInfo } from "./lightning/persist";
 import { syncLndState } from "./lightning/sync";
 import { payInvoice } from "./lightning/pay";
+import { getHubChannelForDisplay } from "./lightning/hubChannel";
 import { assertActiveMember } from "./utils/membership";
 import { assertRateLimit } from "./utils/rate-limit";
 import {
@@ -3265,22 +3266,10 @@ async function dispatchRequest(
       // updated_at is selected so the numbers can carry their own age. Without
       // it these balances are indistinguishable from live ones no matter how
       // long the sync loop has been failing.
-      const treasuryChannel = hubPubkey
-        ? (db
-            .prepare(
-              "SELECT channel_id, local_balance_sat, remote_balance_sat, capacity_sat, active, updated_at FROM lnd_channels WHERE peer_pubkey = ? LIMIT 1"
-            )
-            .get(hubPubkey) as
-            | {
-                channel_id: string;
-                local_balance_sat: number;
-                remote_balance_sat: number;
-                capacity_sat: number;
-                active: number;
-                updated_at: number;
-              }
-            | undefined)
-        : undefined;
+      // The hub rule (drive-mode P1 item 1): the largest active channel, or —
+      // with none active — the largest inactive one, for display only, which
+      // keeps the dashboard's "inactive" badge (R18(2)).
+      const treasuryChannel = hubPubkey ? getHubChannelForDisplay() ?? undefined : undefined;
 
       // Milliseconds: payments_forwarded.created_at is written as
       // `new Date(f.created_at).getTime()` (lightning/persist-forwarded.ts).

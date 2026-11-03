@@ -6,6 +6,7 @@ import { createLndInvoice, getLndClient } from "./lnd";
 // the gossip graph to resolve routing hints, hence the gossip class.
 import { withDeadline, LND_GOSSIP_CALL_TIMEOUT_MS } from "./callDeadline";
 import { payInvoice } from "./pay";
+import { getHubChannel } from "./hubChannel";
 import { insertOutboundPayment } from "./persist-payments";
 import { assertRateLimit } from "../utils/rate-limit";
 import { ENV } from "../config/env";
@@ -153,8 +154,11 @@ export async function payNetworkInvoice(
   `).get() as { total_local: number };
 
   if (directChannels.length > 0) {
-    // Direct peer — payment goes through one of these channels
-    const bestChannel = directChannels.reduce((best, ch) =>
+    // Direct peer — payment goes through one of these channels. A payment to
+    // the treasury itself is pinned to the hub channel (pay.ts), so it is
+    // checked against that channel: the hub rule, R18(3), drive-mode P1 item 1.
+    const hub = destination === ENV.treasuryPubkey ? getHubChannel() : null;
+    const bestChannel = hub ?? directChannels.reduce((best, ch) =>
       ch.local_balance_sat > best.local_balance_sat ? ch : best, directChannels[0]);
     const reserve = Math.ceil(bestChannel.capacity_sat * 0.01); // ~1% channel reserve
     const spendable = Math.max(0, bestChannel.local_balance_sat - reserve);
@@ -172,12 +176,8 @@ export async function payNetworkInvoice(
   } else {
     // Routed payment — member payments are forced through the treasury channel.
     // Check treasury channel balance specifically, not total across all channels.
-    const treasuryPubkey = ENV.treasuryPubkey;
-    const treasuryChannel = treasuryPubkey
-      ? db.prepare(
-          "SELECT local_balance_sat, capacity_sat FROM lnd_channels WHERE peer_pubkey = ? AND active = 1 LIMIT 1"
-        ).get(treasuryPubkey) as { local_balance_sat: number; capacity_sat: number } | undefined
-      : undefined;
+    // The same channel pay.ts pins (drive-mode P1 item 1).
+    const treasuryChannel = getHubChannel() ?? undefined;
 
     if (treasuryChannel) {
       const reserve = Math.ceil(treasuryChannel.capacity_sat * 0.01);
