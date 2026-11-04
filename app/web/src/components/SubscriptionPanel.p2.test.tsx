@@ -161,6 +161,21 @@ describe("item 13: auto-pay says what it does today", () => {
     expect(text()).not.toMatch(/never lapses|would otherwise lapse/);
   });
 
+  // Screenshot gate: for a member already past the pause, "if it lapses …
+  // after hosted services pause on <a past date>" was false twice over.
+  it("on, already past the pause: it says the subscription has lapsed and the node will renew it", async () => {
+    stub.getSubscriptionStatus.mockResolvedValue({
+      ...applicable({ paid_through: NOW - 87 * DAY, worker_until: NOW - 80 * DAY }),
+      current_tier: "close_due",
+    });
+    stub.getAutoPayConfig.mockResolvedValue(autoPay({ enabled: true }));
+    await mount();
+    expect(text()).toContain(
+      "Your subscription has lapsed and hosted services are paused, so your node will pay 42,000 sats from its Bitcoin balance to renew it.",
+    );
+    expect(text()).not.toMatch(/If your subscription lapses|doesn't prevent the pause/);
+  });
+
   it("off: what turning it on would do", async () => {
     stub.getSubscriptionStatus.mockResolvedValue(applicable());
     await mount();

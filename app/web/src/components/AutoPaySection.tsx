@@ -96,12 +96,21 @@ export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {})
 
       {enabled && cfg && (
         <div style={{ fontSize: "0.75rem", color: "var(--text-3)", lineHeight: 1.5, marginTop: 8 }}>
-          <p style={{ margin: "0 0 6px" }}>
-            If your subscription lapses, your node pays <strong>{sats(cfg.current_price)}</strong> from its
-            Bitcoin balance to renew it. That happens after hosted services pause
-            {pausesOn ? ` on ${new Date(pausesOn).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}` : ""}, so
-            turning this on doesn't prevent the pause.
-          </p>
+          {/* Past the pause (the screenshot gate): the lapse has begun, which is
+              exactly when auto-pay fires, so say that rather than "if". */}
+          {pausesOn != null && pausesOn <= Date.now() ? (
+            <p style={{ margin: "0 0 6px" }}>
+              Your subscription has lapsed and hosted services are paused, so your node will pay{" "}
+              <strong>{sats(cfg.current_price)}</strong> from its Bitcoin balance to renew it.
+            </p>
+          ) : (
+            <p style={{ margin: "0 0 6px" }}>
+              If your subscription lapses, your node pays <strong>{sats(cfg.current_price)}</strong> from its
+              Bitcoin balance to renew it. That happens after hosted services pause
+              {pausesOn ? ` on ${new Date(pausesOn).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}` : ""}, so
+              turning this on doesn't prevent the pause.
+            </p>
+          )}
           <p style={{ margin: "0 0 6px" }}>Requires sufficient on-chain BTC and your node to be online.</p>
           <p style={{ margin: 0 }}>You can opt out at any time.</p>
           {cfg.enabled_at && (
