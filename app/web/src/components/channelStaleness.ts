@@ -80,8 +80,11 @@ export function channelStalenessNotice(
     return {
       severity: staleness === "very_stale" ? "critical" : "warning",
       text:
-        `Last updated ${when}. Your node's Lightning service isn't responding, ` +
-        `so these figures are the last ones recorded — not current. ` +
+        // drive-mode P2 item 9 (R6(c)): "the Lightning app", the member's
+        // word, as the restart step below already says; that step is
+        // unchanged (channelStaleness.p2.test.ts).
+        `Last updated ${when}. Your node's Lightning app isn't responding, ` +
+        `so these figures are the last ones recorded, not current ones. ` +
         `Your channel and funds are unaffected by this display problem. ` +
         `If this doesn't clear on its own in a few minutes, restarting the ` +
         `Lightning app usually restores it.`,
@@ -102,7 +105,7 @@ export function channelStalenessNotice(
   return {
     severity: "warning",
     text:
-      `Your node's Lightning service didn't respond just now. These figures are ` +
+      `Your node's Lightning app didn't respond just now. These figures are ` +
       `from ${when} and may stop updating. Your channel and funds are unaffected.`,
   };
 }
