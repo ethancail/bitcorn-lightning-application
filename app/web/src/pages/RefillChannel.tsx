@@ -115,8 +115,16 @@ export default function RefillChannel() {
   const advisorAmount = searchParams.get("amount");
   const [amount, setAmount] = useState(() => {
     const fromUrl = advisorAmount ? Number(advisorAmount) : 0;
-    return fromUrl > 0 ? fromUrl : 250_000;
+    return fromUrl > 0 ? fromUrl : 0;
   });
+  // R23(j): with no amount from the advisor link, the default is the smallest
+  // preset the live minimum allows (the minimum itself when it is above every
+  // preset), set once the limits arrive — not a fixed 250,000. An amount the
+  // member or the link already set is kept.
+  useEffect(() => {
+    if (minR == null) return;
+    setAmount((a) => (a > 0 ? a : AMOUNT_PRESETS.find((p) => p >= minR) ?? minR));
+  }, [minR]);
 
   // ─── Quote state ──────────────────────────────────────────────────────
   const [quoteResp, setQuoteResp] = useState<SwapQuoteResponse | null>(null);
