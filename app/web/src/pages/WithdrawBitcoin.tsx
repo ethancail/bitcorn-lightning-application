@@ -528,15 +528,19 @@ export default function WithdrawBitcoin() {
                   background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
                   padding: "10px 14px", marginBottom: 10,
                 }}>
+                  {/* drive-mode P2 item 15 (R26(8)): the bar is local /
+                      capacity, a share of the connection; it no longer claims
+                      that share can be withdrawn ("Most you can withdraw" is
+                      the server's figure). */}
                   <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
-                    Current channel
+                    In your connection
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
                       <div data-testid="capacity-bar" style={{ width: `${Math.min(channelLocalPct, 100)}%`, height: "100%", background: CAPACITY_BAR_COLOR[tone] }} />
                     </div>
                     <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: CAPACITY_TEXT_COLOR[tone] }}>
-                      {toneWord && `${toneWord} · `}{channelLocalPct}% available to withdraw
+                      {toneWord && `${toneWord} · `}{channelLocalPct}% of your connection
                     </span>
                   </div>
                 </div>
@@ -550,7 +554,7 @@ export default function WithdrawBitcoin() {
                 }}>
                   <div>
                     <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
-                      In your channel
+                      In your connection
                     </div>
                     <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
                       {channelLocal.toLocaleString()}
@@ -569,6 +573,33 @@ export default function WithdrawBitcoin() {
                   )}
                 </div>
               )}
+              {/* drive-mode P2 item 16 (R11(4)): what always stays, Withdraw
+                  only, one tap down. "Why not all of it?" (R27(7)) until P4
+                  makes it a timing question. The figures are the server's
+                  (GET /api/swaps/limits loop_out.always_stays); its parts sum
+                  to its total. */}
+              {limits?.loop_out?.always_stays && (() => {
+                const a = limits.loop_out.always_stays;
+                const rows: Array<[string, number]> = [
+                  ["Always stays to keep you connected", a.total_sats],
+                  ["Connection reserve", a.reserve_sats],
+                  ["Lightning fee headroom", a.fee_headroom_sats],
+                  ["Swap buffer", a.swap_buffer_sats],
+                ];
+                return (
+                  <details style={{ fontSize: "0.75rem", color: "var(--text-2)", marginBottom: 10 }}>
+                    <summary style={{ cursor: "pointer", userSelect: "none" }}>Why not all of it?</summary>
+                    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                      {rows.map(([label, sats], i) => (
+                        <div key={label} data-testid="always-stays-row" style={{ display: "flex", justifyContent: "space-between", gap: 12, fontWeight: i === 0 ? 600 : 400 }}>
+                          <span>{label}</span>
+                          <span style={{ fontFamily: "var(--mono)" }}>{sats.toLocaleString()} sats</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                );
+              })()}
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 {presets.map((preset) => (
                   <button
@@ -623,7 +654,7 @@ export default function WithdrawBitcoin() {
               {channelLocal != null && channelCapacity != null && channelCapacity > 0 && (
                 <div style={{ background: "var(--bg-2)", borderLeft: "2px solid var(--amber)", padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 10 }}>
                   After withdrawal: <strong data-testid="capacity-text" style={{ color: "var(--text)" }}>
-                    {channelLocalPct}% → {Math.max(0, Math.round(((channelLocal - amount) / channelCapacity) * 100))}% available to withdraw
+                    {channelLocalPct}% → {Math.max(0, Math.round(((channelLocal - amount) / channelCapacity) * 100))}% of your connection
                   </strong>
                 </div>
               )}

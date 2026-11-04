@@ -196,7 +196,8 @@ describe("V11 — Cash Out", () => {
     setup(500_000, "farmer", "send_heavy");
     await render(WithdrawBitcoin);
     expect(bar()).toContain("var(--amber)");
-    expect(host.textContent).toContain("Getting full · 50% available to withdraw");
+    // drive-mode P2 item 15: a share of the connection, not of what is withdrawable.
+    expect(host.textContent).toContain("Getting full · 50% of your connection");
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
   });
 

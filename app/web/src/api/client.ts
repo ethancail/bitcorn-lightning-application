@@ -1262,7 +1262,19 @@ export type SwapLimits = {
   loop_available: boolean;
   /** available_now_sats (drive-mode P1 item 7): the most a withdrawal can be
    *  right now and pass the pre-quote policy; below min_sats, none can. */
-  loop_out: SwapDirectionLimits & { available_now_sats: number };
+  loop_out: SwapDirectionLimits & {
+    available_now_sats: number;
+    /** What always stays in the connection (drive-mode P2 item 16): the local
+     *  balance less what a withdrawal may take from the channel, and its parts,
+     *  which sum to it. Null with no hub channel. Withdraw's "Why not all of
+     *  it?" only (R11(4)). */
+    always_stays: null | {
+      total_sats: number;
+      reserve_sats: number;
+      fee_headroom_sats: number;
+      swap_buffer_sats: number;
+    };
+  };
   /** Top Up's one rule (drive-mode P1 item 8): needed on-chain = amount +
    *  reserve + HTLC fee + anchor reserve. The three are null when lnd could not
    *  give the balance or the fee rate. */
