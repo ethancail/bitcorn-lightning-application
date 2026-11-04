@@ -12,6 +12,7 @@ import {
 } from "./channelClassifier";
 import { checkLoopAvailability, type LoopAvailability } from "./loopAvailability";
 import { computeRecommendation, type LiquidityRecommendation } from "./recommendationEngine";
+import { loopAlertsFor, type LoopAlerts } from "./loopAlert";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,13 @@ export interface LiquidityStatusResponse {
   classification: ChannelClassification | null;
   recommendation: LiquidityRecommendation | null;
   loopAvailability: LoopAvailability;
+  /**
+   * drive-mode P2 item 6: the member-facing Loop alert per direction, its
+   * sentence rendered here (loopAlert.ts) so `loopAvailability.unavailableReason`
+   * stays API-internal (2026-09-02 D2(b), kept by R27(2)). Null per direction
+   * when that direction is available. Present with or without a classification.
+   */
+  loopAlert: LoopAlerts;
 }
 
 export interface LiquidityHistoryResponse {
@@ -50,6 +58,7 @@ export async function getLiquidityStatus(): Promise<LiquidityStatusResponse> {
   const classification = classifyTreasuryChannel();
   const loopAvailability = await checkLoopAvailability();
   const channelRole = getAdvisorConfig().channelRole;
+  const loopAlert = loopAlertsFor(loopAvailability);
 
   if (!classification) {
     return {
@@ -57,6 +66,7 @@ export async function getLiquidityStatus(): Promise<LiquidityStatusResponse> {
       classification: null,
       recommendation: null,
       loopAvailability,
+      loopAlert,
     };
   }
 
@@ -67,6 +77,7 @@ export async function getLiquidityStatus(): Promise<LiquidityStatusResponse> {
     classification,
     recommendation,
     loopAvailability,
+    loopAlert,
   };
 }
 
