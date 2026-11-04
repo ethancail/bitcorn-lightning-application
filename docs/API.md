@@ -23,17 +23,17 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 | GET | `/api/peers` | Persisted peers |
 | GET | `/api/channels` | Persisted channels |
 | GET | `/api/channels/pending` | Pending channel opens (for ConnectToHub reload persistence) |
-| GET | `/api/member/stats` | Hub pubkey, membership, role, is_peered_to_hub, treasury_channel, forwarded_fees (24h/30d/all-time), keysend_enabled, `lifetime_received_sats` (SUM of `payments_inbound.tokens`: every settled inbound invoice the sync loop has recorded; the farmer dashboard's "Received, lifetime") |
+| GET | `/api/member/stats` | Hub pubkey, membership, role, is_peered_to_hub, treasury_channel, forwarded_fees (24h/30d/all-time), keysend_enabled, `lifetime_received_sats` (SUM of `payments_inbound.tokens`: every settled inbound invoice the sync loop has recorded; the farmer dashboard's "Received, lifetime"). `treasury_channel` is **the hub channel** (`lightning/hubChannel.ts`): the largest active channel to the treasury, the lowest short channel ID in numeric order between equal sizes; with none active, the largest inactive one for display only (`is_active: false`). It carries both capacity figures and their parts: `room_to_send_sats` (local − local reserve), `room_to_receive_sats` (remote − remote reserve), `local_reserve_sats`, `remote_reserve_sats`, `pending_outgoing_sats` / `pending_incoming_sats` (in-flight HTLCs, reported, not subtracted) and `commit_fee_sats` (reported only) |
 | POST | `/api/member/open-channel` | Open channel to hub (`{ capacity_sats, partner_socket? }`, min 100k) |
 | GET | `/api/contacts` | List contacts |
 | POST | `/api/contacts` | Create contact |
 | PATCH | `/api/contacts/:pubkey` | Update contact |
 | DELETE | `/api/contacts/:pubkey` | Delete contact |
 | POST | `/api/contacts/sync-peers` | Import channel peers + live connected peers. A contact is added ONLY for a peer announcing a real alias — none for an empty alias, LND's 20-hex default, a node not in the graph, or a failed lookup. Response: `{ ok, added, skipped, none_announced, not_in_graph, failed }` (`skipped` = already in contacts). Not role-gated |
-| GET | `/api/exchange-rate` | BTC/USD from Coinbase Spot (best-effort) |
+| GET | `/api/exchange-rate` | The cached BTC/USD rate (`price/btcUsdCache.ts`, in memory, refreshed every 60 s): `{ usd, source, fetched_at, age_ms, state, last_attempt_at, last_error }`. `state` is `fresh` (≤ 10 min), `stale` (older) or `none` (> 6 h, or no rate yet), and in `none` `usd` is null. Always 200, never a 502 |
 | POST | `/api/network/invoice` | Create BOLT11 invoice (Request Payment) |
-| POST | `/api/network/decode` | Decode BOLT11 for preview |
-| GET | `/api/network/payments` | Payment history |
+| POST | `/api/network/decode` | Decode BOLT11 for preview. Adds `max_fee_sats`: the most the payment can cost in fees — the member limit, 10 sats + 1%, rounded up; null on the treasury |
+| GET | `/api/network/payments` | Payment history. Each row carries `fee_state`, derived from status: `paid`, `zero`, `pending`, `failed` (failed or expired) or `none` (a receive) |
 | POST | `/api/network/sync-settlements` | Match pending receives against `payments_inbound` |
 | GET | `/api/liquidity/status` | Member-side advisor classification + recommendation, plus the declared `channelRole` (present even when the treasury channel is inactive and `classification` is null) |
 | GET | `/api/liquidity/history` | Past classifications |
@@ -103,8 +103,10 @@ Save and publish bodies are capped by the proxy at 32 KiB, the Worker's own cap;
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST | `/api/pay` | Pay a BOLT11 invoice (`{ payment_request }`). Forces `outgoing_channel` to treasury. |
-| POST | `/api/network/pay` | Pay via network payment flow (recorded in `network_payments` + `payments_outbound`) |
+| POST | `/api/pay` | Pay a BOLT11 invoice (`{ payment_request }`). Forces `outgoing_channel` to the hub channel (unpinned when none is active). A member's payment carries the fee limit below |
+| POST | `/api/network/pay` | Pay via network payment flow (recorded in `network_payments` + `payments_outbound`). The pre-check refuses above room to send. A member's payment carries `max_fee_mtokens` = 10,000 + amount_msat / 100 (10 sats + 1%; `MEMBER_PAY_MAX_FEE_BASE_SAT`, `MEMBER_PAY_MAX_FEE_PPM`); the treasury's carries none. A payment whose cheapest route costs more fails and pays nothing; after such a NO_ROUTE failure one read-only route query without the limit tells a fee refusal (its own sentence) from a real no-route. The limit is stored as `network_payments.max_fee_sats` |
+| GET | `/api/swaps/limits` | The effective member swap limits per direction — the stricter of the env limits and loopd's live terms, the bounds the policy enforces — with `daily_max_sats` and `daily_remaining_sats`; `loop_available: false` and the env limits when loopd is down. `loop_out.available_now_sats`: the most a withdrawal can be now and pass the pre-quote policy. `loop_in.onchain_rule` / `onchain_floor_sats` / `available_now_sats`: Top Up's rule — needed on-chain = amount + 50,000 reserve + the HTLC fee (lnd's fee rate × 221 vB before the quote; the quote's HTLC fee after it) + min(10,000 × public anchor channels, 100,000); null when lnd cannot give the balance or the fee rate. A read |
+| POST | `/api/swaps/loop-out/quote` | Member Loop Out quote. The pre-quote policy runs **first**: a refused amount answers 429 `policy_violation` (503 for `loop_unavailable`) before any `swap_requests` row or loopd quote exists. The fee phase after the quote stays advisory (`policy_check`) |
 
 ## Member Profile Endpoints (member-node local)
 

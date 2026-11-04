@@ -422,6 +422,10 @@ export type SwapInfo = {
   cost_offchain: number;
   initiation_time: number;
   last_update_time: number;
+  /** loopd's FailureReason as its raw enum name (client.proto SwapStatus
+   *  field 14), e.g. "FAILURE_REASON_OFFCHAIN"; null when loopd gives none
+   *  (FAILURE_REASON_NONE, or absent). Drive-mode P1 item 9. */
+  failure_reason: string | null;
 };
 
 /** List all Loop swaps (in-flight and completed). */
@@ -440,6 +444,10 @@ export async function listLoopSwaps(): Promise<SwapInfo[]> {
     cost_offchain: Number(s.cost_offchain || 0),
     initiation_time: Number(s.initiation_time || 0),
     last_update_time: Number(s.last_update_time || 0),
+    failure_reason:
+      typeof s.failure_reason === "string" && s.failure_reason && s.failure_reason !== "FAILURE_REASON_NONE"
+        ? s.failure_reason
+        : null,
   }));
 }
 
@@ -464,10 +472,14 @@ export async function getLoopInTerms(): Promise<LoopInTerms> {
 
 export type LoopInQuote = {
   swap_fee_sat: number;
-  htlc_publish_fee_sat: number;
+  /** null when loopd's estimate failed (it answers −1, MinerFeeEstimationFailed).
+   *  Never clamped to 0: a failed estimate is not a free one (drive-mode P1
+   *  item 10, R18(13)). */
+  htlc_publish_fee_sat: number | null;
   cltv_delta: number;
   conf_target: number;
-  total_cost_sats: number;
+  /** null whenever htlc_publish_fee_sat is. */
+  total_cost_sats: number | null;
 };
 
 /**
@@ -499,14 +511,16 @@ export async function getLoopInQuote(
   });
 
   const swapFee = Number(res.swap_fee_sat);
-  const htlcFee = Number(res.htlc_publish_fee_sat);
+  const raw = Number(res.htlc_publish_fee_sat);
+  // −1 means estimation failed: null, not 0 (drive-mode P1 item 10).
+  const htlcFee = Number.isFinite(raw) && raw >= 0 ? raw : null;
 
   return {
     swap_fee_sat: swapFee,
-    htlc_publish_fee_sat: Math.max(0, htlcFee), // -1 means estimation failed
+    htlc_publish_fee_sat: htlcFee,
     cltv_delta: Number(res.cltv_delta),
     conf_target: Number(res.conf_target) || target,
-    total_cost_sats: swapFee + Math.max(0, htlcFee),
+    total_cost_sats: htlcFee == null ? null : swapFee + htlcFee,
   };
 }
 

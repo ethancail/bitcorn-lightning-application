@@ -8,13 +8,19 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 |------|---------|
 | `src/index.ts` | All HTTP routes (raw `http.createServer`, if/else chain — NOT Express) |
 | `src/lightning/sync.ts` | Main sync orchestrator (15s loop) |
-| `src/lightning/persist-channels.ts` | Channel + peer sync to SQLite (upsert current, DELETE stale) |
+| `src/lightning/persist-channels.ts` | Channel + peer sync to SQLite (upsert current, DELETE stale); stores reserves, commit fee, commitment type, in-flight HTLC totals |
+| `src/lightning/hubChannel.ts` | The hub channel, one definition for every site: largest active channel to the treasury, lowest short channel ID (numeric) between equals; `getHubChannelForDisplay()` falls back to the largest inactive for stats only |
+| `src/lightning/capacity.ts` | One capacity computation: room to send / room to receive from lnd's reserves; in-flight HTLCs and commit fee reported, not subtracted |
+| `src/lightning/payFeeLimit.ts` | Member payment fee limit (10 sats + 1%, exact in msat; members only) |
+| `src/price/btcUsdCache.ts` | In-memory BTC/USD cache: 60 s background refresh, 2 s timeout, fresh/stale/none states |
 | `src/lightning/lnd.ts` | LND client, TLS + macaroon setup |
-| `src/lightning/pay.ts` | Pay invoice — auto-detects treasury channel via `TREASURY_PUBKEY` and forces `outgoing_channel` |
+| `src/lightning/pay.ts` | Pay invoice — pins `outgoing_channel` to the hub channel (`hubChannel.ts`) and, for members, sends `max_fee_mtokens` (`payFeeLimit.ts`) |
 | `src/lightning/loop.ts` | loopd gRPC client (standalone loopd sidecar, port 11010) |
 | `src/lightning/rebalance-loop.ts` | Loop Out rebalance execution + auto-select + monitoring |
 | `src/lightning/rebalance-scheduler.ts` | Scheduled Loop Out rebalance loop |
-| `src/lightning/network-payments.ts` | Network payment business logic (create invoice, pay, history, settlement sync) |
+| `src/lightning/network-payments.ts` | Network payment business logic (create invoice, pay, history with `fee_state`, settlement sync); the pay pre-check against room to send; the read-only route query that explains a fee refusal |
+| `src/swaps/effectiveLimits.ts` | Pure: the stricter of env limits and loopd's terms, per direction (used by the advisor and `swapLimits.ts`) |
+| `src/swaps/swapLimits.ts` | `GET /api/swaps/limits`: effective limits, daily remaining, Withdraw's `available_now_sats`, Top Up's on-chain rule (`loopInOnchainRule`) |
 | `src/api/treasury.ts` | Aggregate treasury metrics |
 | `src/api/treasury-liquidity-health.ts` | Per-channel liquidity assessment |
 | `src/api/treasury-channel-metrics.ts` | Per-channel profitability and payback |
@@ -75,6 +81,7 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 |------|---------|
 | `app/web/src/App.tsx` | Root router, both shells (AppShell + MemberShell), mobile hamburger state, all page stubs |
 | `app/web/src/api/client.ts` | `apiFetch<T>` helper, namespaced `api.*` object, all types |
+| `app/web/src/api/rate.ts` | `rateNote()`: the BTC/USD rate's state as one line of text ("Price as of …" when stale; one sentence when there is no rate) |
 | `app/web/src/config/api.ts` | `API_BASE` constant |
 | `app/web/src/styles.css` | Full design system |
 | `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph (recharts AreaChart, Coinbase public API). On all three dashboards it sits immediately beneath the headline numbers (CHART). It measures its plot and fits the time labels to the width (X5); the plot is `--d-chart-h` (480px) tall, `--d-chart-h-ph` (240px) on a phone (X5a, K4) |

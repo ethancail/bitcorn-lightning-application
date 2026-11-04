@@ -41,6 +41,7 @@ const stub = vi.hoisted(() => ({
   getNodeBalances: vi.fn(),
   getTreasuryInfo: vi.fn(),
   getSwapHistory: vi.fn(),
+  getSwapLimits: vi.fn(),
   getNetworkPayments: vi.fn(),
   syncSettlements: vi.fn(),
   decodeInvoice: vi.fn(),
@@ -70,6 +71,12 @@ const stats = (localSats: number) => ({
   treasury_channel: {
     channel_id: "1", local_sats: localSats, remote_sats: 1_000_000 - localSats, capacity_sats: 1_000_000,
     is_active: true, freshness: { updated_at_ms: NOW, age_seconds: 0, staleness: "fresh" },
+    // The capacity figures the server returns since drive-mode P1 item 2
+    // (lnd's default 1% reserve each side).
+    room_to_send_sats: Math.max(0, localSats - 10_000),
+    room_to_receive_sats: Math.max(0, 1_000_000 - localSats - 10_000),
+    local_reserve_sats: 10_000, remote_reserve_sats: 10_000,
+    pending_outgoing_sats: 0, pending_incoming_sats: 0, commit_fee_sats: null,
   },
   forwarded_fees: { total_sats: 0, last_24h_sats: 0, last_30d_sats: 0 },
 });
@@ -121,6 +128,9 @@ beforeEach(() => {
   stub.getNodeBalances.mockResolvedValue({ onchain_sats: 2_000_000, lightning_sats: 0, total_sats: 2_000_000 });
   stub.getTreasuryInfo.mockResolvedValue(null);
   stub.getSwapHistory.mockResolvedValue({ swaps: [] });
+  // GET /api/swaps/limits at the env defaults, as the server returns them
+  // since drive-mode P1 item 6 (the pages read their swap limits from it).
+  stub.getSwapLimits.mockResolvedValue({ loop_available: true, loop_out: { min_sats: 250_000, max_sats: 2_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 }, loop_in: { min_sats: 100_000, max_sats: 3_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 } });
   stub.getNetworkPayments.mockResolvedValue([]);
   stub.syncSettlements.mockResolvedValue({});
   stub.decodeInvoice.mockResolvedValue({

@@ -206,11 +206,15 @@ export function summarizePayInvoice(p: {
   amountSats: number;
   destination?: string;
   memo?: string;
+  /** The server's fee limit for this payment, rounded up (drive-mode P1
+   *  item 4). Omitted or null → no row (the treasury's payments). */
+  maxFeeSats?: number | null;
 }): ActionSummary {
   return {
     title: "Send this payment",
     rows: [
       { label: "Amount", value: fmtSats(p.amountSats) },
+      ...(p.maxFeeSats != null ? [{ label: "Most in fees", value: fmtSats(p.maxFeeSats) }] : []),
       ...(p.destination ? [{ label: "To", value: truncId(p.destination), ident: true as const }] : []),
       ...(p.memo ? [{ label: "Memo", value: p.memo }] : []),
     ],

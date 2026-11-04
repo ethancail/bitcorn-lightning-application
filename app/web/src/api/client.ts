@@ -287,6 +287,8 @@ export const api = {
   initiateSwapLoopIn: (body: { swap_request_id: string } & SwapCeilings) =>
     apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/swaps/loop-in", { method: "POST", body: JSON.stringify(body) }),
   getSwap: (id: string) => apiFetch<SwapDetailResponse>(`/api/swaps/${id}`),
+  /** The effective member swap limits per direction (drive-mode P1 item 6). */
+  getSwapLimits: () => apiFetch<SwapLimits>("/api/swaps/limits"),
   getSwapHistory: (limit?: number) => {
     const q = limit ? `?limit=${limit}` : "";
     return apiFetch<{ swaps: SwapRequest[] }>(`/api/swaps/history${q}`);
@@ -737,6 +739,20 @@ export type MemberStats = {
     capacity_sats: number;
     is_active: boolean;
     /**
+     * One capacity figure per direction, computed once on the server
+     * (drive-mode P1 item 2): room to send = local − local reserve; room to
+     * receive = remote − remote reserve. The parts are reported; in-flight
+     * HTLCs and the commitment fee are NOT subtracted (lnd's balances already
+     * exclude them).
+     */
+    room_to_send_sats: number;
+    room_to_receive_sats: number;
+    local_reserve_sats: number;
+    remote_reserve_sats: number;
+    pending_outgoing_sats: number;
+    pending_incoming_sats: number;
+    commit_fee_sats: number | null;
+    /**
      * How old these numbers are. DATA-AGE driven, not poll-outcome driven:
      * this endpoint returns 200 even when LND is down, so components/freshness.ts
      * (which counts failed polls) can never mark it. Derived from
@@ -1087,6 +1103,9 @@ export type NetworkPayment = {
   payment_request: string | null;
   created_at: number;
   settled_at: number | null;
+  /** Drive-mode P1 item 5: what fee_sats means for this row, derived on the
+   *  server from status (0 alone is ambiguous). */
+  fee_state: "paid" | "zero" | "pending" | "failed" | "none";
 };
 
 export type InvoiceResult = {
@@ -1103,6 +1122,10 @@ export type DecodedInvoice = {
   tokens: number;
   description: string | null;
   expires_at: string | null;
+  /** The most this payment can cost in fees, sats rounded up: the server's
+   *  member limit, 10 sats + 1% (drive-mode P1 item 4). null on the treasury,
+   *  whose payments carry no limit. The client sends no fee field. */
+  max_fee_sats: number | null;
 };
 
 export type PaymentResult = {
@@ -1116,7 +1139,15 @@ export type PaymentResult = {
   error?: string;
 };
 
-export type ExchangeRate = { usd: number; source: string };
+/** The server's cached rate (drive-mode P1 item 3). usd is null when state is
+ *  "none" — past 6 hours, or no rate at all; the route still answers 200. */
+export type ExchangeRate = {
+  usd: number | null;
+  source: string;
+  fetched_at: number | null;
+  age_ms: number | null;
+  state: "fresh" | "stale" | "none";
+};
 
 // ─── Member Liquidity Advisor types (member node) ────────────────────────
 
@@ -1206,6 +1237,38 @@ export type RecommendedPeer = {
 };
 
 // ─── Swap types ───────────────────────────────────────────────────────────
+
+/** GET /api/swaps/limits (drive-mode P1 item 6): per direction, the stricter
+ *  of Bitcorn's env limits and loopd's live terms — the bounds the server's
+ *  policy enforces — and today's remaining daily amount. With loopd down, the
+ *  env limits and loop_available: false. */
+export type SwapDirectionLimits = {
+  min_sats: number;
+  max_sats: number;
+  daily_max_sats: number;
+  daily_remaining_sats: number;
+};
+export type SwapLimits = {
+  loop_available: boolean;
+  /** available_now_sats (drive-mode P1 item 7): the most a withdrawal can be
+   *  right now and pass the pre-quote policy; below min_sats, none can. */
+  loop_out: SwapDirectionLimits & { available_now_sats: number };
+  /** Top Up's one rule (drive-mode P1 item 8): needed on-chain = amount +
+   *  reserve + HTLC fee + anchor reserve. The three are null when lnd could not
+   *  give the balance or the fee rate. */
+  loop_in: SwapDirectionLimits & {
+    onchain_rule: null | {
+      reserve_sats: number;
+      anchor_channels: number;
+      anchor_reserve_sats: number;
+      fee_rate_sat_per_vbyte: number | null;
+      htlc_tx_vbytes: number | null;
+      estimated_htlc_fee_sats: number;
+    };
+    onchain_floor_sats: number | null;
+    available_now_sats: number | null;
+  };
+};
 
 export type SwapRequest = {
   id: string;

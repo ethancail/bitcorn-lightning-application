@@ -28,6 +28,7 @@ const stub = vi.hoisted(() => ({
   getTreasuryInfo: vi.fn(),
   getBitcornName: vi.fn(),
   getSwapHistory: vi.fn(),
+  getSwapLimits: vi.fn(),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -86,6 +87,9 @@ beforeEach(() => {
   stub.getTreasuryInfo.mockResolvedValue(null);
   stub.getBitcornName.mockResolvedValue({ bitcorn_name: "Green Acres", bitcorn_name_set_at: 1 });
   stub.getSwapHistory.mockResolvedValue({ swaps: [] });
+  // GET /api/swaps/limits at the env defaults, as the server returns them
+  // since drive-mode P1 item 6 (the pages read their swap limits from it).
+  stub.getSwapLimits.mockResolvedValue({ loop_available: true, loop_out: { min_sats: 250_000, max_sats: 2_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 }, loop_in: { min_sats: 100_000, max_sats: 3_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 } });
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);

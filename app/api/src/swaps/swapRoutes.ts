@@ -21,6 +21,7 @@ import {
   checkMemberLoopOutPolicy,
   checkTreasuryLoopOutPolicy,
   checkMemberLoopInPolicy,
+  getMemberSwapLimits,
 } from "./swapPolicy";
 import { isLoopAvailable } from "./loopProvider";
 import { validateOnchainAddress } from "../utils/btc-address";
@@ -80,6 +81,14 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
   const loopStatus = await isLoopAvailable();
   if (!loopStatus.available) return json(res, 503, { error: "loop_unavailable", detail: loopStatus.error });
 
+  // Phase 1: the pre-quote policy, before any swap_requests row or loopd quote
+  // exists (drive-mode P1 item 7) — the shape Loop In already has.
+  const preCheck = await checkMemberLoopOutPolicy({ nodePubkey: node.pubkey, amountSat });
+  if (!preCheck.ok) {
+    const status = preCheck.code === "loop_unavailable" ? 503 : 429;
+    return json(res, status, { error: "policy_violation", detail: preCheck.reason, code: preCheck.code });
+  }
+
   const { swapRequest, quote } = await createLoopOutQuote({
     nodePubkey: node.pubkey,
     role: node.node_role === "treasury" ? "treasury" : "member",
@@ -87,7 +96,7 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
     destinationAddress,
   });
 
-  // Pre-check policy (non-blocking — quote still created)
+  // Phase 2: the fee phase (advisory — the quote is already created)
   // The policy's fee is swap + miner, without the prepay: the prepay is an
   // advance on the principal, not a fee. Polar gate 1's L3 measured it (regtest
   // loopserver, not production): swap invoice + prepay − on-chain HTLC = the
@@ -184,6 +193,7 @@ export async function handleMemberLoopInQuote(req: IncomingMessage, res: Res): P
     nodePubkey: node.pubkey,
     amountSat,
     quotedFeeSat: quote.total_fee_sat,
+    minerFeeSat: quote.htlc_publish_fee_sat, // the quote's, R18(10)
   });
 
   json(res, 200, { swap_request: swapRequest, quote, ceilings: ceilingsFor(swapRequest), policy_check: postCheck });
@@ -207,6 +217,9 @@ export async function handleMemberLoopIn(req: IncomingMessage, res: Res): Promis
     nodePubkey: node.pubkey,
     amountSat: existing.amount_sat,
     quotedFeeSat: existing.quoted_fee_sat ?? 0,
+    // The stored quote's HTLC fee (migration 062), R18(10). NULL only on a row
+    // quoted before 062, which execute refuses with requote_required anyway.
+    minerFeeSat: existing.quoted_miner_fee_sat ?? undefined,
   });
   if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
 
@@ -245,6 +258,14 @@ export async function handleSwapHistory(req: IncomingMessage, res: Res): Promise
   });
 
   json(res, 200, { swaps });
+}
+
+/** GET /api/swaps/limits — the effective member swap limits per direction
+ *  and today's remaining daily amount (drive-mode P1 item 6). A read. */
+export async function handleSwapLimits(_req: IncomingMessage, res: Res): Promise<void> {
+  const node = getNodeInfo();
+  if (!node) return json(res, 503, { error: "node_info_unavailable" });
+  json(res, 200, await getMemberSwapLimits(node.pubkey));
 }
 
 // ─── Treasury (admin) endpoints ──────────────────────────────────────────

@@ -23,6 +23,8 @@ import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
 import { summarizePayInvoice } from "../components/actionConfirm/confirmAction";
+import { rateNote } from "../api/rate";
+import type { ExchangeRate } from "../api/client";
 import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 
 type Tab = "request" | "pay";
@@ -51,6 +53,9 @@ export default function Payments({ title }: { title: string }) {
   const [payments, setPayments] = useState<NetworkPayment[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [rate, setRate] = useState<number | null>(null);
+  // The rate's state, for its note (drive-mode P1 item 3).
+  const [rateInfo, setRateInfo] = useState<ExchangeRate | null>(null);
+  const applyRate = (r: ExchangeRate) => { setRateInfo(r); setRate(r.usd); };
   const [loading, setLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<NetworkPayment | null>(null);
@@ -71,13 +76,13 @@ export default function Payments({ title }: { title: string }) {
   useEffect(() => {
     Promise.all([
       api.getContacts().then(setContacts).catch(() => {}),
-      api.getExchangeRate().then((r) => setRate(r.usd)).catch(() => {}),
+      api.getExchangeRate().then(applyRate).catch(() => {}),
       api.syncSettlements().catch(() => {}),
       loadPayments(),
     ]).finally(() => setLoading(false));
 
     const rateInterval = setInterval(() => {
-      api.getExchangeRate().then((r) => setRate(r.usd)).catch(() => {});
+      api.getExchangeRate().then(applyRate).catch(() => {});
     }, 60_000);
     return () => clearInterval(rateInterval);
   }, [loadPayments]);
@@ -89,6 +94,9 @@ export default function Payments({ title }: { title: string }) {
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
           Request and send Lightning payments
         </p>
+        {rateNote(rateInfo) && (
+          <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rateInfo)}</p>
+        )}
       </div>
 
       {selectedPayment ? (
@@ -204,9 +212,10 @@ function RequestPaymentForm({
   const [deniedPayload, setDeniedPayload] = useState<RoutingDeniedPayload | null>(null);
   const [copied, setCopied] = useState(false);
 
-  // Receive capacity from treasury channel
+  // Receive capacity from treasury channel. roomToReceive is the server's one
+  // figure, remote − the channel reserve (drive-mode P1 item 2).
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
-  const [channelRemote, setChannelRemote] = useState<number | null>(null);
+  const [roomToReceive, setRoomToReceive] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
 
   useEffect(() => {
@@ -214,7 +223,7 @@ function RequestPaymentForm({
       .then((s) => {
         if (s.treasury_channel) {
           setChannelLocal(s.treasury_channel.local_sats);
-          setChannelRemote(s.treasury_channel.remote_sats);
+          setRoomToReceive(s.treasury_channel.room_to_receive_sats);
           setChannelCapacity(s.treasury_channel.capacity_sats);
         }
       })
@@ -237,13 +246,8 @@ function RequestPaymentForm({
       ? Math.min(100, Math.round(((channelLocal + sats) / channelCapacity) * 100))
       : null;
 
-  // Two-tier capacity thresholds
-  // Soft cap (85% of remote): routing fees + HTLC constraints may cause failures
-  // Hard cap (100% of remote): physically impossible, payment will fail
-  const softCap = channelRemote != null ? Math.floor(channelRemote * 0.85) : null;
-  const hardCap = channelRemote;
-  const maxInvoice = softCap; // display value for the "Max Invoice" card
-  const isOverSoft = softCap != null && sats > softCap;
+  // One cap: room to receive. The 85% soft cap is removed (R18(5)).
+  const hardCap = roomToReceive;
   const isOverHard = hardCap != null && sats > hardCap;
 
   const handleCreate = async () => {
@@ -351,7 +355,7 @@ function RequestPaymentForm({
       )}
 
       {/* Receive capacity card (green-tinted) */}
-      {channelRemote != null && (
+      {roomToReceive != null && (
         <div style={{
           border: "1px solid color-mix(in srgb, var(--green) 30%, transparent)",
           background: "color-mix(in srgb, var(--green) 8%, var(--bg-2))",
@@ -363,25 +367,15 @@ function RequestPaymentForm({
               Receive capacity
             </div>
             <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--green)", lineHeight: 1.2 }}>
-              {channelRemote.toLocaleString()}
+              {roomToReceive.toLocaleString()}
               <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>sats</span>
             </div>
           </div>
-          {maxInvoice != null && maxInvoice > 0 && (
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
-                Most you can receive
-              </div>
-              <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
-                {maxInvoice.toLocaleString()} sats
-              </div>
-            </div>
-          )}
         </div>
       )}
 
       {/* Zero receive capacity — empty state */}
-      {channelRemote != null && channelRemote === 0 && (
+      {roomToReceive != null && roomToReceive === 0 && (
         <div className="alert critical" style={{ marginBottom: 12 }}>
           {/* Role-neutral by design (this page can't tell farmer from merchant;
              see 2026-07-09 role-mapping verification): both remedies named,
@@ -416,15 +410,10 @@ function RequestPaymentForm({
         </span>
       </div>
 
-      {/* Two-tier capacity warnings */}
+      {/* Capacity warning */}
       {isOverHard && (
         <div className="alert critical" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
           Amount exceeds receive capacity ({hardCap?.toLocaleString()} sats). Payment cannot succeed.
-        </div>
-      )}
-      {!isOverHard && isOverSoft && (
-        <div className="alert warning" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
-          Amounts this close to your limit sometimes fail because of network fees. Consider requesting a slightly smaller amount.
         </div>
       )}
 
@@ -493,8 +482,11 @@ function PayInvoiceForm({
   const [deniedPayload, setDeniedPayload] = useState<RoutingDeniedPayload | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Send capacity from treasury channel (= member's local balance)
+  // Send capacity from treasury channel. roomToSend is the server's one figure,
+  // local − the channel reserve (drive-mode P1 item 2) — the same number the
+  // server's pay pre-check refuses above.
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
+  const [roomToSend, setRoomToSend] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
 
   useEffect(() => {
@@ -502,6 +494,7 @@ function PayInvoiceForm({
       .then((s) => {
         if (s.treasury_channel) {
           setChannelLocal(s.treasury_channel.local_sats);
+          setRoomToSend(s.treasury_channel.room_to_send_sats);
           setChannelCapacity(s.treasury_channel.capacity_sats);
         }
       })
@@ -544,6 +537,7 @@ function PayInvoiceForm({
         amountSats: decoded.tokens,
         destination: resolveContactName(decoded.destination, contacts) || decoded.destination,
         memo: decoded.description || undefined,
+        maxFeeSats: decoded.max_fee_sats,
       }),
     );
   };
@@ -642,13 +636,8 @@ function PayInvoiceForm({
       ? Math.max(0, Math.round(((channelLocal - decodedAmount) / channelCapacity) * 100))
       : null;
 
-  // Two-tier send capacity thresholds (mirrors Request Payment's receive check)
-  // Soft cap (85% of local): routing fees + HTLC constraints may cause failures
-  // Hard cap (100% of local): physically impossible, payment will fail
-  const softCap = channelLocal != null ? Math.floor(channelLocal * 0.85) : null;
-  const hardCap = channelLocal;
-  const maxSendable = softCap;
-  const isOverSoft = softCap != null && decodedAmount > softCap;
+  // One cap: room to send. The 85% soft cap is removed (R18(5)).
+  const hardCap = roomToSend;
   const isOverHard = hardCap != null && decodedAmount > hardCap;
 
   return (
@@ -675,7 +664,7 @@ function PayInvoiceForm({
 
       {/* Send capacity card (amber-tinted). PR3-7: the tint and border carry the
           amber; the number is --text (light --amber is 2.68:1 on --bg-1). */}
-      {channelLocal != null && (
+      {roomToSend != null && (
         <div style={{
           border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
           background: "color-mix(in srgb, var(--amber) 8%, var(--bg-2))",
@@ -687,25 +676,15 @@ function PayInvoiceForm({
               Send capacity
             </div>
             <div data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
-              {channelLocal.toLocaleString()}
+              {roomToSend.toLocaleString()}
               <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>sats</span>
             </div>
           </div>
-          {maxSendable != null && maxSendable > 0 && (
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
-                Most you can send
-              </div>
-              <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
-                {maxSendable.toLocaleString()} sats
-              </div>
-            </div>
-          )}
         </div>
       )}
 
       {/* Zero send capacity — empty state */}
-      {channelLocal != null && channelLocal === 0 && (
+      {roomToSend != null && roomToSend === 0 && (
         <div className="alert critical" style={{ marginBottom: 12 }}>
           {/* Role-neutral by design — see the receive-side note above. */}
           You can't send right now — your sending balance is empty. Top up from your
@@ -738,6 +717,21 @@ function PayInvoiceForm({
               {usdPreview && <span className="text-dim" style={{ marginLeft: 6 }}>{usdPreview}</span>}
             </span>
           </div>
+          {/* The most this payment can cost, before it is sent (drive-mode P1
+              item 4, D1.6): the server's limit, 10 sats + 1%, rounded up. */}
+          {decoded.max_fee_sats != null && (
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span>Most in fees</span>
+              <span>
+                {fmtSats(decoded.max_fee_sats)}
+                {rate != null && (
+                  <span className="text-dim" style={{ marginLeft: 6 }}>
+                    ${((decoded.max_fee_sats / 100_000_000) * rate).toFixed(2)}
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>To</span>
             <span className="td-mono ident" style={{ fontSize: "0.8rem" }}>
@@ -759,15 +753,10 @@ function PayInvoiceForm({
         </div>
       )}
 
-      {/* Two-tier capacity warnings (after decode) */}
+      {/* Capacity warning (after decode) */}
       {decoded && isOverHard && (
         <div className="alert critical" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
           This is more than you can send ({hardCap?.toLocaleString()} sats). Top up first.
-        </div>
-      )}
-      {decoded && !isOverHard && isOverSoft && (
-        <div className="alert warning" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
-          Amounts this close to your limit sometimes fail because of network fees. A slightly smaller amount is more reliable.
         </div>
       )}
 
@@ -804,6 +793,20 @@ function PayInvoiceForm({
       <ActionConfirmModal controller={confirm} onConfirm={handlePay} />
     </div>
   );
+}
+
+// ─── Fee text ────────────────────────────────────────────────────────────────
+
+/** One string per fee state (drive-mode P1 item 5): a zero fee, a pending
+ *  payment and a failed one read differently, where all three used to be "—". */
+function feeText(p: NetworkPayment): string {
+  switch (p.fee_state) {
+    case "paid": return fmtSats(p.fee_sats);
+    case "zero": return fmtSats(0);
+    case "pending": return "Pending";
+    case "failed": return "None (failed)";
+    default: return "\u2014";
+  }
 }
 
 // ─── Payment Detail ──────────────────────────────────────────────────────────
@@ -897,10 +900,10 @@ function PaymentDetail({
           <span>Status</span>
           <span className={`badge ${sBadge.cls}`}>{sBadge.label}</span>
         </div>
-        {p.fee_sats > 0 && (
+        {p.direction === "send" && (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>Fee</span>
-            <span>{fmtSats(p.fee_sats)}</span>
+            <span>{feeText(p)}</span>
           </div>
         )}
         {p.counterparty_pubkey && (
@@ -1015,7 +1018,7 @@ function PaymentRow({
           </div>
         )}
       </td>
-      <td className="td-num">{p.fee_sats > 0 ? fmtSats(p.fee_sats) : "\u2014"}</td>
+      <td className="td-num">{feeText(p)}</td>
       <td className="td-mono ident" style={{ fontSize: "0.8rem" }}>
         {p.counterparty_pubkey
           ? resolveContactName(p.counterparty_pubkey, contacts)

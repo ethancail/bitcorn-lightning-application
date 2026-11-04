@@ -8,6 +8,13 @@ import { db } from "../db";
 import { ENV } from "../config/env";
 import { getLndChainBalance } from "../lightning/lnd";
 import { getLoopOutTerms, getLoopInTerms } from "../lightning/loop";
+import { getHubChannel } from "../lightning/hubChannel";
+
+// The effective member swap limits, the same bounds this policy enforces
+// (drive-mode P1 item 6). Defined in swapLimits.ts; exported here beside
+// the policy they mirror.
+export { getMemberSwapLimits } from "./swapLimits";
+import { loopInOnchainRule, onchainOverhead } from "./swapLimits";
 
 export type PolicyResult = { ok: true } | { ok: false; reason: string; code: string };
 
@@ -18,9 +25,14 @@ export type PolicyResult = { ok: true } | { ok: false; reason: string; code: str
 export async function checkMemberLoopOutPolicy(params: {
   nodePubkey: string;
   amountSat: number;
-  quotedFeeSat: number;
+  // Omit for the pre-quote phase (drive-mode P1 item 7): every check runs
+  // with no fee, and the fee cap is skipped — the shape Loop In already has.
+  // Provide for the fee phase, after the quote, and at execute.
+  quotedFeeSat?: number;
 }): Promise<PolicyResult> {
-  const { amountSat, quotedFeeSat, nodePubkey } = params;
+  const { amountSat, nodePubkey } = params;
+  const preQuote = params.quotedFeeSat === undefined;
+  const quotedFeeSat = params.quotedFeeSat ?? 0;
 
   // ── 1. Amount bounds ──────────────────────────────────────────────────
   if (amountSat < ENV.memberMinWithdrawalSat) {
@@ -49,17 +61,8 @@ export async function checkMemberLoopOutPolicy(params: {
   // Uses the single largest active Treasury channel only (not summed).
   // In the Bitcorn hub-and-spoke model, members are leaf nodes with one
   // canonical Treasury channel. If multiple exist, the largest is used
-  // as the most likely routing path.
-  const treasuryPubkey = ENV.treasuryPubkey;
-  const memberChannelRow = treasuryPubkey
-    ? db.prepare(`
-        SELECT local_balance_sat, capacity_sat, active
-        FROM lnd_channels
-        WHERE peer_pubkey = ? AND active = 1
-        ORDER BY capacity_sat DESC
-        LIMIT 1
-      `).get(treasuryPubkey) as { local_balance_sat: number; capacity_sat: number; active: number } | undefined
-    : undefined;
+  // as the most likely routing path. The hub rule (drive-mode P1 item 1).
+  const memberChannelRow = getHubChannel();
 
   if (!memberChannelRow) {
     return { ok: false, reason: "No active Treasury channel found", code: "no_treasury_channel" };
@@ -135,8 +138,9 @@ export async function checkMemberLoopOutPolicy(params: {
   // ── 5. Fee cap ────────────────────────────────────────────────────────
   // The 15% sanity check on the quote (F5). A caller-supplied max_fee_sat no
   // longer exists: it used to REPLACE this limit (loop-fee-ceilings B6, D18).
+  // Not in the pre-quote phase: there is no quote yet.
   const feeLimit = Math.ceil(amountSat * ENV.loopMaxSwapFeePct / 100);
-  if (quotedFeeSat > feeLimit) {
+  if (!preQuote && quotedFeeSat > feeLimit) {
     return { ok: false, reason: `Quoted fee (${quotedFeeSat}) exceeds cap (${feeLimit})`, code: "fee_exceeds_cap" };
   }
 
@@ -240,6 +244,9 @@ export async function checkMemberLoopInPolicy(params: {
   nodePubkey: string;
   amountSat: number;
   quotedFeeSat?: number; // omit for pre-quote (phase 1); provide for post-quote (phase 2)
+  // The quote's HTLC (miner) fee, for the on-chain rule after the quote and at
+  // execute (R18(10)); omitted, the rule estimates it from lnd's fee rate.
+  minerFeeSat?: number;
 }): Promise<PolicyResult> {
   const { amountSat, quotedFeeSat, nodePubkey } = params;
 
@@ -264,15 +271,24 @@ export async function checkMemberLoopInPolicy(params: {
     return { ok: false, reason: "Loop service unavailable", code: "loop_unavailable" };
   }
 
-  // ── 3. On-chain balance ───────────────────────────────────────────────
+  // ── 3. On-chain balance: Top Up's one rule (drive-mode P1 item 8) ─────
+  // needed = amount + reserve + HTLC fee + anchor reserve (R16(9), R18(10)).
   try {
-    const { chain_balance } = await getLndChainBalance();
-    const reserve = ENV.memberOnchainReserveSat;
-    const needed = amountSat + reserve;
+    const [rule, { chain_balance }] = await Promise.all([
+      loopInOnchainRule(params.minerFeeSat),
+      getLndChainBalance(),
+    ]);
+    const needed = amountSat + onchainOverhead(rule);
     if (chain_balance < needed) {
+      const feePart = rule.fee_rate_sat_per_vbyte != null
+        ? `~${rule.estimated_htlc_fee_sats.toLocaleString()} network fee at ${rule.fee_rate_sat_per_vbyte} sat/vB`
+        : `${rule.estimated_htlc_fee_sats.toLocaleString()} network fee`;
       return {
         ok: false,
-        reason: `Insufficient on-chain balance (${chain_balance.toLocaleString()} available, need ${needed.toLocaleString()} including ${reserve.toLocaleString()} reserve)`,
+        reason:
+          `Insufficient on-chain balance (${chain_balance.toLocaleString()} available, need ${needed.toLocaleString()}: ` +
+          `the amount + ${rule.reserve_sats.toLocaleString()} reserve + ${feePart} + ` +
+          `${rule.anchor_reserve_sats.toLocaleString()} anchor reserve)`,
         code: "insufficient_onchain",
       };
     }
