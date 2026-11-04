@@ -62,8 +62,8 @@ beforeEach(() => {
   db.prepare("DELETE FROM lnd_channels").run();
   db.prepare(`
     INSERT INTO lnd_channels (channel_id, peer_pubkey, capacity_sat, local_balance_sat, remote_balance_sat,
-      active, private, updated_at, local_reserve_sat, remote_reserve_sat)
-    VALUES ('800000x1x0', ?, 10000000, 9000000, 900000, 1, 0, ?, 100000, 100000)
+      active, private, updated_at, local_reserve_sat, remote_reserve_sat, is_initiator)
+    VALUES ('800000x1x0', ?, 10000000, 9000000, 900000, 1, 0, ?, 100000, 100000, 0)
   `).run(HUB, Date.now());
 });
 

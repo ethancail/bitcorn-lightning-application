@@ -58,8 +58,8 @@ function hubLocal(local: number) {
   db.prepare("DELETE FROM lnd_channels").run();
   db.prepare(`
     INSERT INTO lnd_channels (channel_id, peer_pubkey, capacity_sat, local_balance_sat, remote_balance_sat,
-      active, private, updated_at, local_reserve_sat, remote_reserve_sat)
-    VALUES ('800000x1x0', ?, 5000000, ?, ?, 1, 0, ?, 50000, 50000)
+      active, private, updated_at, local_reserve_sat, remote_reserve_sat, is_initiator)
+    VALUES ('800000x1x0', ?, 5000000, ?, ?, 1, 0, ?, 50000, 50000, 0)
   `).run(HUB, local, 4_900_000 - local, Date.now());
 }
 
