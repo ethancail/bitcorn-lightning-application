@@ -289,10 +289,103 @@ The manual circular rebalance route (`POST /api/treasury/rebalance/circular`) wa
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/api/treasury/rebalance/loop-out/terms` | Min/max swap amounts from loopd |
-| GET | `/api/treasury/rebalance/loop-out/quote?amount_sats=N` | Quote breakdown (swap fee, miner fee, prepay hold) |
+| GET | `/api/treasury/rebalance/loop-out/quote?amount_sats=N[&channel_id=…]` | Quote breakdown (swap fee, prepay, miner fee, `swap_payment_dest`), plus `acceptable` and `refusal` — see below |
 | GET | `/api/treasury/rebalance/loop-out/status` | Loop availability + in-flight swaps |
-| POST | `/api/treasury/rebalance/loop-out` | Manual swap (`{ channel_id, amount_sats }`) |
+| POST | `/api/treasury/rebalance/loop-out` | Manual swap (`{ channel_id, amount_sats }` — nothing else is read) |
 | POST | `/api/treasury/rebalance/loop-out/auto` | Auto-rebalance all critical channels |
+
+**The preview's `acceptable`** means the manual swap would not be refused at
+that moment: the preview runs the same pre-checks the swap runs before any
+money moves (Loop terms; the channel checks when `channel_id` is given; the
+15% swap-fee sanity check; the daily loss cap; the fee-rate check; the route
+probe). When `acceptable` is `false`, `refusal` is `{ code, detail }` — `code`
+is one of the refusal codes below, `daily_loss_cap`, or `null` for an
+uncoded check (terms, channel, 15%). Running it costs two loopd quotes and up
+to a few route queries; it moves nothing.
+
+**Manual swap body.** Only `channel_id` and `amount_sats` are read. The
+`max_swap_fee_sats`, `max_miner_fee_sats` and `conf_target` body fields were
+dropped (loop-fee-ceilings F6, ruling 1): the ceilings come from the swap's
+own in-call quote and the sweep targets `LOOP_CONF_TARGET` (default 6). A
+coded refusal answers `409 { error: <code>, detail }`; other refusals keep
+`400 { error }`.
+
+### Loop fee ceilings (swaps)
+
+Every Loop call that moves money sends loopd ceilings taken from the quote,
+never a fixed default (loop-fee-ceilings spec, bitcorn-research). For Loop Out
+(member `/api/swaps/loop-out`, admin `/api/admin/swaps/loop-out`, and the
+treasury rebalance paths): `max_swap_fee` = the quoted swap fee;
+`max_prepay_amt` = the quoted prepay; `max_miner_fee` = the quoted sweep fee;
+`max_swap_routing_fee` / `max_prepay_routing_fee` = `LOOP_ROUTING_FEE_CAP_PPM`
+(default 1%) of the swap amount / of the prepay. For Loop In
+(`/api/swaps/loop-in`): `max_swap_fee` = the quoted swap fee alone, and
+`max_miner_fee` = the quoted HTLC fee.
+
+**Quote responses** (`POST /api/swaps/loop-out/quote`,
+`POST /api/admin/swaps/loop-out/quote`, `POST /api/swaps/loop-in/quote`) carry
+`ceilings` beside `quote`:
+
+```json
+"ceilings": {
+  "max_swap_fee_sat": 835, "max_prepay_amt_sat": 30000, "max_miner_fee_sat": 1200,
+  "max_swap_routing_fee_sat": 2500, "max_prepay_routing_fee_sat": 300
+}
+```
+
+Loop In's carries only `max_swap_fee_sat` and `max_miner_fee_sat`. The member
+Loop Out quote no longer takes `max_fee_sat` (it used to replace the 15%
+sanity check; nothing sent it), and no `swap_request` in any response carries
+`max_fee_sat` — the column stays in the database, unread. A `swap_request` now
+carries the stored components `quoted_swap_fee_sat`, `quoted_prepay_sat`
+(Loop Out only) and `quoted_miner_fee_sat`.
+
+**Execute bodies echo `ceilings` unchanged**, and the confirmation hash covers
+them: after the existing fields, in the order above (see the admin Loop Out
+shell idiom below). In the hash they are *optional* fields: when sent they are
+hashed like any other, and a confirmation computed without them does not
+authorise a body that carries them. A body without them passes the gate and is
+refused by the handler before any loopd call — `requote_required` for a quote
+stored before the ceilings existed, `ceiling_mismatch` for any other.
+
+**Refusals before initiation.** Each is `409 { error: <code>, detail }` (on the
+treasury manual route, the same codes, from its own in-call quote), and none
+reaches a loopd call that moves money:
+
+| Code | Sites | When |
+|---|---|---|
+| `requote_required` | A, B, D | The stored quote predates the quote-component columns |
+| `ceiling_mismatch` | A, B, D | The echoed ceilings differ from the stored quote's (altered, missing, or computed under a different routing-cap setting) |
+| `fee_rate_over_quote` | all | A fresh quote's miner fee exceeds the quoted one plus `LOOP_MINER_FEE_MARGIN_PCT` (default 50%) |
+| `route_fee_over_cap` | Loop Out | A probed route for the swap or the prepay costs more than the routing cap |
+| `route_not_found` | Loop Out | Neither the quote's `swap_payment_dest` nor any `LOOP_SERVER_PUBKEYS` entry routes |
+| `miner_fee_unknown` | D | The HTLC-fee estimate failed or is zero; refused at the Loop In quote too, so 0 is never shown as the fee |
+| `swap_in_progress` | A, B, D | Another execute of the same quote already holds it: the first execute atomically claims the quote (status `initiating`) before any loopd call, so a quote reaches loopd once |
+| `swap_not_executable` | A, B, D | The quote is in any other non-executable status (`initiated`, `expired`, `failed`, `completed`, …): already used or ended. The row is not touched |
+| `quote_expired` | A, B, D | The quote is past its expiry (`SWAP_QUOTE_EXPIRY_SEC`, 300 s). The row is marked `expired` |
+
+After the claim, `ceiling_mismatch`, `route_fee_over_cap`, `route_not_found`
+and any other pre-initiation error release the quote back to its prior status
+(it can be retried until it expires); `requote_required`,
+`fee_rate_over_quote` and `miner_fee_unknown` mark it `expired` with the code
+as `failure_reason` (get a new quote). `quote_expired` marks it `expired` too,
+with no `failure_reason`, as before.
+
+**Interrupted initiations.** A quote left `initiating` by a crash or restart
+mid-initiation is marked `failed` with `failure_reason: "interrupted"` by a
+sweep at startup, once it is more than 10 minutes old. **The sweep runs once,
+at startup only** — not on a timer. A quote orphaned while the API keeps
+running (which nothing in a running process should cause) stays `initiating`
+until the next restart; one less than 10 minutes old at a restart waits for
+the restart after that. It is never released,
+because loopd may already have started the swap. ⚠ **A swap loopd started in
+that window is not tracked by Bitcorn**: no execution row was written, so the
+swap poller cannot match it, and its `swap_request` reads `failed`. The swap
+itself still runs in loopd and is visible there (`loop listswaps`).
+
+The Loop Out route probe tries the quote's `swap_payment_dest` first and falls
+back to the configured Loop servers; on the fallback branch the final hop
+(Loop server → destination) is Loop's own channel and is not probed.
 
 **Peers**
 
@@ -408,16 +501,28 @@ curl -sS -X POST http://localhost:3101/api/pay \
 
 ```bash
 # POST /api/admin/swaps/loop-out
-#   fields: swap_request_id, destination_address (optional text)
+#   fields: swap_request_id, destination_address (optional text), then the
+#   quote's five ceilings (optional numbers; send them), echoed from the quote
+#   response's `ceilings` object
 # destination_address is in the hash because it is where the coins land;
 # omitting it means the default sweep address, which is a different act.
-BODY='{"swap_request_id":"swap-ghi","destination_address":"bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq"}'
+# The ceilings are in the hash so a confirmation cannot be reused with
+# raised fee limits; the server also refuses any that differ from the
+# stored quote (ceiling_mismatch).
+BODY='{"swap_request_id":"swap-ghi","destination_address":"bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+       "max_swap_fee_sat":835,"max_prepay_amt_sat":30000,"max_miner_fee_sat":1200,
+       "max_swap_routing_fee_sat":2500,"max_prepay_routing_fee_sat":300}'
 CONFIRM=$(jq -rj '"swap_request_id=" + .swap_request_id
                 + (if .destination_address == null then ""
-                   else "&destination_address=" + .destination_address end)' \
+                   else "&destination_address=" + .destination_address end)
+                + "&max_swap_fee_sat=" + (.max_swap_fee_sat|tostring)
+                + "&max_prepay_amt_sat=" + (.max_prepay_amt_sat|tostring)
+                + "&max_miner_fee_sat=" + (.max_miner_fee_sat|tostring)
+                + "&max_swap_routing_fee_sat=" + (.max_swap_routing_fee_sat|tostring)
+                + "&max_prepay_routing_fee_sat=" + (.max_prepay_routing_fee_sat|tostring)' \
           <<<"$BODY" | sha256sum | cut -d' ' -f1)
-# with destination_address -> 676cf893e23066c95bd83b0c5938f903fd277775940b8d82a768a5e5463740e6
-# destination omitted      -> f7e788fffb935543a4ce7215e04c2990c6cbe410d3efc5f3313525f03279aaac
+# with destination_address -> de271ca2e7ab251f673c7a333797b82f648d74eb81df779fa258ed8bb5482810
+# destination omitted      -> 93d76c7c03566e4de6593c5232d6c024f6c985caee5c2bc0d3d57f3405906d64
 ```
 
 ### `dry_run` is hashed on the two routes that accept it
@@ -468,6 +573,8 @@ CONFIRM=$(jq -rj '"peer_pubkey=" + .peer_pubkey
 
 ```bash
 # POST /api/treasury/rebalance/loop-out   (fields: channel_id, amount_sats)
+# max_swap_fee_sats is sent below only to show an extra field is not hashed;
+# the route no longer reads it (loop-fee-ceilings F6).
 BODY='{"channel_id":"842391119757312","amount_sats":500000,"max_swap_fee_sats":5000}'
 CONFIRM=$(jq -rj '"channel_id=" + .channel_id
                 + "&amount_sats=" + (.amount_sats|tostring)' <<<"$BODY" | sha256sum | cut -d' ' -f1)

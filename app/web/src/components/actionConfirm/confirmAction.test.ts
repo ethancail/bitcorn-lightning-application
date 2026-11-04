@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import * as confirmActionModule from "./confirmAction";
 import {
   challengePrompt,
   challengeSatisfied,
@@ -182,5 +183,75 @@ describe("truncId", () => {
   it("does not crash on empty input", () => {
     // fmtSats/truncPubkey have crashed on undefined here before (CLAUDE.md).
     expect(truncId("")).toBe("—");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// loop-fee-ceilings §7 (F4): the confirmation shows the most the member
+// authorises, and what happens to the on-chain fee once the swap has started.
+// The figure is swap fee + miner fee + the two routing ceilings, the prepay
+// EXCLUDED (P12 p, superseding ruling 11): Polar's L3 found the prepay to be an
+// advance on the principal, not a fee. The 20% clause is Loop Out's only
+// (ruling 5): the clamp is the Loop Out sweep's.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("loop-fee-ceilings: the authorised maximum and the post-start disclosure", () => {
+  // Through the namespace, so a missing helper fails on its value rather than
+  // on an import error.
+  const helpers = confirmActionModule as unknown as Record<string, ((...a: any[]) => any) | undefined>;
+
+  const LO_CEILINGS = {
+    max_swap_fee_sat: 835,
+    max_prepay_amt_sat: 30_000,
+    max_miner_fee_sat: 1_200,
+    max_swap_routing_fee_sat: 2_500,
+    max_prepay_routing_fee_sat: 300,
+  };
+
+  // Gate 1's Loop Out ceilings (spec §7, §10.1): 25 + 3,793 + 2,500 + 13 =
+  // 6,331, with the 1,337 prepay left out. Written out, not computed by the
+  // code under test.
+  const GATE1_CEILINGS = {
+    max_swap_fee_sat: 25,
+    max_prepay_amt_sat: 1_337,
+    max_miner_fee_sat: 3_793,
+    max_swap_routing_fee_sat: 2_500,
+    max_prepay_routing_fee_sat: 13,
+  };
+
+  it("p: Loop Out's maximum is swap + miner + the two routing ceilings, the prepay excluded", () => {
+    expect(helpers.authorizedMaxSats?.(GATE1_CEILINGS)).toBe(6_331);
+    expect(helpers.authorizedMaxSats?.(LO_CEILINGS)).toBe(4_835);
+  });
+
+  it("p: Loop In (no prepay) is swap + miner", () => {
+    expect(helpers.authorizedMaxSats?.({ max_swap_fee_sat: 500, max_miner_fee_sat: 900 })).toBe(1_400);
+  });
+
+  it("no ceilings → no figure (never a 0 presented as a maximum)", () => {
+    expect(helpers.authorizedMaxSats?.(null)).toBeUndefined();
+  });
+
+  it("the Loop Out estimate is swap + miner, the one number the panel and the modal both show", () => {
+    expect(
+      helpers.loopOutEstimatedFeeSats?.({ swap_fee_sat: 835, prepay_sat: 30_000, miner_fee_sat: 1_200, total_fee_sat: 32_035 }),
+    ).toBe(2_035);
+  });
+
+  it("Loop Out: shows the maximum and says the network fee follows the market, capped at 20%", () => {
+    const s = summarizeLoopOut({
+      amountSats: 250_000, destinationAddress: "bc1qabc", feeSats: 2_035, authorizedMaxSats: 4_835,
+    } as Parameters<typeof summarizeLoopOut>[0]);
+    expect(s.rows.find((r) => /most you authori[sz]e/i.test(r.label))?.value).toBe("4,835 sats");
+    expect(s.body).toMatch(/follows the market/i);
+    expect(s.body).toMatch(/20% of the amount/);
+  });
+
+  it("Loop In: shows the maximum, says the network fee follows the market, and claims no 20% cap", () => {
+    const s = summarizeLoopIn({
+      amountSats: 250_000, feeSats: 1_400, authorizedMaxSats: 1_400,
+    } as Parameters<typeof summarizeLoopIn>[0]);
+    expect(s.rows.find((r) => /most you authori[sz]e/i.test(r.label))?.value).toBe("1,400 sats");
+    expect(s.body).toMatch(/follows the market/i);
+    expect(s.body ?? "").not.toMatch(/20%/);
   });
 });

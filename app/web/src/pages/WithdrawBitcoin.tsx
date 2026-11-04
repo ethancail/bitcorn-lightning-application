@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
-import { api, fmtSats } from "../api/client";
+import { api, fmtSats, swapExecuteBody } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
@@ -9,8 +9,12 @@ import { statusBadge } from "../components/swapStatus";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
-import { summarizeLoopOut } from "../components/actionConfirm/confirmAction";
-import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
+import {
+  summarizeLoopOut,
+  authorizedMaxSats,
+  loopOutEstimatedFeeSats,
+} from "../components/actionConfirm/confirmAction";
+import { classifyConfirmError, memberSwapErrorText } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
   ageLabel,
@@ -34,9 +38,11 @@ function isTerminal(status: string): boolean {
 // the Technical details expander, not deleted. Neither returns a raw status:
 // anything they don't name reads as its badge label from the shared map
 // (humanized if unknown).
-function statusText(status: string, failureReason: string | null): string {
+// Exported for the 'initiating' mapping test (swapStatus.initiating.test.ts).
+export function statusText(status: string, failureReason: string | null): string {
   switch (status) {
     case "quote_created": return "Quote received. The withdrawal hasn't started yet.";
+    case "initiating": return "Starting…";
     case "initiated": return "Starting your withdrawal...";
     case "executing": return "Sending funds to your Bitcoin address...";
     case "confirming": return "Waiting for Bitcoin network confirmation...";
@@ -47,13 +53,39 @@ function statusText(status: string, failureReason: string | null): string {
 }
 
 // The Protocol status row: the protocol status beside its description.
-function statusTechnical(status: string): string {
+export function statusTechnical(status: string): string {
   switch (status) {
+    case "initiating": return "initiating — Checking fees and route before the swap starts";
     case "initiated": return "initiated — Paying Lightning invoice to Loop server";
     case "executing": return "executing — Loop server publishing on-chain HTLC";
     case "confirming": return "confirming — Waiting for on-chain confirmation";
     default: return statusBadge(status).label;
   }
+}
+
+/**
+ * The Withdraw panel's prepay sentence and its fee breakdown. The prepay is an
+ * advance on the principal, counted toward the amount withdrawn — not a fee
+ * (Polar gate 1's L3); label and sentence are P12 p's,
+ * verbatim. Exported for its render test (WithdrawBitcoin.prepay.test.tsx).
+ */
+export function QuoteFeeDetails({ swapFee, minerFee, prepay }: { swapFee: number; minerFee: number; prepay: number }) {
+  return (
+    <>
+      {prepay > 0 && (
+        <div style={{ fontSize: "0.75rem", color: "var(--text-3)", padding: "8px 12px", background: "var(--bg-3)", borderRadius: 6 }}>
+          Paid to the swap service up front and counted toward the amount you withdraw — not an extra fee.
+          If the withdrawal fails after it starts, the prepay may not be refunded.
+        </div>
+      )}
+      {/* Protocol fee breakdown — demoted per U2/Knot 3 */}
+      <TechnicalDetails>
+        {swapFee > 0 && <TechRow label="Swap service fee">{fmtSats(swapFee)}</TechRow>}
+        {minerFee > 0 && <TechRow label="Bitcoin network (miner) fee">{fmtSats(minerFee)}</TechRow>}
+        {prepay > 0 && <TechRow label="Prepay (part of your withdrawal)">{fmtSats(prepay)}</TechRow>}
+      </TechnicalDetails>
+    </>
+  );
 }
 
 function formatCountdown(expiresAt: number): string {
@@ -299,7 +331,7 @@ export default function WithdrawBitcoin() {
       setQuoteResp(resp);
       setStage("quoted");
     } catch (e: any) {
-      setError(e.message ?? "Failed to get quote");
+      setError(memberSwapErrorText(e, "Failed to get quote"));
       setStage("form");
     }
   }
@@ -316,7 +348,9 @@ export default function WithdrawBitcoin() {
       summarizeLoopOut({
         amountSats: quoteResp.quote.amount_sat,
         destinationAddress: address,
-        feeSats: quoteResp.quote.total_fee_sat,
+        // The same estimate the quote panel shows (loop-fee-ceilings §7).
+        feeSats: loopOutEstimatedFeeSats(quoteResp.quote),
+        authorizedMaxSats: authorizedMaxSats(quoteResp.ceilings),
       }),
     );
   }
@@ -326,17 +360,20 @@ export default function WithdrawBitcoin() {
     setError(null);
     setStage("initiating");
     try {
-      const resp = await api.initiateSwapLoopOut({
-        swap_request_id: quoteResp.swap_request.id,
-        destination_address: address,
-      });
+      // The shared builder echoes the quote's ceilings unchanged (F4).
+      const resp = await api.initiateSwapLoopOut(
+        swapExecuteBody(quoteResp, {
+          swap_request_id: quoteResp.swap_request.id,
+          destination_address: address,
+        }),
+      );
       setTrackingId(resp.swap_request.id);
       setTrackingSwap(resp.swap_request);
       setStage("tracking");
     } catch (e: any) {
       setStage("quoted");
       if (classifyConfirmError(e)) throw e;
-      setError(e.message ?? "Failed to initiate withdrawal");
+      setError(memberSwapErrorText(e, "Failed to initiate withdrawal"));
     }
   }
 
@@ -579,7 +616,7 @@ export default function WithdrawBitcoin() {
               const q = quoteResp.quote;
               const swapFee = q.swap_fee_sat ?? 0;
               const minerFee = q.miner_fee_sat ?? 0;
-              const netFee = swapFee + minerFee;
+              const netFee = loopOutEstimatedFeeSats(q);
               const prepay = q.prepay_sat ?? 0;
               return (
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -608,18 +645,7 @@ export default function WithdrawBitcoin() {
                       </div>
                     </div>
                   </div>
-                  {prepay > 0 && (
-                    <div style={{ fontSize: "0.75rem", color: "var(--text-3)", padding: "8px 12px", background: "var(--bg-3)", borderRadius: 6 }}>
-                      <strong style={{ color: "var(--text-2)" }}>{fmtSats(prepay)}</strong> is held temporarily
-                      while the withdrawal runs and returned with your funds — not an extra fee.
-                    </div>
-                  )}
-                  {/* Protocol fee breakdown — demoted per U2/Knot 3 */}
-                  <TechnicalDetails>
-                    {swapFee > 0 && <TechRow label="Swap service fee">{fmtSats(swapFee)}</TechRow>}
-                    {minerFee > 0 && <TechRow label="Bitcoin network (miner) fee">{fmtSats(minerFee)}</TechRow>}
-                    {prepay > 0 && <TechRow label="Prepay hold (returned)">{fmtSats(prepay)}</TechRow>}
-                  </TechnicalDetails>
+                  <QuoteFeeDetails swapFee={swapFee} minerFee={minerFee} prepay={prepay} />
                 </div>
               );
             })()}

@@ -66,6 +66,16 @@ function serverVerdict(c: Captured) {
   return verifyConfirmation(route as never, { url: path, body }, c.headers[CONFIRMATION_HEADER]);
 }
 
+/** The quote ceilings the swap execute bodies echo (loop-fee-ceilings F4). */
+const LO_CEILINGS = {
+  max_swap_fee_sat: 835,
+  max_prepay_amt_sat: 30000,
+  max_miner_fee_sat: 1200,
+  max_swap_routing_fee_sat: 2500,
+  max_prepay_routing_fee_sat: 300,
+};
+const LI_CEILINGS = { max_swap_fee_sat: 500, max_miner_fee_sat: 900 };
+
 describe("every capital route the UI can reach sends a confirmation the server accepts", () => {
   const CALLS: Array<[label: string, run: () => Promise<unknown>]> = [
     ["member/open-channel", () => api.openMemberChannel({ capacity_sats: 1_000_000 })],
@@ -96,13 +106,13 @@ describe("every capital route the UI can reach sends a confirmation the server a
     ],
     [
       "swaps/loop-out",
-      () => api.initiateSwapLoopOut({ swap_request_id: "swap-abc", destination_address: "bc1qxyzq" }),
+      () => api.initiateSwapLoopOut({ swap_request_id: "swap-abc", destination_address: "bc1qxyzq", ...LO_CEILINGS }),
     ],
-    ["swaps/loop-in", () => api.initiateSwapLoopIn({ swap_request_id: "swap-def" })],
-    ["admin/swaps/loop-out", () => api.adminLoopOut({ swap_request_id: "swap-ghi" })],
+    ["swaps/loop-in", () => api.initiateSwapLoopIn({ swap_request_id: "swap-def", ...LI_CEILINGS })],
+    ["admin/swaps/loop-out", () => api.adminLoopOut({ swap_request_id: "swap-ghi", ...LO_CEILINGS })],
     [
       "admin/swaps/loop-out + dest",
-      () => api.adminLoopOut({ swap_request_id: "swap-ghi", destination_address: "bc1qadmin" }),
+      () => api.adminLoopOut({ swap_request_id: "swap-ghi", destination_address: "bc1qadmin", ...LO_CEILINGS }),
     ],
   ];
 

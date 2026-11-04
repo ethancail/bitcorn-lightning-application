@@ -37,6 +37,16 @@ const serverRoute = (method: string, url: string): ServerRoute => {
   return r;
 };
 
+/** The quote ceilings the swap execute bodies echo (loop-fee-ceilings F4). */
+const LO_CEILINGS = {
+  max_swap_fee_sat: 835,
+  max_prepay_amt_sat: 30000,
+  max_miner_fee_sat: 1200,
+  max_swap_routing_fee_sat: 2500,
+  max_prepay_routing_fee_sat: 300,
+};
+const LI_CEILINGS = { max_swap_fee_sat: 500, max_miner_fee_sat: 900 };
+
 /** Derive the way apiFetch does: from the serialized body string. */
 const derive = (url: string, body: unknown) =>
   confirmationFor(route("POST", url), url, body === undefined ? null : JSON.stringify(body));
@@ -112,14 +122,14 @@ describe("the server accepts what the client computes", () => {
     [
       "swaps/loop-out",
       "/api/swaps/loop-out",
-      { swap_request_id: "swap-abc", destination_address: "bc1qxyzq" },
+      { swap_request_id: "swap-abc", destination_address: "bc1qxyzq", ...LO_CEILINGS },
     ],
-    ["swaps/loop-in", "/api/swaps/loop-in", { swap_request_id: "swap-def" }],
-    ["admin/swaps/loop-out", "/api/admin/swaps/loop-out", { swap_request_id: "swap-ghi" }],
+    ["swaps/loop-in", "/api/swaps/loop-in", { swap_request_id: "swap-def", ...LI_CEILINGS }],
+    ["admin/swaps/loop-out", "/api/admin/swaps/loop-out", { swap_request_id: "swap-ghi", ...LO_CEILINGS }],
     [
       "admin/swaps/loop-out + dest",
       "/api/admin/swaps/loop-out",
-      { swap_request_id: "swap-ghi", destination_address: "bc1qadmin" },
+      { swap_request_id: "swap-ghi", destination_address: "bc1qadmin", ...LO_CEILINGS },
     ],
   ];
 
@@ -279,7 +289,7 @@ describe("works with crypto.subtle DELETED (the tailnet case)", () => {
       ["/api/network/pay", { payment_request: "lnbc1pjxyzqqdq" }],
       ["/api/member/open-channel", { capacity_sats: 1_000_000 }],
       ["/api/treasury/rotation/execute", { channel_id: "842391119757312", is_force_close: true }],
-      ["/api/swaps/loop-in", { swap_request_id: "swap-def" }],
+      ["/api/swaps/loop-in", { swap_request_id: "swap-def", ...LI_CEILINGS }],
     ];
     for (const [url, body] of cases) {
       const d = derive(url, body);

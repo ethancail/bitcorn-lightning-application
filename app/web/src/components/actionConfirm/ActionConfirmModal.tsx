@@ -12,8 +12,16 @@
 //   · states what is about to happen, in the operator's terms
 //   · requires typing the amount, so a mis-click cannot proceed
 //   · distinguishes a 400 from a 409, and does not tell anyone to retry a bug
+//
+// Rendered through a portal to document.body (ruling ll). Inline, it sat inside
+// the page's `.panel.fade-in`: `.fade-in` leaves `transform: translateY(0)` on
+// the panel, which makes the panel the containing block for the fixed overlay,
+// and `.panel { overflow: hidden }` then cut off the card's title and buttons
+// (Polar gate 1, L5). The card is capped at the viewport and only its middle
+// scrolls, so the title and the buttons stay on screen at any content height.
 
 import { useReducer } from "react";
+import { createPortal } from "react-dom";
 import {
   challengePrompt,
   challengeSatisfied,
@@ -83,16 +91,18 @@ export default function ActionConfirmModal({
   const typed = state.step === "confirm" ? state.typed : "";
   const ready = state.step === "confirm" && challengeSatisfied(summary.challenge, typed);
 
-  return (
+  return createPortal(
     <div
       className="dialog-overlay"
       role="dialog"
       aria-modal="true"
       aria-label={summary.title}
     >
-      <div className="dialog-card">
+      <div className="dialog-card action-confirm-card">
         <div className="dialog-title">{summary.title}</div>
 
+        {/* Everything between the title and the buttons scrolls. */}
+        <div className="action-confirm-scroll">
         {/* What is about to happen. Always rendered, including while sending
             and after a failure — removing it at the moment something went
             wrong is exactly when the operator most needs to see it. */}
@@ -157,6 +167,7 @@ export default function ActionConfirmModal({
             )}
           </div>
         )}
+        </div>
 
         {/* ── Actions ── */}
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
@@ -203,6 +214,7 @@ export default function ActionConfirmModal({
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

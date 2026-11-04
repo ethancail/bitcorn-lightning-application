@@ -172,7 +172,7 @@ Mechanical details (apply to both treasury-side and member-side Loop Out):
 
 - Min swap: 250k sats; need ≥556k channel capacity (ACINQ caps `max_value_in_flight_msat` at 45% of channel capacity)
 - Verified mainnet via Loop v0.31.8-beta
-- Prepay (~30k) is a **temporary hold returned in the on-chain payment**, not a fee
+- Prepay (~30k) is an **advance on the principal**, counted toward the swapped amount, not a fee
 - Net fee = swap_fee + miner_fee (~1–2k typical)
 
 See `docs/LOOP_SETUP.md` for setup, configuration, and gotchas. The optional automated scheduler (`REBALANCE_SCHEDULER_ENABLED=true`) targets critical treasury channels (>85% local) and is an operator opt-in for the external-inbound-maintenance case; off by default.
@@ -239,7 +239,7 @@ The full per-version changelog lives in `git log`. Snapshot of capabilities curr
 - `MemberShell` fetches role and renders role-aware sidebar (Cash Out for farmer, Refill Channel for merchant)
 - Farmer dashboard: grain-bin gauge fills as earnings accumulate
 - Merchant dashboard: outbound capacity remaining
-- Withdrawal page: prominent Available Balance card, accurate fee display (net fee separated from prepay hold), Max button with fee cushion
+- Withdrawal page: prominent Available Balance card, accurate fee display (net fee shown apart from the prepay, which is part of the withdrawal, not a fee), Max button with fee cushion
 
 **Treasury UI**
 - Dashboard: Node Balances → Fund Node → Bitcoin Price → Alerts → Treasury Revenue (forwarding fees / rebalance costs / net revenue)

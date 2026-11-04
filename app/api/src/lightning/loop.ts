@@ -10,9 +10,9 @@ import { ENV } from "../config/env";
 
 // ─── Proto loading ───────────────────────────────────────────────────────────
 
-const PROTO_DIR = path.resolve(__dirname, "../../proto");
+export const PROTO_DIR = path.resolve(__dirname, "../../proto");
 
-const packageDef = protoLoader.loadSync(
+export const packageDef = protoLoader.loadSync(
   path.join(PROTO_DIR, "looprpc/client.proto"),
   {
     includeDirs: [PROTO_DIR],
@@ -101,6 +101,9 @@ function rpcCall<T>(
           )
         );
       } else {
+        // B11's "connect": the first success after start, or after an
+        // unavailable spell, starts the autoloop check (F8, below).
+        noteLoopCallSucceeded();
         resolve(res);
       }
     });
@@ -163,6 +166,7 @@ export async function isLoopAvailable(): Promise<LoopAvailability> {
       // loopd deletes and regenerates the Loop macaroon on first start, and
       // start-to-listening measured 120ms/135ms on a Pi 5, so a check racing a
       // container restart lands here on a node that is otherwise fine.
+      noteLoopUnavailable();
       return {
         available: false,
         error: "Loop credentials not found",
@@ -175,12 +179,100 @@ export async function isLoopAvailable(): Promise<LoopAvailability> {
     // The catch branch: everything else, deliberately undifferentiated. An
     // expired or rotated LND cert lands here, as do a refused connection and
     // this call's own 5s deadline.
+    noteLoopUnavailable();
     return {
       available: false,
       error: err.message,
       unavailableReason: "unreachable",
     };
   }
+}
+
+// ─── F8: autoloop is switched off, whoever set it ───────────────────────────
+//
+// loop-fee-ceilings spec §4 "Every site", F8 and ruling (a). Bitcorn's
+// ceilings (F1–F3) bound Bitcorn's own calls only; autoloop's swaps would
+// not be bounded by them, so autoloop is turned off.
+//
+// WHEN (B11): on the first successful loopd call after the process starts,
+// and again on the first success after isLoopAvailable() has classified
+// loopd unavailable — the existing structural classification, no new hook.
+//
+// HOW (Q4, B12): `autoloop` is the master switch. SetLiquidityParams replaces
+// the whole parameter set, so the switch-off writes back exactly the set
+// GetLiquidityParams returned with only `autoloop` changed (D17). The proto
+// is vendored at the shipped v0.33.0-beta, so fields 25–27 survive the
+// round-trip. Two side effects are accepted (B12): loopd reports the sweep
+// fee rate in whole sat/vB, so a fractional rate is truncated on the way
+// back; and an autoloop swap already dispatched keeps its retries (loopd's
+// retry loop does not re-check autoloop).
+//
+// FAILURE (ruling 2): logged, never thrown and never awaited by a swap path,
+// so a loopd hiccup cannot block swaps. Retried at the next of B11's points,
+// and also (Ethan's later ruling) on the next successful loopd call at least
+// AUTOLOOP_RETRY_INTERVAL_MS after the failure — at most once per interval,
+// so a persistent failure costs one GetLiquidityParams every 10 minutes.
+
+const AUTOLOOP_RETRY_INTERVAL_MS = 10 * 60_000;
+
+let loopReachability: "unknown" | "available" | "unavailable" = "unknown";
+let autoloopCheck: Promise<void> = Promise.resolve();
+let autoloopCheckRunning = false;
+/** When the last check failed; null once a check has succeeded (or none ran). */
+let autoloopCheckFailedAt: number | null = null;
+
+function noteLoopCallSucceeded(): void {
+  if (loopReachability !== "available") {
+    loopReachability = "available";
+    startAutoloopCheck();
+    return;
+  }
+  // The retry of a failed check, rate-limited. The check's own RPCs land here
+  // too; the running flag keeps them from starting another.
+  if (
+    autoloopCheckFailedAt !== null &&
+    !autoloopCheckRunning &&
+    Date.now() - autoloopCheckFailedAt >= AUTOLOOP_RETRY_INTERVAL_MS
+  ) {
+    startAutoloopCheck();
+  }
+}
+
+function startAutoloopCheck(): void {
+  autoloopCheckRunning = true;
+  autoloopCheck = ensureAutoloopOff().finally(() => {
+    autoloopCheckRunning = false;
+  });
+}
+
+function noteLoopUnavailable(): void {
+  loopReachability = "unavailable";
+}
+
+async function ensureAutoloopOff(): Promise<void> {
+  try {
+    const params = await rpcCall<Record<string, unknown>>("GetLiquidityParams", {});
+    if (params.autoloop) {
+      await rpcCall("SetLiquidityParams", { parameters: { ...params, autoloop: false } });
+      console.log(
+        "[loop] autoloop was on; switched it off (loop-fee-ceilings F8). " +
+          "The full parameter set was written back with only autoloop changed."
+      );
+    }
+    autoloopCheckFailedAt = null;
+  } catch (err: any) {
+    autoloopCheckFailedAt = Date.now();
+    console.error(
+      "[loop] autoloop check failed; swaps are not blocked, and it is retried at the next connect:",
+      err?.message ?? String(err)
+    );
+  }
+}
+
+/** Resolves once the autoloop check in flight (if any) has finished. It never
+ *  rejects. For tests and diagnostics; no swap path waits on it. */
+export function whenAutoloopCheckSettles(): Promise<void> {
+  return autoloopCheck;
 }
 
 export type LoopOutTerms = {
@@ -206,6 +298,10 @@ export type LoopOutQuote = {
   miner_fee: number;
   total_cost_sats: number;
   conf_target: number;
+  /** The node the swap payment goes to, hex pubkey. loopd documents it for
+   *  testing connectivity before initiating; the pre-initiation route probe
+   *  targets it first (loop-fee-ceilings spec §4, B13). "" if loopd sent none. */
+  swap_payment_dest: string;
 };
 
 /** Get a cost quote for a Loop Out swap of a given amount. */
@@ -218,6 +314,7 @@ export async function getLoopOutQuote(
     swap_fee_sat: number;
     prepay_amt_sat: number;
     htlc_sweep_fee_sat: number;
+    swap_payment_dest?: Buffer | Uint8Array;
   }>("LoopOutQuote", { amt: amountSats, conf_target: target });
 
   const swapFee = Number(res.swap_fee_sat);
@@ -230,6 +327,7 @@ export async function getLoopOutQuote(
     miner_fee: minerFee,
     total_cost_sats: swapFee + prepay + minerFee,
     conf_target: target,
+    swap_payment_dest: Buffer.from(res.swap_payment_dest ?? []).toString("hex"),
   };
 }
 
@@ -238,6 +336,16 @@ export type LoopOutSwapResult = {
   id: string;
   server_message: string;
 };
+
+/**
+ * The routing-fee ceiling for one Loop Out payment (the swap or the prepay):
+ * the cap setting times that payment's amount, rounded down so it never
+ * exceeds the cap (loop-fee-ceilings spec §4, D13). Also the bound the
+ * pre-initiation route probe checks against.
+ */
+export function routingFeeCeilingSat(amountSat: number): number {
+  return Math.floor((amountSat * ENV.loopRoutingFeeCapPpm) / 1_000_000);
+}
 
 /** Initiate a Loop Out swap. */
 export async function executeLoopOutSwap(params: {
@@ -251,22 +359,34 @@ export async function executeLoopOutSwap(params: {
 }): Promise<LoopOutSwapResult> {
   // Convert short channel IDs (e.g. "939318x1492x1") to uint64 strings for loopd proto
   const chanSet = params.outgoing_chan_set.map(shortChannelIdToUint64);
+  const request = {
+    amt: params.amt,
+    dest: params.dest,
+    outgoing_chan_set: chanSet,
+    max_swap_fee: params.max_swap_fee,
+    max_miner_fee: params.max_miner_fee,
+    max_prepay_amt: params.max_prepay_amt,
+    sweep_conf_target: params.sweep_conf_target,
+    // Each routing ceiling is the cap on its own payment, separate from
+    // max_swap_fee (which used to be reused for both).
+    max_prepay_routing_fee: routingFeeCeilingSat(params.max_prepay_amt),
+    max_swap_routing_fee: routingFeeCeilingSat(params.amt),
+  };
+  // Ruling r (D25): the ceilings sent, from the request itself, amounts only.
+  console.log("[loop] LoopOut initiation, ceilings sent (sats):", {
+    amt: request.amt,
+    max_swap_fee: request.max_swap_fee,
+    max_miner_fee: request.max_miner_fee,
+    max_prepay_amt: request.max_prepay_amt,
+    max_swap_routing_fee: request.max_swap_routing_fee,
+    max_prepay_routing_fee: request.max_prepay_routing_fee,
+  });
   const res = await rpcCall<{
     id_bytes: Buffer | string;
     server_message: string;
   }>(
     "LoopOut",
-    {
-      amt: params.amt,
-      dest: params.dest,
-      outgoing_chan_set: chanSet,
-      max_swap_fee: params.max_swap_fee,
-      max_miner_fee: params.max_miner_fee,
-      max_prepay_amt: params.max_prepay_amt,
-      sweep_conf_target: params.sweep_conf_target,
-      max_prepay_routing_fee: params.max_swap_fee,
-      max_swap_routing_fee: params.max_swap_fee,
-    },
+    request,
     60_000 // longer deadline for swap initiation
   );
 
@@ -350,10 +470,20 @@ export type LoopInQuote = {
   total_cost_sats: number;
 };
 
-/** Get a cost quote for a Loop In swap of a given amount. */
+/**
+ * Get a cost quote for a Loop In swap of a given amount.
+ *
+ * Ruling l (spec §4 D, D26): the quote asks what executeLoopInSwap will ask —
+ * the same last hop (QuoteRequest.loop_in_last_hop = 5, LoopInRequest.last_hop
+ * = 4) and the same private setting (private = 7 / = 10, so loopd generates
+ * the hop hints on both; explicit route hints are sent on neither). The
+ * ceiling is bound to this quote, so a quote that priced a different request
+ * than execute would let loopd's re-quote at LoopIn exceed it.
+ */
 export async function getLoopInQuote(
   amountSats: number,
-  confTarget?: number
+  confTarget?: number,
+  lastHop?: string
 ): Promise<LoopInQuote> {
   const target = confTarget ?? ENV.loopConfTarget;
   const res = await rpcCall<{
@@ -361,7 +491,12 @@ export async function getLoopInQuote(
     htlc_publish_fee_sat: number;
     cltv_delta: number;
     conf_target: number;
-  }>("GetLoopInQuote", { amt: amountSats, conf_target: target });
+  }>("GetLoopInQuote", {
+    amt: amountSats,
+    conf_target: target,
+    loop_in_last_hop: lastHop ? Buffer.from(lastHop, "hex") : undefined,
+    private: true, // as executeLoopInSwap
+  });
 
   const swapFee = Number(res.swap_fee_sat);
   const htlcFee = Number(res.htlc_publish_fee_sat);
@@ -391,26 +526,29 @@ export async function executeLoopInSwap(params: {
   last_hop?: string;
   label?: string;
 }): Promise<LoopInSwapResult> {
+  const request = {
+    amt: params.amt,
+    max_swap_fee: params.max_swap_fee,
+    max_miner_fee: params.max_miner_fee,
+    htlc_conf_target: params.htlc_conf_target,
+    last_hop: params.last_hop ? Buffer.from(params.last_hop, "hex") : undefined,
+    label: params.label || `bitcorn-loop-in-${Date.now()}`,
+    initiator: "bitcorn",
+    private: true, // hub-and-spoke: loopd auto-generates route hints from local channels
+  };
+  // Ruling r (D25): the ceilings sent, from the request itself, amounts only.
+  console.log("[loop] LoopIn initiation, ceilings sent (sats):", {
+    amt: request.amt,
+    max_swap_fee: request.max_swap_fee,
+    max_miner_fee: request.max_miner_fee,
+  });
   const res = await rpcCall<{
     id_bytes: Buffer | string;
     server_message: string;
     htlc_address: string;
     htlc_address_p2wsh: string;
     htlc_address_p2tr: string;
-  }>(
-    "LoopIn",
-    {
-      amt: params.amt,
-      max_swap_fee: params.max_swap_fee,
-      max_miner_fee: params.max_miner_fee,
-      htlc_conf_target: params.htlc_conf_target,
-      last_hop: params.last_hop ? Buffer.from(params.last_hop, "hex") : undefined,
-      label: params.label || `bitcorn-loop-in-${Date.now()}`,
-      initiator: "bitcorn",
-      private: true, // hub-and-spoke: loopd auto-generates route hints from local channels
-    },
-    60_000
-  );
+  }>("LoopIn", request, 60_000);
 
   const hashHex =
     typeof res.id_bytes === "string"

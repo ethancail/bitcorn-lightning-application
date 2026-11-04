@@ -24,6 +24,9 @@ import { createLndChainAddress } from "../lightning/lnd";
 export type AppSwapStatus =
   | "quote_created"
   | "awaiting_confirmation"
+  // Claimed by initiateSwap; the pre-initiation checks and the loopd call are
+  // in progress. Only ever set by the atomic claim, and always left again.
+  | "initiating"
   | "initiated"
   | "executing"
   | "confirming"
@@ -80,6 +83,7 @@ export type LoopOutQuoteResult = {
   miner_fee_sat: number;
   total_fee_sat: number;
   conf_target: number;
+  swap_payment_dest: string;
 };
 
 export async function quoteLoopOut(amountSat: number, confTarget?: number): Promise<LoopOutQuoteResult> {
@@ -91,6 +95,7 @@ export async function quoteLoopOut(amountSat: number, confTarget?: number): Prom
     miner_fee_sat: q.miner_fee,
     total_fee_sat: q.total_cost_sats,
     conf_target: q.conf_target,
+    swap_payment_dest: q.swap_payment_dest,
   };
 }
 
@@ -131,8 +136,12 @@ export type LoopInQuoteResult = {
   conf_target: number;
 };
 
-export async function quoteLoopIn(amountSat: number, confTarget?: number): Promise<LoopInQuoteResult> {
-  const q = await getLoopInQuote(amountSat, confTarget);
+export async function quoteLoopIn(
+  amountSat: number,
+  confTarget?: number,
+  lastHop?: string
+): Promise<LoopInQuoteResult> {
+  const q = await getLoopInQuote(amountSat, confTarget, lastHop);
   return {
     amount_sat: amountSat,
     swap_fee_sat: q.swap_fee_sat,

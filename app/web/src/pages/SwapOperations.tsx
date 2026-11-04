@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { api, fmtSats, resolveContactName, type Contact } from "../api/client";
+import { api, fmtSats, resolveContactName, swapExecuteBody, type Contact } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse } from "../api/client";
 import { API_BASE } from "../config/api";
 import ErrorState from "../components/ErrorState";
@@ -7,7 +7,12 @@ import ErrorState from "../components/ErrorState";
 // is already stronger than the generic one (chunked address + verify checkbox),
 // so swapping it out would lose those. Only the typed-amount gate was missing,
 // and that logic stays in one place.
-import { challengeSatisfied, challengePrompt } from "../components/actionConfirm/confirmAction";
+import {
+  challengeSatisfied,
+  challengePrompt,
+  authorizedMaxSats,
+  loopOutEstimatedFeeSats,
+} from "../components/actionConfirm/confirmAction";
 import { classifyConfirmError } from "../components/actionConfirm/confirmErrors";
 import {
   INITIAL_FRESHNESS,
@@ -33,8 +38,10 @@ type ChannelInfo = {
   localPct: number;
 };
 
-function statusBadge(status: string): { label: string; cls: string } {
+// Exported for the 'initiating' mapping test (swapStatus.initiating.test.ts).
+export function statusBadge(status: string): { label: string; cls: string } {
   switch (status) {
+    case "initiating": return { label: "Starting…", cls: "badge-amber" };
     case "initiated": return { label: "Processing", cls: "badge-amber" };
     case "executing": return { label: "In Progress", cls: "badge-amber" };
     case "confirming": return { label: "Confirming", cls: "badge-blue" };
@@ -56,8 +63,9 @@ function isTerminal(status: string): boolean {
   return status === "completed" || status === "failed" || status === "expired";
 }
 
-function statusText(status: string, failureReason: string | null): string {
+export function statusText(status: string, failureReason: string | null): string {
   switch (status) {
+    case "initiating": return "Starting…";
     case "initiated": return "Swap initiated, processing...";
     case "executing": return "Swap in progress...";
     case "confirming": return "Confirming on-chain...";
@@ -304,17 +312,27 @@ function LoopOutTab({
     setError(null);
     setPhase("initiating");
     try {
-      const body: { swap_request_id: string; destination_address?: string } = { swap_request_id: quoteResp.swap_request.id };
-      if (destinationAddress.trim()) body.destination_address = destinationAddress.trim();
+      const fields: { swap_request_id: string; destination_address?: string } = {
+        swap_request_id: quoteResp.swap_request.id,
+      };
+      if (destinationAddress.trim()) fields.destination_address = destinationAddress.trim();
+      // The shared builder echoes the quote's ceilings unchanged (F4).
+      const body = swapExecuteBody(quoteResp, fields);
       const resp = await api.adminLoopOut(body);
       setTrackingId(resp.swap_request.id);
       setTrackingSwap(resp.swap_request);
       setPhase("tracking");
     } catch (e: any) {
       setPhase("quoted");
-      // A confirmation refusal gets its own wording. A 409 here means the
-      // dashboard and API disagree about this action, so the copy must not
-      // read as a transient glitch the operator should retry.
+      // A confirmation refusal gets its own wording: a 409 with the code
+      // confirmation_mismatch means the dashboard and API disagree about this
+      // action, so that copy must not read as a transient glitch the operator
+      // should retry. Not every 409 is that: the swap refusals before
+      // initiation (requote_required, ceiling_mismatch, fee_rate_over_quote,
+      // route_not_found, route_fee_over_cap, swap_in_progress,
+      // swap_not_executable) are 409s too. classifyConfirmError keys on the
+      // code, not the status, so those fall through to e.message, which keeps
+      // the code on this operator page.
       const cf = classifyConfirmError(e);
       setError(cf ? cf.title + " \u2014 " + cf.detail : (e.message ?? "Failed to execute"));
     }
@@ -389,7 +407,8 @@ function LoopOutTab({
 
   if ((phase === "quoted" || phase === "initiating") && quoteResp) {
     const q = quoteResp.quote;
-    const netFee = (q.swap_fee_sat ?? 0) + (q.miner_fee_sat ?? 0);
+    const netFee = loopOutEstimatedFeeSats(q);
+    const maxFees = authorizedMaxSats(quoteResp.ceilings);
     return (
       <>
       {/* Execute confirmation — same dialog pattern as the ChannelsPage close-
@@ -403,6 +422,10 @@ function LoopOutTab({
             <div className="dialog-body">
               This swaps <strong>{q.amount_sat.toLocaleString()} sats</strong> of channel balance
               into an on-chain payment. Estimated fee: ~{netFee.toLocaleString()} sats (swap + miner).
+              {maxFees !== undefined && (
+                <> Most you authorize in fees: {maxFees.toLocaleString()} sats.</>
+              )}{" "}
+              Once the swap starts, the Bitcoin network fee follows the market, capped at 20% of the amount.
             </div>
             {/* Destination is always operator-supplied on this path (no
                auto-generate — see the note above destValid), so the warning
@@ -485,7 +508,7 @@ function LoopOutTab({
 
           {q.prepay_sat != null && q.prepay_sat > 0 && (
             <div style={{ fontSize: "0.75rem", color: "var(--text-3)", padding: "6px 10px", background: "var(--bg-3)", borderRadius: 6 }}>
-              Prepay hold: {fmtSats(q.prepay_sat)} — temporary, returned in the on-chain payment.
+              Prepay: {fmtSats(q.prepay_sat)} — paid to the swap service up front and counted toward the swapped amount, not a fee.
             </div>
           )}
 

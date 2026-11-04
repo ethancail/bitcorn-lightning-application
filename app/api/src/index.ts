@@ -88,7 +88,7 @@ import {
 } from "./valuation/manualInputStore";
 import { postManualInputToWorker, postRefreshToWorker } from "./valuation/workerClient";
 import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
-import { executeLoopOut, autoLoopOutRebalance, LoopOutError } from "./lightning/rebalance-loop";
+import { executeLoopOut, autoLoopOutRebalance, LoopOutError, checkLoopOutPreconditions } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
 import { startScheduler, runTick, ensureWithdrawAddress, runCatchUp, computeMissedSummary } from "./autoBuy/scheduler";
 import {
@@ -2834,10 +2834,26 @@ async function dispatchRequest(
         return;
       }
       const quote = await getLoopOutQuote(amountSats);
-      const maxSwapFee = Math.ceil(amountSats * (ENV.loopMaxSwapFeePct / 100));
-      const acceptable = quote.swap_fee_sat <= maxSwapFee && quote.miner_fee <= ENV.loopMaxMinerFeeSats;
+      // "Acceptable" = execute would not refuse at this moment: the flag runs
+      // the same pre-checks executeLoopOut runs before money moves, and none
+      // of them moves money (loop-fee-ceilings spec §4, B7).
+      let acceptable = true;
+      let refusal: { code: string | null; detail: string } | null = null;
+      try {
+        await checkLoopOutPreconditions({ channel_id: channelId, amount_sats: amountSats });
+      } catch (e: any) {
+        if (e instanceof LoopOutError) {
+          acceptable = false;
+          refusal = { code: e.code ?? null, detail: e.message };
+        } else if (e instanceof DailyLossCapError) {
+          acceptable = false;
+          refusal = { code: "daily_loss_cap", detail: e.message };
+        } else {
+          throw e;
+        }
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ...quote, channel_id: channelId, acceptable }));
+      res.end(JSON.stringify({ ...quote, channel_id: channelId, acceptable, refusal }));
     } catch (err: any) {
       const code = String(err?.message).includes("Treasury privileges required") ? 403 : 500;
       res.writeHead(code, { "Content-Type": "application/json" });
@@ -2922,7 +2938,11 @@ async function dispatchRequest(
       req.on("end", async () => {
         try {
           const parsed = JSON.parse(body || "{}");
-          const { channel_id, amount_sats, max_swap_fee_sats, max_miner_fee_sats, conf_target } = parsed;
+          // Only the channel and the amount are read. The body's ceiling
+          // overrides and conf_target are dropped: the ceilings come from the
+          // swap's own in-call quote, and the sweep targets the default
+          // (loop-fee-ceilings spec §4 C1–C3, F6, ruling 1).
+          const { channel_id, amount_sats } = parsed;
           if (!channel_id || !amount_sats) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "channel_id and amount_sats are required" }));
@@ -2931,14 +2951,15 @@ async function dispatchRequest(
           const result = await executeLoopOut({
             channel_id: String(channel_id),
             amount_sats: Number(amount_sats),
-            max_swap_fee_sats: max_swap_fee_sats != null ? Number(max_swap_fee_sats) : undefined,
-            max_miner_fee_sats: max_miner_fee_sats != null ? Number(max_miner_fee_sats) : undefined,
-            conf_target: conf_target != null ? Number(conf_target) : undefined,
           });
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify(result));
         } catch (err: any) {
-          if (err instanceof LoopOutError) {
+          if (err instanceof LoopOutError && err.code) {
+            // A refusal before initiation, with its own code.
+            res.writeHead(409, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err.code, detail: err.message }));
+          } else if (err instanceof LoopOutError) {
             res.writeHead(400, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: err.message }));
           } else if (err instanceof DailyLossCapError) {

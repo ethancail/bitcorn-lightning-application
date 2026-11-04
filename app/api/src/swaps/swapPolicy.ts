@@ -18,10 +18,9 @@ export type PolicyResult = { ok: true } | { ok: false; reason: string; code: str
 export async function checkMemberLoopOutPolicy(params: {
   nodePubkey: string;
   amountSat: number;
-  maxFeeSat?: number;
   quotedFeeSat: number;
 }): Promise<PolicyResult> {
-  const { amountSat, maxFeeSat, quotedFeeSat, nodePubkey } = params;
+  const { amountSat, quotedFeeSat, nodePubkey } = params;
 
   // ── 1. Amount bounds ──────────────────────────────────────────────────
   if (amountSat < ENV.memberMinWithdrawalSat) {
@@ -134,7 +133,9 @@ export async function checkMemberLoopOutPolicy(params: {
   }
 
   // ── 5. Fee cap ────────────────────────────────────────────────────────
-  const feeLimit = maxFeeSat ?? Math.ceil(amountSat * ENV.loopMaxSwapFeePct / 100);
+  // The 15% sanity check on the quote (F5). A caller-supplied max_fee_sat no
+  // longer exists: it used to REPLACE this limit (loop-fee-ceilings B6, D18).
+  const feeLimit = Math.ceil(amountSat * ENV.loopMaxSwapFeePct / 100);
   if (quotedFeeSat > feeLimit) {
     return { ok: false, reason: `Quoted fee (${quotedFeeSat}) exceeds cap (${feeLimit})`, code: "fee_exceeds_cap" };
   }
