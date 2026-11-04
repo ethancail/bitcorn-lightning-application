@@ -422,6 +422,10 @@ export type SwapInfo = {
   cost_offchain: number;
   initiation_time: number;
   last_update_time: number;
+  /** loopd's FailureReason as its raw enum name (client.proto SwapStatus
+   *  field 14), e.g. "FAILURE_REASON_OFFCHAIN"; null when loopd gives none
+   *  (FAILURE_REASON_NONE, or absent). Drive-mode P1 item 9. */
+  failure_reason: string | null;
 };
 
 /** List all Loop swaps (in-flight and completed). */
@@ -440,6 +444,10 @@ export async function listLoopSwaps(): Promise<SwapInfo[]> {
     cost_offchain: Number(s.cost_offchain || 0),
     initiation_time: Number(s.initiation_time || 0),
     last_update_time: Number(s.last_update_time || 0),
+    failure_reason:
+      typeof s.failure_reason === "string" && s.failure_reason && s.failure_reason !== "FAILURE_REASON_NONE"
+        ? s.failure_reason
+        : null,
   }));
 }
 
