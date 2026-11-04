@@ -38,7 +38,8 @@ export function statusBadge(status: string): { label: string; cls: string } {
  * its sentence (loopFailureCopy.ts). loopd sets FAILURE_REASON_TEMPORARY so the
  * swap is NOT abandoned, and a restart picks it up (loopout.go:398-405,
  * loopin.go:566-571); the poller still stores it as "failed" — display only.
- * ⚠ A new label: Top Up's history threshold must be re-measured (header).
+ * A new label, so Top Up's history threshold was re-measured for it (R34):
+ * styles.css X4c and phoneTables.css.test.ts hold the readings.
  */
 export function memberSwapBadge(status: string, failureReason: string | null): { label: string; cls: string } {
   if (status === "failed" && failureReason === "FAILURE_REASON_TEMPORARY") {

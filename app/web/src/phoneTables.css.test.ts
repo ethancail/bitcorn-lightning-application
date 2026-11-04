@@ -147,4 +147,20 @@ describe("X4c: Top Up's history is one line where every row fits, a card otherwi
       expect(em * 14 * s + px, `stop ${s.toFixed(2)}`).toBeGreaterThanOrEqual(need);
     });
   });
+
+  it('the threshold covers "Not finished" (R34: Chromium and Firefox, Small and Default)', () => {
+    // R33 finding 9's new badge label. The widest one-line table, px, with every
+    // row "Not finished" (3,000,000 sats, each month at 12:58 AM/PM), measured
+    // in the live Top Up page, 2026-11-04: drive-mode-evidence/p2-build/gate/
+    // 2026-11-04-r34-badge-fit-{chromium,firefox}.txt. Small is the binding
+    // preset (the smallest; the threshold's em slope outgrows the row's).
+    const READINGS: Array<[label: string, scale: number, chromium: number, firefox: number]> = [
+      ["Small", 0.85, 305.2, 305.48],
+      ["Default", 1, 339.55, 339.87],
+    ];
+    const [, em, px] = THRESHOLD.match(/^calc\(([\d.]+)em \+ (\d+)px\)$/)!.map(Number);
+    for (const [label, s, chromium, firefox] of READINGS) {
+      expect(em * 14 * s + px, label).toBeGreaterThanOrEqual(Math.max(chromium, firefox));
+    }
+  });
 });

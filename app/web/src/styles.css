@@ -3879,15 +3879,20 @@ input[type="number"] {
      px part is the cells' fixed padding. Rounded up. Re-measured when
      quote_created became "Quoted" (member-ui-fixes PR B): the widest
      status is now "In Progress" and every stop is narrower or equal, so
-     the threshold stands. The card rules below
+     the threshold stood. Re-measured for "Not finished" (drive-mode P2,
+     R33 finding 9; R34), in the live page in Chromium and Firefox: it
+     needs 305.48px at Small (0.85) and 339.87px at Default, 0.9px past
+     the old 101px at Small, where a row wrapped. +2px covers both with
+     about 1px to spare; Small binds, since the em slope outgrows the
+     row's at larger presets. The card rules below
      repeat the .phone-card block (phoneTables.css.test.ts pins them equal).
      Without container queries the table keeps its sideways scroll. */
   .phone-fit-wrap { container: topup-history / inline-size; }
-  @container topup-history (width >= calc(17.1em + 101px)) {
+  @container topup-history (width >= calc(17.1em + 103px)) {
     .data-table.phone-fit { min-width: 0; table-layout: auto; }
     .data-table.phone-fit :is(colgroup, .col-secondary) { display: none; }
   }
-  @container topup-history (width < calc(17.1em + 101px)) {
+  @container topup-history (width < calc(17.1em + 103px)) {
     .data-table.phone-fit { display: block; width: 100%; min-width: 0; }
     .data-table.phone-fit :is(thead, colgroup) { display: none; }
     .data-table.phone-fit tbody { display: block; width: 100%; }
