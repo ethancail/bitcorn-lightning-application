@@ -7,7 +7,7 @@ import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse, Swa
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import { capacityTone, capacityRoomWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
-import { statusBadge } from "../components/swapStatus";
+import { statusBadge, memberSwapBadge } from "../components/swapStatus";
 import { loopFailureSentence } from "../components/loopFailureCopy";
 import ActionConfirmModal, {
   useActionConfirm,
@@ -52,7 +52,8 @@ export function statusText(status: string, failureReason: string | null): string
     case "completed": return "Withdrawal complete";
     // drive-mode P2 item 7: the member-facing sentence, never loopd's raw code
     // (which stays in Technical details).
-    case "failed": return `Withdrawal failed. ${loopFailureSentence(failureReason, "loop_out")}`;
+    // R33 finding 9: a temporary failure is not final, so it says so.
+    case "failed": return `${failureReason === "FAILURE_REASON_TEMPORARY" ? "Withdrawal not finished." : "Withdrawal failed."} ${loopFailureSentence(failureReason, "loop_out")}`;
     default: return statusBadge(status).label;
   }
 }
@@ -838,8 +839,8 @@ export default function WithdrawBitcoin() {
             <span className="panel-title">
               <span className="icon">◎</span>Withdrawal Status
             </span>
-            <span className={`badge ${statusBadge(trackingSwap.status).cls}`}>
-              {statusBadge(trackingSwap.status).label}
+            <span className={`badge ${memberSwapBadge(trackingSwap.status, trackingSwap.failure_reason).cls}`}>
+              {memberSwapBadge(trackingSwap.status, trackingSwap.failure_reason).label}
             </span>
           </div>
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -960,7 +961,7 @@ export default function WithdrawBitcoin() {
                 </thead>
                 <tbody>
                   {history.map((s) => {
-                    const badge = statusBadge(s.status);
+                    const badge = memberSwapBadge(s.status, s.failure_reason);
                     const isExpanded = expandedSwapId === s.id;
                     return (
                       <React.Fragment key={s.id}>
@@ -998,8 +999,8 @@ export default function WithdrawBitcoin() {
                                       </div>
                                       <div>
                                         <span style={{ color: "var(--text-3)" }}>Status:</span>{" "}
-                                        <span className={`badge ${statusBadge(expandedDetail.swap_request.status).cls}`}>
-                                          {statusBadge(expandedDetail.swap_request.status).label}
+                                        <span className={`badge ${memberSwapBadge(expandedDetail.swap_request.status, expandedDetail.swap_request.failure_reason).cls}`}>
+                                          {memberSwapBadge(expandedDetail.swap_request.status, expandedDetail.swap_request.failure_reason).label}
                                         </span>
                                       </div>
                                       <div>

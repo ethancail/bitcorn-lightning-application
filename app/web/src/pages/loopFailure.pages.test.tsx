@@ -131,6 +131,47 @@ describe("Top Up: a failed swap reads its sentence", () => {
   });
 });
 
+// R33 finding 9: a temporary failure is not final, so its badge and its status
+// line say "not finished", matching the sentence. Display only: the stored
+// status is still "failed".
+describe("R33 finding 9: a temporary failure reads \"Not finished\"", () => {
+  const badges = () => [...host.querySelectorAll(".badge")].map((b) => b.textContent);
+
+  for (const [name, Page, type, prefix] of [
+    ["Withdraw", WithdrawBitcoin, "loop_out", "Withdrawal not finished."],
+    ["Top Up", RefillChannel, "loop_in", "Top up not finished."],
+  ] as const) {
+    it(`${name}: the tracking badge and the status line`, async () => {
+      stub.getSwapHistory.mockResolvedValue({ swaps: [swap(type, "executing", null)] });
+      stub.getSwap.mockResolvedValue({ swap_request: swap(type, "failed", "FAILURE_REASON_TEMPORARY"), execution: null, events: [] });
+      await mount(Page);
+      expect(badges()).toContain("Not finished");
+      expect(badges()).not.toContain("Failed");
+      expect(outsideDetails()).toContain(`${prefix} The ${type === "loop_out" ? "withdrawal" : "top-up"} stopped partway`);
+      expect(outsideDetails()).not.toMatch(/(Withdrawal|Top up) failed/);
+    });
+
+    it(`${name}: the history row and its expanded detail`, async () => {
+      stub.getSwapHistory.mockResolvedValue({ swaps: [swap(type, "failed", "FAILURE_REASON_TEMPORARY")] });
+      stub.getSwap.mockResolvedValue({ swap_request: swap(type, "failed", "FAILURE_REASON_TEMPORARY"), execution: null, events: [] });
+      await mount(Page);
+      expect(badges()).toEqual(["1", "Not finished"]);
+      const row = [...host.querySelectorAll("tbody tr")][0];
+      await act(async () => { row.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+      await flush();
+      expect(badges().filter((b) => b === "Not finished")).toHaveLength(2);
+      expect(badges()).not.toContain("Failed");
+    });
+
+    it(`${name}: any other failure still badges "Failed"`, async () => {
+      stub.getSwapHistory.mockResolvedValue({ swaps: [swap(type, "failed", "FAILURE_REASON_TIMEOUT")] });
+      stub.getSwap.mockResolvedValue({ swap_request: swap(type, "failed", "FAILURE_REASON_TIMEOUT"), execution: null, events: [] });
+      await mount(Page);
+      expect(badges()).toContain("Failed");
+    });
+  }
+});
+
 it("sanity: the pages render", async () => {
   stub.getSwapHistory.mockResolvedValue({ swaps: [] });
   await mount(WithdrawBitcoin);
