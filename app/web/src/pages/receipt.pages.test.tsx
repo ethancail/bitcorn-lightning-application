@@ -119,6 +119,9 @@ for (const [name, Page, type] of [["Withdraw", WithdrawBitcoin, "loop_out"], ["T
       // breakdown wrapped every label and value on a phone; it spans the row.
       const cell = host.querySelector("[data-testid='fee-receipt']")!.parentElement as HTMLElement;
       expect(cell.style.gridColumn).toBe("1 / -1");
+      // …but no wider than a phone's view of Withdraw's sideways-scrolling
+      // table, where a full-width breakdown put its values off-screen.
+      expect((host.querySelector("[data-testid='fee-receipt']") as HTMLElement).style.maxWidth).toBe("320px");
     });
 
     it("the tracking panel, once completed: the same receipt", async () => {

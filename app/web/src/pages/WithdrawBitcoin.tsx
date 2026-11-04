@@ -109,7 +109,7 @@ function FeeReceipt({ receipt, toUsd }: { receipt: SwapReceipt; toUsd: (sats: nu
     ["Lightning routing", receipt.routing_fee_sat],
   ];
   return (
-    <div data-testid="fee-receipt">
+    <div data-testid="fee-receipt" style={{ maxWidth: 320 }}>
       <div className="stat-label">Fee</div>
       <div className="stat-value" style={{ fontSize: "1.125rem" }} data-testid="fee-summary">
         {dollars ?? fmtSats(receipt.total_sat)}
