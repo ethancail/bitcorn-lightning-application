@@ -66,7 +66,18 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `058_member_private_name.sql` | Treasury's store of members' Bitcorn-level names (`member_private_name`): one row per verified pubkey (lowercased) — `name` (normalized, validated, not blocked), `signed_at` (the challenge timestamp that signed it), `received_at`. Written by the `/api/subscription/token` handler only from a STRICTLY NEWER `signed_at` (the ordering is in the upsert's `WHERE`); an absent name never clears a row. Treasury-written only |
 | `059_member_name_status.sql` | Member-side record of the treasury's last `name_status` for the name this node sent (`member_name_status`: `name_sent`, `status` ∈ accepted/rejected/none). `name_sent` is load-bearing: Settings shows the rejected message only while it equals the current `bitcorn_name`. Member-written only |
 
-The migration set is contiguous from `001` through `059` with no gaps. Always allocate the next sequential number for new migrations.
+| `060_swap_requests_quoted_swap_fee.sql` | loop-fee-ceilings: `swap_requests.quoted_swap_fee_sat` — the quote's swap fee, bound to loopd's `max_swap_fee` at execute |
+| `061_swap_requests_quoted_prepay.sql` | loop-fee-ceilings: `swap_requests.quoted_prepay_sat` (Loop Out) — bound to `max_prepay_amt` |
+| `062_swap_requests_quoted_miner_fee.sql` | loop-fee-ceilings: `swap_requests.quoted_miner_fee_sat` — Loop Out sweep fee / Loop In HTLC fee; Top Up's rule uses it at execute |
+| `063_network_payments_max_fee.sql` | Drive-mode P1: `network_payments.max_fee_sats` — the fee limit sent with a member payment (10 sats + 1%, rounded up); NULL on receives, treasury sends and older rows |
+| `064_lnd_channels_local_reserve.sql` | Drive-mode P1: `lnd_channels.local_reserve_sat` — lnd's local channel reserve; room to send = local − it |
+| `065_lnd_channels_remote_reserve.sql` | Drive-mode P1: `lnd_channels.remote_reserve_sat` — the peer's reserve; room to receive = remote − it |
+| `066_lnd_channels_commit_fee.sql` | Drive-mode P1: `lnd_channels.commit_fee_sat` — reported only (lnd's balances are already net of it) |
+| `067_lnd_channels_commitment_type.sql` | Drive-mode P1: `lnd_channels.commitment_type` (ln-service's name, e.g. `anchor`) — Top Up counts anchor channels from it |
+| `068_lnd_channels_pending_outgoing.sql` | Drive-mode P1: `lnd_channels.pending_outgoing_sat` — in-flight outgoing HTLCs, reported, not subtracted |
+| `069_lnd_channels_pending_incoming.sql` | Drive-mode P1: `lnd_channels.pending_incoming_sat` — in-flight incoming HTLCs, reported, not subtracted |
+
+The migration set is contiguous from `001` through `069` with no gaps. Always allocate the next sequential number for new migrations.
 
 ⚠ **Adding columns: one statement per file.** `db/migrate.ts` `db.exec`s each file whole with no transaction, and on any "duplicate column" / "already exists" error it marks the **whole file** applied — so in a multi-statement file whose first statement hits that, the rest never run and are never retried. `055`/`056` are split for that reason (`db/migrate.memberProfileName.test.ts` (d) demonstrates it). `052` is a multi-statement file of exactly that shape.
 
@@ -74,13 +85,13 @@ The migration set is contiguous from `001` through `059` with no gaps. Always al
 
 **Identity & sync**
 - `lnd_node_info` / `lnd_node_info_history` — current + historical node state (pubkey, alias, block height, synced, treasury channel flag, membership, role)
-- `lnd_peers` / `lnd_channels` — snapshot of LND peers and channels (used by liquidity/expansion logic)
+- `lnd_peers` / `lnd_channels` — snapshot of LND peers and channels (used by liquidity/expansion logic). Since drive-mode P1 each channel row also carries its reserves, commitment fee and type, and in-flight HTLC totals (064–069), written by `persist-channels.ts`
 
 **Payments**
 - `payments_inbound` — confirmed inbound invoices
 - `payments_outbound` — outbound attempts (pay endpoint + network pay; used for rate limiting)
 - `payments_forwarded` — forwarding history for routing revenue
-- `network_payments` — invoice-based payment records (direction, status, USD conversion, counterparty, memo)
+- `network_payments` — invoice-based payment records (direction, status, USD conversion, counterparty, memo; `max_fee_sats` since 063). The USD amount is stored only when the cached rate is fresh
 
 **Treasury policy & audit**
 - `treasury_fee_policy` — routing fee settings + last applied
