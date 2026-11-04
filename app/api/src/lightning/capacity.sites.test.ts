@@ -62,6 +62,8 @@ const { payNetworkInvoice } = await import("./network-payments");
 afterAll(() => fs.rmSync(TMP_DB, { recursive: true, force: true }));
 
 // capacity 1,000,000; the 1% stand-in would be 10,000 — the real reserves are not.
+// Opened by the treasury (is_initiator 0): a non-funder's room is local − reserve
+// (R23(i); the funder's headroom is in the last describe below).
 const CH = {
   id: "800000x1x0", cap: 1_000_000, local: 600_000, remote: 389_000,
   localReserve: 30_000, remoteReserve: 25_000,
@@ -77,8 +79,8 @@ beforeEach(() => {
     INSERT INTO lnd_channels
       (channel_id, peer_pubkey, capacity_sat, local_balance_sat, remote_balance_sat,
        active, private, updated_at, local_reserve_sat, remote_reserve_sat,
-       commit_fee_sat, commitment_type, pending_outgoing_sat, pending_incoming_sat)
-    VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, 'anchor', ?, ?)
+       commit_fee_sat, commitment_type, pending_outgoing_sat, pending_incoming_sat, is_initiator)
+    VALUES (?, ?, ?, ?, ?, 1, 0, ?, ?, ?, ?, 'anchor', ?, ?, 0)
   `).run(CH.id, HUB, CH.cap, CH.local, CH.remote, Date.now(), CH.localReserve,
     CH.remoteReserve, CH.commitFee, CH.pendingOut, CH.pendingIn);
 });
@@ -137,4 +139,33 @@ describe("stats return both capacity figures with their components (§3.3)", () 
     expect(ch.room_to_send_sats).toBe(CH.local - CH.localReserve); // not − pendingOut
     expect(ch.room_to_receive_sats).toBe(CH.remote - CH.remoteReserve); // not − pendingIn
   });
+});
+
+describe("R23(i) — a funder's room at every site: stats and both pay pre-check branches", () => {
+  // The same channel, opened by this member. lnd v0.20.1-beta's maximum at
+  // 2,500 sat/kw (commit fee 2,810 = FeeForWeight(2500, 1124)): local + 2,810
+  // − reserve − FeeForWeight(5000, 1124 + 2·172) = 600,000 + 2,810 − 30,000
+  // − 7,340 = 565,470 (derivation in capacity.funderHeadroom.test.ts).
+  const LND_MAX = 565_470;
+  beforeEach(() => {
+    db.prepare("UPDATE lnd_channels SET is_initiator = 1").run();
+  });
+
+  it("stats: room to send is never above lnd's maximum, and within 1,000 of it", async () => {
+    const room = (await statsChannel()).room_to_send_sats;
+    expect(room).toBeLessThanOrEqual(LND_MAX);
+    expect(LND_MAX - room).toBeLessThanOrEqual(1_000);
+  });
+
+  for (const [label, dest] of [["routed (treasury) branch", OTHER], ["direct-peer branch", HUB]] as const) {
+    it(`${label}: refuses at the stats figure + 1, passes at it`, async () => {
+      const room = (await statsChannel()).room_to_send_sats;
+      const over = await pay(room + 1, dest);
+      expect(over.payCalled).toBe(false);
+      expect(over.err).toContain(room.toLocaleString());
+      const at = await pay(room, dest);
+      expect(at.err).toBeNull();
+      expect(at.payCalled).toBe(true);
+    });
+  }
 });

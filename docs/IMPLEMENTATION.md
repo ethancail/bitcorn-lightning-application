@@ -10,7 +10,7 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/lightning/sync.ts` | Main sync orchestrator (15s loop) |
 | `src/lightning/persist-channels.ts` | Channel + peer sync to SQLite (upsert current, DELETE stale); stores reserves, commit fee, commitment type, in-flight HTLC totals |
 | `src/lightning/hubChannel.ts` | The hub channel, one definition for every site: largest active channel to the treasury, lowest short channel ID (numeric) between equals; `getHubChannelForDisplay()` falls back to the largest inactive for stats only |
-| `src/lightning/capacity.ts` | One capacity computation: room to send / room to receive from lnd's reserves; in-flight HTLCs and commit fee reported, not subtracted |
+| `src/lightning/capacity.ts` | One capacity computation: room to send / room to receive from lnd's reserves; for a channel this node opened, room to send also subtracts lnd's fee headroom (derived from lnd v0.20.1-beta, never above what lnd sends); in-flight HTLCs reported, not subtracted |
 | `src/lightning/payFeeLimit.ts` | Member payment fee limit (10 sats + 1%, exact in msat; members only) |
 | `src/price/btcUsdCache.ts` | In-memory BTC/USD cache: 60 s background refresh, 2 s timeout, fresh/stale/none states |
 | `src/lightning/lnd.ts` | LND client, TLS + macaroon setup |

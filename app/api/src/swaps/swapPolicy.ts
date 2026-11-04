@@ -9,6 +9,7 @@ import { ENV } from "../config/env";
 import { getLndChainBalance } from "../lightning/lnd";
 import { getLoopOutTerms, getLoopInTerms } from "../lightning/loop";
 import { getHubChannel } from "../lightning/hubChannel";
+import { capacityOf } from "../lightning/capacity";
 
 // The effective member swap limits, the same bounds this policy enforces
 // (drive-mode P1 item 6). Defined in swapLimits.ts; exported here beside
@@ -68,14 +69,18 @@ export async function checkMemberLoopOutPolicy(params: {
     return { ok: false, reason: "No active Treasury channel found", code: "no_treasury_channel" };
   }
 
+  // Room to send, not local balance: it is net of the channel reserve and, for
+  // a funder, lnd's fee headroom (capacity.ts, R23(i)); then the swap-only
+  // buffer (R24).
   const memberBuffer = ENV.swapMemberRoutingBufferSat;
-  const memberSpendable = Math.max(0, memberChannelRow.local_balance_sat - memberBuffer);
+  const memberRoom = capacityOf(memberChannelRow).room_to_send_sats;
+  const memberSpendable = Math.max(0, memberRoom - memberBuffer);
   const memberNeeded = amountSat + quotedFeeSat;
 
   if (memberSpendable < memberNeeded) {
     return {
       ok: false,
-      reason: `Insufficient Treasury channel balance (${memberChannelRow.local_balance_sat.toLocaleString()} local, ${memberBuffer.toLocaleString()} buffer, need ${memberNeeded.toLocaleString()})`,
+      reason: `Insufficient Treasury channel balance (${memberChannelRow.local_balance_sat.toLocaleString()} local, ${memberRoom.toLocaleString()} room to send, ${memberBuffer.toLocaleString()} buffer, need ${memberNeeded.toLocaleString()})`,
       code: "insufficient_treasury_channel",
     };
   }

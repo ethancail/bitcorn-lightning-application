@@ -98,3 +98,33 @@ describe("R22(h) — Top Up's presets respect the live minimum", () => {
     expect(presetLabels()).toContain("250k");
   });
 });
+
+// R23(j): the default amount is the smallest preset the live minimum allows,
+// not a fixed 250,000.
+describe("R23(j) — Top Up's default amount follows the live minimum", () => {
+  const amountValue = () => (host.querySelector('input[aria-label="Amount"]') as HTMLInputElement).value;
+
+  it("minimum 300,000: the default is 500,000 (the smallest preset allowed), not 250,000", async () => {
+    await mountWithMin(300_000);
+    expect(amountValue()).toBe("500,000");
+  });
+
+  it("minimum 250,000: the default is 250,000", async () => {
+    await mountWithMin(250_000);
+    expect(amountValue()).toBe("250,000");
+  });
+
+  it("minimum above every preset (2,500,000): the default is the minimum itself", async () => {
+    await mountWithMin(2_500_000);
+    expect(amountValue()).toBe("2,500,000");
+  });
+
+  it("an amount from the advisor link is kept", async () => {
+    stub.getSwapLimits.mockResolvedValue(limitsWithMin(300_000));
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, { initialEntries: ["/?amount=750000"] }, React.createElement(RefillChannel)));
+    });
+    for (let i = 0; i < 6; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(amountValue()).toBe("750,000");
+  });
+});

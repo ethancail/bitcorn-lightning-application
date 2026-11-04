@@ -59,8 +59,9 @@ export async function persistChannels() {
         (channel_id, peer_pubkey, capacity_sat, local_balance_sat,
          remote_balance_sat, active, private, updated_at, first_seen_at,
          local_reserve_sat, remote_reserve_sat, commit_fee_sat,
-         commitment_type, pending_outgoing_sat, pending_incoming_sat)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         commitment_type, pending_outgoing_sat, pending_incoming_sat,
+         is_initiator)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(channel_id) DO UPDATE SET
         peer_pubkey = excluded.peer_pubkey,
         capacity_sat = excluded.capacity_sat,
@@ -74,7 +75,8 @@ export async function persistChannels() {
         commit_fee_sat = excluded.commit_fee_sat,
         commitment_type = excluded.commitment_type,
         pending_outgoing_sat = excluded.pending_outgoing_sat,
-        pending_incoming_sat = excluded.pending_incoming_sat
+        pending_incoming_sat = excluded.pending_incoming_sat,
+        is_initiator = excluded.is_initiator
     `).run(
       c.id,
       c.partner_public_key,
@@ -92,6 +94,8 @@ export async function persistChannels() {
       c.type ?? null,
       pendingOut,
       pendingIn,
+      // Migration 070 (R23(i)): 1 = we opened (funded) it, the commit-fee payer.
+      c.is_partner_initiated === undefined ? null : c.is_partner_initiated ? 0 : 1,
     );
   }
 

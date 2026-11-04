@@ -76,8 +76,9 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `067_lnd_channels_commitment_type.sql` | Drive-mode P1: `lnd_channels.commitment_type` (ln-service's name, e.g. `anchor`) — Top Up counts anchor channels from it |
 | `068_lnd_channels_pending_outgoing.sql` | Drive-mode P1: `lnd_channels.pending_outgoing_sat` — in-flight outgoing HTLCs, reported, not subtracted |
 | `069_lnd_channels_pending_incoming.sql` | Drive-mode P1: `lnd_channels.pending_incoming_sat` — in-flight incoming HTLCs, reported, not subtracted |
+| `070_lnd_channels_is_initiator.sql` | Drive-mode P1, R23(i): `lnd_channels.is_initiator` — 1 when this node opened (funded) the channel, 0 when the peer did, NULL until synced. A funder's room to send subtracts lnd's fee headroom (`capacity.ts`) |
 
-The migration set is contiguous from `001` through `069` with no gaps. Always allocate the next sequential number for new migrations.
+The migration set is contiguous from `001` through `070` with no gaps. Always allocate the next sequential number for new migrations.
 
 ⚠ **Adding columns: one statement per file.** `db/migrate.ts` `db.exec`s each file whole with no transaction, and on any "duplicate column" / "already exists" error it marks the **whole file** applied — so in a multi-statement file whose first statement hits that, the rest never run and are never retried. `055`/`056` are split for that reason (`db/migrate.memberProfileName.test.ts` (d) demonstrates it). `052` is a multi-statement file of exactly that shape.
 

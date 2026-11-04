@@ -176,7 +176,7 @@ takes them from its own in-call quote and accepts no body overrides.
   `LOOP_SERVER_PUBKEYS` are probed instead. A route over the cap, or no route
   at all, refuses. ⚠ On the fallback branch the final hop (Loop server →
   destination) is Loop's own channel and is not probed.
-- **unknown HTLC fee (Loop In)** — loopd's failed estimate (−1, clamped to 0)
+- **unknown HTLC fee (Loop In)** — loopd's failed estimate (−1 becomes null)
   or a zero estimate is refused at the quote and before initiation.
 
 **One execute per quote.** The member and admin paths claim a quote

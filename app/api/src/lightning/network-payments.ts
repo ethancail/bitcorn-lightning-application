@@ -197,9 +197,14 @@ export async function payNetworkInvoice(
   // Pre-flight: check if we have enough channel capacity to send this payment.
   // Look at channels to the destination (direct peer) and total spendable across all channels.
   const directChannels = db.prepare(`
-    SELECT channel_id, local_balance_sat, remote_balance_sat, capacity_sat, active, local_reserve_sat
+    SELECT channel_id, local_balance_sat, remote_balance_sat, capacity_sat, active, local_reserve_sat,
+           remote_reserve_sat, commit_fee_sat, commitment_type, is_initiator
     FROM lnd_channels WHERE peer_pubkey = ? AND active = 1
-  `).all(destination) as Array<{ channel_id: string; local_balance_sat: number; remote_balance_sat: number; capacity_sat: number; active: number; local_reserve_sat: number | null }>;
+  `).all(destination) as Array<{
+    channel_id: string; local_balance_sat: number; remote_balance_sat: number; capacity_sat: number; active: number;
+    local_reserve_sat: number | null; remote_reserve_sat: number | null; commit_fee_sat: number | null;
+    commitment_type: string | null; is_initiator: number | null;
+  }>;
 
   const allActiveChannels = db.prepare(`
     SELECT COALESCE(SUM(local_balance_sat), 0) AS total_local

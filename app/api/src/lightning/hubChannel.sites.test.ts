@@ -89,8 +89,8 @@ function channels(...chs: Ch[]) {
     db.prepare(`
       INSERT INTO lnd_channels
         (channel_id, peer_pubkey, capacity_sat, local_balance_sat, remote_balance_sat,
-         active, private, updated_at, local_reserve_sat, remote_reserve_sat)
-      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+         active, private, updated_at, local_reserve_sat, remote_reserve_sat, is_initiator)
+      VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, 0)
     `).run(c.id, c.peer ?? HUB, c.cap, c.local, c.cap - c.local - 10_000, c.active ? 1 : 0,
       Date.now(), Math.ceil(c.cap * 0.01), Math.ceil(c.cap * 0.01));
   }
