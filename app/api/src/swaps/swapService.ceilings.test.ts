@@ -494,8 +494,9 @@ describe("D3 (D): the fee-rate refusal fires before Loop In initiation", () => {
 });
 
 describe("D12 (Ruling Z): a failed or zero HTLC-fee estimate is unknown, and refused", () => {
-  // getLoopInQuote clamps loopd's −1 ("estimation failed") to 0, so 0 is what
-  // a failed estimate looks like here; a genuine 0 is refused the same way.
+  // In getLoopInQuote loopd's −1 ("estimation failed") becomes null, not 0
+  // (the null at execute: swapService.executeNullMinerFee.test.ts); the 0 here
+  // is a genuine zero estimate, refused the same way.
   it("a quote with a zero HTLC fee is refused with miner_fee_unknown, and no quote is stored", async () => {
     stubs.quoteLoopIn.mockResolvedValueOnce(loopInQuote(0));
     const before = (db.prepare("SELECT COUNT(*) AS n FROM swap_requests").get() as { n: number }).n;
