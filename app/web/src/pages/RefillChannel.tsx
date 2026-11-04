@@ -550,7 +550,8 @@ export default function RefillChannel() {
             <div>
               <label className="form-label">Amount</label>
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-                {AMOUNT_PRESETS.map((preset) => (
+                {/* R22(h): a preset below the live minimum is not offered. */}
+                {AMOUNT_PRESETS.filter((p) => minR == null || p >= minR).map((preset) => (
                   <button
                     key={preset}
                     className={`btn ${amount === preset ? "btn-primary" : "btn-outline"}`}
