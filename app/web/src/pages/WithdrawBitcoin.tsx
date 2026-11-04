@@ -139,6 +139,11 @@ export default function WithdrawBitcoin() {
   const [limits, setLimits] = useState<SwapLimits | null>(null);
   const minW = limits?.loop_out?.min_sats ?? null;
   const maxW = limits?.loop_out?.max_sats ?? null;
+  // What can be withdrawn now and pass the pre-quote policy (drive-mode P1
+  // item 7): the server's figure — the effective maximum, today's remaining
+  // daily amount and the channel less the swap-only buffer.
+  const availableNow = limits?.loop_out?.available_now_sats ?? null;
+  const canWithdraw = minW != null && availableNow != null && availableNow >= minW;
   const [error, setError] = useState<string | null>(null);
 
   // ─── Quote state ──────────────────────────────────────────────────────
@@ -166,7 +171,6 @@ export default function WithdrawBitcoin() {
   const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[] } | null>(null);
 
   // ─── Max withdrawable from treasury channel ─────────────────────────
-  const [channelLocalForMax, setChannelLocalForMax] = useState<number | null>(null);
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
   const [channelLocalPct, setChannelLocalPct] = useState<number | null>(null);
@@ -191,26 +195,29 @@ export default function WithdrawBitcoin() {
               ? Math.round((s.treasury_channel.local_sats / s.treasury_channel.capacity_sats) * 100)
               : 0
           );
-          setChannelLocalForMax(s.treasury_channel.local_sats);
         }
       })
       .catch(() => {});
     api.getSwapLimits()
       .then((l) => {
         setLimits(l);
-        // The default amount is the effective minimum, not a literal.
-        setAmount((a) => (a > 0 ? a : l?.loop_out?.min_sats ?? 0));
+        // The default amount (the advisor's, else the effective minimum) is
+        // offered only if the policy would accept it now; otherwise none.
+        const min = l?.loop_out?.min_sats;
+        const now = l?.loop_out?.available_now_sats;
+        setAmount((a) =>
+          min == null || now == null || now < min ? 0 : a >= min && a <= now ? a : min,
+        );
       })
       .catch(() => {});
     api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
   }, []);
 
-  // Most you can withdraw: the channel less the swap buffer and a fee cushion,
-  // within the effective maximum.
-  const maxWithdrawable =
-    channelLocalForMax != null && maxW != null
-      ? Math.max(Math.min(channelLocalForMax - 50_000 - 2_000, maxW), 0)
-      : null;
+  // Most you can withdraw, and the Max button: the server's available_now,
+  // shown only when it reaches the minimum.
+  const maxWithdrawable = canWithdraw ? availableNow : null;
+  // Presets the policy would accept now; none when nothing can be withdrawn.
+  const presets = canWithdraw ? AMOUNT_PRESETS.filter((p) => p >= minW! && p <= availableNow!) : [];
 
   // ─── Pending swap detection ───────────────────────────────────────────
   useEffect(() => {
@@ -496,7 +503,7 @@ export default function WithdrawBitcoin() {
                 </div>
               )}
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-                {AMOUNT_PRESETS.map((preset) => (
+                {presets.map((preset) => (
                   <button
                     key={preset}
                     className={`btn ${amount === preset ? "btn-primary" : "btn-outline"}`}
@@ -552,6 +559,16 @@ export default function WithdrawBitcoin() {
                 <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
                   Minimum: {minW.toLocaleString()} sats. Maximum: {maxW.toLocaleString()} sats.
                 </p>
+              )}
+              {minW != null && availableNow != null && !canWithdraw && (
+                <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
+                  Not enough in your channel to withdraw right now — the minimum is {minW.toLocaleString()} sats.
+                </div>
+              )}
+              {canWithdraw && amount > availableNow! && (
+                <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
+                  The most you can withdraw right now is {availableNow!.toLocaleString()} sats.
+                </div>
               )}
               {minW != null && amount > 0 && amount < minW && (
                 <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
@@ -615,7 +632,7 @@ export default function WithdrawBitcoin() {
               className="btn btn-primary"
               style={{ width: "100%" }}
               onClick={handleGetQuote}
-              disabled={stage === "quoting" || addressLoading || !address}
+              disabled={stage === "quoting" || addressLoading || !address || !canWithdraw || amount < minW! || amount > availableNow!}
             >
               {stage === "quoting" ? "Getting quote..." : "Get Quote"}
             </button>

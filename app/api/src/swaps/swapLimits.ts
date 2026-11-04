@@ -14,6 +14,7 @@
 import { db } from "../db";
 import { ENV } from "../config/env";
 import { getLoopInTerms, getLoopOutTerms } from "../lightning/loop";
+import { getHubChannel } from "../lightning/hubChannel";
 
 export type SwapDirection = "loop_out" | "loop_in";
 export type LoopTermsLike = { min_swap_amount: number; max_swap_amount: number };
@@ -57,7 +58,16 @@ export type DirectionLimits = {
 
 export type MemberSwapLimits = {
   loop_available: boolean;
-  loop_out: DirectionLimits;
+  loop_out: DirectionLimits & {
+    /** The most a withdrawal can be right now and pass the pre-quote policy
+     *  (drive-mode P1 item 7): the effective maximum, today's remaining daily
+     *  amount, and the hub channel's local balance less the swap-only buffer
+     *  (R18(6)) — the same arithmetic as checkMemberLoopOutPolicy with no fee.
+     *  Below min_sats, nothing can be withdrawn now. The quote's fee is not in
+     *  it: an amount within one fee of it can still be refused by the fee phase
+     *  after the quote (the plan's stated residual), before any swap starts. */
+    available_now_sats: number;
+  };
   loop_in: DirectionLimits;
 };
 
@@ -79,9 +89,15 @@ export async function getMemberSwapLimits(nodePubkey: string): Promise<MemberSwa
       daily_remaining_sats: Math.max(0, daily - dailyUsed(nodePubkey, d)),
     };
   };
+  const loopOut = direction("loop_out", outTerms);
+  const hub = getHubChannel();
+  const hubSpendable = hub ? Math.max(0, hub.local_balance_sat - ENV.swapMemberRoutingBufferSat) : 0;
   return {
     loop_available: outTerms != null && inTerms != null,
-    loop_out: direction("loop_out", outTerms),
+    loop_out: {
+      ...loopOut,
+      available_now_sats: Math.max(0, Math.min(loopOut.max_sats, loopOut.daily_remaining_sats, hubSpendable)),
+    },
     loop_in: direction("loop_in", inTerms),
   };
 }

@@ -24,9 +24,14 @@ export type PolicyResult = { ok: true } | { ok: false; reason: string; code: str
 export async function checkMemberLoopOutPolicy(params: {
   nodePubkey: string;
   amountSat: number;
-  quotedFeeSat: number;
+  // Omit for the pre-quote phase (drive-mode P1 item 7): every check runs
+  // with no fee, and the fee cap is skipped — the shape Loop In already has.
+  // Provide for the fee phase, after the quote, and at execute.
+  quotedFeeSat?: number;
 }): Promise<PolicyResult> {
-  const { amountSat, quotedFeeSat, nodePubkey } = params;
+  const { amountSat, nodePubkey } = params;
+  const preQuote = params.quotedFeeSat === undefined;
+  const quotedFeeSat = params.quotedFeeSat ?? 0;
 
   // ── 1. Amount bounds ──────────────────────────────────────────────────
   if (amountSat < ENV.memberMinWithdrawalSat) {
@@ -132,8 +137,9 @@ export async function checkMemberLoopOutPolicy(params: {
   // ── 5. Fee cap ────────────────────────────────────────────────────────
   // The 15% sanity check on the quote (F5). A caller-supplied max_fee_sat no
   // longer exists: it used to REPLACE this limit (loop-fee-ceilings B6, D18).
+  // Not in the pre-quote phase: there is no quote yet.
   const feeLimit = Math.ceil(amountSat * ENV.loopMaxSwapFeePct / 100);
-  if (quotedFeeSat > feeLimit) {
+  if (!preQuote && quotedFeeSat > feeLimit) {
     return { ok: false, reason: `Quoted fee (${quotedFeeSat}) exceeds cap (${feeLimit})`, code: "fee_exceeds_cap" };
   }
 

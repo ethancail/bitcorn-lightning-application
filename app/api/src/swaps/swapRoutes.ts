@@ -81,6 +81,14 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
   const loopStatus = await isLoopAvailable();
   if (!loopStatus.available) return json(res, 503, { error: "loop_unavailable", detail: loopStatus.error });
 
+  // Phase 1: the pre-quote policy, before any swap_requests row or loopd quote
+  // exists (drive-mode P1 item 7) — the shape Loop In already has.
+  const preCheck = await checkMemberLoopOutPolicy({ nodePubkey: node.pubkey, amountSat });
+  if (!preCheck.ok) {
+    const status = preCheck.code === "loop_unavailable" ? 503 : 429;
+    return json(res, status, { error: "policy_violation", detail: preCheck.reason, code: preCheck.code });
+  }
+
   const { swapRequest, quote } = await createLoopOutQuote({
     nodePubkey: node.pubkey,
     role: node.node_role === "treasury" ? "treasury" : "member",
@@ -88,7 +96,7 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
     destinationAddress,
   });
 
-  // Pre-check policy (non-blocking — quote still created)
+  // Phase 2: the fee phase (advisory — the quote is already created)
   // The policy's fee is swap + miner, without the prepay: the prepay is an
   // advance on the principal, not a fee. Polar gate 1's L3 measured it (regtest
   // loopserver, not production): swap invoice + prepay − on-chain HTLC = the

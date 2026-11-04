@@ -1250,7 +1250,9 @@ export type SwapDirectionLimits = {
 };
 export type SwapLimits = {
   loop_available: boolean;
-  loop_out: SwapDirectionLimits;
+  /** available_now_sats (drive-mode P1 item 7): the most a withdrawal can be
+   *  right now and pass the pre-quote policy; below min_sats, none can. */
+  loop_out: SwapDirectionLimits & { available_now_sats: number };
   loop_in: SwapDirectionLimits;
 };
 
