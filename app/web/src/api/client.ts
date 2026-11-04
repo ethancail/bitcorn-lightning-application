@@ -1120,6 +1120,10 @@ export type DecodedInvoice = {
   tokens: number;
   description: string | null;
   expires_at: string | null;
+  /** The most this payment can cost in fees, sats rounded up: the server's
+   *  member limit, 10 sats + 1% (drive-mode P1 item 4). null on the treasury,
+   *  whose payments carry no limit. The client sends no fee field. */
+  max_fee_sats: number | null;
 };
 
 export type PaymentResult = {

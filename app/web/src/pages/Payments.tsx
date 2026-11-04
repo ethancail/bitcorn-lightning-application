@@ -537,6 +537,7 @@ function PayInvoiceForm({
         amountSats: decoded.tokens,
         destination: resolveContactName(decoded.destination, contacts) || decoded.destination,
         memo: decoded.description || undefined,
+        maxFeeSats: decoded.max_fee_sats,
       }),
     );
   };
@@ -716,6 +717,21 @@ function PayInvoiceForm({
               {usdPreview && <span className="text-dim" style={{ marginLeft: 6 }}>{usdPreview}</span>}
             </span>
           </div>
+          {/* The most this payment can cost, before it is sent (drive-mode P1
+              item 4, D1.6): the server's limit, 10 sats + 1%, rounded up. */}
+          {decoded.max_fee_sats != null && (
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+              <span>Most in fees</span>
+              <span>
+                {fmtSats(decoded.max_fee_sats)}
+                {rate != null && (
+                  <span className="text-dim" style={{ marginLeft: 6 }}>
+                    ${((decoded.max_fee_sats / 100_000_000) * rate).toFixed(2)}
+                  </span>
+                )}
+              </span>
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>To</span>
             <span className="td-mono ident" style={{ fontSize: "0.8rem" }}>

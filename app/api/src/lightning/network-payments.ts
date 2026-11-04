@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { decodePaymentRequest } from "ln-service";
+import { decodePaymentRequest, getRouteToDestination } from "ln-service";
 import { createLndInvoice, getLndClient } from "./lnd";
 // decodePaymentRequest is called directly off getLndClient()'s handle rather
 // than through an lnd.ts wrapper, so it binds its own deadline. Decode consults
@@ -7,6 +7,7 @@ import { createLndInvoice, getLndClient } from "./lnd";
 import { withDeadline, LND_GOSSIP_CALL_TIMEOUT_MS } from "./callDeadline";
 import { payInvoice } from "./pay";
 import { getHubChannel } from "./hubChannel";
+import { memberMaxFeeMtokens, mtokensToSatsCeil } from "./payFeeLimit";
 import { capacityOf } from "./capacity";
 import { insertOutboundPayment } from "./persist-payments";
 import { assertRateLimit } from "../utils/rate-limit";
@@ -85,6 +86,10 @@ export interface DecodedInvoice {
   tokens: number;
   description: string | null;
   expires_at: string | null;
+  /** The most this payment can cost in fees, in sats rounded up — the member
+   *  limit, 10 sats + 1% (drive-mode P1 item 4, D1.6). null on the treasury,
+   *  whose payments carry no limit (R18(7)). */
+  max_fee_sats: number | null;
 }
 
 export async function decodeInvoice(paymentRequest: string): Promise<DecodedInvoice> {
@@ -100,7 +105,62 @@ export async function decodeInvoice(paymentRequest: string): Promise<DecodedInvo
     tokens: decoded.tokens,
     description: decoded.description ?? null,
     expires_at: decoded.expires_at ?? null,
+    max_fee_sats: maxFeeSatsOf(decoded.mtokens),
   };
+}
+
+function maxFeeSatsOf(amountMtokens: string): number | null {
+  const limit = memberMaxFeeMtokens(amountMtokens);
+  return limit == null ? null : mtokensToSatsCeil(limit);
+}
+
+// ─── Fee refusal (R18(8)) ────────────────────────────────────────────────────
+
+type DecodedForRoute = {
+  destination: string;
+  tokens: number;
+  mtokens: string;
+  cltv_delta?: number;
+  payment?: string;
+  features?: Array<{ bit: number }>;
+  routes?: unknown[];
+};
+
+/**
+ * After a NO_ROUTE failure under the fee limit: is there a route at all, and
+ * what does the cheapest one cost? lnd applies max_fee at pathfinding, so an
+ * over-limit payment fails exactly like a payment with no route, and nothing
+ * was tried or charged. A read-only route query WITHOUT the limit (ln-service
+ * then sends its own maximum) separates the two — after the failure, never as
+ * a probe before every payment (R18(8)). Bounded like the decode: it commits
+ * nothing. Returns the cheapest route's fee in millisats, or null when there
+ * is no route at any fee or the query itself fails.
+ */
+async function cheapestRouteFeeMtokens(decoded: DecodedForRoute): Promise<bigint | null> {
+  try {
+    const { lnd } = getLndClient();
+    const outgoing = getHubChannel()?.channel_id;
+    const { route } = await withDeadline(
+      "payNetworkInvoice:feeRefusalRouteQuery",
+      () => getRouteToDestination({
+        lnd,
+        destination: decoded.destination,
+        mtokens: decoded.mtokens,
+        tokens: decoded.tokens,
+        cltv_delta: decoded.cltv_delta,
+        payment: decoded.payment,
+        total_mtokens: decoded.payment ? decoded.mtokens : undefined,
+        features: decoded.features,
+        routes: decoded.routes,
+        ...(outgoing ? { outgoing_channel: outgoing } : {}),
+      }),
+      LND_GOSSIP_CALL_TIMEOUT_MS,
+    );
+    if (!route) return null;
+    return BigInt(route.fee_mtokens ?? String(route.fee * 1000));
+  } catch {
+    return null;
+  }
 }
 
 // ─── Pay invoice (Pay Invoice flow) ──────────────────────────────────────────
@@ -191,12 +251,16 @@ export async function payNetworkInvoice(
 
   const exchangeRate = freshRateUsd();
   const amountUsd = exchangeRate ? satsToUsd(tokens, exchangeRate) : null;
+  // The fee limit pay.ts sends, stored with the payment (drive-mode P1 item 4,
+  // migration 063). null on the treasury (R18(7)).
+  const maxFeeMtokens = memberMaxFeeMtokens(decoded.mtokens);
+  const maxFeeSats = maxFeeMtokens == null ? null : mtokensToSatsCeil(maxFeeMtokens);
 
   // Record pending payment
   db.prepare(`
     INSERT INTO network_payments
-    (payment_hash, direction, status, amount_sats, exchange_rate_usd, amount_usd, memo, counterparty_pubkey, payment_request, created_at)
-    VALUES (?, 'send', 'pending', ?, ?, ?, ?, ?, ?, ?)
+    (payment_hash, direction, status, amount_sats, exchange_rate_usd, amount_usd, memo, counterparty_pubkey, payment_request, created_at, max_fee_sats)
+    VALUES (?, 'send', 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     paymentHash,
     tokens,
@@ -205,11 +269,12 @@ export async function payNetworkInvoice(
     description ?? null,
     destination,
     paymentRequest,
-    Date.now()
+    Date.now(),
+    maxFeeSats,
   );
 
   try {
-    const result = await payInvoice(paymentRequest);
+    const result = await payInvoice(paymentRequest, decoded.mtokens);
 
     // Update to succeeded
     db.prepare(`
@@ -273,7 +338,17 @@ export async function payNetworkInvoice(
 
     // Translate LND errors into human-readable messages
     let errorMsg = err.message || String(err);
-    if (errorMsg.includes("PaymentPathfindingFailedToFindPossibleRoute")) {
+    const routeFeeMtokens =
+      errorMsg.includes("PaymentPathfindingFailedToFindPossibleRoute") && maxFeeMtokens != null
+        ? await cheapestRouteFeeMtokens(decoded)
+        : null;
+    if (routeFeeMtokens != null && maxFeeMtokens != null && routeFeeMtokens > BigInt(maxFeeMtokens)) {
+      // A fee refusal, not a capacity problem (R18(8)): one sentence, with its fix.
+      errorMsg =
+        `Not sent: the cheapest route to ${resolveContact(destination)} costs ` +
+        `${mtokensToSatsCeil(routeFeeMtokens.toString()).toLocaleString()} sats in fees, over this payment's ` +
+        `${maxFeeSats!.toLocaleString()}-sat limit (${ENV.memberPayMaxFeeBaseSat} sats + ${ENV.memberPayMaxFeePpm / 10_000}%) — ask the recipient for an invoice from a node with a cheaper route.`;
+    } else if (errorMsg.includes("PaymentPathfindingFailedToFindPossibleRoute")) {
       errorMsg = `No route found to ${resolveContact(destination)}. Check that you have a channel with enough outbound capacity.`;
     } else if (errorMsg.includes("PaymentRejectedByDestination")) {
       errorMsg = `Payment rejected by ${resolveContact(destination)}. The invoice may have expired or already been paid.`;

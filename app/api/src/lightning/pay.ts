@@ -1,6 +1,7 @@
 import { payViaPaymentRequest } from "ln-service";
 import { getLndClient } from "./lnd";
 import { getHubChannel } from "./hubChannel";
+import { memberMaxFeeMtokens } from "./payFeeLimit";
 import { assertTier2RoutingAllowed } from "../subscription/tier2Gate";
 
 /** The hub channel's ID (drive-mode P1 item 1): null on the treasury node,
@@ -10,7 +11,12 @@ function getTreasuryChannelId(): string | null {
   return getHubChannel()?.channel_id ?? null;
 }
 
-export async function payInvoice(paymentRequest: string) {
+/**
+ * @param amountMtokens The decoded invoice's amount in millisats. A member's
+ *   payment carries max_fee_mtokens computed from it (drive-mode P1 item 4,
+ *   R15(7)); the treasury's carries none (R18(7)).
+ */
+export async function payInvoice(paymentRequest: string, amountMtokens: string) {
   // Tier 2 gate: refuse routing for members whose subscription is
   // prepay / routing_lapsed / close_due. May throw Tier2Denied which
   // the route handler maps to a 402 response. Per spec §5.2 the gate
@@ -19,6 +25,8 @@ export async function payInvoice(paymentRequest: string) {
 
   const { lnd } = getLndClient();
   const outgoingChannel = getTreasuryChannelId();
+  // Pinned or not, a member's payment carries the fee limit (D1.5).
+  const maxFeeMtokens = memberMaxFeeMtokens(amountMtokens);
 
   // ⚠ HELD — NO DEADLINE, DELIBERATELY. This is the one raw ln-service call site
   // in the app that is NOT bounded; the other seven are. It is in
@@ -32,6 +40,7 @@ export async function payInvoice(paymentRequest: string) {
     lnd,
     request: paymentRequest,
     ...(outgoingChannel ? { outgoing_channel: outgoingChannel } : {}),
+    ...(maxFeeMtokens ? { max_fee_mtokens: maxFeeMtokens } : {}),
   });
 
   return {

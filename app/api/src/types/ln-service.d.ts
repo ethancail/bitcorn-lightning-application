@@ -91,6 +91,7 @@ declare module "ln-service" {
     lnd: any;
     request: string;
     outgoing_channel?: string;
+    max_fee_mtokens?: string;
   }): Promise<{
     id: string;
     tokens: number;
@@ -105,8 +106,13 @@ declare module "ln-service" {
     id: string;
     destination: string;
     tokens: number;
+    mtokens: string;
     description?: string;
     expires_at?: string;
+    cltv_delta?: number;
+    payment?: string;
+    features?: Array<{ bit: number }>;
+    routes?: unknown[];
   }>;
 
   export interface Invoice {
@@ -280,6 +286,10 @@ declare module "ln-service" {
     payment?: string;
     total_mtokens?: string;
     start?: string; // source pubkey — probe route FROM this node (uses gossip graph)
+    mtokens?: string;
+    cltv_delta?: number;
+    features?: Array<{ bit: number }>;
+    routes?: unknown[];
   }): Promise<{ route: Route }>;
 
   export function payViaRoutes(options: {

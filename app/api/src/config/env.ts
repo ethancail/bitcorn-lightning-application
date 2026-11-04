@@ -258,4 +258,12 @@ export const ENV = {
     // Unset on a member node → refresh logs a warning and skips; the
     // member operates without an entitlement token until configured.
     treasuryApiUrl: process.env.TREASURY_API_URL || "",
+
+    // --- Member Lightning payment fee limit (drive-mode P1 item 4) ---
+    // Every MEMBER payment carries max_fee = base + ppm of the amount: 10 sats
+    // + 1% (10,000 ppm), R15(7), interim. The treasury's payments carry none
+    // (R18(7)). lnd applies it at pathfinding: a payment whose cheapest route
+    // costs more fails and pays nothing.
+    memberPayMaxFeeBaseSat: Number(process.env.MEMBER_PAY_MAX_FEE_BASE_SAT ?? "10"),
+    memberPayMaxFeePpm: Number(process.env.MEMBER_PAY_MAX_FEE_PPM ?? "10000"),
 };

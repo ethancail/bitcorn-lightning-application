@@ -3066,7 +3066,7 @@ async function dispatchRequest(
 
           // Decode payment request first (needed for rate limiting and logging)
           const { lnd: lndClient } = getLndClient();
-          let decodedRequest: { id: string; destination: string; tokens: number } | null = null;
+          let decodedRequest: { id: string; destination: string; tokens: number; mtokens: string } | null = null;
           try {
             // Raw ln-service call off getLndClient()'s handle, so it does not
             // inherit an lnd.ts wrapper's deadline and binds its own. Bounded
@@ -3096,7 +3096,8 @@ async function dispatchRequest(
             }
             assertRateLimit(decodedRequest.tokens);
 
-            const result = await payInvoice(payment_request);
+            // A member's payment carries the fee limit (drive-mode P1 item 4).
+            const result = await payInvoice(payment_request, decodedRequest.mtokens);
 
             // Persist successful payment
             insertOutboundPayment({
