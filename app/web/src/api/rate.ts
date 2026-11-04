@@ -6,11 +6,15 @@
 //   fresh → null (dollars, nothing to say)
 //   stale → "Price as of <time>" (dollars, dated)
 //   none  → one sentence; the server sends usd: null, so the page shows sats
+//
+// "none" covers two cases: a rate older than 6 hours, and a node that has never
+// fetched one (fetched_at: null, as on a fresh boot). The sentence claims no
+// age, so it is true for both (drive-mode P2 item 8; pinned by rate.test.ts).
 
 import type { ExchangeRate } from "./client";
 
 export const RATE_NONE_SENTENCE =
-  "The bitcoin price hasn't updated in over 6 hours, so amounts are shown in sats only.";
+  "The bitcoin price isn't available right now, so amounts are shown in sats.";
 
 export function rateNote(rate: ExchangeRate | null | undefined): string | null {
   if (!rate) return null;

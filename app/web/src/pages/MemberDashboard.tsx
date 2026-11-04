@@ -7,7 +7,7 @@ import {
   type PendingChannel,
   type NodeBalances,
 } from "../api/client";
-import { rateNote } from "../api/rate";
+import { rateNote, RATE_NONE_SENTENCE } from "../api/rate";
 import type { ExchangeRate, SwapLimits } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
@@ -137,11 +137,14 @@ export default function MemberDashboard() {
       .catch(() => setNameRead({ state: "failed" }));
   }, []);
 
-  // Exchange rate for USD display
-  useEffect(() => {
+  // Exchange rate for USD display. Also the no-price alert's "Check again".
+  const loadRate = useCallback(() => {
     api.getExchangeRate().then((r) => { setRateInfo(r); setUsdRate(r.usd); }).catch(() => {});
-    api.getSwapLimits().then(setSwapLimits).catch(() => {});
   }, []);
+  useEffect(() => {
+    loadRate();
+    api.getSwapLimits().then(setSwapLimits).catch(() => {});
+  }, [loadRate]);
 
   // Balance polling.
   // U24 H8: poll results feed the freshness tracker — on repeated failures
@@ -331,7 +334,9 @@ export default function MemberDashboard() {
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
           Your connection to the Bitcorn Lightning hub
         </p>
-        {rateNote(rateInfo) && (
+        {/* drive-mode P2 item 8: state "none" is the no-price alert below the
+            chart, not this line; "Price as of" (stale) stays here. */}
+        {rateInfo?.state !== "none" && rateNote(rateInfo) && (
           <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rateInfo)}</p>
         )}
       </div>
@@ -409,6 +414,44 @@ export default function MemberDashboard() {
           kevin want to know the price of bitcoin so I think they should be
           underneath the balance of the node"). ── */}
       <BitcoinPriceGraph />
+
+      {/* ── ALERTS: drive-mode P2's alerts that involve no automatic transfer,
+          one sentence and one action each (C6; the record :52). Directly
+          below the chart on desktop and phone alike, so nothing above the
+          chart changes when one fires (D2.2). Empty, and hidden, on a healthy
+          dashboard (.dash-notices:empty). Pinned by
+          MemberDashboard.alerts.test.tsx. ── */}
+      <div className="dash-notices dash-notices-alerts">
+        {/* Item 5 (R18(2)): the hub channel is inactive. The stats fall back to
+            the largest inactive hub channel for display, so this can fire.
+            Nothing in the app reconnects it; "Check again" re-reads (R27(12)). */}
+        {hasChannel && ch!.is_active === false && (
+          <div className="alert warning">
+            <span className="alert-icon" aria-hidden>⚠</span>
+            <div className="alert-body">
+              <div className="alert-msg">
+                Your connection to Bitcorn is down, so payments can't go through it right now. It usually reconnects within a few minutes; if it's still down in an hour, restart the Lightning app.
+              </div>
+              <button className="btn btn-outline alert-action" onClick={() => void loadStats()}>
+                Check again
+              </button>
+            </div>
+          </div>
+        )}
+        {/* Item 8: no price (state "none" — stale past 6 hours, or never
+            fetched). Amounts show in sats; "Check again" re-reads (R27(12)). */}
+        {rateInfo?.state === "none" && (
+          <div className="alert info">
+            <span className="alert-icon" aria-hidden>i</span>
+            <div className="alert-body">
+              <div className="alert-msg">{RATE_NONE_SENTENCE}</div>
+              <button className="btn btn-outline alert-action" onClick={loadRate}>
+                Check again
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="dash-grid">
         {/* U24 H2: stats fetch failed and nothing loaded yet — error state, NOT

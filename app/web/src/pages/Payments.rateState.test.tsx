@@ -28,7 +28,8 @@ vi.mock("../api/client", async (importOriginal) => {
 import Payments from "./Payments";
 
 const FETCHED = new Date("2026-11-03T15:42:00").getTime();
-const NONE_SENTENCE = "The bitcoin price hasn't updated in over 6 hours, so amounts are shown in sats only.";
+// The no-price sentence since drive-mode P2 item 8 (it claims no age).
+const NONE_SENTENCE = "The bitcoin price isn't available right now, so amounts are shown in sats.";
 
 let host: HTMLDivElement;
 let root: Root;
