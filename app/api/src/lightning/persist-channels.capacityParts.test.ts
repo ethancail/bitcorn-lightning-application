@@ -93,3 +93,20 @@ describe("persistChannels stores the capacity parts (migrations 064–069)", () 
     });
   });
 });
+
+describe("persistChannels stores who opened the channel (migration 070, R23(i))", () => {
+  const stored = async (over: Record<string, unknown>) => {
+    channels.splice(0, channels.length, lndChannel(over));
+    await persistChannels();
+    return (db.prepare("SELECT is_initiator FROM lnd_channels WHERE channel_id = '800000x1x0'").get() as any).is_initiator;
+  };
+
+  it("we opened it (is_partner_initiated false) → 1; the peer did → 0, on the update path too", async () => {
+    expect(await stored({ is_partner_initiated: false })).toBe(1);
+    expect(await stored({ is_partner_initiated: true })).toBe(0);
+  });
+
+  it("not reported → NULL (capacity.ts then treats it as the funder)", async () => {
+    expect(await stored({ is_partner_initiated: undefined })).toBeNull();
+  });
+});

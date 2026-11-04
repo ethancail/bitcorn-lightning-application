@@ -33,6 +33,7 @@ export type HubChannelRow = {
   commitment_type: string | null;
   pending_outgoing_sat: number | null;
   pending_incoming_sat: number | null;
+  is_initiator: number | null;
 };
 
 /** [block, tx, output] of a "BxTxO" short channel ID, or null if malformed. */

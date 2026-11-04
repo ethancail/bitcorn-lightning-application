@@ -66,8 +66,8 @@ beforeAll(() => {
   vi.setSystemTime(T0);
   // A non-hub channel with room, so the pay pre-check passes.
   db.prepare(`
-    INSERT INTO lnd_channels (channel_id, peer_pubkey, capacity_sat, local_balance_sat, remote_balance_sat, active, private, updated_at)
-    VALUES ('500x1x0', ?, 1000000, 900000, 90000, 1, 0, ?)
+    INSERT INTO lnd_channels (channel_id, peer_pubkey, capacity_sat, local_balance_sat, remote_balance_sat, active, private, updated_at, is_initiator)
+    VALUES ('500x1x0', ?, 1000000, 900000, 90000, 1, 0, ?, 0)
   `).run("03" + "cd".repeat(32), T0);
 });
 

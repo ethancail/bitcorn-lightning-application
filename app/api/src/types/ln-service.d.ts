@@ -81,6 +81,8 @@ declare module "ln-service" {
      *  "simplified_taproot" | "original_with_static_to_remote" */
     type?: string;
     pending_payments?: Array<{ id: string; is_outgoing: boolean; tokens: number }>;
+    /** !lnd initiator — the peer opened the channel (R23(i), migration 070). */
+    is_partner_initiated?: boolean;
   }
 
   export function getChannels(options: {
