@@ -160,11 +160,11 @@ describe("H2: the member's headline numbers, per declared role", () => {
     expect(nums()).toEqual(["630,000", "740,000"]);
   });
 
-  it("unknown role (P6-7): your balance, then room to receive, both raw", async () => {
+  it("unknown role (P6-7): your balance, then room to receive (P1's figure, R33 finding 6)", async () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(advisor("unknown"));
     await renderDashboard();
     expect(labels()).toEqual(["Your balance", "Room to receive"]);
-    expect(nums()).toEqual(["640,000", "360,000"]);
+    expect(nums()).toEqual(["640,000", "350,000"]);
   });
 
   it("SH9: a declared farmer whose channel is inactive keeps the farmer's headline", async () => {

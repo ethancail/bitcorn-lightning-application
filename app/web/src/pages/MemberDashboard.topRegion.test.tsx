@@ -163,8 +163,9 @@ async function renderDashboard() {
 // "In your connection" (its value stays the local balance). R27(1): the
 // farmer's "Room to receive" shows room_to_receive_sats (360,000 → 355,000)
 // and the merchant's "Available to send" shows room_to_send_sats
-// (640,000 → 630,000); their dollar lines follow at $60,000. The unknown role
-// is not named by R27(1), so nothing of it changes.
+// (640,000 → 630,000); their dollar lines follow at $60,000. R33 (finding 6):
+// the unknown role's "Room to receive" shows room_to_receive_sats too
+// (360,000 → 355,000), so the label means one thing for every role.
 const ALLOWED: Record<"farmer" | "merchant" | "unknown", Array<[now: string, before: string]>> = {
   farmer: [
     ["In your connection", "Available to withdraw"],
@@ -175,7 +176,10 @@ const ALLOWED: Record<"farmer" | "merchant" | "unknown", Array<[now: string, bef
     ["630,000", "640,000"],
     ["$378.00", "$384.00"],
   ],
-  unknown: [],
+  unknown: [
+    ["355,000", "360,000"],
+    ["$213.00", "$216.00"],
+  ],
 };
 
 function allowedChangesUndone(role: keyof typeof ALLOWED, text: string): string {
@@ -188,7 +192,7 @@ const nums = () => [...host.querySelectorAll(".headline .hl-num")].map((e) => e.
 const EXPECTED: Record<keyof typeof ALLOWED, { labels: string[]; nums: string[] }> = {
   farmer: { labels: ["In your connection", "Room to receive"], nums: ["640,000", "355,000"] },
   merchant: { labels: ["Available to send", "Total"], nums: ["630,000", "740,000"] },
-  unknown: { labels: ["Your balance", "Room to receive"], nums: ["640,000", "360,000"] },
+  unknown: { labels: ["Your balance", "Room to receive"], nums: ["640,000", "355,000"] },
 };
 
 describe("D2.2: the region above the price chart, against the pre-P2 build", () => {
