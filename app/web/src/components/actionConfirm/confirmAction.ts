@@ -227,9 +227,18 @@ export function summarizePayInvoice(p: {
  * fees"): the swap fee + the miner fee + the two routing ceilings (P12 p,
  * superseding ruling 11). The prepay (max_prepay_amt) is EXCLUDED: it is an
  * advance on the principal, counted toward the amount withdrawn, not a fee
- * (Polar gate 1's L3). Loop In carries no prepay or routing ceilings, so its
- * figure is swap + miner. Undefined when the quote carries no ceilings —
- * never a 0 presented as a maximum.
+ * (Polar gate 1's L3). Undefined when the quote carries no ceilings — never a
+ * 0 presented as a maximum.
+ *
+ * Loop In (ruling tt, spec §1.10): pass `{ mode: "loop_in", minerFeeMarginPct }`
+ * — RefillChannel is the only caller that does. The figure is swap fee +
+ * ceil(miner × (100 + pct) / 100), in whole numbers: the miner fee may rise
+ * by the server's pre-initiation margin (LOOP_MINER_FEE_MARGIN_PCT, sent as
+ * the quote's miner_fee_margin_pct) and the swap still starts, so the most
+ * shown must include it. Without that margin from the server, undefined: no
+ * maximum is shown rather than a guessed one. Loop Out passes no mode and is
+ * unchanged — its sweep follows the market after the start, which the
+ * "capped at 20%" body discloses.
  */
 const AUTHORIZED_FEE_CEILINGS = [
   "max_swap_fee_sat",
@@ -240,8 +249,16 @@ const AUTHORIZED_FEE_CEILINGS = [
 
 export function authorizedMaxSats(
   ceilings: Record<string, number | undefined> | null | undefined,
+  loopIn?: { mode: "loop_in"; minerFeeMarginPct: number | undefined },
 ): number | undefined {
   if (!ceilings) return undefined;
+  if (loopIn) {
+    const swap = ceilings.max_swap_fee_sat;
+    const miner = ceilings.max_miner_fee_sat;
+    const pct = loopIn.minerFeeMarginPct;
+    if (typeof swap !== "number" || typeof miner !== "number" || typeof pct !== "number") return undefined;
+    return swap + Math.ceil((miner * (100 + pct)) / 100);
+  }
   const values = AUTHORIZED_FEE_CEILINGS.map((k) => ceilings[k]).filter(
     (v): v is number => typeof v === "number",
   );
