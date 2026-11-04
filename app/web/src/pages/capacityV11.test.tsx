@@ -125,12 +125,12 @@ function setup(localSats: number, role: MemberChannelRole, state: MemberChannelS
 }
 
 describe("V11 — the member dashboard's gauge", () => {
-  it("a merchant at 50% the advisor calls receive_exhausted → amber bar, hero in --text, \"Low\"", async () => {
+  it("a merchant at 50% the advisor calls receive_exhausted → amber bar, hero in --text, \"Getting low\"", async () => {
     setup(500_000, "merchant", "receive_exhausted");
     await render(MemberDashboard);
     expect(bar()).toContain("var(--amber)");
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
-    expect(host.textContent).toContain("Room to send · Low");
+    expect(host.textContent).toContain("Room to send · Getting low"); // R33 finding 7
     // On a phone the word must not wrap away from its label.
     expect(host.querySelector('[data-testid="gauge-label"]')!.getAttribute("style") ?? "").toContain("white-space: nowrap");
     const labels = cssRules().find((r) => r.media === null && r.selectors.includes(".member-gauge .labels"))!.decls;
@@ -141,15 +141,15 @@ describe("V11 — the member dashboard's gauge", () => {
     setup(100_000, "merchant", "healthy");
     await render(MemberDashboard);
     expect(bar()).toContain("var(--green)");
-    expect(host.textContent).not.toContain("· Low");
+    expect(host.textContent).not.toContain("Getting low");
   });
 
-  it("a farmer the advisor calls send_saturated → amber bar, \"Getting full\", never red", async () => {
+  it("a farmer the advisor calls send_saturated → amber bar, \"Getting low\", never red", async () => {
     setup(900_000, "farmer", "send_saturated");
     await render(MemberDashboard);
     expect(bar()).toContain("var(--amber)");
     // The farmer's gauge reads "Room to receive" since drive-mode P2 (item 2).
-    expect(host.textContent).toContain("Room to receive · Getting full");
+    expect(host.textContent).toContain("Room to receive · Getting low"); // R33 finding 7
     expect(host.innerHTML).not.toContain("var(--red)");
   });
 
@@ -167,11 +167,11 @@ describe("V11 — the member dashboard's gauge", () => {
 });
 
 describe("V11 — Top Up", () => {
-  it("a merchant at 50% the advisor calls receive_heavy → amber bar, \"Low\", text in --text", async () => {
+  it("a merchant at 50% the advisor calls receive_heavy → amber bar, \"Getting low\", text in --text", async () => {
     setup(500_000, "merchant", "receive_heavy");
     await render(RefillChannel);
     expect(bar()).toContain("var(--amber)");
-    expect(host.textContent).toContain("Low · 50% available to send");
+    expect(host.textContent).toContain("Getting low · 50% available to send"); // R33 finding 7: the bar is the merchant's room to send
     expect(texts().length).toBeGreaterThanOrEqual(3);
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
   });
@@ -192,12 +192,13 @@ describe("V11 — Top Up", () => {
 });
 
 describe("V11 — Cash Out", () => {
-  it("a farmer at 50% the advisor calls send_heavy → amber bar, \"Getting full\", text in --text", async () => {
+  it("a farmer at 50% the advisor calls send_heavy → amber bar, \"Room to receive getting low\", text in --text", async () => {
     setup(500_000, "farmer", "send_heavy");
     await render(WithdrawBitcoin);
     expect(bar()).toContain("var(--amber)");
     // drive-mode P2 item 15: a share of the connection, not of what is withdrawable.
-    expect(host.textContent).toContain("Getting full · 50% of your connection");
+    // R33 finding 7: the bar is the share in the connection, so the word names the room.
+    expect(host.textContent).toContain("Room to receive getting low · 50% of your connection");
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
   });
 

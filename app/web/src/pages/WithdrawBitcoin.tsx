@@ -6,7 +6,7 @@ import type { ExchangeRate, SwapLimits } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse, SwapReceipt } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
-import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
+import { capacityTone, capacityRoomWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
 import { statusBadge } from "../components/swapStatus";
 import { loopFailureSentence } from "../components/loopFailureCopy";
 import ActionConfirmModal, {
@@ -224,7 +224,9 @@ export default function WithdrawBitcoin() {
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
   const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
   const tone = capacityTone(role, advisor?.classification);
-  const toneWord = capacityWord(role, tone);
+  // R33 finding 7: the bar is the share in the connection, not the room, so
+  // the warning names the room it is about.
+  const toneWord = capacityRoomWord(role, tone);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);

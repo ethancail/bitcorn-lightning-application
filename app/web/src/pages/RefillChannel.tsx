@@ -6,7 +6,7 @@ import type { ExchangeRate, SwapLimits } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse, SwapReceipt } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
-import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
+import { capacityTone, capacityWord, capacityRoomWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
 import { statusBadge } from "../components/swapStatus";
 import { loopFailureSentence } from "../components/loopFailureCopy";
 import ActionConfirmModal, {
@@ -217,7 +217,9 @@ export default function RefillChannel() {
 
   const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
   const tone = capacityTone(role, advisor?.classification);
-  const toneWord = capacityWord(role, tone);
+  // R33 finding 7: the bar is "available to send" — a merchant's room, where
+  // the short word reads right; for anyone else the warning names the room.
+  const toneWord = role === "merchant" ? capacityWord(role, tone) : capacityRoomWord(role, tone);
 
   const projectedPct =
     channelLocal != null && channelCapacity != null && channelCapacity > 0 && amount > 0
