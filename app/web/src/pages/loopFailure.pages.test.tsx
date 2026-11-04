@@ -172,6 +172,25 @@ describe("R33 finding 9: a temporary failure reads \"Not finished\"", () => {
   }
 });
 
+// Withdraw's history lists every swap (getSwapHistory unfiltered; Top Up's
+// keeps loop_in only), so a Withdraw row's sentence follows the SWAP's
+// direction, not the page's.
+describe("a Withdraw history row's sentence follows its own swap's direction", () => {
+  it("a failed Top Up listed on the Withdraw page reads the Top Up sentence", async () => {
+    const reason = "FAILURE_REASON_INSUFFICIENT_CONFIRMED_BALANCE";
+    stub.getSwapHistory.mockResolvedValue({ swaps: [swap("loop_in", "failed", reason)] });
+    stub.getSwap.mockResolvedValue({ swap_request: swap("loop_in", "failed", reason), execution: null, events: [] });
+    await mount(WithdrawBitcoin);
+    const row = [...host.querySelectorAll("tbody tr")][0];
+    await act(async () => { row.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    await flush();
+    expect(outsideDetails()).toContain(
+      "Your Bitcoin balance didn't have enough confirmed bitcoin to start the top-up, so nothing was sent.",
+    );
+    expect(outsideDetails()).not.toContain("didn't go through");
+  });
+});
+
 it("sanity: the pages render", async () => {
   stub.getSwapHistory.mockResolvedValue({ swaps: [] });
   await mount(WithdrawBitcoin);

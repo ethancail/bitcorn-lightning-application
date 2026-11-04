@@ -1041,7 +1041,7 @@ export default function WithdrawBitcoin() {
                                     {expandedDetail.swap_request.failure_reason && (
                                       <>
                                         <div style={{ color: "var(--red)", fontSize: "0.75rem" }}>
-                                          {loopFailureSentence(expandedDetail.swap_request.failure_reason, "loop_out")}
+                                          {loopFailureSentence(expandedDetail.swap_request.failure_reason, expandedDetail.swap_request.swap_type === "loop_in" ? "loop_in" : "loop_out")}
                                         </div>
                                         <TechnicalDetails>
                                           <TechRow label="Failure code">{expandedDetail.swap_request.failure_reason}</TechRow>
