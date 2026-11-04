@@ -24,6 +24,7 @@ import {
   getMemberSwapLimits,
 } from "./swapPolicy";
 import { isLoopAvailable } from "./loopProvider";
+import { receiptFor } from "./swapReceipt";
 import { validateOnchainAddress } from "../utils/btc-address";
 import { ENV } from "../config/env";
 
@@ -242,7 +243,10 @@ export async function handleGetSwap(req: IncomingMessage, res: Res, swapId: stri
 
   const execution = getSwapExecution(swapId);
   const events = getSwapEvents(swapId);
-  json(res, 200, { swap_request: swap, execution, events });
+  // drive-mode P2 item 14 (D2.6): a completed swap's fee summary and its parts,
+  // from the poller's stored costs; null otherwise (swapReceipt.ts).
+  const receipt = receiptFor(swap, events);
+  json(res, 200, { swap_request: swap, execution, events, receipt });
 }
 
 export async function handleSwapHistory(req: IncomingMessage, res: Res): Promise<void> {
