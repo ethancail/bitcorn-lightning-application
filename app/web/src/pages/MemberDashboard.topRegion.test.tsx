@@ -155,12 +155,52 @@ async function renderDashboard() {
   for (let i = 0; i < 6; i++) await act(async () => { await Promise.resolve(); });
 }
 
+// ─── The changes P2 allows above the chart, and only these ────────────────
+//
+// R11(2): the farmer's first headline label, "Available to withdraw" →
+// "In your connection" (its value stays the local balance). R27(1): the
+// farmer's "Room to receive" shows room_to_receive_sats (360,000 → 355,000)
+// and the merchant's "Available to send" shows room_to_send_sats
+// (640,000 → 630,000); their dollar lines follow at $60,000. The unknown role
+// is not named by R27(1), so nothing of it changes.
+const ALLOWED: Record<"farmer" | "merchant" | "unknown", Array<[now: string, before: string]>> = {
+  farmer: [
+    ["In your connection", "Available to withdraw"],
+    ["355,000", "360,000"],
+    ["$213.00", "$216.00"],
+  ],
+  merchant: [
+    ["630,000", "640,000"],
+    ["$378.00", "$384.00"],
+  ],
+  unknown: [],
+};
+
+function allowedChangesUndone(role: keyof typeof ALLOWED, text: string): string {
+  return ALLOWED[role].reduce((t, [now, before]) => t.split(now).join(before), text);
+}
+
+const labels = () => [...host.querySelectorAll(".headline .hl-label")].map((e) => e.textContent);
+const nums = () => [...host.querySelectorAll(".headline .hl-num")].map((e) => e.textContent);
+
+const EXPECTED: Record<keyof typeof ALLOWED, { labels: string[]; nums: string[] }> = {
+  farmer: { labels: ["In your connection", "Room to receive"], nums: ["640,000", "355,000"] },
+  merchant: { labels: ["Available to send", "Total"], nums: ["630,000", "740,000"] },
+  unknown: { labels: ["Your balance", "Room to receive"], nums: ["640,000", "360,000"] },
+};
+
 describe("D2.2: the region above the price chart, against the pre-P2 build", () => {
   for (const role of ["farmer", "merchant", "unknown"] as const) {
+    // The name stays `${role}`: it is the snapshot's key from commit 1.
     it(`${role}`, async () => {
       stub.getMemberLiquidityStatus.mockResolvedValue(advisor(role));
       await renderDashboard();
-      expect(topRegion()).toMatchSnapshot();
+      // The allowed changes happened (undoing a change that did not happen
+      // would otherwise pass)…
+      expect(labels()).toEqual(EXPECTED[role].labels);
+      expect(nums()).toEqual(EXPECTED[role].nums);
+      // …and with them undone, the region is the pre-P2 capture, byte for byte.
+      expect(allowedChangesUndone(role, topRegion())).toMatchSnapshot();
     });
   }
 });

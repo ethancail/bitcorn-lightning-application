@@ -1,7 +1,9 @@
 // PR 6 on the member dashboard:
 //   H2    — the headline numbers come first, per DECLARED role (SH9, so an
-//           inactive channel keeps them): farmer "Available to withdraw" then
-//           "Room to receive"; merchant "Available to send" then "Total";
+//           inactive channel keeps them): farmer "In your connection" (drive-mode
+//           P2, R11(2)) then "Room to receive"; merchant "Available to send" then
+//           "Total". The farmer's room to receive and the merchant's available
+//           to send are P1's server figures (R27(1));
 //           unknown "Your balance" then "Room to receive" (P6-7). No channel:
 //           "—" with "No channel yet", never 0.
 //   CHART — the price chart is the section immediately beneath them.
@@ -51,6 +53,10 @@ const CHANNEL = {
   remote_sats: 360_000,
   capacity_sats: 1_000_000,
   is_active: true,
+  // P1's figures (each side less a 10,000 reserve), which the farmer's room to
+  // receive and the merchant's available to send show since drive-mode P2.
+  room_to_send_sats: 630_000,
+  room_to_receive_sats: 350_000,
   freshness: { updated_at_ms: NOW, age_seconds: 0, staleness: "fresh" },
 };
 
@@ -141,30 +147,31 @@ function sections(): Element[] {
 }
 
 describe("H2: the member's headline numbers, per declared role", () => {
-  it("farmer: available to withdraw, then room to receive", async () => {
+  it("farmer: in your connection (the local balance), then room to receive (P1's figure)", async () => {
     await renderDashboard();
-    expect(labels()).toEqual(["Available to withdraw", "Room to receive"]);
-    expect(nums()).toEqual(["640,000", "360,000"]);
+    expect(labels()).toEqual(["In your connection", "Room to receive"]);
+    expect(nums()).toEqual(["640,000", "350,000"]);
   });
 
-  it("merchant: available to send, then the total", async () => {
+  it("merchant: available to send (P1's figure), then the total", async () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(advisor("merchant"));
     await renderDashboard();
     expect(labels()).toEqual(["Available to send", "Total"]);
-    expect(nums()).toEqual(["640,000", "740,000"]);
+    expect(nums()).toEqual(["630,000", "740,000"]);
   });
 
-  it("unknown role (P6-7): your balance, then room to receive", async () => {
+  it("unknown role (P6-7): your balance, then room to receive, both raw", async () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(advisor("unknown"));
     await renderDashboard();
     expect(labels()).toEqual(["Your balance", "Room to receive"]);
+    expect(nums()).toEqual(["640,000", "360,000"]);
   });
 
   it("SH9: a declared farmer whose channel is inactive keeps the farmer's headline", async () => {
     stub.getMemberStats.mockResolvedValue(memberStats({ active: false }));
     stub.getMemberLiquidityStatus.mockResolvedValue(advisor("farmer", false));
     await renderDashboard();
-    expect(labels()).toEqual(["Available to withdraw", "Room to receive"]);
+    expect(labels()).toEqual(["In your connection", "Room to receive"]);
   });
 
   it("SH9: a declared merchant whose channel is inactive keeps the merchant's headline", async () => {
@@ -183,9 +190,11 @@ describe("H2: the member's headline numbers, per declared role", () => {
   });
 
   it("an empty channel side is a real 0, shown as 0", async () => {
-    stub.getMemberStats.mockResolvedValue(memberStats({ channel: { ...CHANNEL, local_sats: 0, remote_sats: 1_000_000 } }));
+    stub.getMemberStats.mockResolvedValue(memberStats({
+      channel: { ...CHANNEL, local_sats: 0, remote_sats: 1_000_000, room_to_send_sats: 0, room_to_receive_sats: 990_000 },
+    }));
     await renderDashboard();
-    expect(nums()).toEqual(["0", "1,000,000"]);
+    expect(nums()).toEqual(["0", "990,000"]);
   });
 
   it("the headline comes right after the page header", async () => {

@@ -197,14 +197,22 @@ export default function MemberDashboard() {
   // warning stays in --text.
   const heroColor = CAPACITY_TEXT_COLOR[tone];
 
-  // H2's headline numbers, ruled per role (P6-7 for the rest). Farmer: what
-  // they can withdraw, then room to receive. Merchant: what they can send,
+  // H2's headline numbers, ruled per role (P6-7 for the rest). Farmer: what is
+  // in their connection, then room to receive. Merchant: what they can send,
   // then their total. An undeclared role: the channel's two sides, neutrally.
   // No channel: "—" with "No channel yet", never 0.
-  const hl1Label = isMerchant ? "Available to send" : isFarmer ? "Available to withdraw" : "Your balance";
-  const hl1Sats = ch ? ch.local_sats : null;
+  //
+  // drive-mode P2: the farmer's first label is "In your connection" (R11(2)),
+  // still the local balance. The farmer's room to receive and the merchant's
+  // available to send are P1's server figures (R27(1)); labels unchanged. The
+  // unknown role's two numbers are not named by R27(1) and stay raw.
+  // Pinned by MemberDashboard.topRegion.test.tsx (D2.2).
+  const hl1Label = isMerchant ? "Available to send" : isFarmer ? "In your connection" : "Your balance";
+  const hl1Sats = ch ? (isMerchant ? ch.room_to_send_sats : ch.local_sats) : null;
   const hl2Label = isMerchant ? "Total" : "Room to receive";
-  const hl2Sats = isMerchant ? (balances ? balances.total_sats : null) : ch ? ch.remote_sats : null;
+  const hl2Sats = isMerchant
+    ? (balances ? balances.total_sats : null)
+    : ch ? (isFarmer ? ch.room_to_receive_sats : ch.remote_sats) : null;
   const hl2Sub = isMerchant ? "Bitcoin + channel" : "Inbound on your hub channel";
 
   // J9 / J9a (P6-3): the subscription banner's slot. On a phone the top slot
