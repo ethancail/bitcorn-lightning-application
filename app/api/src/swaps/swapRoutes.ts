@@ -21,6 +21,7 @@ import {
   checkMemberLoopOutPolicy,
   checkTreasuryLoopOutPolicy,
   checkMemberLoopInPolicy,
+  getMemberSwapLimits,
 } from "./swapPolicy";
 import { isLoopAvailable } from "./loopProvider";
 import { validateOnchainAddress } from "../utils/btc-address";
@@ -245,6 +246,14 @@ export async function handleSwapHistory(req: IncomingMessage, res: Res): Promise
   });
 
   json(res, 200, { swaps });
+}
+
+/** GET /api/swaps/limits — the effective member swap limits per direction
+ *  and today's remaining daily amount (drive-mode P1 item 6). A read. */
+export async function handleSwapLimits(_req: IncomingMessage, res: Res): Promise<void> {
+  const node = getNodeInfo();
+  if (!node) return json(res, 503, { error: "node_info_unavailable" });
+  json(res, 200, await getMemberSwapLimits(node.pubkey));
 }
 
 // ─── Treasury (admin) endpoints ──────────────────────────────────────────

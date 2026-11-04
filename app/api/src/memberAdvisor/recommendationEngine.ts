@@ -29,6 +29,7 @@
 import { db } from "../db";
 import type { ChannelClassification, ChannelRole } from "./channelClassifier";
 import type { LoopAvailability } from "./loopAvailability";
+import { effectiveLimits, type LoopTermsLike } from "../swaps/swapLimits";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -102,7 +103,10 @@ export function describeSustainedRuns(runs: number): string {
   return "more than a day";
 }
 
-const LOOP_PROTOCOL_MIN = 250_000;
+/** loopAvailability's terms, in the shape effectiveLimits takes. */
+function termsOf(t: { minSats: number; maxSats: number } | null): LoopTermsLike | null {
+  return t ? { min_swap_amount: t.minSats, max_swap_amount: t.maxSats } : null;
+}
 
 // ─── Loop-unavailability copy, one sentence per daemon state ────────────────
 //
@@ -254,12 +258,15 @@ function recommendMerchant(
   const targetSat = Math.round(c.capacitySat * cfg.targetMidPct);
   let amount = targetSat - c.memberLocalSat;
 
-  const loopInMinSats = loop.loopInTerms?.minSats ?? LOOP_PROTOCOL_MIN;
+  // The effective limits — the stricter of loopd's terms and the env limits,
+  // or the env limits when loopd is down (drive-mode P1 item 6, finding 5).
+  const loopInLimits = effectiveLimits("loop_in", termsOf(loop.loopInTerms));
+  const loopInMinSats = loopInLimits.min_sats;
   const loopInFeasible = loop.loopInAvailable && c.capacitySat >= loopInMinSats;
 
   if (loopInFeasible && loop.loopInTerms) {
-    amount = Math.max(amount, loop.loopInTerms.minSats);
-    amount = Math.min(amount, loop.loopInTerms.maxSats);
+    amount = Math.max(amount, loopInLimits.min_sats);
+    amount = Math.min(amount, loopInLimits.max_sats);
     amount = Math.min(amount, cfg.maxLoopSats);
 
     const projectedLocal = c.memberLocalSat + amount;
@@ -366,12 +373,14 @@ function recommendFarmer(
   const targetSat = Math.round(c.capacitySat * cfg.targetMidPct);
   let amount = c.memberLocalSat - targetSat;
 
-  const loopOutMinSats = loop.loopOutTerms?.minSats ?? LOOP_PROTOCOL_MIN;
+  // The effective limits (drive-mode P1 item 6, finding 5), as for Loop In.
+  const loopOutLimits = effectiveLimits("loop_out", termsOf(loop.loopOutTerms));
+  const loopOutMinSats = loopOutLimits.min_sats;
   const loopOutFeasible = loop.loopOutAvailable && c.capacitySat >= loopOutMinSats;
 
   if (loopOutFeasible && loop.loopOutTerms) {
-    amount = Math.max(amount, loop.loopOutTerms.minSats);
-    amount = Math.min(amount, loop.loopOutTerms.maxSats);
+    amount = Math.max(amount, loopOutLimits.min_sats);
+    amount = Math.min(amount, loopOutLimits.max_sats);
     amount = Math.min(amount, cfg.maxLoopSats);
     amount = Math.min(amount, c.memberLocalSat - cfg.floorSats);
 

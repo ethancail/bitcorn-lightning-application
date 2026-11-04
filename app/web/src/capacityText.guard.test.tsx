@@ -41,6 +41,7 @@ const stub = vi.hoisted(() => ({
   getNodeBalances: vi.fn(),
   getTreasuryInfo: vi.fn(),
   getSwapHistory: vi.fn(),
+  getSwapLimits: vi.fn(),
   getNetworkPayments: vi.fn(),
   syncSettlements: vi.fn(),
   decodeInvoice: vi.fn(),
@@ -127,6 +128,9 @@ beforeEach(() => {
   stub.getNodeBalances.mockResolvedValue({ onchain_sats: 2_000_000, lightning_sats: 0, total_sats: 2_000_000 });
   stub.getTreasuryInfo.mockResolvedValue(null);
   stub.getSwapHistory.mockResolvedValue({ swaps: [] });
+  // GET /api/swaps/limits at the env defaults, as the server returns them
+  // since drive-mode P1 item 6 (the pages read their swap limits from it).
+  stub.getSwapLimits.mockResolvedValue({ loop_available: true, loop_out: { min_sats: 250_000, max_sats: 2_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 }, loop_in: { min_sats: 100_000, max_sats: 3_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 } });
   stub.getNetworkPayments.mockResolvedValue([]);
   stub.syncSettlements.mockResolvedValue({});
   stub.decodeInvoice.mockResolvedValue({

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, fmtSats, swapExecuteBody } from "../api/client";
 import { rateNote } from "../api/rate";
-import type { ExchangeRate } from "../api/client";
+import type { ExchangeRate, SwapLimits } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
@@ -133,7 +133,12 @@ export default function WithdrawBitcoin() {
 
   // ─── Form state ───────────────────────────────────────────────────────
   const [stage, setStage] = useState<Stage>("loading");
-  const [amount, setAmount] = useState(advisorAmount || 250_000);
+  const [amount, setAmount] = useState(advisorAmount || 0);
+  // The effective Loop Out limits, read from the server (drive-mode P1 item 6):
+  // the stricter of the env limits and loopd's live terms.
+  const [limits, setLimits] = useState<SwapLimits | null>(null);
+  const minW = limits?.loop_out?.min_sats ?? null;
+  const maxW = limits?.loop_out?.max_sats ?? null;
   const [error, setError] = useState<string | null>(null);
 
   // ─── Quote state ──────────────────────────────────────────────────────
@@ -161,7 +166,7 @@ export default function WithdrawBitcoin() {
   const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[] } | null>(null);
 
   // ─── Max withdrawable from treasury channel ─────────────────────────
-  const [maxWithdrawable, setMaxWithdrawable] = useState<number | null>(null);
+  const [channelLocalForMax, setChannelLocalForMax] = useState<number | null>(null);
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
   const [channelLocalPct, setChannelLocalPct] = useState<number | null>(null);
@@ -186,16 +191,26 @@ export default function WithdrawBitcoin() {
               ? Math.round((s.treasury_channel.local_sats / s.treasury_channel.capacity_sats) * 100)
               : 0
           );
-          const buffer = 50_000;
-          const feeCushion = 2_000; // conservative estimate for swap + miner fees
-          const max = Math.min(s.treasury_channel.local_sats - buffer - feeCushion, 2_000_000);
-          // Always set so Max button is visible; button disabled state handled by amount validation
-          setMaxWithdrawable(Math.max(max, 0));
+          setChannelLocalForMax(s.treasury_channel.local_sats);
         }
+      })
+      .catch(() => {});
+    api.getSwapLimits()
+      .then((l) => {
+        setLimits(l);
+        // The default amount is the effective minimum, not a literal.
+        setAmount((a) => (a > 0 ? a : l?.loop_out?.min_sats ?? 0));
       })
       .catch(() => {});
     api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
   }, []);
+
+  // Most you can withdraw: the channel less the swap buffer and a fee cushion,
+  // within the effective maximum.
+  const maxWithdrawable =
+    channelLocalForMax != null && maxW != null
+      ? Math.max(Math.min(channelLocalForMax - 50_000 - 2_000, maxW), 0)
+      : null;
 
   // ─── Pending swap detection ───────────────────────────────────────────
   useEffect(() => {
@@ -324,7 +339,8 @@ export default function WithdrawBitcoin() {
   // ─── Get Quote ────────────────────────────────────────────────────────
   async function handleGetQuote() {
     setError(null);
-    if (amount < 250_000) { setError("Minimum withdrawal is 250,000 sats"); return; }
+    if (amount <= 0) { setError("Enter an amount"); return; }
+    if (minW != null && amount < minW) { setError(`Minimum withdrawal is ${minW.toLocaleString()} sats`); return; }
     if (!address) { setError("No destination address — try generating a new one"); return; }
     setStage("quoting");
     try {
@@ -467,7 +483,7 @@ export default function WithdrawBitcoin() {
                       <span style={{ fontSize: "0.75rem", color: "var(--text-3)", fontWeight: 400, marginLeft: 4 }}>sats</span>
                     </div>
                   </div>
-                  {maxWithdrawable != null && maxWithdrawable >= 250_000 && (
+                  {maxWithdrawable != null && minW != null && maxWithdrawable >= minW && (
                     <div style={{ textAlign: "right" }}>
                       <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
                         Most you can withdraw
@@ -532,12 +548,14 @@ export default function WithdrawBitcoin() {
                   </strong>
                 </div>
               )}
-              <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
-                Minimum: 250,000 sats. Maximum: 2,000,000 sats.
-              </p>
-              {amount > 0 && amount < 250_000 && (
+              {minW != null && maxW != null && (
+                <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
+                  Minimum: {minW.toLocaleString()} sats. Maximum: {maxW.toLocaleString()} sats.
+                </p>
+              )}
+              {minW != null && amount > 0 && amount < minW && (
                 <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
-                  Withdrawal must be at least 250,000 sats.
+                  Withdrawal must be at least {minW.toLocaleString()} sats.
                 </div>
               )}
             </div>

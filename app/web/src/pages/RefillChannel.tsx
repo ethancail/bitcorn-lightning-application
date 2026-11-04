@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { api, fmtSats, swapExecuteBody } from "../api/client";
 import { rateNote } from "../api/rate";
-import type { ExchangeRate } from "../api/client";
+import type { ExchangeRate, SwapLimits } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
@@ -102,6 +102,10 @@ export default function RefillChannel() {
   // the channel reserve. Not capacity − local, which counts the commitment fee,
   // anchors and reserve as room.
   const [channelRemote, setChannelRemote] = useState<number | null>(null);
+  // The effective Loop In limits, read from the server (drive-mode P1 item 6).
+  const [limits, setLimits] = useState<SwapLimits | null>(null);
+  const minR = limits?.loop_in?.min_sats ?? null;
+  const maxR = limits?.loop_in?.max_sats ?? null;
   // V11: the bar's colour is the Liquidity Advisor's state, not a percentage.
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
 
@@ -151,8 +155,8 @@ export default function RefillChannel() {
     onchainBalance != null
       ? Math.max(Math.min(
           onchainBalance - 50_000 - 10_000,
-          channelRemote ?? 3_000_000,
-          3_000_000
+          channelRemote ?? maxR ?? 0,
+          maxR ?? 0
         ), 0)
       : null;
 
@@ -177,6 +181,7 @@ export default function RefillChannel() {
           api.getMemberLiquidityStatus().catch(() => null),
         ]);
         setAdvisor(liquidity);
+        api.getSwapLimits().then(setLimits).catch(() => {});
 
         if (stats?.treasury_channel) {
           setChannelLocal(stats.treasury_channel.local_sats);
@@ -300,8 +305,8 @@ export default function RefillChannel() {
   async function handleGetQuote() {
     setError(null);
     setWarning(null);
-    if (amount < 100_000) {
-      setError("Minimum top up is 100,000 sats");
+    if (minR == null || amount < minR) {
+      setError(minR == null ? "Top Up limits are unavailable — try again shortly" : `Minimum top up is ${minR.toLocaleString()} sats`);
       return;
     }
     if (maxRefill != null && amount > maxRefill) {
@@ -491,7 +496,7 @@ export default function RefillChannel() {
                     </span>
                   </div>
                 </div>
-                {maxRefill != null && maxRefill >= 100_000 && (
+                {maxRefill != null && minR != null && maxRefill >= minR && (
                   <div style={{ textAlign: "right" }}>
                     <div style={{
                       fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase",
@@ -592,18 +597,20 @@ export default function RefillChannel() {
                   sats
                 </span>
               </div>
-              <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
-                Minimum: 100,000 sats
-              </p>
-              {amount > 0 && amount < 100_000 && (
+              {minR != null && (
+                <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
+                  Minimum: {minR.toLocaleString()} sats
+                </p>
+              )}
+              {minR != null && amount > 0 && amount < minR && (
                 <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
-                  Minimum top up is 100,000 sats
+                  Minimum top up is {minR.toLocaleString()} sats
                 </div>
               )}
             </div>
 
             {/* Projected state strip */}
-            {projectedPct != null && channelPct != null && amount >= 100_000 && (
+            {projectedPct != null && channelPct != null && minR != null && amount >= minR && (
               <div style={{
                 padding: "10px 14px",
                 borderLeft: "3px solid var(--amber)",
@@ -643,7 +650,7 @@ export default function RefillChannel() {
               className="btn btn-primary"
               style={{ width: "100%" }}
               onClick={handleGetQuote}
-              disabled={stage === "quoting" || insufficientOnchain || amount < 100_000}
+              disabled={stage === "quoting" || insufficientOnchain || minR == null || amount < minR}
             >
               {stage === "quoting" ? "Getting quote..." : "Get Quote"}
             </button>

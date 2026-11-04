@@ -253,6 +253,7 @@ import {
   handleMemberLoopIn,
   handleGetSwap,
   handleSwapHistory,
+  handleSwapLimits,
   handleAdminLoopOutQuote,
   handleAdminLoopOut,
   handleAdminSwapList,
@@ -4055,6 +4056,15 @@ async function dispatchRequest(
   if (req.method === "POST" && req.url === "/api/swaps/loop-in") {
     try { await handleMemberLoopIn(req, res); } catch (e: any) {
       res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Before the generic /api/swaps/:id read below (drive-mode P1 item 6).
+  if (req.method === "GET" && req.url === "/api/swaps/limits") {
+    try { await handleSwapLimits(req, res); } catch (e: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));
     }
     return;

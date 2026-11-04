@@ -287,6 +287,8 @@ export const api = {
   initiateSwapLoopIn: (body: { swap_request_id: string } & SwapCeilings) =>
     apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/swaps/loop-in", { method: "POST", body: JSON.stringify(body) }),
   getSwap: (id: string) => apiFetch<SwapDetailResponse>(`/api/swaps/${id}`),
+  /** The effective member swap limits per direction (drive-mode P1 item 6). */
+  getSwapLimits: () => apiFetch<SwapLimits>("/api/swaps/limits"),
   getSwapHistory: (limit?: number) => {
     const q = limit ? `?limit=${limit}` : "";
     return apiFetch<{ swaps: SwapRequest[] }>(`/api/swaps/history${q}`);
@@ -1235,6 +1237,22 @@ export type RecommendedPeer = {
 };
 
 // ─── Swap types ───────────────────────────────────────────────────────────
+
+/** GET /api/swaps/limits (drive-mode P1 item 6): per direction, the stricter
+ *  of Bitcorn's env limits and loopd's live terms — the bounds the server's
+ *  policy enforces — and today's remaining daily amount. With loopd down, the
+ *  env limits and loop_available: false. */
+export type SwapDirectionLimits = {
+  min_sats: number;
+  max_sats: number;
+  daily_max_sats: number;
+  daily_remaining_sats: number;
+};
+export type SwapLimits = {
+  loop_available: boolean;
+  loop_out: SwapDirectionLimits;
+  loop_in: SwapDirectionLimits;
+};
 
 export type SwapRequest = {
   id: string;

@@ -10,6 +10,11 @@ import { getLndChainBalance } from "../lightning/lnd";
 import { getLoopOutTerms, getLoopInTerms } from "../lightning/loop";
 import { getHubChannel } from "../lightning/hubChannel";
 
+// The effective member swap limits, the same bounds this policy enforces
+// (drive-mode P1 item 6). Defined in swapLimits.ts; exported here beside
+// the policy they mirror.
+export { getMemberSwapLimits } from "./swapLimits";
+
 export type PolicyResult = { ok: true } | { ok: false; reason: string; code: string };
 
 // ─── Member Loop Out (withdrawal) ────────────────────────────────────────

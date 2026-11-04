@@ -9,7 +9,7 @@ import {
   type NodeBalances,
 } from "../api/client";
 import { rateNote } from "../api/rate";
-import type { ExchangeRate } from "../api/client";
+import type { ExchangeRate, SwapLimits } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
 import { subscriptionBannerSlot } from "../components/subscriptionBannerSlot";
@@ -354,6 +354,8 @@ export default function MemberDashboard() {
   const [loading, setLoading] = useState(true);
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
   const [usdRate, setUsdRate] = useState<number | null>(null);
+  // The effective Loop Out minimum, read from the server (drive-mode P1 item 6).
+  const [swapLimits, setSwapLimits] = useState<SwapLimits | null>(null);
   // The rate's state, for its note (drive-mode P1 item 3).
   const [rateInfo, setRateInfo] = useState<ExchangeRate | null>(null);
   const [pendingTreasuryChannel, setPendingTreasuryChannel] = useState(false);
@@ -421,6 +423,7 @@ export default function MemberDashboard() {
   // Exchange rate for USD display
   useEffect(() => {
     api.getExchangeRate().then((r) => { setRateInfo(r); setUsdRate(r.usd); }).catch(() => {});
+    api.getSwapLimits().then(setSwapLimits).catch(() => {});
   }, []);
 
   // Balance polling.
@@ -486,6 +489,7 @@ export default function MemberDashboard() {
   const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
   const isMerchant = role === "merchant";
   const isFarmer = role === "farmer";
+  const minWithdrawal = swapLimits?.loop_out?.min_sats ?? null;
 
   // V11: the capacity colour comes from the advisor's state, never red; an
   // unknown role or no classification is neutral (components/capacityTone.ts).
@@ -863,7 +867,7 @@ export default function MemberDashboard() {
                     flag (./withdrawCtaGate.ts — decisions B/C, 2026-09-02).
                     The render condition is deliberately unchanged: the gate
                     governs enabledness inside it, not whether it appears. */}
-                {isFarmer && ch!.local_sats >= 250_000 && (
+                {isFarmer && (minWithdrawal == null || ch!.local_sats >= minWithdrawal) && ch!.local_sats > 0 && (
                   (() => {
                     const withdrawGate = withdrawCtaGate(advisor);
                     return (
@@ -885,9 +889,9 @@ export default function MemberDashboard() {
                     );
                   })()
                 )}
-                {isFarmer && ch!.local_sats > 0 && ch!.local_sats < 250_000 && (
+                {isFarmer && minWithdrawal != null && ch!.local_sats > 0 && ch!.local_sats < minWithdrawal && (
                   <div className="field-hint">
-                    Minimum withdrawal: 250,000 sats. You have {ch!.local_sats.toLocaleString()} sats.
+                    Minimum withdrawal: {minWithdrawal.toLocaleString()} sats. You have {ch!.local_sats.toLocaleString()} sats.
                   </div>
                 )}
 
