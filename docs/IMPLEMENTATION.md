@@ -121,7 +121,7 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 
 **3-column stat grids:** `dashboard-grid` defaults to `1fr 1fr`. Override inline with `style={{ gridTemplateColumns: "1fr 1fr 1fr" }}` when 3 cards are needed.
 
-**`ConnectToHub`** (inside `MemberDashboard.tsx`): shown when `treasury_channel` is null and no pending treasury channel opening. Polls `/api/channels/pending` every 15s — if a pending open to the treasury exists, shows "Channel Opening Submitted" instead of the form. Capacity presets (1M/5M/10M), formatted text input with commas + sats label, 100k minimum. Three peering states: green "Connected to hub" (direct LND peer check), amber "Hub address available — will auto-connect", or manual input.
+**`ConnectToHub`** (`components/firstRun/ConnectToHub.tsx` markup, `useConnectToHub.ts` behaviour, `connectToHubDescriptor.ts` literals; rendered by `MemberDashboard.tsx`): shown when `treasury_channel` is null and no pending treasury channel opening. Polls `/api/channels/pending` every 15s — if a pending open to the treasury exists, shows "Channel Opening Submitted" instead of the form. Capacity presets (1M/5M/10M), formatted text input with commas + sats label, 100k minimum. Three peering states: green "Connected to hub" (direct LND peer check), amber "Hub address available — will auto-connect", or manual input.
 
 ### Layout Constraints
 

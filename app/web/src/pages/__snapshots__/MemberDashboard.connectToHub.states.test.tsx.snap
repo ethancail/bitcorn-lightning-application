@@ -1,0 +1,2365 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1 — peered to the hub 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: color-mix(in srgb, var(--green) 10%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); border-radius: 6px; font-size: 0.8125rem; color: var(--green);">
+          <span>
+            "✓"
+          <span>
+            "Connected to hub — ready to open a channel"
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 2 — not peered, the hub's socket is known 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); font-size: 0.8125rem; color: var(--text);">
+          <span style="color: var(--amber);">
+            "◈"
+          <span>
+            "Hub address available — will connect automatically when you open a channel"
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "03cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 3 — not peered, the treasury info is still loading 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div class="loading-shimmer" style="height: 40px; border-radius: 6px;">
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4 — not peered, no socket (treasury info null): the manual address field 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4b — not peered, the treasury-info read rejected: the manual address field 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 5 — the hub node ID row shows the treasury's pubkey when it has one 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "03cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6a — the upgrade query preselects the 5M preset 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="5,000,000" prop:value="5,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6b — a preset click selects it 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="10,000,000" prop:value="10,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6c — a typed custom capacity selects no preset 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="2,500,000" prop:value="2,500,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7a — below the minimum: the warning shows and the button is disabled 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="50,000" prop:value="50,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+          <div style="font-size: 0.75rem; color: var(--red); margin-top: 4px;">
+            "Channel capacity must be at least 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" disabled="" prop:disabled=true>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7b — an empty capacity: no warning, the button is disabled 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="0" prop:value="0" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" disabled="" prop:disabled=true>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8a — Normal fee speed selected 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8b — Priority fee speed selected 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9a — the confirm modal, auto-connect socket (portal on document.body) 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); font-size: 0.8125rem; color: var(--text);">
+          <span style="color: var(--amber);">
+            "◈"
+          <span>
+            "Hub address available — will connect automatically when you open a channel"
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "03cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 1
+<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+  <div class="dialog-card action-confirm-card">
+    <div class="dialog-title">
+      "Open a channel to the hub"
+    <div class="action-confirm-scroll">
+      <div class="dialog-body">
+        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Capacity"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "1,000,000 sats"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Peer"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "Bitcorn treasury hub"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Address"
+            <dd class="ident" style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "198.51.100.7:9735"
+        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
+          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+      <div style="margin-top: 14px;">
+        <label for="action-confirm-challenge" style="display: block; margin-bottom: 6px;">
+          "Type the amount to confirm: 1,000,000"
+        <input autocomplete="off" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="" prop:value="" prop:disabled=false>
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
+        "Open channel"
+      <button class="btn btn-outline" prop:disabled=false>
+        "Cancel"
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9b — the confirm modal, a manually typed address 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="  203.0.113.5:9735  " prop:value="  203.0.113.5:9735  " prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 1
+<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+  <div class="dialog-card action-confirm-card">
+    <div class="dialog-title">
+      "Open a channel to the hub"
+    <div class="action-confirm-scroll">
+      <div class="dialog-body">
+        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Capacity"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "1,000,000 sats"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Peer"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "Bitcorn treasury hub"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Address"
+            <dd class="ident" style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "203.0.113.5:9735"
+        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
+          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+      <div style="margin-top: 14px;">
+        <label for="action-confirm-challenge" style="display: block; margin-bottom: 6px;">
+          "Type the amount to confirm: 1,000,000"
+        <input autocomplete="off" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="" prop:value="" prop:disabled=false>
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
+        "Open channel"
+      <button class="btn btn-outline" prop:disabled=false>
+        "Cancel"
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9c — the confirm modal, challenge typed (confirm enabled) 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 1
+<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+  <div class="dialog-card action-confirm-card">
+    <div class="dialog-title">
+      "Open a channel to the hub"
+    <div class="action-confirm-scroll">
+      <div class="dialog-body">
+        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Capacity"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "1,000,000 sats"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Peer"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "Bitcorn treasury hub"
+        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
+          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+      <div style="margin-top: 14px;">
+        <label for="action-confirm-challenge" style="display: block; margin-bottom: 6px;">
+          "Type the amount to confirm: 1,000,000"
+        <input autocomplete="off" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="1000000" prop:value="1000000" prop:disabled=false>
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+        "Open channel"
+      <button class="btn btn-outline" prop:disabled=false>
+        "Cancel"
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 10 — submitting: the request is pending (Economy sends no fee_rate) 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" disabled="" prop:disabled=true>
+          "Connecting…"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 1
+<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+  <div class="dialog-card action-confirm-card">
+    <div class="dialog-title">
+      "Open a channel to the hub"
+    <div class="action-confirm-scroll">
+      <div class="dialog-body">
+        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Capacity"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "1,000,000 sats"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Peer"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "Bitcorn treasury hub"
+        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
+          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
+        "Sending…"
+calls: {"openMemberChannel":[[{"capacity_sats":1000000}]],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 10b — submitting with Priority and a typed address: the request body 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value=" 203.0.113.5:9735 " prop:value=" 203.0.113.5:9735 " prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" disabled="" prop:disabled=true>
+          "Connecting…"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 1
+<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+  <div class="dialog-card action-confirm-card">
+    <div class="dialog-title">
+      "Open a channel to the hub"
+    <div class="action-confirm-scroll">
+      <div class="dialog-body">
+        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Capacity"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "1,000,000 sats"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Peer"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "Bitcorn treasury hub"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Address"
+            <dd class="ident" style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "203.0.113.5:9735"
+        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
+          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
+        "Sending…"
+calls: {"openMemberChannel":[[{"capacity_sats":1000000,"partner_socket":"203.0.113.5:9735","fee_rate":15}]],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 10c — submitting while auto-connecting to the hub's socket: the request body 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="border-radius: 6px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent); font-size: 0.8125rem; color: var(--text);">
+          <span style="color: var(--amber);">
+            "◈"
+          <span>
+            "Hub address available — will connect automatically when you open a channel"
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" disabled="" prop:disabled=true>
+          "Connecting…"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "03cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 1
+<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+  <div class="dialog-card action-confirm-card">
+    <div class="dialog-title">
+      "Open a channel to the hub"
+    <div class="action-confirm-scroll">
+      <div class="dialog-body">
+        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Capacity"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "1,000,000 sats"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Peer"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "Bitcorn treasury hub"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Address"
+            <dd class="ident" style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "198.51.100.7:9735"
+        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
+          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
+        "Sending…"
+calls: {"openMemberChannel":[[{"capacity_sats":1000000,"partner_socket":"198.51.100.7:9735","fee_rate":5}]],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 11a — a generic failure: the critical alert, modal closed 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div class="alert critical">
+          <span class="alert-icon">
+            "✕"
+          <div class="alert-body">
+            <div class="alert-msg">
+              "insufficient on-chain funds"
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[[{"capacity_sats":1000000}]],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 11b — a failure with no message: the fallback text 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div class="alert critical">
+          <span class="alert-icon">
+            "✕"
+          <div class="alert-body">
+            <div class="alert-msg">
+              "Failed to open channel"
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[[{"capacity_sats":1000000}]],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 11c — a confirmation failure goes to the modal, not the form 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="1,000,000" prop:value="1,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="">
+          <label class="form-label">
+            "Hub Address"
+            " "
+            <span style="color: var(--text-3); font-weight: 400;">
+              "(optional)"
+          <input aria-label="Hub Address" class="form-input" placeholder="e.g. 203.0.113.5:9735 — ask your operator" type="text" value="" prop:value="" prop:disabled=false>
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Enter the hub's address to connect, or leave blank if already connected."
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 1
+<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+  <div class="dialog-card action-confirm-card">
+    <div class="dialog-title">
+      "Open a channel to the hub"
+    <div class="action-confirm-scroll">
+      <div class="dialog-body">
+        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Capacity"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "1,000,000 sats"
+          <div style="display: contents;">
+            <dt style="opacity: 0.7;">
+              "Peer"
+            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
+              "Bitcorn treasury hub"
+        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
+          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+      <div class="dialog-body" role="alert" style="margin-top: 12px; border-top: 1px solid var(--border-hi); padding-top: 12px;">
+        <strong>
+          "This is a bug — nothing was sent"
+        <p style="margin: 6px 0px 0px;">
+          "The confirmation did not match the details of the request, so the action was refused and no funds moved. Repeating it will fail the same way. This node's dashboard and API disagree about this action — most likely one of them updated and the other did not."
+        <p style="margin: 6px 0px 0px; opacity: 0.85;">
+          "If the dashboard was just updated, reload the page. If it keeps happening, the API and web versions differ — check them in Settings."
+    <div style="display: flex; gap: 10px; margin-top: 16px;">
+      <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+        "Close"
+calls: {"openMemberChannel":[[{"capacity_sats":1000000}]],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 11d — success with a funding txid 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div class="alert healthy" style="">
+        <span class="alert-icon">
+          "✓"
+        <div class="alert-body">
+          <div class="alert-type">
+            "Channel opening submitted"
+          <div class="alert-msg">
+            "Your channel to the hub is being broadcast. It will become active after 1–3 on-chain confirmations. This page will update automatically."
+      <div style="">
+        <div style="font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">
+          "Funding Transaction"
+        <div style="background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; font-family: var(--mono); font-size: 0.75rem; word-break: break-all; color: var(--text-1);">
+          "abababababababababababababababababababababababababababababababab"
+portals: 0
+calls: {"openMemberChannel":[[{"capacity_sats":1000000}]],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 11e — success with no funding txid ('submitted') 1`] = `
+"regions: 1
+<div class="panel ops fade-in span-all">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Connect to Hub"
+  <div class="panel-body">
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div class="alert healthy" style="">
+        <span class="alert-icon">
+          "✓"
+        <div class="alert-body">
+          <div class="alert-type">
+            "Channel opening submitted"
+          <div class="alert-msg">
+            "Your channel to the hub is being broadcast. It will become active after 1–3 on-chain confirmations. This page will update automatically."
+portals: 0
+calls: {"openMemberChannel":[[{"capacity_sats":1000000}]],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the upgrade call site (MemberDashboard :982) > state 12 — upgrade banner: isPeered, the upgrade capacity preselected 1`] = `
+"regions: 1
+<div class="alert info">
+  <span class="alert-icon">
+    "⚠"
+  <div class="alert-body">
+    <div class="alert-type">
+      "Channel upgrade recommended"
+    <div class="alert-msg">
+      "Your current channel is "
+      "1,000,000"
+      " sats. Open a larger replacement channel ("
+      "5,000,000"
+      " sats) to increase capacity."
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="alert info" style="margin-bottom: 0px;">
+        <span class="alert-icon">
+          "◈"
+        <div class="alert-body">
+          <div class="alert-type">
+            "No hub channel"
+          <div class="alert-msg">
+            "Open a channel to the hub to start sending and receiving Lightning payments."
+      <div style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label class="form-label">
+            "Channel Capacity"
+          <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "1M"
+            <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+              "5M"
+            <button class="btn btn-outline" style="flex: 1 1 0%;" prop:disabled=false>
+              "10M"
+          <div style="position: relative;">
+            <input aria-label="Channel Capacity" class="form-input" inputmode="numeric" style="padding-right: 42px;" type="text" value="5,000,000" prop:value="5,000,000" prop:disabled=false>
+            <span style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;">
+              "sats"
+          <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
+            "Recommended: 1M–10M sats. Minimum: 100,000 sats."
+        <div style="display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: color-mix(in srgb, var(--green) 10%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); border-radius: 6px; font-size: 0.8125rem; color: var(--green);">
+          <span>
+            "✓"
+          <span>
+            "Connected to hub — ready to open a channel"
+        <div>
+          <label class="form-label">
+            "Confirmation Speed"
+          <div style="display: flex; gap: 6px;">
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Economy"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "1–3 hours"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~155 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Normal"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~30 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~770 sats"
+            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
+              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
+                "Priority"
+              <div style="font-size: 0.6875rem; color: var(--text-2);">
+                "~10 min"
+              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
+                "~2,300 sats"
+        <button class="btn btn-primary" prop:disabled=false>
+          "Open Channel →"
+      <div style="border-top: 1px solid var(--border); padding-top: 12px;">
+        <details style="font-size: 0.75rem; color: var(--text-3);">
+          <summary style="cursor: pointer; user-select: none;">
+            "Technical details"
+          <div style="margin-top: 8px; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Hub node ID"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                <span class="ident">
+                  "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca"
+            <div style="display: flex; justify-content: space-between; gap: 12px;">
+              <span style="flex-shrink: 0;">
+                "Fee rates"
+              <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
+                "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+portals: 0
+calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
+`;
+
+exports[`ConnectToHub, the upgrade call site (MemberDashboard :982) > state 12b — upgrade banner: confirm and submit 1`] = `
+"regions: 1
+<div class="alert info">
+  <span class="alert-icon">
+    "⚠"
+  <div class="alert-body">
+    <div class="alert-type">
+      "Channel upgrade recommended"
+    <div class="alert-msg">
+      "Your current channel is "
+      "1,000,000"
+      " sats. Open a larger replacement channel ("
+      "5,000,000"
+      " sats) to increase capacity."
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+      <div class="alert healthy" style="">
+        <span class="alert-icon">
+          "✓"
+        <div class="alert-body">
+          <div class="alert-type">
+            "Channel opening submitted"
+          <div class="alert-msg">
+            "Your channel to the hub is being broadcast. It will become active after 1–3 on-chain confirmations. This page will update automatically."
+      <div style="">
+        <div style="font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px;">
+          "Funding Transaction"
+        <div style="padding: 8px 12px; background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px; font-size: 0.75rem; color: var(--text-1); font-family: var(--mono); word-break: break-all;">
+          "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+portals: 0
+calls: {"openMemberChannel":[[{"capacity_sats":5000000}]],"getTreasuryInfo":1}"
+`;

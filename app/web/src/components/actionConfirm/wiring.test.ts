@@ -32,7 +32,7 @@ const read = (rel: string) => readFileSync(join(SRC, rel), "utf8");
  * ref. Each entry is (file, client method, why it moves funds).
  */
 const CALL_SITES: Array<{ file: string; method: string; route: string }> = [
-  { file: "pages/MemberDashboard.tsx", method: "openMemberChannel", route: "/api/member/open-channel" },
+  { file: "components/firstRun/useConnectToHub.ts", method: "openMemberChannel", route: "/api/member/open-channel" },
   { file: "pages/RefillChannel.tsx", method: "initiateSwapLoopIn", route: "/api/swaps/loop-in" },
   { file: "pages/WithdrawBitcoin.tsx", method: "initiateSwapLoopOut", route: "/api/swaps/loop-out" },
   { file: "pages/Payments.tsx", method: "payNetworkInvoice", route: "/api/network/pay" },

@@ -1,0 +1,30 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ApiUnreachableScreen > "Try again" calls getNode again; still down → still the unreachable screen 1`] = `
+"<div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--bg); padding: 24px;">
+  <div style="font-family: var(--mono); color: var(--red); font-size: 0.875rem; letter-spacing: 0.1em;">
+    "CAN'T REACH YOUR BITCORN NODE"
+  <div style="color: var(--text-3); font-size: 0.8125rem; max-width: 420px; text-align: center; font-family: var(--sans); line-height: 1.5;">
+    "The app can't reach the Bitcorn API. Your node and funds are unaffected — this is a connection problem. Retrying automatically every 15 seconds."
+  <button class="btn btn-outline btn-sm" prop:disabled=false>
+    "Try again"
+calls: {"getNode":2}"
+`;
+
+exports[`ApiUnreachableScreen > getNode rejected → the unreachable screen 1`] = `
+"<div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--bg); padding: 24px;">
+  <div style="font-family: var(--mono); color: var(--red); font-size: 0.875rem; letter-spacing: 0.1em;">
+    "CAN'T REACH YOUR BITCORN NODE"
+  <div style="color: var(--text-3); font-size: 0.8125rem; max-width: 420px; text-align: center; font-family: var(--sans); line-height: 1.5;">
+    "The app can't reach the Bitcorn API. Your node and funds are unaffected — this is a connection problem. Retrying automatically every 15 seconds."
+  <button class="btn btn-outline btn-sm" prop:disabled=false>
+    "Try again"
+calls: {"getNode":1}"
+`;
+
+exports[`the root loading splash > getNode pending → INITIALIZING… 1`] = `
+"<div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg);">
+  <div style="font-family: var(--mono); color: var(--text-3); font-size: 0.875rem; letter-spacing: 0.1em;">
+    "INITIALIZING…"
+calls: {"getNode":1}"
+`;
