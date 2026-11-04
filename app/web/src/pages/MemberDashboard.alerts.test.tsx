@@ -275,6 +275,29 @@ describe("item 6, D2.3: Loop unavailable, the API's alert for the member's direc
   });
 });
 
+// Items 11-12 on the dashboard: the subscription banner gets the dashboard's
+// rate, so the renewal copy is dollars first (no new fetch).
+describe("items 11-12: the dashboard's renewal banner reads its rate", () => {
+  const sub = (current_tier: string, paid_through: number) => ({
+    applicable: true, member_pubkey: "03" + "a".repeat(64), current_tier, paid_through,
+    price_sats: 50_000, period_days: 30, deposit_address: "bcrt1qexample", last_payment_at: null, last_payment_txid: null,
+    grace: { fresh_until: 0, worker_until: paid_through + 9 * 86_400_000, routing_until: paid_through + 30 * 86_400_000, close_at: paid_through + 60 * 86_400_000 },
+  });
+
+  it("at P: the pre-pause warning, in dollars", async () => {
+    stub.getSubscriptionStatus.mockResolvedValue(sub("current", NOW));
+    await renderDashboard();
+    expect(host.textContent).toContain("Renew for $30.00 (50,000 sats) before then to keep them running.");
+    expect(host.textContent).toContain("Renew $30.00");
+  });
+
+  it("services paused: the dollar amount", async () => {
+    stub.getSubscriptionStatus.mockResolvedValue(sub("worker_lapsed", NOW - 10 * 86_400_000));
+    await renderDashboard();
+    expect(host.textContent).toContain("Renew for $30.00 (50,000 sats) to restore.");
+  });
+});
+
 describe("the alerts slot is empty, and hidden, on a healthy dashboard", () => {
   it("renders no alert", async () => {
     await renderDashboard();

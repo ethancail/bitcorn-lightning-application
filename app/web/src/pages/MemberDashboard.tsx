@@ -246,7 +246,7 @@ export default function MemberDashboard() {
   // J9 / J9a (P6-3): the subscription banner's slot. On a phone the top slot
   // stays above the headline; the info slot goes below it and the chart.
   const subSlot = subscriptionBannerSlot(subStatus);
-  const subBanner = <MemberSubscriptionBanner status={subStatus} />;
+  const subBanner = <MemberSubscriptionBanner status={subStatus} usdRate={usdRate} />;
 
   return (
     <div className="dash">

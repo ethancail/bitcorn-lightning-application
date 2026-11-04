@@ -20,7 +20,11 @@ const sats = (n: number | null | undefined) =>
 
 type Save = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: string };
 
-export default function AutoPaySection() {
+/** pausesOn: the status's grace.worker_until (ms), when hosted services pause
+ *  if the subscription is not renewed. Auto-pay fires only once a lapse has
+ *  begun (autoPayTrigger.ts, the recoverable-lapsed tiers), which is after
+ *  that pause — the copy below says so (drive-mode P2 item 13, R6(b)(b)). */
+export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {}) {
   const [cfg, setCfg] = useState<AutoPayConfig | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [save, setSave] = useState<Save>({ kind: "idle" });
@@ -93,8 +97,10 @@ export default function AutoPaySection() {
       {enabled && cfg && (
         <div style={{ fontSize: "0.75rem", color: "var(--text-3)", lineHeight: 1.5, marginTop: 8 }}>
           <p style={{ margin: "0 0 6px" }}>
-            Your node will automatically pay <strong>{sats(cfg.current_price)}</strong> to renew your
-            subscription when it would otherwise lapse.
+            If your subscription lapses, your node pays <strong>{sats(cfg.current_price)}</strong> from its
+            Bitcoin balance to renew it. That happens after hosted services pause
+            {pausesOn ? ` on ${new Date(pausesOn).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}` : ""}, so
+            turning this on doesn't prevent the pause.
           </p>
           <p style={{ margin: "0 0 6px" }}>Requires sufficient on-chain BTC and your node to be online.</p>
           <p style={{ margin: 0 }}>You can opt out at any time.</p>
@@ -108,8 +114,7 @@ export default function AutoPaySection() {
 
       {!enabled && cfg && (
         <p style={{ fontSize: "0.75rem", color: "var(--text-3)", lineHeight: 1.5, margin: "8px 0 0" }}>
-          When enabled, your node renews your subscription automatically from its on-chain wallet so
-          it never lapses while you're away.
+          When on, your node renews from its Bitcoin balance once your subscription has lapsed.
         </p>
       )}
 
