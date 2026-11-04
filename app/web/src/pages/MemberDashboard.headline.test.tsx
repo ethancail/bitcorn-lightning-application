@@ -259,9 +259,14 @@ describe("J9 / J9a (P6-3): the notice slots", () => {
 describe("J7 (P6-1): the farmer's lifetime received", () => {
   const lifetime = () => host.querySelector('[data-testid="lifetime-received"]');
 
+  // Dollars first with the sats underneath since drive-mode P2 (item 4); the
+  // rate here is $60,000.
+  const lifetimeSats = () => lifetime()!.closest(".kv")!.querySelector(":scope > div:last-child .kv-meta")?.textContent;
+
   it("sits in the detail, labelled \"Received, lifetime\"", async () => {
     await renderDashboard();
-    expect(lifetime()!.textContent).toBe("2,468,000sats");
+    expect(lifetime()!.textContent).toBe("$1,480.80");
+    expect(lifetimeSats()).toBe("2,468,000 sats");
     expect(lifetime()!.closest(".kv")!.textContent).toContain("Received, lifetime");
     expect(lifetime()!.closest(".dash-grid")).not.toBeNull();
   });
@@ -281,7 +286,8 @@ describe("J7 (P6-1): the farmer's lifetime received", () => {
   it("a real zero reads 0", async () => {
     stub.getMemberStats.mockResolvedValue(memberStats({ lifetime: 0 }));
     await renderDashboard();
-    expect(lifetime()!.textContent).toBe("0sats");
+    expect(lifetime()!.textContent).toBe("$0.00");
+    expect(lifetimeSats()).toBe("0 sats");
   });
 
   it("is the farmer's only: a merchant's detail does not show it", async () => {

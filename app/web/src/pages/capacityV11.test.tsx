@@ -58,6 +58,10 @@ const stats = (localSats: number) => ({
     remote_sats: 1_000_000 - localSats,
     capacity_sats: 1_000_000,
     is_active: true,
+    // P1's figures, each side less a 10,000 reserve (the dashboard gauge reads
+    // them since drive-mode P2).
+    room_to_send_sats: Math.max(0, localSats - 10_000),
+    room_to_receive_sats: Math.max(0, 1_000_000 - localSats - 10_000),
     freshness: { updated_at_ms: NOW, age_seconds: 0, staleness: "fresh" },
   },
   forwarded_fees: { total_sats: 0, last_24h_sats: 0, last_30d_sats: 0 },
@@ -144,7 +148,8 @@ describe("V11 — the member dashboard's gauge", () => {
     setup(900_000, "farmer", "send_saturated");
     await render(MemberDashboard);
     expect(bar()).toContain("var(--amber)");
-    expect(host.textContent).toContain("Earnings accumulated · Getting full");
+    // The farmer's gauge reads "Room to receive" since drive-mode P2 (item 2).
+    expect(host.textContent).toContain("Room to receive · Getting full");
     expect(host.innerHTML).not.toContain("var(--red)");
   });
 
@@ -230,7 +235,9 @@ describe("PR 7: the gauge's figure wraps instead of clipping", () => {
     setup(710_000, "farmer", "healthy");
     await render(MemberDashboard);
     const labels = host.querySelector(".member-gauge .labels")!;
-    expect(labels.lastElementChild!.textContent).toBe("71% full — 710,000 of 1,000,000 sats");
+    // drive-mode P2 item 2: room to receive, (1,000,000 − 710,000 − 10,000) /
+    // 1,000,000, as a percentage only.
+    expect(labels.lastElementChild!.textContent).toBe("28% of your connection");
     const rules = cssRules().filter((r) => r.media === null);
     const decls = (sel: string) => Object.assign({}, ...rules.filter((r) => r.selectors.includes(sel)).map((r) => r.decls));
     expect(decls(".member-gauge .labels")["flex-wrap"]).toBe("wrap");

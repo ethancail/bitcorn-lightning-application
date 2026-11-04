@@ -44,6 +44,24 @@ function statusBadge(s: string) {
   }
 }
 
+/**
+ * One Your Node figure, dollars first with its sats underneath in .kv-meta
+ * (drive-mode P2 item 4, R27(3)'s interim). With no rate the value is the sats
+ * figure, as before; not loaded is "—", never 0. File-local on purpose: the
+ * shared "sats on tap" component is member-first-run-ui's to build (§1.3).
+ */
+function NodeFigure({ sats, usd, testId }: { sats: number | null; usd: (sats: number) => string | null; testId?: string }) {
+  const dollars = sats != null ? usd(sats) : null;
+  return (
+    <div style={{ textAlign: "right" }}>
+      <span className="kv-value" {...(testId ? { "data-testid": testId } : {})}>
+        {dollars ?? <>{sats != null ? sats.toLocaleString() : "—"}<span className="unit">sats</span></>}
+      </span>
+      {dollars && <div className="kv-meta">{sats!.toLocaleString()} sats</div>}
+    </div>
+  );
+}
+
 export default function MemberDashboard() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -167,11 +185,12 @@ export default function MemberDashboard() {
   const toUsd = (sats: number) =>
     usdRate ? `$${((sats / 100_000_000) * usdRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null;
 
-  // Estimated withdrawal fee (~1-2% based on observed Loop Out costs)
-  const estWithdrawalFee = ch ? Math.max(1500, Math.round(ch.local_sats * 0.008)) : 0;
+  // drive-mode P2 (R27(10)): the client-side "Estimated fee" guess is gone; the
+  // Withdraw page's quote is the fee a farmer is shown.
 
-  const localPct = ch ? Math.round((ch.local_sats / ch.capacity_sats) * 100) : 0;
-  const remotePct = ch ? Math.round((ch.remote_sats / ch.capacity_sats) * 100) : 0;
+  const pctOf = (sats: number) => (ch && ch.capacity_sats > 0 ? Math.round((sats / ch.capacity_sats) * 100) : 0);
+  const localPct = ch ? pctOf(ch.local_sats) : 0;
+  const remotePct = ch ? pctOf(ch.remote_sats) : 0;
 
   const hasChannel = !loading && ch != null;
   // U24 H2: three distinct states — stats failed to load (statsUnavailable,
@@ -456,17 +475,21 @@ export default function MemberDashboard() {
         {hasChannel && (() => {
           const rec = advisor?.recommendation;
 
-          // Role-aware gauge
-          // Merchant: outbound capacity (local%) — depletes as they spend
-          // Farmer: earnings accumulated (local%) — fills up like a grain bin
+          // Role-aware gauge, from P1's server figures (drive-mode P2, item 2;
+          // copy defect (f)). A percentage and the bar, no sats: the headline
+          // already shows the figure (D2.1). No mark is drawn (R11(5) is P3's).
+          // Merchant: room to send / capacity — depletes as they spend
+          // Farmer: room to receive / capacity — empties as earnings arrive
           // Unknown: raw local/remote split
-          const gaugeLabel = isMerchant ? "Room to send" : isFarmer ? "Earnings accumulated" : "Channel balance";
-          const gaugePct = localPct;
-          const gaugeRemaining = isMerchant
-            ? `${localPct}% — ${ch!.local_sats.toLocaleString()} sats available to send`
+          const gaugeLabel = isMerchant ? "Room to send" : isFarmer ? "Room to receive" : "Channel balance";
+          const gaugePct = isMerchant
+            ? pctOf(ch!.room_to_send_sats)
             : isFarmer
-              ? `${localPct}% full — ${ch!.local_sats.toLocaleString()} of ${ch!.capacity_sats.toLocaleString()} sats`
-              : `${localPct}% on your side — ${remotePct}% on the hub's side`;
+              ? pctOf(ch!.room_to_receive_sats)
+              : localPct;
+          const gaugeRemaining = isMerchant || isFarmer
+            ? `${gaugePct}% of your connection`
+            : `${localPct}% on your side — ${remotePct}% on the hub's side`;
           // V11: the colour comes from the advisor's state, never red; an unknown
           // role or no classification is neutral (components/capacityTone.ts).
           const gaugeColor = CAPACITY_BAR_COLOR[tone];
@@ -586,29 +609,36 @@ export default function MemberDashboard() {
                         >
                           Withdraw Earnings →
                         </button>
-                        <div className="caption">
-                          {withdrawGate.explanation ?? <>
-                            Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
-                            {toUsd(estWithdrawalFee) && ` (${toUsd(estWithdrawalFee)})`}
-                          </>}
-                        </div>
+                        {/* R27(10): no fee guess; the caption is the gate's
+                            refusal only. */}
+                        {withdrawGate.explanation && (
+                          <div className="caption">{withdrawGate.explanation}</div>
+                        )}
                       </div>
                     );
                   })()
                 )}
+                {/* D2.1: the balance is the headline's, so the hint does not
+                    repeat it. */}
                 {isFarmer && minWithdrawal != null && ch!.local_sats > 0 && ch!.local_sats < minWithdrawal && (
                   <div className="field-hint">
-                    Minimum withdrawal: {minWithdrawal.toLocaleString()} sats. You have {ch!.local_sats.toLocaleString()} sats.
+                    Minimum withdrawal: {minWithdrawal.toLocaleString()} sats.
                   </div>
                 )}
 
-                {/* Channel details (collapsible) */}
+                {/* Channel details (collapsible). One tap down, so D2.1 does
+                    not count it (R27(4)); it holds the breakdown behind the
+                    room figures. "Hub's side" is the raw remote balance —
+                    "Room to receive" is the headline's P1 figure now. */}
                 <details className="tile-details">
                   <summary>Channel details</summary>
                   <div className="kv-list">
                     <div className="kv"><span className="kv-label">Channel capacity</span><span className="kv-value">{ch!.capacity_sats.toLocaleString()} sats</span></div>
                     <div className="kv"><span className="kv-label">Your side</span><span className="kv-value">{ch!.local_sats.toLocaleString()} sats</span></div>
-                    <div className="kv"><span className="kv-label">Room to receive</span><span className="kv-value">{ch!.remote_sats.toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">Hub's side</span><span className="kv-value">{ch!.remote_sats.toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">Your reserve</span><span className="kv-value">{(ch!.local_reserve_sats ?? 0).toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">Hub's reserve</span><span className="kv-value">{(ch!.remote_reserve_sats ?? 0).toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">In flight</span><span className="kv-value">{((ch!.pending_outgoing_sats ?? 0) + (ch!.pending_incoming_sats ?? 0)).toLocaleString()} sats</span></div>
                     <div className="kv"><span className="kv-label">Channel role</span><span className="kv-value" style={{ textTransform: "capitalize" }}>{role}</span></div>
                   </div>
                 </details>
@@ -634,36 +664,30 @@ export default function MemberDashboard() {
                   never a headline number. Every settled inbound payment the
                   node has recorded (GET /api/member/stats). An API that does
                   not send the field shows "—", never 0. */}
+              {/* drive-mode P2, item 4: each figure is dollars first, its sats
+                  underneath in .kv-meta (R27(3), the interim until
+                  member-first-run-ui ships the shared component). With no
+                  rate (state "none") the value is sats, and the page's no-price
+                  sentence says why. The "Channel" row is gone: it repeated the
+                  headline's figure (D2.1). */}
               {isFarmer && (
                 <div className="kv">
                   <div>
                     <div className="kv-label">Received, lifetime</div>
                     <div className="kv-meta">Settled Lightning payments</div>
                   </div>
-                  <span className="kv-value" data-testid="lifetime-received">
-                    {stats?.lifetime_received_sats != null ? stats.lifetime_received_sats.toLocaleString() : "—"}<span className="unit">sats</span>
-                  </span>
+                  <NodeFigure sats={stats?.lifetime_received_sats ?? null} usd={toUsd} testId="lifetime-received" />
                 </div>
               )}
               <div className="kv">
                 <span className="kv-label">Bitcoin</span>
-                <span className="kv-value">
-                  {balances ? balances.onchain_sats.toLocaleString() : "—"}<span className="unit">sats</span>
-                </span>
-              </div>
-              <div className="kv">
-                <span className="kv-label">Channel</span>
-                <span className="kv-value">
-                  {balances ? balances.lightning_sats.toLocaleString() : "—"}<span className="unit">sats</span>
-                </span>
+                <NodeFigure sats={balances ? balances.onchain_sats : null} usd={toUsd} />
               </div>
               {/* The merchant's total is a headline number; nobody else's is. */}
               {!isMerchant && (
                 <div className="kv">
                   <span className="kv-label">Total</span>
-                  <span className="kv-value">
-                    {balances ? balances.total_sats.toLocaleString() : "—"}<span className="unit">sats</span>
-                  </span>
+                  <NodeFigure sats={balances ? balances.total_sats : null} usd={toUsd} />
                 </div>
               )}
             </div>
