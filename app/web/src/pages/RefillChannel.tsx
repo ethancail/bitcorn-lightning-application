@@ -8,6 +8,7 @@ import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
 import { statusBadge } from "../components/swapStatus";
+import { loopFailureSentence } from "../components/loopFailureCopy";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
@@ -55,7 +56,9 @@ export function statusText(status: string, amount: number, failureReason: string
     case "completed":
       return `Top up complete. ${amount.toLocaleString()} sats added to your channel.`;
     case "failed":
-      return `Top up failed${failureReason ? `: ${failureReason}` : ""}`;
+      // drive-mode P2 item 7: the member-facing sentence, never loopd's raw
+      // code (which stays in Technical details).
+      return `Top up failed. ${loopFailureSentence(failureReason, "loop_in")}`;
     default:
       return statusBadge(status).label;
   }
@@ -845,6 +848,11 @@ export default function RefillChannel() {
                 </TechRow>
               </TechnicalDetails>
             )}
+            {trackingSwap.failure_reason && (
+              <TechnicalDetails>
+                <TechRow label="Failure code">{trackingSwap.failure_reason}</TechRow>
+              </TechnicalDetails>
+            )}
 
             {/* U24 H5: status polls failing — say so instead of spinning silently. */}
             {!isTerminal(trackingSwap.status) && freshnessStatus(pollFresh, true) === "stale" && (
@@ -984,9 +992,14 @@ export default function RefillChannel() {
                                       </div>
                                     </div>
                                     {expandedDetail.swap_request.failure_reason && (
-                                      <div style={{ color: "var(--red)", fontFamily: "var(--mono)", fontSize: "0.7rem" }}>
-                                        Failure: {expandedDetail.swap_request.failure_reason}
-                                      </div>
+                                      <>
+                                        <div style={{ color: "var(--red)", fontSize: "0.75rem" }}>
+                                          {loopFailureSentence(expandedDetail.swap_request.failure_reason, "loop_in")}
+                                        </div>
+                                        <TechnicalDetails>
+                                          <TechRow label="Failure code">{expandedDetail.swap_request.failure_reason}</TechRow>
+                                        </TechnicalDetails>
+                                      </>
                                     )}
                                     {expandedDetail.execution?.provider_swap_id && (
                                       <div style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
