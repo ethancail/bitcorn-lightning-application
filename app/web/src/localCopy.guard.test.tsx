@@ -137,7 +137,10 @@ describe("SH8/SH8a/R2: the old wording is gone from the sources", () => {
     const count = (file: string, re: RegExp) => (readFileSync(join(PAGES, file), "utf8").match(re) ?? []).length;
     expect(count("RefillChannel.tsx", /(%|<\/span>) available to send$/gm)).toBe(3);
     expect(count("Payments.tsx", /% available to send$/gm)).toBe(4);
-    expect(count("WithdrawBitcoin.tsx", /% available to withdraw$/gm)).toBe(2);
+    // drive-mode P2 item 15 (R26(8)): Cash Out's share is "of your connection",
+    // no longer a claim of what is available to withdraw.
+    expect(count("WithdrawBitcoin.tsx", /% of your connection$/gm)).toBe(2);
+    expect(count("WithdrawBitcoin.tsx", /% available to withdraw$/gm)).toBe(0);
     expect(count("MemberDashboard.tsx", /% on your side — \$\{remotePct\}% on the hub's side`/g)).toBe(1);
   });
 });
@@ -152,12 +155,14 @@ describe("SH8/SH8a/R2: each surface as the member reads it", () => {
     expectNoLocal(el);
   });
 
-  it("Cash Out: \"N% available to withdraw\", and after the withdrawal", async () => {
+  // drive-mode P2 item 15 (R26(8)): "N% of your connection", before and after.
+  it("Cash Out: \"N% of your connection\", and after the withdrawal", async () => {
     stub.getMemberStats.mockResolvedValue(stats(900_000));
     stub.getMemberLiquidityStatus.mockResolvedValue(status("farmer"));
     const el = await mount(WithdrawBitcoin);
-    expect(el.textContent).toContain("90% available to withdraw");
-    expect(el.textContent).toMatch(/After withdrawal: 90% → \d+% available to withdraw/);
+    expect(el.textContent).toContain("90% of your connection");
+    expect(el.textContent).toMatch(/After withdrawal: 90% → \d+% of your connection/);
+    expect(el.textContent).not.toContain("available to withdraw");
     expectNoLocal(el);
   });
 
