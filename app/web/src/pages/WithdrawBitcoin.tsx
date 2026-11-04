@@ -526,6 +526,11 @@ export default function WithdrawBitcoin() {
                   </button>
                 )}
               </div>
+              {maxWithdrawable != null && maxWithdrawable > 0 && (
+                <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 0, marginBottom: 8 }}>
+                  The swap's fees come out of this, so the exact amount you can withdraw is set when you get a quote.
+                </p>
+              )}
               <div style={{ position: "relative" }}>
                 <input
                   aria-label="Amount"
