@@ -105,7 +105,6 @@ export default function RefillChannel() {
   // The effective Loop In limits, read from the server (drive-mode P1 item 6).
   const [limits, setLimits] = useState<SwapLimits | null>(null);
   const minR = limits?.loop_in?.min_sats ?? null;
-  const maxR = limits?.loop_in?.max_sats ?? null;
   // V11: the bar's colour is the Liquidity Advisor's state, not a percentage.
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
 
@@ -151,13 +150,15 @@ export default function RefillChannel() {
       ? Math.round((channelLocal / channelCapacity) * 100)
       : null;
 
+  // Top Up's one rule, stated by the server (drive-mode P1 item 8): the most a
+  // top-up can be now under it (wallet − reserve − HTLC fee − anchor reserve,
+  // within the effective maximum and today's remaining amount), here also
+  // within the room to receive.
+  const availableNow = limits?.loop_in?.available_now_sats ?? null;
+  const onchainFloor = limits?.loop_in?.onchain_floor_sats ?? null;
   const maxRefill =
-    onchainBalance != null
-      ? Math.max(Math.min(
-          onchainBalance - 50_000 - 10_000,
-          channelRemote ?? maxR ?? 0,
-          maxR ?? 0
-        ), 0)
+    availableNow != null
+      ? Math.max(Math.min(availableNow, channelRemote ?? availableNow), 0)
       : null;
 
   const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
@@ -388,7 +389,8 @@ export default function RefillChannel() {
   }
 
   // ─── Insufficient on-chain helper ─────────────────────────────────────
-  const insufficientOnchain = onchainBalance != null && onchainBalance < 60_000;
+  // The same rule's floor: below it, not even the minimum top-up fits.
+  const insufficientOnchain = availableNow != null && minR != null && availableNow < minR;
 
   // ─── Loading stage ────────────────────────────────────────────────────
   if (stage === "loading") {
@@ -518,7 +520,7 @@ export default function RefillChannel() {
                 <span className="alert-icon">!</span>
                 <div className="alert-body">
                   <div className="alert-msg">
-                    Not enough in your Bitcoin balance — you need at least 60,000 sats to cover this plus fees.
+                    Not enough in your Bitcoin balance — you need at least {onchainFloor?.toLocaleString()} sats to cover this plus fees.
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <button

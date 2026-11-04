@@ -29,7 +29,7 @@
 import { db } from "../db";
 import type { ChannelClassification, ChannelRole } from "./channelClassifier";
 import type { LoopAvailability } from "./loopAvailability";
-import { effectiveLimits, type LoopTermsLike } from "../swaps/swapLimits";
+import { effectiveLimits, type LoopTermsLike } from "../swaps/effectiveLimits";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

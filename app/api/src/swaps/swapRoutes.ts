@@ -193,6 +193,7 @@ export async function handleMemberLoopInQuote(req: IncomingMessage, res: Res): P
     nodePubkey: node.pubkey,
     amountSat,
     quotedFeeSat: quote.total_fee_sat,
+    minerFeeSat: quote.htlc_publish_fee_sat, // the quote's, R18(10)
   });
 
   json(res, 200, { swap_request: swapRequest, quote, ceilings: ceilingsFor(swapRequest), policy_check: postCheck });
@@ -216,6 +217,9 @@ export async function handleMemberLoopIn(req: IncomingMessage, res: Res): Promis
     nodePubkey: node.pubkey,
     amountSat: existing.amount_sat,
     quotedFeeSat: existing.quoted_fee_sat ?? 0,
+    // The stored quote's HTLC fee (migration 062), R18(10). NULL only on a row
+    // quoted before 062, which execute refuses with requote_required anyway.
+    minerFeeSat: existing.quoted_miner_fee_sat ?? undefined,
   });
   if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
 

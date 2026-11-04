@@ -14,6 +14,7 @@ import { getHubChannel } from "../lightning/hubChannel";
 // (drive-mode P1 item 6). Defined in swapLimits.ts; exported here beside
 // the policy they mirror.
 export { getMemberSwapLimits } from "./swapLimits";
+import { loopInOnchainRule, onchainOverhead } from "./swapLimits";
 
 export type PolicyResult = { ok: true } | { ok: false; reason: string; code: string };
 
@@ -243,6 +244,9 @@ export async function checkMemberLoopInPolicy(params: {
   nodePubkey: string;
   amountSat: number;
   quotedFeeSat?: number; // omit for pre-quote (phase 1); provide for post-quote (phase 2)
+  // The quote's HTLC (miner) fee, for the on-chain rule after the quote and at
+  // execute (R18(10)); omitted, the rule estimates it from lnd's fee rate.
+  minerFeeSat?: number;
 }): Promise<PolicyResult> {
   const { amountSat, quotedFeeSat, nodePubkey } = params;
 
@@ -267,15 +271,24 @@ export async function checkMemberLoopInPolicy(params: {
     return { ok: false, reason: "Loop service unavailable", code: "loop_unavailable" };
   }
 
-  // ── 3. On-chain balance ───────────────────────────────────────────────
+  // ── 3. On-chain balance: Top Up's one rule (drive-mode P1 item 8) ─────
+  // needed = amount + reserve + HTLC fee + anchor reserve (R16(9), R18(10)).
   try {
-    const { chain_balance } = await getLndChainBalance();
-    const reserve = ENV.memberOnchainReserveSat;
-    const needed = amountSat + reserve;
+    const [rule, { chain_balance }] = await Promise.all([
+      loopInOnchainRule(params.minerFeeSat),
+      getLndChainBalance(),
+    ]);
+    const needed = amountSat + onchainOverhead(rule);
     if (chain_balance < needed) {
+      const feePart = rule.fee_rate_sat_per_vbyte != null
+        ? `~${rule.estimated_htlc_fee_sats.toLocaleString()} network fee at ${rule.fee_rate_sat_per_vbyte} sat/vB`
+        : `${rule.estimated_htlc_fee_sats.toLocaleString()} network fee`;
       return {
         ok: false,
-        reason: `Insufficient on-chain balance (${chain_balance.toLocaleString()} available, need ${needed.toLocaleString()} including ${reserve.toLocaleString()} reserve)`,
+        reason:
+          `Insufficient on-chain balance (${chain_balance.toLocaleString()} available, need ${needed.toLocaleString()}: ` +
+          `the amount + ${rule.reserve_sats.toLocaleString()} reserve + ${feePart} + ` +
+          `${rule.anchor_reserve_sats.toLocaleString()} anchor reserve)`,
         code: "insufficient_onchain",
       };
     }

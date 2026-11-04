@@ -1253,7 +1253,21 @@ export type SwapLimits = {
   /** available_now_sats (drive-mode P1 item 7): the most a withdrawal can be
    *  right now and pass the pre-quote policy; below min_sats, none can. */
   loop_out: SwapDirectionLimits & { available_now_sats: number };
-  loop_in: SwapDirectionLimits;
+  /** Top Up's one rule (drive-mode P1 item 8): needed on-chain = amount +
+   *  reserve + HTLC fee + anchor reserve. The three are null when lnd could not
+   *  give the balance or the fee rate. */
+  loop_in: SwapDirectionLimits & {
+    onchain_rule: null | {
+      reserve_sats: number;
+      anchor_channels: number;
+      anchor_reserve_sats: number;
+      fee_rate_sat_per_vbyte: number | null;
+      htlc_tx_vbytes: number | null;
+      estimated_htlc_fee_sats: number;
+    };
+    onchain_floor_sats: number | null;
+    available_now_sats: number | null;
+  };
 };
 
 export type SwapRequest = {

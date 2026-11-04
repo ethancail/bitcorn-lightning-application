@@ -37,6 +37,8 @@ vi.mock("../lightning/lnd", async (importOriginal) => {
   return {
     ...actual,
     getLndChainBalance: vi.fn(async () => ({ chain_balance: 100_000_000 })),
+    // Top Up's on-chain rule reads lnd's fee rate (drive-mode P1 item 8).
+    getLndChainFeeRate: vi.fn(async () => ({ tokens_per_vbyte: 2 })),
     probeRouteToLoopServer: vi.fn(async () => ({ routable: true })),
   };
 });
