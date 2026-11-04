@@ -14,7 +14,7 @@ import {
   generateDestinationAddress,
   type AppSwapStatus,
   type LoopOutQuoteResult,
-  type LoopInQuoteResult,
+  type PricedLoopInQuote,
 } from "./loopProvider";
 import { SwapRefusalError, type SwapRefusalCode } from "./swapRefusal";
 import { checkLoopOutRoutes, minerFeeExceedsMargin } from "../lightning/loopOutPrechecks";
@@ -121,18 +121,20 @@ export async function createLoopInQuote(params: {
   nodePubkey: string;
   role: "member" | "treasury";
   amountSat: number;
-}): Promise<{ swapRequest: SwapRequest; quote: LoopInQuoteResult }> {
-  const quote = await quoteLoopIn(params.amountSat, undefined, loopInLastHop());
-  // Ruling Z (spec §4 D, D12): getLoopInQuote clamps loopd's −1 ("estimation
-  // failed") to 0, so 0 here means failed OR zero — unknown either way. Refuse
-  // before anything is stored, so no executable quote carries a 0 miner fee
-  // and the confirmation never shows one.
-  if (!(quote.htlc_publish_fee_sat > 0)) {
+}): Promise<{ swapRequest: SwapRequest; quote: PricedLoopInQuote }> {
+  const raw = await quoteLoopIn(params.amountSat, undefined, loopInLastHop());
+  // Ruling Z (spec §4 D, D12): a failed estimate (loopd's −1, null since
+  // drive-mode P1 item 10 removed the clamp to 0) or a zero one is unknown
+  // either way. Refuse before anything is stored, so no executable quote
+  // carries a 0 miner fee and the confirmation never shows one.
+  const htlcFee = raw.htlc_publish_fee_sat;
+  if (htlcFee == null || !(htlcFee > 0)) {
     throw new SwapRefusalError(
       "miner_fee_unknown",
       "The network fee for this refill couldn't be estimated right now. Try again in a few minutes."
     );
   }
+  const quote: PricedLoopInQuote = { ...raw, htlc_publish_fee_sat: htlcFee, total_fee_sat: raw.swap_fee_sat + htlcFee };
   const now = Date.now();
   const id = crypto.randomUUID();
   const expiresAt = now + ENV.swapQuoteExpirySec * 1000;
@@ -370,14 +372,15 @@ async function assertLoopInPrechecks(req: SwapRequest): Promise<void> {
   const refuse = refuser(req.id);
   const fresh = await quoteLoopIn(req.amount_sat, undefined, loopInLastHop());
   const quotedMinerFee = req.quoted_miner_fee_sat!;
-  if (!(fresh.htlc_publish_fee_sat > 0)) {
+  const freshMinerFee = fresh.htlc_publish_fee_sat; // null when the estimate failed (item 10)
+  if (freshMinerFee == null || !(freshMinerFee > 0)) {
     throw refuse(
       "miner_fee_unknown",
       "The network fee for this refill couldn't be estimated right now. Try again in a few minutes.",
       { quoted_miner_fee_sat: quotedMinerFee, fresh_miner_fee_sat: fresh.htlc_publish_fee_sat }
     );
   }
-  if (minerFeeExceedsMargin(fresh.htlc_publish_fee_sat, quotedMinerFee)) {
+  if (minerFeeExceedsMargin(freshMinerFee, quotedMinerFee)) {
     throw refuse(
       "fee_rate_over_quote",
       "Network fees have gone up since this quote. Get a new quote.",

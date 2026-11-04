@@ -131,10 +131,16 @@ export async function initiateLoopOut(params: {
 export type LoopInQuoteResult = {
   amount_sat: number;
   swap_fee_sat: number;
-  htlc_publish_fee_sat: number;
-  total_fee_sat: number;
+  /** null when loopd's estimate failed (drive-mode P1 item 10); a quote
+   *  carrying it is refused with miner_fee_unknown before anything is stored. */
+  htlc_publish_fee_sat: number | null;
+  total_fee_sat: number | null;
   conf_target: number;
 };
+
+/** A Loop In quote whose HTLC fee is known and positive — what
+ *  createLoopInQuote returns once it has refused any other (Ruling Z). */
+export type PricedLoopInQuote = LoopInQuoteResult & { htlc_publish_fee_sat: number; total_fee_sat: number };
 
 export async function quoteLoopIn(
   amountSat: number,
