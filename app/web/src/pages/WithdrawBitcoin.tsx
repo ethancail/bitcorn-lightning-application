@@ -1010,7 +1010,7 @@ export default function WithdrawBitcoin() {
                                           : "—"}
                                       </div>
                                       {expandedDetail.receipt ? (
-                                        <div>
+                                        <div style={{ gridColumn: "1 / -1" }}>
                                           <FeeReceipt receipt={expandedDetail.receipt} toUsd={toUsd} />
                                         </div>
                                       ) : (

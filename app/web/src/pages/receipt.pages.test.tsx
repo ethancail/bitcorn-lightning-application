@@ -115,6 +115,10 @@ for (const [name, Page, type] of [["Withdraw", WithdrawBitcoin, "loop_out"], ["T
       expect(r.rows).toEqual(PARTS);
       // D2.6: the breakdown sums to the summary.
       expect(r.rows.reduce((s, [, v]) => s + (v as number), 0)).toBe(RECEIPT.total_sat);
+      // Screenshot gate: in one column of the detail's two-column grid the
+      // breakdown wrapped every label and value on a phone; it spans the row.
+      const cell = host.querySelector("[data-testid='fee-receipt']")!.parentElement as HTMLElement;
+      expect(cell.style.gridColumn).toBe("1 / -1");
     });
 
     it("the tracking panel, once completed: the same receipt", async () => {
