@@ -183,6 +183,12 @@ export default function WithdrawBitcoin() {
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // The advisor read: the bar's colour, and the Loop alert (drive-mode P2 item
+  // 6), whose action re-reads it.
+  function loadAdvisor() {
+    api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
+  }
+
   // ─── Fetch max withdrawable from treasury channel ──────────────────────
   useEffect(() => {
     api.getMemberStats()
@@ -210,7 +216,7 @@ export default function WithdrawBitcoin() {
         );
       })
       .catch(() => {});
-    api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
+    loadAdvisor();
   }, []);
 
   // Most you can withdraw, and the Max button: the server's available_now,
@@ -443,6 +449,20 @@ export default function WithdrawBitcoin() {
           <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rateInfo)}</p>
         )}
       </div>
+
+      {/* drive-mode P2 item 6 (D2.3): Loop unavailable for withdrawals — the
+          API's loop_out sentence, verbatim (2026-09-02 D2(b)), one action. */}
+      {advisor?.loopAlert?.loop_out && (
+        <div className="alert warning">
+          <span className="alert-icon" aria-hidden>⚠</span>
+          <div className="alert-body">
+            <div className="alert-msg">{advisor.loopAlert.loop_out.text}</div>
+            <button className="btn btn-outline alert-action" onClick={loadAdvisor}>
+              {advisor.loopAlert.loop_out.action.label}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── Withdrawal Amount + Destination Address ──────────────────── */}
       {(stage === "form" || stage === "quoting") && (

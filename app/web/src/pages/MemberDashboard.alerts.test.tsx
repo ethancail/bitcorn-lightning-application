@@ -224,6 +224,55 @@ describe("item 8: no price", () => {
   });
 });
 
+// The API's sentences (app/api/src/memberAdvisor/loopAlert.ts), as it sends them.
+const LOOP_OUT_ALERT = { text: "Loop is still setting up on this node, so Withdraw isn't available yet. If this lasts more than 10 minutes, restart Bitcorn.", action: { label: "Check again" } };
+const LOOP_IN_ALERT = { text: "Top Up is currently unavailable.", action: { label: "Try again" } };
+
+describe("item 6, D2.3: Loop unavailable, the API's alert for the member's direction", () => {
+  it("farmer: the loop_out (Withdraw) alert, below the chart, even in the healthy band", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("farmer", { loopAlert: { loop_out: LOOP_OUT_ALERT, loop_in: LOOP_IN_ALERT } }));
+    await renderDashboard();
+    const alert = alertWith("Loop is still setting up")!;
+    expect(alert).not.toBeNull();
+    expect(alert.querySelector(".alert-msg")!.textContent).toBe(LOOP_OUT_ALERT.text);
+    expect(actionOf(alert)!.textContent).toBe("Check again");
+    expect(belowChart()!.contains(alert)).toBe(true);
+    expect(alertWith("Top Up is currently unavailable")).toBeNull();
+  });
+
+  it("merchant: the loop_in (Top Up) alert", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("merchant", { loopAlert: { loop_out: LOOP_OUT_ALERT, loop_in: LOOP_IN_ALERT } }));
+    await renderDashboard();
+    const alert = alertWith("Top Up is currently unavailable")!;
+    expect(alert).not.toBeNull();
+    expect(actionOf(alert)!.textContent).toBe("Try again");
+    expect(alertWith("Loop is still setting up")).toBeNull();
+  });
+
+  it("unknown role: neither (it has neither Withdraw nor Top Up)", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("unknown", { loopAlert: { loop_out: LOOP_OUT_ALERT, loop_in: LOOP_IN_ALERT } }));
+    await renderDashboard();
+    expect(alertWith("Loop is still setting up")).toBeNull();
+    expect(alertWith("Top Up is currently unavailable")).toBeNull();
+  });
+
+  it("the action re-reads the status, and the alert clears when Loop is back", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("farmer", { loopAlert: { loop_out: LOOP_OUT_ALERT, loop_in: null } }));
+    await renderDashboard();
+    const before = stub.getMemberLiquidityStatus.mock.calls.length;
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("farmer", { loopAlert: { loop_out: null, loop_in: null } }));
+    await click(actionOf(alertWith("Loop is still setting up")!)!);
+    expect(stub.getMemberLiquidityStatus.mock.calls.length).toBe(before + 1);
+    expect(alertWith("Loop is still setting up")).toBeNull();
+  });
+
+  it("available: no Loop alert", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("farmer", { loopAlert: { loop_out: null, loop_in: null } }));
+    await renderDashboard();
+    expect(alertWith("Loop")).toBeNull();
+  });
+});
+
 describe("the alerts slot is empty, and hidden, on a healthy dashboard", () => {
   it("renders no alert", async () => {
     await renderDashboard();

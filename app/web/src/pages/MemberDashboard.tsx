@@ -119,14 +119,16 @@ export default function MemberDashboard() {
     return () => clearInterval(id);
   }, []);
 
-  // Fetch advisor status (less frequently — it's a heavier call with Loop check)
-  useEffect(() => {
+  // Fetch advisor status (less frequently — it's a heavier call with Loop check).
+  // Also the Loop alert's action (drive-mode P2 item 6).
+  const loadAdvisor = useCallback(() => {
     api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
-    const id = setInterval(() => {
-      api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
-    }, 60_000);
-    return () => clearInterval(id);
   }, []);
+  useEffect(() => {
+    loadAdvisor();
+    const id = setInterval(loadAdvisor, 60_000);
+    return () => clearInterval(id);
+  }, [loadAdvisor]);
 
   // Member-name prompt: one read per mount. Saving in Settings and coming back
   // remounts this page, so the prompt clears on the next read with no event or
@@ -438,6 +440,25 @@ export default function MemberDashboard() {
             </div>
           </div>
         )}
+        {/* Item 6 (D2.3): Loop unavailable, for the member's direction — a
+            farmer's Withdraw (loop_out), a merchant's Top Up (loop_in); an
+            unknown role has neither. The sentence is the API's, verbatim
+            (2026-09-02 D2(b)); the action re-reads the status. */}
+        {(() => {
+          const loopAlert = isFarmer ? advisor?.loopAlert?.loop_out : isMerchant ? advisor?.loopAlert?.loop_in : null;
+          if (!loopAlert) return null;
+          return (
+            <div className="alert warning">
+              <span className="alert-icon" aria-hidden>⚠</span>
+              <div className="alert-body">
+                <div className="alert-msg">{loopAlert.text}</div>
+                <button className="btn btn-outline alert-action" onClick={loadAdvisor}>
+                  {loopAlert.action.label}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
         {/* Item 8: no price (state "none" — stale past 6 hours, or never
             fetched). Amounts show in sats; "Check again" re-reads (R27(12)). */}
         {rateInfo?.state === "none" && (

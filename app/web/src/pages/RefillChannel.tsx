@@ -178,6 +178,11 @@ export default function RefillChannel() {
       ? Math.round(((channelLocal + amount) / channelCapacity) * 100)
       : null;
 
+  // The Loop alert's action (drive-mode P2 item 6): re-read the advisor.
+  function loadAdvisor() {
+    api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
+  }
+
   // ─── Mount: fetch channel + balance + check in-flight swaps ───────────
   useEffect(() => {
     async function init() {
@@ -434,6 +439,20 @@ export default function RefillChannel() {
           <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rateInfo)}</p>
         )}
       </div>
+
+      {/* drive-mode P2 item 6 (D2.3): Loop unavailable for Top Up — the API's
+          loop_in sentence, verbatim (2026-09-02 D2(b)), one action. */}
+      {advisor?.loopAlert?.loop_in && (
+        <div className="alert warning">
+          <span className="alert-icon" aria-hidden>⚠</span>
+          <div className="alert-body">
+            <div className="alert-msg">{advisor.loopAlert.loop_in.text}</div>
+            <button className="btn btn-outline alert-action" onClick={loadAdvisor}>
+              {advisor.loopAlert.loop_in.action.label}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── Form + Quoting stage ─────────────────────────────────────── */}
       {(stage === "form" || stage === "quoting") && (

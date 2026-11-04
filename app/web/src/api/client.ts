@@ -1199,7 +1199,15 @@ export type MemberLiquidityStatusResponse = {
   classification: MemberChannelClassification | null;
   recommendation: MemberLiquidityRecommendation | null;
   loopAvailability: MemberLoopAvailability;
+  /** drive-mode P2 item 6: the Loop-unavailable alert per direction, its
+   *  sentence rendered API-side (memberAdvisor/loopAlert.ts) so the reason
+   *  stays API-internal (2026-09-02 D2(b)). Null when that direction is
+   *  available. Withdraw reads loop_out, Top Up loop_in, the dashboard the
+   *  one for the member's role. Its action re-reads this endpoint. */
+  loopAlert: { loop_out: MemberLoopAlert | null; loop_in: MemberLoopAlert | null };
 };
+
+export type MemberLoopAlert = { text: string; action: { label: string } };
 
 export type MemberLiquidityHistoryResponse = {
   history: MemberChannelClassification[];
