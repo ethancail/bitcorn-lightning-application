@@ -27,6 +27,7 @@ const stub = vi.hoisted(() => ({
   getTreasuryInfo: vi.fn(),
   getBitcornName: vi.fn(),
   getSwapLimits: vi.fn(),
+  getMemberCosts: vi.fn(),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -91,6 +92,9 @@ const advisor = (channelRole: "merchant" | "farmer" | "unknown") => ({
 });
 
 const FRESH = { usd: 60_000, source: "coinbase", fetched_at: NOW, age_ms: 0, state: "fresh" };
+
+// GET /api/member/costs. 42 + 4,000 = 4,042 sats; at $60,000, $2.43.
+const COSTS = { since_ms: NOW - 30 * 86_400_000, payment_fees_sat: 42, withdraw_fees_sat: 4_000, topup_fees_sat: 0, total_sat: 4_042 };
 const NONE = { usd: null, source: "coinbase", fetched_at: null, age_ms: null, state: "none" };
 
 let host: HTMLDivElement;
@@ -108,6 +112,7 @@ beforeEach(() => {
   stub.getTreasuryInfo.mockResolvedValue(null);
   stub.getBitcornName.mockResolvedValue({ bitcorn_name: "Green Acres", bitcorn_name_set_at: 1 });
   stub.getSwapLimits.mockResolvedValue({ loop_available: true, loop_out: { min_sats: 250_000 }, loop_in: { min_sats: 250_000 } });
+  stub.getMemberCosts.mockResolvedValue(COSTS);
   stub.getMemberLiquidityStatus.mockResolvedValue(advisor("farmer"));
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -247,6 +252,63 @@ describe("item 4: Your Node shows dollars first, sats underneath", () => {
   it("the Channel row is gone (the headline shows that figure)", async () => {
     await renderDashboard();
     expect(yourNodeRow("Channel")).toBeNull();
+  });
+});
+
+/** The "Costs, last 30 days" panel: its total, sats line and breakdown rows. */
+function costs() {
+  const panel = [...host.querySelectorAll(".panel")].find((p) => p.querySelector(".panel-title")?.textContent?.includes("Costs, last 30 days"));
+  if (!panel) return null;
+  const details = panel.querySelector("details")!;
+  return {
+    total: panel.querySelector("[data-testid='costs-total']")!.textContent,
+    sats: panel.querySelector("[data-testid='costs-total-sats']")?.textContent ?? null,
+    open: details.open,
+    rows: [...details.querySelectorAll("[data-testid='cost-part']")].map((r) => [
+      r.querySelector(".kv-label")!.textContent,
+      Number(r.getAttribute("data-sats")),
+    ]),
+  };
+}
+
+describe("item 14: costs over the last 30 days, itemised one tap down", () => {
+  it("farmer: the total in dollars, sats under it; payment and Withdraw fees behind a dropdown", async () => {
+    await renderDashboard();
+    const c = costs()!;
+    expect(c).not.toBeNull();
+    expect(c.total).toBe("$2.43");
+    expect(c.sats).toBe("4,042 sats");
+    expect(c.open).toBe(false);
+    expect(c.rows).toEqual([["Payment fees", 42], ["Withdraw fees", 4_000]]);
+    expect(c.rows.reduce((s, [, v]) => s + (v as number), 0)).toBe(COSTS.total_sat);
+  });
+
+  it("merchant: payment and Top Up fees", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("merchant"));
+    stub.getMemberCosts.mockResolvedValue({ ...COSTS, withdraw_fees_sat: 0, topup_fees_sat: 2_200, total_sat: 2_242 });
+    await renderDashboard();
+    expect(costs()!.rows).toEqual([["Payment fees", 42], ["Top Up fees", 2_200]]);
+  });
+
+  it("a fee from the other direction is listed too, so the rows always sum to the total", async () => {
+    stub.getMemberCosts.mockResolvedValue({ ...COSTS, topup_fees_sat: 1_000, total_sat: 5_042 });
+    await renderDashboard();
+    const c = costs()!;
+    expect(c.rows).toEqual([["Payment fees", 42], ["Withdraw fees", 4_000], ["Top Up fees", 1_000]]);
+    expect(c.rows.reduce((s, [, v]) => s + (v as number), 0)).toBe(5_042);
+  });
+
+  it("the read failing: no panel, and the rest of the dashboard renders", async () => {
+    stub.getMemberCosts.mockRejectedValue(new Error("down"));
+    await renderDashboard();
+    expect(costs()).toBeNull();
+    expect(host.textContent).toContain("Your Node");
+  });
+
+  it("D2.1 still holds with the panel on screen", async () => {
+    await renderDashboard();
+    expect(costs()).not.toBeNull();
+    expect(duplicates(figures())).toEqual([]);
   });
 });
 

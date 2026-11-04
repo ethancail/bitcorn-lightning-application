@@ -287,6 +287,8 @@ export const api = {
   initiateSwapLoopIn: (body: { swap_request_id: string } & SwapCeilings) =>
     apiFetch<{ swap_request: SwapRequest; execution: SwapExecution }>("/api/swaps/loop-in", { method: "POST", body: JSON.stringify(body) }),
   getSwap: (id: string) => apiFetch<SwapDetailResponse>(`/api/swaps/${id}`),
+  /** Fees paid over the last 30 days (drive-mode P2 item 14). */
+  getMemberCosts: () => apiFetch<MemberCosts>("/api/member/costs"),
   /** The effective member swap limits per direction (drive-mode P1 item 6). */
   getSwapLimits: () => apiFetch<SwapLimits>("/api/swaps/limits"),
   getSwapHistory: (limit?: number) => {
@@ -1370,6 +1372,30 @@ export type SwapDetailResponse = {
   swap_request: SwapRequest;
   execution: SwapExecution | null;
   events: SwapEvent[];
+  /** drive-mode P2 item 14 (D2.6): a completed swap's fee summary and its
+   *  parts, from loopd's costs; null otherwise. The member route sends it;
+   *  the admin route does not. */
+  receipt?: SwapReceipt | null;
+};
+
+export type SwapReceipt = {
+  total_sat: number;
+  /** The swap service's fee (paid to the Loop server). */
+  swap_fee_sat: number;
+  /** The Bitcoin network fee. */
+  network_fee_sat: number;
+  /** Lightning routing. */
+  routing_fee_sat: number;
+};
+
+/** GET /api/member/costs (drive-mode P2 item 14): fees paid over the last
+ *  30 days — payment fees, and swap fees per direction. */
+export type MemberCosts = {
+  since_ms: number;
+  payment_fees_sat: number;
+  withdraw_fees_sat: number;
+  topup_fees_sat: number;
+  total_sat: number;
 };
 
 /**

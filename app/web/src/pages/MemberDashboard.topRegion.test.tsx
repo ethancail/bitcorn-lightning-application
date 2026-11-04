@@ -30,6 +30,7 @@ const stub = vi.hoisted(() => ({
   getTreasuryInfo: vi.fn(),
   getBitcornName: vi.fn(),
   getSwapLimits: vi.fn(),
+  getMemberCosts: vi.fn(), // drive-mode P2 item 14: a new dashboard read
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -137,6 +138,7 @@ beforeEach(() => {
   stub.getTreasuryInfo.mockResolvedValue(null);
   stub.getBitcornName.mockResolvedValue({ bitcorn_name: "Green Acres", bitcorn_name_set_at: 1 });
   stub.getSwapLimits.mockImplementation(never);
+  stub.getMemberCosts.mockImplementation(never);
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);

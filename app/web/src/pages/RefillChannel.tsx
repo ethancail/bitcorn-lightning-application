@@ -3,7 +3,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { api, fmtSats, swapExecuteBody } from "../api/client";
 import { rateNote } from "../api/rate";
 import type { ExchangeRate, SwapLimits } from "../api/client";
-import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
+import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse, SwapReceipt } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
 import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
@@ -75,6 +75,46 @@ export function statusTechnical(status: string): string {
   }
 }
 
+/**
+ * A completed swap's fee receipt (drive-mode P2 item 14; D2.6): the summary,
+ * dollars first with the sats underneath, and the breakdown behind a dropdown.
+ * The parts are the server's (GET /api/swaps/:id receipt) and sum to its
+ * total. Page-local on purpose, as WithdrawBitcoin's copy is: a shared
+ * component is member-first-run-ui's to build (spec §1.3).
+ */
+function FeeReceipt({ receipt, toUsd }: { receipt: SwapReceipt; toUsd: (sats: number) => string | null }) {
+  const dollars = toUsd(receipt.total_sat);
+  const parts: Array<[string, number]> = [
+    ["Swap service fee", receipt.swap_fee_sat],
+    ["Bitcoin network fee", receipt.network_fee_sat],
+    ["Lightning routing", receipt.routing_fee_sat],
+  ];
+  return (
+    <div data-testid="fee-receipt">
+      <div className="stat-label">Fee</div>
+      <div className="stat-value" style={{ fontSize: "1.125rem" }} data-testid="fee-summary">
+        {dollars ?? fmtSats(receipt.total_sat)}
+      </div>
+      {dollars && (
+        <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", marginTop: 4 }} data-testid="fee-summary-sats">
+          {fmtSats(receipt.total_sat)}
+        </div>
+      )}
+      <details style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>
+        <summary style={{ cursor: "pointer", userSelect: "none" }}>Fee breakdown</summary>
+        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+          {parts.map(([label, sats]) => (
+            <div key={label} data-testid="fee-part" data-sats={sats} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <span>{label}</span>
+              <span style={{ fontFamily: "var(--mono)" }}>{fmtSats(sats)}</span>
+            </div>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
+}
+
 function formatCountdown(expiresAt: number): string {
   const diff = expiresAt - Date.now();
   if (diff <= 0) return "Expired";
@@ -136,6 +176,9 @@ export default function RefillChannel() {
   // ─── Tracking state ───────────────────────────────────────────────────
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [trackingSwap, setTrackingSwap] = useState<SwapRequest | null>(null);
+  // The completed swap's fee receipt, from GET /api/swaps/:id (drive-mode P2
+  // item 14).
+  const [trackingReceipt, setTrackingReceipt] = useState<SwapReceipt | null>(null);
 
   // ─── History state ────────────────────────────────────────────────────
   const [history, setHistory] = useState<SwapRequest[]>([]);
@@ -150,7 +193,7 @@ export default function RefillChannel() {
   // tracking panel says it can't confirm status instead of spinning silently.
   const [pollFresh, setPollFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
   const [expandedSwapId, setExpandedSwapId] = useState<string | null>(null);
-  const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[] } | null>(null);
+  const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[]; receipt?: SwapReceipt | null } | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -279,6 +322,7 @@ export default function RefillChannel() {
           .then((detail) => {
             setPollFresh((s) => recordSuccess(s, Date.now()));
             setTrackingSwap(detail.swap_request);
+            setTrackingReceipt(detail.receipt ?? null);
             if (isTerminal(detail.swap_request.status)) {
               if (pollRef.current) clearInterval(pollRef.current);
               loadHistory();
@@ -814,7 +858,11 @@ export default function RefillChannel() {
                 <div className="stat-label">Amount</div>
                 <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(trackingSwap.amount_sat)}</div>
               </div>
-              {trackingSwap.actual_fee_sat != null && (
+              {trackingReceipt ? (
+                <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
+                  <FeeReceipt receipt={trackingReceipt} toUsd={toUsd} />
+                </div>
+              ) : trackingSwap.actual_fee_sat != null && (
                 <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
                   <div className="stat-label">Actual Fee</div>
                   <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(trackingSwap.actual_fee_sat)}</div>
@@ -976,12 +1024,18 @@ export default function RefillChannel() {
                                           ? `${expandedDetail.swap_request.quoted_fee_sat.toLocaleString()} sats`
                                           : "—"}
                                       </div>
-                                      <div>
-                                        <span style={{ color: "var(--text-3)" }}>Actual Fee:</span>{" "}
-                                        {expandedDetail.swap_request.actual_fee_sat != null
-                                          ? `${expandedDetail.swap_request.actual_fee_sat.toLocaleString()} sats`
-                                          : "—"}
-                                      </div>
+                                      {expandedDetail.receipt ? (
+                                        <div>
+                                          <FeeReceipt receipt={expandedDetail.receipt} toUsd={toUsd} />
+                                        </div>
+                                      ) : (
+                                        <div>
+                                          <span style={{ color: "var(--text-3)" }}>Actual Fee:</span>{" "}
+                                          {expandedDetail.swap_request.actual_fee_sat != null
+                                            ? `${expandedDetail.swap_request.actual_fee_sat.toLocaleString()} sats`
+                                            : "—"}
+                                        </div>
+                                      )}
                                       <div>
                                         <span style={{ color: "var(--text-3)" }}>Created:</span>{" "}
                                         {formatDate(expandedDetail.swap_request.created_at)}

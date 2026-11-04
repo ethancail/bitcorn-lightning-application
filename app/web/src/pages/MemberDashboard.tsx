@@ -8,7 +8,7 @@ import {
   type NodeBalances,
 } from "../api/client";
 import { rateNote, RATE_NONE_SENTENCE } from "../api/rate";
-import type { ExchangeRate, SwapLimits } from "../api/client";
+import type { ExchangeRate, MemberCosts, SwapLimits } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
 import { subscriptionBannerSlot } from "../components/subscriptionBannerSlot";
@@ -75,6 +75,8 @@ export default function MemberDashboard() {
   const [swapLimits, setSwapLimits] = useState<SwapLimits | null>(null);
   // The rate's state, for its note (drive-mode P1 item 3).
   const [rateInfo, setRateInfo] = useState<ExchangeRate | null>(null);
+  // Fees paid over the last 30 days (drive-mode P2 item 14).
+  const [costs, setCosts] = useState<MemberCosts | null>(null);
   const [pendingTreasuryChannel, setPendingTreasuryChannel] = useState(false);
   const [balances, setBalances] = useState<NodeBalances | null>(null);
   const [balFresh, setBalFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
@@ -146,6 +148,8 @@ export default function MemberDashboard() {
   useEffect(() => {
     loadRate();
     api.getSwapLimits().then(setSwapLimits).catch(() => {});
+    // A failed read shows no costs panel; nothing else depends on it.
+    api.getMemberCosts().then(setCosts).catch(() => {});
   }, [loadRate]);
 
   // Balance polling.
@@ -761,6 +765,49 @@ export default function MemberDashboard() {
             {fundError && <div className="status-line">{fundError}</div>}
           </div>
         </div>
+
+        {/* ── Costs, last 30 days (drive-mode P2 item 14; the record :48):
+            the total in dollars, its sats underneath, itemised one tap down.
+            Payment fees and swap fees only — no subscription line (R27(9)).
+            The member's own direction is always listed; the other only when
+            it is not zero, so the rows always sum to the total. ── */}
+        {costs && (() => {
+          const rows: Array<[string, number]> = [["Payment fees", costs.payment_fees_sat]];
+          if (!isMerchant || costs.withdraw_fees_sat > 0) rows.push(["Withdraw fees", costs.withdraw_fees_sat]);
+          if (!isFarmer || costs.topup_fees_sat > 0) rows.push(["Top Up fees", costs.topup_fees_sat]);
+          const dollars = toUsd(costs.total_sat);
+          return (
+            <div className="panel fade-in">
+              <div className="panel-header">
+                <span className="panel-title"><span className="icon">≡</span>Costs, last 30 days</span>
+              </div>
+              <div className="panel-body stack">
+                <div className="kv-list">
+                  <div className="kv">
+                    <span className="kv-label">Fees paid</span>
+                    <div style={{ textAlign: "right" }}>
+                      <span className="kv-value" data-testid="costs-total">
+                        {dollars ?? `${costs.total_sat.toLocaleString()} sats`}
+                      </span>
+                      {dollars && <div className="kv-meta" data-testid="costs-total-sats">{costs.total_sat.toLocaleString()} sats</div>}
+                    </div>
+                  </div>
+                </div>
+                <details className="tile-details">
+                  <summary>Itemised</summary>
+                  <div className="kv-list">
+                    {rows.map(([label, sats]) => (
+                      <div className="kv" key={label} data-testid="cost-part" data-sats={sats}>
+                        <span className="kv-label">{label}</span>
+                        <span className="kv-value">{sats.toLocaleString()} sats</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Upgrade banner when navigated from Channels page */}
         {hasChannel && upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
