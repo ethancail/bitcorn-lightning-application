@@ -275,6 +275,55 @@ describe("item 6, D2.3: Loop unavailable, the API's alert for the member's direc
   });
 });
 
+// Finding 5 (R33): one statement per fault. While a direction's Loop alert
+// shows, the advisor's message and that direction's button caption are not
+// shown — they would say the same fault again.
+describe("R33 finding 5: one statement per fault", () => {
+  const OUT = { text: "Loop isn't responding right now, so Withdraw isn't available.", action: { label: "Check again" } };
+  const IN = { text: "Loop isn't responding right now, so Top Up isn't available.", action: { label: "Check again" } };
+  const DOWN = { ...LOOP_UP, loopDaemonRunning: false, loopOutAvailable: false, loopInAvailable: false, loopOutTerms: null, loopInTerms: null };
+  const recommendation = (action: string, reason: string) => ({
+    action, suggestedAmountSats: action === "loop_in" ? 500_000 : null, projectedMemberLocalPct: null,
+    reason, urgency: "high", loopAvailable: false, generatedAt: NOW,
+  });
+  const FARMER_REASON = "Earnings are 90% full. Withdraw earnings from the Withdraw page, or send a payment to make room. Loop isn't responding right now.";
+  const statements = () => (host.textContent ?? "").split(/Loop isn't responding|currently unavailable/).length - 1;
+
+  it("farmer: the Loop alert only — no advisor message, no Withdraw caption", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("farmer", {
+      loopAvailability: DOWN, recommendation: recommendation("manual_recovery", FARMER_REASON), loopAlert: { loop_out: OUT, loop_in: IN },
+    }));
+    await renderDashboard();
+    expect(alertWith("Loop isn't responding right now, so Withdraw")).not.toBeNull();
+    expect(host.textContent).not.toContain("Earnings are 90% full");
+    expect(host.textContent).not.toContain("Withdrawals are currently unavailable.");
+    expect(statements()).toBe(1);
+    // The button is still refused (the gate is unchanged); only its caption goes.
+    const btn = [...host.querySelectorAll("button")].find((b) => b.textContent === "Withdraw Earnings →") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it("merchant: the Loop alert only — no advisor message, no Top Up caption", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("merchant", {
+      loopAvailability: DOWN, recommendation: recommendation("loop_in", "Your channel is nearly out of room to send."), loopAlert: { loop_out: OUT, loop_in: IN },
+    }));
+    await renderDashboard();
+    expect(alertWith("Loop isn't responding right now, so Top Up")).not.toBeNull();
+    expect(host.textContent).not.toContain("nearly out of room to send");
+    expect(host.textContent).not.toContain("Bitcorn recommends");
+    expect(statements()).toBe(1);
+  });
+
+  it("PERMITTING: no Loop alert — the advisor's message and the caption show as before", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("farmer", {
+      loopAvailability: DOWN, recommendation: recommendation("manual_recovery", FARMER_REASON), loopAlert: { loop_out: null, loop_in: null },
+    }));
+    await renderDashboard();
+    expect(host.textContent).toContain("Earnings are 90% full");
+    expect(host.textContent).toContain("Withdrawals are currently unavailable.");
+  });
+});
+
 // Items 11-12 on the dashboard: the subscription banner gets the dashboard's
 // rate, so the renewal copy is dollars first (no new fetch).
 describe("items 11-12: the dashboard's renewal banner reads its rate", () => {

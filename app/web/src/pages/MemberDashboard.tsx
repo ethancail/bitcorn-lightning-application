@@ -217,6 +217,11 @@ export default function MemberDashboard() {
   const isMerchant = role === "merchant";
   const isFarmer = role === "farmer";
   const minWithdrawal = swapLimits?.loop_out?.min_sats ?? null;
+  // The API's Loop alert for the member's direction (item 6): a farmer's
+  // Withdraw (loop_out), a merchant's Top Up (loop_in); an unknown role has
+  // neither. While it shows, the advisor's message and that direction's button
+  // caption are not shown: one statement per fault (R33, finding 5).
+  const memberLoopAlert = isFarmer ? advisor?.loopAlert?.loop_out ?? null : isMerchant ? advisor?.loopAlert?.loop_in ?? null : null;
 
   // V11: the capacity colour comes from the advisor's state, never red; an
   // unknown role or no classification is neutral (components/capacityTone.ts).
@@ -449,7 +454,7 @@ export default function MemberDashboard() {
             unknown role has neither. The sentence is the API's, verbatim
             (2026-09-02 D2(b)); the action re-reads the status. */}
         {(() => {
-          const loopAlert = isFarmer ? advisor?.loopAlert?.loop_out : isMerchant ? advisor?.loopAlert?.loop_in : null;
+          const loopAlert = memberLoopAlert;
           if (!loopAlert) return null;
           return (
             <div className="alert warning">
@@ -576,7 +581,8 @@ export default function MemberDashboard() {
           // high urgency takes the warning, not the red critical.
           const alertClass = rec?.urgency === "high" || rec?.urgency === "medium" ? "warning" : "info";
           const alertIcon = rec?.urgency === "high" || rec?.urgency === "medium" ? "⚠" : "ℹ";
-          const showAlert = rec && rec.action !== "none";
+          // R33 finding 5: not while the Loop alert states the fault.
+          const showAlert = rec && rec.action !== "none" && !memberLoopAlert;
 
           return (
             <div className="panel ops fade-in">
@@ -652,11 +658,14 @@ export default function MemberDashboard() {
                     <button className="btn btn-primary btn-block" onClick={() => navigate(refillUrl)}>
                       Top Up →
                     </button>
-                    <div className="caption">
-                      {rec?.suggestedAmountSats
-                        ? `Bitcorn recommends ${rec.suggestedAmountSats.toLocaleString()} sats — pre-filled for you.`
-                        : "Add funds from your Bitcoin balance to keep paying."}
-                    </div>
+                    {/* R33 finding 5: no caption while the Loop alert shows. */}
+                    {!memberLoopAlert && (
+                      <div className="caption">
+                        {rec?.suggestedAmountSats
+                          ? `Bitcorn recommends ${rec.suggestedAmountSats.toLocaleString()} sats — pre-filled for you.`
+                          : "Add funds from your Bitcoin balance to keep paying."}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -678,8 +687,10 @@ export default function MemberDashboard() {
                           Withdraw Earnings →
                         </button>
                         {/* R27(10): no fee guess; the caption is the gate's
-                            refusal only. */}
-                        {withdrawGate.explanation && (
+                            refusal only, and not while the Loop alert states
+                            the fault (R33 finding 5). The gate itself is
+                            unchanged. */}
+                        {withdrawGate.explanation && !memberLoopAlert && (
                           <div className="caption">{withdrawGate.explanation}</div>
                         )}
                       </div>
