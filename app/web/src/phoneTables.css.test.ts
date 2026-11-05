@@ -72,6 +72,14 @@ describe("X4b: a J2 table is a card on a phone", () => {
   });
 });
 
+describe("R34 item 4: Payments' history cards keep the panel's inset on a phone", () => {
+  it("the wrapper is padded by the phone tile inset, on a phone only", () => {
+    const rules = RULES.filter((r) => r.selectors.includes(".payments-history-wrap"));
+    expect(rules.map((r) => r.media)).toEqual([PHONE]);
+    expect(rules[0].decls["padding"]).toBe("0 var(--d-tile-pad-ph)");
+  });
+});
+
 describe("R4: the J2 tables only", () => {
   const files = sources(__dirname);
   const usesOf = (cls: string) =>

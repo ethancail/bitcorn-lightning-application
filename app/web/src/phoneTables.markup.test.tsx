@@ -313,6 +313,14 @@ describe("R34 item 4: Payments' history is a card on a phone", () => {
     expect(table.classList.contains("phone-card")).toBe(true);
   });
 
+  // Screenshot gate (R34): the panel body has no padding (the desktop table's
+  // cells carry the inset), so the cards sat flush against the panel's edges.
+  it("its wrapper carries the phone inset hook", async () => {
+    const el = await mountPayments();
+    const table = el.querySelector("table.data-table")!;
+    expect(table.parentElement!.classList.contains("payments-history-wrap")).toBe(true);
+  });
+
   it("Direction is the title; every other column labelled", async () => {
     const el = await mountPayments();
     expectHooked(el.querySelector("table.data-table") as HTMLTableElement);

@@ -165,7 +165,7 @@ export default function Payments({ title }: { title: string }) {
             // history becomes when a row won't fit on one line). Seven columns
             // and a free-text memo have no widest row, so there is no one-line
             // threshold to measure; on a phone it is always the card.
-            <div style={{ overflowX: "auto" }}>
+            <div className="payments-history-wrap" style={{ overflowX: "auto" }}>
               <table className="data-table phone-card">
                 <thead>
                   <tr>

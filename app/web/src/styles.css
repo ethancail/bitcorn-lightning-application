@@ -3871,6 +3871,9 @@ input[type="number"] {
   :is(.data-table, .sub-history-table).phone-card tr.row-detail td { flex: 1 0 100%; white-space: normal; }
   :is(.data-table, .sub-history-table).phone-card tr.row-detail td::before { content: none; }
   :is(.data-table, .sub-history-table).phone-card td:empty { display: none; }
+  /* R34 item 4: Payments' history panel body has no padding (its desktop
+     table's cells carry the inset); as cards the rows need the panel's own. */
+  .payments-history-wrap { padding: 0 var(--d-tile-pad-ph); }
 
   /* X4c: Top Up's history (.phone-fit) — and Withdraw's, which has the same
      columns, date format and badges (R34 item 4) — is one line wherever every row fits
