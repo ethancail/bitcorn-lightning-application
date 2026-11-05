@@ -949,14 +949,17 @@ export default function WithdrawBitcoin() {
           ) : history.length === 0 ? (
             <div className="empty-state">No withdrawals yet</div>
           ) : (
-            <div className="table-scroll">
-              <table className="data-table">
+            // R34 item 4: Top Up's phone layout (.phone-fit, styles.css X4c) —
+            // the same columns, so the same markup: one line where every row
+            // fits, a card otherwise; never a sideways scroll on a phone.
+            <div className="table-scroll phone-fit-wrap">
+              <table className="data-table phone-fit">
                 <thead>
                   <tr>
                     <th>Date</th>
                     <th style={{ textAlign: "right" }}>Amount</th>
                     <th>Status</th>
-                    <th style={{ textAlign: "right" }}>Fee</th>
+                    <th className="col-secondary" style={{ textAlign: "right" }}>Fee</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -969,10 +972,10 @@ export default function WithdrawBitcoin() {
                           onClick={() => handleExpandSwap(s.id)}
                           style={{ cursor: "pointer", background: isExpanded ? "color-mix(in srgb, var(--amber) 6%, transparent)" : undefined }}
                         >
-                          <td>{formatDate(s.created_at)}</td>
-                          <td className="td-num td-mono">{s.amount_sat.toLocaleString()}</td>
-                          <td><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
-                          <td className="td-num td-mono">
+                          <td className="td-primary">{formatDate(s.created_at)}</td>
+                          <td data-label="Amount" className="td-num td-mono">{s.amount_sat.toLocaleString()}</td>
+                          <td data-label="Status"><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
+                          <td data-label="Fee" className="td-num td-mono col-secondary">
                             {s.actual_fee_sat != null
                               ? s.actual_fee_sat.toLocaleString()
                               : s.quoted_fee_sat != null
@@ -981,7 +984,7 @@ export default function WithdrawBitcoin() {
                           </td>
                         </tr>
                         {isExpanded && (
-                          <tr>
+                          <tr className="row-detail">
                             <td colSpan={4} style={{ padding: 0, border: "none" }}>
                               <div style={{
                                 padding: "12px 16px", background: "var(--bg-2)",

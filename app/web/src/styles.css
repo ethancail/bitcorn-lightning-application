@@ -3827,9 +3827,11 @@ input[type="number"] {
    On a phone a table is ONE line per row only if every row actually fits on
    one line; otherwise it is a CARD (X4b). A card: the title cell (td-primary)
    on its own line, then each value with its column's name (data-label)
-   beside it, nothing hidden. Opt-in, by class, on the J2 tables only (R4):
-   .phone-card is always a card on a phone. The other tables keep today's
-   sideways scroll (.data-table's 600px minimum above). Kept after every
+   beside it, nothing hidden. Opt-in, by class, on the J2 tables (R4) and,
+   by drive-mode P2's R34 item 4, Payments' history (.phone-card) and
+   Withdraw's history (.phone-fit, below): .phone-card is always a card on a
+   phone. The other tables keep today's sideways scroll (.data-table's 600px
+   minimum above). Kept after every
    table rule so it wins on order as well as specificity. */
 @media (max-width: 767px) {
   :is(.data-table, .sub-history-table).phone-card { display: block; width: 100%; min-width: 0; }
@@ -3868,7 +3870,8 @@ input[type="number"] {
   :is(.data-table, .sub-history-table).phone-card tr.row-detail td::before { content: none; }
   :is(.data-table, .sub-history-table).phone-card td:empty { display: none; }
 
-  /* X4c: Top Up's history (.phone-fit) is one line wherever every row fits
+  /* X4c: Top Up's history (.phone-fit) — and Withdraw's, which has the same
+     columns, date format and badges (R34 item 4) — is one line wherever every row fits
      and a card otherwise, judged at the reader's own text size. Its wrapper
      is a size container; a container query's em is the container's own font
      size (14px × the text scale), so the threshold follows the text-size

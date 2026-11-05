@@ -130,8 +130,8 @@ Pill tags for statuses. Used in history tables, peer tags, etc.
 
 On a phone (< 768px) a table is one line per row only if every row fits; otherwise it is a card — the title cell on its own line, then each value with its column's name beside it. Opt-in, by class:
 
-- `.phone-card` — always a card on a phone. On ChannelsPage's four lane tables and the subscription payments table.
-- `.phone-fit` inside a `.phone-fit-wrap` size container — one line where the widest possible row fits, a card otherwise, at the reader's text size. Only Top Up's history; its threshold `calc(17.1em + 103px)` was measured from the widest row the code can produce. Change that row (a higher refill cap, a new status label, the date format), or the root font size, and the threshold must be re-measured — `phoneTables.css.test.ts` holds the readings.
+- `.phone-card` — always a card on a phone. On ChannelsPage's four lane tables, the subscription payments table and Payments' history (drive-mode P2, R34 item 4; its With and Memo values may wrap, having no length limit).
+- `.phone-fit` inside a `.phone-fit-wrap` size container — one line where the widest possible row fits, a card otherwise, at the reader's text size. Top Up's history and Withdraw's (same columns, date format and badges; R34 item 4); its threshold `calc(17.1em + 103px)` was measured from the widest row the code can produce. Change that row (a higher refill or withdrawal cap, a new status label, the date format), or the root font size, and the threshold must be re-measured — `phoneTables.css.test.ts` holds the readings.
 - The hooks every opted-in table needs: `td-primary` on each row's title cell, `data-label="<column header>"` on every other cell, `col-secondary` on a column a one-line table may hide, `row-detail` on an expanded detail row (`phoneTables.markup.test.tsx` checks them against the headers).
 
 Any other `.data-table` keeps the old phone behaviour: a 600px minimum, scrolling sideways in its wrapper.

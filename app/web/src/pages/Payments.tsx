@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, type CSSProperties } from "react";
 // QR code generation disabled — payments should route through the BitCorn app, not external wallets
 // import QRCode from "qrcode";
 import {
@@ -161,8 +161,12 @@ export default function Payments({ title }: { title: string }) {
               No payments yet. Create an invoice or pay one to get started.
             </div>
           ) : (
+            // R34 item 4: a card on a phone (styles.css PHONE TABLES; the card Top Up's
+            // history becomes when a row won't fit on one line). Seven columns
+            // and a free-text memo have no widest row, so there is no one-line
+            // threshold to measure; on a phone it is always the card.
             <div style={{ overflowX: "auto" }}>
-              <table className="data-table">
+              <table className="data-table phone-card">
                 <thead>
                   <tr>
                     <th>Direction</th>
@@ -971,6 +975,9 @@ function PaymentDetail({
 
 // ─── Payment Row ─────────────────────────────────────────────────────────────
 
+/** A value with no length limit: it may wrap, mid-word if it must. */
+const FREE_TEXT: CSSProperties = { whiteSpace: "normal", overflowWrap: "anywhere", minWidth: 0 };
+
 function PaymentRow({
   payment: p,
   contacts,
@@ -1003,14 +1010,14 @@ function PaymentRow({
       className={selected ? "row-selected" : ""}
       style={{ cursor: "pointer" }}
     >
-      <td>
+      <td className="td-primary">
         <span className={`badge ${dirBadge.cls}`}>
           <span aria-hidden="true" style={{ marginRight: 4 }}>{dirBadge.glyph}</span>
           {dirBadge.label}
         </span>
       </td>
-      <td><span className={`badge ${sBadge.cls}`}>{sBadge.label}</span></td>
-      <td className="td-num">
+      <td data-label="Status"><span className={`badge ${sBadge.cls}`}>{sBadge.label}</span></td>
+      <td data-label="Amount" className="td-num">
         {fmtSats(p.amount_sats)}
         {p.amount_usd != null && (
           <div className="text-dim" style={{ fontSize: "0.75rem" }}>
@@ -1018,14 +1025,18 @@ function PaymentRow({
           </div>
         )}
       </td>
-      <td className="td-num">{feeText(p)}</td>
-      <td className="td-mono ident" style={{ fontSize: "0.8rem" }}>
-        {p.counterparty_pubkey
-          ? resolveContactName(p.counterparty_pubkey, contacts)
-          : "\u2014"}
+      <td data-label="Fee" className="td-num">{feeText(p)}</td>
+      {/* A card cell keeps its value on one line (styles.css PHONE TABLES);
+          a name or memo has no length limit, so these two may wrap. */}
+      <td data-label="With" className="td-mono ident" style={{ fontSize: "0.8rem" }}>
+        <span style={FREE_TEXT}>
+          {p.counterparty_pubkey
+            ? resolveContactName(p.counterparty_pubkey, contacts)
+            : "\u2014"}
+        </span>
       </td>
-      <td>{p.memo || "\u2014"}</td>
-      <td className="text-dim" style={{ whiteSpace: "nowrap" }}>
+      <td data-label="Memo"><span style={FREE_TEXT}>{p.memo || "\u2014"}</span></td>
+      <td data-label="Date" className="text-dim" style={{ whiteSpace: "nowrap" }}>
         {new Date(p.created_at).toLocaleDateString()}
       </td>
     </tr>
