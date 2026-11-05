@@ -68,6 +68,7 @@ import { withDeadline, LND_GOSSIP_CALL_TIMEOUT_MS } from "./lightning/callDeadli
 // "503,Name,[object Object]". lndFaultDetail flattens it properly.
 import { lndFaultDetail } from "./lightning/lndHealth";
 import { channelDataFreshness } from "./api/memberStatsFreshness";
+import { getMemberCosts } from "./api/member-costs";
 import { readLocalCertExpiry } from "./lightning/readCertExpiry";
 import { certExpiryLevel, certExpiryMessage } from "./lightning/certExpiry";
 import { runTimeoutBoundLndProbe } from "./lightning/lndProbeRoute";
@@ -3226,6 +3227,25 @@ async function dispatchRequest(
       console.error("[lnd-probe] probe failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "lnd_probe_failed" }));
+    }
+    return;
+  }
+
+  // drive-mode P2 item 14: fees paid over the last 30 days — payment fees and
+  // swap fees, read-only (api/member-costs.ts).
+  if (req.method === "GET" && req.url === "/api/member/costs") {
+    try {
+      const node = getNodeInfo();
+      if (!node) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "node_info_unavailable" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(getMemberCosts(node.pubkey)));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
     }
     return;
   }

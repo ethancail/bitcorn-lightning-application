@@ -28,13 +28,17 @@ import PayFromNodeModal from "./PayFromNodeModal";
 
 export default function MemberSubscriptionBanner({
   status,
+  usdRate = null,
 }: {
   status: SubscriptionStatus | null;
+  /** The dashboard's BTC/USD rate, for dollars first in the renewal copy
+   *  (drive-mode P2 items 11-12); null shows sats. Passed in, not fetched. */
+  usdRate?: number | null;
 }) {
   const [payModalOpen, setPayModalOpen] = useState(false);
   const { cfg, reload } = useAutoPayConfig();
 
-  const tier = bannerFor(status, Date.now());
+  const tier = bannerFor(status, Date.now(), usdRate);
   const tierRenders = tier.render && !!status && status.applicable === true;
 
   const priceChange = priceChangeBannerFor(cfg);

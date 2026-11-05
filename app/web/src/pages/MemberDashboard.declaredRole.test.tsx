@@ -109,7 +109,8 @@ describe("SH9 — the dashboard's role panel with an inactive channel", () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(inactiveWithRole("farmer"));
     const text = await renderDashboard();
     expect(text).toContain("Your Earnings");
-    expect(text).toContain("Available to withdraw");
+    // The farmer's headline label since drive-mode P2 (R11(2)).
+    expect(text).toContain("In your connection");
   });
 
   it("nothing declared → the unknown-role panel and its prompt, unchanged", async () => {

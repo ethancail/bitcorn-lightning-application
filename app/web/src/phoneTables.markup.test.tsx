@@ -41,6 +41,12 @@ const stub = vi.hoisted(() => ({
   getSwapHistory: vi.fn(),
   getSwap: vi.fn(),
   getSubscriptionPayments: vi.fn(),
+  // R34 item 4: Withdraw's and Payments' reads.
+  getSwapLimits: vi.fn(),
+  getNodeAddress: vi.fn(),
+  getNetworkPayments: vi.fn(),
+  syncSettlements: vi.fn(),
+  decodeInvoice: vi.fn(),
 }));
 
 vi.mock("./api/client", async (importOriginal) => {
@@ -54,6 +60,8 @@ vi.mock("./stablecoin/RailScope", () => ({
 
 import RefillChannel from "./pages/RefillChannel";
 import SubscriptionPayments from "./pages/SubscriptionPayments";
+import WithdrawBitcoin from "./pages/WithdrawBitcoin";
+import Payments from "./pages/Payments";
 
 const pk = (c: string) => "02" + c.repeat(64);
 const lane = (id: string, peer: string, localPct: number) => ({
@@ -80,6 +88,13 @@ const payment = (id: number) => ({
   kind: "onchain", admin_reason: null, status: "confirmed",
 });
 
+const networkPayment = (id: number, direction: "send" | "receive") => ({
+  id, payment_hash: "cd".repeat(32), direction, status: "succeeded", amount_sats: 21_000, fee_sats: 3,
+  exchange_rate_usd: 60_000, amount_usd: 12.6, memo: "A memo long enough to need wrapping on a phone screen",
+  counterparty_pubkey: pk("b"), payment_request: null, created_at: NOW - 3_600_000, settled_at: NOW - 3_500_000,
+  fee_state: "paid",
+});
+
 let host: HTMLDivElement | null = null;
 let root: Root | null = null;
 
@@ -102,6 +117,11 @@ beforeEach(() => {
   stub.getSwapHistory.mockResolvedValue({ swaps: [swap("s1", "completed"), swap("s2", "failed")] });
   stub.getSwap.mockImplementation(never);
   stub.getSubscriptionPayments.mockResolvedValue({ payments: [payment(1), payment(2)] });
+  stub.getSwapLimits.mockImplementation(never);
+  stub.getNodeAddress.mockImplementation(never);
+  stub.getNetworkPayments.mockResolvedValue([networkPayment(1, "send"), networkPayment(2, "receive")]);
+  stub.syncSettlements.mockResolvedValue({});
+  stub.decodeInvoice.mockImplementation(never);
   stub.getMemberStats.mockResolvedValue({
     hub_pubkey: null, membership_status: "active", node_role: "member", is_peered_to_hub: true,
     keysend_enabled: false, lnd_live_read_ok: true, cert_expiry: null,
@@ -242,5 +262,80 @@ describe("X4b: each J2 table opts in to the phone card (R4)", () => {
   it("subscription payments", async () => {
     const el = await mount(page(SubscriptionPayments));
     expect(el.querySelector("table")!.classList.contains("phone-card")).toBe(true);
+  });
+});
+
+// R34 item 4: Withdraw's history and Payments' history leave the sideways
+// scroll for Top Up's phone layout. Withdraw has Top Up's columns, so it takes
+// Top Up's markup whole (.phone-fit, X4c's threshold measured for it in the
+// live page). Payments' seven columns, one a free-text memo, have no widest
+// row to measure a one-line threshold from, so it takes the card half
+// (.phone-card) — the same card rule for rule (phoneTables.css.test.ts).
+describe("R34 item 4: Withdraw's history takes Top Up's phone layout", () => {
+  beforeEach(() => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(null);
+    stub.getSwapHistory.mockResolvedValue({
+      swaps: [{ ...swap("w1", "completed"), swap_type: "loop_out", direction: "out" }, { ...swap("w2", "failed"), swap_type: "loop_out", direction: "out" }],
+    });
+  });
+
+  it("Date is the title; Amount and Status labelled; Fee labelled and secondary", async () => {
+    const el = await mount(page(WithdrawBitcoin));
+    const table = el.querySelector("table")!;
+    expectHooked(table);
+    expect([...table.querySelectorAll("thead th.col-secondary")].map((th) => th.textContent)).toEqual(["Fee"]);
+    expect([...table.querySelectorAll("tbody td.col-secondary")].map((td) => td.getAttribute("data-label"))).toEqual(["Fee", "Fee"]);
+  });
+
+  it("the table is .phone-fit and its wrapper the size container", async () => {
+    const el = await mount(page(WithdrawBitcoin));
+    const table = el.querySelector("table")!;
+    expect(table.classList.contains("phone-fit")).toBe(true);
+    expect(table.parentElement!.classList.contains("phone-fit-wrap")).toBe(true);
+  });
+
+  it("an expanded row's detail row is marked row-detail, so its sentence wraps across the card", async () => {
+    const el = await mount(page(WithdrawBitcoin));
+    const first = el.querySelector("tbody tr") as HTMLTableRowElement;
+    await act(async () => { first.click(); });
+    const detail = el.querySelector("tbody tr.row-detail");
+    expect(detail, "the detail row renders").not.toBeNull();
+    expect(detail!.querySelector("[data-label]")).toBeNull();
+  });
+});
+
+describe("R34 item 4: Payments' history is a card on a phone", () => {
+  const mountPayments = () => mount(React.createElement(MemoryRouter, null, React.createElement(Payments, { title: "Payments" })));
+
+  it("the table opts in to the card", async () => {
+    const el = await mountPayments();
+    const table = el.querySelector("table.data-table")!;
+    expect(table.classList.contains("phone-card")).toBe(true);
+  });
+
+  // Screenshot gate (R34): the panel body has no padding (the desktop table's
+  // cells carry the inset), so the cards sat flush against the panel's edges.
+  it("its wrapper carries the phone inset hook", async () => {
+    const el = await mountPayments();
+    const table = el.querySelector("table.data-table")!;
+    expect(table.parentElement!.classList.contains("payments-history-wrap")).toBe(true);
+  });
+
+  it("Direction is the title; every other column labelled", async () => {
+    const el = await mountPayments();
+    expectHooked(el.querySelector("table.data-table") as HTMLTableElement);
+  });
+
+  it("the free-text values (With, Memo) may wrap, so a long one cannot push the card sideways", async () => {
+    const el = await mountPayments();
+    for (const label of ["With", "Memo"]) {
+      const cells = [...el.querySelectorAll(`tbody td[data-label="${label}"]`)] as HTMLElement[];
+      expect(cells.length, label).toBe(2);
+      for (const td of cells) {
+        const value = td.firstElementChild as HTMLElement | null;
+        expect(value?.style.whiteSpace, label).toBe("normal");
+        expect(value?.style.overflowWrap, label).toBe("anywhere");
+      }
+    }
   });
 });

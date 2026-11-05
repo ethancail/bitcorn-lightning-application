@@ -7,8 +7,8 @@ import {
   type PendingChannel,
   type NodeBalances,
 } from "../api/client";
-import { rateNote } from "../api/rate";
-import type { ExchangeRate, SwapLimits } from "../api/client";
+import { rateNote, RATE_NONE_SENTENCE } from "../api/rate";
+import type { ExchangeRate, MemberCosts, SwapLimits } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
 import { subscriptionBannerSlot } from "../components/subscriptionBannerSlot";
@@ -44,6 +44,24 @@ function statusBadge(s: string) {
   }
 }
 
+/**
+ * One Your Node figure, dollars first with its sats underneath in .kv-meta
+ * (drive-mode P2 item 4, R27(3)'s interim). With no rate the value is the sats
+ * figure, as before; not loaded is "—", never 0. File-local on purpose: the
+ * shared "sats on tap" component is member-first-run-ui's to build (§1.3).
+ */
+function NodeFigure({ sats, usd, testId }: { sats: number | null; usd: (sats: number) => string | null; testId?: string }) {
+  const dollars = sats != null ? usd(sats) : null;
+  return (
+    <div style={{ textAlign: "right" }}>
+      <span className="kv-value" {...(testId ? { "data-testid": testId } : {})}>
+        {dollars ?? <>{sats != null ? sats.toLocaleString() : "—"}<span className="unit">sats</span></>}
+      </span>
+      {dollars && <div className="kv-meta">{sats!.toLocaleString()} sats</div>}
+    </div>
+  );
+}
+
 export default function MemberDashboard() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -57,6 +75,8 @@ export default function MemberDashboard() {
   const [swapLimits, setSwapLimits] = useState<SwapLimits | null>(null);
   // The rate's state, for its note (drive-mode P1 item 3).
   const [rateInfo, setRateInfo] = useState<ExchangeRate | null>(null);
+  // Fees paid over the last 30 days (drive-mode P2 item 14).
+  const [costs, setCosts] = useState<MemberCosts | null>(null);
   const [pendingTreasuryChannel, setPendingTreasuryChannel] = useState(false);
   const [balances, setBalances] = useState<NodeBalances | null>(null);
   const [balFresh, setBalFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
@@ -101,14 +121,16 @@ export default function MemberDashboard() {
     return () => clearInterval(id);
   }, []);
 
-  // Fetch advisor status (less frequently — it's a heavier call with Loop check)
-  useEffect(() => {
+  // Fetch advisor status (less frequently — it's a heavier call with Loop check).
+  // Also the Loop alert's action (drive-mode P2 item 6).
+  const loadAdvisor = useCallback(() => {
     api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
-    const id = setInterval(() => {
-      api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
-    }, 60_000);
-    return () => clearInterval(id);
   }, []);
+  useEffect(() => {
+    loadAdvisor();
+    const id = setInterval(loadAdvisor, 60_000);
+    return () => clearInterval(id);
+  }, [loadAdvisor]);
 
   // Member-name prompt: one read per mount. Saving in Settings and coming back
   // remounts this page, so the prompt clears on the next read with no event or
@@ -119,11 +141,16 @@ export default function MemberDashboard() {
       .catch(() => setNameRead({ state: "failed" }));
   }, []);
 
-  // Exchange rate for USD display
-  useEffect(() => {
+  // Exchange rate for USD display. Also the no-price alert's "Check again".
+  const loadRate = useCallback(() => {
     api.getExchangeRate().then((r) => { setRateInfo(r); setUsdRate(r.usd); }).catch(() => {});
-    api.getSwapLimits().then(setSwapLimits).catch(() => {});
   }, []);
+  useEffect(() => {
+    loadRate();
+    api.getSwapLimits().then(setSwapLimits).catch(() => {});
+    // A failed read shows no costs panel; nothing else depends on it.
+    api.getMemberCosts().then(setCosts).catch(() => {});
+  }, [loadRate]);
 
   // Balance polling.
   // U24 H8: poll results feed the freshness tracker — on repeated failures
@@ -167,11 +194,12 @@ export default function MemberDashboard() {
   const toUsd = (sats: number) =>
     usdRate ? `$${((sats / 100_000_000) * usdRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null;
 
-  // Estimated withdrawal fee (~1-2% based on observed Loop Out costs)
-  const estWithdrawalFee = ch ? Math.max(1500, Math.round(ch.local_sats * 0.008)) : 0;
+  // drive-mode P2 (R27(10)): the client-side "Estimated fee" guess is gone; the
+  // Withdraw page's quote is the fee a farmer is shown.
 
-  const localPct = ch ? Math.round((ch.local_sats / ch.capacity_sats) * 100) : 0;
-  const remotePct = ch ? Math.round((ch.remote_sats / ch.capacity_sats) * 100) : 0;
+  const pctOf = (sats: number) => (ch && ch.capacity_sats > 0 ? Math.round((sats / ch.capacity_sats) * 100) : 0);
+  const localPct = ch ? pctOf(ch.local_sats) : 0;
+  const remotePct = ch ? pctOf(ch.remote_sats) : 0;
 
   const hasChannel = !loading && ch != null;
   // U24 H2: three distinct states — stats failed to load (statsUnavailable,
@@ -189,6 +217,11 @@ export default function MemberDashboard() {
   const isMerchant = role === "merchant";
   const isFarmer = role === "farmer";
   const minWithdrawal = swapLimits?.loop_out?.min_sats ?? null;
+  // The API's Loop alert for the member's direction (item 6): a farmer's
+  // Withdraw (loop_out), a merchant's Top Up (loop_in); an unknown role has
+  // neither. While it shows, the advisor's message and that direction's button
+  // caption are not shown: one statement per fault (R33, finding 5).
+  const memberLoopAlert = isFarmer ? advisor?.loopAlert?.loop_out ?? null : isMerchant ? advisor?.loopAlert?.loop_in ?? null : null;
 
   // V11: the capacity colour comes from the advisor's state, never red; an
   // unknown role or no classification is neutral (components/capacityTone.ts).
@@ -197,20 +230,30 @@ export default function MemberDashboard() {
   // warning stays in --text.
   const heroColor = CAPACITY_TEXT_COLOR[tone];
 
-  // H2's headline numbers, ruled per role (P6-7 for the rest). Farmer: what
-  // they can withdraw, then room to receive. Merchant: what they can send,
+  // H2's headline numbers, ruled per role (P6-7 for the rest). Farmer: what is
+  // in their connection, then room to receive. Merchant: what they can send,
   // then their total. An undeclared role: the channel's two sides, neutrally.
   // No channel: "—" with "No channel yet", never 0.
-  const hl1Label = isMerchant ? "Available to send" : isFarmer ? "Available to withdraw" : "Your balance";
-  const hl1Sats = ch ? ch.local_sats : null;
+  //
+  // drive-mode P2: the farmer's first label is "In your connection" (R11(2)),
+  // still the local balance. The farmer's room to receive and the merchant's
+  // available to send are P1's server figures (R27(1)); labels unchanged.
+  // "Room to receive" is room_to_receive_sats for every role that shows it,
+  // the unknown role included, so the label means one thing (R33 finding 6).
+  // The unknown role's balance stays the local balance.
+  // Pinned by MemberDashboard.topRegion.test.tsx (D2.2).
+  const hl1Label = isMerchant ? "Available to send" : isFarmer ? "In your connection" : "Your balance";
+  const hl1Sats = ch ? (isMerchant ? ch.room_to_send_sats : ch.local_sats) : null;
   const hl2Label = isMerchant ? "Total" : "Room to receive";
-  const hl2Sats = isMerchant ? (balances ? balances.total_sats : null) : ch ? ch.remote_sats : null;
+  const hl2Sats = isMerchant
+    ? (balances ? balances.total_sats : null)
+    : ch ? ch.room_to_receive_sats : null;
   const hl2Sub = isMerchant ? "Bitcoin + channel" : "Inbound on your hub channel";
 
   // J9 / J9a (P6-3): the subscription banner's slot. On a phone the top slot
   // stays above the headline; the info slot goes below it and the chart.
   const subSlot = subscriptionBannerSlot(subStatus);
-  const subBanner = <MemberSubscriptionBanner status={subStatus} />;
+  const subBanner = <MemberSubscriptionBanner status={subStatus} usdRate={usdRate} />;
 
   return (
     <div className="dash">
@@ -304,7 +347,9 @@ export default function MemberDashboard() {
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
           Your connection to the Bitcorn Lightning hub
         </p>
-        {rateNote(rateInfo) && (
+        {/* drive-mode P2 item 8: state "none" is the no-price alert below the
+            chart, not this line; "Price as of" (stale) stays here. */}
+        {rateInfo?.state !== "none" && rateNote(rateInfo) && (
           <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rateInfo)}</p>
         )}
       </div>
@@ -383,6 +428,63 @@ export default function MemberDashboard() {
           underneath the balance of the node"). ── */}
       <BitcoinPriceGraph />
 
+      {/* ── ALERTS: drive-mode P2's alerts that involve no automatic transfer,
+          one sentence and one action each (C6; the record :52). Directly
+          below the chart on desktop and phone alike, so nothing above the
+          chart changes when one fires (D2.2). Empty, and hidden, on a healthy
+          dashboard (.dash-notices:empty). Pinned by
+          MemberDashboard.alerts.test.tsx. ── */}
+      <div className="dash-notices dash-notices-alerts">
+        {/* Item 5 (R18(2)): the hub channel is inactive. The stats fall back to
+            the largest inactive hub channel for display, so this can fire.
+            Nothing in the app reconnects it; "Check again" re-reads (R27(12)). */}
+        {hasChannel && ch!.is_active === false && (
+          <div className="alert warning">
+            <span className="alert-icon" aria-hidden>⚠</span>
+            <div className="alert-body">
+              <div className="alert-msg">
+                Your connection to Bitcorn is down, so payments can't go through it right now. It usually reconnects within a few minutes; if it's still down in an hour, restart the Lightning app.
+              </div>
+              <button className="btn btn-outline alert-action" onClick={() => void loadStats()}>
+                Check again
+              </button>
+            </div>
+          </div>
+        )}
+        {/* Item 6 (D2.3): Loop unavailable, for the member's direction — a
+            farmer's Withdraw (loop_out), a merchant's Top Up (loop_in); an
+            unknown role has neither. The sentence is the API's, verbatim
+            (2026-09-02 D2(b)); the action re-reads the status. */}
+        {(() => {
+          const loopAlert = memberLoopAlert;
+          if (!loopAlert) return null;
+          return (
+            <div className="alert warning">
+              <span className="alert-icon" aria-hidden>⚠</span>
+              <div className="alert-body">
+                <div className="alert-msg">{loopAlert.text}</div>
+                <button className="btn btn-outline alert-action" onClick={loadAdvisor}>
+                  {loopAlert.action.label}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+        {/* Item 8: no price (state "none" — stale past 6 hours, or never
+            fetched). Amounts show in sats; "Check again" re-reads (R27(12)). */}
+        {rateInfo?.state === "none" && (
+          <div className="alert info">
+            <span className="alert-icon" aria-hidden>i</span>
+            <div className="alert-body">
+              <div className="alert-msg">{RATE_NONE_SENTENCE}</div>
+              <button className="btn btn-outline alert-action" onClick={loadRate}>
+                Check again
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="dash-grid">
         {/* U24 H2: stats fetch failed and nothing loaded yet — error state, NOT
             the Connect-to-Hub onboarding form. */}
@@ -448,17 +550,21 @@ export default function MemberDashboard() {
         {hasChannel && (() => {
           const rec = advisor?.recommendation;
 
-          // Role-aware gauge
-          // Merchant: outbound capacity (local%) — depletes as they spend
-          // Farmer: earnings accumulated (local%) — fills up like a grain bin
+          // Role-aware gauge, from P1's server figures (drive-mode P2, item 2;
+          // copy defect (f)). A percentage and the bar, no sats: the headline
+          // already shows the figure (D2.1). No mark is drawn (R11(5) is P3's).
+          // Merchant: room to send / capacity — depletes as they spend
+          // Farmer: room to receive / capacity — empties as earnings arrive
           // Unknown: raw local/remote split
-          const gaugeLabel = isMerchant ? "Room to send" : isFarmer ? "Earnings accumulated" : "Channel balance";
-          const gaugePct = localPct;
-          const gaugeRemaining = isMerchant
-            ? `${localPct}% — ${ch!.local_sats.toLocaleString()} sats available to send`
+          const gaugeLabel = isMerchant ? "Room to send" : isFarmer ? "Room to receive" : "Channel balance";
+          const gaugePct = isMerchant
+            ? pctOf(ch!.room_to_send_sats)
             : isFarmer
-              ? `${localPct}% full — ${ch!.local_sats.toLocaleString()} of ${ch!.capacity_sats.toLocaleString()} sats`
-              : `${localPct}% on your side — ${remotePct}% on the hub's side`;
+              ? pctOf(ch!.room_to_receive_sats)
+              : localPct;
+          const gaugeRemaining = isMerchant || isFarmer
+            ? `${gaugePct}% of your connection`
+            : `${localPct}% on your side — ${remotePct}% on the hub's side`;
           // V11: the colour comes from the advisor's state, never red; an unknown
           // role or no classification is neutral (components/capacityTone.ts).
           const gaugeColor = CAPACITY_BAR_COLOR[tone];
@@ -477,7 +583,13 @@ export default function MemberDashboard() {
           // high urgency takes the warning, not the red critical.
           const alertClass = rec?.urgency === "high" || rec?.urgency === "medium" ? "warning" : "info";
           const alertIcon = rec?.urgency === "high" || rec?.urgency === "medium" ? "⚠" : "ℹ";
-          const showAlert = rec && rec.action !== "none";
+          // One statement per Loop fault (R33 finding 5, narrowed by R34 item 3):
+          // while the direction's Loop alert shows, the advisor's message is
+          // hidden only when it is about that same fault — the manual recovery
+          // the engine gives because Loop is unavailable (recommendationEngine.ts).
+          // Advice on another subject, such as a channel upgrade, keeps showing.
+          const recIsLoopFault = !!memberLoopAlert && rec?.action === "manual_recovery" && rec.loopAvailable === false;
+          const showAlert = rec && rec.action !== "none" && !recIsLoopFault;
 
           return (
             <div className="panel ops fade-in">
@@ -553,6 +665,9 @@ export default function MemberDashboard() {
                     <button className="btn btn-primary btn-block" onClick={() => navigate(refillUrl)}>
                       Top Up →
                     </button>
+                    {/* The amount caption is not about a Loop fault, so R34
+                        item 3 leaves it (and a loop_in recommendation needs
+                        Loop In available, so no Loop In alert is beside it). */}
                     <div className="caption">
                       {rec?.suggestedAmountSats
                         ? `Bitcorn recommends ${rec.suggestedAmountSats.toLocaleString()} sats — pre-filled for you.`
@@ -578,29 +693,40 @@ export default function MemberDashboard() {
                         >
                           Withdraw Earnings →
                         </button>
-                        <div className="caption">
-                          {withdrawGate.explanation ?? <>
-                            Estimated fee: ~{estWithdrawalFee.toLocaleString()} sats
-                            {toUsd(estWithdrawalFee) && ` (${toUsd(estWithdrawalFee)})`}
-                          </>}
-                        </div>
+                        {/* R27(10): no fee guess; the caption is the gate's
+                            refusal only. That refusal is the daemon-down
+                            fault the Loop Out alert states, so it goes while
+                            the alert shows (R33 finding 5; R34 item 3 keeps
+                            it, being the same fault). The gate itself is
+                            unchanged. */}
+                        {withdrawGate.explanation && !memberLoopAlert && (
+                          <div className="caption">{withdrawGate.explanation}</div>
+                        )}
                       </div>
                     );
                   })()
                 )}
+                {/* D2.1: the balance is the headline's, so the hint does not
+                    repeat it. */}
                 {isFarmer && minWithdrawal != null && ch!.local_sats > 0 && ch!.local_sats < minWithdrawal && (
                   <div className="field-hint">
-                    Minimum withdrawal: {minWithdrawal.toLocaleString()} sats. You have {ch!.local_sats.toLocaleString()} sats.
+                    Minimum withdrawal: {minWithdrawal.toLocaleString()} sats.
                   </div>
                 )}
 
-                {/* Channel details (collapsible) */}
+                {/* Channel details (collapsible). One tap down, so D2.1 does
+                    not count it (R27(4)); it holds the breakdown behind the
+                    room figures. "Hub's side" is the raw remote balance —
+                    "Room to receive" is the headline's P1 figure now. */}
                 <details className="tile-details">
                   <summary>Channel details</summary>
                   <div className="kv-list">
                     <div className="kv"><span className="kv-label">Channel capacity</span><span className="kv-value">{ch!.capacity_sats.toLocaleString()} sats</span></div>
                     <div className="kv"><span className="kv-label">Your side</span><span className="kv-value">{ch!.local_sats.toLocaleString()} sats</span></div>
-                    <div className="kv"><span className="kv-label">Room to receive</span><span className="kv-value">{ch!.remote_sats.toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">Hub's side</span><span className="kv-value">{ch!.remote_sats.toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">Your reserve</span><span className="kv-value">{(ch!.local_reserve_sats ?? 0).toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">Hub's reserve</span><span className="kv-value">{(ch!.remote_reserve_sats ?? 0).toLocaleString()} sats</span></div>
+                    <div className="kv"><span className="kv-label">In flight</span><span className="kv-value">{((ch!.pending_outgoing_sats ?? 0) + (ch!.pending_incoming_sats ?? 0)).toLocaleString()} sats</span></div>
                     <div className="kv"><span className="kv-label">Channel role</span><span className="kv-value" style={{ textTransform: "capitalize" }}>{role}</span></div>
                   </div>
                 </details>
@@ -626,36 +752,30 @@ export default function MemberDashboard() {
                   never a headline number. Every settled inbound payment the
                   node has recorded (GET /api/member/stats). An API that does
                   not send the field shows "—", never 0. */}
+              {/* drive-mode P2, item 4: each figure is dollars first, its sats
+                  underneath in .kv-meta (R27(3), the interim until
+                  member-first-run-ui ships the shared component). With no
+                  rate (state "none") the value is sats, and the page's no-price
+                  sentence says why. The "Channel" row is gone: it repeated the
+                  headline's figure (D2.1). */}
               {isFarmer && (
                 <div className="kv">
                   <div>
                     <div className="kv-label">Received, lifetime</div>
                     <div className="kv-meta">Settled Lightning payments</div>
                   </div>
-                  <span className="kv-value" data-testid="lifetime-received">
-                    {stats?.lifetime_received_sats != null ? stats.lifetime_received_sats.toLocaleString() : "—"}<span className="unit">sats</span>
-                  </span>
+                  <NodeFigure sats={stats?.lifetime_received_sats ?? null} usd={toUsd} testId="lifetime-received" />
                 </div>
               )}
               <div className="kv">
                 <span className="kv-label">Bitcoin</span>
-                <span className="kv-value">
-                  {balances ? balances.onchain_sats.toLocaleString() : "—"}<span className="unit">sats</span>
-                </span>
-              </div>
-              <div className="kv">
-                <span className="kv-label">Channel</span>
-                <span className="kv-value">
-                  {balances ? balances.lightning_sats.toLocaleString() : "—"}<span className="unit">sats</span>
-                </span>
+                <NodeFigure sats={balances ? balances.onchain_sats : null} usd={toUsd} />
               </div>
               {/* The merchant's total is a headline number; nobody else's is. */}
               {!isMerchant && (
                 <div className="kv">
                   <span className="kv-label">Total</span>
-                  <span className="kv-value">
-                    {balances ? balances.total_sats.toLocaleString() : "—"}<span className="unit">sats</span>
-                  </span>
+                  <NodeFigure sats={balances ? balances.total_sats : null} usd={toUsd} />
                 </div>
               )}
             </div>
@@ -665,6 +785,49 @@ export default function MemberDashboard() {
             {fundError && <div className="status-line">{fundError}</div>}
           </div>
         </div>
+
+        {/* ── Costs, last 30 days (drive-mode P2 item 14; the record :48):
+            the total in dollars, its sats underneath, itemised one tap down.
+            Payment fees and swap fees only — no subscription line (R27(9)).
+            The member's own direction is always listed; the other only when
+            it is not zero, so the rows always sum to the total. ── */}
+        {costs && (() => {
+          const rows: Array<[string, number]> = [["Payment fees", costs.payment_fees_sat]];
+          if (!isMerchant || costs.withdraw_fees_sat > 0) rows.push(["Withdraw fees", costs.withdraw_fees_sat]);
+          if (!isFarmer || costs.topup_fees_sat > 0) rows.push(["Top Up fees", costs.topup_fees_sat]);
+          const dollars = toUsd(costs.total_sat);
+          return (
+            <div className="panel fade-in">
+              <div className="panel-header">
+                <span className="panel-title"><span className="icon">≡</span>Costs, last 30 days</span>
+              </div>
+              <div className="panel-body stack">
+                <div className="kv-list">
+                  <div className="kv">
+                    <span className="kv-label">Fees paid</span>
+                    <div style={{ textAlign: "right" }}>
+                      <span className="kv-value" data-testid="costs-total">
+                        {dollars ?? `${costs.total_sat.toLocaleString()} sats`}
+                      </span>
+                      {dollars && <div className="kv-meta" data-testid="costs-total-sats">{costs.total_sat.toLocaleString()} sats</div>}
+                    </div>
+                  </div>
+                </div>
+                <details className="tile-details">
+                  <summary>Itemised</summary>
+                  <div className="kv-list">
+                    {rows.map(([label, sats]) => (
+                      <div className="kv" key={label} data-testid="cost-part" data-sats={sats}>
+                        <span className="kv-label">{label}</span>
+                        <span className="kv-value">{sats.toLocaleString()} sats</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Upgrade banner when navigated from Channels page */}
         {hasChannel && upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (

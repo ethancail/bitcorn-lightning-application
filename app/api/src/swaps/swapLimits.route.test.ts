@@ -117,6 +117,58 @@ describe("D1.8 — GET /api/swaps/limits", () => {
   });
 });
 
+// drive-mode P2 item 16 (R11(4)): what always stays in the connection, for
+// Withdraw's "Why not all of it?". It is the channel less what the policy lets
+// a withdrawal take from it (room to send less the swap buffer), split into
+// its three parts, which sum to it.
+describe("loop_out.always_stays — what a withdrawal never takes", () => {
+  function hub(o: { initiator: 0 | 1; commitFee?: number | null; type?: string; local?: number }) {
+    db.prepare("DELETE FROM lnd_channels").run();
+    db.prepare(`
+      INSERT INTO lnd_channels (channel_id, peer_pubkey, capacity_sat, local_balance_sat, remote_balance_sat,
+        active, private, updated_at, local_reserve_sat, remote_reserve_sat, is_initiator, commit_fee_sat, commitment_type)
+      VALUES ('800000x1x0', ?, 10000000, ?, 900000, 1, 0, ?, 100000, 100000, ?, ?, ?)
+    `).run(HUB, o.local ?? 9_000_000, Date.now(), o.initiator, o.commitFee ?? null, o.type ?? null);
+  }
+
+  it("a funder: the reserve, lnd's fee headroom and the 50,000 swap buffer", async () => {
+    // anchor, commit fee 2,810: headroom ceil(2,811 × (1,124 + 4 × 172) / 1,124) + 1 = 4,533;
+    // room to send 9,000,000 − 100,000 − 4,533 = 8,895,467.
+    hub({ initiator: 1, commitFee: 2_810, type: "anchor" });
+    const a = (await limits()).body.loop_out.always_stays;
+    expect(a).toEqual({ total_sats: 154_533, reserve_sats: 100_000, fee_headroom_sats: 4_533, swap_buffer_sats: 50_000 });
+    expect(a.reserve_sats + a.fee_headroom_sats + a.swap_buffer_sats).toBe(a.total_sats);
+  });
+
+  it("not the funder: no fee headroom", async () => {
+    hub({ initiator: 0 });
+    expect((await limits()).body.loop_out.always_stays).toEqual({
+      total_sats: 150_000, reserve_sats: 100_000, fee_headroom_sats: 0, swap_buffer_sats: 50_000,
+    });
+  });
+
+  it("room to send below the buffer: all of it stays, and the parts still sum", async () => {
+    hub({ initiator: 0, local: 130_000 }); // room to send 30,000
+    const a = (await limits()).body.loop_out.always_stays;
+    expect(a).toEqual({ total_sats: 130_000, reserve_sats: 100_000, fee_headroom_sats: 0, swap_buffer_sats: 30_000 });
+  });
+
+  it("no hub channel: null", async () => {
+    db.prepare("DELETE FROM lnd_channels").run();
+    expect((await limits()).body.loop_out.always_stays).toBeNull();
+  });
+
+  it("with available_now: the channel = what always stays + what the policy lets go", async () => {
+    terms.out = { min_swap_amount: 100_000, max_swap_amount: 100_000_000 };
+    hub({ initiator: 1, commitFee: 2_810, type: "anchor" });
+    const out = (await limits()).body.loop_out;
+    // The daily maximum (5,000,000) binds here, so compare against the
+    // channel's own limit: local − always_stays.
+    expect(9_000_000 - out.always_stays.total_sats).toBe(8_845_467);
+    expect(out.available_now_sats).toBe(Math.min(out.max_sats, out.daily_remaining_sats, 8_845_467));
+  });
+});
+
 describe("the route's minimum is where the policy stops refusing for bounds", () => {
   for (const stricter of ["terms", "env"] as const) {
     it(`Loop Out, ${stricter} stricter`, async () => {

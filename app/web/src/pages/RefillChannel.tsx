@@ -3,11 +3,12 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { api, fmtSats, swapExecuteBody } from "../api/client";
 import { rateNote } from "../api/rate";
 import type { ExchangeRate, SwapLimits } from "../api/client";
-import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
+import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse, SwapReceipt } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
-import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
-import { statusBadge } from "../components/swapStatus";
+import { capacityTone, capacityWord, capacityRoomWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
+import { statusBadge, memberSwapBadge } from "../components/swapStatus";
+import { loopFailureSentence } from "../components/loopFailureCopy";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
@@ -55,7 +56,10 @@ export function statusText(status: string, amount: number, failureReason: string
     case "completed":
       return `Top up complete. ${amount.toLocaleString()} sats added to your channel.`;
     case "failed":
-      return `Top up failed${failureReason ? `: ${failureReason}` : ""}`;
+      // drive-mode P2 item 7: the member-facing sentence, never loopd's raw
+      // code (which stays in Technical details).
+      // R33 finding 9: a temporary failure is not final, so it says so.
+      return `${failureReason === "FAILURE_REASON_TEMPORARY" ? "Top up not finished." : "Top up failed."} ${loopFailureSentence(failureReason, "loop_in")}`;
     default:
       return statusBadge(status).label;
   }
@@ -70,6 +74,46 @@ export function statusTechnical(status: string): string {
     case "confirming": return "confirming — Settling swap";
     default: return statusBadge(status).label;
   }
+}
+
+/**
+ * A completed swap's fee receipt (drive-mode P2 item 14; D2.6): the summary,
+ * dollars first with the sats underneath, and the breakdown behind a dropdown.
+ * The parts are the server's (GET /api/swaps/:id receipt) and sum to its
+ * total. Page-local on purpose, as WithdrawBitcoin's copy is: a shared
+ * component is member-first-run-ui's to build (spec §1.3).
+ */
+function FeeReceipt({ receipt, toUsd }: { receipt: SwapReceipt; toUsd: (sats: number) => string | null }) {
+  const dollars = toUsd(receipt.total_sat);
+  const parts: Array<[string, number]> = [
+    ["Swap service fee", receipt.swap_fee_sat],
+    ["Bitcoin network fee", receipt.network_fee_sat],
+    ["Lightning routing", receipt.routing_fee_sat],
+  ];
+  return (
+    <div data-testid="fee-receipt" style={{ maxWidth: 320 }}>
+      <div className="stat-label">Fee</div>
+      <div className="stat-value" style={{ fontSize: "1.125rem" }} data-testid="fee-summary">
+        {dollars ?? fmtSats(receipt.total_sat)}
+      </div>
+      {dollars && (
+        <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", marginTop: 4 }} data-testid="fee-summary-sats">
+          {fmtSats(receipt.total_sat)}
+        </div>
+      )}
+      <details style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>
+        <summary style={{ cursor: "pointer", userSelect: "none" }}>Fee breakdown</summary>
+        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+          {parts.map(([label, sats]) => (
+            <div key={label} data-testid="fee-part" data-sats={sats} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <span>{label}</span>
+              <span style={{ fontFamily: "var(--mono)" }}>{fmtSats(sats)}</span>
+            </div>
+          ))}
+        </div>
+      </details>
+    </div>
+  );
 }
 
 function formatCountdown(expiresAt: number): string {
@@ -97,6 +141,10 @@ export default function RefillChannel() {
 
   // ─── Channel state ────────────────────────────────────────────────────
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
+  // Room to send, the server's one figure (drive-mode P1 item 2): local − the
+  // channel reserve. The gauge reads it, as Payments' does, since "available
+  // to send" names it (R35).
+  const [roomToSend, setRoomToSend] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
   // Room to receive, the server's one figure (drive-mode P1 item 2): remote −
   // the channel reserve. Not capacity − local, which counts the commitment fee,
@@ -133,6 +181,9 @@ export default function RefillChannel() {
   // ─── Tracking state ───────────────────────────────────────────────────
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [trackingSwap, setTrackingSwap] = useState<SwapRequest | null>(null);
+  // The completed swap's fee receipt, from GET /api/swaps/:id (drive-mode P2
+  // item 14).
+  const [trackingReceipt, setTrackingReceipt] = useState<SwapReceipt | null>(null);
 
   // ─── History state ────────────────────────────────────────────────────
   const [history, setHistory] = useState<SwapRequest[]>([]);
@@ -147,15 +198,15 @@ export default function RefillChannel() {
   // tracking panel says it can't confirm status instead of spinning silently.
   const [pollFresh, setPollFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
   const [expandedSwapId, setExpandedSwapId] = useState<string | null>(null);
-  const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[] } | null>(null);
+  const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[]; receipt?: SwapReceipt | null } | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ─── Derived values ───────────────────────────────────────────────────
   const channelPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0
-      ? Math.round((channelLocal / channelCapacity) * 100)
+    roomToSend != null && channelCapacity != null && channelCapacity > 0
+      ? Math.round((roomToSend / channelCapacity) * 100)
       : null;
 
   // Top Up's one rule, stated by the server (drive-mode P1 item 8): the most a
@@ -171,12 +222,25 @@ export default function RefillChannel() {
 
   const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
   const tone = capacityTone(role, advisor?.classification);
-  const toneWord = capacityWord(role, tone);
+  // R33 finding 7: the bar is "available to send" — a merchant's room, where
+  // the short word reads right; for anyone else the warning names the room.
+  const toneWord = role === "merchant" ? capacityWord(role, tone) : capacityRoomWord(role, tone);
 
+  // A top-up adds to your side, so room to send grows by the amount (R35).
   const projectedPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0 && amount > 0
-      ? Math.round(((channelLocal + amount) / channelCapacity) * 100)
+    roomToSend != null && channelCapacity != null && channelCapacity > 0 && amount > 0
+      ? Math.round(((roomToSend + amount) / channelCapacity) * 100)
       : null;
+  // The "more than your channel can hold" warning keeps its own test on the
+  // local balance, unchanged: R35 moved the gauge, not the warning.
+  const overCapacity =
+    channelLocal != null && channelCapacity != null && channelCapacity > 0 && amount > 0 &&
+    Math.round(((channelLocal + amount) / channelCapacity) * 100) > 100;
+
+  // The Loop alert's action (drive-mode P2 item 6): re-read the advisor.
+  function loadAdvisor() {
+    api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
+  }
 
   // ─── Mount: fetch channel + balance + check in-flight swaps ───────────
   useEffect(() => {
@@ -194,6 +258,7 @@ export default function RefillChannel() {
 
         if (stats?.treasury_channel) {
           setChannelLocal(stats.treasury_channel.local_sats);
+          setRoomToSend(stats.treasury_channel.room_to_send_sats);
           setChannelCapacity(stats.treasury_channel.capacity_sats);
           setChannelRemote(stats.treasury_channel.room_to_receive_sats);
         }
@@ -271,6 +336,7 @@ export default function RefillChannel() {
           .then((detail) => {
             setPollFresh((s) => recordSuccess(s, Date.now()));
             setTrackingSwap(detail.swap_request);
+            setTrackingReceipt(detail.receipt ?? null);
             if (isTerminal(detail.swap_request.status)) {
               if (pollRef.current) clearInterval(pollRef.current);
               loadHistory();
@@ -393,6 +459,7 @@ export default function RefillChannel() {
     api.getMemberStats().then((s) => {
       if (s.treasury_channel) {
         setChannelLocal(s.treasury_channel.local_sats);
+        setRoomToSend(s.treasury_channel.room_to_send_sats);
         setChannelCapacity(s.treasury_channel.capacity_sats);
         setChannelRemote(s.treasury_channel.room_to_receive_sats);
       }
@@ -438,6 +505,20 @@ export default function RefillChannel() {
           <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rateInfo)}</p>
         )}
       </div>
+
+      {/* drive-mode P2 item 6 (D2.3): Loop unavailable for Top Up — the API's
+          loop_in sentence, verbatim (2026-09-02 D2(b)), one action. */}
+      {advisor?.loopAlert?.loop_in && (
+        <div className="alert warning">
+          <span className="alert-icon" aria-hidden>⚠</span>
+          <div className="alert-body">
+            <div className="alert-msg">{advisor.loopAlert.loop_in.text}</div>
+            <button className="btn btn-outline alert-action" onClick={loadAdvisor}>
+              {advisor.loopAlert.loop_in.action.label}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── Form + Quoting stage ─────────────────────────────────────── */}
       {(stage === "form" || stage === "quoting") && (
@@ -643,7 +724,7 @@ export default function RefillChannel() {
               </div>
             )}
 
-            {projectedPct != null && projectedPct > 100 && (
+            {overCapacity && (
               <div className="alert warning" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
                 That's more than your channel can hold right now. Try a smaller amount.
               </div>
@@ -786,8 +867,8 @@ export default function RefillChannel() {
             <span className="panel-title">
               <span className="icon">◎</span>Top Up Status
             </span>
-            <span className={`badge ${statusBadge(trackingSwap.status).cls}`}>
-              {statusBadge(trackingSwap.status).label}
+            <span className={`badge ${memberSwapBadge(trackingSwap.status, trackingSwap.failure_reason).cls}`}>
+              {memberSwapBadge(trackingSwap.status, trackingSwap.failure_reason).label}
             </span>
           </div>
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -796,7 +877,11 @@ export default function RefillChannel() {
                 <div className="stat-label">Amount</div>
                 <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(trackingSwap.amount_sat)}</div>
               </div>
-              {trackingSwap.actual_fee_sat != null && (
+              {trackingReceipt ? (
+                <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
+                  <FeeReceipt receipt={trackingReceipt} toUsd={toUsd} />
+                </div>
+              ) : trackingSwap.actual_fee_sat != null && (
                 <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
                   <div className="stat-label">Actual Fee</div>
                   <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(trackingSwap.actual_fee_sat)}</div>
@@ -828,6 +913,11 @@ export default function RefillChannel() {
                 <TechRow label="Protocol status">
                   {statusTechnical(trackingSwap.status)}
                 </TechRow>
+              </TechnicalDetails>
+            )}
+            {trackingSwap.failure_reason && (
+              <TechnicalDetails>
+                <TechRow label="Failure code">{trackingSwap.failure_reason}</TechRow>
               </TechnicalDetails>
             )}
 
@@ -905,7 +995,7 @@ export default function RefillChannel() {
                 </thead>
                 <tbody>
                   {history.map((s) => {
-                    const badge = statusBadge(s.status);
+                    const badge = memberSwapBadge(s.status, s.failure_reason);
                     const isExpanded = expandedSwapId === s.id;
                     return (
                       <React.Fragment key={s.id}>
@@ -943,8 +1033,8 @@ export default function RefillChannel() {
                                       </div>
                                       <div>
                                         <span style={{ color: "var(--text-3)" }}>Status:</span>{" "}
-                                        <span className={`badge ${statusBadge(expandedDetail.swap_request.status).cls}`}>
-                                          {statusBadge(expandedDetail.swap_request.status).label}
+                                        <span className={`badge ${memberSwapBadge(expandedDetail.swap_request.status, expandedDetail.swap_request.failure_reason).cls}`}>
+                                          {memberSwapBadge(expandedDetail.swap_request.status, expandedDetail.swap_request.failure_reason).label}
                                         </span>
                                       </div>
                                       <div>
@@ -953,12 +1043,18 @@ export default function RefillChannel() {
                                           ? `${expandedDetail.swap_request.quoted_fee_sat.toLocaleString()} sats`
                                           : "—"}
                                       </div>
-                                      <div>
-                                        <span style={{ color: "var(--text-3)" }}>Actual Fee:</span>{" "}
-                                        {expandedDetail.swap_request.actual_fee_sat != null
-                                          ? `${expandedDetail.swap_request.actual_fee_sat.toLocaleString()} sats`
-                                          : "—"}
-                                      </div>
+                                      {expandedDetail.receipt ? (
+                                        <div style={{ gridColumn: "1 / -1" }}>
+                                          <FeeReceipt receipt={expandedDetail.receipt} toUsd={toUsd} />
+                                        </div>
+                                      ) : (
+                                        <div>
+                                          <span style={{ color: "var(--text-3)" }}>Actual Fee:</span>{" "}
+                                          {expandedDetail.swap_request.actual_fee_sat != null
+                                            ? `${expandedDetail.swap_request.actual_fee_sat.toLocaleString()} sats`
+                                            : "—"}
+                                        </div>
+                                      )}
                                       <div>
                                         <span style={{ color: "var(--text-3)" }}>Created:</span>{" "}
                                         {formatDate(expandedDetail.swap_request.created_at)}
@@ -969,9 +1065,14 @@ export default function RefillChannel() {
                                       </div>
                                     </div>
                                     {expandedDetail.swap_request.failure_reason && (
-                                      <div style={{ color: "var(--red)", fontFamily: "var(--mono)", fontSize: "0.7rem" }}>
-                                        Failure: {expandedDetail.swap_request.failure_reason}
-                                      </div>
+                                      <>
+                                        <div style={{ color: "var(--red)", fontSize: "0.75rem" }}>
+                                          {loopFailureSentence(expandedDetail.swap_request.failure_reason, "loop_in")}
+                                        </div>
+                                        <TechnicalDetails>
+                                          <TechRow label="Failure code">{expandedDetail.swap_request.failure_reason}</TechRow>
+                                        </TechnicalDetails>
+                                      </>
                                     )}
                                     {expandedDetail.execution?.provider_swap_id && (
                                       <div style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>

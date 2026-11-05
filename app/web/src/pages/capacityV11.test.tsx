@@ -58,6 +58,10 @@ const stats = (localSats: number) => ({
     remote_sats: 1_000_000 - localSats,
     capacity_sats: 1_000_000,
     is_active: true,
+    // P1's figures, each side less a 10,000 reserve (the dashboard gauge reads
+    // them since drive-mode P2).
+    room_to_send_sats: Math.max(0, localSats - 10_000),
+    room_to_receive_sats: Math.max(0, 1_000_000 - localSats - 10_000),
     freshness: { updated_at_ms: NOW, age_seconds: 0, staleness: "fresh" },
   },
   forwarded_fees: { total_sats: 0, last_24h_sats: 0, last_30d_sats: 0 },
@@ -121,12 +125,12 @@ function setup(localSats: number, role: MemberChannelRole, state: MemberChannelS
 }
 
 describe("V11 — the member dashboard's gauge", () => {
-  it("a merchant at 50% the advisor calls receive_exhausted → amber bar, hero in --text, \"Low\"", async () => {
+  it("a merchant at 50% the advisor calls receive_exhausted → amber bar, hero in --text, \"Getting low\"", async () => {
     setup(500_000, "merchant", "receive_exhausted");
     await render(MemberDashboard);
     expect(bar()).toContain("var(--amber)");
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
-    expect(host.textContent).toContain("Room to send · Low");
+    expect(host.textContent).toContain("Room to send · Getting low"); // R33 finding 7
     // On a phone the word must not wrap away from its label.
     expect(host.querySelector('[data-testid="gauge-label"]')!.getAttribute("style") ?? "").toContain("white-space: nowrap");
     const labels = cssRules().find((r) => r.media === null && r.selectors.includes(".member-gauge .labels"))!.decls;
@@ -137,14 +141,15 @@ describe("V11 — the member dashboard's gauge", () => {
     setup(100_000, "merchant", "healthy");
     await render(MemberDashboard);
     expect(bar()).toContain("var(--green)");
-    expect(host.textContent).not.toContain("· Low");
+    expect(host.textContent).not.toContain("Getting low");
   });
 
-  it("a farmer the advisor calls send_saturated → amber bar, \"Getting full\", never red", async () => {
+  it("a farmer the advisor calls send_saturated → amber bar, \"Getting low\", never red", async () => {
     setup(900_000, "farmer", "send_saturated");
     await render(MemberDashboard);
     expect(bar()).toContain("var(--amber)");
-    expect(host.textContent).toContain("Earnings accumulated · Getting full");
+    // The farmer's gauge reads "Room to receive" since drive-mode P2 (item 2).
+    expect(host.textContent).toContain("Room to receive · Getting low"); // R33 finding 7
     expect(host.innerHTML).not.toContain("var(--red)");
   });
 
@@ -162,11 +167,13 @@ describe("V11 — the member dashboard's gauge", () => {
 });
 
 describe("V11 — Top Up", () => {
-  it("a merchant at 50% the advisor calls receive_heavy → amber bar, \"Low\", text in --text", async () => {
+  it("a merchant at 50% the advisor calls receive_heavy → amber bar, \"Getting low\", text in --text", async () => {
     setup(500_000, "merchant", "receive_heavy");
     await render(RefillChannel);
     expect(bar()).toContain("var(--amber)");
-    expect(host.textContent).toContain("Low · 50% available to send");
+    // R33 finding 7: the bar is the merchant's room to send. R35: it reads
+    // room to send (490,000 here), not the local balance (500,000).
+    expect(host.textContent).toContain("Getting low · 49% available to send");
     expect(texts().length).toBeGreaterThanOrEqual(3);
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
   });
@@ -180,18 +187,21 @@ describe("V11 — Top Up", () => {
   it("PR3-2: the projected \"after top up\" % is --text", async () => {
     setup(100_000, "merchant", "healthy");
     await render(RefillChannel);
-    const projected = texts().find((el) => el.textContent?.trim() === "35%");
-    expect(projected, "the projected 35% renders").toBeDefined();
+    // R35: room to send 90,000 + 250,000 = 34% (the local balance gave 35%).
+    const projected = texts().find((el) => el.textContent?.trim() === "34%");
+    expect(projected, "the projected 34% renders").toBeDefined();
     expect(style(projected!)).toContain("color: var(--text)");
   });
 });
 
 describe("V11 — Cash Out", () => {
-  it("a farmer at 50% the advisor calls send_heavy → amber bar, \"Getting full\", text in --text", async () => {
+  it("a farmer at 50% the advisor calls send_heavy → amber bar, \"Room to receive getting low\", text in --text", async () => {
     setup(500_000, "farmer", "send_heavy");
     await render(WithdrawBitcoin);
     expect(bar()).toContain("var(--amber)");
-    expect(host.textContent).toContain("Getting full · 50% available to withdraw");
+    // drive-mode P2 item 15: a share of the connection, not of what is withdrawable.
+    // R33 finding 7: the bar is the share in the connection, so the word names the room.
+    expect(host.textContent).toContain("Room to receive getting low · 50% of your connection");
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
   });
 
@@ -230,7 +240,9 @@ describe("PR 7: the gauge's figure wraps instead of clipping", () => {
     setup(710_000, "farmer", "healthy");
     await render(MemberDashboard);
     const labels = host.querySelector(".member-gauge .labels")!;
-    expect(labels.lastElementChild!.textContent).toBe("71% full — 710,000 of 1,000,000 sats");
+    // drive-mode P2 item 2: room to receive, (1,000,000 − 710,000 − 10,000) /
+    // 1,000,000, as a percentage only.
+    expect(labels.lastElementChild!.textContent).toBe("28% of your connection");
     const rules = cssRules().filter((r) => r.media === null);
     const decls = (sel: string) => Object.assign({}, ...rules.filter((r) => r.selectors.includes(sel)).map((r) => r.decls));
     expect(decls(".member-gauge .labels")["flex-wrap"]).toBe("wrap");

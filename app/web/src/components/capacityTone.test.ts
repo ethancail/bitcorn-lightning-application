@@ -6,6 +6,7 @@ import { describe, it, expect } from "vitest";
 import {
   capacityTone,
   capacityWord,
+  capacityRoomWord,
   CAPACITY_BAR_COLOR,
   CAPACITY_TEXT_COLOR,
   type CapacityTone,
@@ -70,10 +71,19 @@ describe("the colours — never red; amber on the bar only (PR3-7)", () => {
 });
 
 describe("capacityWord — the state in words, only for a warning", () => {
-  it("merchant → Low; farmer → Getting full; otherwise none", () => {
-    expect(capacityWord("merchant", "warn")).toBe("Low");
-    expect(capacityWord("farmer", "warn")).toBe("Getting full");
+  // R33 finding 7: the words describe ROOM, which is what is low — a
+  // merchant's room to send, a farmer's room to receive.
+  it("a warning reads \"Getting low\" for either role; otherwise none", () => {
+    expect(capacityWord("merchant", "warn")).toBe("Getting low");
+    expect(capacityWord("farmer", "warn")).toBe("Getting low");
     expect(capacityWord("merchant", "good")).toBeNull();
     expect(capacityWord("unknown", "neutral")).toBeNull();
+  });
+
+  it("beside a figure that is not the room, it names the room", () => {
+    expect(capacityRoomWord("farmer", "warn")).toBe("Room to receive getting low");
+    expect(capacityRoomWord("merchant", "warn")).toBe("Room to send getting low");
+    expect(capacityRoomWord("farmer", "good")).toBeNull();
+    expect(capacityRoomWord("unknown", "neutral")).toBeNull();
   });
 });

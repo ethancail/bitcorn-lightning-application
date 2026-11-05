@@ -3,11 +3,12 @@ import { useSearchParams } from "react-router-dom";
 import { api, fmtSats, swapExecuteBody } from "../api/client";
 import { rateNote } from "../api/rate";
 import type { ExchangeRate, SwapLimits } from "../api/client";
-import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse } from "../api/client";
+import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse, SwapReceipt } from "../api/client";
 import ErrorState from "../components/ErrorState";
 import TechnicalDetails, { TechRow } from "../components/TechnicalDetails";
-import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
-import { statusBadge } from "../components/swapStatus";
+import { capacityTone, capacityRoomWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
+import { statusBadge, memberSwapBadge } from "../components/swapStatus";
+import { loopFailureSentence } from "../components/loopFailureCopy";
 import ActionConfirmModal, {
   useActionConfirm,
 } from "../components/actionConfirm/ActionConfirmModal";
@@ -49,7 +50,10 @@ export function statusText(status: string, failureReason: string | null): string
     case "executing": return "Sending funds to your Bitcoin address...";
     case "confirming": return "Waiting for Bitcoin network confirmation...";
     case "completed": return "Withdrawal complete";
-    case "failed": return `Withdrawal failed${failureReason ? `: ${failureReason}` : ""}`;
+    // drive-mode P2 item 7: the member-facing sentence, never loopd's raw code
+    // (which stays in Technical details).
+    // R33 finding 9: a temporary failure is not final, so it says so.
+    case "failed": return `${failureReason === "FAILURE_REASON_TEMPORARY" ? "Withdrawal not finished." : "Withdrawal failed."} ${loopFailureSentence(failureReason, "loop_out")}`;
     default: return statusBadge(status).label;
   }
 }
@@ -87,6 +91,46 @@ export function QuoteFeeDetails({ swapFee, minerFee, prepay }: { swapFee: number
         {prepay > 0 && <TechRow label="Prepay (part of your withdrawal)">{fmtSats(prepay)}</TechRow>}
       </TechnicalDetails>
     </>
+  );
+}
+
+/**
+ * A completed swap's fee receipt (drive-mode P2 item 14; D2.6): the summary,
+ * dollars first with the sats underneath, and the breakdown behind a dropdown.
+ * The parts are the server's (GET /api/swaps/:id receipt) and sum to its
+ * total. Page-local on purpose, as RefillChannel's copy is: a shared component
+ * is member-first-run-ui's to build (spec §1.3).
+ */
+function FeeReceipt({ receipt, toUsd }: { receipt: SwapReceipt; toUsd: (sats: number) => string | null }) {
+  const dollars = toUsd(receipt.total_sat);
+  const parts: Array<[string, number]> = [
+    ["Swap service fee", receipt.swap_fee_sat],
+    ["Bitcoin network fee", receipt.network_fee_sat],
+    ["Lightning routing", receipt.routing_fee_sat],
+  ];
+  return (
+    <div data-testid="fee-receipt" style={{ maxWidth: 320 }}>
+      <div className="stat-label">Fee</div>
+      <div className="stat-value" style={{ fontSize: "1.125rem" }} data-testid="fee-summary">
+        {dollars ?? fmtSats(receipt.total_sat)}
+      </div>
+      {dollars && (
+        <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", marginTop: 4 }} data-testid="fee-summary-sats">
+          {fmtSats(receipt.total_sat)}
+        </div>
+      )}
+      <details style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>
+        <summary style={{ cursor: "pointer", userSelect: "none" }}>Fee breakdown</summary>
+        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+          {parts.map(([label, sats]) => (
+            <div key={label} data-testid="fee-part" data-sats={sats} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <span>{label}</span>
+              <span style={{ fontFamily: "var(--mono)" }}>{fmtSats(sats)}</span>
+            </div>
+          ))}
+        </div>
+      </details>
+    </div>
   );
 }
 
@@ -153,6 +197,9 @@ export default function WithdrawBitcoin() {
   // ─── Tracking state ───────────────────────────────────────────────────
   const [trackingId, setTrackingId] = useState<string | null>(null);
   const [trackingSwap, setTrackingSwap] = useState<SwapRequest | null>(null);
+  // The completed swap's fee receipt, from GET /api/swaps/:id (drive-mode P2
+  // item 14).
+  const [trackingReceipt, setTrackingReceipt] = useState<SwapReceipt | null>(null);
 
   // ─── History state ────────────────────────────────────────────────────
   const [history, setHistory] = useState<SwapRequest[]>([]);
@@ -168,7 +215,7 @@ export default function WithdrawBitcoin() {
   // tracking panel says it can't confirm status instead of spinning silently.
   const [pollFresh, setPollFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
   const [expandedSwapId, setExpandedSwapId] = useState<string | null>(null);
-  const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[] } | null>(null);
+  const [expandedDetail, setExpandedDetail] = useState<{ swap_request: SwapRequest; execution: any; events: any[]; receipt?: SwapReceipt | null } | null>(null);
 
   // ─── Max withdrawable from treasury channel ─────────────────────────
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
@@ -178,10 +225,18 @@ export default function WithdrawBitcoin() {
   const [advisor, setAdvisor] = useState<MemberLiquidityStatusResponse | null>(null);
   const role = advisor?.channelRole ?? advisor?.classification?.channelRole ?? "unknown";
   const tone = capacityTone(role, advisor?.classification);
-  const toneWord = capacityWord(role, tone);
+  // R33 finding 7: the bar is the share in the connection, not the room, so
+  // the warning names the room it is about.
+  const toneWord = capacityRoomWord(role, tone);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // The advisor read: the bar's colour, and the Loop alert (drive-mode P2 item
+  // 6), whose action re-reads it.
+  function loadAdvisor() {
+    api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
+  }
 
   // ─── Fetch max withdrawable from treasury channel ──────────────────────
   useEffect(() => {
@@ -210,7 +265,7 @@ export default function WithdrawBitcoin() {
         );
       })
       .catch(() => {});
-    api.getMemberLiquidityStatus().then(setAdvisor).catch(() => {});
+    loadAdvisor();
   }, []);
 
   // Most you can withdraw, and the Max button: the server's available_now,
@@ -313,6 +368,7 @@ export default function WithdrawBitcoin() {
           .then((detail) => {
             setPollFresh((s) => recordSuccess(s, Date.now()));
             setTrackingSwap(detail.swap_request);
+            setTrackingReceipt(detail.receipt ?? null);
             if (isTerminal(detail.swap_request.status)) {
               if (pollRef.current) clearInterval(pollRef.current);
               loadHistory();
@@ -444,6 +500,20 @@ export default function WithdrawBitcoin() {
         )}
       </div>
 
+      {/* drive-mode P2 item 6 (D2.3): Loop unavailable for withdrawals — the
+          API's loop_out sentence, verbatim (2026-09-02 D2(b)), one action. */}
+      {advisor?.loopAlert?.loop_out && (
+        <div className="alert warning">
+          <span className="alert-icon" aria-hidden>⚠</span>
+          <div className="alert-body">
+            <div className="alert-msg">{advisor.loopAlert.loop_out.text}</div>
+            <button className="btn btn-outline alert-action" onClick={loadAdvisor}>
+              {advisor.loopAlert.loop_out.action.label}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ─── Withdrawal Amount + Destination Address ──────────────────── */}
       {(stage === "form" || stage === "quoting") && (
         <div className="panel fade-in">
@@ -461,15 +531,19 @@ export default function WithdrawBitcoin() {
                   background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
                   padding: "10px 14px", marginBottom: 10,
                 }}>
+                  {/* drive-mode P2 item 15 (R26(8)): the bar is local /
+                      capacity, a share of the connection; it no longer claims
+                      that share can be withdrawn ("Most you can withdraw" is
+                      the server's figure). */}
                   <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
-                    Current channel
+                    In your connection
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <div style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
                       <div data-testid="capacity-bar" style={{ width: `${Math.min(channelLocalPct, 100)}%`, height: "100%", background: CAPACITY_BAR_COLOR[tone] }} />
                     </div>
                     <span data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: CAPACITY_TEXT_COLOR[tone] }}>
-                      {toneWord && `${toneWord} · `}{channelLocalPct}% available to withdraw
+                      {toneWord && `${toneWord} · `}{channelLocalPct}% of your connection
                     </span>
                   </div>
                 </div>
@@ -483,7 +557,7 @@ export default function WithdrawBitcoin() {
                 }}>
                   <div>
                     <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
-                      In your channel
+                      In your connection
                     </div>
                     <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
                       {channelLocal.toLocaleString()}
@@ -502,6 +576,33 @@ export default function WithdrawBitcoin() {
                   )}
                 </div>
               )}
+              {/* drive-mode P2 item 16 (R11(4)): what always stays, Withdraw
+                  only, one tap down. "Why not all of it?" (R27(7)) until P4
+                  makes it a timing question. The figures are the server's
+                  (GET /api/swaps/limits loop_out.always_stays); its parts sum
+                  to its total. */}
+              {limits?.loop_out?.always_stays && (() => {
+                const a = limits.loop_out.always_stays;
+                const rows: Array<[string, number]> = [
+                  ["Always stays to keep you connected", a.total_sats],
+                  ["Connection reserve", a.reserve_sats],
+                  ["Lightning fee headroom", a.fee_headroom_sats],
+                  ["Swap buffer", a.swap_buffer_sats],
+                ];
+                return (
+                  <details style={{ fontSize: "0.75rem", color: "var(--text-2)", marginBottom: 10 }}>
+                    <summary style={{ cursor: "pointer", userSelect: "none" }}>Why not all of it?</summary>
+                    <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                      {rows.map(([label, sats], i) => (
+                        <div key={label} data-testid="always-stays-row" style={{ display: "flex", justifyContent: "space-between", gap: 12, fontWeight: i === 0 ? 600 : 400 }}>
+                          <span>{label}</span>
+                          <span style={{ fontFamily: "var(--mono)" }}>{sats.toLocaleString()} sats</span>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                );
+              })()}
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 {presets.map((preset) => (
                   <button
@@ -556,7 +657,7 @@ export default function WithdrawBitcoin() {
               {channelLocal != null && channelCapacity != null && channelCapacity > 0 && (
                 <div style={{ background: "var(--bg-2)", borderLeft: "2px solid var(--amber)", padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 10 }}>
                   After withdrawal: <strong data-testid="capacity-text" style={{ color: "var(--text)" }}>
-                    {channelLocalPct}% → {Math.max(0, Math.round(((channelLocal - amount) / channelCapacity) * 100))}% available to withdraw
+                    {channelLocalPct}% → {Math.max(0, Math.round(((channelLocal - amount) / channelCapacity) * 100))}% of your connection
                   </strong>
                 </div>
               )}
@@ -738,8 +839,8 @@ export default function WithdrawBitcoin() {
             <span className="panel-title">
               <span className="icon">◎</span>Withdrawal Status
             </span>
-            <span className={`badge ${statusBadge(trackingSwap.status).cls}`}>
-              {statusBadge(trackingSwap.status).label}
+            <span className={`badge ${memberSwapBadge(trackingSwap.status, trackingSwap.failure_reason).cls}`}>
+              {memberSwapBadge(trackingSwap.status, trackingSwap.failure_reason).label}
             </span>
           </div>
           <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -748,7 +849,11 @@ export default function WithdrawBitcoin() {
                 <div className="stat-label">Amount</div>
                 <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(trackingSwap.amount_sat)}</div>
               </div>
-              {trackingSwap.actual_fee_sat != null && (
+              {trackingReceipt ? (
+                <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
+                  <FeeReceipt receipt={trackingReceipt} toUsd={toUsd} />
+                </div>
+              ) : trackingSwap.actual_fee_sat != null && (
                 <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
                   <div className="stat-label">Actual Fee</div>
                   <div className="stat-value" style={{ fontSize: "1.125rem" }}>{fmtSats(trackingSwap.actual_fee_sat)}</div>
@@ -786,6 +891,11 @@ export default function WithdrawBitcoin() {
                 <TechRow label="Protocol status">
                   {statusTechnical(trackingSwap.status)}
                 </TechRow>
+              </TechnicalDetails>
+            )}
+            {trackingSwap.failure_reason && (
+              <TechnicalDetails>
+                <TechRow label="Failure code">{trackingSwap.failure_reason}</TechRow>
               </TechnicalDetails>
             )}
 
@@ -839,19 +949,22 @@ export default function WithdrawBitcoin() {
           ) : history.length === 0 ? (
             <div className="empty-state">No withdrawals yet</div>
           ) : (
-            <div className="table-scroll">
-              <table className="data-table">
+            // R34 item 4: Top Up's phone layout (.phone-fit, styles.css X4c) —
+            // the same columns, so the same markup: one line where every row
+            // fits, a card otherwise; never a sideways scroll on a phone.
+            <div className="table-scroll phone-fit-wrap">
+              <table className="data-table phone-fit">
                 <thead>
                   <tr>
                     <th>Date</th>
                     <th style={{ textAlign: "right" }}>Amount</th>
                     <th>Status</th>
-                    <th style={{ textAlign: "right" }}>Fee</th>
+                    <th className="col-secondary" style={{ textAlign: "right" }}>Fee</th>
                   </tr>
                 </thead>
                 <tbody>
                   {history.map((s) => {
-                    const badge = statusBadge(s.status);
+                    const badge = memberSwapBadge(s.status, s.failure_reason);
                     const isExpanded = expandedSwapId === s.id;
                     return (
                       <React.Fragment key={s.id}>
@@ -859,10 +972,10 @@ export default function WithdrawBitcoin() {
                           onClick={() => handleExpandSwap(s.id)}
                           style={{ cursor: "pointer", background: isExpanded ? "color-mix(in srgb, var(--amber) 6%, transparent)" : undefined }}
                         >
-                          <td>{formatDate(s.created_at)}</td>
-                          <td className="td-num td-mono">{s.amount_sat.toLocaleString()}</td>
-                          <td><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
-                          <td className="td-num td-mono">
+                          <td className="td-primary">{formatDate(s.created_at)}</td>
+                          <td data-label="Amount" className="td-num td-mono">{s.amount_sat.toLocaleString()}</td>
+                          <td data-label="Status"><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
+                          <td data-label="Fee" className="td-num td-mono col-secondary">
                             {s.actual_fee_sat != null
                               ? s.actual_fee_sat.toLocaleString()
                               : s.quoted_fee_sat != null
@@ -871,7 +984,7 @@ export default function WithdrawBitcoin() {
                           </td>
                         </tr>
                         {isExpanded && (
-                          <tr>
+                          <tr className="row-detail">
                             <td colSpan={4} style={{ padding: 0, border: "none" }}>
                               <div style={{
                                 padding: "12px 16px", background: "var(--bg-2)",
@@ -889,8 +1002,8 @@ export default function WithdrawBitcoin() {
                                       </div>
                                       <div>
                                         <span style={{ color: "var(--text-3)" }}>Status:</span>{" "}
-                                        <span className={`badge ${statusBadge(expandedDetail.swap_request.status).cls}`}>
-                                          {statusBadge(expandedDetail.swap_request.status).label}
+                                        <span className={`badge ${memberSwapBadge(expandedDetail.swap_request.status, expandedDetail.swap_request.failure_reason).cls}`}>
+                                          {memberSwapBadge(expandedDetail.swap_request.status, expandedDetail.swap_request.failure_reason).label}
                                         </span>
                                       </div>
                                       <div>
@@ -899,12 +1012,18 @@ export default function WithdrawBitcoin() {
                                           ? `${expandedDetail.swap_request.quoted_fee_sat.toLocaleString()} sats`
                                           : "—"}
                                       </div>
-                                      <div>
-                                        <span style={{ color: "var(--text-3)" }}>Actual Fee:</span>{" "}
-                                        {expandedDetail.swap_request.actual_fee_sat != null
-                                          ? `${expandedDetail.swap_request.actual_fee_sat.toLocaleString()} sats`
-                                          : "—"}
-                                      </div>
+                                      {expandedDetail.receipt ? (
+                                        <div style={{ gridColumn: "1 / -1" }}>
+                                          <FeeReceipt receipt={expandedDetail.receipt} toUsd={toUsd} />
+                                        </div>
+                                      ) : (
+                                        <div>
+                                          <span style={{ color: "var(--text-3)" }}>Actual Fee:</span>{" "}
+                                          {expandedDetail.swap_request.actual_fee_sat != null
+                                            ? `${expandedDetail.swap_request.actual_fee_sat.toLocaleString()} sats`
+                                            : "—"}
+                                        </div>
+                                      )}
                                       <div>
                                         <span style={{ color: "var(--text-3)" }}>Created:</span>{" "}
                                         {formatDate(expandedDetail.swap_request.created_at)}
@@ -923,9 +1042,14 @@ export default function WithdrawBitcoin() {
                                       )}
                                     </div>
                                     {expandedDetail.swap_request.failure_reason && (
-                                      <div style={{ color: "var(--red)", fontFamily: "var(--mono)", fontSize: "0.7rem" }}>
-                                        Failure: {expandedDetail.swap_request.failure_reason}
-                                      </div>
+                                      <>
+                                        <div style={{ color: "var(--red)", fontSize: "0.75rem" }}>
+                                          {loopFailureSentence(expandedDetail.swap_request.failure_reason, expandedDetail.swap_request.swap_type === "loop_in" ? "loop_in" : "loop_out")}
+                                        </div>
+                                        <TechnicalDetails>
+                                          <TechRow label="Failure code">{expandedDetail.swap_request.failure_reason}</TechRow>
+                                        </TechnicalDetails>
+                                      </>
                                     )}
                                     {expandedDetail.execution?.provider_swap_id && (
                                       <div style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>

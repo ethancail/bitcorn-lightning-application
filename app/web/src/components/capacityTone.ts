@@ -39,8 +39,19 @@ export const CAPACITY_TEXT_COLOR: Record<CapacityTone, string> = {
   neutral: "var(--text)",
 };
 
-/** The word that says a warning in --text, since its colour no longer can. */
+/** The word that says a warning in --text, since its colour no longer can.
+ *  It describes ROOM, which is what runs low: a merchant's room to send, a
+ *  farmer's room to receive (R33 finding 7). For use beside a figure that is
+ *  already that room (the dashboard gauge, Top Up's "available to send"). */
 export function capacityWord(role: MemberChannelRole, tone: CapacityTone): string | null {
   if (tone !== "warn") return null;
-  return role === "farmer" ? "Getting full" : "Low";
+  return "Getting low";
+}
+
+/** The same warning, naming the room — for use beside a figure that is NOT
+ *  the role's room (Withdraw's share "of your connection"), where a bare
+ *  "Getting low" would read as the figure beside it. */
+export function capacityRoomWord(role: MemberChannelRole, tone: CapacityTone): string | null {
+  if (tone !== "warn") return null;
+  return role === "farmer" ? "Room to receive getting low" : "Room to send getting low";
 }

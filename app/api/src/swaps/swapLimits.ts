@@ -114,6 +114,13 @@ export type DirectionLimits = {
   daily_remaining_sats: number;
 };
 
+export type AlwaysStays = {
+  total_sats: number;
+  reserve_sats: number;
+  fee_headroom_sats: number;
+  swap_buffer_sats: number;
+};
+
 export type MemberSwapLimits = {
   loop_available: boolean;
   loop_out: DirectionLimits & {
@@ -126,6 +133,14 @@ export type MemberSwapLimits = {
      *  it: an amount within one fee of it can still be refused by the fee phase
      *  after the quote (the plan's stated residual), before any swap starts. */
     available_now_sats: number;
+    /** What always stays in the connection, whatever the limits (drive-mode
+     *  P2 item 16; R11(4), Withdraw's "Why not all of it?"): the local balance
+     *  less what the policy lets a withdrawal take from the channel (room to
+     *  send less the swap buffer, as available_now_sats). Its parts sum to it:
+     *  the connection reserve, lnd's fee headroom (a funder's, R23(i)), and the
+     *  swap buffer (capped at room to send). Null with no hub channel.
+     *  Read-only: the policy is unchanged. */
+    always_stays: AlwaysStays | null;
   };
   loop_in: DirectionLimits & {
     /** The rule Top Up follows (drive-mode P1 item 8), or null when lnd could
@@ -161,6 +176,16 @@ async function termsOrNull(fetch: () => Promise<LoopTermsLike>): Promise<LoopTer
   }
 }
 
+/** The local balance less what a withdrawal may take from the channel, split
+ *  into parts that sum to it. room ≤ local − reserve always (capacity.ts), so
+ *  the headroom is never negative. */
+function alwaysStays(local: number, reserve: number, roomToSend: number, hubSpendable: number): AlwaysStays {
+  const total = local - hubSpendable;
+  const reserve_sats = Math.min(local, reserve);
+  const swap_buffer_sats = Math.min(ENV.swapMemberRoutingBufferSat, roomToSend);
+  return { total_sats: total, reserve_sats, fee_headroom_sats: total - reserve_sats - swap_buffer_sats, swap_buffer_sats };
+}
+
 export async function getMemberSwapLimits(nodePubkey: string): Promise<MemberSwapLimits> {
   const [outTerms, inTerms] = await Promise.all([termsOrNull(getLoopOutTerms), termsOrNull(getLoopInTerms)]);
   const direction = (d: SwapDirection, terms: LoopTermsLike | null): DirectionLimits => {
@@ -174,12 +199,14 @@ export async function getMemberSwapLimits(nodePubkey: string): Promise<MemberSwa
   const loopOut = direction("loop_out", outTerms);
   const loopIn = direction("loop_in", inTerms);
   const hub = getHubChannel();
-  const hubSpendable = hub ? Math.max(0, capacityOf(hub).room_to_send_sats - ENV.swapMemberRoutingBufferSat) : 0;
+  const cap = hub ? capacityOf(hub) : null;
+  const hubSpendable = cap ? Math.max(0, cap.room_to_send_sats - ENV.swapMemberRoutingBufferSat) : 0;
   return {
     loop_available: outTerms != null && inTerms != null,
     loop_out: {
       ...loopOut,
       available_now_sats: Math.max(0, Math.min(loopOut.max_sats, loopOut.daily_remaining_sats, hubSpendable)),
+      always_stays: hub && cap ? alwaysStays(hub.local_balance_sat, cap.local_reserve_sats, cap.room_to_send_sats, hubSpendable) : null,
     },
     loop_in: { ...loopIn, ...(await loopInNow(loopIn)) },
   };

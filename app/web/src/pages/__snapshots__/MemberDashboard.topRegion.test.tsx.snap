@@ -1,0 +1,97 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`D2.2: the region above the price chart, against the pre-P2 build > farmer 1`] = `
+"<div class="dash-notices dash-notices-top">
+<div class="dash-notices dash-notices-info">
+<div class="dash-header">
+  <h1>
+    "My Dashboard"
+  <p class="text-dim" style="font-size: 0.875rem;">
+    "Your connection to the Bitcorn Lightning hub"
+<section aria-label="Headline numbers" class="headline fade-in">
+  <div class="hl hl-1">
+    <div class="hl-label">
+      "Available to withdraw"
+    <div aria-label="Available to withdraw: 640,000 sats" class="hl-value" data-testid="capacity-text" style="color: var(--green);">
+      <span class="hl-num">
+        "640,000"
+      <span class="unit">
+        "sats"
+    <div class="hl-sub">
+      "$384.00"
+  <div class="hl">
+    <div class="hl-label">
+      "Room to receive"
+    <div class="hl-value">
+      <span class="hl-num">
+        "360,000"
+      <span class="unit">
+        "sats"
+    <div class="hl-sub">
+      "$216.00 · Inbound on your hub channel"
+<div class="headline-status">"
+`;
+
+exports[`D2.2: the region above the price chart, against the pre-P2 build > merchant 1`] = `
+"<div class="dash-notices dash-notices-top">
+<div class="dash-notices dash-notices-info">
+<div class="dash-header">
+  <h1>
+    "My Dashboard"
+  <p class="text-dim" style="font-size: 0.875rem;">
+    "Your connection to the Bitcorn Lightning hub"
+<section aria-label="Headline numbers" class="headline fade-in">
+  <div class="hl hl-1">
+    <div class="hl-label">
+      "Available to send"
+    <div aria-label="Available to send: 640,000 sats" class="hl-value" data-testid="capacity-text" style="color: var(--green);">
+      <span class="hl-num">
+        "640,000"
+      <span class="unit">
+        "sats"
+    <div class="hl-sub">
+      "$384.00"
+  <div class="hl">
+    <div class="hl-label">
+      "Total"
+    <div class="hl-value">
+      <span class="hl-num">
+        "740,000"
+      <span class="unit">
+        "sats"
+    <div class="hl-sub">
+      "$444.00 · Bitcoin + channel"
+<div class="headline-status">"
+`;
+
+exports[`D2.2: the region above the price chart, against the pre-P2 build > unknown 1`] = `
+"<div class="dash-notices dash-notices-top">
+<div class="dash-notices dash-notices-info">
+<div class="dash-header">
+  <h1>
+    "My Dashboard"
+  <p class="text-dim" style="font-size: 0.875rem;">
+    "Your connection to the Bitcorn Lightning hub"
+<section aria-label="Headline numbers" class="headline fade-in">
+  <div class="hl hl-1">
+    <div class="hl-label">
+      "Your balance"
+    <div aria-label="Your balance: 640,000 sats" class="hl-value" data-testid="capacity-text" style="color: var(--text);">
+      <span class="hl-num">
+        "640,000"
+      <span class="unit">
+        "sats"
+    <div class="hl-sub">
+      "$384.00"
+  <div class="hl">
+    <div class="hl-label">
+      "Room to receive"
+    <div class="hl-value">
+      <span class="hl-num">
+        "360,000"
+      <span class="unit">
+        "sats"
+    <div class="hl-sub">
+      "$216.00 · Inbound on your hub channel"
+<div class="headline-status">"
+`;

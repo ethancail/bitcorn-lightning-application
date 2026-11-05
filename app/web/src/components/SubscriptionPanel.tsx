@@ -26,6 +26,7 @@ import {
 import { Pill, tierToPill, type PillKind } from "./Pill";
 import PayFromNodeModal from "./PayFromNodeModal";
 import AutoPaySection from "./AutoPaySection";
+import { useAutoPayConfig } from "./useAutoPayConfig";
 import { actionsFor, type ActionDescriptor } from "./subscriptionActions";
 import { onrampErrorMessage } from "./subscriptionPayMessages";
 import { copyText } from "./copyText";
@@ -244,7 +245,7 @@ export default function SubscriptionPanel() {
             not-applicable / loading / error states where it would be
             meaningless. Its own card below the subscription panel. */}
         <section className="sub-panel">
-          <AutoPaySection />
+          <AutoPaySection pausesOn={status.grace.worker_until} />
         </section>
         {payModalOpen && (
           <PayFromNodeModal status={status} onClose={() => setPayModalOpen(false)} />
@@ -507,18 +508,27 @@ function CurrentRender({
   onRefresh: () => void;
   handlers: ActionHandlers;
 }) {
-  const pill = tierToPill("current");
+  // drive-mode P2 item 11: from P (paid_through) until hosted services
+  // pause, the tier is still "current", so "paid up" would be false; the line
+  // says when they pause instead, from the status's own date. R34 item 6: in
+  // that window "current" and "Paid through" are not good news, so the pill
+  // and the stat are neutral rather than green.
+  const prePause = Date.now() >= status.paid_through;
+  const pill = prePause ? { kind: "neutral" as const, label: "current" } : tierToPill("current");
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={pill.kind} label={pill.label} />} />
       <p className="sub-tagline">
-        Your access to channel routing and hosted services is paid up.
+        {prePause
+          ? `Hosted services pause on ${formatDate(status.grace.worker_until)}. Renew before then to keep them running.`
+          : "Your access to channel routing and hosted services is paid up."}
       </p>
-      <StatsGrid status={status} accent="emerald" />
+      <StatsGrid status={status} accent={prePause ? undefined : "emerald"} />
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
-        helper="Send 50,000 sats to renew for one month."
+        // drive-mode P2 item 10 (D2.5): the live price, not a literal.
+        helper={`Send ${fmtSats(status.price_sats)} to renew for one month.`}
         fineprint="This address is yours for the lifetime of your membership. Payments are detected automatically on first confirmation."
       />
       <BracketHeading>ACTIONS</BracketHeading>
@@ -738,7 +748,16 @@ function ExternalPeerRender() {
   );
 }
 
+/** The MONTHLY figure for a state with no price in its status (drive-mode P2
+ *  item 10, R27(8)): auto-pay's current_price, read only when one of these
+ *  states renders; "—" until it loads or when there is none. Never a literal. */
+function useMonthlyPrice(): string {
+  const { cfg } = useAutoPayConfig();
+  return cfg?.current_price != null ? cfg.current_price.toLocaleString() : "—";
+}
+
 function UnclassifiedRender() {
+  const monthly = useMonthlyPrice();
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="muted-amber" label="unclassified" />} />
@@ -746,7 +765,7 @@ function UnclassifiedRender() {
         Your node's role is pending classification. Subscription doesn't activate until your channel is classified as farmer or merchant. Contact your operator if this persists more than a few minutes.
       </AlertBox>
       <div className="sub-stats">
-        <Stat label="MONTHLY" value={(50_000).toLocaleString()} suffix="sats" />
+        <Stat label="MONTHLY" value={monthly} suffix="sats" />
         <Stat label="PAID THROUGH" value="—" suffix="pending" pendingValue />
         <Stat label="LAST PAYMENT" value="—" suffix="pending" pendingValue />
       </div>
@@ -767,6 +786,7 @@ function PendingInitialSyncRender({
   channelAgeSec: number;
   onRetry: () => void;
 }) {
+  const monthly = useMonthlyPrice();
   const stuck =
     pendingSinceMs !== null &&
     Date.now() - pendingSinceMs > PENDING_STUCK_THRESHOLD_MS;
@@ -774,7 +794,7 @@ function PendingInitialSyncRender({
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="gray-pulsing" label="setting up" />} />
       <div className="sub-stats">
-        <Stat label="MONTHLY" value={(50_000).toLocaleString()} suffix="sats" pendingValue />
+        <Stat label="MONTHLY" value={monthly} suffix="sats" pendingValue />
         <Stat label="PAID THROUGH" value="—" suffix="pending" pendingValue />
         <Stat label="LAST PAYMENT" value="—" suffix="pending" pendingValue />
       </div>
@@ -978,7 +998,7 @@ function StatsGrid({
   accent,
 }: {
   status: SubscriptionStatusApplicable;
-  accent: PillKind;
+  accent?: PillKind;
 }) {
   const paidThroughLabel = formatDate(status.paid_through);
   const paidThroughRel = relativePaidThrough(status.paid_through);

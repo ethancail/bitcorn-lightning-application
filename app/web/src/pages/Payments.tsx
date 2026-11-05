@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, type CSSProperties } from "react";
 // QR code generation disabled — payments should route through the BitCorn app, not external wallets
 // import QRCode from "qrcode";
 import {
@@ -161,8 +161,12 @@ export default function Payments({ title }: { title: string }) {
               No payments yet. Create an invoice or pay one to get started.
             </div>
           ) : (
-            <div style={{ overflowX: "auto" }}>
-              <table className="data-table">
+            // R34 item 4: a card on a phone (styles.css PHONE TABLES; the card Top Up's
+            // history becomes when a row won't fit on one line). Seven columns
+            // and a free-text memo have no widest row, so there is no one-line
+            // threshold to measure; on a phone it is always the card.
+            <div className="payments-history-wrap" style={{ overflowX: "auto" }}>
+              <table className="data-table phone-card">
                 <thead>
                   <tr>
                     <th>Direction</th>
@@ -213,8 +217,9 @@ function RequestPaymentForm({
   const [copied, setCopied] = useState(false);
 
   // Receive capacity from treasury channel. roomToReceive is the server's one
-  // figure, remote − the channel reserve (drive-mode P1 item 2).
-  const [channelLocal, setChannelLocal] = useState<number | null>(null);
+  // figure, remote − the channel reserve (drive-mode P1 item 2). The gauge
+  // reads room to send, which is what "available to send" names (R34 item 5).
+  const [roomToSend, setRoomToSend] = useState<number | null>(null);
   const [roomToReceive, setRoomToReceive] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
 
@@ -222,7 +227,7 @@ function RequestPaymentForm({
     api.getMemberStats()
       .then((s) => {
         if (s.treasury_channel) {
-          setChannelLocal(s.treasury_channel.local_sats);
+          setRoomToSend(s.treasury_channel.room_to_send_sats);
           setRoomToReceive(s.treasury_channel.room_to_receive_sats);
           setChannelCapacity(s.treasury_channel.capacity_sats);
         }
@@ -236,14 +241,15 @@ function RequestPaymentForm({
       ? `$${((sats / 100_000_000) * rate).toFixed(2)}`
       : null;
 
-  // Channel state percentages
+  // Channel state percentages: room to send over capacity (R34 item 5).
+  // Receiving adds to your side, so room to send grows by the amount.
   const currentLocalPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0
-      ? Math.round((channelLocal / channelCapacity) * 100)
+    roomToSend != null && channelCapacity != null && channelCapacity > 0
+      ? Math.round((roomToSend / channelCapacity) * 100)
       : null;
   const projectedLocalPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0 && sats > 0
-      ? Math.min(100, Math.round(((channelLocal + sats) / channelCapacity) * 100))
+    roomToSend != null && channelCapacity != null && channelCapacity > 0 && sats > 0
+      ? Math.min(100, Math.round(((roomToSend + sats) / channelCapacity) * 100))
       : null;
 
   // One cap: room to receive. The 85% soft cap is removed (R18(5)).
@@ -484,8 +490,7 @@ function PayInvoiceForm({
 
   // Send capacity from treasury channel. roomToSend is the server's one figure,
   // local − the channel reserve (drive-mode P1 item 2) — the same number the
-  // server's pay pre-check refuses above.
-  const [channelLocal, setChannelLocal] = useState<number | null>(null);
+  // server's pay pre-check refuses above, and the gauge's (R34 item 5).
   const [roomToSend, setRoomToSend] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
 
@@ -493,7 +498,6 @@ function PayInvoiceForm({
     api.getMemberStats()
       .then((s) => {
         if (s.treasury_channel) {
-          setChannelLocal(s.treasury_channel.local_sats);
           setRoomToSend(s.treasury_channel.room_to_send_sats);
           setChannelCapacity(s.treasury_channel.capacity_sats);
         }
@@ -625,15 +629,16 @@ function PayInvoiceForm({
       ? `$${((decoded.tokens / 100_000_000) * rate).toFixed(2)}`
       : null;
 
-  // Channel state percentages
+  // Channel state percentages: room to send over capacity (R34 item 5).
+  // Paying spends from your side, so room to send falls by the amount.
   const currentLocalPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0
-      ? Math.round((channelLocal / channelCapacity) * 100)
+    roomToSend != null && channelCapacity != null && channelCapacity > 0
+      ? Math.round((roomToSend / channelCapacity) * 100)
       : null;
   const decodedAmount = decoded?.tokens ?? 0;
   const projectedLocalPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0 && decodedAmount > 0
-      ? Math.max(0, Math.round(((channelLocal - decodedAmount) / channelCapacity) * 100))
+    roomToSend != null && channelCapacity != null && channelCapacity > 0 && decodedAmount > 0
+      ? Math.max(0, Math.round(((roomToSend - decodedAmount) / channelCapacity) * 100))
       : null;
 
   // One cap: room to send. The 85% soft cap is removed (R18(5)).
@@ -971,6 +976,9 @@ function PaymentDetail({
 
 // ─── Payment Row ─────────────────────────────────────────────────────────────
 
+/** A value with no length limit: it may wrap, mid-word if it must. */
+const FREE_TEXT: CSSProperties = { whiteSpace: "normal", overflowWrap: "anywhere", minWidth: 0 };
+
 function PaymentRow({
   payment: p,
   contacts,
@@ -1003,14 +1011,14 @@ function PaymentRow({
       className={selected ? "row-selected" : ""}
       style={{ cursor: "pointer" }}
     >
-      <td>
+      <td className="td-primary">
         <span className={`badge ${dirBadge.cls}`}>
           <span aria-hidden="true" style={{ marginRight: 4 }}>{dirBadge.glyph}</span>
           {dirBadge.label}
         </span>
       </td>
-      <td><span className={`badge ${sBadge.cls}`}>{sBadge.label}</span></td>
-      <td className="td-num">
+      <td data-label="Status"><span className={`badge ${sBadge.cls}`}>{sBadge.label}</span></td>
+      <td data-label="Amount" className="td-num">
         {fmtSats(p.amount_sats)}
         {p.amount_usd != null && (
           <div className="text-dim" style={{ fontSize: "0.75rem" }}>
@@ -1018,14 +1026,18 @@ function PaymentRow({
           </div>
         )}
       </td>
-      <td className="td-num">{feeText(p)}</td>
-      <td className="td-mono ident" style={{ fontSize: "0.8rem" }}>
-        {p.counterparty_pubkey
-          ? resolveContactName(p.counterparty_pubkey, contacts)
-          : "\u2014"}
+      <td data-label="Fee" className="td-num">{feeText(p)}</td>
+      {/* A card cell keeps its value on one line (styles.css PHONE TABLES);
+          a name or memo has no length limit, so these two may wrap. */}
+      <td data-label="With" className="td-mono ident" style={{ fontSize: "0.8rem" }}>
+        <span style={FREE_TEXT}>
+          {p.counterparty_pubkey
+            ? resolveContactName(p.counterparty_pubkey, contacts)
+            : "\u2014"}
+        </span>
       </td>
-      <td>{p.memo || "\u2014"}</td>
-      <td className="text-dim" style={{ whiteSpace: "nowrap" }}>
+      <td data-label="Memo"><span style={FREE_TEXT}>{p.memo || "\u2014"}</span></td>
+      <td data-label="Date" className="text-dim" style={{ whiteSpace: "nowrap" }}>
         {new Date(p.created_at).toLocaleDateString()}
       </td>
     </tr>
