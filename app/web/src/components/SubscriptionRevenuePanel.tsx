@@ -10,7 +10,7 @@
 // actually confirmed inside the window — plus all-time earnings and
 // the paying/enrolled member count. "Paying" = has actually paid (≥1
 // confirmed on-chain payment; see revenueHandler.ts), NOT tier
-// 'current' — fresh-grace members who never paid don't count. Below it, the top earners by
+// 'current' — founding-member credited rows, which never paid on chain, don't count. Below it, the top earners by
 // all-time revenue, named via the case-normalized contacts join in
 // subscriptionRevenueView.ts. "View all" lands on /admin/members,
 // which carries the full per-member breakdown.
