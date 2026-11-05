@@ -1,4 +1,4 @@
-// Persistence for the pay-from-node settlement guard (migration 071).
+// Persistence for the pay-from-node settlement guard (migration 073).
 //
 // Source of truth: bitcorn-research/specs/2026-11-05-pay-from-node-spec.md §3
 // and decisions/2026-11-05-pay-from-node-confirmation-by-echo-settlement-

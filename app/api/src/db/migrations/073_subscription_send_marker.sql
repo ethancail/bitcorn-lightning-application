@@ -1,4 +1,7 @@
--- 071: the pay-from-node settlement guard's marker (pay-from-node D2).
+-- 073: the pay-from-node settlement guard's marker (pay-from-node D2).
+-- Numbered 073, not 071: membership-gating takes 071 and 072 (ruled
+-- 2026-11-05). The runner applies every unapplied file in filename order, so
+-- a node that receives this before 071/072 still applies all three.
 --
 -- Source of truth:
 --   bitcorn-research/decisions/2026-11-05-pay-from-node-confirmation-by-echo-
