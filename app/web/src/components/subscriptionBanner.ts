@@ -92,8 +92,9 @@ export interface BannerDescriptor {
 }
 
 /** An amount for the renewal copy: dollars with the sats beside them, or the
- *  sats alone with no rate (drive-mode P2 items 11-12). */
-function renewalAmount(sats: number, usdRate: number | null): { text: string; label: string } {
+ *  sats alone with no rate (drive-mode P2 items 11-12). Also the pay-from-node
+ *  modal's amounts (dollars first, R2). */
+export function renewalAmount(sats: number, usdRate: number | null): { text: string; label: string } {
   if (!usdRate) return { text: fmtSats(sats), label: fmtSats(sats) };
   const usd = `$${((sats / 100_000_000) * usdRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   return { text: `${usd} (${fmtSats(sats)})`, label: usd };
@@ -221,9 +222,31 @@ export function priceChangeBannerFor(cfg: AutoPayConfig | null): PriceChangeBann
 }
 
 /** Copy per auto-pay alert type (§5 table). Severity comes from the alert row;
- *  this is just the headline/body. */
-export function autoPayAlertContent(type: string): { headline: string; body: string } {
+ *  this is just the headline/body. The price alert reads its context's
+ *  reason. The pay-from-node lines are drafts, approved at the screenshot
+ *  gate (pay-from-node spec §6 Q3, ruled 2026-11-05). */
+export function autoPayAlertContent(
+  type: string,
+  context?: Record<string, unknown> | null,
+): { headline: string; body: string } {
   switch (type) {
+    case "AUTOPAY_SETTLEMENT_OVERDUE":
+      return {
+        headline: "Auto-pay is waiting on an earlier payment",
+        body:
+          "A payment from your node has not been credited yet, so auto-pay won't pay again. " +
+          "If it does not confirm, pay from this node and choose Send another payment.",
+      };
+    case "AUTOPAY_PRICE_NOT_ACKNOWLEDGED":
+      return context?.reason === "no_acknowledged_price"
+        ? {
+            headline: "Auto-pay needs you to accept the price",
+            body: "Auto-pay won't pay until you accept the subscription price. Pay from this node once, or accept the price shown.",
+          }
+        : {
+            headline: "Auto-pay is paused: the price went up",
+            body: "Auto-pay won't pay the new subscription price until you accept it.",
+          };
     case "AUTOPAY_INSUFFICIENT_FUNDS":
       return {
         headline: "Auto-pay couldn't renew your subscription",

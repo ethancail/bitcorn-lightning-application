@@ -79,7 +79,11 @@ export default function MemberSubscriptionBanner({
           <div style={{ display: "flex", gap: 8 }}>
             <button
               className="btn btn-primary member-sub-banner-action"
-              onClick={() => void api.acknowledgePriceChange().then(reload).catch(() => {})}
+              // Sends the price this banner shows; a 409 means it moved, so
+              // reload and show the current one for a fresh acknowledgement.
+              onClick={() =>
+                void api.acknowledgePriceChange(cfg!.current_price!).then(reload).catch(() => reload())
+              }
             >
               Acknowledge
             </button>
@@ -96,7 +100,7 @@ export default function MemberSubscriptionBanner({
       {/* Active auto-pay alerts — warnings dismissible, SUCCEEDED a low-key notice (§5/§7B). */}
       {activeAlerts.map((a) => {
         const sev: BannerSeverity = a.severity === "warning" ? "amber" : "info";
-        const content = autoPayAlertContent(a.type);
+        const content = autoPayAlertContent(a.type, a.context);
         return (
           <div key={a.id} className={`alert ${ALERT_VARIANT_CLASS[sev]} member-sub-banner`}>
             <span className="alert-icon" aria-hidden>{SEVERITY_ICON[sev]}</span>

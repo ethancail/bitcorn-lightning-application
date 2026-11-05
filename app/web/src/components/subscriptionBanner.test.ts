@@ -211,6 +211,22 @@ describe("autoPayAlertContent — copy per alert type", () => {
   it("frames AUTOPAY_SUCCEEDED as a renewal notice", () => {
     expect(autoPayAlertContent("AUTOPAY_SUCCEEDED").headline).toMatch(/renew/i);
   });
+
+  // pay-from-node, 2026-11-05: without an entry the fallback renders
+  // "Auto-pay update" with an empty body.
+  it("gives both guard types a non-empty headline + body", () => {
+    for (const t of ["AUTOPAY_SETTLEMENT_OVERDUE", "AUTOPAY_PRICE_NOT_ACKNOWLEDGED"]) {
+      const c = autoPayAlertContent(t);
+      expect(c.headline).not.toBe("Auto-pay update");
+      expect(c.body.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("the price alert's copy follows its reason", () => {
+    const above = autoPayAlertContent("AUTOPAY_PRICE_NOT_ACKNOWLEDGED", { reason: "price_above_acknowledged" });
+    const none = autoPayAlertContent("AUTOPAY_PRICE_NOT_ACKNOWLEDGED", { reason: "no_acknowledged_price" });
+    expect(above.headline).not.toBe(none.headline);
+  });
 });
 
 describe("autoPayBadgeSeverity — nav badge from auto-pay state", () => {
