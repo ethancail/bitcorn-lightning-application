@@ -415,7 +415,11 @@ export default function RefillChannel() {
       summarizeLoopIn({
         amountSats: quoteResp.quote.amount_sat,
         feeSats: quoteResp.quote.total_fee_sat,
-        authorizedMaxSats: authorizedMaxSats(quoteResp.ceilings),
+        // Ruling tt: Loop In's maximum includes the server's miner-fee margin.
+        authorizedMaxSats: authorizedMaxSats(quoteResp.ceilings, {
+          mode: "loop_in",
+          minerFeeMarginPct: quoteResp.miner_fee_margin_pct,
+        }),
       }),
     );
   }

@@ -337,7 +337,13 @@ treasury rebalance paths): `max_swap_fee` = the quoted swap fee;
 }
 ```
 
-Loop In's carries only `max_swap_fee_sat` and `max_miner_fee_sat`. The member
+Loop In's carries only `max_swap_fee_sat` and `max_miner_fee_sat`. The Loop In
+quote response also carries `miner_fee_margin_pct` (a number,
+`LOOP_MINER_FEE_MARGIN_PCT`, default 50) **beside** `ceilings`, not in them: it
+is not sent to loopd, not echoed, and not hashed. The web uses it for Loop In's
+"Most you authorize in fees" = swap fee + ceil(miner fee × (100 + pct) / 100),
+the fee-rate check's limit before initiation, rounded up to a whole sat (ruling tt); without
+it, no maximum is shown. The Loop Out quotes do not carry it. The member
 Loop Out quote no longer takes `max_fee_sat` (it used to replace the 15%
 sanity check; nothing sent it), and no `swap_request` in any response carries
 `max_fee_sat` — the column stays in the database, unread. A `swap_request` now

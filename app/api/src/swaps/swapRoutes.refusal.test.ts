@@ -158,6 +158,25 @@ describe("F4: quote responses carry the ceilings", () => {
     await handleMemberLoopInQuote(request({ amount_sat: 250_000 }), res);
     expect(out.body.ceilings).toEqual({ max_swap_fee_sat: 500, max_miner_fee_sat: 900 });
   });
+
+  // tt: the margin the web needs for Loop In's maximum rides BESIDE the
+  // ceilings, never in them — the ceilings are echoed and hashed (F4).
+  it("tt, D: the Loop In quote carries miner_fee_margin_pct outside ceilings", async () => {
+    const { createLoopInQuote } = await import("./swapService");
+    const { isLoopAvailable } = await import("./loopProvider");
+    const { ENV } = await import("../config/env");
+    vi.mocked(isLoopAvailable).mockResolvedValue({ available: true });
+    vi.mocked(createLoopInQuote).mockResolvedValue({
+      swapRequest: { id: "r2", swap_type: "loop_in", amount_sat: 250_000, quoted_swap_fee_sat: 500, quoted_prepay_sat: null, quoted_miner_fee_sat: 900 } as any,
+      quote: { total_fee_sat: 1_400 } as any,
+    });
+    stubs.getNodeInfo.mockReturnValue({ pubkey: MEMBER, node_role: "member", membership_status: "active" });
+    const { res, out } = response();
+    await handleMemberLoopInQuote(request({ amount_sat: 250_000 }), res);
+    expect(typeof out.body.miner_fee_margin_pct).toBe("number");
+    expect(out.body.miner_fee_margin_pct).toBe(ENV.loopMinerFeeMarginPct);
+    expect(out.body.ceilings).toEqual({ max_swap_fee_sat: 500, max_miner_fee_sat: 900 });
+  });
 });
 
 // F4 (spec §6): the execute handlers hand the echoed ceilings to initiateSwap.
