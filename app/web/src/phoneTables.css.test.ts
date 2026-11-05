@@ -134,6 +134,19 @@ describe("X4c: Top Up's history is one line where every row fits, a card otherwi
     expect(decls(".data-table.phone-fit :is(colgroup, .col-secondary)")["display"]).toBe("none");
   });
 
+  // R34 screenshot gate: an expanded row's detail (P2's failure sentence, one
+  // long line at max-content) spans every column, so automatic table layout
+  // widened the columns to it and squeezed the dates onto two lines in every
+  // row (Small text, 390px, Top Up and Withdraw). Its content must not size
+  // the columns: zero intrinsic width, filling the cell at layout.
+  it("wide enough: an expanded row's detail does not size the columns", () => {
+    const rule = inWide.find((r) => r.selectors.includes(".data-table.phone-fit tr.row-detail > td > *"));
+    expect(rule, "the rule exists in the one-line query").toBeDefined();
+    expect(rule!.decls["width"]).toBe("0");
+    expect(rule!.decls["min-width"]).toBe("100%");
+    expect(rule!.decls["box-sizing"]).toBe("border-box");
+  });
+
   it("too narrow: exactly the .phone-card card, rule for rule", () => {
     const cardRules = CARD.filter((r) => r.media === PHONE && r.container === null);
     expect(inNarrow.length).toBe(cardRules.length);

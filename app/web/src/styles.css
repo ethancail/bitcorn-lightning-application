@@ -3899,6 +3899,12 @@ input[type="number"] {
   @container topup-history (width >= calc(17.1em + 103px)) {
     .data-table.phone-fit { min-width: 0; table-layout: auto; }
     .data-table.phone-fit :is(colgroup, .col-secondary) { display: none; }
+    /* An expanded row's detail spans every column; at max-content its
+       failure sentence is one long line, and automatic table layout widened
+       the columns to it, wrapping every date (R34 screenshot gate). Zero
+       intrinsic width keeps it out of the column sizing; min-width fills the
+       cell, where it wraps. */
+    .data-table.phone-fit tr.row-detail > td > * { width: 0; min-width: 100%; box-sizing: border-box; }
   }
   @container topup-history (width < calc(17.1em + 103px)) {
     .data-table.phone-fit { display: block; width: 100%; min-width: 0; }
