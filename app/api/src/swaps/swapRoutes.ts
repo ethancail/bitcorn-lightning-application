@@ -196,7 +196,17 @@ export async function handleMemberLoopInQuote(req: IncomingMessage, res: Res): P
     minerFeeSat: quote.htlc_publish_fee_sat, // the quote's, R18(10)
   });
 
-  json(res, 200, { swap_request: swapRequest, quote, ceilings: ceilingsFor(swapRequest), policy_check: postCheck });
+  // miner_fee_margin_pct (ruling tt): the margin minerFeeExceedsMargin allows
+  // before initiation, so the web's "Most you authorize in fees" can include
+  // it. Beside `ceilings`, never in them: the ceilings are echoed and hashed (F4),
+  // and this is not a ceiling sent to loopd.
+  json(res, 200, {
+    swap_request: swapRequest,
+    quote,
+    ceilings: ceilingsFor(swapRequest),
+    miner_fee_margin_pct: ENV.loopMinerFeeMarginPct,
+    policy_check: postCheck,
+  });
 }
 
 export async function handleMemberLoopIn(req: IncomingMessage, res: Res): Promise<void> {
