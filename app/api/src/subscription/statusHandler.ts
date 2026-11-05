@@ -42,12 +42,11 @@ export interface SubscriptionStatusApplicable {
   last_payment_txid: string | null;
   grace: {
     /**
-     * Pre-payment fresh-onboarding grace deadline (ms epoch). Computed
-     * as `created_at + grace_days_fresh * MS_PER_DAY`. Only meaningful
-     * when the member has no payment row yet — once they pay, the
-     * post-payment grace milestones (worker_until/routing_until/close_at)
-     * take over. The UI can surface "fresh grace remaining" by
-     * comparing now to this value when `last_payment_txid === null`.
+     * Computed as `created_at + grace_days_fresh * MS_PER_DAY`. Kept in the
+     * response only so older member nodes, which read it, keep working.
+     * It no longer describes any grace: the tier dispatch removed fresh
+     * grace (membership-gating D1), so a never-paid row is `prepay` from
+     * the start whatever this value says.
      */
     fresh_until: number;
     worker_until: number;

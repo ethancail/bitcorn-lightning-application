@@ -22,10 +22,12 @@
 // channel — typical for Auto-Buy-only customers who use the node for
 // on-chain DCA without joining the Lightning hub — were permanently
 // blocked from subscribing. Now any caller with a valid LND-signed
-// challenge can self-allocate; the fresh-grace branch fires for the
-// first 30 days so they get a working scope='full' JWT immediately and
-// can evaluate Auto-Buy before paying. After grace expires the standard
-// pay-or-lock dynamics apply.
+// challenge can self-allocate. The new row has never been credited time,
+// so it computes `prepay` and the caller gets a scope='payment' JWT from
+// its first call: enough to see its deposit address and pay, not enough
+// for valuation reads or the rail (no pre-payment grace — membership-
+// gating D1, bitcorn-research specs/2026-11-05-membership-gating-spec.md
+// T1). The first payment moves it to `current` and full scope.
 //
 // `payment` scope authorizes subscriber-base Worker endpoints (Onramp,
 // commodity prices) but not tier-gated endpoints (valuation). It is
@@ -131,10 +133,10 @@ export async function issueTokenForPubkey(
   // (verifyChallengeSignature in the /api/subscription/token handler),
   // so we treat the request as an opt-in to subscribe. Allocate a
   // `fresh` row (no sentinel — fresh mode skips the grandfather marker)
-  // and immediately recompute tiers so the fresh-grace branch in
-  // tierDispatch.computeTier puts the new row at `current`. Then fall
-  // through to the normal mint path; the freshly-allocated row will
-  // mint scope='full' for the first 30 days.
+  // and immediately recompute tiers, which puts the new row at `prepay`
+  // (tierDispatch.computeTier: no row crediting time → prepay). Then
+  // fall through to the normal mint path; the freshly-allocated row
+  // mints scope='payment' until its first payment lands.
   //
   // allocateSubscriptionForMember is idempotent — if a concurrent
   // request just created the row, the existing row is returned and
