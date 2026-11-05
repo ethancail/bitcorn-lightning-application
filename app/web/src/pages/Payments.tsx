@@ -217,8 +217,9 @@ function RequestPaymentForm({
   const [copied, setCopied] = useState(false);
 
   // Receive capacity from treasury channel. roomToReceive is the server's one
-  // figure, remote − the channel reserve (drive-mode P1 item 2).
-  const [channelLocal, setChannelLocal] = useState<number | null>(null);
+  // figure, remote − the channel reserve (drive-mode P1 item 2). The gauge
+  // reads room to send, which is what "available to send" names (R34 item 5).
+  const [roomToSend, setRoomToSend] = useState<number | null>(null);
   const [roomToReceive, setRoomToReceive] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
 
@@ -226,7 +227,7 @@ function RequestPaymentForm({
     api.getMemberStats()
       .then((s) => {
         if (s.treasury_channel) {
-          setChannelLocal(s.treasury_channel.local_sats);
+          setRoomToSend(s.treasury_channel.room_to_send_sats);
           setRoomToReceive(s.treasury_channel.room_to_receive_sats);
           setChannelCapacity(s.treasury_channel.capacity_sats);
         }
@@ -240,14 +241,15 @@ function RequestPaymentForm({
       ? `$${((sats / 100_000_000) * rate).toFixed(2)}`
       : null;
 
-  // Channel state percentages
+  // Channel state percentages: room to send over capacity (R34 item 5).
+  // Receiving adds to your side, so room to send grows by the amount.
   const currentLocalPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0
-      ? Math.round((channelLocal / channelCapacity) * 100)
+    roomToSend != null && channelCapacity != null && channelCapacity > 0
+      ? Math.round((roomToSend / channelCapacity) * 100)
       : null;
   const projectedLocalPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0 && sats > 0
-      ? Math.min(100, Math.round(((channelLocal + sats) / channelCapacity) * 100))
+    roomToSend != null && channelCapacity != null && channelCapacity > 0 && sats > 0
+      ? Math.min(100, Math.round(((roomToSend + sats) / channelCapacity) * 100))
       : null;
 
   // One cap: room to receive. The 85% soft cap is removed (R18(5)).
@@ -488,8 +490,7 @@ function PayInvoiceForm({
 
   // Send capacity from treasury channel. roomToSend is the server's one figure,
   // local − the channel reserve (drive-mode P1 item 2) — the same number the
-  // server's pay pre-check refuses above.
-  const [channelLocal, setChannelLocal] = useState<number | null>(null);
+  // server's pay pre-check refuses above, and the gauge's (R34 item 5).
   const [roomToSend, setRoomToSend] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
 
@@ -497,7 +498,6 @@ function PayInvoiceForm({
     api.getMemberStats()
       .then((s) => {
         if (s.treasury_channel) {
-          setChannelLocal(s.treasury_channel.local_sats);
           setRoomToSend(s.treasury_channel.room_to_send_sats);
           setChannelCapacity(s.treasury_channel.capacity_sats);
         }
@@ -629,15 +629,16 @@ function PayInvoiceForm({
       ? `$${((decoded.tokens / 100_000_000) * rate).toFixed(2)}`
       : null;
 
-  // Channel state percentages
+  // Channel state percentages: room to send over capacity (R34 item 5).
+  // Paying spends from your side, so room to send falls by the amount.
   const currentLocalPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0
-      ? Math.round((channelLocal / channelCapacity) * 100)
+    roomToSend != null && channelCapacity != null && channelCapacity > 0
+      ? Math.round((roomToSend / channelCapacity) * 100)
       : null;
   const decodedAmount = decoded?.tokens ?? 0;
   const projectedLocalPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0 && decodedAmount > 0
-      ? Math.max(0, Math.round(((channelLocal - decodedAmount) / channelCapacity) * 100))
+    roomToSend != null && channelCapacity != null && channelCapacity > 0 && decodedAmount > 0
+      ? Math.max(0, Math.round(((roomToSend - decodedAmount) / channelCapacity) * 100))
       : null;
 
   // One cap: room to send. The 85% soft cap is removed (R18(5)).

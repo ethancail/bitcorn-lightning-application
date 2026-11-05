@@ -53,6 +53,10 @@ const stats = (localSats: number) => ({
   keysend_enabled: false, lnd_live_read_ok: true, cert_expiry: null,
   treasury_channel: {
     channel_id: "1", local_sats: localSats, remote_sats: 1_000_000 - localSats, capacity_sats: 1_000_000,
+    // Room equal to the balances (no reserves), so a gauge on either figure
+    // reads the same here; this file checks wording. Payments' gauge reads
+    // room to send (R34 item 5; Payments.capacity.test.tsx tells them apart).
+    room_to_send_sats: localSats, room_to_receive_sats: 1_000_000 - localSats,
     is_active: true, freshness: { updated_at_ms: NOW, age_seconds: 0, staleness: "fresh" },
   },
   forwarded_fees: { total_sats: 0, last_24h_sats: 0, last_30d_sats: 0 },
