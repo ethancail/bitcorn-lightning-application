@@ -313,20 +313,28 @@ describe("C9 — the hold time (ruling 2: 48 hours, an env setting)", () => {
 });
 
 describe("C13 — ruling 3: what clears or keeps a marker is WHERE the error arose", () => {
-  it("refusals before the send call leave no active marker: status, fee estimate, balance read, balance check", async () => {
+  // One case per refusal, each asserting no marker directly: a marker left by
+  // one refusal must not be able to show up as a different refusal later.
+  it("status unavailable → no active marker", async () => {
     h.statusOk = false;
     expect(await manual()).toMatchObject({ code: "status_unavailable" });
-    h.statusOk = true;
+    expect(active()).toHaveLength(0);
+  });
+  it("fee estimate failed → no active marker", async () => {
     h.feeThrows = new Error("unable to estimate fee");
     expect(await manual()).toMatchObject({ code: "fee_estimate_failed" });
-    h.feeThrows = null;
+    expect(active()).toHaveLength(0);
+  });
+  it("balance read failed → no active marker", async () => {
     h.balanceThrows = new Error("wallet locked");
     expect(await manual()).toMatchObject({ code: "send_failed" });
-    h.balanceThrows = null;
+    expect(active()).toHaveLength(0);
+  });
+  it("balance below price + fee → no active marker, and the send is never called", async () => {
     h.balance = 0;
     expect(await manual()).toMatchObject({ code: "insufficient_funds" });
-    expect(lnd.sendLndToChainAddress).not.toHaveBeenCalled();
     expect(active()).toHaveLength(0);
+    expect(lnd.sendLndToChainAddress).not.toHaveBeenCalled();
   });
 
   it("an error from the send call keeps the marker active", async () => {
