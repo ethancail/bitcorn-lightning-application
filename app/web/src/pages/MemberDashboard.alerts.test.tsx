@@ -287,6 +287,7 @@ describe("R33 finding 5: one statement per fault", () => {
     reason, urgency: "high", loopAvailable: false, generatedAt: NOW,
   });
   const FARMER_REASON = "Earnings are 90% full. Withdraw earnings from the Withdraw page, or send a payment to make room. Loop isn't responding right now.";
+  const MERCHANT_REASON = "Your sending balance is running low. To restore your ability to pay, use Top Up to add sending balance, or open a new channel. Loop isn't responding right now.";
   const statements = () => (host.textContent ?? "").split(/Loop isn't responding|currently unavailable/).length - 1;
 
   it("farmer: the Loop alert only — no advisor message, no Withdraw caption", async () => {
@@ -303,14 +304,17 @@ describe("R33 finding 5: one statement per fault", () => {
     expect(btn.disabled).toBe(true);
   });
 
-  it("merchant: the Loop alert only — no advisor message, no Top Up caption", async () => {
+  // R34 item 3: the engine's own shape for this fault. A loop_in
+  // recommendation cannot arrive beside a Loop In alert (both come from one
+  // availability read, and loop_in needs Loop In available), so the merchant
+  // case is the Loop-unavailable manual recovery, as for the farmer.
+  it("merchant: the Loop alert only — no advisor message about the same fault", async () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(advisor("merchant", {
-      loopAvailability: DOWN, recommendation: recommendation("loop_in", "Your channel is nearly out of room to send."), loopAlert: { loop_out: OUT, loop_in: IN },
+      loopAvailability: DOWN, recommendation: recommendation("manual_recovery", MERCHANT_REASON), loopAlert: { loop_out: OUT, loop_in: IN },
     }));
     await renderDashboard();
     expect(alertWith("Loop isn't responding right now, so Top Up")).not.toBeNull();
-    expect(host.textContent).not.toContain("nearly out of room to send");
-    expect(host.textContent).not.toContain("Bitcorn recommends");
+    expect(host.textContent).not.toContain("Your sending balance is running low");
     expect(statements()).toBe(1);
   });
 
@@ -321,6 +325,41 @@ describe("R33 finding 5: one statement per fault", () => {
     await renderDashboard();
     expect(host.textContent).toContain("Earnings are 90% full");
     expect(host.textContent).toContain("Withdrawals are currently unavailable.");
+  });
+});
+
+// R34 item 3, narrowing R33 finding 5: the suppression covers only the
+// advisor's statements about the SAME Loop fault. Advice on another subject —
+// the channel-upgrade recommendation — keeps showing beside the Loop alert.
+describe("R34 item 3: only the same Loop fault is suppressed", () => {
+  const IN = { text: "Loop isn't responding right now, so Top Up isn't available.", action: { label: "Check again" } };
+  const OUT = { text: "Loop isn't responding right now, so Withdraw isn't available.", action: { label: "Check again" } };
+  const DOWN = { ...LOOP_UP, loopDaemonRunning: false, loopOutAvailable: false, loopInAvailable: false, loopOutTerms: null, loopInTerms: null };
+  // The engine's channel_upgrade shape (recommendationEngine.ts): loopAvailable
+  // is false on it too, so "Loop unavailable" alone cannot be the test.
+  const upgrade = (reason: string) => ({
+    action: "channel_upgrade", suggestedAmountSats: 2_000_000, projectedMemberLocalPct: null,
+    reason, urgency: "low", loopAvailable: false, generatedAt: NOW,
+  });
+  const MERCHANT_UPGRADE = "Your channel (1,000,000 sats) is below the recommended merchant minimum of 2,000,000 sats. Open a larger channel to avoid running low on sending balance so often.";
+  const FARMER_UPGRADE = "Your channel (1,000,000 sats) is below the recommended farmer minimum of 2,000,000 sats. Open a larger channel to receive larger or more frequent earnings without filling up.";
+
+  it("merchant: a Loop alert and an upgrade recommendation — both show", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("merchant", {
+      loopAvailability: DOWN, recommendation: upgrade(MERCHANT_UPGRADE), loopAlert: { loop_out: OUT, loop_in: IN },
+    }));
+    await renderDashboard();
+    expect(alertWith("Loop isn't responding right now, so Top Up")).not.toBeNull();
+    expect(alertWith("below the recommended merchant minimum")).not.toBeNull();
+  });
+
+  it("farmer: a Loop alert and an upgrade recommendation — both show", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(advisor("farmer", {
+      loopAvailability: DOWN, recommendation: upgrade(FARMER_UPGRADE), loopAlert: { loop_out: OUT, loop_in: IN },
+    }));
+    await renderDashboard();
+    expect(alertWith("Loop isn't responding right now, so Withdraw")).not.toBeNull();
+    expect(alertWith("below the recommended farmer minimum")).not.toBeNull();
   });
 });
 

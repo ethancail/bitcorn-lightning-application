@@ -583,8 +583,13 @@ export default function MemberDashboard() {
           // high urgency takes the warning, not the red critical.
           const alertClass = rec?.urgency === "high" || rec?.urgency === "medium" ? "warning" : "info";
           const alertIcon = rec?.urgency === "high" || rec?.urgency === "medium" ? "⚠" : "ℹ";
-          // R33 finding 5: not while the Loop alert states the fault.
-          const showAlert = rec && rec.action !== "none" && !memberLoopAlert;
+          // One statement per Loop fault (R33 finding 5, narrowed by R34 item 3):
+          // while the direction's Loop alert shows, the advisor's message is
+          // hidden only when it is about that same fault — the manual recovery
+          // the engine gives because Loop is unavailable (recommendationEngine.ts).
+          // Advice on another subject, such as a channel upgrade, keeps showing.
+          const recIsLoopFault = !!memberLoopAlert && rec?.action === "manual_recovery" && rec.loopAvailable === false;
+          const showAlert = rec && rec.action !== "none" && !recIsLoopFault;
 
           return (
             <div className="panel ops fade-in">
@@ -660,14 +665,14 @@ export default function MemberDashboard() {
                     <button className="btn btn-primary btn-block" onClick={() => navigate(refillUrl)}>
                       Top Up →
                     </button>
-                    {/* R33 finding 5: no caption while the Loop alert shows. */}
-                    {!memberLoopAlert && (
-                      <div className="caption">
-                        {rec?.suggestedAmountSats
-                          ? `Bitcorn recommends ${rec.suggestedAmountSats.toLocaleString()} sats — pre-filled for you.`
-                          : "Add funds from your Bitcoin balance to keep paying."}
-                      </div>
-                    )}
+                    {/* The amount caption is not about a Loop fault, so R34
+                        item 3 leaves it (and a loop_in recommendation needs
+                        Loop In available, so no Loop In alert is beside it). */}
+                    <div className="caption">
+                      {rec?.suggestedAmountSats
+                        ? `Bitcorn recommends ${rec.suggestedAmountSats.toLocaleString()} sats — pre-filled for you.`
+                        : "Add funds from your Bitcoin balance to keep paying."}
+                    </div>
                   </div>
                 )}
 
@@ -689,8 +694,10 @@ export default function MemberDashboard() {
                           Withdraw Earnings →
                         </button>
                         {/* R27(10): no fee guess; the caption is the gate's
-                            refusal only, and not while the Loop alert states
-                            the fault (R33 finding 5). The gate itself is
+                            refusal only. That refusal is the daemon-down
+                            fault the Loop Out alert states, so it goes while
+                            the alert shows (R33 finding 5; R34 item 3 keeps
+                            it, being the same fault). The gate itself is
                             unchanged. */}
                         {withdrawGate.explanation && !memberLoopAlert && (
                           <div className="caption">{withdrawGate.explanation}</div>
