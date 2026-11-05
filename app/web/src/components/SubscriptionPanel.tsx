@@ -512,9 +512,9 @@ function CurrentRender({
   // pause, the tier is still "current", so "paid up" would be false; the line
   // says when they pause instead, from the status's own date. R34 item 6: in
   // that window "current" and "Paid through" are not good news, so the pill
-  // and the stat are neutral rather than green.
+  // and the stat are quiet rather than green.
   const prePause = Date.now() >= status.paid_through;
-  const pill = prePause ? { kind: "neutral" as const, label: "current" } : tierToPill("current");
+  const pill = prePause ? { kind: "quiet" as const, label: "current" } : tierToPill("current");
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={pill.kind} label={pill.label} />} />

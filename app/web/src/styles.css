@@ -2182,8 +2182,12 @@ input[type="number"] {
 .sub-pill-orange      { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 50%, transparent); background: var(--orange-glow); }
 .sub-pill-red         { color: var(--red);    border-color: color-mix(in srgb, var(--red) 50%, transparent);    background: var(--red-glow); }
 .sub-pill-dim-red     { color: var(--red);    border-color: color-mix(in srgb, var(--red) 30%, transparent);    background: var(--red-glow); }
-/* R34 item 6: gray-pulsing's colours, without the pulse (not a transient state). */
-.sub-pill-neutral     { color: var(--text-2); border-color: var(--border-hi);                                     background: var(--bg-3); }
+/* R34 item 6, R12: the Quiet pill takes member-first-run-ui's ruled values
+   ("recs", 2026-11-04; named Quiet in its pass 13, since the signal system's
+   "Gray (neutral)" is gray-pulsing) — label --text, edge --border, mark
+   --text-3, fill --bg-3. */
+.sub-pill-quiet       { color: var(--text);   border-color: var(--border);                                        background: var(--bg-3); }
+.sub-pill-quiet .sub-pill-dot { background: var(--text-3); }
 
 @keyframes sub-pill-pulse {
   0%, 100% { opacity: 0.35; }
