@@ -77,6 +77,7 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `068_lnd_channels_pending_outgoing.sql` | Drive-mode P1: `lnd_channels.pending_outgoing_sat` — in-flight outgoing HTLCs, reported, not subtracted |
 | `069_lnd_channels_pending_incoming.sql` | Drive-mode P1: `lnd_channels.pending_incoming_sat` — in-flight incoming HTLCs, reported, not subtracted |
 | `070_lnd_channels_is_initiator.sql` | Drive-mode P1, R23(i): `lnd_channels.is_initiator` — 1 when this node opened (funded) the channel, 0 when the peer did, NULL until synced. A funder's room to send subtracts lnd's fee headroom (`capacity.ts`) |
+| `071_subscription_send_marker.sql` | Pay-from-node D2: `subscription_send_marker` — one row per subscription payment, written and committed before broadcast by the manual route and auto-pay alike. Active while `cleared_at` is NULL: auto-pay refuses, a manual repeat needs `repeat_acknowledged`. Clears only on credit (status `last_payment_txid` = `txid`, or `paid_through` past `paid_through_at_write`). Member-local; empty on the treasury (`subscription/sendMarker.ts`) |
 
 The migration set is contiguous from `001` through `070` with no gaps. Always allocate the next sequential number for new migrations.
 
