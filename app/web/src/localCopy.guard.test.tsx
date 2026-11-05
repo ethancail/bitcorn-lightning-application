@@ -54,8 +54,9 @@ const stats = (localSats: number) => ({
   treasury_channel: {
     channel_id: "1", local_sats: localSats, remote_sats: 1_000_000 - localSats, capacity_sats: 1_000_000,
     // Room equal to the balances (no reserves), so a gauge on either figure
-    // reads the same here; this file checks wording. Payments' gauge reads
-    // room to send (R34 item 5; Payments.capacity.test.tsx tells them apart).
+    // reads the same here; this file checks wording. Payments' and Top Up's
+    // gauges read room to send (R34 item 5, R35; the R35 test below and
+    // Payments.capacity.test.tsx tell them apart).
     room_to_send_sats: localSats, room_to_receive_sats: 1_000_000 - localSats,
     is_active: true, freshness: { updated_at_ms: NOW, age_seconds: 0, staleness: "fresh" },
   },
@@ -199,5 +200,45 @@ describe("SH8/SH8a/R2: each surface as the member reads it", () => {
     const el = await mount(MemberDashboard);
     expect(el.textContent).toContain("30% on your side — 70% on the hub's side");
     expectNoLocal(el);
+  });
+});
+
+// R35: Top Up's gauge reads room to send, as Payments' does (R34 item 5), so
+// the two pages say the same "N% available to send" for one channel. The
+// fixture tells the figures apart: local 600,000 (60%), room to send 570,000
+// (57%) of 1,000,000.
+describe("R35: Top Up and Payments show the same percentage for the same channel", () => {
+  const ROOM_APART = () => {
+    const s = stats(600_000);
+    return { ...s, treasury_channel: { ...s.treasury_channel, room_to_send_sats: 570_000, room_to_receive_sats: 380_000 } };
+  };
+  const pct = (el: Element, re: RegExp) => (el.textContent ?? "").replace(/\s+/g, " ").match(re)?.slice(1) ?? null;
+
+  async function unmount() {
+    await act(async () => root!.unmount());
+    host!.remove();
+    root = null;
+    host = null;
+  }
+
+  it("the current figure and the after-figure for 250,000 sats match: 57% and 57% → 82%", async () => {
+    stub.getMemberStats.mockResolvedValue(ROOM_APART());
+    stub.getMemberLiquidityStatus.mockResolvedValue(status("merchant"));
+
+    const topUp = await mount(RefillChannel);
+    const topUpNow = pct(topUp, /(\d+)% available to send/);
+    const topUpAfter = pct(topUp, /After top up: (\d+)% → (\d+)% available to send/);
+    await unmount();
+
+    const payments = await mount(Payments, { title: "Payments" });
+    type(payments.querySelector('input[aria-label="Amount"]') as HTMLInputElement, "250000");
+    await settle();
+    const paymentsNow = pct(payments, /(\d+)% available to send/);
+    const paymentsAfter = pct(payments, /After receive: (\d+)% → (\d+)% available to send/);
+
+    expect(paymentsNow, "Payments renders its gauge").toEqual(["57"]);
+    expect(topUpNow, "Top Up's gauge = Payments' gauge").toEqual(paymentsNow);
+    expect(paymentsAfter).toEqual(["57", "82"]);
+    expect(topUpAfter, "Top Up's after-figure = Payments' after-figure").toEqual(paymentsAfter);
   });
 });

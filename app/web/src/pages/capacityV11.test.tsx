@@ -171,7 +171,9 @@ describe("V11 — Top Up", () => {
     setup(500_000, "merchant", "receive_heavy");
     await render(RefillChannel);
     expect(bar()).toContain("var(--amber)");
-    expect(host.textContent).toContain("Getting low · 50% available to send"); // R33 finding 7: the bar is the merchant's room to send
+    // R33 finding 7: the bar is the merchant's room to send. R35: it reads
+    // room to send (490,000 here), not the local balance (500,000).
+    expect(host.textContent).toContain("Getting low · 49% available to send");
     expect(texts().length).toBeGreaterThanOrEqual(3);
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
   });
@@ -185,8 +187,9 @@ describe("V11 — Top Up", () => {
   it("PR3-2: the projected \"after top up\" % is --text", async () => {
     setup(100_000, "merchant", "healthy");
     await render(RefillChannel);
-    const projected = texts().find((el) => el.textContent?.trim() === "35%");
-    expect(projected, "the projected 35% renders").toBeDefined();
+    // R35: room to send 90,000 + 250,000 = 34% (the local balance gave 35%).
+    const projected = texts().find((el) => el.textContent?.trim() === "34%");
+    expect(projected, "the projected 34% renders").toBeDefined();
     expect(style(projected!)).toContain("color: var(--text)");
   });
 });

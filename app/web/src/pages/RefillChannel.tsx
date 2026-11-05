@@ -141,6 +141,10 @@ export default function RefillChannel() {
 
   // ─── Channel state ────────────────────────────────────────────────────
   const [channelLocal, setChannelLocal] = useState<number | null>(null);
+  // Room to send, the server's one figure (drive-mode P1 item 2): local − the
+  // channel reserve. The gauge reads it, as Payments' does, since "available
+  // to send" names it (R35).
+  const [roomToSend, setRoomToSend] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
   // Room to receive, the server's one figure (drive-mode P1 item 2): remote −
   // the channel reserve. Not capacity − local, which counts the commitment fee,
@@ -201,8 +205,8 @@ export default function RefillChannel() {
 
   // ─── Derived values ───────────────────────────────────────────────────
   const channelPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0
-      ? Math.round((channelLocal / channelCapacity) * 100)
+    roomToSend != null && channelCapacity != null && channelCapacity > 0
+      ? Math.round((roomToSend / channelCapacity) * 100)
       : null;
 
   // Top Up's one rule, stated by the server (drive-mode P1 item 8): the most a
@@ -222,10 +226,16 @@ export default function RefillChannel() {
   // the short word reads right; for anyone else the warning names the room.
   const toneWord = role === "merchant" ? capacityWord(role, tone) : capacityRoomWord(role, tone);
 
+  // A top-up adds to your side, so room to send grows by the amount (R35).
   const projectedPct =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0 && amount > 0
-      ? Math.round(((channelLocal + amount) / channelCapacity) * 100)
+    roomToSend != null && channelCapacity != null && channelCapacity > 0 && amount > 0
+      ? Math.round(((roomToSend + amount) / channelCapacity) * 100)
       : null;
+  // The "more than your channel can hold" warning keeps its own test on the
+  // local balance, unchanged: R35 moved the gauge, not the warning.
+  const overCapacity =
+    channelLocal != null && channelCapacity != null && channelCapacity > 0 && amount > 0 &&
+    Math.round(((channelLocal + amount) / channelCapacity) * 100) > 100;
 
   // The Loop alert's action (drive-mode P2 item 6): re-read the advisor.
   function loadAdvisor() {
@@ -248,6 +258,7 @@ export default function RefillChannel() {
 
         if (stats?.treasury_channel) {
           setChannelLocal(stats.treasury_channel.local_sats);
+          setRoomToSend(stats.treasury_channel.room_to_send_sats);
           setChannelCapacity(stats.treasury_channel.capacity_sats);
           setChannelRemote(stats.treasury_channel.room_to_receive_sats);
         }
@@ -444,6 +455,7 @@ export default function RefillChannel() {
     api.getMemberStats().then((s) => {
       if (s.treasury_channel) {
         setChannelLocal(s.treasury_channel.local_sats);
+        setRoomToSend(s.treasury_channel.room_to_send_sats);
         setChannelCapacity(s.treasury_channel.capacity_sats);
         setChannelRemote(s.treasury_channel.room_to_receive_sats);
       }
@@ -708,7 +720,7 @@ export default function RefillChannel() {
               </div>
             )}
 
-            {projectedPct != null && projectedPct > 100 && (
+            {overCapacity && (
               <div className="alert warning" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
                 That's more than your channel can hold right now. Try a smaller amount.
               </div>
