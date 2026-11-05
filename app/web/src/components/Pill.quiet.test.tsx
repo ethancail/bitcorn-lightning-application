@@ -1,21 +1,27 @@
-// The neutral pill takes member-first-run-ui's ruled values ("recs",
-// 2026-11-04): mark var(--text-3), edge var(--border), label var(--text).
-// The fill is outside the ruling and stays var(--bg-3). No new token.
+// The Quiet pill takes member-first-run-ui's ruled values ("recs",
+// 2026-11-04; named Quiet in its pass 13, because the signal-system spec's
+// "Gray (neutral)" is the pulsing grey of pending_initial_sync, gray-pulsing
+// here): mark var(--text-3), edge var(--border), label var(--text), fill
+// var(--bg-3). No new token. The old name, "neutral", is gone.
 //
 // Computed, not text-matched: jsdom does not substitute var() (it hands back
 // "var(--text-2)" for color and drops the background/border shorthands to
 // transparent), so its getComputedStyle cannot tell one token from another.
-// This test runs the cascade itself over styles.css: jsdom's matches() says
-// which top-level rules apply to the element, the winner is the highest
-// specificity then the latest rule, color inherits, currentColor is the
-// element's own colour, and var() resolves against :root under the theme.
-// The browser captures are the evidence of what renders.
+// This test renders the real <Pill> and runs the cascade itself over
+// styles.css: jsdom's matches() says which top-level rules apply to the
+// element, the winner is the highest specificity then the latest rule, color
+// inherits, currentColor is the element's own colour, and var() resolves
+// against :root under the theme. The browser captures are the evidence of
+// what renders.
 
 import { afterEach, describe, expect, it } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
 import { cssRules, specificity, type CssRule } from "../styleRules.testutil";
+import { Pill, type PillKind } from "./Pill";
 
 type Theme = "dark" | "light";
-const RULES: CssRule[] = cssRules().filter((r) => r.media === null && r.container === null);
+const ALL_RULES: CssRule[] = cssRules();
+const RULES = ALL_RULES.filter((r) => r.media === null && r.container === null);
 
 const COLOUR = /^(var\(--[a-z0-9-]+\)|#[0-9a-f]{3,8}|transparent|currentColor|rgba?\([^)]*\)|color-mix\(.*\))$/i;
 /** The colour inside a shorthand ("1px solid var(--x)" → "var(--x)"). */
@@ -76,19 +82,28 @@ const computed = (el: Element, props: string[]) => {
   return resolve(d, el);
 };
 
-const KINDS = ["emerald", "blue", "gray-pulsing", "muted-amber", "amber", "orange", "red", "dim-red", "neutral"] as const;
+const KINDS: PillKind[] = ["emerald", "blue", "gray-pulsing", "muted-amber", "amber", "orange", "red", "dim-red", "quiet"];
 
+// The old name is not a pill kind any more (checked by tsc: if "neutral"
+// were still a PillKind, this directive would be unused and fail the build).
+// @ts-expect-error — "neutral" was renamed "quiet"
+const OLD_NAME: PillKind = "neutral";
+
+/** Each kind rendered by the real component, in its own wrapper. */
 function mount(theme: Theme) {
   document.documentElement.dataset.theme = theme;
-  document.body.innerHTML = KINDS.map(
-    (k) => `<span class="sub-pill sub-pill-${k}"><span class="sub-pill-dot"></span>${k}</span>`,
-  ).join("");
-  const pill = (k: string) => document.querySelector(`.sub-pill-${k}`)!;
+  document.body.innerHTML = KINDS.map((k) => `<div data-kind="${k}">${renderToStaticMarkup(<Pill kind={k} label="current" />)}</div>`).join("");
+  const pill = (k: PillKind) => {
+    const el = document.querySelector(`[data-kind="${k}"] .sub-pill`);
+    if (!el) throw new Error(`Pill kind ${k} rendered no .sub-pill`);
+    return el;
+  };
   return {
-    label: (k: string) => colour(pill(k)),
-    edge: (k: string) => computed(pill(k), ["border-color", "border"]),
-    fill: (k: string) => computed(pill(k), ["background-color", "background"]),
-    mark: (k: string) => computed(pill(k).querySelector(".sub-pill-dot")!, ["background-color", "background"]),
+    pill,
+    label: (k: PillKind) => colour(pill(k)),
+    edge: (k: PillKind) => computed(pill(k), ["border-color", "border"]),
+    fill: (k: PillKind) => computed(pill(k), ["background-color", "background"]),
+    mark: (k: PillKind) => computed(pill(k).querySelector(".sub-pill-dot")!, ["background-color", "background"]),
     tok: (name: string) => resolve(`var(${name})`, document.documentElement),
   };
 }
@@ -98,10 +113,25 @@ afterEach(() => {
   delete document.documentElement.dataset.theme;
 });
 
-describe.each(["dark", "light"] as const)("the neutral pill, %s theme (member-first-run-ui's ruling)", (theme) => {
+describe("the old name is gone", () => {
+  it("no rule in styles.css names .sub-pill-neutral, and the Quiet pill's rules exist", () => {
+    const sels = ALL_RULES.flatMap((r) => r.selectors);
+    expect(sels.filter((s) => s.includes("sub-pill-neutral"))).toEqual([]);
+    expect(sels).toContain(".sub-pill-quiet");
+    expect(sels).toContain(".sub-pill-quiet .sub-pill-dot");
+  });
+
+  it("<Pill kind=\"quiet\"> renders .sub-pill-quiet", () => {
+    const c = mount("dark");
+    expect(c.pill("quiet").className).toBe("sub-pill sub-pill-quiet");
+    expect(OLD_NAME).toBe("neutral"); // the value tsc refuses as a PillKind
+  });
+});
+
+describe.each(["dark", "light"] as const)("the Quiet pill, %s theme (member-first-run-ui's ruling)", (theme) => {
   it("label var(--text), edge var(--border), mark var(--text-3), fill var(--bg-3)", () => {
     const c = mount(theme);
-    expect({ label: c.label("neutral"), edge: c.edge("neutral"), mark: c.mark("neutral"), fill: c.fill("neutral") }).toEqual({
+    expect({ label: c.label("quiet"), edge: c.edge("quiet"), mark: c.mark("quiet"), fill: c.fill("quiet") }).toEqual({
       label: c.tok("--text"),
       edge: c.tok("--border"),
       mark: c.tok("--text-3"),
@@ -112,7 +142,7 @@ describe.each(["dark", "light"] as const)("the neutral pill, %s theme (member-fi
   it("the mark is its own token, not the label's colour", () => {
     const c = mount(theme);
     expect(c.tok("--text-3")).not.toBe(c.tok("--text"));
-    expect(c.mark("neutral")).not.toBe(c.label("neutral"));
+    expect(c.mark("quiet")).not.toBe(c.label("quiet"));
   });
 
   it("every other pill's mark is unchanged", () => {
