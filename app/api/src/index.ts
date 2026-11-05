@@ -216,6 +216,7 @@ import {
 import { handleRailFeeRevenue } from "./stablecoin/feeRevenue";
 import { sweepExpiredChallenges } from "./stablecoin/nonceStore";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
+import { startChannelAcceptor } from "./lightning/channelAcceptor";
 import {
   isAdminMemberQuery,
   ADMIN_QUERY_REJECTION,
@@ -4938,6 +4939,13 @@ function main(): void {
     // nodes early-out inside the function. Logs a WARN with the operator
     // runbook if drift is detected.
     startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null);
+    // Treasury-side channel gate (membership-gating T4): an LND ChannelAcceptor
+    // admitting inbound opens only from paid members and peers classified
+    // external. Registers only while this node's own pubkey is TREASURY_PUBKEY
+    // — re-read every tick, same thunk as above — and re-subscribes after the
+    // stream ends or the LND client is rebuilt. Its state feeds the
+    // "Channel gate offline" alert (T5).
+    startChannelAcceptor(() => getNodeInfo()?.pubkey ?? null);
     // BASE sync loop — polls the Worker /base/* endpoints at 60s cadence to
     // refresh per-wallet USDC balances and the SettlementRouter governance
     // state. No-op on a MEMBER node until it registers a BASE wallet; the

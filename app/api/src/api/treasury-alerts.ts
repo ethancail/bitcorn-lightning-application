@@ -14,6 +14,7 @@ import { channelDataStalenessAlert } from "./channelDataStaleness";
 import { classifyLanePurpose } from "../subscription/lanePurpose";
 import { findContactByPubkey } from "../utils/contact-pubkey";
 import { classifyNodeLookup } from "../profile/publicAliasOutcome";
+import { channelGateAlert, getChannelAcceptorHealth } from "../lightning/channelAcceptor";
 
 export type AlertSeverity = "info" | "warning" | "critical";
 
@@ -21,7 +22,8 @@ export type TreasuryAlert = {
   type: string;
   /**
    * The plain-language heading the dashboard prints. SET WHERE EACH ALERT IS
-   * CREATED — here, in channelDataStaleness.ts and in lndFaultAlerts.ts — never
+   * CREATED — here, in channelDataStaleness.ts, in lndFaultAlerts.ts and in
+   * lightning/channelAcceptor.ts — never
    * derived from `type` by a consumer. Decision: SH1/SH2,
    * bitcorn-research decisions/2026-10-13-ui-redesign-shipping-plan-rulings-sh1-sh8.md.
    * The client prints this and falls back to "Treasury alert"; it does not
@@ -153,6 +155,13 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   // indistinguishable from one that passed.
   const staleness = channelDataStalenessAlert({ ...readChannelDataAges(), nowMs: now });
   if (staleness) alerts.push(staleness);
+
+  // --- Channel gate (membership-gating T5, R5/R6, item 4) ---
+  // The in-process ChannelAcceptor stream isn't open, or its predicate threw in
+  // the last hour (R6 accepts those opens). In-memory state, no I/O. Silent
+  // until the acceptor's supervisor has found this node to be the treasury.
+  const channelGate = channelGateAlert(getChannelAcceptorHealth(), now);
+  if (channelGate) alerts.push(channelGate);
 
   // --- Rotation candidates ---
   const candidates = getRotationCandidates();
