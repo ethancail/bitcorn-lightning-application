@@ -130,7 +130,7 @@ export function pairings(file = join(__dirname, "styles.css")): Pairing[] {
       const f = over(resolve(decl(rules, `.alert.${a}`, "background", theme), T), S["--bg-1"]);
       add(`${theme} .alert.${a} word`, over(resolve(decl(rules, `.alert.${a}`, "color", theme), T), f), f, 4.5);
     }
-    for (const p of ["emerald", "blue", "gray-pulsing", "muted-amber", "amber", "orange", "red", "dim-red"]) {
+    for (const p of ["emerald", "blue", "gray-pulsing", "muted-amber", "amber", "orange", "red", "dim-red", "neutral"]) {
       const f = over(resolve(decl(rules, `.sub-pill-${p}`, "background", theme), T), S["--bg-1"]);
       add(`${theme} .sub-pill-${p} word`, over(resolve(decl(rules, `.sub-pill-${p}`, "color", theme), T), f), f, 4.5);
     }

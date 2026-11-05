@@ -37,7 +37,7 @@ describe("item 11, D2.4: the warning before hosted services pause", () => {
     const d = bannerFor(status("current"), P, RATE);
     expect(d.render).toBe(true);
     expect(d.severity).toBe("amber");
-    expect(d.headline).toBe(`Hosted services pause on ${date(WORKER_UNTIL)}.`);
+    expect(d.headline).toBe(`Hosted services pause on ${date(WORKER_UNTIL)}`); // R34 item 6: no full stop
     expect(d.body).toBe("Renew for $30.00 (50,000 sats) before then to keep them running.");
     expect(d.actionLabel).toBe("Renew $30.00");
   });
@@ -51,7 +51,7 @@ describe("item 11, D2.4: the warning before hosted services pause", () => {
   });
 
   it("the last moment before the pause: still the warning", () => {
-    expect(bannerFor(status("current"), WORKER_UNTIL - 1, RATE).headline).toBe(`Hosted services pause on ${date(WORKER_UNTIL)}.`);
+    expect(bannerFor(status("current"), WORKER_UNTIL - 1, RATE).headline).toBe(`Hosted services pause on ${date(WORKER_UNTIL)}`);
   });
 
   it("past worker_until the server's tier is worker_lapsed: the paused banner, not the warning", () => {

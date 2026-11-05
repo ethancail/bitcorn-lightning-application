@@ -508,19 +508,22 @@ function CurrentRender({
   onRefresh: () => void;
   handlers: ActionHandlers;
 }) {
-  const pill = tierToPill("current");
+  // drive-mode P2 item 11: from P (paid_through) until hosted services
+  // pause, the tier is still "current", so "paid up" would be false; the line
+  // says when they pause instead, from the status's own date. R34 item 6: in
+  // that window "current" and "Paid through" are not good news, so the pill
+  // and the stat are neutral rather than green.
+  const prePause = Date.now() >= status.paid_through;
+  const pill = prePause ? { kind: "neutral" as const, label: "current" } : tierToPill("current");
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={pill.kind} label={pill.label} />} />
-      {/* drive-mode P2 item 11: from P (paid_through) until hosted services
-          pause, the tier is still "current", so "paid up" would be false;
-          the line says when they pause instead, from the status's own date. */}
       <p className="sub-tagline">
-        {Date.now() >= status.paid_through
+        {prePause
           ? `Hosted services pause on ${formatDate(status.grace.worker_until)}. Renew before then to keep them running.`
           : "Your access to channel routing and hosted services is paid up."}
       </p>
-      <StatsGrid status={status} accent="emerald" />
+      <StatsGrid status={status} accent={prePause ? undefined : "emerald"} />
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
@@ -995,7 +998,7 @@ function StatsGrid({
   accent,
 }: {
   status: SubscriptionStatusApplicable;
-  accent: PillKind;
+  accent?: PillKind;
 }) {
   const paidThroughLabel = formatDate(status.paid_through);
   const paidThroughRel = relativePaidThrough(status.paid_through);

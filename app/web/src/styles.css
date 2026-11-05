@@ -2182,6 +2182,8 @@ input[type="number"] {
 .sub-pill-orange      { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 50%, transparent); background: var(--orange-glow); }
 .sub-pill-red         { color: var(--red);    border-color: color-mix(in srgb, var(--red) 50%, transparent);    background: var(--red-glow); }
 .sub-pill-dim-red     { color: var(--red);    border-color: color-mix(in srgb, var(--red) 30%, transparent);    background: var(--red-glow); }
+/* R34 item 6: gray-pulsing's colours, without the pulse (not a transient state). */
+.sub-pill-neutral     { color: var(--text-2); border-color: var(--border-hi);                                     background: var(--bg-3); }
 
 @keyframes sub-pill-pulse {
   0%, 100% { opacity: 0.35; }

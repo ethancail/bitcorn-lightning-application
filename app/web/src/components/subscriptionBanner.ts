@@ -134,7 +134,8 @@ export function bannerFor(
     return {
       render: true,
       severity: "amber",
-      headline: `Hosted services pause on ${formatDate(status.grace.worker_until)}.`,
+      // A headline, so no full stop, like the others (R34 item 6).
+      headline: `Hosted services pause on ${formatDate(status.grace.worker_until)}`,
       body: `Renew for ${amount.text} before then to keep them running.`,
       actionLabel: `Renew ${amount.label}`,
     };

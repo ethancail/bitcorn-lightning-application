@@ -148,6 +148,31 @@ describe("item 11: the panel says when services pause, from P", () => {
   });
 });
 
+// R34 item 6: while the pre-pause warning shows (from P), "current" and
+// "Paid through" are not good news, so the pill and the stat lose their green.
+describe("R34 item 6: neutral, not green, while the pre-pause warning shows", () => {
+  const pill = () => host.querySelector(".sub-pill") as HTMLElement | null;
+  const paidThrough = () =>
+    [...host.querySelectorAll(".sub-stat")].find((s) => s.querySelector(".sub-stat-label")?.textContent === "PAID THROUGH") as HTMLElement | undefined;
+
+  it("at P: the \"current\" pill is neutral and Paid through has no green accent", async () => {
+    stub.getSubscriptionStatus.mockResolvedValue(applicable({ paid_through: NOW, worker_until: NOW + 9 * DAY }));
+    await mount();
+    expect(pill()?.textContent).toBe("current");
+    expect(pill()?.className).toContain("sub-pill-neutral");
+    expect(pill()?.className).not.toContain("sub-pill-emerald");
+    expect(paidThrough(), "the Paid through stat renders").toBeDefined();
+    expect(paidThrough()!.querySelector(".sub-stat-accent-emerald")).toBeNull();
+  });
+
+  it("before P (paid up): still green", async () => {
+    stub.getSubscriptionStatus.mockResolvedValue(applicable({ paid_through: NOW + DAY }));
+    await mount();
+    expect(pill()?.className).toContain("sub-pill-emerald");
+    expect(paidThrough()!.querySelector(".sub-stat-accent-emerald")).not.toBeNull();
+  });
+});
+
 describe("item 13: auto-pay says what it does today", () => {
   it("on: it pays after hosted services pause, dated, so it doesn't prevent the pause", async () => {
     const workerUntil = NOW + 27 * DAY;
