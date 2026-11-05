@@ -136,17 +136,20 @@ const LOOP_IN_CEILING_FIELDS: Field[] = [
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * The ten capital-moving routes that take a confirmation.
+ * The eleven capital-moving routes that take a confirmation.
  *
  * Derived from dispatch reachability to an outflow primitive — see
  * action-confirmation.coverage.test.ts, which re-derives this set from the
  * TypeScript AST and fails if it drifts from what is written here.
  *
- * THREE reachable routes are deliberately absent, and their absence is enforced
- * as EXEMPT_MUTATIONS entries rather than left implicit: /api/autobuy/execute-now,
- * /api/treasury/rebalance/loop-out/auto, and /api/subscription/pay-from-node take
- * NO consequential caller-supplied parameter, so there is nothing to prove
- * knowledge of. An intent nonce was considered for them and declined.
+ * TWO reachable routes are deliberately absent, and their absence is enforced
+ * as EXEMPT_MUTATIONS entries rather than left implicit: /api/autobuy/execute-now
+ * and /api/treasury/rebalance/loop-out/auto take NO consequential caller-supplied
+ * parameter, so there is nothing to prove knowledge of. An intent nonce was
+ * considered for them and declined. /api/subscription/pay-from-node used to be
+ * the third; it is confirmed by echo of the server-derived values the member
+ * was shown (bitcorn-research/decisions/2026-11-05-pay-from-node-confirmation-
+ * by-echo-settlement-guard-and-price-ceiling.md, D1), below.
  */
 export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
   {
@@ -196,6 +199,32 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     shape: 1,
     fields: [{ name: "payment_request", from: "body", kind: "text" }],
     note: "The invoice fixes destination and amount; it is the whole consequence.",
+  },
+  {
+    method: "POST",
+    match: { kind: "exact", url: "/api/subscription/pay-from-node" },
+    shape: 1,
+    fields: [
+      { name: "amount_sats", from: "body", kind: "number" },
+      { name: "deposit_address", from: "body", kind: "text" },
+      { name: "repeat_acknowledged", from: "body", kind: "boolean", optional: true },
+      { name: "price_acknowledged", from: "body", kind: "boolean", optional: true },
+    ],
+    note:
+      "Sends the subscription price on-chain from the member's own wallet to their own " +
+      "deposit address. Confirmed BY ECHO, like /api/autobuy/catch-up: the body carries " +
+      "the price and address the member was shown, the server re-derives both from the " +
+      "treasury's status and refuses a mismatch (409 pay_target_changed), and it sends " +
+      "only its own values — the caller still chooses neither address nor amount " +
+      "(decisions/2026-11-05-pay-from-node-confirmation-by-echo-settlement-guard-and-" +
+      "price-ceiling.md, D1).\n" +
+      "The two acknowledgements are hashed because each changes what happens, as " +
+      "dry_run does: repeat_acknowledged lets a send proceed while an earlier payment " +
+      "is uncredited (D2), and price_acknowledged lets it proceed above the last " +
+      "acknowledged price and records the new one (D3). Absent contributes no token, " +
+      "so a confirmation computed without a flag does not authorise a body carrying it. " +
+      "Like every confirmation here, they guard against stale or buggy UI paths, not a " +
+      "determined local caller.",
   },
   {
     method: "POST",
@@ -302,8 +331,11 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
  */
 export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: string }> = [
   // ── Reachable outflow, but no consequential caller-supplied parameter.
-  //    Excluded by decision 2026-08-18; intent nonce considered and declined.
-  { method: "POST", match: { kind: "exact", url: "/api/subscription/pay-from-node" }, why: "group3-no-parameter" },
+  //    "Excluded by decision 2026-08-18; intent nonce considered and declined":
+  //    no vault record of that decision exists (decisions/2026-11-05-pay-from-
+  //    node-confirmation-by-echo-settlement-guard-and-price-ceiling.md §2).
+  //    That record's D4 leaves these two exactly as they are; pay-from-node,
+  //    once the third, left this group by its D1 and is in CONFIRMED_ROUTES.
   { method: "POST", match: { kind: "exact", url: "/api/treasury/rebalance/loop-out/auto" }, why: "group3-no-parameter" },
   { method: "POST", match: { kind: "exact", url: "/api/autobuy/execute-now" }, why: "group3-no-parameter" },
 
@@ -313,6 +345,12 @@ export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: stri
   { method: "POST", match: { kind: "exact", url: "/api/subscription/token" }, why: "token exchange" },
   { method: "POST", match: { kind: "wrap", prefix: "/api/profile/auto-pay/alerts/", suffix: "/dismiss" }, why: "alert state" },
   { method: "POST", match: { kind: "exact", url: "/api/profile/auto-pay" }, why: "config" },
+  // The acknowledged price is the ceiling both subscription payment paths
+  // enforce (pay-from-node D3), so this route GOVERNS an outflow — and stays
+  // exempt by decision: decisions/2026-09-03-confirmation-coverage-domain-
+  // narrow.md keeps "governs outflow" out of this map's domain. Its handler
+  // validates the body (the price shown must equal the current price), which
+  // is not a confirmation.
   { method: "POST", match: { kind: "exact", url: "/api/profile/acknowledge-price-change" }, why: "local flag" },
   { method: "POST", match: { kind: "exact", url: "/api/profile/alias" }, why: "node alias" },
   { method: "DELETE", match: { kind: "exact", url: "/api/profile/alias" }, why: "node alias" },

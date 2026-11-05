@@ -12,10 +12,15 @@
 
 import type Database from "better-sqlite3";
 import {
+  causeAlertsToResolve,
   decideAutoPayAlert,
+  decideCauseAlert,
   resolveOnSuccess,
+  SEVERITY_BY_TYPE,
   type AutoPayActiveAlertRow,
+  type AutoPayAlertType,
   type AutoPaySignal,
+  type CauseAlertRow,
 } from "./autoPayAlerts";
 import { mergeContext } from "../autoBuy/alerts";
 
@@ -178,6 +183,97 @@ export function recordAutoPaySuccess(
   } catch (err) {
     console.error(
       "[autopay-alerts] recordAutoPaySuccess failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// The guard alerts — raised once per cause, resolved when it clears
+// (pay-from-node spec §4.3, ruled 2026-11-05). The cause key rides in the
+// row's context_json as `cause_key`; no migration is needed.
+// ───────────────────────────────────────────────────────────────────────────
+
+function listCauseRows(
+  db: Database.Database,
+  memberPubkey: string,
+  type: AutoPayAlertType,
+  activeOnly: boolean,
+): CauseAlertRow[] {
+  const rows = db
+    .prepare(
+      `SELECT id, type, status, context_json FROM subscription_autopay_alerts
+       WHERE member_pubkey = ? AND type = ?${activeOnly ? " AND status = 'active'" : ""}`,
+    )
+    .all(memberPubkey, type) as Array<{ id: number; type: string; status: string; context_json: string | null }>;
+  return rows.map((r) => {
+    const key = parseContext(r.context_json)?.cause_key;
+    return { id: r.id, type: r.type, status: r.status, cause_key: typeof key === "string" ? key : null };
+  });
+}
+
+/**
+ * Record a guard alert for one cause. Creates a row only if no row of this
+ * type for this member — active, dismissed or resolved — carries the same
+ * cause key, so a dismissed alert is not re-raised while its cause persists.
+ * Never throws into the scheduler tick.
+ */
+export function recordCauseAlert(
+  db: Database.Database,
+  memberPubkey: string,
+  signal: { type: AutoPayAlertType; causeKey: string; context: Record<string, unknown> },
+): void {
+  try {
+    const rows = listCauseRows(db, memberPubkey, signal.type, false);
+    if (decideCauseAlert(signal.type, signal.causeKey, rows) !== "create") return;
+    const now = nowSec();
+    db.prepare(
+      `INSERT INTO subscription_autopay_alerts
+         (member_pubkey, type, severity, status, consecutive_count, context_json, created_at, updated_at)
+       VALUES (?, ?, ?, 'active', 1, ?, ?, ?)`,
+    ).run(
+      memberPubkey,
+      signal.type,
+      SEVERITY_BY_TYPE[signal.type],
+      JSON.stringify({ ...signal.context, cause_key: signal.causeKey }),
+      now,
+      now,
+    );
+  } catch (err) {
+    console.error(
+      "[autopay-alerts] recordCauseAlert failed:",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
+/**
+ * Resolve the active rows of a guard type whose cause is no longer live.
+ * Called by the scheduler each tick with the causes that hold right now.
+ * Never throws into the scheduler tick.
+ */
+export function resolveClearedCauseAlerts(
+  db: Database.Database,
+  memberPubkey: string,
+  type: AutoPayAlertType,
+  liveCauseKeys: Set<string>,
+): void {
+  try {
+    const resolutions = causeAlertsToResolve(
+      listCauseRows(db, memberPubkey, type, true),
+      liveCauseKeys,
+    );
+    if (resolutions.length === 0) return;
+    const now = nowSec();
+    const stmt = db.prepare(
+      `UPDATE subscription_autopay_alerts
+       SET status = 'resolved', resolved_at = ?, updated_at = ?
+       WHERE id = ? AND status = 'active'`,
+    );
+    for (const r of resolutions) stmt.run(now, now, r.alertId);
+  } catch (err) {
+    console.error(
+      "[autopay-alerts] resolveClearedCauseAlerts failed:",
       err instanceof Error ? err.message : err,
     );
   }
