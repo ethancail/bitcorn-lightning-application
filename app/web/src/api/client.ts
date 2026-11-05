@@ -1270,6 +1270,13 @@ export type SwapQuoteResponse = {
    * max_miner_fee_sat. null on a quote stored before the ceilings existed.
    */
   ceilings: SwapCeilings | null;
+  /**
+   * Loop In quote only (ruling tt): the % the miner fee may rise over the
+   * quoted one before initiation is refused (LOOP_MINER_FEE_MARGIN_PCT).
+   * Feeds Loop In's "Most you authorize in fees". NOT a ceiling: outside
+   * `ceilings`, so it is never echoed or hashed.
+   */
+  miner_fee_margin_pct?: number;
   policy_check: { ok: true } | { ok: false; reason: string; code: string };
 };
 

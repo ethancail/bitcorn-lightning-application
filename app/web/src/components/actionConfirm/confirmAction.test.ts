@@ -231,6 +231,28 @@ describe("loop-fee-ceilings: the authorised maximum and the post-start disclosur
     expect(helpers.authorizedMaxSats?.(null)).toBeUndefined();
   });
 
+  // tt (spec §1.10, §13 item 56): Loop In's maximum lets the miner fee rise by
+  // the margin the pre-initiation check allows, sent by the server as
+  // miner_fee_margin_pct. Gate 1's Loop In values: 171 + ceil(3,875 × 150 / 100)
+  // = 171 + ceil(5,812.5) = 171 + 5,813 = 5,984. Written out, not computed by
+  // the code under test.
+  const GATE1_LOOP_IN = { max_swap_fee_sat: 171, max_miner_fee_sat: 3_875 };
+
+  it("tt: Loop In's maximum is swap + ceil(miner × (100 + margin) / 100)", () => {
+    expect(helpers.authorizedMaxSats?.(GATE1_LOOP_IN, { mode: "loop_in", minerFeeMarginPct: 50 })).toBe(5_984);
+  });
+
+  it("tt: Loop In without the server's margin shows no maximum (never a guessed 50)", () => {
+    const max = helpers.authorizedMaxSats?.(GATE1_LOOP_IN, { mode: "loop_in", minerFeeMarginPct: undefined });
+    expect(max).toBeUndefined();
+    const s = summarizeLoopIn({ amountSats: 250_000, feeSats: 4_046, authorizedMaxSats: max });
+    expect(s.rows.some((r) => /most you authori[sz]e/i.test(r.label))).toBe(false);
+  });
+
+  it("tt guard: Loop Out's figure is unchanged", () => {
+    expect(helpers.authorizedMaxSats?.(GATE1_CEILINGS)).toBe(6_331);
+  });
+
   it("the Loop Out estimate is swap + miner, the one number the panel and the modal both show", () => {
     expect(
       helpers.loopOutEstimatedFeeSats?.({ swap_fee_sat: 835, prepay_sat: 30_000, miner_fee_sat: 1_200, total_fee_sat: 32_035 }),
