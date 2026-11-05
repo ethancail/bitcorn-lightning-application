@@ -15,8 +15,12 @@
 import type { SubscriptionTier } from "../api/client";
 
 /**
- * Signal-system §2 pill colors. Eight values: each one encodes a
- * distinct emotional register / semantic meaning. The "no pill" mode
+ * Signal-system §2 pill colors. Nine values: each one encodes a
+ * distinct emotional register / semantic meaning. "quiet" is the ninth,
+ * added by ruling (drive-mode P2, R34 item 6; named Quiet by
+ * member-first-run-ui's pass 13, as "Gray (neutral)" is gray-pulsing),
+ * not locally: the "current"
+ * pill while the pre-pause warning shows, when current is not good news. The "no pill" mode
  * is represented by *not* rendering a Pill component at all (e.g.,
  * the subscription panel's external_peer state).
  */
@@ -28,7 +32,8 @@ export type PillKind =
   | "amber"         // first friction tier
   | "orange"        // escalated friction
   | "red"           // urgent action
-  | "dim-red";      // honest error / data anomaly
+  | "dim-red"       // honest error / data anomaly
+  | "quiet";        // a state that is neither good nor bad news (R34 item 6)
 
 export function Pill({ kind, label }: { kind: PillKind; label: string }) {
   return (

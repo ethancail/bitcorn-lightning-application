@@ -1,0 +1,306 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ChannelRolePanel — load > load rejected → swallowed, shown as no role (carried defect) 1`] = `
+"panel: 1
+<div class="panel ops" style="margin-top: 12px;">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Channel Role"
+  <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 0.8125rem; color: var(--text-3); margin-bottom: 4px;">
+      "Your channel role determines how liquidity recommendations are calculated."
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↗"
+      <div>
+        <div style="font-weight: 600;">
+          "Merchant"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You send payments through the hub — outbound capacity matters most"
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↙"
+      <div>
+        <div style="font-weight: 600;">
+          "Farmer"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You receive earnings through the hub — receiving capacity matters most"
+calls: {"setChannelRole":[],"roleChangedEvents":0}"
+`;
+
+exports[`ChannelRolePanel — load > loaded, farmer → farmer selected, green badge 1`] = `
+"panel: 1
+<div class="panel ops" style="margin-top: 12px;">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Channel Role"
+    <span class="badge badge-green" style="text-transform: capitalize;">
+      "farmer"
+  <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 0.8125rem; color: var(--text-3); margin-bottom: 4px;">
+      "Your channel role determines how liquidity recommendations are calculated."
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↗"
+      <div>
+        <div style="font-weight: 600;">
+          "Merchant"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You send payments through the hub — outbound capacity matters most"
+    <button class="theme-option selected" prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↙"
+      <div>
+        <div style="font-weight: 600;">
+          "Farmer"
+        <div style="font-size: 0.75rem; color: var(--text-2);">
+          "You receive earnings through the hub — receiving capacity matters most"
+    <button class="btn btn-ghost" style="font-size: 0.75rem; color: var(--text-3); align-self: flex-start;" prop:disabled=false>
+      "Clear role selection"
+calls: {"setChannelRole":[],"roleChangedEvents":0}"
+`;
+
+exports[`ChannelRolePanel — load > loaded, merchant → merchant selected, amber badge, Clear shown 1`] = `
+"panel: 1
+<div class="panel ops" style="margin-top: 12px;">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Channel Role"
+    <span class="badge badge-amber" style="text-transform: capitalize;">
+      "merchant"
+  <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 0.8125rem; color: var(--text-3); margin-bottom: 4px;">
+      "Your channel role determines how liquidity recommendations are calculated."
+    <button class="theme-option selected" prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↗"
+      <div>
+        <div style="font-weight: 600;">
+          "Merchant"
+        <div style="font-size: 0.75rem; color: var(--text-2);">
+          "You send payments through the hub — outbound capacity matters most"
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↙"
+      <div>
+        <div style="font-weight: 600;">
+          "Farmer"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You receive earnings through the hub — receiving capacity matters most"
+    <button class="btn btn-ghost" style="font-size: 0.75rem; color: var(--text-3); align-self: flex-start;" prop:disabled=false>
+      "Clear role selection"
+calls: {"setChannelRole":[],"roleChangedEvents":0}"
+`;
+
+exports[`ChannelRolePanel — load > loaded, no role declared → both options, no badge, no Clear 1`] = `
+"panel: 1
+<div class="panel ops" style="margin-top: 12px;">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Channel Role"
+  <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 0.8125rem; color: var(--text-3); margin-bottom: 4px;">
+      "Your channel role determines how liquidity recommendations are calculated."
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↗"
+      <div>
+        <div style="font-weight: 600;">
+          "Merchant"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You send payments through the hub — outbound capacity matters most"
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↙"
+      <div>
+        <div style="font-weight: 600;">
+          "Farmer"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You receive earnings through the hub — receiving capacity matters most"
+calls: {"setChannelRole":[],"roleChangedEvents":0}"
+`;
+
+exports[`ChannelRolePanel — load > loaded, role only inside the classification (SH9 fallback) → farmer 1`] = `
+"panel: 1
+<div class="panel ops" style="margin-top: 12px;">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Channel Role"
+    <span class="badge badge-green" style="text-transform: capitalize;">
+      "farmer"
+  <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 0.8125rem; color: var(--text-3); margin-bottom: 4px;">
+      "Your channel role determines how liquidity recommendations are calculated."
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↗"
+      <div>
+        <div style="font-weight: 600;">
+          "Merchant"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You send payments through the hub — outbound capacity matters most"
+    <button class="theme-option selected" prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↙"
+      <div>
+        <div style="font-weight: 600;">
+          "Farmer"
+        <div style="font-size: 0.75rem; color: var(--text-2);">
+          "You receive earnings through the hub — receiving capacity matters most"
+    <button class="btn btn-ghost" style="font-size: 0.75rem; color: var(--text-3); align-self: flex-start;" prop:disabled=false>
+      "Clear role selection"
+calls: {"setChannelRole":[],"roleChangedEvents":0}"
+`;
+
+exports[`ChannelRolePanel — load > loading: the status read is pending → the shimmer 1`] = `
+"panel: 1
+<div class="panel ops" style="margin-top: 12px;">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Channel Role"
+  <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 0.8125rem; color: var(--text-3); margin-bottom: 4px;">
+      "Your channel role determines how liquidity recommendations are calculated."
+    <div class="loading-shimmer" style="height: 80px; border-radius: 6px;">
+calls: {"setChannelRole":[],"roleChangedEvents":0}"
+`;
+
+exports[`ChannelRolePanel — save > Clear role selection → setChannelRole("unknown"), back to no role 1`] = `
+"panel: 1
+<div class="panel ops" style="margin-top: 12px;">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Channel Role"
+  <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 0.8125rem; color: var(--text-3); margin-bottom: 4px;">
+      "Your channel role determines how liquidity recommendations are calculated."
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↗"
+      <div>
+        <div style="font-weight: 600;">
+          "Merchant"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You send payments through the hub — outbound capacity matters most"
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↙"
+      <div>
+        <div style="font-weight: 600;">
+          "Farmer"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You receive earnings through the hub — receiving capacity matters most"
+calls: {"setChannelRole":[["unknown"]],"roleChangedEvents":1}"
+`;
+
+exports[`ChannelRolePanel — save > save fails → swallowed: the role is unchanged, nothing fires (carried defect) 1`] = `
+"panel: 1
+<div class="panel ops" style="margin-top: 12px;">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Channel Role"
+    <span class="badge badge-amber" style="text-transform: capitalize;">
+      "merchant"
+  <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 0.8125rem; color: var(--text-3); margin-bottom: 4px;">
+      "Your channel role determines how liquidity recommendations are calculated."
+    <button class="theme-option selected" prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↗"
+      <div>
+        <div style="font-weight: 600;">
+          "Merchant"
+        <div style="font-size: 0.75rem; color: var(--text-2);">
+          "You send payments through the hub — outbound capacity matters most"
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↙"
+      <div>
+        <div style="font-weight: 600;">
+          "Farmer"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You receive earnings through the hub — receiving capacity matters most"
+    <button class="btn btn-ghost" style="font-size: 0.75rem; color: var(--text-3); align-self: flex-start;" prop:disabled=false>
+      "Clear role selection"
+calls: {"setChannelRole":[["farmer"]],"roleChangedEvents":0}"
+`;
+
+exports[`ChannelRolePanel — save > save succeeds → the new role is shown and role-changed fires once 1`] = `
+"panel: 1
+<div class="panel ops" style="margin-top: 12px;">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Channel Role"
+    <span class="badge badge-green" style="text-transform: capitalize;">
+      "farmer"
+  <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 0.8125rem; color: var(--text-3); margin-bottom: 4px;">
+      "Your channel role determines how liquidity recommendations are calculated."
+    <button class="theme-option " prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↗"
+      <div>
+        <div style="font-weight: 600;">
+          "Merchant"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You send payments through the hub — outbound capacity matters most"
+    <button class="theme-option selected" prop:disabled=false>
+      <span style="font-size: 1.25rem;">
+        "↙"
+      <div>
+        <div style="font-weight: 600;">
+          "Farmer"
+        <div style="font-size: 0.75rem; color: var(--text-2);">
+          "You receive earnings through the hub — receiving capacity matters most"
+    <button class="btn btn-ghost" style="font-size: 0.75rem; color: var(--text-3); align-self: flex-start;" prop:disabled=false>
+      "Clear role selection"
+calls: {"setChannelRole":[["farmer"]],"roleChangedEvents":1}"
+`;
+
+exports[`ChannelRolePanel — save > saving: the write is pending → every option disabled 1`] = `
+"panel: 1
+<div class="panel ops" style="margin-top: 12px;">
+  <div class="panel-header">
+    <span class="panel-title">
+      <span class="icon">
+        "◈"
+      "Channel Role"
+  <div class="panel-body" style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 0.8125rem; color: var(--text-3); margin-bottom: 4px;">
+      "Your channel role determines how liquidity recommendations are calculated."
+    <button class="theme-option " disabled="" prop:disabled=true>
+      <span style="font-size: 1.25rem;">
+        "↗"
+      <div>
+        <div style="font-weight: 600;">
+          "Merchant"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You send payments through the hub — outbound capacity matters most"
+    <button class="theme-option " disabled="" prop:disabled=true>
+      <span style="font-size: 1.25rem;">
+        "↙"
+      <div>
+        <div style="font-weight: 600;">
+          "Farmer"
+        <div style="font-size: 0.75rem; color: var(--text-3);">
+          "You receive earnings through the hub — receiving capacity matters most"
+calls: {"setChannelRole":[["merchant"]],"roleChangedEvents":0}"
+`;

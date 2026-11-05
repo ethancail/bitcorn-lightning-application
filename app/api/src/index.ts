@@ -6,6 +6,9 @@ import { runMigrations } from "./db/migrate";
 import { persistNodeInfo } from "./lightning/persist";
 import { syncLndState } from "./lightning/sync";
 import { payInvoice } from "./lightning/pay";
+import { getHubChannelForDisplay } from "./lightning/hubChannel";
+import { capacityOf } from "./lightning/capacity";
+import { getBtcUsd, startBtcUsdRefresh } from "./price/btcUsdCache";
 import { assertActiveMember } from "./utils/membership";
 import { assertRateLimit } from "./utils/rate-limit";
 import {
@@ -65,6 +68,7 @@ import { withDeadline, LND_GOSSIP_CALL_TIMEOUT_MS } from "./lightning/callDeadli
 // "503,Name,[object Object]". lndFaultDetail flattens it properly.
 import { lndFaultDetail } from "./lightning/lndHealth";
 import { channelDataFreshness } from "./api/memberStatsFreshness";
+import { getMemberCosts } from "./api/member-costs";
 import { readLocalCertExpiry } from "./lightning/readCertExpiry";
 import { certExpiryLevel, certExpiryMessage } from "./lightning/certExpiry";
 import { runTimeoutBoundLndProbe } from "./lightning/lndProbeRoute";
@@ -150,7 +154,6 @@ function mapValuationErrorToHttp(error: ValuationFetchError): {
   }
 }
 import {
-  getBtcExchangeRate,
   createPaymentInvoice,
   payNetworkInvoice,
   getNetworkPayments,
@@ -251,6 +254,7 @@ import {
   handleMemberLoopIn,
   handleGetSwap,
   handleSwapHistory,
+  handleSwapLimits,
   handleAdminLoopOutQuote,
   handleAdminLoopOut,
   handleAdminSwapList,
@@ -3064,7 +3068,7 @@ async function dispatchRequest(
 
           // Decode payment request first (needed for rate limiting and logging)
           const { lnd: lndClient } = getLndClient();
-          let decodedRequest: { id: string; destination: string; tokens: number } | null = null;
+          let decodedRequest: { id: string; destination: string; tokens: number; mtokens: string } | null = null;
           try {
             // Raw ln-service call off getLndClient()'s handle, so it does not
             // inherit an lnd.ts wrapper's deadline and binds its own. Bounded
@@ -3094,7 +3098,8 @@ async function dispatchRequest(
             }
             assertRateLimit(decodedRequest.tokens);
 
-            const result = await payInvoice(payment_request);
+            // A member's payment carries the fee limit (drive-mode P1 item 4).
+            const result = await payInvoice(payment_request, decodedRequest.mtokens);
 
             // Persist successful payment
             insertOutboundPayment({
@@ -3226,6 +3231,25 @@ async function dispatchRequest(
     return;
   }
 
+  // drive-mode P2 item 14: fees paid over the last 30 days — payment fees and
+  // swap fees, read-only (api/member-costs.ts).
+  if (req.method === "GET" && req.url === "/api/member/costs") {
+    try {
+      const node = getNodeInfo();
+      if (!node) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "node_info_unavailable" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(getMemberCosts(node.pubkey)));
+    } catch (err: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+    }
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/member/stats") {
     try {
       const node = getNodeInfo();
@@ -3265,22 +3289,10 @@ async function dispatchRequest(
       // updated_at is selected so the numbers can carry their own age. Without
       // it these balances are indistinguishable from live ones no matter how
       // long the sync loop has been failing.
-      const treasuryChannel = hubPubkey
-        ? (db
-            .prepare(
-              "SELECT channel_id, local_balance_sat, remote_balance_sat, capacity_sat, active, updated_at FROM lnd_channels WHERE peer_pubkey = ? LIMIT 1"
-            )
-            .get(hubPubkey) as
-            | {
-                channel_id: string;
-                local_balance_sat: number;
-                remote_balance_sat: number;
-                capacity_sat: number;
-                active: number;
-                updated_at: number;
-              }
-            | undefined)
-        : undefined;
+      // The hub rule (drive-mode P1 item 1): the largest active channel, or —
+      // with none active — the largest inactive one, for display only, which
+      // keeps the dashboard's "inactive" badge (R18(2)).
+      const treasuryChannel = hubPubkey ? getHubChannelForDisplay() ?? undefined : undefined;
 
       // Milliseconds: payments_forwarded.created_at is written as
       // `new Date(f.created_at).getTime()` (lightning/persist-forwarded.ts).
@@ -3380,6 +3392,11 @@ async function dispatchRequest(
               remote_sats: treasuryChannel.remote_balance_sat,
               capacity_sats: treasuryChannel.capacity_sat,
               is_active: Boolean(treasuryChannel.active),
+              // Both capacity figures and their components (drive-mode P1
+              // item 2, spec §3.3): room_to_send_sats / room_to_receive_sats,
+              // the reserves, in-flight HTLCs (reported, not subtracted,
+              // R18(4)) and the commitment fee (reported only).
+              ...capacityOf(treasuryChannel),
               // Provenance travels WITH the numbers it describes, rather than
               // as a sibling field a consumer has to remember to join.
               freshness: channelDataFreshness(treasuryChannel.updated_at, Date.now()),
@@ -3538,15 +3555,11 @@ async function dispatchRequest(
   // NETWORK PAYMENTS
   // ═══════════════════════════════════════════════════════════════════════
 
+  // The cached rate with its age and state (drive-mode P1 item 3). Always
+  // 200: "no rate" is state "none" with usd null, not an error (R18(9)).
   if (req.method === "GET" && req.url === "/api/exchange-rate") {
-    try {
-      const rate = await getBtcExchangeRate();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(rate));
-    } catch (err: any) {
-      res.writeHead(502, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: err?.message ?? "exchange_rate_unavailable" }));
-    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(getBtcUsd()));
     return;
   }
 
@@ -4063,6 +4076,15 @@ async function dispatchRequest(
   if (req.method === "POST" && req.url === "/api/swaps/loop-in") {
     try { await handleMemberLoopIn(req, res); } catch (e: any) {
       res.writeHead(e.message?.includes("privileges") ? 403 : 500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Before the generic /api/swaps/:id read below (drive-mode P1 item 6).
+  if (req.method === "GET" && req.url === "/api/swaps/limits") {
+    try { await handleSwapLimits(req, res); } catch (e: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));
     }
     return;
@@ -4892,6 +4914,8 @@ function main(): void {
     startMemberAdvisorScheduler();
     // Swap poller — monitors in-flight Loop swaps and updates status every 15s.
     startSwapPoller();
+    // BTC/USD cache — background refresh every 60 s (drive-mode P1 item 3).
+    startBtcUsdRefresh();
     // Coinbase Auto-Buy scheduler — 15-min tick that runs the 5-step state
     // machine. Gated by autobuy_config.enabled and ENV.autoBuyEnabled.
     startScheduler(db);

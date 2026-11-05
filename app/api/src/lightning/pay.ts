@@ -1,19 +1,22 @@
 import { payViaPaymentRequest } from "ln-service";
 import { getLndClient } from "./lnd";
-import { db } from "../db";
-import { ENV } from "../config/env";
+import { getHubChannel } from "./hubChannel";
+import { memberMaxFeeMtokens } from "./payFeeLimit";
 import { assertTier2RoutingAllowed } from "../subscription/tier2Gate";
 
-/** Look up the active treasury channel ID (returns null on treasury node or if no channel). */
+/** The hub channel's ID (drive-mode P1 item 1): null on the treasury node,
+ *  which has no channel to itself, and when no hub channel is active — the
+ *  payment then carries no pin (R18(2), C8). */
 function getTreasuryChannelId(): string | null {
-  if (!ENV.treasuryPubkey) return null;
-  const row = db.prepare(
-    "SELECT channel_id FROM lnd_channels WHERE peer_pubkey = ? AND active = 1 LIMIT 1"
-  ).get(ENV.treasuryPubkey) as { channel_id: string } | undefined;
-  return row?.channel_id ?? null;
+  return getHubChannel()?.channel_id ?? null;
 }
 
-export async function payInvoice(paymentRequest: string) {
+/**
+ * @param amountMtokens The decoded invoice's amount in millisats. A member's
+ *   payment carries max_fee_mtokens computed from it (drive-mode P1 item 4,
+ *   R15(7)); the treasury's carries none (R18(7)).
+ */
+export async function payInvoice(paymentRequest: string, amountMtokens: string) {
   // Tier 2 gate: refuse routing for members whose subscription is
   // prepay / routing_lapsed / close_due. May throw Tier2Denied which
   // the route handler maps to a 402 response. Per spec §5.2 the gate
@@ -22,6 +25,8 @@ export async function payInvoice(paymentRequest: string) {
 
   const { lnd } = getLndClient();
   const outgoingChannel = getTreasuryChannelId();
+  // Pinned or not, a member's payment carries the fee limit (D1.5).
+  const maxFeeMtokens = memberMaxFeeMtokens(amountMtokens);
 
   // ⚠ HELD — NO DEADLINE, DELIBERATELY. This is the one raw ln-service call site
   // in the app that is NOT bounded; the other seven are. It is in
@@ -35,6 +40,7 @@ export async function payInvoice(paymentRequest: string) {
     lnd,
     request: paymentRequest,
     ...(outgoingChannel ? { outgoing_channel: outgoingChannel } : {}),
+    ...(maxFeeMtokens ? { max_fee_mtokens: maxFeeMtokens } : {}),
   });
 
   return {

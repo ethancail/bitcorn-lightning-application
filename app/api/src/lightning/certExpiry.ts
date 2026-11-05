@@ -176,9 +176,12 @@ export function certExpiryMessage(inspection: CertInspection, nowMs: number): st
   const on = new Date(inspection.notAfterMs).toISOString().slice(0, 10);
   if (level === "expired") {
     const days = Math.abs(inspection.daysRemaining);
+    // drive-mode P2 item 9 (R6(c)): the plain-sentence pass changes the
+    // sentences BEFORE the restart step only; the step itself stays verbatim
+    // and whole (certExpiry.p2.test.ts).
     return (
-      `LND's TLS certificate EXPIRED on ${on} (${days} day${days === 1 ? "" : "s"} ago). ` +
-      `Until LND issues a new one, your channel figures won't update and ` +
+      `Your Lightning app's security certificate expired on ${on} (${days} day${days === 1 ? "" : "s"} ago). ` +
+      `Until a new one is issued, your channel figures won't update and ` +
       `payments sent from Bitcorn won't go through. ` +
       `Restart the Lightning app to regenerate it, then restart Bitcorn. ` +
       `The second restart is what gets Loop working again — it doesn't pick up ` +
@@ -186,7 +189,7 @@ export function certExpiryMessage(inspection: CertInspection, nowMs: number): st
     );
   }
   return (
-    `LND's TLS certificate expires on ${on} ` +
+    `Your Lightning app's security certificate expires on ${on} ` +
     `(${inspection.daysRemaining} day${inspection.daysRemaining === 1 ? "" : "s"} away). ` +
     `Once it lapses, your channel figures will stop updating and payments sent ` +
     `from Bitcorn won't go through. The fix at that point: restart the Lightning ` +

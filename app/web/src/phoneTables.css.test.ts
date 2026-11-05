@@ -2,12 +2,13 @@
 // jsdom evaluates no @media, so the rules are read; the browser matrix is the
 // evidence of what renders.
 //
-// Scope (R4): .phone-card sits on the six J2 tables and nowhere else, and the
-// card rules select only .phone-card, so the other .data-table tables
-// (Payments history, Peers, Swap operations, Cash Out history, Liquidity's
-// External & Unclassified) keep today's sideways scroll, and the tables
-// outside .data-table (admin members, auto-buy's alerts, inputs and history)
-// are untouched.
+// Scope (R4, extended by drive-mode P2's R34 item 4): .phone-card sits on the
+// six J2 tables and Payments' history, .phone-fit on Top Up's and Withdraw's
+// histories, and nowhere else; the card rules select only those classes, so
+// the other .data-table tables (Peers, Swap operations, Liquidity's External
+// & Unclassified) keep today's sideways scroll, and the tables outside
+// .data-table (admin members, auto-buy's alerts, inputs and history) are
+// untouched.
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -71,19 +72,28 @@ describe("X4b: a J2 table is a card on a phone", () => {
   });
 });
 
+describe("R34 item 4: Payments' history cards keep the panel's inset on a phone", () => {
+  it("the wrapper is padded by the phone tile inset, on a phone only", () => {
+    const rules = RULES.filter((r) => r.selectors.includes(".payments-history-wrap"));
+    expect(rules.map((r) => r.media)).toEqual([PHONE]);
+    expect(rules[0].decls["padding"]).toBe("0 var(--d-tile-pad-ph)");
+  });
+});
+
 describe("R4: the J2 tables only", () => {
   const files = sources(__dirname);
   const usesOf = (cls: string) =>
     files.flatMap((f) => (readFileSync(f, "utf8").match(new RegExp(`(?<![\\w-])${cls}(?![\\w-])`, "g")) ?? []).map(() => f.replace(__dirname + "/", "")));
 
-  it("six tables: ChannelsPage's four lanes and subscription payments are cards; Top Up's history fits (X4c)", () => {
+  it("ChannelsPage's four lanes, subscription payments and Payments' history are cards; Top Up's and Withdraw's histories fit (X4c; R34 item 4)", () => {
     const cards = usesOf("phone-card");
     const count = (f: string) => cards.filter((u) => u === f).length;
     expect(count("App.tsx")).toBe(4);
     expect(count("pages/SubscriptionPayments.tsx")).toBe(1);
-    expect(new Set(cards)).toEqual(new Set(["App.tsx", "pages/SubscriptionPayments.tsx"]));
-    expect(usesOf("phone-fit")).toEqual(["pages/RefillChannel.tsx"]);
-    expect(usesOf("phone-fit-wrap")).toEqual(["pages/RefillChannel.tsx"]);
+    expect(count("pages/Payments.tsx")).toBe(1);
+    expect(new Set(cards)).toEqual(new Set(["App.tsx", "pages/SubscriptionPayments.tsx", "pages/Payments.tsx"]));
+    expect(new Set(usesOf("phone-fit"))).toEqual(new Set(["pages/RefillChannel.tsx", "pages/WithdrawBitcoin.tsx"]));
+    expect(new Set(usesOf("phone-fit-wrap"))).toEqual(new Set(["pages/RefillChannel.tsx", "pages/WithdrawBitcoin.tsx"]));
   });
 
   it("no card rule reaches a table that has not opted in", () => {
@@ -124,6 +134,19 @@ describe("X4c: Top Up's history is one line where every row fits, a card otherwi
     expect(decls(".data-table.phone-fit :is(colgroup, .col-secondary)")["display"]).toBe("none");
   });
 
+  // R34 screenshot gate: an expanded row's detail (P2's failure sentence, one
+  // long line at max-content) spans every column, so automatic table layout
+  // widened the columns to it and squeezed the dates onto two lines in every
+  // row (Small text, 390px, Top Up and Withdraw). Its content must not size
+  // the columns: zero intrinsic width, filling the cell at layout.
+  it("wide enough: an expanded row's detail does not size the columns", () => {
+    const rule = inWide.find((r) => r.selectors.includes(".data-table.phone-fit tr.row-detail > td > *"));
+    expect(rule, "the rule exists in the one-line query").toBeDefined();
+    expect(rule!.decls["width"]).toBe("0");
+    expect(rule!.decls["min-width"]).toBe("100%");
+    expect(rule!.decls["box-sizing"]).toBe("border-box");
+  });
+
   it("too narrow: exactly the .phone-card card, rule for rule", () => {
     const cardRules = CARD.filter((r) => r.media === PHONE && r.container === null);
     expect(inNarrow.length).toBe(cardRules.length);
@@ -146,5 +169,21 @@ describe("X4c: Top Up's history is one line where every row fits, a card otherwi
       const need = Math.max(c, WEBKIT[i]);
       expect(em * 14 * s + px, `stop ${s.toFixed(2)}`).toBeGreaterThanOrEqual(need);
     });
+  });
+
+  it('the threshold covers "Not finished" (R34: Chromium and Firefox, Small and Default)', () => {
+    // R33 finding 9's new badge label. The widest one-line table, px, with every
+    // row "Not finished" (3,000,000 sats, each month at 12:58 AM/PM), measured
+    // in the live Top Up page, 2026-11-04: drive-mode-evidence/p2-build/gate/
+    // 2026-11-04-r34-badge-fit-{chromium,firefox}.txt. Small is the binding
+    // preset (the smallest; the threshold's em slope outgrows the row's).
+    const READINGS: Array<[label: string, scale: number, chromium: number, firefox: number]> = [
+      ["Small", 0.85, 305.2, 305.48],
+      ["Default", 1, 339.55, 339.87],
+    ];
+    const [, em, px] = THRESHOLD.match(/^calc\(([\d.]+)em \+ (\d+)px\)$/)!.map(Number);
+    for (const [label, s, chromium, firefox] of READINGS) {
+      expect(em * 14 * s + px, label).toBeGreaterThanOrEqual(Math.max(chromium, firefox));
+    }
   });
 });

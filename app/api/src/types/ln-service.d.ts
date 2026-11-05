@@ -72,6 +72,17 @@ declare module "ln-service" {
     is_private?: boolean;
     transaction_id: string;
     transaction_vout: number;
+    // lightning/lnd_responses/rpc_channel_as_channel.js (lightning 11.1.0).
+    // Read by persist-channels.ts for drive-mode P1 items 2 and 8.
+    local_reserve?: number;
+    remote_reserve?: number;
+    commit_transaction_fee?: number;
+    /** "anchor" | "original" | "anchor_with_lease_constraint" |
+     *  "simplified_taproot" | "original_with_static_to_remote" */
+    type?: string;
+    pending_payments?: Array<{ id: string; is_outgoing: boolean; tokens: number }>;
+    /** !lnd initiator — the peer opened the channel (R23(i), migration 070). */
+    is_partner_initiated?: boolean;
   }
 
   export function getChannels(options: {
@@ -82,6 +93,7 @@ declare module "ln-service" {
     lnd: any;
     request: string;
     outgoing_channel?: string;
+    max_fee_mtokens?: string;
   }): Promise<{
     id: string;
     tokens: number;
@@ -96,8 +108,13 @@ declare module "ln-service" {
     id: string;
     destination: string;
     tokens: number;
+    mtokens: string;
     description?: string;
     expires_at?: string;
+    cltv_delta?: number;
+    payment?: string;
+    features?: Array<{ bit: number }>;
+    routes?: unknown[];
   }>;
 
   export interface Invoice {
@@ -271,6 +288,10 @@ declare module "ln-service" {
     payment?: string;
     total_mtokens?: string;
     start?: string; // source pubkey — probe route FROM this node (uses gossip graph)
+    mtokens?: string;
+    cltv_delta?: number;
+    features?: Array<{ bit: number }>;
+    routes?: unknown[];
   }): Promise<{ route: Route }>;
 
   export function payViaRoutes(options: {

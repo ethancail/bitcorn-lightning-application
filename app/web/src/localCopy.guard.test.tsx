@@ -30,6 +30,7 @@ const stub = vi.hoisted(() => ({
   getNodeBalances: vi.fn(),
   getTreasuryInfo: vi.fn(),
   getSwapHistory: vi.fn(),
+  getSwapLimits: vi.fn(),
   getNetworkPayments: vi.fn(),
   syncSettlements: vi.fn(),
   decodeInvoice: vi.fn(),
@@ -52,6 +53,11 @@ const stats = (localSats: number) => ({
   keysend_enabled: false, lnd_live_read_ok: true, cert_expiry: null,
   treasury_channel: {
     channel_id: "1", local_sats: localSats, remote_sats: 1_000_000 - localSats, capacity_sats: 1_000_000,
+    // Room equal to the balances (no reserves), so a gauge on either figure
+    // reads the same here; this file checks wording. Payments' and Top Up's
+    // gauges read room to send (R34 item 5, R35; the R35 test below and
+    // Payments.capacity.test.tsx tell them apart).
+    room_to_send_sats: localSats, room_to_receive_sats: 1_000_000 - localSats,
     is_active: true, freshness: { updated_at_ms: NOW, age_seconds: 0, staleness: "fresh" },
   },
   forwarded_fees: { total_sats: 0, last_24h_sats: 0, last_30d_sats: 0 },
@@ -73,6 +79,9 @@ beforeEach(() => {
   stub.getNodeBalances.mockResolvedValue({ onchain_sats: 2_000_000, lightning_sats: 0, total_sats: 2_000_000 });
   stub.getTreasuryInfo.mockResolvedValue(null);
   stub.getSwapHistory.mockResolvedValue({ swaps: [] });
+  // GET /api/swaps/limits at the env defaults, as the server returns them
+  // since drive-mode P1 item 6 (the pages read their swap limits from it).
+  stub.getSwapLimits.mockResolvedValue({ loop_available: true, loop_out: { min_sats: 250_000, max_sats: 2_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 }, loop_in: { min_sats: 100_000, max_sats: 3_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 } });
   stub.getNetworkPayments.mockResolvedValue([]);
   stub.syncSettlements.mockResolvedValue({});
   stub.getContacts.mockResolvedValue([]);
@@ -133,7 +142,10 @@ describe("SH8/SH8a/R2: the old wording is gone from the sources", () => {
     const count = (file: string, re: RegExp) => (readFileSync(join(PAGES, file), "utf8").match(re) ?? []).length;
     expect(count("RefillChannel.tsx", /(%|<\/span>) available to send$/gm)).toBe(3);
     expect(count("Payments.tsx", /% available to send$/gm)).toBe(4);
-    expect(count("WithdrawBitcoin.tsx", /% available to withdraw$/gm)).toBe(2);
+    // drive-mode P2 item 15 (R26(8)): Cash Out's share is "of your connection",
+    // no longer a claim of what is available to withdraw.
+    expect(count("WithdrawBitcoin.tsx", /% of your connection$/gm)).toBe(2);
+    expect(count("WithdrawBitcoin.tsx", /% available to withdraw$/gm)).toBe(0);
     expect(count("MemberDashboard.tsx", /% on your side — \$\{remotePct\}% on the hub's side`/g)).toBe(1);
   });
 });
@@ -148,12 +160,14 @@ describe("SH8/SH8a/R2: each surface as the member reads it", () => {
     expectNoLocal(el);
   });
 
-  it("Cash Out: \"N% available to withdraw\", and after the withdrawal", async () => {
+  // drive-mode P2 item 15 (R26(8)): "N% of your connection", before and after.
+  it("Cash Out: \"N% of your connection\", and after the withdrawal", async () => {
     stub.getMemberStats.mockResolvedValue(stats(900_000));
     stub.getMemberLiquidityStatus.mockResolvedValue(status("farmer"));
     const el = await mount(WithdrawBitcoin);
-    expect(el.textContent).toContain("90% available to withdraw");
-    expect(el.textContent).toMatch(/After withdrawal: 90% → \d+% available to withdraw/);
+    expect(el.textContent).toContain("90% of your connection");
+    expect(el.textContent).toMatch(/After withdrawal: 90% → \d+% of your connection/);
+    expect(el.textContent).not.toContain("available to withdraw");
     expectNoLocal(el);
   });
 
@@ -186,5 +200,45 @@ describe("SH8/SH8a/R2: each surface as the member reads it", () => {
     const el = await mount(MemberDashboard);
     expect(el.textContent).toContain("30% on your side — 70% on the hub's side");
     expectNoLocal(el);
+  });
+});
+
+// R35: Top Up's gauge reads room to send, as Payments' does (R34 item 5), so
+// the two pages say the same "N% available to send" for one channel. The
+// fixture tells the figures apart: local 600,000 (60%), room to send 570,000
+// (57%) of 1,000,000.
+describe("R35: Top Up and Payments show the same percentage for the same channel", () => {
+  const ROOM_APART = () => {
+    const s = stats(600_000);
+    return { ...s, treasury_channel: { ...s.treasury_channel, room_to_send_sats: 570_000, room_to_receive_sats: 380_000 } };
+  };
+  const pct = (el: Element, re: RegExp) => (el.textContent ?? "").replace(/\s+/g, " ").match(re)?.slice(1) ?? null;
+
+  async function unmount() {
+    await act(async () => root!.unmount());
+    host!.remove();
+    root = null;
+    host = null;
+  }
+
+  it("the current figure and the after-figure for 250,000 sats match: 57% and 57% → 82%", async () => {
+    stub.getMemberStats.mockResolvedValue(ROOM_APART());
+    stub.getMemberLiquidityStatus.mockResolvedValue(status("merchant"));
+
+    const topUp = await mount(RefillChannel);
+    const topUpNow = pct(topUp, /(\d+)% available to send/);
+    const topUpAfter = pct(topUp, /After top up: (\d+)% → (\d+)% available to send/);
+    await unmount();
+
+    const payments = await mount(Payments, { title: "Payments" });
+    type(payments.querySelector('input[aria-label="Amount"]') as HTMLInputElement, "250000");
+    await settle();
+    const paymentsNow = pct(payments, /(\d+)% available to send/);
+    const paymentsAfter = pct(payments, /After receive: (\d+)% → (\d+)% available to send/);
+
+    expect(paymentsNow, "Payments renders its gauge").toEqual(["57"]);
+    expect(topUpNow, "Top Up's gauge = Payments' gauge").toEqual(paymentsNow);
+    expect(paymentsAfter).toEqual(["57", "82"]);
+    expect(topUpAfter, "Top Up's after-figure = Payments' after-figure").toEqual(paymentsAfter);
   });
 });

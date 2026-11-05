@@ -7,6 +7,7 @@
 
 import { db } from "../db";
 import { ENV } from "../config/env";
+import { getHubChannel } from "../lightning/hubChannel";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -76,16 +77,10 @@ interface ChannelRow {
   active: number;
 }
 
+/** The hub channel (drive-mode P1 item 1): the largest active channel to the
+ *  treasury, lowest short channel ID between equals; null when none is active. */
 export function getTreasuryChannel(): ChannelRow | null {
-  if (!ENV.treasuryPubkey) return null;
-
-  const row = db
-    .prepare(
-      "SELECT * FROM lnd_channels WHERE peer_pubkey = ? AND active = 1 LIMIT 1"
-    )
-    .get(ENV.treasuryPubkey) as ChannelRow | undefined;
-
-  return row ?? null;
+  return getHubChannel();
 }
 
 // ─── Classification ──────────────────────────────────────────────────────────

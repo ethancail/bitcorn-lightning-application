@@ -33,6 +33,9 @@ import {
 import { classifyConfirmError } from "./components/actionConfirm/confirmErrors";
 import ProfilePanel from "./components/ProfilePanel";
 import BitcornNamePanel from "./components/BitcornNamePanel";
+import ChannelRolePanel from "./components/firstRun/ChannelRolePanel";
+import LoadingSplash from "./components/shell/LoadingSplash";
+import ApiUnreachableScreen from "./components/shell/ApiUnreachableScreen";
 import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
 import {
   settingsBadgeFor,
@@ -626,89 +629,6 @@ const TEXT_SCALE_PRESETS = [
   { value: "1.15", label: "Large" },
   { value: "1.3", label: "Extra Large" },
 ];
-
-function ChannelRolePanel() {
-  const [role, setRole] = useState<"unknown" | "merchant" | "farmer">("unknown");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    api.getMemberLiquidityStatus()
-      .then((d) => {
-        const r = d.channelRole ?? d.classification?.channelRole; // SH9, as in MemberShell
-        if (r === "merchant" || r === "farmer") setRole(r);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function handleSetRole(newRole: "merchant" | "farmer" | "unknown") {
-    setSaving(true);
-    try {
-      await api.setChannelRole(newRole);
-      setRole(newRole);
-      // Notify MemberShell so the sidebar refetches and updates labels immediately
-      // (rather than waiting up to 15s for the next poll).
-      window.dispatchEvent(new CustomEvent("bitcorn:role-changed"));
-    } catch {}
-    setSaving(false);
-  }
-
-  const roles: { value: "merchant" | "farmer"; icon: string; label: string; desc: string }[] = [
-    { value: "merchant", icon: "↗", label: "Merchant", desc: "You send payments through the hub — outbound capacity matters most" },
-    { value: "farmer", icon: "↙", label: "Farmer", desc: "You receive earnings through the hub — receiving capacity matters most" },
-  ];
-
-  return (
-    <div className="panel ops" style={{ marginTop: 12 }}>
-      <div className="panel-header">
-        <span className="panel-title"><span className="icon">◈</span>Channel Role</span>
-        {role !== "unknown" && (
-          <span className={`badge ${role === "merchant" ? "badge-amber" : "badge-green"}`} style={{ textTransform: "capitalize" }}>
-            {role}
-          </span>
-        )}
-      </div>
-      <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ fontSize: "0.8125rem", color: "var(--text-3)", marginBottom: 4 }}>
-          Your channel role determines how liquidity recommendations are calculated.
-        </div>
-        {loading ? (
-          <div className="loading-shimmer" style={{ height: 80, borderRadius: 6 }} />
-        ) : (
-          <>
-            {roles.map((opt) => (
-              <button
-                key={opt.value}
-                className={`theme-option ${role === opt.value ? "selected" : ""}`}
-                onClick={() => handleSetRole(opt.value)}
-                disabled={saving}
-              >
-                <span style={{ fontSize: "1.25rem" }}>{opt.icon}</span>
-                <div>
-                  <div style={{ fontWeight: 600 }}>{opt.label}</div>
-                  <div style={{ fontSize: "0.75rem", color: role === opt.value ? "var(--text-2)" : "var(--text-3)" }}>
-                    {opt.desc}
-                  </div>
-                </div>
-              </button>
-            ))}
-            {role !== "unknown" && (
-              <button
-                className="btn btn-ghost"
-                style={{ fontSize: "0.75rem", color: "var(--text-3)", alignSelf: "flex-start" }}
-                onClick={() => handleSetRole("unknown")}
-                disabled={saving}
-              >
-                Clear role selection
-              </button>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
   const navigate = useNavigate();
@@ -2468,37 +2388,6 @@ function LiquidityPage() {
 
 // ─── Root router ──────────────────────────────────────────────────────────
 
-// U24 shell fix — full-screen state for "the browser can't reach the API at
-// all." Mirrors the INITIALIZING… splash's minimal styling; reassures about
-// funds and self-heals via useAppStatus's 15s auto-retry.
-function ApiUnreachableScreen({ onRetry }: { onRetry: () => void }) {
-  return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 16,
-        background: "var(--bg)",
-        padding: 24,
-      }}
-    >
-      <div style={{ fontFamily: "var(--mono)", color: "var(--red)", fontSize: "0.875rem", letterSpacing: "0.1em" }}>
-        CAN'T REACH YOUR BITCORN NODE
-      </div>
-      <div style={{ color: "var(--text-3)", fontSize: "0.8125rem", maxWidth: 420, textAlign: "center", fontFamily: "var(--sans)", lineHeight: 1.5 }}>
-        The app can't reach the Bitcorn API. Your node and funds are unaffected —
-        this is a connection problem. Retrying automatically every 15 seconds.
-      </div>
-      <button className="btn btn-outline btn-sm" onClick={onRetry}>
-        Try again
-      </button>
-    </div>
-  );
-}
-
 function Root() {
   const { status, retry } = useAppStatus();
 
@@ -2507,28 +2396,7 @@ function Root() {
   }
 
   if (status === "loading") {
-    return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "var(--bg)",
-        }}
-      >
-        <div
-          style={{
-            fontFamily: "var(--mono)",
-            color: "var(--text-3)",
-            fontSize: "0.875rem",
-            letterSpacing: "0.1em",
-          }}
-        >
-          INITIALIZING…
-        </div>
-      </div>
-    );
+    return <LoadingSplash />;
   }
 
   return (

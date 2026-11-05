@@ -91,23 +91,56 @@ export interface BannerDescriptor {
   actionLabel?: string;
 }
 
+/** An amount for the renewal copy: dollars with the sats beside them, or the
+ *  sats alone with no rate (drive-mode P2 items 11-12). */
+function renewalAmount(sats: number, usdRate: number | null): { text: string; label: string } {
+  if (!usdRate) return { text: fmtSats(sats), label: fmtSats(sats) };
+  const usd = `$${((sats / 100_000_000) * usdRate).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return { text: `${usd} (${fmtSats(sats)})`, label: usd };
+}
+
 /**
  * The dashboard banner descriptor. Takes the full status (so the
  * not-applicable / current / null filtering is inside the tested
  * function). Amounts always come from status.price_sats via fmtSats —
- * never a hardcoded 50,000.
+ * never a hard-coded price.
  *
- * nowMs is retained in the signature (callers pass Date.now()) for
- * determinism of any future time-relative copy; no current branch reads
- * it. The close_due banner deliberately does NOT show a countdown:
+ * nowMs places the pre-pause warning (drive-mode P2 item 11): from P
+ * (paid_through) until grace.worker_until the tier is still "current", and
+ * the banner says when hosted services pause. Both dates are the status's
+ * own, never a literal 7 days. usdRate, when there is one, puts dollars
+ * first in that warning and in the services-paused banner (item 12).
+ * The close_due banner deliberately does NOT show a countdown:
  * `grace.close_at` is paid_through + grace_days_close, which is the
  * moment the close_due tier BEGINS — by the time the tier is close_due,
  * that instant is already in the past, and the Tier 3 scheduler closes
  * on its next tick (no further grace). A countdown would render a
  * non-positive number; the honest framing is "imminent / pay now".
  */
-export function bannerFor(status: SubscriptionStatus | null, nowMs: number): BannerDescriptor {
-  void nowMs;
+export function bannerFor(
+  status: SubscriptionStatus | null,
+  nowMs: number,
+  usdRate: number | null = null,
+): BannerDescriptor {
+  // Item 11 (R6(a), D2.4): the warning before services pause. Starts at P
+  // (R27(11)); past worker_until the server's tier is worker_lapsed.
+  if (
+    status?.applicable === true &&
+    status.current_tier === "current" &&
+    nowMs >= status.paid_through &&
+    nowMs < status.grace.worker_until
+  ) {
+    const amount = renewalAmount(status.price_sats, usdRate);
+    return {
+      render: true,
+      severity: "amber",
+      // A headline, so no full stop, like the others (R34 item 6).
+      headline: `Hosted services pause on ${formatDate(status.grace.worker_until)}`,
+      body: `Renew for ${amount.text} before then to keep them running.`,
+      actionLabel: `Renew ${amount.label}`,
+    };
+  }
+
   const tier = gatedTierOf(status);
   if (!tier || status?.applicable !== true) return { render: false };
 
@@ -123,16 +156,19 @@ export function bannerFor(status: SubscriptionStatus | null, nowMs: number): Ban
         body: `Pay ${price} to unlock Lightning routing.`,
         actionLabel: `Pay ${price}`,
       };
-    case "worker_lapsed":
+    case "worker_lapsed": {
+      // Item 12: the dollar amount, with the sats beside it.
+      const amount = renewalAmount(status.price_sats, usdRate);
       return {
         render: true,
         severity: "amber",
         headline: "Action needed: hosted services lapsed",
         body:
           `Your subscription lapsed on ${lapsedOn}. Hosted services are ` +
-          `paused; your channel and routing still work. Renew ${price} to restore.`,
-        actionLabel: `Renew ${price}`,
+          `paused; your channel and routing still work. Renew for ${amount.text} to restore.`,
+        actionLabel: `Renew ${amount.label}`,
       };
+    }
     case "routing_lapsed":
       return {
         render: true,

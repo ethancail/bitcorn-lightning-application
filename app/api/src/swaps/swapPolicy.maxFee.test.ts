@@ -33,8 +33,8 @@ beforeAll(async () => {
   // The member's one active Treasury channel, with room for the swap.
   db.prepare(`
     INSERT INTO lnd_channels
-      (channel_id, peer_pubkey, capacity_sat, local_balance_sat, remote_balance_sat, active, private, updated_at)
-    VALUES ('c1', ?, 2000000, 1500000, 500000, 1, 0, ?)
+      (channel_id, peer_pubkey, capacity_sat, local_balance_sat, remote_balance_sat, active, private, updated_at, is_initiator)
+    VALUES ('c1', ?, 2000000, 1500000, 500000, 1, 0, ?, 0)
   `).run(TREASURY, Date.now());
   policy = await import("./swapPolicy");
 });

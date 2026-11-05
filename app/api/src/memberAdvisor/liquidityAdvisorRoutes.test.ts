@@ -78,3 +78,30 @@ describe("SH9: the declared role is returned whether or not the channel is activ
     expect((await getLiquidityStatus()).channelRole).toBe("unknown");
   });
 });
+
+// drive-mode P2 item 6: the Loop alert rides this response, rendered API-side
+// (loopAlert.ts), with or without a classification — a member with an
+// inactive channel or none still needs to know Withdraw and Top Up are down.
+// The mock above is a daemon down with no classified reason: the catch-all.
+describe("loopAlert: the four-state Loop alert, per direction", () => {
+  const UNREACHABLE = {
+    loop_out: { text: "Loop isn't responding right now, so Withdraw isn't available.", action: { label: "Check again" } },
+    loop_in: { text: "Loop isn't responding right now, so Top Up isn't available.", action: { label: "Check again" } },
+  };
+
+  it("with a classification (active channel)", async () => {
+    declare("farmer");
+    treasuryChannel(1);
+    const s = await getLiquidityStatus();
+    expect(s.classification).not.toBeNull();
+    expect((s as any).loopAlert).toEqual(UNREACHABLE);
+  });
+
+  it("with no classification (inactive channel)", async () => {
+    declare("merchant");
+    treasuryChannel(0);
+    const s = await getLiquidityStatus();
+    expect(s.classification).toBeNull();
+    expect((s as any).loopAlert).toEqual(UNREACHABLE);
+  });
+});

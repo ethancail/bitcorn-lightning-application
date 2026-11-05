@@ -77,6 +77,8 @@ const advisor = (
   classification: FARMER,
   recommendation,
   loopAvailability: loop(running),
+  // drive-mode P2 item 6's field; the gate does not read it.
+  loopAlert: { loop_out: null, loop_in: null },
 });
 
 // ─── C1 — REFUSAL ───────────────────────────────────────────────────────────

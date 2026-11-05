@@ -91,7 +91,9 @@ export async function pollSwapStatuses(): Promise<void> {
         .run(newAppStatus, actualFee, now, exec.swap_request_id);
     } else if (newAppStatus === "failed") {
       db.prepare("UPDATE swap_requests SET status = ?, failure_reason = ?, updated_at = ? WHERE id = ?")
-        .run("failed", `Loop state: ${loopSwap.state}`, now, exec.swap_request_id);
+        // loopd's raw failure code (drive-mode P1 item 9; the member-facing
+        // sentences are P2's, R18(12)); the state only when loopd gives none.
+        .run("failed", loopSwap.failure_reason ?? `Loop state: ${loopSwap.state}`, now, exec.swap_request_id);
     } else {
       db.prepare("UPDATE swap_requests SET status = ?, updated_at = ? WHERE id = ?")
         .run(newAppStatus, now, exec.swap_request_id);

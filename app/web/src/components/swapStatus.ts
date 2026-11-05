@@ -32,6 +32,22 @@ export function statusBadge(status: string): { label: string; cls: string } {
   }
 }
 
+/**
+ * The member's badge for a swap (drive-mode P2, R33 finding 9): the shared
+ * map's, except that a temporary Loop failure reads "Not finished", matching
+ * its sentence (loopFailureCopy.ts). loopd sets FAILURE_REASON_TEMPORARY so the
+ * swap is NOT abandoned, and a restart picks it up (loopout.go:398-405,
+ * loopin.go:566-571); the poller still stores it as "failed" — display only.
+ * A new label, so Top Up's history threshold was re-measured for it (R34):
+ * styles.css X4c and phoneTables.css.test.ts hold the readings.
+ */
+export function memberSwapBadge(status: string, failureReason: string | null): { label: string; cls: string } {
+  if (status === "failed" && failureReason === "FAILURE_REASON_TEMPORARY") {
+    return { label: "Not finished", cls: "badge-amber" };
+  }
+  return statusBadge(status);
+}
+
 // "some_new_status" → "Some new status".
 function humanize(status: string): string {
   const words = (status ?? "").replace(/_/g, " ").trim();
