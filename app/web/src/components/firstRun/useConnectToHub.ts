@@ -1,7 +1,8 @@
 // ConnectToHub's behaviour — the form state, validation, the open-channel call
 // and the confirm-modal flow, moved as they are out of pages/MemberDashboard.tsx
-// (member-first-run-ui separation slice, B.1). No behaviour changes here: the
-// handlers are today's, line for line.
+// (member-first-run-ui separation slice, B.1). The move changed no behaviour.
+// Since then handleOpen maps the API's `membership_not_paid` to its own message
+// (membership-gating M1/M2 item 1); everything else is as moved.
 
 import { useEffect, useState } from "react";
 import { api, type TreasuryInfo } from "../../api/client";
@@ -67,6 +68,11 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
     } catch (e: any) {
       // Confirmation failures go to the modal the operator is looking at.
       if (classifyConfirmError(e)) throw e;
+      // The hub's membership gate (membership-gating M1/M2 item 1).
+      if (e?.code === "membership_not_paid") {
+        setError(CONNECT_TO_HUB_COPY.membershipNotPaid);
+        return;
+      }
       setError(e.message ?? CONNECT_TO_HUB_COPY.openFailed);
     } finally {
       setSubmitting(false);

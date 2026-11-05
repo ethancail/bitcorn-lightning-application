@@ -83,13 +83,24 @@ describe("bannerFor — gated tiers render with correct severity/copy", () => {
     expect(d.body).toContain("routing still work");
   });
 
-  it("routing_lapsed → orange, Renew action", () => {
+  it("routing_lapsed → orange, Renew action, membership-gating M2 item 3's words", () => {
     const d = bannerFor(applicable("routing_lapsed"), NOW);
     expect(d.render).toBe(true);
     expect(d.severity).toBe("orange");
-    expect(d.headline).toBe("Urgent: routing access blocked");
+    expect(d.headline).toBe("Your membership payment is overdue");
+    expect(d.body).toBe(
+      "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay 50,000 sats to restore them.",
+    );
     expect(d.actionLabel).toBe("Renew 50,000 sats");
-    expect(d.body).toContain("refused until you renew");
+  });
+
+  it("DW5: the routing_lapsed banner claims no routing loss", () => {
+    const d = bannerFor(applicable("routing_lapsed"), NOW);
+    if (!d.render) throw new Error("unreachable");
+    const text = `${d.headline} ${d.body}`;
+    expect(text).not.toMatch(/routing/i);
+    expect(text).not.toMatch(/refused|blocked/i);
+    expect(text).toMatch(/hosted services are paused/i);
   });
 
   it("close_due → red, halt-close action, imminent (no countdown)", () => {

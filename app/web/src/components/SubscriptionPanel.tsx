@@ -631,13 +631,15 @@ function RoutingLapsedRender({
   status: SubscriptionStatusApplicable;
   handlers: ActionHandlers;
 }) {
-  const lapsedDays = daysAgo(status.paid_through);
+  // Membership-gating M2 item 3, widened by pass 10 item C: the same rewrite as
+  // the routing_lapsed banner. Routing does not stop at + 30; hosted services do.
+  // The close warning after it is unchanged (Stage 6 copy is out of scope, §7).
   const daysToClose = Math.max(0, daysUntil(status.grace.close_at));
   return (
     <section className="sub-panel">
-      <PanelHeader pill={<Pill kind="orange" label="routing paused" />} />
+      <PanelHeader pill={<Pill kind="orange" label="payment overdue" />} />
       <AlertBox variant="orange" icon="⚠">
-        Your subscription lapsed <strong>{lapsedDays} day{lapsedDays === 1 ? "" : "s"}</strong> ago. Lightning routing through the treasury is paused, along with price quotes and valuation. Your channel is still open and your funds are safe — but if you don't renew, your channel will be closed in about <strong>{daysToClose} more days</strong>.
+        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay {fmtSats(status.price_sats)} to restore them. Your channel is still open and your funds are safe — but if you don't renew, your channel will be closed in about <strong>{daysToClose} more days</strong>.
       </AlertBox>
       <p className="sub-reassure">
         <span className="sub-bullet-tick">✓</span> You can still use <strong>Coinbase Onramp</strong> to buy BTC and renew, and monitor your channel state from this dashboard.
@@ -652,7 +654,7 @@ function RoutingLapsedRender({
       <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
       <Timeline>
         <TimelineRow marker="·">
-          <strong>If you renew</strong> — recovery is fully in-app. Payment is detected within ~15 seconds; routing and all paused services come back online, and your paid-through date advances by {status.period_days} days.
+          <strong>If you renew</strong> — recovery is fully in-app. Payment is detected within ~15 seconds; all paused services come back online, and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
         <TimelineRow marker="!" tone="orange">
           <strong>If you don't renew within ~{daysToClose} more days</strong> — your channel will be cooperatively closed. The on-chain funds in your channel return to your wallet, but you'll need to open a new channel to rejoin the network.

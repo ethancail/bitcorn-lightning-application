@@ -57,6 +57,18 @@ export const ACCEPTOR_REJECT_REASON =
   "Opening a channel to the BitCorn hub requires a paid membership. " +
   "Pay your membership in the BitCorn app on your node, then try again.";
 
+/**
+ * Member side (M1, item A): whether an openChannel failure is this gate's
+ * refusal. ln-service rejects a refused open with an ARRAY, not an Error —
+ * `[503, 'FailedToOpenChannel', {err: <LND's details string>}]` (lightning
+ * open_channel.js:284) — so `err.message` is undefined and LND's text, which
+ * carries the acceptor's reason ("... err=<reason>"), is at err[2].err.
+ */
+export function isAcceptorRefusal(err: unknown): boolean {
+  const lndText = Array.isArray(err) ? (err[2] as { err?: unknown } | undefined)?.err : undefined;
+  return typeof lndText === "string" && lndText.includes(ACCEPTOR_REJECT_REASON);
+}
+
 /** Re-subscribe this long after the stream ends or errors. */
 export const RESUBSCRIBE_DELAY_MS = 5_000;
 /** Supervisor cadence: role re-read and LND-client rebuild check. */

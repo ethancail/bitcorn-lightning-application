@@ -1,7 +1,8 @@
 // ConnectToHub's descriptor — the literals the form shows and checks, moved
 // unchanged out of pages/MemberDashboard.tsx (member-first-run-ui separation
-// slice, B.1). Nothing here is new: each value is today's, and each literal
-// occurs here exactly as many times as it did in the old code (D1). The two
+// slice, B.1). Nothing here was new at the move: each value was the old code's,
+// and each literal occurred exactly as many times as it did there (D1). One
+// entry has been added since — membershipNotPaid (membership-gating M2). The two
 // 100k checks stay two constants; merging them is out of the slice (D1).
 //
 // Carried as they are, NOT fixed (B): the Economy option sends no fee rate
@@ -55,4 +56,13 @@ export const CONNECT_TO_HUB_COPY = {
   feeRates: "Fee rates",
   feeRatesDetail: "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB",
   openFailed: "Failed to open channel",
+  /**
+   * The hub refused because this node's membership isn't paid (membership-
+   * gating M2 item 1, ruling R7): the API's `membership_not_paid`, from its
+   * app check or from the hub's channel acceptor. Not from the old code — a
+   * new literal. member-first-run-ui owns this surface and may restyle the
+   * words; their meaning is fixed by R7.
+   */
+  membershipNotPaid:
+    "Your membership isn't paid yet, so the hub can't accept your channel. Pay your membership, then connect.",
 };
