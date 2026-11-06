@@ -263,6 +263,7 @@ import {
 import { startSwapPoller } from "./swaps/swapPoller";
 import { nodeLightningBalances } from "./api/nodeBalances";
 import { handleTransferSettingsGet, handleTransferSettingsPatch } from "./transfers/transferSettings";
+import { maybeSampleFeeEstimate } from "./transfers/feeSamples";
 
 // Boot-only side effects. These used to run at module scope, so merely
 // importing this file opened the DB, applied migrations, reached for LND and
@@ -312,6 +313,12 @@ export function bootSideEffects(): void {
         .catch(err =>
           console.warn("[lnd] periodic sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "")
         );
+      // Drive-mode P3 (R40(8)): a read-only fee-estimate sample for "calm",
+      // at most one per 10 minutes (transfers/feeSamples.ts). Off the sync
+      // chain, so it can neither delay nor fail it.
+      maybeSampleFeeEstimate().catch((err) =>
+        console.warn("[feeSamples] sample failed:", err?.message ?? String(err)),
+      );
     }, 15000);
   })();
 }
