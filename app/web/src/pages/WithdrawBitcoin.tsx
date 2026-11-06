@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
-import { api, fmtSats, swapExecuteBody } from "../api/client";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { api, fmtSats, swapExecuteBody, transfersApi, type SwapOptions } from "../api/client";
+import { OptionCards } from "../components/OptionCards";
 import { rateNote } from "../api/rate";
 import type { ExchangeRate, SwapLimits } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse, SwapReceipt } from "../api/client";
@@ -193,6 +194,10 @@ export default function WithdrawBitcoin() {
   // every Loop Out while it is down, so the page says why rather than blaming
   // the balance. null until stats arrive.
   const [hubActive, setHubActive] = useState<boolean | null>(null);
+  // GET /api/swaps/options (drive-mode P3): null until read, or on failure.
+  const [options, setOptions] = useState<SwapOptions | null>(null);
+  const [optionsDone, setOptionsDone] = useState(false);
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
   // ─── Quote state ──────────────────────────────────────────────────────
@@ -272,13 +277,24 @@ export default function WithdrawBitcoin() {
       })
       .catch(() => {});
     loadAdvisor();
+    // Drive-mode P3: the option cards and the quote-based Max (read-only).
+    transfersApi.getSwapOptions("loop_out")
+      .then(setOptions)
+      .catch(() => setOptions(null))
+      .finally(() => setOptionsDone(true));
   }, []);
 
-  // Most you can withdraw, and the Max button: the server's available_now,
-  // shown only when it reaches the minimum.
-  const maxWithdrawable = canWithdraw ? availableNow : null;
+  // Most you can withdraw, and the Max button (drive-mode P3, R25): the
+  // QUOTE-BASED maximum — available_now less today's quoted fee, re-quoted,
+  // so a Loop Out of exactly Max passes execute's amount + fee ≤ room check.
+  // While the quote is out, Max says it is checking; if loopd can't quote, it
+  // falls back to available_now and keeps the R25 sentence.
+  const nowCard = options?.state === "ok" ? options.cards.find((c) => c.key === "now") ?? null : null;
+  const quoteBased = options?.quote_state === "ok" && nowCard?.amount_sats != null;
+  const maxWithdrawable = !canWithdraw ? null : quoteBased ? nowCard!.amount_sats! : optionsDone ? availableNow : null;
+  const checkingFees = canWithdraw && !optionsDone;
   // Presets the policy would accept now; none when nothing can be withdrawn.
-  const presets = canWithdraw ? AMOUNT_PRESETS.filter((p) => p >= minW! && p <= availableNow!) : [];
+  const presets = canWithdraw ? AMOUNT_PRESETS.filter((p) => p >= minW! && p <= (maxWithdrawable ?? availableNow!)) : [];
 
   // ─── Pending swap detection ───────────────────────────────────────────
   useEffect(() => {
@@ -613,6 +629,19 @@ export default function WithdrawBitcoin() {
                   amount to choose — no input, placeholder, presets or
                   after-line, only the sentence below. */}
               {canWithdraw && (<>
+              {/* Drive-mode P3: the option cards. They only pre-fill the
+                  amount below; the quote and its confirmation are unchanged. */}
+              {options && (
+                <div style={{ marginBottom: 12 }}>
+                  <OptionCards
+                    options={options}
+                    usd={rateInfo?.state === "none" ? null : usdRate}
+                    onUse={(sats) => setAmount(sats)}
+                    onLeave={() => navigate("/dashboard")}
+                    onDeposit={() => navigate("/deposit")}
+                  />
+                </div>
+              )}
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 {presets.map((preset) => (
                   <button
@@ -636,10 +665,17 @@ export default function WithdrawBitcoin() {
                     Max
                   </button>
                 )}
+                {checkingFees && (
+                  <button className="btn btn-outline" disabled style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto" }}>
+                    Checking today's fees…
+                  </button>
+                )}
               </div>
               {maxWithdrawable != null && maxWithdrawable > 0 && (
-                <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 0, marginBottom: 8 }}>
-                  The swap's fees come out of this, so the exact amount you can withdraw is set when you get a quote.
+                <p className="text-dim" data-testid="max-fee-note" style={{ fontSize: "0.6875rem", marginTop: 0, marginBottom: 8 }}>
+                  {quoteBased
+                    ? "This allows for today's fees; if they rise before you confirm, the quote will say so."
+                    : "The swap's fees come out of this, so the exact amount you can withdraw is set when you get a quote."}
                 </p>
               )}
               <div style={{ position: "relative" }}>

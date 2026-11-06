@@ -1841,4 +1841,27 @@ export const transfersApi = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
+  /** Withdraw's / Top Up's option cards. Read-only on the server: raw loopd
+   *  quotes, no swap row. */
+  getSwapOptions: (direction: "loop_out" | "loop_in") =>
+    apiFetch<SwapOptions>(`/api/swaps/options?direction=${direction}`),
+};
+
+export type OptionCardKey = "now" | "wait_bigger" | "wait_calm" | "wait_lower" | "deposit_first" | "wait";
+export type OptionReason =
+  | "room_low" | "fees_low" | "fees_high" | "over_fee_limit" | "bigger_share" | "keep_room_open"
+  | "plenty_ready" | "enough_ready" | "wallet_low";
+
+export type SwapOptions = {
+  direction: "loop_out" | "loop_in";
+  state: "ok" | "connection_down" | "no_hub_channel" | "nothing_movable" | "daily_limit" | "unavailable";
+  strategy: TransferStrategy;
+  floor_sats: number | null;
+  room_sats: number | null;
+  calm: "calm" | "not_calm" | "unknown";
+  min_sats: number;
+  trigger_sats: number | null;
+  quote_state: "ok" | "unavailable" | "not_needed";
+  cards: Array<{ key: OptionCardKey; amount_sats: number | null; fee_sats: number | null; over_fee_limit: boolean; recommended: boolean }>;
+  reason: OptionReason | null;
 };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { api, fmtSats, swapExecuteBody } from "../api/client";
+import { api, fmtSats, swapExecuteBody, transfersApi, type SwapOptions } from "../api/client";
+import { OptionCards } from "../components/OptionCards";
 import { rateNote } from "../api/rate";
 import type { ExchangeRate, SwapLimits } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse, SwapReceipt } from "../api/client";
@@ -150,6 +151,8 @@ export default function RefillChannel() {
   // the channel reserve. Not capacity − local, which counts the commitment fee,
   // anchors and reserve as room.
   const [channelRemote, setChannelRemote] = useState<number | null>(null);
+  // GET /api/swaps/options (drive-mode P3): null until read, or on failure.
+  const [options, setOptions] = useState<SwapOptions | null>(null);
   // The effective Loop In limits, read from the server (drive-mode P1 item 6).
   const [limits, setLimits] = useState<SwapLimits | null>(null);
   const minR = limits?.loop_in?.min_sats ?? null;
@@ -255,6 +258,8 @@ export default function RefillChannel() {
         ]);
         setAdvisor(liquidity);
         api.getSwapLimits().then(setLimits).catch(() => {});
+        // Drive-mode P3: the two option cards (read-only on the server).
+        transfersApi.getSwapOptions("loop_in").then(setOptions).catch(() => setOptions(null));
 
         if (stats?.treasury_channel) {
           setChannelLocal(stats.treasury_channel.local_sats);
@@ -637,6 +642,19 @@ export default function RefillChannel() {
                   </div>
                 </div>
               </div>
+            )}
+
+            {/* Drive-mode P3 (R11(6)): Top Up's two option cards. A card only
+                pre-fills the amount below; the quote and its confirmation are
+                unchanged. */}
+            {options && (
+              <OptionCards
+                options={options}
+                usd={rateInfo?.state === "none" ? null : usdRate}
+                onUse={(sats) => setAmount(sats)}
+                onLeave={() => navigate("/dashboard")}
+                onDeposit={() => navigate("/deposit")}
+              />
             )}
 
             {/* Amount presets */}
