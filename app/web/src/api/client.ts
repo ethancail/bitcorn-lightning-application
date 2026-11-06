@@ -1797,3 +1797,48 @@ export type ValuationInput = {
 };
 
 export type ValuationInputsResponse = Record<string, ValuationInput>;
+
+// ─── Drive-mode P3: automatic-transfer settings (appended at the end of the
+//     file, away from other arcs' hunks). Read-only except the settings PATCH,
+//     which stores the member's choices; nothing in P3 moves money on them.
+
+export type TransferStrategy = "save" | "open" | "manual";
+
+export type TransferSettingsValues = {
+  strategy: TransferStrategy;
+  fee_limit_pct_bps: number;
+  fee_limit_usd_cents: number;
+  daily_fee_budget_usd_cents: number;
+  max_moved_per_day_usd_cents: number;
+};
+
+export type MinimumBreakdown = {
+  sats: number;
+  F: number; S_min: number; K: number; Q: number; H: number; C: number; r: number;
+};
+
+export type TransferSettingsResponse = {
+  settings: TransferSettingsValues;
+  stored: { [K in keyof TransferSettingsValues]: TransferSettingsValues[K] | null } & { updated_at: number | null };
+  defaults: TransferSettingsValues;
+  floors_usd_cents: { farmer: { save: number; open: number }; merchant: { save: number; open: number } };
+  day_boundary_tz: string;
+  member: {
+    role: "farmer" | "merchant" | "unknown";
+    capacity_sats: number | null;
+    hub_active: boolean | null;
+    save: MinimumBreakdown | null;
+    open: MinimumBreakdown | null;
+  };
+};
+
+export type TransferSettingsPatch = Partial<{ [K in keyof TransferSettingsValues]: TransferSettingsValues[K] | null }>;
+
+export const transfersApi = {
+  getTransferSettings: () => apiFetch<TransferSettingsResponse>("/api/transfers/settings"),
+  patchTransferSettings: (patch: TransferSettingsPatch) =>
+    apiFetch<TransferSettingsResponse>("/api/transfers/settings", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+};

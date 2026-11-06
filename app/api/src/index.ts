@@ -262,7 +262,7 @@ import {
 } from "./swaps/swapRoutes";
 import { startSwapPoller } from "./swaps/swapPoller";
 import { nodeLightningBalances } from "./api/nodeBalances";
-import { handleTransferSettingsGet, handleTransferSettingsPatch } from "./transfers/transferSettings";
+import { handleTransferSettingsGet, handleTransferSettingsPatch } from "./transfers/transferSettingsRoutes";
 import { maybeSampleFeeEstimate } from "./transfers/feeSamples";
 
 // Boot-only side effects. These used to run at module scope, so merely
@@ -3053,7 +3053,7 @@ async function dispatchRequest(
   // Drive-mode P3: the automatic-transfer settings (transfers/transferSettings.ts).
   // Stored and shown only; nothing in P3 reads them to move money.
   if (req.method === "GET" && req.url === "/api/transfers/settings") {
-    handleTransferSettingsGet(res);
+    await handleTransferSettingsGet(res);
     return;
   }
 

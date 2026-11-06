@@ -22,7 +22,6 @@
 // R16(4): the daily rails reset at US-Central midnight (America/Chicago,
 // daylight saving included). P3 only states it; P4 counts by it.
 
-import type http from "http";
 import { db } from "../db";
 import { ENV } from "../config/env";
 
@@ -154,50 +153,4 @@ export function transferSettingsResponse() {
     floors_usd_cents: STRATEGY_FLOORS_USD_CENTS,
     day_boundary_tz: DAY_BOUNDARY_TZ,
   };
-}
-
-function send(res: http.ServerResponse, status: number, body: unknown) {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(body));
-}
-
-/** GET /api/transfers/settings. */
-export function handleTransferSettingsGet(res: http.ServerResponse): void {
-  try {
-    send(res, 200, transferSettingsResponse());
-  } catch (err: any) {
-    send(res, 500, { error: err?.message });
-  }
-}
-
-/** PATCH /api/transfers/settings. EXEMPT from action-confirmation (R40(4); the
- *  2026-09-03 decision: routes that govern what an outflow may do are exempt),
- *  and in P3 nothing reads these values to move money. Resolves once the
- *  response is written. */
-export function handleTransferSettingsPatch(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-  return new Promise((resolve) => {
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => {
-      try {
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(body || "{}");
-        } catch {
-          send(res, 400, { error: "invalid_json" });
-          return resolve();
-        }
-        const v = validateTransferSettingsPatch(parsed);
-        if (!v.ok) {
-          send(res, 400, { error: "invalid_transfer_settings", details: v.errors });
-          return resolve();
-        }
-        saveTransferSettings(v.patch);
-        send(res, 200, transferSettingsResponse());
-      } catch (err: any) {
-        send(res, 500, { error: err?.message });
-      }
-      resolve();
-    });
-  });
 }

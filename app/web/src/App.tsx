@@ -54,6 +54,7 @@ import Daybreak from "./pages/Daybreak";
 import { DAYBREAK_NAV_LABEL } from "./daybreak/daybreakCopy";
 import { SHOW_DAYBREAK_IN_MEMBER_NAV } from "./daybreak/launch";
 import DaybreakEditor from "./pages/DaybreakEditor";
+import AutomaticTransfers from "./pages/AutomaticTransfers";
 import { EDITOR_NAV_LABEL } from "./daybreakEditor/editorCopy";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
@@ -406,6 +407,10 @@ function Sidebar({
 }
 
 const DEPOSIT: NavItem = { to: "/deposit", icon: "↙", label: "Deposit Bitcoin" };
+// Drive-mode P3 (R14): its own member page and nav item, after Withdraw / Top
+// Up and before Charts (mockup r5). The page does its own fetching — no
+// shell-level read is added for it.
+const AUTOMATIC_TRANSFERS: NavItem = { to: "/automatic-transfers", icon: "↻", label: "Automatic transfers" };
 
 function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navItems = [
@@ -514,7 +519,7 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
       open={open}
       onClose={onClose}
       items={navItems}
-      afterFirst={[DEPOSIT, liquidity]}
+      afterFirst={[DEPOSIT, liquidity, AUTOMATIC_TRANSFERS]}
       settingsBadge={<SubscriptionNavBadge status={subStatus} />}
     />
   );
@@ -603,6 +608,7 @@ function MemberShell() {
             <Route path="/cashout" element={<WithdrawBitcoin />} />
             <Route path="/refill" element={<RefillChannel />} />
             <Route path="/withdraw" element={<WithdrawBitcoin />} />
+            <Route path="/automatic-transfers" element={<AutomaticTransfers />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/subscription/payments" element={<SubscriptionPayments />} />
             {/* Intentionally NOT gated — the nav entry above is hidden for a

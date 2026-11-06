@@ -146,6 +146,9 @@ function member(opts: { liquidity: string; daybreak?: boolean; stablecoin?: bool
     'button "₿Buy Bitcoin"',
     'a /deposit "↙Deposit Bitcoin"',
     opts.liquidity,
+    // Drive-mode P3 (R14, mockup r5): Automatic transfers, after Withdraw /
+    // Top Up and before Charts.
+    'a /automatic-transfers "↻Automatic transfers"',
     'a /charts "⟠Charts"',
     ...(opts.daybreak === false ? [] : ['a /daybreak "☀Daybreak"']),
     'a /contacts "☰Contacts"',
