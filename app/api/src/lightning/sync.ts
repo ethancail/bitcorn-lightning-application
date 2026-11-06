@@ -8,6 +8,7 @@ import { ENV } from "../config/env";
 import { db } from "../db";
 import type { NodeRole } from "../types/node";
 import { createTickTimer, formatTickTiming } from "./syncTiming";
+import { getHubChannel } from "./hubChannel";
 
 export function deriveNodeRole(
   pubkey: string,
@@ -59,12 +60,15 @@ export async function syncLndState() {
     const { channels } = await timer.time("getLndChannels", () => getLndChannels());
     const treasuryPubkey = ENV.treasuryPubkey;
 
-    const treasuryChannel = channels.find(
+    const hasTreasuryChannel = channels.some(
       c => c.partner_public_key === treasuryPubkey
     );
-
-    const hasTreasuryChannel = !!treasuryChannel;
-    const treasuryChannelActive = treasuryChannel?.is_active ?? false;
+    // Drive-mode P3 (R39; plan item 5): "active" follows the hub rule over the
+    // channels persistChannels just wrote — any ACTIVE treasury channel, the
+    // largest — not whichever treasury channel lnd happens to list first. A
+    // member with an inactive channel listed before an active one was marked
+    // treasury_channel_inactive, and assertActiveMember refused their swaps.
+    const treasuryChannelActive = getHubChannel() !== null;
 
     // Compute membership status
     const synced = walletInfo.synced_to_chain ?? false;
