@@ -218,8 +218,7 @@ function RequestPaymentForm({
 
   // Receive capacity from treasury channel. roomToReceive is the server's one
   // figure, remote − the channel reserve (drive-mode P1 item 2). The gauge
-  // reads room to send, which is what "available to send" names (R34 item 5).
-  const [roomToSend, setRoomToSend] = useState<number | null>(null);
+  // reads it too (drive-mode P3, R40(7)).
   const [roomToReceive, setRoomToReceive] = useState<number | null>(null);
   const [channelCapacity, setChannelCapacity] = useState<number | null>(null);
 
@@ -227,7 +226,6 @@ function RequestPaymentForm({
     api.getMemberStats()
       .then((s) => {
         if (s.treasury_channel) {
-          setRoomToSend(s.treasury_channel.room_to_send_sats);
           setRoomToReceive(s.treasury_channel.room_to_receive_sats);
           setChannelCapacity(s.treasury_channel.capacity_sats);
         }
@@ -241,15 +239,16 @@ function RequestPaymentForm({
       ? `$${((sats / 100_000_000) * rate).toFixed(2)}`
       : null;
 
-  // Channel state percentages: room to send over capacity (R34 item 5).
-  // Receiving adds to your side, so room to send grows by the amount.
-  const currentLocalPct =
-    roomToSend != null && channelCapacity != null && channelCapacity > 0
-      ? Math.round((roomToSend / channelCapacity) * 100)
+  // Drive-mode P3 (R40(7)): this is the RECEIVE form, so its gauge shows
+  // room to receive over capacity, and receiving uses it up. (The Pay tab's
+  // gauge keeps room to send, R34 item 5.)
+  const currentReceivePct =
+    roomToReceive != null && channelCapacity != null && channelCapacity > 0
+      ? Math.round((roomToReceive / channelCapacity) * 100)
       : null;
-  const projectedLocalPct =
-    roomToSend != null && channelCapacity != null && channelCapacity > 0 && sats > 0
-      ? Math.min(100, Math.round(((roomToSend + sats) / channelCapacity) * 100))
+  const projectedReceivePct =
+    roomToReceive != null && channelCapacity != null && channelCapacity > 0 && sats > 0
+      ? Math.max(0, Math.round(((roomToReceive - sats) / channelCapacity) * 100))
       : null;
 
   // One cap: room to receive. The 85% soft cap is removed (R18(5)).
@@ -340,21 +339,21 @@ function RequestPaymentForm({
 
   return (
     <div>
-      {/* Channel state bar */}
-      {currentLocalPct != null && (
+      {/* Room-to-receive bar (R40(7)) */}
+      {currentReceivePct != null && (
         <div style={{
           background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
           padding: "10px 14px", marginBottom: 10,
         }}>
           <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
-            Current channel
+            Room to receive
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ flex: 1, height: 8, background: "var(--bg)", borderRadius: 4, overflow: "hidden", border: "1px solid var(--border)" }}>
-              <div style={{ width: `${Math.min(currentLocalPct, 100)}%`, height: "100%", background: "var(--amber)" }} />
+              <div style={{ width: `${Math.min(currentReceivePct, 100)}%`, height: "100%", background: "var(--green)" }} />
             </div>
             <span style={{ fontFamily: "var(--mono)", fontSize: "0.75rem", color: "var(--text-2)" }}>
-              {currentLocalPct}% available to send
+              {currentReceivePct}% of your connection
             </span>
           </div>
         </div>
@@ -424,13 +423,13 @@ function RequestPaymentForm({
       )}
 
       {/* Projected channel state */}
-      {projectedLocalPct != null && !isOverHard && (
+      {projectedReceivePct != null && !isOverHard && (
         <div style={{
           background: "var(--bg-2)", borderLeft: "2px solid var(--green)",
           padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 12,
         }}>
           After receive: <strong style={{ color: "var(--green)" }}>
-            {currentLocalPct}% → {projectedLocalPct}% available to send
+            {currentReceivePct}% → {projectedReceivePct}% room to receive
           </strong>
         </div>
       )}

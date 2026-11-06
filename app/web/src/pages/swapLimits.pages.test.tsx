@@ -33,7 +33,10 @@ import WithdrawBitcoin from "./WithdrawBitcoin";
 // Stricter than env on every bound (env: out 250k–2M, in 100k–3M).
 const LIMITS = {
   loop_available: true,
-  loop_out: { min_sats: 300_000, max_sats: 1_500_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 },
+  // available_now_sats: the server always sends it (P1 item 7). Without it the
+  // page has nothing it can move, and since drive-mode P3 shows no amount
+  // input then — so the below-minimum case needs a withdrawable amount.
+  loop_out: { min_sats: 300_000, max_sats: 1_500_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000, available_now_sats: 1_500_000 },
   loop_in: { min_sats: 150_000, max_sats: 2_500_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 },
 };
 

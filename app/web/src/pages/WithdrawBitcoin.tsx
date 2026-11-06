@@ -188,6 +188,11 @@ export default function WithdrawBitcoin() {
   // daily amount and the channel less the swap-only buffer.
   const availableNow = limits?.loop_out?.available_now_sats ?? null;
   const canWithdraw = minW != null && availableNow != null && availableNow >= minW;
+  // Whether the hub channel is up (drive-mode P3): stats fall back to the
+  // largest inactive hub channel for display (R18(2)), and the server refuses
+  // every Loop Out while it is down, so the page says why rather than blaming
+  // the balance. null until stats arrive.
+  const [hubActive, setHubActive] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // ─── Quote state ──────────────────────────────────────────────────────
@@ -243,6 +248,7 @@ export default function WithdrawBitcoin() {
     api.getMemberStats()
       .then((s) => {
         if (s.treasury_channel) {
+          setHubActive(s.treasury_channel.is_active);
           setChannelLocal(s.treasury_channel.local_sats);
           setChannelCapacity(s.treasury_channel.capacity_sats);
           setChannelLocalPct(
@@ -603,6 +609,10 @@ export default function WithdrawBitcoin() {
                   </details>
                 );
               })()}
+              {/* Drive-mode P3 (gate 2): when nothing can move there is no
+                  amount to choose — no input, placeholder, presets or
+                  after-line, only the sentence below. */}
+              {canWithdraw && (<>
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 {presets.map((preset) => (
                   <button
@@ -661,16 +671,33 @@ export default function WithdrawBitcoin() {
                   </strong>
                 </div>
               )}
+              </>)}
               {minW != null && maxW != null && (
                 <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
                   Minimum: {minW.toLocaleString()} sats. Maximum: {maxW.toLocaleString()} sats.
                 </p>
               )}
-              {minW != null && availableNow != null && !canWithdraw && (
-                <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
-                  Not enough in your channel to withdraw right now — the minimum is {minW.toLocaleString()} sats.
-                </div>
-              )}
+              {minW != null && availableNow != null && !canWithdraw && (() => {
+                const stays = limits?.loop_out?.always_stays ?? null;
+                const dailyLeft = limits?.loop_out?.daily_remaining_sats ?? null;
+                // One sentence, the binding cause first: the connection is
+                // down (the server refuses every Loop Out), today's limit is
+                // used, or too little is waiting — the minimum plus what
+                // always stays (the server's figure).
+                const sentence =
+                  hubActive === false
+                    ? "Your connection to Bitcorn is down, so payments can't go through it right now. It usually reconnects within a few minutes; if it's still down in an hour, restart the Lightning app."
+                    : dailyLeft != null && dailyLeft < minW
+                      ? "You've withdrawn as much as the daily limit allows. It frees up over the next 24 hours."
+                      : stays
+                        ? `You can move ${minW.toLocaleString()} sats once ${(minW + stays.total_sats).toLocaleString()} sats is waiting in your connection.`
+                        : `Not enough in your connection to withdraw right now — the minimum is ${minW.toLocaleString()} sats.`;
+                return (
+                  <div data-testid="withdraw-nothing-movable" style={{ fontSize: "0.75rem", color: "var(--text-2)", marginTop: 4 }}>
+                    {sentence}
+                  </div>
+                );
+              })()}
               {canWithdraw && amount > availableNow! && (
                 <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
                   The most you can withdraw right now is {availableNow!.toLocaleString()} sats.

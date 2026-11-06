@@ -231,11 +231,11 @@ export default function RefillChannel() {
     roomToSend != null && channelCapacity != null && channelCapacity > 0 && amount > 0
       ? Math.round(((roomToSend + amount) / channelCapacity) * 100)
       : null;
-  // The "more than your channel can hold" warning keeps its own test on the
-  // local balance, unchanged: R35 moved the gauge, not the warning.
-  const overCapacity =
-    channelLocal != null && channelCapacity != null && channelCapacity > 0 && amount > 0 &&
-    Math.round(((channelLocal + amount) / channelCapacity) * 100) > 100;
+  // Drive-mode P3: the "more than your connection can take" warning tests the
+  // amount against ROOM TO RECEIVE, the server's one figure — what a top-up
+  // actually lands in. local + amount against capacity counted the reserves,
+  // commitment fee and anchors as room.
+  const overCapacity = channelRemote != null && amount > 0 && amount > channelRemote;
 
   // The Loop alert's action (drive-mode P2 item 6): re-read the advisor.
   function loadAdvisor() {
@@ -726,7 +726,7 @@ export default function RefillChannel() {
 
             {overCapacity && (
               <div className="alert warning" style={{ marginBottom: 10, fontSize: "0.75rem" }}>
-                That's more than your channel can hold right now. Try a smaller amount.
+                That's more than your connection can take right now. Try a smaller amount.
               </div>
             )}
 

@@ -89,6 +89,11 @@ import type { MemberLiquidityStatusResponse } from "../api/client";
  */
 const WITHDRAW_UNAVAILABLE = "Withdrawals are currently unavailable.";
 
+/** The sentence while the connection to Bitcorn is down (drive-mode P3). It
+ *  names the one cause the member can see — the connection — and nothing
+ *  about the daemon; module-private for the same reason as the one above. */
+const CONNECTION_DOWN = "Withdrawals wait until your connection to Bitcorn is back.";
+
 export type WithdrawCtaGate = {
   /** Bind straight to the button's native `disabled` as `!enabled`. */
   enabled: boolean;
@@ -105,7 +110,16 @@ export type WithdrawCtaGate = {
  */
 export function withdrawCtaGate(
   advisor: MemberLiquidityStatusResponse | null,
+  hubActive?: boolean | null,
 ): WithdrawCtaGate {
+  // Drive-mode P3: the connection to Bitcorn, from the stats' hub channel.
+  // The server refuses every Loop Out while it is down (no active hub
+  // channel), so the CTA is refused too. Same fail-open rule as the daemon
+  // flag: only an EXPLICIT false refuses; null/undefined (stats not yet read)
+  // leave it live.
+  if (hubActive === false) {
+    return { enabled: false, explanation: CONNECTION_DOWN };
+  }
   if (advisor?.loopAvailability?.loopDaemonRunning === false) {
     return { enabled: false, explanation: WITHDRAW_UNAVAILABLE };
   }

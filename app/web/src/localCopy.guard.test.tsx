@@ -81,7 +81,7 @@ beforeEach(() => {
   stub.getSwapHistory.mockResolvedValue({ swaps: [] });
   // GET /api/swaps/limits at the env defaults, as the server returns them
   // since drive-mode P1 item 6 (the pages read their swap limits from it).
-  stub.getSwapLimits.mockResolvedValue({ loop_available: true, loop_out: { min_sats: 250_000, max_sats: 2_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 }, loop_in: { min_sats: 100_000, max_sats: 3_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 } });
+  stub.getSwapLimits.mockResolvedValue({ loop_available: true, loop_out: { min_sats: 250_000, max_sats: 2_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000, available_now_sats: 600_000 }, loop_in: { min_sats: 100_000, max_sats: 3_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 } });
   stub.getNetworkPayments.mockResolvedValue([]);
   stub.syncSettlements.mockResolvedValue({});
   stub.getContacts.mockResolvedValue([]);
@@ -138,10 +138,14 @@ describe("SH8/SH8a/R2: the old wording is gone from the sources", () => {
     expect(hits).toEqual([]);
   });
 
-  it("the new wording sits at each site: Top Up 3, Payments 4, Cash Out 2, the gauge 1", () => {
+  it("the new wording sits at each site: Top Up 3, Payments 2 + 2 (R40(7)), Cash Out 2, the gauge 1", () => {
     const count = (file: string, re: RegExp) => (readFileSync(join(PAGES, file), "utf8").match(re) ?? []).length;
     expect(count("RefillChannel.tsx", /(%|<\/span>) available to send$/gm)).toBe(3);
-    expect(count("Payments.tsx", /% available to send$/gm)).toBe(4);
+    // Drive-mode P3, R40(7): the Pay tab keeps "available to send"; the
+    // Request tab's gauge and after-line say room to receive.
+    expect(count("Payments.tsx", /% available to send$/gm)).toBe(2);
+    expect(count("Payments.tsx", /% of your connection$/gm)).toBe(1);
+    expect(count("Payments.tsx", /% room to receive$/gm)).toBe(1);
     // drive-mode P2 item 15 (R26(8)): Cash Out's share is "of your connection",
     // no longer a claim of what is available to withdraw.
     expect(count("WithdrawBitcoin.tsx", /% of your connection$/gm)).toBe(2);
@@ -171,13 +175,14 @@ describe("SH8/SH8a/R2: each surface as the member reads it", () => {
     expectNoLocal(el);
   });
 
-  it("Payments, receive: the channel and \"After receive\" say available to send", async () => {
+  // Drive-mode P3, R40(7): the receive form's gauge is room to receive.
+  it("Payments, receive: the gauge and \"After receive\" say room to receive", async () => {
     stub.getMemberStats.mockResolvedValue(stats(100_000));
     const el = await mount(Payments, { title: "Payments" });
     type(el.querySelector('input[aria-label="Amount"]') as HTMLInputElement, "50000");
     await settle();
-    expect(el.textContent).toContain("10% available to send");
-    expect(el.textContent).toMatch(/After receive: 10% → 15% available to send/);
+    expect(el.textContent).toContain("90% of your connection");
+    expect(el.textContent).toMatch(/After receive: 90% → 85% room to receive/);
     expectNoLocal(el);
   });
 
@@ -221,7 +226,10 @@ describe("R35: Top Up and Payments show the same percentage for the same channel
     host = null;
   }
 
-  it("the current figure and the after-figure for 250,000 sats match: 57% and 57% → 82%", async () => {
+  // Drive-mode P3, R40(7): Payments' "available to send" gauge is now on the
+  // Pay tab only (the Request tab shows room to receive), so the parity is
+  // checked there, and Top Up's after-figure is pinned on its own.
+  it("the current figure matches Payments' Pay tab, 57%; Top Up's after-figure for 250,000 is 57% → 82%", async () => {
     stub.getMemberStats.mockResolvedValue(ROOM_APART());
     stub.getMemberLiquidityStatus.mockResolvedValue(status("merchant"));
 
@@ -231,14 +239,13 @@ describe("R35: Top Up and Payments show the same percentage for the same channel
     await unmount();
 
     const payments = await mount(Payments, { title: "Payments" });
-    type(payments.querySelector('input[aria-label="Amount"]') as HTMLInputElement, "250000");
+    const tab = [...payments.querySelectorAll("button")].find((b) => b.textContent === "Send a Payment")!;
+    await act(async () => { tab.click(); });
     await settle();
     const paymentsNow = pct(payments, /(\d+)% available to send/);
-    const paymentsAfter = pct(payments, /After receive: (\d+)% → (\d+)% available to send/);
 
-    expect(paymentsNow, "Payments renders its gauge").toEqual(["57"]);
+    expect(paymentsNow, "Payments' Pay tab renders its gauge").toEqual(["57"]);
     expect(topUpNow, "Top Up's gauge = Payments' gauge").toEqual(paymentsNow);
-    expect(paymentsAfter).toEqual(["57", "82"]);
-    expect(topUpAfter, "Top Up's after-figure = Payments' after-figure").toEqual(paymentsAfter);
+    expect(topUpAfter).toEqual(["57", "82"]);
   });
 });

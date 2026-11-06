@@ -132,7 +132,7 @@ beforeEach(() => {
   stub.getMemberCosts.mockImplementation(never);
   // GET /api/swaps/limits at the env defaults, as the server returns them
   // since drive-mode P1 item 6 (the pages read their swap limits from it).
-  stub.getSwapLimits.mockResolvedValue({ loop_available: true, loop_out: { min_sats: 250_000, max_sats: 2_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 }, loop_in: { min_sats: 100_000, max_sats: 3_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 } });
+  stub.getSwapLimits.mockResolvedValue({ loop_available: true, loop_out: { min_sats: 250_000, max_sats: 2_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000, available_now_sats: 600_000 }, loop_in: { min_sats: 100_000, max_sats: 3_000_000, daily_max_sats: 5_000_000, daily_remaining_sats: 5_000_000 } });
   stub.getNetworkPayments.mockResolvedValue([]);
   stub.syncSettlements.mockResolvedValue({});
   stub.decodeInvoice.mockResolvedValue({

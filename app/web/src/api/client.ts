@@ -670,6 +670,9 @@ export type RotationPreviewResult = {
 export type NodeBalances = {
   onchain_sats: number;
   lightning_sats: number;
+  /** Local balance in INACTIVE channels (drive-mode P3). Not in total_sats,
+   *  which stays active-only for the treasury dashboard; member pages add it. */
+  lightning_inactive_sats?: number;
   total_sats: number;
 };
 
