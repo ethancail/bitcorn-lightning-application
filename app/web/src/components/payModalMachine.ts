@@ -25,7 +25,8 @@
 // repeat_ack and then price_ack, in the server's order. Only `reset` clears
 // them; reopening the modal mounts a fresh machine and starts clean. A
 // change of details drops the price acknowledgement, since the price it
-// accepted may no longer be the one shown.
+// accepted may no longer be the one shown, and keeps the repeat one (ruled
+// 2026-11-05, ruling N).
 //
 // `back`/`reset` return to the chooser from any non-sending step (you
 // can't cancel a send that's already in flight from the machine — the
