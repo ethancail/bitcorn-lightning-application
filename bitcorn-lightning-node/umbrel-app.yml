@@ -27,6 +27,5 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  v1.18.35: Paying your subscription from your node now sends exactly what you were shown, asks before you
-  pay twice or pay a higher price, and auto-pay never pays again while an earlier payment is still being
-  credited.
+  v1.18.35: Paying from your node now sends exactly what you were shown, and asks before paying twice or
+  paying a higher price.
