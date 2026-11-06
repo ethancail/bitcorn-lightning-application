@@ -264,7 +264,9 @@ export function getChannelAcceptorHealth(): ChannelAcceptorHealth {
 
 /**
  * R5's basic warning, with item 4's words and trigger: raised while the stream
- * isn't open, or when any predicate error occurred in the last hour.
+ * isn't open, or when any predicate error occurred in the last hour. The
+ * message names the cause (Ethan's ruling S4, 2026-11-05); when both hold, the
+ * stream being down wins.
  */
 export function channelGateAlert(health: ChannelAcceptorHealth, nowMs: number): TreasuryAlert | null {
   if (!health.applicable) return null;
@@ -276,9 +278,10 @@ export function channelGateAlert(health: ChannelAcceptorHealth, nowMs: number): 
     type: "CHANNEL_GATE_OFFLINE",
     heading: "Channel gate offline",
     severity: "warning",
-    message:
-      "The hub isn't checking new channel requests. Opens from unpaid members will be " +
-      "accepted until it reconnects.",
+    message: !health.stream_open
+      ? "The hub isn't checking new channel requests. Opens from unpaid members will be " +
+        "accepted until it reconnects."
+      : "The hub couldn't check a recent channel request and accepted it. Check the API logs.",
     data: {
       stream_open: health.stream_open,
       last_predicate_error_at: health.last_predicate_error_at,

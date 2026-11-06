@@ -61,8 +61,9 @@ export const CONNECT_TO_HUB_COPY = {
    * gating M2 item 1, ruling R7): the API's `membership_not_paid`, from its
    * app check or from the hub's channel acceptor. Not from the old code — a
    * new literal. member-first-run-ui owns this surface and may restyle the
-   * words; their meaning is fixed by R7.
+   * words; their meaning is fixed by R7. Reworded by Ethan's ruling S2
+   * (2026-11-05); the acceptor's own refusal text is unchanged.
    */
   membershipNotPaid:
-    "Your membership isn't paid yet, so the hub can't accept your channel. Pay your membership, then connect.",
+    "Your membership isn't paid, so the hub can't accept your channel. Pay your membership, then connect.",
 };

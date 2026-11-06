@@ -797,9 +797,15 @@ describe("DW10: the channel-gate alert reaches the alerts surface", () => {
     expect(alert.severity).toBe("warning");
   });
 
-  it("FIRES while the stream is open if a predicate error occurred in the last hour", async () => {
+  it("FIRES while the stream is open if a predicate error occurred in the last hour, with S4's words", async () => {
     s.channelGate = { applicable: true, stream_open: true, last_predicate_error_at: Date.now() - 59 * 60_000 };
-    expect(await gate()).toHaveLength(1);
+    const [alert, ...rest] = await gate();
+    expect(rest).toEqual([]);
+    expect(alert.heading).toBe("Channel gate offline");
+    expect(alert.message).toBe(
+      "The hub couldn't check a recent channel request and accepted it. Check the API logs.",
+    );
+    expect(alert.severity).toBe("warning");
   });
 
   it("CLEARS once the stream is open and no predicate error is recent", async () => {

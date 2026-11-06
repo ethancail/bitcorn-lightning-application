@@ -42,8 +42,9 @@ import SubscriptionPanel from "./SubscriptionPanel";
 import { useConnectToHub } from "./firstRun/useConnectToHub";
 import { bannerFor } from "./subscriptionBanner";
 
+// R7's meaning, in S2's words (Ethan, 2026-11-05).
 const R7_APP_CHECK =
-  "Your membership isn't paid yet, so the hub can't accept your channel. Pay your membership, then connect.";
+  "Your membership isn't paid, so the hub can't accept your channel. Pay your membership, then connect.";
 const DAY = 86_400_000;
 const NOW = 1_790_000_000_000;
 

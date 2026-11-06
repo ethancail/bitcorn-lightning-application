@@ -37,6 +37,10 @@ const R7_ACCEPTOR_TEXT =
 const T5_HEADING = "Channel gate offline";
 const T5_MESSAGE =
   "The hub isn't checking new channel requests. Opens from unpaid members will be accepted until it reconnects.";
+// S4 (Ethan, 2026-11-05): the message when the stream is open and the cause is
+// a recent predicate error.
+const T5_PREDICATE_ERROR_MESSAGE =
+  "The hub couldn't check a recent channel request and accepted it. Check the API logs.";
 const ACINQ = "03864ef025fde8fb587d989186ce6a4a186895ee44a926bfc370e2c366597a3f8f";
 
 type FakeStream = { lnd: unknown; emitter: EventEmitter; cancelled: boolean };
@@ -232,6 +236,38 @@ describe("R6 — a throwing predicate accepts the open and counts toward the ale
     expect(gate.channelGateAlert(health, now + 59 * 60_000)?.heading).toBe(T5_HEADING);
     expect(gate.channelGateAlert(health, now + 60 * 60_000)?.heading).toBe(T5_HEADING);
     expect(gate.channelGateAlert(health, now + 60 * 60_000 + 1)).toBeNull();
+  });
+});
+
+describe("S4 — the alert's message names its cause; heading and severity unchanged", () => {
+  const now = 1_790_000_000_000;
+  const recent = now - 10 * 60_000;
+
+  it("stream not open, no predicate error: the stream message", () => {
+    const a = gate.channelGateAlert({ applicable: true, stream_open: false, last_predicate_error_at: null }, now);
+    expect(a?.message).toBe(T5_MESSAGE);
+    expect(a?.heading).toBe(T5_HEADING);
+    expect(a?.severity).toBe("warning");
+  });
+
+  it("stream open, predicate error in the last hour: the predicate-error message", () => {
+    const a = gate.channelGateAlert({ applicable: true, stream_open: true, last_predicate_error_at: recent }, now);
+    expect(a?.message).toBe(T5_PREDICATE_ERROR_MESSAGE);
+    expect(a?.heading).toBe(T5_HEADING);
+    expect(a?.severity).toBe("warning");
+  });
+
+  it("both true: the stream message wins", () => {
+    const a = gate.channelGateAlert({ applicable: true, stream_open: false, last_predicate_error_at: recent }, now);
+    expect(a?.message).toBe(T5_MESSAGE);
+    expect(a?.heading).toBe(T5_HEADING);
+    expect(a?.severity).toBe("warning");
+  });
+
+  it("stream not open with a predicate error older than an hour: the stream message", () => {
+    const old = now - 60 * 60_000 - 1;
+    const a = gate.channelGateAlert({ applicable: true, stream_open: false, last_predicate_error_at: old }, now);
+    expect(a?.message).toBe(T5_MESSAGE);
   });
 });
 
