@@ -223,8 +223,9 @@ export function priceChangeBannerFor(cfg: AutoPayConfig | null): PriceChangeBann
 
 /** Copy per auto-pay alert type (§5 table). Severity comes from the alert row;
  *  this is just the headline/body. The price alert reads its context's
- *  reason. The pay-from-node lines are drafts, approved at the screenshot
- *  gate (pay-from-node spec §6 Q3, ruled 2026-11-05). */
+ *  reason. The pay-from-node lines were approved at the screenshot gate
+ *  (pay-from-node spec §6 Q3): G3, 2026-11-06, rewrote the settlement-overdue
+ *  alert (rulings R5, R6) and left the price alert's lines as drafted. */
 export function autoPayAlertContent(
   type: string,
   context?: Record<string, unknown> | null,
@@ -232,10 +233,15 @@ export function autoPayAlertContent(
   switch (type) {
     case "AUTOPAY_SETTLEMENT_OVERDUE":
       return {
-        headline: "Auto-pay is waiting on an earlier payment",
+        // G3 rulings R5 and R6, 2026-11-06. The body promises only what paying
+        // again delivers, a renewal: a confirmed payment under tolerance is
+        // never credited, so "if it does not confirm" promised a resolution
+        // that confirming does not bring.
+        headline: "Auto-pay is on hold",
         body:
-          "A payment from your node has not been credited yet, so auto-pay won't pay again. " +
-          "If it does not confirm, pay from this node and choose Send another payment.",
+          "A payment your node sent hasn't been credited after 48 hours, and it may never be. " +
+          "Auto-pay won't pay while it's outstanding. " +
+          "To renew now, pay from this node and choose Send another payment.",
       };
     case "AUTOPAY_PRICE_NOT_ACKNOWLEDGED":
       return context?.reason === "no_acknowledged_price"

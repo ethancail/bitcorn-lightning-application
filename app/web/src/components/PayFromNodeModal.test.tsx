@@ -232,6 +232,34 @@ describe("R7: past amounts in sats only", () => {
   });
 });
 
+describe("R6 and R10: repeat_ack and details-changed as ruled", () => {
+  it("repeat_ack: the approved sentence, and \"Not now\" in place of \"Wait\"", async () => {
+    await mountInCard();
+    await confirmRefusedWith(repeatRefusal());
+    const body = document.querySelector(".sub-pay-modal .dialog-body")!.textContent!;
+    expect(body).toContain(
+      "It hasn't been credited yet. Most payments are credited soon after their first confirmation.",
+    );
+    expect(body).not.toContain("within an hour");
+    expect(buttonNamed("Not now")).toBeDefined();
+    expect(buttonNamed("Wait")).toBeUndefined();
+    expect(buttonNamed("Send another payment")).toBeDefined();
+  });
+
+  it("details-changed is an amber warning, not a red danger notice", async () => {
+    await mountInCard();
+    stub.getPayFromNodeQuote.mockResolvedValue({ amount_sats: 45_000, deposit_address: ADDR, estimated_fee_sats: 1_234 });
+    await confirmRefusedWith(refusal(409, { error: "pay_target_changed" }));
+    const notice = [...document.querySelectorAll(".sub-pay-modal .sub-alert")]
+      .find((n) => n.textContent?.includes("The payment details changed."));
+    expect(notice).toBeDefined();
+    expect(notice!.classList.contains("sub-alert-amber")).toBe(true);
+    expect(notice!.classList.contains("sub-alert-dim-red")).toBe(false);
+    // The re-quoted amount is what is now shown.
+    expect(document.querySelector(".sub-pay-preview dd")?.textContent).toBe("$27.00 (45,000 sats)");
+  });
+});
+
 describe("R8: this modal's confirmation errors", () => {
   const errorText = () => document.querySelector(".sub-pay-modal .sub-alert-body")?.textContent;
 

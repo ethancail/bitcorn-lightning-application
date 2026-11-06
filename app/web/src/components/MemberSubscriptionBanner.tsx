@@ -68,7 +68,7 @@ export default function MemberSubscriptionBanner({
         </div>
       )}
 
-      {/* Price-change banner — non-dismissible until Acknowledge or Opt out (§6). */}
+      {/* Price-change banner — non-dismissible until Accept price or Opt out (§6). */}
       {priceChange.render && (
         <div className="alert warning member-sub-banner">
           <span className="alert-icon" aria-hidden>⚠</span>
@@ -85,7 +85,8 @@ export default function MemberSubscriptionBanner({
                 void api.acknowledgePriceChange(cfg!.current_price!).then(reload).catch(() => reload())
               }
             >
-              Acknowledge
+              {/* "Accept", the word the auto-pay alerts use (G3 ruling R9). */}
+              Accept price
             </button>
             <button
               className="btn member-sub-banner-action"

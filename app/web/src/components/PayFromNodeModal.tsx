@@ -273,7 +273,9 @@ export default function PayFromNodeModal({
           <>
             <div className="dialog-title">Pay from this node</div>
             {state.step === "confirm" && state.detailsChanged && (
-              <div className="sub-alert sub-alert-dim-red" style={{ marginBottom: 14 }}>
+              // An amber warning, not a red danger notice: nothing failed, the
+              // member only has to check again (G3 ruling R10).
+              <div className="sub-alert sub-alert-amber" style={{ marginBottom: 14 }}>
                 <span className="sub-alert-icon" aria-hidden>!</span>
                 <div className="sub-alert-body">
                   <strong>The payment details changed.</strong> The amount or the address
@@ -333,8 +335,8 @@ export default function PayFromNodeModal({
           </>
         )}
 
-        {/* ── An earlier payment is not yet credited (D2). Draft copy: final
-             wording is Ethan's at the screenshot gate. ── */}
+        {/* ── An earlier payment is not yet credited (D2). Copy approved at
+             G3, 2026-11-06 (ruling R6). ── */}
         {state.step === "repeat_ack" && (
           <>
             <div className="dialog-title">You already sent a payment</div>
@@ -342,8 +344,8 @@ export default function PayFromNodeModal({
               Your node sent {satsOnly(state.marker.amount_sats)} to your subscription address{" "}
               {formatDistanceToNow(new Date(state.marker.created_at * 1000), { addSuffix: true })}
               {state.marker.txid ? ` (transaction ${truncMiddle(state.marker.txid, 8, 8)})` : ""}.
-              It has not been credited yet. That usually happens after its first
-              confirmation, often within an hour.
+              It hasn't been credited yet. Most payments are credited soon after their
+              first confirmation.
             </div>
             <div className="dialog-body">
               If you send again now, you pay twice. The extra payment is not lost: it
@@ -354,13 +356,13 @@ export default function PayFromNodeModal({
               <button className="btn btn-outline" onClick={handleAckRepeat}>
                 Send another payment
               </button>
-              <button className="btn btn-primary" onClick={onClose}>Wait</button>
+              <button className="btn btn-primary" onClick={onClose}>Not now</button>
             </div>
           </>
         )}
 
-        {/* ── The price is above the one last acknowledged (D3). Draft copy:
-             final wording is Ethan's at the screenshot gate. ── */}
+        {/* ── The price is above the one last acknowledged (D3). Copy approved
+             at G3, 2026-11-06 (ruling R7). ── */}
         {state.step === "price_ack" && (
           <>
             <div className="dialog-title">The subscription price went up</div>

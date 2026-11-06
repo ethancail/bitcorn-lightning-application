@@ -112,10 +112,10 @@ export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {})
             </p>
           )}
           <p style={{ margin: "0 0 6px" }}>Requires sufficient on-chain BTC and your node to be online.</p>
-          {/* pay-from-node D2/D3, 2026-11-05 (draft, approved at the screenshot gate). */}
+          {/* pay-from-node D2/D3, 2026-11-05; wording approved at G3, 2026-11-06 (ruling R6). */}
           <p style={{ margin: "0 0 6px" }}>
             It never pays more than the price you last accepted, and it won't pay again while an
-            earlier payment is still waiting to be credited.
+            earlier payment hasn't been credited.
           </p>
           <p style={{ margin: 0 }}>You can opt out at any time.</p>
           {cfg.enabled_at && (
@@ -206,9 +206,9 @@ export function autoPayLabel(type: string): string {
       return "Payment failed";
     case "AUTOPAY_FEE_ESTIMATE_FAILED":
       return "Fee estimate failed";
-    // pay-from-node, 2026-11-05 (drafts, approved at the screenshot gate).
+    // pay-from-node, 2026-11-05; approved at G3, 2026-11-06 (ruling R6).
     case "AUTOPAY_SETTLEMENT_OVERDUE":
-      return "Waiting on an earlier payment";
+      return "Held: earlier payment not credited";
     case "AUTOPAY_PRICE_NOT_ACKNOWLEDGED":
       return "Price not accepted";
     default:
