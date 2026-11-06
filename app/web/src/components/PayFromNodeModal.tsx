@@ -119,7 +119,11 @@ export default function PayFromNodeModal({
   }, []);
 
   const usdRate = rate && rate.state !== "none" ? rate.usd : null;
-  const amount = (sats: number) => renewalAmount(sats, usdRate).text;
+  // An amount renders as one unbreakable unit, so "$X.XX (N sats)" never
+  // wraps inside itself on a phone (G3 ruling R2; .sub-amount in styles.css).
+  const amount = (sats: number, prefix = "") => (
+    <span className="sub-amount">{prefix}{renewalAmount(sats, usdRate).text}</span>
+  );
   const note = rateFailed ? RATE_NONE_SENTENCE : rateNote(rate);
 
   // Fetch the fee estimate when the preview (confirm step) opens. The
@@ -263,13 +267,15 @@ export default function PayFromNodeModal({
               </div>
               <div>
                 <dt>To deposit address</dt>
-                <dd title={target.deposit_address}>{truncMiddle(target.deposit_address)}</dd>
+                <dd className="sub-pay-address" title={target.deposit_address}>
+                  {truncMiddle(target.deposit_address)}
+                </dd>
               </div>
               <div>
                 <dt>Estimated network fee</dt>
                 <dd>
                   {quote
-                    ? `~${amount(quote.estimated_fee_sats)}`
+                    ? amount(quote.estimated_fee_sats, "~")
                     : quoteError
                       ? "estimate unavailable"
                       : "estimating…"}

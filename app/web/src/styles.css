@@ -1443,11 +1443,23 @@ input[type="number"] {
 
 .sub-pay-preview dd {
   margin: 0;
+  min-width: 0;
   font-family: var(--mono);
   font-size: 0.8125rem;
   color: var(--text-1);
   text-align: right;
-  word-break: break-all;
+}
+
+/* G3 ruling R2: no line break inside an amount, and an address that does not
+   fit ends in an ellipsis instead of wrapping mid-token (phone-m15 showed
+   "(3,749 s / ats)" and "…lzsq8 / kct" under word-break: break-all). */
+.sub-amount {
+  white-space: nowrap;
+}
+.sub-pay-preview dd.sub-pay-address {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ─── Inline preview result ────────────────────────────────────── */

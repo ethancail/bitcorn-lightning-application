@@ -7,6 +7,9 @@
 // asserted is the property that removes that (the dialog is not inside the
 // card, and is a child of <body>), as ActionConfirmModal.portal.test.tsx does.
 //
+// R2: on a phone an amount never breaks inside itself and the address ends in
+// an ellipsis (phone-m15 showed "(3,749 s / ats)" and "…lzsq8 / kct").
+//
 // Harness: react-dom/client createRoot inside act(), no Testing Library; the
 // api client is stubbed (the SubscriptionPanel.p2.test.tsx idiom).
 
@@ -27,6 +30,7 @@ vi.mock("../api/client", async (importOriginal) => {
 });
 
 import PayFromNodeModal from "./PayFromNodeModal";
+import { declsFor } from "../styleRules.testutil";
 
 const ADDR = "bc1q" + "d".repeat(38);
 const PRICE = 42_000;
@@ -109,5 +113,30 @@ describe("R1: the pay modal renders outside the page's card", () => {
     await act(async () => { buttonNamed("Pay from this node")!.click(); });
     await flush();
     expect(document.querySelector(".dialog-title")?.textContent).toBe("Pay from this node");
+  });
+});
+
+describe("R2: amounts never break inside themselves; the address truncates", () => {
+  it("the preview's values have no break-all, an amount is nowrap, the address ellipsises", () => {
+    expect(declsFor(".sub-pay-preview dd")["word-break"]).toBeUndefined();
+    expect(declsFor(".sub-pay-preview dd")["min-width"]).toBe("0");
+    expect(declsFor(".sub-amount")).toMatchObject({ "white-space": "nowrap" });
+    expect(declsFor(".sub-pay-preview dd.sub-pay-address")).toMatchObject({
+      overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap",
+    });
+  });
+
+  it("on confirm, the amount and the fee are each one .sub-amount unit, and the address carries .sub-pay-address", async () => {
+    await mountInCard();
+    await act(async () => { buttonNamed("Pay from this node")!.click(); });
+    await flush();
+    const dds = [...document.querySelectorAll(".sub-pay-preview dd")];
+    expect(dds).toHaveLength(3);
+    const [amount, address, fee] = dds;
+    // 42,000 sats at $60,000 = $25.20; the fee 1,234 sats = $0.74.
+    expect(amount.querySelector(".sub-amount")?.textContent).toBe("$25.20 (42,000 sats)");
+    expect(fee.querySelector(".sub-amount")?.textContent).toBe("~$0.74 (1,234 sats)");
+    expect(address.classList.contains("sub-pay-address")).toBe(true);
+    expect(address.getAttribute("title")).toBe(ADDR);
   });
 });
