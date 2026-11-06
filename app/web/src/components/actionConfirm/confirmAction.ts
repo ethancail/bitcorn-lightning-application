@@ -18,7 +18,16 @@ export type Challenge =
   /**
    * Type the amount in sats.
    *
-   * Used wherever the action has a SATS amount. ⚠ NOT universal any more: the
+   * Typing binds an OPERATOR-CHOSEN amount on a capital action: the typed step
+   * exists so a mis-click cannot proceed with an amount the operator picked.
+   * Pay-from-node is exempt, because its amount is treasury-set, echoed in the
+   * confirmed body and server-checked, never chosen by the caller
+   * (decisions/2026-11-06-pay-from-node-typed-amount-invariant-binds-operator-
+   * chosen-amounts.md; the exemption and its ground are recorded in
+   * wiring.test.ts's CALL_SITES). This used to say "used wherever the action
+   * has a SATS amount", which pay-from-node made untrue.
+   *
+   * ⚠ NOT universal among amount-bearing actions either: the
    * Auto-Buy catch-up has an amount and deliberately does not use this kind,
    * because its amount is USD with cents and this kind is integer-only
    * (`String(Math.round(c.sats))`, and `challengeSatisfied` accepts `^\d+$`).
