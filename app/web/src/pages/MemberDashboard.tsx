@@ -817,16 +817,25 @@ export default function MemberDashboard() {
                         {dollars ?? `${costs.total_sat.toLocaleString()} sats`}
                       </span>
                       {dollars && <div className="kv-meta" data-testid="costs-total-sats">{costs.total_sat.toLocaleString()} sats</div>}
+                      {/* Drive-mode P3 (R40(5)): an aggregate of many past
+                          records has no one stored rate, so it is converted at
+                          today's and says so. */}
+                      {dollars && <div className="kv-meta" data-testid="costs-price-note">at today's price</div>}
                     </div>
                   </div>
                 </div>
                 <details className="tile-details">
                   <summary>Itemised</summary>
                   <div className="kv-list">
+                    {/* Drive-mode P3 (gate 2): dollars first here too, at
+                        today's price, sats beneath. */}
                     {rows.map(([label, sats]) => (
                       <div className="kv" key={label} data-testid="cost-part" data-sats={sats}>
                         <span className="kv-label">{label}</span>
-                        <span className="kv-value">{sats.toLocaleString()} sats</span>
+                        <div style={{ textAlign: "right" }}>
+                          <span className="kv-value">{toUsd(sats) ?? `${sats.toLocaleString()} sats`}</span>
+                          {toUsd(sats) && <div className="kv-meta">{sats.toLocaleString()} sats</div>}
+                        </div>
                       </div>
                     ))}
                   </div>

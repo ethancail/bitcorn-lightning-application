@@ -4,6 +4,7 @@
 import { db } from "../db";
 import { listLoopSwaps, type SwapInfo } from "../lightning/loop";
 import { normalizeLoopState, recordSwapEvent } from "./loopProvider";
+import { getBtcUsd } from "../price/btcUsdCache";
 
 /**
  * Mark expired quotes as expired. Called alongside status polling.
@@ -87,8 +88,15 @@ export async function pollSwapStatuses(): Promise<void> {
       : null;
 
     if (actualFee !== null) {
-      db.prepare("UPDATE swap_requests SET status = ?, actual_fee_sat = ?, updated_at = ? WHERE id = ?")
-        .run(newAppStatus, actualFee, now, exec.swap_request_id);
+      // Drive-mode P3 (R40(5)): the fee in dollars as of completion, stored
+      // only when the rate is fresh (R18(9)); otherwise NULL, and the record
+      // shows sats.
+      const rate = getBtcUsd(now);
+      const feeUsdCents = rate.state === "fresh" && rate.usd != null
+        ? Math.round((actualFee / 100_000_000) * rate.usd * 100)
+        : null;
+      db.prepare("UPDATE swap_requests SET status = ?, actual_fee_sat = ?, actual_fee_usd_cents = ?, updated_at = ? WHERE id = ?")
+        .run(newAppStatus, actualFee, feeUsdCents, now, exec.swap_request_id);
     } else if (newAppStatus === "failed") {
       db.prepare("UPDATE swap_requests SET status = ?, failure_reason = ?, updated_at = ? WHERE id = ?")
         // loopd's raw failure code (drive-mode P1 item 9; the member-facing

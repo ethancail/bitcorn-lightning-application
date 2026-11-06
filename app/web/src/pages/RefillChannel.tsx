@@ -84,8 +84,16 @@ export function statusTechnical(status: string): string {
  * total. Page-local on purpose, as WithdrawBitcoin's copy is: a shared
  * component is member-first-run-ui's to build (spec §1.3).
  */
-function FeeReceipt({ receipt, toUsd }: { receipt: SwapReceipt; toUsd: (sats: number) => string | null }) {
-  const dollars = toUsd(receipt.total_sat);
+/** US cents as dollars: 300 → "$3.00". */
+function centsText(cents: number): string {
+  return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function FeeReceipt({ receipt, usdCents }: { receipt: SwapReceipt; usdCents: number | null | undefined }) {
+  // Drive-mode P3 (R40(5)): a past record's dollars are the ones STORED at
+  // completion (actual_fee_usd_cents, written only with a fresh rate); without
+  // them, sats — never today's price (the amount component spec §1.1).
+  const dollars = usdCents != null ? centsText(usdCents) : null;
   const parts: Array<[string, number]> = [
     ["Swap service fee", receipt.swap_fee_sat],
     ["Bitcoin network fee", receipt.network_fee_sat],
@@ -897,7 +905,7 @@ export default function RefillChannel() {
               </div>
               {trackingReceipt ? (
                 <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
-                  <FeeReceipt receipt={trackingReceipt} toUsd={toUsd} />
+                  <FeeReceipt receipt={trackingReceipt} usdCents={trackingSwap.actual_fee_usd_cents} />
                 </div>
               ) : trackingSwap.actual_fee_sat != null && (
                 <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
@@ -1026,7 +1034,10 @@ export default function RefillChannel() {
                           <td data-label="Status"><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
                           <td data-label="Fee" className="td-num td-mono col-secondary">
                             {s.actual_fee_sat != null
-                              ? s.actual_fee_sat.toLocaleString()
+                              ? (s.actual_fee_usd_cents != null
+                                  // Drive-mode P3 (R40(5)): the stored dollars, sats beneath.
+                                  ? <><div>{centsText(s.actual_fee_usd_cents)}</div><div style={{ fontSize: "0.6875rem", color: "var(--text-3)" }}>{s.actual_fee_sat.toLocaleString()}</div></>
+                                  : s.actual_fee_sat.toLocaleString())
                               : s.quoted_fee_sat != null
                                 ? `~${s.quoted_fee_sat.toLocaleString()}`
                                 : "—"}
@@ -1063,7 +1074,7 @@ export default function RefillChannel() {
                                       </div>
                                       {expandedDetail.receipt ? (
                                         <div style={{ gridColumn: "1 / -1" }}>
-                                          <FeeReceipt receipt={expandedDetail.receipt} toUsd={toUsd} />
+                                          <FeeReceipt receipt={expandedDetail.receipt} usdCents={expandedDetail.swap_request.actual_fee_usd_cents} />
                                         </div>
                                       ) : (
                                         <div>

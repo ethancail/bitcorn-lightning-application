@@ -37,7 +37,9 @@ const swap = (swap_type: "loop_out" | "loop_in", status: string, actual_fee_sat:
   quote_expires_at: null, failure_reason: null, notes: null,
 });
 
-// 2,500 + 1,800 + 21 = 4,321 sats; at $60,000 that is $2.59.
+// 2,500 + 1,800 + 21 = 4,321 sats; at $60,000 that is $2.59. Since drive-mode
+// P3 (R40(5)) the receipt's dollars are the STORED ones (actual_fee_usd_cents),
+// so the dollar cases carry 259 cents; feeUsd.pages.test.tsx pins the rule.
 const RECEIPT = { total_sat: 4_321, swap_fee_sat: 2_500, network_fee_sat: 1_800, routing_fee_sat: 21 };
 
 let host: HTMLDivElement;
@@ -103,7 +105,8 @@ for (const [name, Page, type] of [["Withdraw", WithdrawBitcoin, "loop_out"], ["T
   describe(`${name}: a completed swap's fee receipt`, () => {
     it("the expanded history row: a dollar summary, sats under it, the breakdown behind a dropdown", async () => {
       stub.getSwapHistory.mockResolvedValue({ swaps: [swap(type, "completed", 4_321)] });
-      stub.getSwap.mockResolvedValue({ swap_request: swap(type, "completed", 4_321), execution: null, events: [], receipt: RECEIPT });
+      // Drive-mode P3 (R40(5)): the dollars are the ones stored at completion.
+      stub.getSwap.mockResolvedValue({ swap_request: { ...swap(type, "completed", 4_321), actual_fee_usd_cents: 259 }, execution: null, events: [], receipt: RECEIPT });
       await mount(Page);
       await expandFirstRow();
       const r = receipt()!;
@@ -126,7 +129,7 @@ for (const [name, Page, type] of [["Withdraw", WithdrawBitcoin, "loop_out"], ["T
 
     it("the tracking panel, once completed: the same receipt", async () => {
       stub.getSwapHistory.mockResolvedValue({ swaps: [swap(type, "executing", null)] });
-      stub.getSwap.mockResolvedValue({ swap_request: swap(type, "completed", 4_321), execution: null, events: [], receipt: RECEIPT });
+      stub.getSwap.mockResolvedValue({ swap_request: { ...swap(type, "completed", 4_321), actual_fee_usd_cents: 259 }, execution: null, events: [], receipt: RECEIPT });
       await mount(Page);
       const r = receipt()!;
       expect(r).not.toBeNull();
