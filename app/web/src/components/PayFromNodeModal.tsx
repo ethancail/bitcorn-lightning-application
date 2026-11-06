@@ -124,7 +124,19 @@ export default function PayFromNodeModal({
   const amount = (sats: number, prefix = "") => (
     <span className="sub-amount">{prefix}{renewalAmount(sats, usdRate).text}</span>
   );
+  // A past amount (a payment already sent, a price already agreed) in sats
+  // only: today's rate would misstate what it was (G3 ruling R7).
+  const satsOnly = (sats: number) => (
+    <span className="sub-amount">{renewalAmount(sats, null).text}</span>
+  );
   const note = rateFailed ? RATE_NONE_SENTENCE : rateNote(rate);
+  // The rate's note on every step that shows an amount (G3 ruling R7). A step
+  // whose amounts are all past, in sats only, takes only the no-rate sentence:
+  // "Price as of …" beside no dollar figure would date nothing.
+  const rateLine = (showsDollars: boolean) => {
+    const line = showsDollars || note === RATE_NONE_SENTENCE ? note : null;
+    return line ? <p className="sub-fineprint" style={{ marginTop: 10 }}>{line}</p> : null;
+  };
 
   // Fetch the fee estimate when the preview (confirm step) opens. The
   // send itself doesn't need the quote — LND attaches its own fee at
@@ -220,6 +232,7 @@ export default function PayFromNodeModal({
             <div className="dialog-body">
               Pay {amount(target.price_sats)} to your subscription deposit address.
             </div>
+            {rateLine(true)}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <button
                 className="btn btn-primary"
@@ -282,9 +295,7 @@ export default function PayFromNodeModal({
                 </dd>
               </div>
             </dl>
-            {note && (
-              <p className="sub-fineprint" style={{ marginTop: 10 }}>{note}</p>
-            )}
+            {rateLine(true)}
             <p className="sub-fineprint" style={{ marginTop: 10 }}>
               The exact network fee is set when it sends — targeting confirmation within
               about an hour. Payment is detected within ~15–30 seconds after the first
@@ -315,7 +326,7 @@ export default function PayFromNodeModal({
           <>
             <div className="dialog-title">You already sent a payment</div>
             <div className="dialog-body">
-              Your node sent {amount(state.marker.amount_sats)} to your subscription address{" "}
+              Your node sent {satsOnly(state.marker.amount_sats)} to your subscription address{" "}
               {formatDistanceToNow(new Date(state.marker.created_at * 1000), { addSuffix: true })}
               {state.marker.txid ? ` (transaction ${truncMiddle(state.marker.txid, 8, 8)})` : ""}.
               It has not been credited yet. That usually happens after its first
@@ -325,6 +336,7 @@ export default function PayFromNodeModal({
               If you send again now, you pay twice. The extra payment is not lost: it
               extends your paid-through date.
             </div>
+            {rateLine(false)}
             <div className="dialog-actions" style={{ marginTop: 18 }}>
               <button className="btn btn-outline" onClick={handleAckRepeat}>
                 Send another payment
@@ -340,12 +352,11 @@ export default function PayFromNodeModal({
           <>
             <div className="dialog-title">The subscription price went up</div>
             <div className="dialog-body">
-              {state.previousPrice != null
-                ? <>You last agreed to {amount(state.previousPrice)}. </>
-                : null}
-              The price is now {amount(state.newPrice)}. Nothing is sent until you accept
-              the new price.
+              The price is now {amount(state.newPrice)}
+              {state.previousPrice != null ? <>, up from {satsOnly(state.previousPrice)}</> : null}.
+              Nothing is sent until you accept the new price.
             </div>
+            {rateLine(true)}
             <div className="dialog-actions" style={{ marginTop: 18 }}>
               <button className="btn btn-outline" onClick={onClose}>Not now</button>
               <button className="btn btn-primary" onClick={handleAckPrice}>
@@ -414,6 +425,7 @@ export default function PayFromNodeModal({
             >
               Open in wallet ({amount(target.price_sats)})
             </a>
+            {rateLine(true)}
             <p className="sub-fineprint" style={{ marginTop: 10 }}>
               No Bitcoin wallet registered for <code className="ident">bitcoin:</code> links? This
               button does nothing — use the deposit address and QR code in the

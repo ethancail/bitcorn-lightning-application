@@ -116,6 +116,121 @@ describe("R1: the pay modal renders outside the page's card", () => {
   });
 });
 
+/** A refusal as apiFetch throws it: the code, and the parsed body. */
+function refusal(status: number, body: Record<string, unknown>) {
+  return Object.assign(new Error(String(body.error)), {
+    status, code: body.error, detail: body.detail, body,
+  });
+}
+
+const NONE = { usd: null, source: "coinbase", fetched_at: null, age_ms: null, state: "none" };
+const STALE = { usd: 60_000, source: "coinbase", fetched_at: Date.now() - 601_000, age_ms: 601_000, state: "stale" };
+const NONE_SENTENCE = "The bitcoin price isn't available right now, so amounts are shown in sats.";
+const MARKER = { id: 4, created_at: Math.floor(Date.now() / 1000) - 600, amount_sats: 37_000, txid: "e".repeat(64) };
+
+const card = () => document.querySelector(".sub-pay-modal")!;
+const cardText = () => card().textContent ?? "";
+
+async function toConfirm() {
+  await act(async () => { buttonNamed("Pay from this node")!.click(); });
+  await flush();
+}
+
+async function confirmRefusedWith(err: Error) {
+  stub.payFromNode.mockRejectedValueOnce(err);
+  await toConfirm();
+  await act(async () => { buttonNamed("Confirm send")!.click(); });
+  await flush();
+}
+
+const repeatRefusal = () => refusal(409, { error: "repeat_unacknowledged", marker: MARKER });
+const priceRefusal = (acknowledged: number | null) =>
+  refusal(409, { error: "price_above_acknowledged", price_sats: PRICE, acknowledged_price_sats: acknowledged });
+
+describe("R7: the no-rate sentence on every amount step", () => {
+  beforeEach(() => { stub.getExchangeRate.mockResolvedValue(NONE); });
+
+  it("chooser", async () => {
+    await mountInCard();
+    expect(cardText()).toContain(NONE_SENTENCE);
+  });
+
+  it("confirm", async () => {
+    await mountInCard();
+    await toConfirm();
+    expect(cardText()).toContain(NONE_SENTENCE);
+  });
+
+  it("repeat_ack", async () => {
+    await mountInCard();
+    await confirmRefusedWith(repeatRefusal());
+    expect(document.querySelector(".dialog-title")?.textContent).toBe("You already sent a payment");
+    expect(cardText()).toContain(NONE_SENTENCE);
+  });
+
+  it("price_ack", async () => {
+    await mountInCard();
+    await confirmRefusedWith(priceRefusal(30_000));
+    expect(document.querySelector(".dialog-title")?.textContent).toBe("The subscription price went up");
+    expect(cardText()).toContain(NONE_SENTENCE);
+  });
+
+  it("bip21", async () => {
+    await mountInCard();
+    await act(async () => { buttonNamed("I have BTC elsewhere")!.click(); });
+    await flush();
+    expect(document.querySelector(".dialog-title")?.textContent).toBe("I have BTC elsewhere");
+    expect(cardText()).toContain(NONE_SENTENCE);
+  });
+
+  it("a fresh rate: no note on any of them (control: the note is conditional)", async () => {
+    stub.getExchangeRate.mockResolvedValue({ usd: 60_000, source: "coinbase", fetched_at: Date.now(), age_ms: 0, state: "fresh" });
+    await mountInCard();
+    expect(cardText()).not.toContain(NONE_SENTENCE);
+    expect(cardText()).toContain("$25.20");
+  });
+});
+
+describe("R7: past amounts in sats only", () => {
+  it("repeat_ack: the payment already sent is in sats, with no dollar figure", async () => {
+    await mountInCard();
+    await confirmRefusedWith(repeatRefusal());
+    const body = document.querySelector(".sub-pay-modal .dialog-body")!.textContent!;
+    expect(body).toContain("Your node sent 37,000 sats to your subscription address");
+    expect(body).not.toContain("$");
+  });
+
+  it("repeat_ack with a stale rate: no \"Price as of\", since no dollar figure is shown", async () => {
+    stub.getExchangeRate.mockResolvedValue(STALE);
+    await mountInCard();
+    await confirmRefusedWith(repeatRefusal());
+    expect(cardText()).not.toContain("Price as of");
+  });
+
+  it("price_ack: the new price dollars first, the old one in sats", async () => {
+    await mountInCard();
+    await confirmRefusedWith(priceRefusal(30_000));
+    const body = document.querySelector(".sub-pay-modal .dialog-body")!.textContent!;
+    expect(body).toBe(
+      "The price is now $25.20 (42,000 sats), up from 30,000 sats. Nothing is sent until you accept the new price.",
+    );
+  });
+
+  it("price_ack with no previously agreed price: no \"up from\"", async () => {
+    await mountInCard();
+    await confirmRefusedWith(priceRefusal(null));
+    const body = document.querySelector(".sub-pay-modal .dialog-body")!.textContent!;
+    expect(body).toBe("The price is now $25.20 (42,000 sats). Nothing is sent until you accept the new price.");
+  });
+
+  it("price_ack with a stale rate: dated, since the new price is in dollars", async () => {
+    stub.getExchangeRate.mockResolvedValue(STALE);
+    await mountInCard();
+    await confirmRefusedWith(priceRefusal(30_000));
+    expect(cardText()).toContain("Price as of");
+  });
+});
+
 describe("R2: amounts never break inside themselves; the address truncates", () => {
   it("the preview's values have no break-all, an amount is nowrap, the address ellipsises", () => {
     expect(declsFor(".sub-pay-preview dd")["word-break"]).toBeUndefined();
