@@ -246,7 +246,8 @@ export default function PayFromNodeModal({
               Pay {amount(target.price_sats)} to your subscription deposit address.
             </div>
             {rateLine(true)}
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {/* The note has no bottom margin; space it from the buttons (r2 capture, m06). */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: note ? 16 : 0 }}>
               <button
                 className="btn btn-primary"
                 style={{ width: "100%" }}
