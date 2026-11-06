@@ -262,6 +262,7 @@ import {
 } from "./swaps/swapRoutes";
 import { startSwapPoller } from "./swaps/swapPoller";
 import { nodeLightningBalances } from "./api/nodeBalances";
+import { handleTransferSettingsGet, handleTransferSettingsPatch } from "./transfers/transferSettings";
 
 // Boot-only side effects. These used to run at module scope, so merely
 // importing this file opened the DB, applied migrations, reached for LND and
@@ -3039,6 +3040,18 @@ async function dispatchRequest(
         res.end(JSON.stringify({ error: err?.message }));
       }
     });
+    return;
+  }
+
+  // Drive-mode P3: the automatic-transfer settings (transfers/transferSettings.ts).
+  // Stored and shown only; nothing in P3 reads them to move money.
+  if (req.method === "GET" && req.url === "/api/transfers/settings") {
+    handleTransferSettingsGet(res);
+    return;
+  }
+
+  if (req.method === "PATCH" && req.url === "/api/transfers/settings") {
+    await handleTransferSettingsPatch(req, res);
     return;
   }
 
