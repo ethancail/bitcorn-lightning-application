@@ -19,6 +19,13 @@
 // modal fetches the BTC/USD rate itself; when there is none it shows sats
 // and says why (rate.ts).
 //
+// Rendered through a portal to document.body (G3 ruling R1, 2026-11-06): at
+// the Settings mount the modal sat inside SubscriptionPanel's card, which made
+// the card the overlay's containing block, so the overlay dimmed only the
+// content column and the dialog sat low, its buttons cut off at 1440×900.
+// Out of every card, the fixed overlay is the viewport at every mount site
+// (the same mechanism and fix as ActionConfirmModal, ruling ll).
+//
 // State lives in the pure reducer (payModalMachine.ts); this component
 // renders each step and drives the side effects (rate and fee quote fetch,
 // the POST, clipboard). The panel's existing 15s status poll performs the
@@ -27,6 +34,7 @@
 // bespoke pending-poll here.
 
 import { useEffect, useReducer, useState } from "react";
+import { createPortal } from "react-dom";
 import { formatDistanceToNow } from "date-fns";
 import {
   api,
@@ -198,7 +206,7 @@ export default function PayFromNodeModal({
     setTimeout(() => setCopied(false), 1800);
   }
 
-  return (
+  return createPortal(
     <div className="dialog-overlay" role="dialog" aria-modal="true" aria-label="Pay subscription">
       <div className="dialog-card sub-pay-modal">
         {/* ── Chooser ── */}
@@ -412,6 +420,7 @@ export default function PayFromNodeModal({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
