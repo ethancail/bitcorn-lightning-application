@@ -27,6 +27,10 @@ for (const m of ["002_channels.sql", "027_member_liquidity_advisor.sql", "028_ad
 
 vi.mock("../db", () => ({ db: mem }));
 vi.mock("../config/env", () => ({ ENV: { treasuryPubkey: "02" + "c".repeat(64) } }));
+// Drive-mode P3: the advisor's minimum is the formula's (advisorMinimum.ts),
+// read from tables this DB does not build; this file tests the route's role
+// handling, so the size is stubbed (no size claim).
+vi.mock("./advisorMinimum", () => ({ advisorMinimumSats: () => null }));
 vi.mock("./loopAvailability", () => ({
   checkLoopAvailability: async () => ({
     loopDaemonRunning: false, loopOutAvailable: false, loopInAvailable: false,

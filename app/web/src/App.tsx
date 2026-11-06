@@ -55,6 +55,7 @@ import { DAYBREAK_NAV_LABEL } from "./daybreak/daybreakCopy";
 import { SHOW_DAYBREAK_IN_MEMBER_NAV } from "./daybreak/launch";
 import DaybreakEditor from "./pages/DaybreakEditor";
 import AutomaticTransfers from "./pages/AutomaticTransfers";
+import { transfersApi } from "./api/client";
 import { EDITOR_NAV_LABEL } from "./daybreakEditor/editorCopy";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
@@ -1297,6 +1298,18 @@ function ChannelsPage() {
   const [closeResult, setCloseResult] = useState<{ channelId: string; txid: string | null } | null>(null);
   const [closingPubkeys, setClosingPubkeys] = useState<Set<string>>(new Set());
 
+  // Drive-mode P3 (R40(2)): on a MEMBER's page, the hub channel is measured
+  // against the one formula's live minimum for the member's strategy, not a
+  // fixed 2,000,000 with 5,000,000 recommended. The treasury's branch is
+  // unchanged. null: no figure (no rate yet) — no size claim.
+  const [memberMinimum, setMemberMinimum] = useState<number | null>(null);
+  useEffect(() => {
+    if (nodeRole !== "member") return;
+    transfersApi.getTransferSettings()
+      .then((r) => setMemberMinimum(r.member[r.settings.strategy === "open" ? "open" : "save"]?.sats ?? null))
+      .catch(() => setMemberMinimum(null));
+  }, [nodeRole]);
+
   useEffect(() => {
     api.getNode().then((n) => setNodeRole(n.node_role)).catch(() => {});
     Promise.all([
@@ -1894,8 +1907,12 @@ function ChannelsPage() {
               const localPct = c.capacity_sat > 0 ? (c.local_balance_sat / c.capacity_sat) * 100 : 0;
               const remotePct = c.capacity_sat > 0 ? (c.remote_balance_sat / c.capacity_sat) * 100 : 0;
               const isTreasury = c.peer_pubkey === TREASURY_PUBKEY;
-              const capStatus = classifyCapacity(c.capacity_sat, isTreasury);
-              const upgradeSize = recommendedUpgradeSize(c.capacity_sat, isTreasury);
+              // Drive-mode P3: a member's own hub channel uses the formula's size.
+              const memberHub = nodeRole === "member" && isTreasury;
+              const capStatus: CapacityStatus = memberHub
+                ? (memberMinimum != null && c.capacity_sat < memberMinimum ? "undersized" : "adequate")
+                : classifyCapacity(c.capacity_sat, isTreasury);
+              const upgradeSize = memberHub ? (memberMinimum ?? 0) : recommendedUpgradeSize(c.capacity_sat, isTreasury);
               const isExpanded = expandedHint === c.channel_id;
               return (
                 <div key={c.channel_id} className="channel-card">
