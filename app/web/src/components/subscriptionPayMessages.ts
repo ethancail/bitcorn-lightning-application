@@ -27,10 +27,8 @@ export function payErrorMessage(code?: string, detail?: string): string {
       return "A payment is already being sent from this node. Wait for it to finish before trying again.";
     case "member_required":
       return "This action is only available on member nodes.";
-    // The confirmation gate (pay-from-node D1): the send did not carry, or did
-    // not match, what this window showed. Nothing was sent.
-    case "confirmation_required":
-    case "confirmation_mismatch":
+    // The route's own body check (pay-from-node D1). The confirmation gate's
+    // two refusals render through actionConfirm/confirmErrors.ts instead.
     case "invalid_request":
       return "Nothing was sent: this window's payment details didn't reach your node intact. Close it and try again.";
     case "pay_target_changed":

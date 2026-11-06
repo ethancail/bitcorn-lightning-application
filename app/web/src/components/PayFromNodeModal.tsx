@@ -37,6 +37,7 @@ import {
 } from "../api/client";
 import { rateNote, RATE_NONE_SENTENCE } from "../api/rate";
 import { bip21Uri } from "./bip21";
+import { classifyConfirmError } from "./actionConfirm/confirmErrors";
 import {
   INITIAL_PAY_MODAL_STATE,
   acksOf,
@@ -142,6 +143,14 @@ export default function PayFromNodeModal({
       const { txid } = await api.payFromNode(body);
       dispatch({ t: "success", txid });
     } catch (e: any) {
+      // A confirmation refusal (400 required / 409 mismatch) renders through
+      // the shared classifier, so a 409 reads as the bug it is, never as
+      // "try again" (actionConfirm/confirmErrors.ts).
+      const confirmView = classifyConfirmError(e);
+      if (confirmView) {
+        dispatch({ t: "error", message: `${confirmView.title}. ${confirmView.detail}`, code: e?.code });
+        return;
+      }
       const b = e?.body ?? {};
       if (e?.code === "repeat_unacknowledged" && b.marker) {
         dispatch({ t: "refused_repeat", marker: b.marker });
