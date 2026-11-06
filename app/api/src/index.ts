@@ -264,6 +264,7 @@ import { startSwapPoller } from "./swaps/swapPoller";
 import { nodeLightningBalances } from "./api/nodeBalances";
 import { handleTransferSettingsGet, handleTransferSettingsPatch } from "./transfers/transferSettingsRoutes";
 import { maybeSampleFeeEstimate } from "./transfers/feeSamples";
+import { handleSwapOptions } from "./swaps/swapOptions";
 
 // Boot-only side effects. These used to run at module scope, so merely
 // importing this file opened the DB, applied migrations, reached for LND and
@@ -4105,6 +4106,16 @@ async function dispatchRequest(
   // Before the generic /api/swaps/:id read below (drive-mode P1 item 6).
   if (req.method === "GET" && req.url === "/api/swaps/limits") {
     try { await handleSwapLimits(req, res); } catch (e: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Drive-mode P3: Withdraw's / Top Up's option cards. Read-only (raw loopd
+  // quotes, no swap_requests row). Before the generic /api/swaps/:id below.
+  if (req.method === "GET" && req.url?.startsWith("/api/swaps/options?")) {
+    try { await handleSwapOptions(req, res); } catch (e: any) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));
     }
