@@ -1,5 +1,13 @@
 -- Migration 042: Pre-payment "fresh" grace window for new subscribers
 --
+-- ⚠ SUPERSEDED (membership-gating D1, bitcorn-research
+-- specs/2026-11-05-membership-gating-spec.md T1). The tier dispatch no
+-- longer reads grace_days_fresh: a never-paid row computes `prepay` from
+-- the start. The column stays, because the status response still reports
+-- grace.fresh_until for older member nodes. The text below describes the
+-- behaviour this migration introduced, which no longer exists. The SQL is
+-- unchanged; this file has already run on every node.
+--
 -- Adds grace_days_fresh to subscription_policy. Members who have signed
 -- up (subscription row exists) but never paid (no subscription_payment
 -- rows) are computed as `current` instead of `prepay` for grace_days_fresh

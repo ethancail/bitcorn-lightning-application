@@ -36,12 +36,11 @@ beforeAll(async () => {
 });
 
 const MS_PER_DAY = 86_400_000;
-const GRACE_FRESH = 30;
 
-// Grace values distinct from each other AND from GRACE_FRESH so a test can
-// never pass by reading the wrong one.
+// Grace values distinct from each other so a ladder test can never pass by
+// reading the wrong one. These are NOT the deployed policy since migration 071
+// (worker = routing = 30); the deployed values have their own block below.
 const LADDER = {
-  graceDaysFresh: GRACE_FRESH,
   graceDaysWorker: 7,
   graceDaysRouting: 30,
   graceDaysClose: 60,
@@ -71,85 +70,63 @@ describe("scopeForTier — the mapping the /base/* gate now depends on", () => {
   });
 });
 
-describe("computeTier — fresh-grace access to the rail is INTENDED", () => {
-  // These are the tests that must fail if someone later "tightens" the gate by
-  // removing fresh-grace access. Trial access is a deliberate property (see the
-  // rationale block in cloudflare-worker/src/index.ts), so it gets a test that
-  // names it.
+describe("computeTier — a never-paid row has NO pre-payment access (membership-gating T1)", () => {
+  // This block used to pin the opposite: "fresh-grace access to the rail is
+  // INTENDED", with a 30-day window from created_at during which a never-paid
+  // row computed `current`. Decision D1 (bitcorn-research
+  // specs/2026-11-05-membership-gating-spec.md T1) removed fresh grace, so the
+  // property is now its negation: from the moment a row exists, no payment that
+  // credits time means `prepay`, which means payment scope and no rail.
   const createdAt = 1_700_000_000_000;
 
-  it("a never-paid row INSIDE its fresh-grace window computes to `current`", () => {
-    const tier = computeTier({
-      hasAnyPaymentRow: false,
-      createdAtMs: createdAt,
-      paidThroughMs: createdAt, // allocator seeds paid_through = created_at
-      ...LADDER,
-      nowMs: createdAt + 5 * MS_PER_DAY,
-    });
-    expect(tier).toBe("current");
-  });
+  it.each([0, 1, 5, 30, 400])(
+    "a never-paid row %i day(s) after creation computes `prepay`, payment scope",
+    (days) => {
+      const tier = computeTier({
+        hasAnyPaymentRow: false,
+        paidThroughMs: createdAt, // allocator seeds paid_through = created_at
+        ...LADDER,
+        nowMs: createdAt + days * MS_PER_DAY,
+      });
+      expect(tier).toBe("prepay");
+      expect(scopeForTier(tier)).toBe("payment");
+    },
+  );
 
-  it("...and therefore holds a FULL-scope token, so it reaches /base/*", () => {
-    // The end-to-end property stated as one assertion: a brand-new node that has
-    // never paid a satoshi can use the rail. Composing the two functions is the
-    // point — either one alone would let the property break silently.
+  it("even a paid_through in the future does not help a row with no credited payment", () => {
+    // paid_through is only meaningful on the paid ladder; a row reaches that
+    // ladder through a payment row with period_extension_days > 0.
     const tier = computeTier({
       hasAnyPaymentRow: false,
-      createdAtMs: createdAt,
-      paidThroughMs: createdAt,
+      paidThroughMs: createdAt + 30 * MS_PER_DAY,
       ...LADDER,
-      nowMs: createdAt + 1 * MS_PER_DAY,
-    });
-    expect(scopeForTier(tier)).toBe("full");
-  });
-
-  it("a never-paid row PAST its fresh-grace window computes to `prepay` (payment scope)", () => {
-    const tier = computeTier({
-      hasAnyPaymentRow: false,
-      createdAtMs: createdAt,
-      paidThroughMs: createdAt,
-      ...LADDER,
-      nowMs: createdAt + (GRACE_FRESH + 1) * MS_PER_DAY,
+      nowMs: createdAt,
     });
     expect(tier).toBe("prepay");
-    expect(scopeForTier(tier)).toBe("payment");
+  });
+});
+
+describe("computeTier — under the deployed policy since migration 071 (worker 30, routing 30)", () => {
+  const paidThrough = 1_700_000_000_000;
+  const DEPLOYED = { graceDaysWorker: 30, graceDaysRouting: 30, graceDaysClose: 60 };
+  const at = (ms: number) =>
+    computeTier({ hasAnyPaymentRow: true, paidThroughMs: paidThrough, ...DEPLOYED, nowMs: ms });
+
+  it("current through paid_through + 30d inclusive — full scope, rail open", () => {
+    expect(at(paidThrough + 30 * MS_PER_DAY)).toBe("current");
+    expect(scopeForTier(at(paidThrough + 30 * MS_PER_DAY))).toBe("full");
   });
 
-  it("the fresh-grace boundary is inclusive at the deadline, lapsed just past it", () => {
-    const atDeadline = createdAt + GRACE_FRESH * MS_PER_DAY;
-    expect(
-      computeTier({
-        hasAnyPaymentRow: false,
-        createdAtMs: createdAt,
-        paidThroughMs: createdAt,
-        ...LADDER,
-        nowMs: atDeadline,
-      }),
-    ).toBe("current");
-    expect(
-      computeTier({
-        hasAnyPaymentRow: false,
-        createdAtMs: createdAt,
-        paidThroughMs: createdAt,
-        ...LADDER,
-        nowMs: atDeadline + 1,
-      }),
-    ).toBe("prepay");
+  it("one millisecond past + 30d is routing_lapsed — worker_lapsed is unreachable (R3)", () => {
+    expect(at(paidThrough + 30 * MS_PER_DAY + 1)).toBe("routing_lapsed");
+    expect(scopeForTier(at(paidThrough + 30 * MS_PER_DAY + 1))).toBe("payment");
+    for (let d = 0; d <= 70; d++) {
+      expect(at(paidThrough + d * MS_PER_DAY)).not.toBe("worker_lapsed");
+    }
   });
 
-  it("an EXISTING never-paid node (old row) is already blocked", () => {
-    // Reason 2 of the fresh-grace decision: the window runs from created_at, so
-    // every pre-existing never-paid row is long past it. Fresh grace reaches
-    // only genuinely new nodes — it is not a hole for the existing fleet.
-    const tier = computeTier({
-      hasAnyPaymentRow: false,
-      createdAtMs: createdAt,
-      paidThroughMs: createdAt,
-      ...LADDER,
-      nowMs: createdAt + 400 * MS_PER_DAY,
-    });
-    expect(tier).toBe("prepay");
-    expect(scopeForTier(tier)).toBe("payment");
+  it("close_due past + 60d (unchanged)", () => {
+    expect(at(paidThrough + 61 * MS_PER_DAY)).toBe("close_due");
   });
 });
 
@@ -159,7 +136,6 @@ describe("computeTier — the paid ladder, and where the rail cuts off", () => {
   function tierAtDaysPastExpiry(days: number) {
     return computeTier({
       hasAnyPaymentRow: true,
-      createdAtMs: paidThrough - 365 * MS_PER_DAY,
       paidThroughMs: paidThrough,
       ...LADDER,
       nowMs: paidThrough + days * MS_PER_DAY,
@@ -175,12 +151,11 @@ describe("computeTier — the paid ladder, and where the rail cuts off", () => {
     expect(scopeForTier(tierAtDaysPastExpiry(6))).toBe("full");
   });
 
-  it("⚠ at +8d a PAYING member drops to worker_lapsed and LOSES the rail", () => {
-    // The known, accepted disproportion recorded in the Worker's rationale
-    // block: 8 days late on a ~50,000-sat subscription costs the ability to
-    // send a six-figure settlement. Pinned as a test so the cutoff is a
-    // visible, deliberate number rather than an emergent surprise — if the
-    // threshold is ever revisited, this is the test that has to change.
+  it("⚠ past the worker grace a PAYING member drops to worker_lapsed and LOSES the rail", () => {
+    // With LADDER's 7-day worker grace (migration 036's default, the deployed
+    // value until migration 071 moved it to 30): 8 days late costs the rail.
+    // The DEPLOYED cutoff is pinned in the "deployed policy" block above; this
+    // test pins the ladder's shape with distinct values.
     expect(tierAtDaysPastExpiry(8)).toBe("worker_lapsed");
     expect(scopeForTier(tierAtDaysPastExpiry(8))).toBe("payment");
   });
@@ -192,13 +167,9 @@ describe("computeTier — the paid ladder, and where the rail cuts off", () => {
     expect(scopeForTier(tierAtDaysPastExpiry(61))).toBe("payment");
   });
 
-  it("a paid row never falls back into the fresh-grace branch", () => {
-    // hasAnyPaymentRow=true must bypass the fresh-grace test entirely, even
-    // when created_at is recent. Otherwise a member who paid on day 1 would be
-    // evaluated against created_at forever.
+  it("a paid row is evaluated against paid_through alone", () => {
     const tier = computeTier({
       hasAnyPaymentRow: true,
-      createdAtMs: paidThrough,
       paidThroughMs: paidThrough,
       ...LADDER,
       nowMs: paidThrough + 100 * MS_PER_DAY,

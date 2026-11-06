@@ -170,13 +170,18 @@ export function bannerFor(
       };
     }
     case "routing_lapsed":
+      // Membership-gating M2 item 3 (R3; pass 10 item 1, split into headline
+      // and body by Ethan's Phase 2 ruling). What actually stops at + 30 is the
+      // hosted services; the old copy ("routing access blocked", "payments
+      // through the hub are refused") claimed a routing loss that does not
+      // happen. The banner file's long-term owner is still open (spec §8).
       return {
         render: true,
         severity: "orange",
-        headline: "Urgent: routing access blocked",
+        headline: "Your membership payment is overdue",
         body:
-          `Your subscription lapsed on ${lapsedOn}. Payments through the hub ` +
-          `are refused until you renew (${price}).`,
+          "Hosted services are paused: valuation, Auto-Buy and stablecoin " +
+          `settlement data. Pay ${price} to restore them.`,
         actionLabel: `Renew ${price}`,
       };
     case "close_due":

@@ -216,6 +216,8 @@ import {
 import { handleRailFeeRevenue } from "./stablecoin/feeRevenue";
 import { sweepExpiredChallenges } from "./stablecoin/nonceStore";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
+import { isAcceptorRefusal, startChannelAcceptor } from "./lightning/channelAcceptor";
+import { fetchLocalSubscriptionStatus } from "./subscription/memberStatusClient";
 import {
   isAdminMemberQuery,
   ADMIN_QUERY_REJECTION,
@@ -3445,6 +3447,18 @@ async function dispatchRequest(
           return;
         }
 
+        // Membership gate, app side (membership-gating M1, R4). The treasury's
+        // own verdict rides on its status response; false refuses here, before
+        // any funding step, so nothing goes on chain. Unknown — a treasury that
+        // sends no verdict, a null verdict, a failed status fetch — lets the
+        // open through and the treasury's channel acceptor decides.
+        const local = await fetchLocalSubscriptionStatus();
+        if (local.ok && local.status.open_channel_allowed === false) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "membership_not_paid" }));
+          return;
+        }
+
         // Connect to peer first if socket address provided
         if (partnerSocket) {
           await connectToPeer(hubPubkey, partnerSocket);
@@ -3459,6 +3473,13 @@ async function dispatchRequest(
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, funding_txid: result.transaction_id ?? null }));
       } catch (err: any) {
+        // The treasury's acceptor refused (the verdict was unknown, or stale):
+        // the same answer as the app check above (M1, item A).
+        if (isAcceptorRefusal(err)) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "membership_not_paid" }));
+          return;
+        }
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: err?.message ?? "failed_to_open_channel" }));
       }
@@ -4938,6 +4959,13 @@ function main(): void {
     // nodes early-out inside the function. Logs a WARN with the operator
     // runbook if drift is detected.
     startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null);
+    // Treasury-side channel gate (membership-gating T4): an LND ChannelAcceptor
+    // admitting inbound opens only from paid members and peers classified
+    // external. Registers only while this node's own pubkey is TREASURY_PUBKEY
+    // — re-read every tick, same thunk as above — and re-subscribes after the
+    // stream ends or the LND client is rebuilt. Its state feeds the
+    // "Channel gate offline" alert (T5).
+    startChannelAcceptor(() => getNodeInfo()?.pubkey ?? null);
     // BASE sync loop — polls the Worker /base/* endpoints at 60s cadence to
     // refresh per-wallet USDC balances and the SettlementRouter governance
     // state. No-op on a MEMBER node until it registers a BASE wallet; the
