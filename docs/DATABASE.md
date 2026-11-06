@@ -78,7 +78,17 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `069_lnd_channels_pending_incoming.sql` | Drive-mode P1: `lnd_channels.pending_incoming_sat` — in-flight incoming HTLCs, reported, not subtracted |
 | `070_lnd_channels_is_initiator.sql` | Drive-mode P1, R23(i): `lnd_channels.is_initiator` — 1 when this node opened (funded) the channel, 0 when the peer did, NULL until synced. A funder's room to send subtracts lnd's fee headroom (`capacity.ts`) |
 
-The migration set is contiguous from `001` through `070` with no gaps. Always allocate the next sequential number for new migrations.
+| `074_member_transfer_settings.sql` | Drive-mode P3: `member_transfer_settings` (single row, `id = 1`, NOT seeded — a missing row or NULL column means the code default, `transfers/transferSettings.ts`) |
+| `075_member_transfer_settings_strategy.sql` | Drive-mode P3: `strategy` — `save` / `open` / `manual`; NULL = Save on fees |
+| `076_member_transfer_settings_fee_limit_pct.sql` | Drive-mode P3: `fee_limit_pct_bps` — the per-transfer fee limit's percentage (200 = 2%) |
+| `077_member_transfer_settings_fee_limit_usd.sql` | Drive-mode P3: `fee_limit_usd_cents` — its dollar cap (the limit is the lower) |
+| `078_member_transfer_settings_daily_fee_budget.sql` | Drive-mode P3: `daily_fee_budget_usd_cents` |
+| `079_member_transfer_settings_max_moved_per_day.sql` | Drive-mode P3: `max_moved_per_day_usd_cents` |
+| `080_fee_estimate_samples.sql` | Drive-mode P3: `fee_estimate_samples` (`id`, `sampled_at`) — lnd's 6-block estimate, read-only, at most every 10 minutes off the sync tick, kept 8 days, for "calm" (`transfers/feeSamples.ts`) |
+| `081_fee_estimate_samples_rate.sql` | Drive-mode P3: `fee_estimate_samples.sat_per_vbyte` |
+| `082_swap_requests_actual_fee_usd.sql` | Drive-mode P3: `swap_requests.actual_fee_usd_cents` — the completed fee in cents, written by the poller only with a fresh rate; NULL → sats |
+
+`001` through `070` are contiguous. `071`–`073` are held by unmerged arcs (membership-gating `071`, `072`; pay-from-node `073`), so drive-mode P3 starts at `074`; until those merge the set has that gap, which the runner tolerates (it applies any unapplied filename in sorted order, `migrate.ts`). Always check the other arcs' branches, then allocate the next free number at or above the highest.
 
 ⚠ **Adding columns: one statement per file.** `db/migrate.ts` `db.exec`s each file whole with no transaction, and on any "duplicate column" / "already exists" error it marks the **whole file** applied — so in a multi-statement file whose first statement hits that, the rest never run and are never retried. `055`/`056` are split for that reason (`db/migrate.memberProfileName.test.ts` (d) demonstrates it). `052` is a multi-statement file of exactly that shape.
 
