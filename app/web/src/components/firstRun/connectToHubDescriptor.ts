@@ -66,4 +66,13 @@ export const CONNECT_TO_HUB_COPY = {
    */
   membershipNotPaid:
     "Your membership isn't paid, so the hub can't accept your channel. Pay your membership, then connect.",
+  /**
+   * The button shown when the treasury's verdict is false (membership-gating
+   * B1, Ethan's ruling (a), 2026-11-06). It goes to the Settings membership
+   * section; it opens no payment modal.
+   */
+  activateMembership: "Activate membership",
 };
+
+/** Where the activate button goes: Settings, focused on the membership section. */
+export const ACTIVATE_MEMBERSHIP_PATH = "/settings?focus=membership";

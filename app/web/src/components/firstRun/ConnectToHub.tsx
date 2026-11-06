@@ -3,9 +3,11 @@
 // useConnectToHub.ts; its literals are connectToHubDescriptor.ts. Rendered by
 // MemberDashboard at its no-channel panel and its upgrade banner.
 
+import { useNavigate } from "react-router-dom";
 import ActionConfirmModal from "../actionConfirm/ActionConfirmModal";
 import TechnicalDetails, { TechRow } from "../TechnicalDetails";
 import {
+  ACTIVATE_MEMBERSHIP_PATH,
   CAPACITY_PRESETS,
   CONNECT_TO_HUB_COPY as COPY,
   FEE_SPEED_OPTIONS,
@@ -16,6 +18,7 @@ export { HUB_PUBKEY } from "./connectToHubDescriptor";
 
 export default function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initialCapacity?: number }) {
   const s = useConnectToHub({ isPeered, initialCapacity });
+  const navigate = useNavigate();
 
   if (s.success) {
     return (
@@ -73,6 +76,20 @@ export default function ConnectToHub({ isPeered, initialCapacity }: { isPeered: 
           <div className="alert-msg">
             {COPY.noHubMessage}
           </div>
+          {/* membership-gating B1: only on the treasury's verdict false. Goes
+              to Settings' membership section; mounts no payment modal. Kept
+              inside this alert, as its last child, so it shifts no sibling's
+              position (the states snapshot pins the reconciled DOM). */}
+          {s.membershipLocked && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ marginTop: 10 }}
+              onClick={() => navigate(ACTIVATE_MEMBERSHIP_PATH)}
+            >
+              {COPY.activateMembership}
+            </button>
+          )}
         </div>
       </div>
 

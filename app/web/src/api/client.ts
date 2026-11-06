@@ -824,7 +824,14 @@ export type SubscriptionTier =
   | "routing_lapsed"
   | "close_due";
 
-export type SubscriptionStatusApplicable = {
+/**
+ * The treasury's verdict on this node opening a channel to it (membership-
+ * gating T4): true, false, or null when it couldn't be evaluated. A treasury
+ * that predates the field sends nothing, which reads as unknown.
+ */
+type OpenChannelVerdict = { open_channel_allowed?: boolean | null };
+
+export type SubscriptionStatusApplicable = OpenChannelVerdict & {
   applicable: true;
   member_pubkey: string;
   current_tier: SubscriptionTier;
@@ -855,7 +862,7 @@ export type SubscriptionNotApplicableReason =
   | "missing"
   | "no_channel";
 
-export type SubscriptionStatusNotApplicable = {
+export type SubscriptionStatusNotApplicable = OpenChannelVerdict & {
   applicable: false;
   reason: SubscriptionNotApplicableReason;
   /** Present only when reason === "not_yet_allocated". */

@@ -2,7 +2,8 @@
 // and the confirm-modal flow, moved as they are out of pages/MemberDashboard.tsx
 // (member-first-run-ui separation slice, B.1). The move changed no behaviour.
 // Since then handleOpen maps the API's `membership_not_paid` to its own message
-// (membership-gating M1/M2 item 1); everything else is as moved.
+// (membership-gating M1/M2 item 1), and it reads the treasury's verdict for
+// the "Activate membership" button (B1); everything else is as moved.
 
 import { useEffect, useState } from "react";
 import { api, type TreasuryInfo } from "../../api/client";
@@ -31,6 +32,19 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
       .then(setTreasuryInfo)
       .catch(() => setTreasuryInfo(null))
       .finally(() => setTreasuryInfoLoading(false));
+  }, []);
+
+  // B1 (Ethan's ruling (a), 2026-11-06): the "Activate membership" button
+  // shows only when the treasury's verdict is false. True, null, an absent
+  // field (an older treasury) or a failed read all hide it. Read once per
+  // mount, not polled: the status is a treasury-proxied call.
+  const [membershipLocked, setMembershipLocked] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    api.getSubscriptionStatus()
+      .then((st) => { if (!cancelled) setMembershipLocked(st.open_channel_allowed === false); })
+      .catch(() => { if (!cancelled) setMembershipLocked(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const hubPubkey = treasuryInfo?.pubkey || HUB_PUBKEY;
@@ -103,6 +117,7 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
     confirm,
     openChannelConfirm,
     handleOpen,
+    membershipLocked,
     belowMinimum: capacity > 0 && capacity < MIN_CAPACITY_WARNING_SATS,
     openDisabled: submitting || capacity < MIN_CAPACITY_OPEN_SATS,
   };
