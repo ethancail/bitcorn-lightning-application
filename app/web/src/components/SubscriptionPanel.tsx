@@ -101,7 +101,7 @@ function useStateEnteredAt(stateKey: string | null): number | null {
   return enteredAt;
 }
 
-export default function SubscriptionPanel() {
+export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const [pendingSinceMs, setPendingSinceMs] = useState<number | null>(null);
   // Pay-from-node modal + Coinbase Onramp handler — shared across the
@@ -182,6 +182,14 @@ export default function SubscriptionPanel() {
     const id = setInterval(() => void fetchStatus(), POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [fetchStatus]);
+
+  // Settings' ?focus=membership waits for this (membership-gating B1): the
+  // loading skeleton's header is replaced when the status lands, so focus
+  // moved to it earlier would be lost.
+  const loaded = view.kind !== "loading" && view.kind !== "auth_error";
+  useEffect(() => {
+    if (loaded) onLoaded?.();
+  }, [loaded, onLoaded]);
 
   // Dispatch.
   if (view.kind === "loading") {
@@ -271,7 +279,8 @@ function PanelHeader({ pill }: { pill?: React.ReactNode }) {
     <header className="sub-panel-header">
       <div className="sub-panel-title">
         <span className="sub-panel-glyph" aria-hidden>◆</span>
-        <h2>Subscription</h2>
+        {/* tabIndex -1: focusable by script only, for /settings?focus=membership. */}
+        <h2 tabIndex={-1}>Subscription</h2>
       </div>
       {pill}
     </header>
