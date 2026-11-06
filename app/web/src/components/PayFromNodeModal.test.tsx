@@ -31,6 +31,7 @@ vi.mock("../api/client", async (importOriginal) => {
 
 import PayFromNodeModal from "./PayFromNodeModal";
 import { declsFor } from "../styleRules.testutil";
+import { classifyConfirmError } from "./actionConfirm/confirmErrors";
 
 const ADDR = "bc1q" + "d".repeat(38);
 const PRICE = 42_000;
@@ -228,6 +229,43 @@ describe("R7: past amounts in sats only", () => {
     await mountInCard();
     await confirmRefusedWith(priceRefusal(30_000));
     expect(cardText()).toContain("Price as of");
+  });
+});
+
+describe("R8: this modal's confirmation errors", () => {
+  const errorText = () => document.querySelector(".sub-pay-modal .sub-alert-body")?.textContent;
+
+  it("confirmation_required reads as this modal's sentence, with Try again", async () => {
+    await mountInCard();
+    await confirmRefusedWith(refusal(400, { error: "confirmation_required", detail: "no header" }));
+    expect(document.querySelector(".dialog-title")?.textContent).toBe("Payment failed");
+    expect(errorText()).toBe("Not confirmed. Nothing was sent. Close this window and try again.");
+    expect(buttonNamed("Try again")).toBeDefined();
+  });
+
+  it("confirmation_mismatch shows no Try again, only Close", async () => {
+    await mountInCard();
+    await confirmRefusedWith(refusal(409, { error: "confirmation_mismatch", detail: "does not match" }));
+    expect(document.querySelector(".dialog-title")?.textContent).toBe("Payment failed");
+    expect(errorText()).toContain("This is a bug — nothing was sent");
+    expect(buttonNamed("Close")).toBeDefined();
+    expect(buttonNamed("Try again")).toBeUndefined();
+  });
+
+  it("control: another error on the same step does show Try again", async () => {
+    // Without this, "no Try again" could pass because the query never finds
+    // the button on the error step at all.
+    await mountInCard();
+    await confirmRefusedWith(refusal(502, { error: "send_failed", detail: "sendcoins failed" }));
+    expect(document.querySelector(".dialog-title")?.textContent).toBe("Payment failed");
+    expect(buttonNamed("Try again")).toBeDefined();
+  });
+
+  it("the shared classifier's copy is unchanged (the override is this modal's only)", () => {
+    expect(classifyConfirmError({ status: 400, code: "confirmation_required" })?.detail).toBe(
+      "This action needs a confirmation and none was sent. Check that every field is filled in, then confirm again.",
+    );
+    expect(classifyConfirmError({ status: 409, code: "confirmation_mismatch" })?.retryable).toBe(false);
   });
 });
 

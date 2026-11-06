@@ -55,6 +55,9 @@ import {
 import { renewalAmount } from "./subscriptionBanner";
 import { payErrorMessage } from "./subscriptionPayMessages";
 
+// This modal's wording for a missing confirmation (G3 ruling R8).
+const CONFIRMATION_REQUIRED_MESSAGE = "Not confirmed. Nothing was sent. Close this window and try again.";
+
 function truncMiddle(s: string, head = 12, tail = 8): string {
   if (!s) return "—";
   if (s.length <= head + tail + 1) return s;
@@ -170,9 +173,19 @@ export default function PayFromNodeModal({
       // A confirmation refusal (400 required / 409 mismatch) renders through
       // the shared classifier, so a 409 reads as the bug it is, never as
       // "try again" (actionConfirm/confirmErrors.ts).
+      //
+      // Two overrides in this modal only (G3 ruling R8; confirmErrors.ts's
+      // shared copy is unchanged): "required" tells the member to close and
+      // retry, since this modal has no fields to fill in, and "mismatch"
+      // offers no Try again, because repeating it fails the same way.
       const confirmView = classifyConfirmError(e);
       if (confirmView) {
-        dispatch({ t: "error", message: `${confirmView.title}. ${confirmView.detail}`, code: e?.code });
+        const message =
+          confirmView.kind === "required"
+            ? CONFIRMATION_REQUIRED_MESSAGE
+            : `${confirmView.title}. ${confirmView.detail}`;
+        const code = confirmView.kind === "mismatch" ? "confirmation_mismatch" : "confirmation_required";
+        dispatch({ t: "error", message, code });
         return;
       }
       const b = e?.body ?? {};
@@ -398,9 +411,12 @@ export default function PayFromNodeModal({
             </div>
             <div className="dialog-actions">
               <button className="btn btn-outline" onClick={onClose}>Close</button>
-              <button className="btn btn-primary" onClick={() => dispatch({ t: "back" })}>
-                Try again
-              </button>
+              {/* A mismatch is a bug: repeating it fails the same way (R8). */}
+              {state.code !== "confirmation_mismatch" && (
+                <button className="btn btn-primary" onClick={() => dispatch({ t: "back" })}>
+                  Try again
+                </button>
+              )}
             </div>
           </>
         )}
