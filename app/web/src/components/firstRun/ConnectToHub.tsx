@@ -87,7 +87,7 @@ export default function ConnectToHub({ isPeered, initialCapacity }: { isPeered: 
               style={{ marginTop: 10 }}
               onClick={() => navigate(ACTIVATE_MEMBERSHIP_PATH)}
             >
-              {COPY.activateMembership}
+              {s.membershipLabel}
             </button>
           )}
         </div>

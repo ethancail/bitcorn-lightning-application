@@ -30,6 +30,7 @@ vi.mock("../../api/client", async (importOriginal) => {
 import ConnectToHub from "./ConnectToHub";
 
 const LABEL = "Activate membership";
+const RENEW = "Renew membership";
 const URL = "/settings?focus=membership";
 
 const PREPAY = {
@@ -90,8 +91,12 @@ async function render() {
   }
 }
 
+// Matches the button under either label (L1), so a hidden case can't pass just
+// because the button showed with the other label.
 function activateButton(): HTMLButtonElement | undefined {
-  return [...host.querySelectorAll("button")].find((b) => b.textContent === LABEL) as HTMLButtonElement | undefined;
+  return [...host.querySelectorAll("button")].find(
+    (b) => b.textContent === LABEL || b.textContent === RENEW,
+  ) as HTMLButtonElement | undefined;
 }
 
 describe("B1 — the Activate membership button follows the treasury's verdict", () => {
@@ -100,6 +105,7 @@ describe("B1 — the Activate membership button follows the treasury's verdict",
     await render();
     const b = activateButton();
     expect(b).toBeDefined();
+    expect(b!.textContent).toBe(LABEL);
     expect(b!.className).toBe("btn btn-primary");
   });
 
@@ -139,11 +145,68 @@ describe("B1 — the Activate membership button follows the treasury's verdict",
     expect(activateButton()).toBeUndefined();
   });
 
+  it("a renew-labelled button goes to the same place", async () => {
+    stub.getSubscriptionStatus.mockResolvedValue({ ...PREPAY, current_tier: "close_due", open_channel_allowed: false });
+    await render();
+    expect(activateButton()!.textContent).toBe(RENEW);
+    await act(async () => { activateButton()!.click(); });
+    expect(host.textContent).toBe(`SETTINGS at ${URL}`);
+    expect(stub.openMemberChannel).not.toHaveBeenCalled();
+  });
+
   it("ConnectToHub and its hook import nothing from pay-from-node", () => {
     for (const f of ["ConnectToHub.tsx", "useConnectToHub.ts", "connectToHubDescriptor.ts"]) {
       const src = readFileSync(join(__dirname, f), "utf8");
       const imports = src.split("\n").filter((l) => /^\s*import\b|from\s+["']/.test(l));
       expect(imports.filter((l) => /payFromNode|PayFromNode|pay-from-node/i.test(l))).toEqual([]);
     }
+  });
+});
+
+// Ethan's ruling L1, 2026-11-06: when the button shows, its label follows
+// current_tier from the same status response. prepay (never paid) → activate;
+// worker_lapsed, routing_lapsed, close_due → renew; missing or unrecognised →
+// activate, as a fallback. Every case here has the verdict false, so the
+// button shows; only its label is under test.
+describe("L1 — the button's label follows current_tier", () => {
+  async function labelFor(status: Record<string, unknown>) {
+    stub.getSubscriptionStatus.mockResolvedValue({ ...status, open_channel_allowed: false });
+    await render();
+    const b = activateButton();
+    expect(b).toBeDefined();
+    return b!.textContent;
+  }
+
+  it("prepay (never paid) → Activate membership", async () => {
+    expect(await labelFor({ ...PREPAY, current_tier: "prepay" })).toBe(LABEL);
+  });
+
+  it("worker_lapsed → Renew membership", async () => {
+    expect(await labelFor({ ...PREPAY, current_tier: "worker_lapsed" })).toBe(RENEW);
+  });
+
+  it("routing_lapsed → Renew membership", async () => {
+    expect(await labelFor({ ...PREPAY, current_tier: "routing_lapsed" })).toBe(RENEW);
+  });
+
+  it("close_due → Renew membership", async () => {
+    expect(await labelFor({ ...PREPAY, current_tier: "close_due" })).toBe(RENEW);
+  });
+
+  it("fallback: current_tier missing from an applicable status → Activate membership", async () => {
+    const { current_tier: _omit, ...noTier } = PREPAY;
+    expect(await labelFor(noTier)).toBe(LABEL);
+  });
+
+  it("fallback: a not-applicable status, which carries no current_tier → Activate membership", async () => {
+    expect(await labelFor({ applicable: false, reason: "no_channel" })).toBe(LABEL);
+  });
+
+  it("fallback: an unrecognised tier → Activate membership", async () => {
+    expect(await labelFor({ ...PREPAY, current_tier: "suspended_by_operator" })).toBe(LABEL);
+  });
+
+  it("fallback: current, which L1 doesn't list, → Activate membership", async () => {
+    expect(await labelFor({ ...PREPAY, current_tier: "current" })).toBe(LABEL);
   });
 });
