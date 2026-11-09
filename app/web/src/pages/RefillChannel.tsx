@@ -51,11 +51,11 @@ export function statusText(status: string, amount: number, failureReason: string
     case "initiated":
       return "Starting your top up...";
     case "executing":
-      return "Moving funds into your channel...";
+      return "Moving funds into your connection...";
     case "confirming":
       return "Almost there — settling...";
     case "completed":
-      return `Top up complete. ${amount.toLocaleString()} sats added to your channel.`;
+      return `Top up complete. ${amount.toLocaleString()} sats added to your connection.`;
     case "failed":
       // drive-mode P2 item 7: the member-facing sentence, never loopd's raw
       // code (which stays in Technical details).
@@ -159,6 +159,10 @@ export default function RefillChannel() {
   // the channel reserve. Not capacity − local, which counts the commitment fee,
   // anchors and reserve as room.
   const [channelRemote, setChannelRemote] = useState<number | null>(null);
+  // Whether the hub channel is up (drive-mode P3, R41(1)), as Withdraw reads
+  // it: while it is down the page says so and offers no amount. null until
+  // stats arrive, and unknown fails open.
+  const [hubActive, setHubActive] = useState<boolean | null>(null);
   // GET /api/swaps/options (drive-mode P3): null until read, or on failure.
   const [options, setOptions] = useState<SwapOptions | null>(null);
   // The effective Loop In limits, read from the server (drive-mode P1 item 6).
@@ -270,6 +274,7 @@ export default function RefillChannel() {
         transfersApi.getSwapOptions("loop_in").then(setOptions).catch(() => setOptions(null));
 
         if (stats?.treasury_channel) {
+          setHubActive(stats.treasury_channel.is_active);
           setChannelLocal(stats.treasury_channel.local_sats);
           setRoomToSend(stats.treasury_channel.room_to_send_sats);
           setChannelCapacity(stats.treasury_channel.capacity_sats);
@@ -471,6 +476,7 @@ export default function RefillChannel() {
     // Refresh channel + balance
     api.getMemberStats().then((s) => {
       if (s.treasury_channel) {
+        setHubActive(s.treasury_channel.is_active);
         setChannelLocal(s.treasury_channel.local_sats);
         setRoomToSend(s.treasury_channel.room_to_send_sats);
         setChannelCapacity(s.treasury_channel.capacity_sats);
@@ -483,6 +489,8 @@ export default function RefillChannel() {
   // ─── Insufficient on-chain helper ─────────────────────────────────────
   // The same rule's floor: below it, not even the minimum top-up fits.
   const insufficientOnchain = availableNow != null && minR != null && availableNow < minR;
+  // R41(1): the hub channel is down, so the server can't land a top-up in it.
+  const connectionDown = hubActive === false;
 
   // ─── Loading stage ────────────────────────────────────────────────────
   if (stage === "loading") {
@@ -491,7 +499,7 @@ export default function RefillChannel() {
         <div style={{ marginBottom: 24 }}>
           <h1 style={{ marginBottom: 4 }}>Top Up</h1>
           <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-            Move funds from your Bitcoin balance into your channel so you can send
+            Move funds from your Bitcoin balance into your connection so you can send
           </p>
         </div>
         <div className="panel">
@@ -512,7 +520,7 @@ export default function RefillChannel() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Top Up</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Move funds from your Bitcoin balance into your channel so you can send
+          Move funds from your Bitcoin balance into your connection so you can send
         </p>
         {rateNote(rateInfo) && (
           <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rateInfo)}</p>
@@ -550,7 +558,7 @@ export default function RefillChannel() {
                   display: "flex", justifyContent: "space-between", alignItems: "center",
                   marginBottom: 6, fontSize: "0.75rem", fontFamily: "var(--mono)",
                 }}>
-                  <span style={{ color: "var(--text-3)" }}>Channel Balance</span>
+                  <span style={{ color: "var(--text-3)" }}>Connection Balance</span>
                   <span data-testid="capacity-text" style={{ color: CAPACITY_TEXT_COLOR[tone], fontWeight: 600 }}>
                     {toneWord && `${toneWord} · `}{channelPct}% available to send
                   </span>
@@ -568,7 +576,7 @@ export default function RefillChannel() {
                     transition: "width 0.3s ease",
                   }} />
                 </div>
-                {advisorAmount && Number(advisorAmount) > 0 && (
+                {!connectionDown && advisorAmount && Number(advisorAmount) > 0 && (
                   <p style={{
                     fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6,
                     fontStyle: "italic",
@@ -604,7 +612,7 @@ export default function RefillChannel() {
                     </span>
                   </div>
                 </div>
-                {maxRefill != null && minR != null && maxRefill >= minR && (
+                {!connectionDown && maxRefill != null && minR != null && maxRefill >= minR && (
                   <div style={{ textAlign: "right" }}>
                     <div style={{
                       fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase",
@@ -654,8 +662,8 @@ export default function RefillChannel() {
 
             {/* Drive-mode P3 (R11(6)): Top Up's two option cards. A card only
                 pre-fills the amount below; the quote and its confirmation are
-                unchanged. */}
-            {options && (
+                unchanged. None while the connection is down (R41(1)). */}
+            {!connectionDown && options && (
               <OptionCards
                 options={options}
                 usd={rateInfo?.state === "none" ? null : usdRate}
@@ -665,7 +673,17 @@ export default function RefillChannel() {
               />
             )}
 
+            {/* R41(1), as Withdraw (commit 1): while the connection is down
+                there is no amount to choose — no presets, Max, input or
+                after-line — only P2's connection-down sentence. */}
+            {connectionDown && (
+              <div data-testid="topup-connection-down" style={{ fontSize: "0.75rem", color: "var(--text-2)", marginTop: 4 }}>
+                Your connection to Bitcorn is down, so payments can't go through it right now. It usually reconnects within a few minutes; if it's still down in an hour, restart the Lightning app.
+              </div>
+            )}
+
             {/* Amount presets */}
+            {!connectionDown && (<>
             <div>
               <label className="form-label">Amount</label>
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
@@ -755,6 +773,7 @@ export default function RefillChannel() {
                 That's more than your connection can take right now. Try a smaller amount.
               </div>
             )}
+            </>)}
 
             {/* Route unavailable warning */}
             {warning && (
@@ -772,7 +791,7 @@ export default function RefillChannel() {
               className="btn btn-primary"
               style={{ width: "100%" }}
               onClick={handleGetQuote}
-              disabled={stage === "quoting" || insufficientOnchain || minR == null || amount < minR}
+              disabled={stage === "quoting" || connectionDown || insufficientOnchain || minR == null || amount < minR}
             >
               {stage === "quoting" ? "Getting quote..." : "Get Quote"}
             </button>
@@ -821,7 +840,7 @@ export default function RefillChannel() {
                       )}
                     </div>
                     <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
-                      <div className="stat-label">Added to Channel</div>
+                      <div className="stat-label">Added to Connection</div>
                       <div className="stat-value" style={{ fontSize: "1.125rem", color: "var(--green)" }}>
                         ~{fmtSats(q.amount_sat - totalFee)}
                       </div>
