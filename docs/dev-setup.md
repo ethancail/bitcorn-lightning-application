@@ -144,16 +144,18 @@ In the root `package.json`, add:
 ```json
 {
   "scripts": {
-    "dev:treasury":  "cd app/api && dotenv -e ../../.env.dev.treasury -- npm run dev",
-    "dev:memberA":   "cd app/api && dotenv -e ../../.env.dev.member-a  -- npm run dev",
-    "dev:memberB":   "cd app/api && dotenv -e ../../.env.dev.member-b  -- npm run dev",
-    "dev:webT":      "cd app/web && VITE_API_BASE=http://localhost:3101 npm run dev -- --port 5173 --strictPort",
-    "dev:webA":      "cd app/web && VITE_API_BASE=http://localhost:3102 npm run dev -- --port 5174 --strictPort",
-    "dev:webB":      "cd app/web && VITE_API_BASE=http://localhost:3103 npm run dev -- --port 5175 --strictPort",
+    "dev:treasury":  "node scripts/harness-slot.mjs run dev:treasury",
+    "dev:memberA":   "node scripts/harness-slot.mjs run dev:memberA",
+    "dev:memberB":   "node scripts/harness-slot.mjs run dev:memberB",
+    "dev:webT":      "node scripts/harness-slot.mjs run dev:webT",
+    "dev:webA":      "node scripts/harness-slot.mjs run dev:webA",
+    "dev:webB":      "node scripts/harness-slot.mjs run dev:webB",
     "dev:all":       "concurrently -n T,A,B,wT,wA,wB \"npm:dev:treasury\" \"npm:dev:memberA\" \"npm:dev:memberB\" \"npm:dev:webT\" \"npm:dev:webA\" \"npm:dev:webB\""
   }
 }
 ```
+
+`scripts/harness-slot.mjs` builds each command line for the harness slot (see [Slots](#slots-a-second-harness-on-the-same-host)); slot 1, the default, is the setup this page describes. To see what a script runs: `node scripts/harness-slot.mjs command dev:webT` prints `cd app/web && VITE_API_BASE=http://localhost:3101 npm run dev -- --port 5173 --strictPort`.
 
 If the repo doesn't have a root `package.json` yet, create one with `npm init -y` first.
 
@@ -213,7 +215,7 @@ Container names embed the Polar network id: `polar-n<id>-<Node>`, so `polar-n1-*
 
 **`lncli` inside a Polar LND container fails to find its files.** Run it as the `lnd` user: with `docker exec -u lnd polar-n1-<Node> lncli --network regtest …`, `--lnddir` isn't needed (observed 2026-10-28). Whether running as root needs `--lnddir=/home/lnd/.lnd` — the earlier advice, on the grounds that root's default `/root/.lnd` doesn't exist in the container — is unverified.
 
-**`npm run dev:loopserver` crash-loops.** If another project's Postgres holds port 5432, loopserver's `--network host` embedded Postgres can't bind it. Stop that container, or run the same image on Polar's bridge network (`polar-network-1_default`) with `-p 11009:11009`, `--lnd.host=polar-n1-External-Peer-1:10009` and `--bitcoin.host=polar-n1-backend1:18443`.
+**`npm run dev:loopserver` fails or crash-loops.** It runs on Polar's bridge network (`polar-network-1_default`), so the Polar network must be up first; otherwise `docker run` fails with `network polar-network-1_default not found`. It reaches External-Peer-1 and backend1 by container name (`polar-n1-External-Peer-1:10009`, `polar-n1-backend1:18443`), and `docker logs bitcorn-loopserver --tail 20` shows which one it could not reach. Its embedded Postgres stays inside the container, so a Postgres on the host's 5432 no longer collides with it.
 
 **No `sqlite3` CLI on the host (or installed version too old).**
 *Symptom:* `sqlite3 ~/.bitcorn-dev/treasury/db/bitcorn.sqlite` returns `command not found`, or the installed CLI is older than the schema expects and some PRAGMA queries fail.
@@ -506,10 +508,10 @@ npm run dev:loopd-B &
 
 What the scripts run:
 
-- **`dev:loopserver`** runs the official `lightninglabs/loopserver:latest` Docker image with `--network host` so the container can reach Polar's LND + bitcoind on `127.0.0.1`. Flags wired in:
-  - `--lnd.host=127.0.0.1:10007 --lnd.macaroondir=/lnd/data/chain/bitcoin/regtest --lnd.tlspath=/lnd/tls.cert` — anchor to External-Peer-1's LND (read-only volume mounted at `/lnd`, NOT `/root/.lnd` — the loopserver image runs as `uid=100(loopserver)` which can't traverse the container's `/root/` directory; mounting at `/lnd` puts the data under a world-traversable path)
-  - `--bitcoin.host=127.0.0.1:18444 --bitcoin.user=polaruser --bitcoin.password=polarpass` — Polar's bitcoind RPC (default Polar credentials)
-  - `--bitcoin.zmqpubrawblock=tcp://127.0.0.1:28335 --bitcoin.zmqpubrawtx=tcp://127.0.0.1:29336` — Polar's bitcoind ZMQ ports for raw block/tx notifications. **Required** — loopserver crashes at startup with `invalid config: zmqpubrawblock must be set` if these aren't passed.
+- **`dev:loopserver`** runs the official `lightninglabs/loopserver:v0.9.221-beta` Docker image (pinned, see Step D) on Polar's bridge network, `--network polar-network-1_default`, with its RPC port published only on loopback: `-p 127.0.0.1:11009:11009`. Docker-published ports bypass ufw, hence `127.0.0.1`; the status port (`1100`) is not published. On the bridge the container reaches LND and bitcoind by container name, at the **container's** ports, not the host ports Polar maps. Flags wired in:
+  - `--lnd.host=polar-n1-External-Peer-1:10009 --lnd.macaroondir=/lnd/data/chain/bitcoin/regtest --lnd.tlspath=/lnd/tls.cert` — anchor to External-Peer-1's LND (read-only volume mounted at `/lnd`, NOT `/root/.lnd` — the loopserver image runs as `uid=100(loopserver)` which can't traverse the container's `/root/` directory; mounting at `/lnd` puts the data under a world-traversable path). External-Peer-1's TLS certificate names `polar-n1-External-Peer-1`, so dialing by container name verifies.
+  - `--bitcoin.host=polar-n1-backend1:18443 --bitcoin.user=polaruser --bitcoin.password=polarpass` — Polar's bitcoind RPC (default Polar credentials)
+  - `--bitcoin.zmqpubrawblock=tcp://polar-n1-backend1:28334 --bitcoin.zmqpubrawtx=tcp://polar-n1-backend1:28335` — Polar's bitcoind ZMQ ports for raw block/tx notifications. **Required** — loopserver crashes at startup with `invalid config: zmqpubrawblock must be set` if these aren't passed. Inside the container rawblock is `28334` and rawtx `28335`; on the host they are `28335` and `29336`, so the host numbers must not be carried over.
   - `--maxamt=5000000` — caps any single swap at 5M sats (matches the channel capacity)
   - `docker rm -f bitcorn-loopserver` runs first to wipe any prior container by name. The container is NOT auto-removed on crash (no `--rm`), so `docker logs bitcorn-loopserver` is available for post-mortem if it dies.
 - **`dev:loopd-{T,A,B}`** runs `loopd --network=regtest --loopdir=<per-role dir> --rpclisten=localhost:<role port> --lnd.host=127.0.0.1:<that role's LND gRPC> --lnd.macaroonpath=<...> --lnd.tlspath=<...> --server.host=localhost:11009 --server.notls`. The `--server.notls` flag is required because the regtest loopserver doesn't run TLS.
@@ -526,7 +528,7 @@ docker logs bitcorn-loopserver --tail 20    # should show 'listening on ...'
 
 To stop just the loopserver container without killing other things: `npm run dev:loopserver-stop`.
 
-Stopping the whole Loop layer: `npm run dev:kill` (now also kills 11009/11010/11020/11030) plus `npm run dev:loopserver-stop` for the Docker container.
+Stopping the whole Loop layer: `npm run dev:kill` (kills the loopd ports 11010/11020/11030 and 8801–8803) plus `npm run dev:loopserver-stop` for the Docker container. `dev:kill` does not touch 11009: loopserver is a container, and `dev:loopserver-stop` stops it.
 
 > **⚠ Channel-direction caveat for Loop In:** The current Treasury↔External-Peer-1 channel was opened by Treasury with all funds on Treasury's side (cap=10M, External-Peer-1 local=0). Loop Out from Farmer1 (the §6 first smoke test) works fine because Treasury → External-Peer-1 has full forward capacity. **Loop In from Merchant1 will fail until External-Peer-1 has some outbound capacity.** Two options: (a) run the Loop Out smoke test first, which moves sats to External-Peer-1's side via the off-chain HTLC, then attempt Loop In; (b) open a second channel from External-Peer-1 → Treasury funded from External-Peer-1's 5 BTC on-chain so the asymmetric provisioning the spec called for is in place. Option (a) matches the spec's §6 ordering and is simpler if you only need to validate end-to-end once.
 
@@ -542,9 +544,53 @@ If either fails, the failure mode (which step, what error) is the input for a de
 
 ### Resetting / cleanup
 
-`npm run dev:kill` clears all dev-stack ports, including the Loop layer's (11009, 11010, 11020, 11030). If you also want to wipe loopd state: `rm -rf ~/.bitcorn-dev/{treasury,member-a,member-b}/loopd && mkdir -p ...` (rerun the per-role mkdir from Step E).
+`npm run dev:kill` clears all dev-stack ports, including loopd's (11010, 11020, 11030, 8801–8803); `npm run dev:kill -- --print` lists the PIDs it would kill and kills nothing. loopserver stops with `npm run dev:loopserver-stop`. If you also want to wipe loopd state: `rm -rf ~/.bitcorn-dev/{treasury,member-a,member-b}/loopd && mkdir -p ...` (rerun the per-role mkdir from Step E).
 
 To remove External-Peer-1: stop the network in Polar, delete the node, restart. The Treasury↔External-Peer-1 channel is lost; you'll need to redo Step B.
+
+## Slots: a second harness on the same host
+
+Everything above is **slot 1**, the default. A slot is one complete harness (three APIs, three web servers, loopserver, three loopd, one Polar network) whose ports, directories and names are computed from a slot number by `scripts/harness-slot.mjs`. The `dev:*` scripts and the pre-flight take the slot from `HARNESS_SLOT`; unset means 1, and slot 1's values are the ones this page uses.
+
+| | Slot 1 | Slot N | Slot 2 |
+|---|---|---|---|
+| API ports | 3101–3103 | each + 10(N−1) | 3111–3113 |
+| Web ports | 5173–5175 | each + 10(N−1) | 5183–5185 |
+| loopserver (host side, `127.0.0.1`) | 11009 | + 100(N−1) | 11109 |
+| loopd RPC | 11010, 11020, 11030 | each + 100(N−1) | 11110, 11120, 11130 |
+| loopd REST | 8801–8803 | each + 100(N−1) | 8901–8903 |
+| Data directories | `~/.bitcorn-dev/<role>` | `~/.bitcorn-dev/slot-N/<role>` | `~/.bitcorn-dev/slot-2/<role>` |
+| loopserver container | `bitcorn-loopserver` | `bitcorn-loopserver-N` | `bitcorn-loopserver-2` |
+| Polar network | id 1 (`bitcorn-dev`) | the one named `bitcorn-dev-N` | `bitcorn-dev-2` |
+| API env files | `.env.dev.<role>` | `.env.dev.slot-N.<role>` | `.env.dev.slot-2.<role>` |
+
+Polar's own node ports are not computed: they are read from `~/.polar/networks/networks.json`. A slot is refused, with a message, when any computed port would be 3109 (the app's reserved port) or 13009 (lnagent's tunnel), which rules out slot 21; when no Polar network is named `bitcorn-dev-N` (there is no fallback to network 1); or when its network's nodes are not exactly `Treasury`, `Merchant1`, `Farmer1`, `External-Peer-1` and `backend1`.
+
+**Setting up slot N, once, in a setup window.** The Polar GUI is opened only when no slot is mid-gate, because a running Polar can rewrite any network's compose file.
+
+1. In Polar, create a network named `bitcorn-dev-N` with the five nodes above, named exactly so, and open and fund the same channels as slot 1 (Step 1 and Loop Steps A and B). Add `restart: unless-stopped` to its `backend1` service in `~/.polar/networks/<id>/docker-compose.yml` (see [Restart policy](#restart-policy)). Close Polar.
+2. Write the three env files `.env.dev.slot-N.treasury`, `.env.dev.slot-N.member-a` and `.env.dev.slot-N.member-b` at the repo root (gitignored by the `.env.dev.*` rule). They hold slot N's identity only:
+   - `TREASURY_PUBKEY` — slot N's Treasury node pubkey, in all three;
+   - `LOOP_SERVER_PUBKEYS` — slot N's External-Peer-1 pubkey, in all three;
+   - `TREASURY_API_URL` — in the two member files, `http://localhost:<slot N's treasury API port>` (3111 for slot 2).
+
+   The scripts inject the rest for slot N and the injected values win over the file: `PORT`, `DB_DIR`, `SECRETS_DIR`, `LND_GRPC_HOST`, `LND_DIR`, `LOOP_GRPC_PORT`, `LOOP_TLS_CERT_PATH`, `LOOP_MACAROON_PATH`. Nothing else reaches slot N's APIs, so a setting that the slot-1 files carry and that is not listed here (for example `BITCOIN_NETWORK`) is not loaded, and the API's default applies. Slot 1 injects nothing: its `.env.dev.<role>` files stay authoritative.
+3. Create the loopd directories: `mkdir -p ~/.bitcorn-dev/slot-N/{treasury,member-a,member-b}/loopd`.
+
+**Running slot N.** Set the slot on each command:
+
+```bash
+HARNESS_SLOT=2 npm run dev:all
+HARNESS_SLOT=2 npm run dev:loopserver
+HARNESS_SLOT=2 npm run dev:loopd-T     # and -A, -B
+HARNESS_SLOT=2 node scripts/polar-preflight.mjs
+HARNESS_SLOT=2 npm run dev:kill -- --print   # list the slot's PIDs; drop --print to kill them
+HARNESS_SLOT=2 npm run dev:loopserver-stop
+```
+
+`HARNESS_SLOT=2 node scripts/harness-slot.mjs command <script>` prints what any script would run. `dev:kill` acts only on its slot's ports and never on loopserver's. The pre-flight prints a `slot` line first for slot N, and its Polar-GUI check stays host-wide in every slot. On a 15 GB host such as ubuntu-pc, run slot 2 on its own with slot 1 stopped; two slots at once need a host with more memory.
+
+The module's tests run by hand, nothing runs them automatically: `~/.nvm/versions/node/v20.20.2/bin/node --test scripts/harness-slot.test.mjs`.
 
 ## When to use this vs the real test nodes
 
