@@ -73,9 +73,10 @@ export type ConfirmedRoute = { method: string; match: Matcher; fields: Field[] }
  * server's CONFIRMED_ROUTES and asserts every route reachable from this UI
  * matches entry for entry. A drift fails there, not in production.
  *
- * Only the eight routes with a real UI caller are listed (nine from the
+ * Only the nine routes with a real UI caller are listed (nine from the
  * Auto-Buy catch-up's "Missed buys" block, 2026-09-18, until member-liquidity
- * approve was deleted by ruling D2, 2026-10-13). /api/pay and
+ * approve was deleted by ruling D2, 2026-10-13; nine again from pay-from-node's
+ * confirmation by echo, 2026-11-05). /api/pay and
  * /api/treasury/rebalance/loop-out are confirmed on the server, but this app
  * has no client method for either, so nothing here can call them; listing them
  * would be dead data that the parity test would then have to special-case.
@@ -102,6 +103,19 @@ const LOOP_IN_CEILING_FIELDS: Field[] = [
 ];
 
 export const UI_CONFIRMED_ROUTES: ConfirmedRoute[] = [
+  {
+    // Confirmed by echo (pay-from-node D1, 2026-11-05): the body carries the
+    // price and address the modal rendered; the two acknowledgements are sent
+    // only as literal `true`. Field ORDER is wire API, as for catch-up below.
+    method: "POST",
+    match: { kind: "exact", url: "/api/subscription/pay-from-node" },
+    fields: [
+      { name: "amount_sats", from: "body", kind: "number" },
+      { name: "deposit_address", from: "body", kind: "text" },
+      { name: "repeat_acknowledged", from: "body", kind: "boolean", optional: true },
+      { name: "price_acknowledged", from: "body", kind: "boolean", optional: true },
+    ],
+  },
   {
     method: "POST",
     match: { kind: "exact", url: "/api/treasury/expansion/execute" },

@@ -13,7 +13,7 @@ describe("priceChangePending", () => {
     ).toBe(false);
   });
 
-  it("is true when current price differs from the last acknowledged price", () => {
+  it("is true when current price is above the last acknowledged price", () => {
     expect(
       priceChangePending({
         applicable: true,
@@ -22,6 +22,20 @@ describe("priceChangePending", () => {
         lastAcknowledgedPrice: 50000,
       }),
     ).toBe(true);
+  });
+
+  // Ruling M, 2026-11-05: a fall shows no banner. The acknowledge route keeps
+  // the higher of stored and acknowledged (ruling C), so a banner shown for a
+  // fall could never clear.
+  it("is false when current price has fallen below the last acknowledged price", () => {
+    expect(
+      priceChangePending({
+        applicable: true,
+        autoPayEnabled: true,
+        currentPriceSats: 40000,
+        lastAcknowledgedPrice: 50000,
+      }),
+    ).toBe(false);
   });
 
   it("treats a null acknowledged price while enabled as pending", () => {

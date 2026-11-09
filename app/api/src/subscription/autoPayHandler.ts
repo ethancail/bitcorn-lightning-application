@@ -90,13 +90,22 @@ export async function setAutoPay(
   return { enabled: false, enabled_at: profile?.auto_pay_enabled_at ?? null };
 }
 
-/** Endpoint B — POST /api/profile/acknowledge-price-change. Advances
- *  last_acknowledged_price to the current price (server-derived). */
+/** Endpoint B — POST /api/profile/acknowledge-price-change { price_sats }.
+ *  Records the price the member was SHOWN as last_acknowledged_price, and only
+ *  if it is still the current (server-derived) price: a mismatch records
+ *  nothing, so the member can never acknowledge a price they did not see
+ *  (pay-from-node spec §4.1, §6 Q6 ruled 2026-11-05). That price is the
+ *  ceiling both payment paths enforce (D3), and this route never lowers it:
+ *  it stores the higher of the stored and the acknowledged price. Body
+ *  validation in the handler, not a confirmation: the route stays exempt
+ *  ("local flag"). */
 export async function acknowledgePriceChange(
   memberPubkey: string,
+  shownPriceSats: number,
 ): Promise<
   | { ok: true; acknowledged_price: number; acknowledged_at: number }
   | { ok: false; code: "status_unavailable"; detail: string }
+  | { ok: false; code: "acknowledged_price_mismatch"; detail: string }
 > {
   const current = await currentPriceSats();
   if (current == null) {
@@ -106,7 +115,18 @@ export async function acknowledgePriceChange(
       detail: "could not read the current subscription price from the treasury",
     };
   }
+  if (current !== shownPriceSats) {
+    return {
+      ok: false,
+      code: "acknowledged_price_mismatch",
+      detail: "the subscription price changed since it was shown; nothing was recorded",
+    };
+  }
+  // Never lowers the ceiling (ruled 2026-11-05): store the higher of the
+  // stored and the acknowledged price.
+  const stored = getMemberProfile(memberPubkey)?.last_acknowledged_price ?? null;
+  const recorded = stored != null && stored > current ? stored : current;
   const now = nowSec();
-  acknowledgePrice(memberPubkey, current, now);
-  return { ok: true, acknowledged_price: current, acknowledged_at: now };
+  acknowledgePrice(memberPubkey, recorded, now);
+  return { ok: true, acknowledged_price: recorded, acknowledged_at: now };
 }

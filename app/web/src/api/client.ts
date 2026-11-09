@@ -105,11 +105,17 @@ export const api = {
   getSubscriptionStatus: () => apiFetch<SubscriptionStatus>("/api/subscription/status"),
   getSubscriptionPayments: () => apiFetch<SubscriptionPaymentsResponse>("/api/subscription/payments"),
   // Pay-from-node modal (the "I have BTC → Pay from this node" path).
-  // The POST takes no body — amount + destination are derived
-  // server-side from the treasury status; the quote returns the
-  // member-local fee estimate for the confirm-step preview.
+  // The POST's body ECHOES the price and address the modal rendered, plus
+  // the member's acknowledgements; the server re-derives both values,
+  // refuses a mismatch, and sends only its own (pay-from-node D1). The
+  // confirmation header is attached by apiFetch from this exact body. The
+  // quote returns the member-local fee estimate for the confirm step.
   getPayFromNodeQuote: () => apiFetch<PayFromNodeQuote>("/api/subscription/pay-from-node/quote"),
-  payFromNode: () => apiFetch<PayFromNodeResult>("/api/subscription/pay-from-node", { method: "POST" }),
+  payFromNode: (body: PayFromNodeBody) =>
+    apiFetch<PayFromNodeResult>("/api/subscription/pay-from-node", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   // Member Profile — public Lightning alias (member-naming feature). All three
   // are member-local + member-only; the API rejects the treasury node (403).
   getProfileAlias: () => apiFetch<ProfileAlias>("/api/profile/alias"),
@@ -136,10 +142,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ enabled }),
     }),
-  acknowledgePriceChange: () =>
+  // Sends the price the banner SHOWED; the server records it only if it is
+  // still the current price (409 acknowledged_price_mismatch otherwise).
+  acknowledgePriceChange: (price_sats: number) =>
     apiFetch<{ acknowledged_price: number; acknowledged_at: number }>(
       "/api/profile/acknowledge-price-change",
-      { method: "POST" },
+      { method: "POST", body: JSON.stringify({ price_sats }) },
     ),
   getAutoPayHistory: () =>
     apiFetch<{ alerts: AutoPayAlert[] }>("/api/profile/auto-pay/history").then((r) => r.alerts),
@@ -483,7 +491,12 @@ export type AutoPayAlertType =
   | "AUTOPAY_LND_UNAVAILABLE"
   | "AUTOPAY_PAYMENT_FAILED"
   | "AUTOPAY_FEE_ESTIMATE_FAILED"
-  | "AUTOPAY_SUCCEEDED";
+  | "AUTOPAY_SUCCEEDED"
+  // pay-from-node, 2026-11-05: an earlier payment not credited after the
+  // hold time; auto-pay refused by the price ceiling (context.reason:
+  // "price_above_acknowledged" | "no_acknowledged_price").
+  | "AUTOPAY_SETTLEMENT_OVERDUE"
+  | "AUTOPAY_PRICE_NOT_ACKNOWLEDGED";
 
 export type AutoPayAlert = {
   id: number;
@@ -877,6 +890,24 @@ export type PayFromNodeQuote = {
 
 export type PayFromNodeResult = {
   txid: string;
+};
+
+/** The pay-from-node POST body: the echo of what the modal rendered, and the
+ *  member's acknowledgements, present only when given (absent ≠ false: an
+ *  absent flag contributes nothing to the confirmation hash). */
+export type PayFromNodeBody = {
+  amount_sats: number;
+  deposit_address: string;
+  repeat_acknowledged?: true;
+  price_acknowledged?: true;
+};
+
+/** The earlier, uncredited payment a 409 repeat_unacknowledged names. */
+export type PayFromNodeMarker = {
+  id: number;
+  created_at: number; // unix seconds
+  amount_sats: number;
+  txid: string | null;
 };
 
 // ─── Subscription payment history (Stage 5a follow-up) ───────────────────

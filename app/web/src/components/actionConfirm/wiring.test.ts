@@ -31,7 +31,32 @@ const read = (rel: string) => readFileSync(join(SRC, rel), "utf8");
  * The capital call sites, as found by grepping for the client method at this
  * ref. Each entry is (file, client method, why it moves funds).
  */
-const CALL_SITES: Array<{ file: string; method: string; route: string }> = [
+const CALL_SITES: Array<{
+  file: string;
+  method: string;
+  route: string;
+  /**
+   * Set ONLY by a recorded ruling. Exempts the call site from the shared
+   * modal and its typed-amount challenge; the shared error classifier is
+   * still required. The value is the ground, asserted non-empty below.
+   */
+  typedChallengeExemption?: string;
+}> = [
+  {
+    file: "components/PayFromNodeModal.tsx",
+    method: "payFromNode",
+    route: "/api/subscription/pay-from-node",
+    // Ruled 2026-11-05 (pay-from-node, ruling L, Ethan's direct yes). The
+    // typed challenge exists so a mis-click cannot proceed with an amount the
+    // operator chose. Here no one chooses it: the amount is treasury-set,
+    // echoed in the confirmed body and server-checked against the treasury's
+    // own derivation, never caller-chosen (decisions/2026-11-05-pay-from-node-
+    // confirmation-by-echo-settlement-guard-and-price-ceiling.md D1). The
+    // modal keeps one explicit "Confirm send" (decision 2026-06-11 §2) and,
+    // like every site here, classifyConfirmError.
+    typedChallengeExemption:
+      "amount is treasury-set, echoed and server-checked, never caller-chosen",
+  },
   { file: "components/firstRun/useConnectToHub.ts", method: "openMemberChannel", route: "/api/member/open-channel" },
   { file: "pages/RefillChannel.tsx", method: "initiateSwapLoopIn", route: "/api/swaps/loop-in" },
   { file: "pages/WithdrawBitcoin.tsx", method: "initiateSwapLoopOut", route: "/api/swaps/loop-out" },
@@ -43,12 +68,28 @@ const CALL_SITES: Array<{ file: string; method: string; route: string }> = [
 ];
 
 describe("every capital call site has a confirmation step", () => {
-  for (const { file, method, route } of CALL_SITES) {
+  for (const { file, method, route, typedChallengeExemption } of CALL_SITES) {
     it(`${file} (${method} → ${route}) still calls the method`, () => {
       // If this fails the call site MOVED, and the pairing below is checking a
       // file that no longer does anything — a silently vacuous test.
       expect(read(file)).toContain(`${method}(`);
     });
+
+    it(`${file} distinguishes confirmation failures`, () => {
+      // Without classifyConfirmError the page renders a 409 as a generic error,
+      // which is the "looks like tampering" outcome this arc exists to avoid.
+      // Required of EVERY call site, exempt or not.
+      expect(read(file)).toContain("classifyConfirmError");
+    });
+
+    if (typedChallengeExemption !== undefined) {
+      it(`${file} is exempt from the typed challenge by a recorded ruling, with its ground`, () => {
+        expect(typedChallengeExemption.trim().length, `${file}: an exemption needs its ground`).toBeGreaterThan(20);
+        // The exemption is from the TYPED step only: the explicit confirm stays.
+        expect(read(file)).toContain("Confirm send");
+      });
+      continue;
+    }
 
     it(`${file} imports the confirmation machinery`, () => {
       const src = read(file);
@@ -56,12 +97,6 @@ describe("every capital call site has a confirmation step", () => {
         src.includes("actionConfirm/ActionConfirmModal") ||
         src.includes("actionConfirm/confirmAction");
       expect(usesGate, `${file} calls ${method} with no confirmation import`).toBe(true);
-    });
-
-    it(`${file} distinguishes confirmation failures`, () => {
-      // Without classifyConfirmError the page renders a 409 as a generic error,
-      // which is the "looks like tampering" outcome this arc exists to avoid.
-      expect(read(file)).toContain("classifyConfirmError");
     });
 
     it(`${file} gates on a typed challenge`, () => {

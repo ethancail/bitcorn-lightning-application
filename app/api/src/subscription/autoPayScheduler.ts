@@ -22,15 +22,24 @@ import { ENV } from "../config/env";
 import { getNodeInfo } from "../api/read";
 import { getMemberProfile } from "../profile/profileStore";
 import { fetchLocalSubscriptionStatus } from "./memberStatusClient";
-import { executePayFromNode, isSendInFlight } from "./payFromNode";
+import { executePayFromNode, isSendInFlight, parseCreditState } from "./payFromNode";
 import { shouldAutoPay, type AutoPayTier } from "./autoPayTrigger";
-import { classifyAutoPayError } from "./autoPayAlerts";
+import {
+  classifyAutoPayError,
+  currentPriceCauseKey,
+  overdueCauseKey,
+  priceCauseKey,
+  type PriceAlertReason,
+} from "./autoPayAlerts";
 import {
   getActiveAlerts,
   recordAutoPaySuccess,
   recordAutoPayFailure,
+  recordCauseAlert,
+  resolveClearedCauseAlerts,
   resolveStaleSucceeded,
 } from "./autoPayAlertStore";
+import { clearMarkersOnCredit, listActiveMarkers } from "./sendMarker";
 
 // AUTOPAY_SUCCEEDED auto-resolves after this window (Gate-1 rec C: 24h or next
 // lapse episode). Not env-tunable — it is a UX lifetime, not a safety knob.
@@ -43,7 +52,8 @@ function nowSec(): number {
   return Math.floor(Date.now() / 1000);
 }
 
-async function runOnce(): Promise<void> {
+/** One scheduler tick. Exported so the tests can drive a tick directly. */
+export async function runOnce(): Promise<void> {
   if (running) return;
   running = true;
   try {
@@ -71,6 +81,29 @@ async function runOnce(): Promise<void> {
     const profile = getMemberProfile(memberPubkey);
     const autoPayEnabled = profile?.auto_pay_enabled === 1;
 
+    // The pay-from-node guards' housekeeping, every tick and whatever the
+    // trigger decides (spec §3.6, §4.3): clear send markers the status shows
+    // credited, then resolve each guard alert whose cause no longer holds.
+    clearMarkersOnCredit(db, memberPubkey, parseCreditState(status), nowSec());
+    resolveClearedCauseAlerts(
+      db,
+      memberPubkey,
+      "AUTOPAY_SETTLEMENT_OVERDUE",
+      new Set(listActiveMarkers(db, memberPubkey).map((m) => overdueCauseKey(m.id))),
+    );
+    if (status.applicable === true && typeof status.price_sats === "number") {
+      const liveKey = currentPriceCauseKey(
+        status.price_sats,
+        profile?.last_acknowledged_price ?? null,
+      );
+      resolveClearedCauseAlerts(
+        db,
+        memberPubkey,
+        "AUTOPAY_PRICE_NOT_ACKNOWLEDGED",
+        new Set(liveKey ? [liveKey] : []),
+      );
+    }
+
     const decision = shouldAutoPay({
       tier,
       autoPayEnabled,
@@ -90,7 +123,7 @@ async function runOnce(): Promise<void> {
     }
 
     console.log(`[autopay] firing renewal — observed tier=${tier}`);
-    const result = await executePayFromNode();
+    const result = await executePayFromNode({ origin: "auto", memberPubkey });
     if (result.ok) {
       console.log(`[autopay] renewal sent — txid=${result.txid} amount=${result.price_sats} sats`);
       recordAutoPaySuccess(db, memberPubkey, {
@@ -100,15 +133,55 @@ async function runOnce(): Promise<void> {
       return;
     }
 
-    // Failure: classify to an alert type. The two deferral cases
-    // (status_unavailable / payment_in_flight) classify to null → no alert,
-    // retry next tick.
+    // Failure: classify to an alert type. The deferral cases
+    // (status_unavailable / payment_in_flight / settlement_pending below the
+    // hold time) classify to null → no alert, retry next tick.
     const alertType = classifyAutoPayError(result.code);
     if (!alertType) {
-      if (ENV.debug) console.log(`[autopay] deferred (${result.code}); no alert`);
+      if (result.code === "status_incomplete") {
+        // Logged whatever the debug setting: a malformed treasury status, not
+        // a transient outage, and it holds auto-pay until the status is fixed.
+        console.warn(`[autopay] renewal refused — ${result.code}: ${result.detail}`);
+      } else if (ENV.debug) {
+        console.log(`[autopay] deferred (${result.code}); no alert`);
+      }
       return;
     }
     console.warn(`[autopay] renewal failed — ${result.code}: ${result.detail}`);
+
+    // The guard refusals: one alert per cause, never fed to the backoff.
+    if (alertType === "AUTOPAY_SETTLEMENT_OVERDUE" && result.marker) {
+      recordCauseAlert(db, memberPubkey, {
+        type: alertType,
+        causeKey: overdueCauseKey(result.marker.id),
+        context: {
+          error_code: result.code,
+          detail: result.detail,
+          marker_id: result.marker.id,
+          marker_created_at: result.marker.created_at,
+          amount_sats: result.marker.amount_sats,
+          txid: result.marker.txid,
+        },
+      });
+      return;
+    }
+    if (alertType === "AUTOPAY_PRICE_NOT_ACKNOWLEDGED" && result.price_sats != null) {
+      const reason: PriceAlertReason =
+        result.code === "price_unacknowledged" ? "no_acknowledged_price" : "price_above_acknowledged";
+      const acknowledged = result.acknowledged_price_sats ?? null;
+      recordCauseAlert(db, memberPubkey, {
+        type: alertType,
+        causeKey: priceCauseKey(reason, result.price_sats, acknowledged),
+        context: {
+          error_code: result.code,
+          detail: result.detail,
+          reason,
+          price_sats: result.price_sats,
+          acknowledged_price_sats: acknowledged,
+        },
+      });
+      return;
+    }
     recordAutoPayFailure(db, memberPubkey, {
       type: alertType,
       context: {

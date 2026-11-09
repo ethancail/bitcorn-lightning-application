@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.34"
+version: "1.18.35"
 port: 3200
 
 description: >
@@ -27,6 +27,5 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: >
-  v1.18.34: Your dashboard now shows how much you can send and receive, with dollar amounts first and the
-  most you could pay in fees shown before you pay. You'll also get a plain-language warning before your
-  hosted services would pause, so you can renew in time.
+  v1.18.35: Paying from your node now sends exactly what you were shown, and asks before paying twice or
+  paying a higher price.

@@ -211,6 +211,36 @@ describe("autoPayAlertContent — copy per alert type", () => {
   it("frames AUTOPAY_SUCCEEDED as a renewal notice", () => {
     expect(autoPayAlertContent("AUTOPAY_SUCCEEDED").headline).toMatch(/renew/i);
   });
+
+  // pay-from-node, 2026-11-05: without an entry the fallback renders
+  // "Auto-pay update" with an empty body.
+  it("gives both guard types a non-empty headline + body", () => {
+    for (const t of ["AUTOPAY_SETTLEMENT_OVERDUE", "AUTOPAY_PRICE_NOT_ACKNOWLEDGED"]) {
+      const c = autoPayAlertContent(t);
+      expect(c.headline).not.toBe("Auto-pay update");
+      expect(c.body.length).toBeGreaterThan(0);
+    }
+  });
+
+  // G3 rulings R5 and R6 (2026-11-06), pinned as literals: the body must not
+  // promise that confirming resolves it, since a confirmed payment under
+  // tolerance is never credited.
+  it("the settlement-overdue alert reads as ruled at G3", () => {
+    const c = autoPayAlertContent("AUTOPAY_SETTLEMENT_OVERDUE");
+    expect(c.headline).toBe("Auto-pay is on hold");
+    expect(c.body).toBe(
+      "A payment your node sent hasn't been credited after 48 hours, and it may never be. " +
+        "Auto-pay won't pay while it's outstanding. " +
+        "To renew now, pay from this node and choose Send another payment.",
+    );
+    expect(c.body).not.toMatch(/if it does not confirm/i);
+  });
+
+  it("the price alert's copy follows its reason", () => {
+    const above = autoPayAlertContent("AUTOPAY_PRICE_NOT_ACKNOWLEDGED", { reason: "price_above_acknowledged" });
+    const none = autoPayAlertContent("AUTOPAY_PRICE_NOT_ACKNOWLEDGED", { reason: "no_acknowledged_price" });
+    expect(above.headline).not.toBe(none.headline);
+  });
 });
 
 describe("autoPayBadgeSeverity — nav badge from auto-pay state", () => {

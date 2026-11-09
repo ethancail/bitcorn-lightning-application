@@ -29,3 +29,24 @@ describe("rateNote, state \"none\"", () => {
     expect(rateNote(rate({}))).not.toMatch(/hours|updated/);
   });
 });
+
+// pay-from-node G3 ruling R7 (2026-11-06): a stale rate is dated with its day
+// when it is not from today; from today, the time alone.
+describe("rateNote, state \"stale\"", () => {
+  const AT = new Date(2026, 10, 5, 23, 40).getTime(); // 5 Nov, 11:40 PM local
+  const time = new Date(AT).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const day = new Date(AT).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const stale = rate({ usd: 60_000, fetched_at: AT, age_ms: 601_000, state: "stale" });
+
+  it("from today: the time alone", () => {
+    expect(rateNote(stale, new Date(2026, 10, 5, 23, 55).getTime())).toBe(`Price as of ${time}`);
+  });
+
+  it("not from today: the time and the date", () => {
+    expect(rateNote(stale, new Date(2026, 10, 6, 2, 0).getTime())).toBe(`Price as of ${time} on ${day}`);
+  });
+
+  it("the same clock time a year apart is not today", () => {
+    expect(rateNote(stale, new Date(2027, 10, 5, 23, 55).getTime())).toBe(`Price as of ${time} on ${day}`);
+  });
+});

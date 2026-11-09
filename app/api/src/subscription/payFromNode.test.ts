@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   parseStatusForPayment,
+  parseCreditState,
   estimateFeeSats,
   ESTIMATED_TX_VBYTES,
   classifySendError,
@@ -150,13 +151,36 @@ describe("errorHttpStatus — error code → HTTP status", () => {
   const cases: Array<[PayFromNodeError, number]> = [
     ["payment_in_flight", 409],
     ["status_unavailable", 503],
+    ["status_incomplete", 503],
     ["lnd_unavailable", 503],
     ["insufficient_funds", 400],
     ["fee_estimate_failed", 502],
     ["send_failed", 502],
+    ["pay_target_changed", 409],
+    ["repeat_unacknowledged", 409],
+    ["settlement_pending", 409],
+    ["settlement_overdue", 409],
+    ["price_above_acknowledged", 409],
+    ["price_unacknowledged", 409],
   ];
   it.each(cases)("%s → %i", (code, status) => {
     expect(errorHttpStatus(code)).toBe(status);
+  });
+});
+
+describe("parseCreditState — the status fields the marker's clearing rule reads", () => {
+  it("reads paid_through and last_payment_txid", () => {
+    expect(parseCreditState({ paid_through: 123, last_payment_txid: "abc" })).toEqual({
+      paid_through: 123,
+      last_payment_txid: "abc",
+    });
+  });
+  it("reads missing, empty or wrongly typed fields as null (which clears nothing)", () => {
+    expect(parseCreditState({ paid_through: "123", last_payment_txid: "" })).toEqual({
+      paid_through: null,
+      last_payment_txid: null,
+    });
+    expect(parseCreditState(null)).toEqual({ paid_through: null, last_payment_txid: null });
   });
 });
 

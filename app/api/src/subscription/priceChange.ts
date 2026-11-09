@@ -22,15 +22,19 @@ export interface PriceChangeInput {
 
 /**
  * The price-change banner is pending iff the status is applicable, auto-pay is
- * enabled, and the live price differs from the last acknowledged price. A null
- * acknowledged price while enabled counts as pending (current !== null is
- * always true) — though opt-in seeds it, so that path is unusual. Gating on
- * `autoPayEnabled` means opting out immediately clears the banner.
+ * enabled, and the live price is ABOVE the last acknowledged price — the only
+ * case in which auto-pay refuses (the price ceiling, pay-from-node D3). A fall
+ * shows no banner (ruled 2026-11-05, ruling M): the acknowledge route never
+ * lowers the stored price, so a banner shown for a fall could never be cleared.
+ * A null acknowledged price while enabled still counts as pending, unchanged —
+ * though opt-in seeds it, so that path is unusual. Gating on `autoPayEnabled`
+ * means opting out immediately clears the banner.
  */
 export function priceChangePending(input: PriceChangeInput): boolean {
   if (!input.applicable) return false;
   if (!input.autoPayEnabled) return false;
-  return input.currentPriceSats !== input.lastAcknowledgedPrice;
+  if (input.lastAcknowledgedPrice == null) return true;
+  return input.currentPriceSats > input.lastAcknowledgedPrice;
 }
 
 export interface PriceChangeContent {
