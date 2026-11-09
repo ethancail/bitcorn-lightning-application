@@ -3,6 +3,14 @@
 //
 // Run:  node scripts/polar-preflight.mjs            (report only, writes nothing)
 //       node scripts/polar-preflight.mjs --repair   (opt-in, see below)
+//       HARNESS_SLOT=2 node scripts/polar-preflight.mjs   (a slot other than 1)
+//
+// SLOT: HARNESS_SLOT, default 1, as in scripts/harness-slot.mjs. Slot 1 is
+// Polar network 1 and its output is unchanged. Slot N is the network named
+// bitcorn-dev-N in ~/.polar/networks/networks.json, and prints a `slot` line
+// first; a slot that does not resolve is CANNOT-LOOK for every check. The
+// Polar-GUI check stays host-wide in every slot (D10): with several networks on
+// one host, a running Polar can rewrite any of their compose files.
 //
 // The procedure this serves is docs/dev-setup.md § Polar regtest gate. It runs
 // immediately before each gate and again after it, not once per session,
@@ -36,7 +44,8 @@
 // file, and never opens or closes a channel. A failed write is FAIL (the script
 // did look). A re-check it cannot read is CANNOT-LOOK, beside the repair's FAIL.
 //
-// EXPECTED SET: pinned from ~/.polar/networks/1/docker-compose.yml. No pubkey is
+// EXPECTED SET: pinned from ~/.polar/networks/1/docker-compose.yml, and the same
+// five nodes, under the slot's network id, in every slot (D16). No pubkey is
 // pinned; each node's comes from its own getinfo at run time. Peers and channels
 // compare as sets as well as counts: a right count made of the wrong members is
 // a FAIL.
@@ -59,17 +68,30 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const BACKEND = "polar-n1-backend1";
-const TREASURY = "polar-n1-Treasury";
+import { BITCOIN_NODE, LND_NODE_NAMES, parseSlot, resolveNetwork } from "./harness-slot.mjs";
 
-export const LND_NODES = [
-  { name: "Treasury", container: TREASURY, host: "Treasury" },
-  { name: "Merchant1", container: "polar-n1-Merchant1", host: "Merchant1" },
-  { name: "Farmer1", container: "polar-n1-Farmer1", host: "Farmer1" },
-  { name: "External-Peer-1", container: "polar-n1-External-Peer-1", host: "External-Peer-1" },
-];
-export const CONTAINERS = [BACKEND, ...LND_NODES.map((n) => n.container)];
-const treasuryNode = LND_NODES.find((n) => n.container === TREASURY);
+// The expected set for one Polar network, by its id. Container names embed the
+// id (polar-n<id>-<Node>); the node names are D16's five in every slot.
+export function preflightTargets(networkId) {
+  const prefix = `polar-n${networkId}-`;
+  const lndNodes = LND_NODE_NAMES.map((name) => ({ name, container: `${prefix}${name}`, host: name }));
+  const treasury = `${prefix}Treasury`;
+  const backend = `${prefix}${BITCOIN_NODE}`;
+  return {
+    prefix,
+    backend,
+    treasury,
+    lndNodes,
+    containers: [backend, ...lndNodes.map((n) => n.container)],
+    treasuryNode: lndNodes.find((n) => n.container === treasury),
+    composePath: path.join(os.homedir(), ".polar", "networks", String(networkId), "docker-compose.yml"),
+  };
+}
+
+// Slot 1, network 1: today's set, still exported under its old names.
+const SLOT1 = preflightTargets(1);
+export const LND_NODES = SLOT1.lndNodes;
+export const CONTAINERS = SLOT1.containers;
 
 const COMMAND_TIMEOUT_MS = 30_000;
 const MAX_OUTPUT_BYTES = 16 * 1024 * 1024; // past Node's 1 MiB default, for a long `ps -ww`
@@ -109,6 +131,8 @@ export function runCommand(file, args) {
 const defaultDocker = (args) => runCommand("docker", args);
 const defaultPs = () => runCommand("ps", ["-ww", "-eo", "pid=,args="]);
 const defaultReadCompose = (file) => fs.promises.readFile(file, "utf8");
+const defaultReadNetworks = async () =>
+  JSON.parse(await fs.promises.readFile(path.join(os.homedir(), ".polar", "networks", "networks.json"), "utf8"));
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ─── reading, where every failure is CANNOT-LOOK ──────────────────────────
@@ -174,8 +198,8 @@ async function readEndpoint(docker, env) {
   return `context=${oneLine(context)} server=${server}`;
 }
 
-async function listContainers(docker) {
-  const args = ["ps", "-a", "--filter", "name=^polar-n1-", "--format", "{{json .Names}}"];
+async function listContainers(docker, t) {
+  const args = ["ps", "-a", "--filter", `name=^${t.prefix}`, "--format", "{{json .Names}}"];
   const stdout = await read(() => docker(args), "docker ps");
   return stdout.split("\n").filter(Boolean).map((line) => {
     const name = parse(line, "docker ps");
@@ -200,8 +224,8 @@ async function inspectContainers(docker, names) {
   return seen;
 }
 
-async function readChain(docker) {
-  const args = ["exec", "-u", "bitcoin", BACKEND, "bitcoin-cli", "-regtest", "getblockchaininfo"];
+async function readChain(docker, t) {
+  const args = ["exec", "-u", "bitcoin", t.backend, "bitcoin-cli", "-regtest", "getblockchaininfo"];
   const chain = await readJson(docker, args, "getblockchaininfo");
   return {
     blocks: field(chain, "blocks", "number", "getblockchaininfo"),
@@ -222,14 +246,14 @@ async function readGetinfo(docker, node) {
   };
 }
 
-async function readPeers(docker) {
-  const peers = list(await readJson(docker, lndArgs(treasuryNode, "listpeers"), "listpeers"), "peers", "listpeers");
+async function readPeers(docker, t) {
+  const peers = list(await readJson(docker, lndArgs(t.treasuryNode, "listpeers"), "listpeers"), "peers", "listpeers");
   return peers.map((p) => field(p, "pub_key", "string", "listpeers"));
 }
 
-async function readChannels(docker) {
+async function readChannels(docker, t) {
   const what = "listchannels";
-  const output = await readJson(docker, lndArgs(treasuryNode, "listchannels", "--active_only"), what);
+  const output = await readJson(docker, lndArgs(t.treasuryNode, "listchannels", "--active_only"), what);
   return list(output, "channels", what).map((c) => field(c, "remote_pubkey", "string", what));
 }
 
@@ -279,6 +303,7 @@ export async function runPreflight({
   print = console.log,
   env = process.env,
   repair = false,
+  readNetworks = defaultReadNetworks,
 } = {}) {
   const statuses = [];
   const report = (status, name, value) => {
@@ -295,40 +320,60 @@ export async function runPreflight({
     return { exitCode };
   };
 
+  const blocked = [
+    "containers", "polar-not-running", "compose-restart-policy", "restart-counts-steady", "bitcoind",
+    ...LND_NODE_NAMES.map((n) => `synced-to-chain:${n}`),
+    "treasury-peers", "treasury-channels",
+  ];
+
+  // HARNESS_SLOT picks the Polar network (H10). Slot 1 is network 1 and reads
+  // nothing, printing no slot line, so its output is today's. Slot N resolves
+  // bitcorn-dev-N from networks.json; a slot that cannot resolve looks at nothing.
+  let t;
+  try {
+    const slot = parseSlot(env.HARNESS_SLOT);
+    if (slot === 1) {
+      t = SLOT1;
+    } else {
+      const network = resolveNetwork(slot, await readNetworks());
+      t = preflightTargets(network.id);
+      report("PASS", "slot", `slot=${slot} network=${network.id} name=${network.name}`);
+    }
+  } catch (error) {
+    report("CANNOT-LOOK", "slot", oneLine(error.message));
+    for (const name of ["docker-endpoint", ...blocked]) report("CANNOT-LOOK", name, "blocked-by=slot");
+    return finish();
+  }
+
   const endpoint = await attempt(() => readEndpoint(docker, env));
   if (endpoint.reason !== undefined) {
     report("CANNOT-LOOK", "docker-endpoint", endpoint.reason);
-    const blocked = [
-      "containers", "polar-not-running", "compose-restart-policy", "restart-counts-steady", "bitcoind",
-      ...LND_NODES.map((n) => `synced-to-chain:${n.name}`),
-      "treasury-peers", "treasury-channels",
-    ];
     for (const name of blocked) report("CANNOT-LOOK", name, "blocked-by=docker-endpoint");
     return finish();
   }
   report("PASS", "docker-endpoint", endpoint.value);
 
-  const { running, firstSample } = await checkContainers(docker, report);
+  const { running, firstSample } = await checkContainers(docker, report, t);
   await checkPolar(ps, report);
-  await checkCompose(readCompose, report);
-  await checkRestartCounts({ docker, sleep, report, firstSample });
-  const chain = await checkBitcoind({ docker, report, running });
-  const nodes = await checkLnds({ docker, sleep, report, running, chain, repair });
-  const peersRepaired = await checkPeers({ docker, report, running, nodes, repair });
-  await checkChannels({ docker, sleep, report, running, nodes, peersRepaired });
+  await checkCompose(readCompose, report, t);
+  await checkRestartCounts({ docker, sleep, report, firstSample, t });
+  const chain = await checkBitcoind({ docker, report, running, t });
+  const nodes = await checkLnds({ docker, sleep, report, running, chain, repair, t });
+  const peersRepaired = await checkPeers({ docker, report, running, nodes, repair, t });
+  await checkChannels({ docker, sleep, report, running, nodes, peersRepaired, t });
   return finish();
 }
 
-async function checkContainers(docker, report) {
+async function checkContainers(docker, report, t) {
   const name = "containers";
-  const listed = await attempt(() => listContainers(docker));
+  const listed = await attempt(() => listContainers(docker, t));
   if (listed.reason !== undefined) {
     report("CANNOT-LOOK", name, listed.reason);
     return { running: new Set(), firstSample: null };
   }
 
-  const { missing, unexpected } = compareSets(CONTAINERS, listed.value);
-  const present = CONTAINERS.filter((c) => !missing.includes(c));
+  const { missing, unexpected } = compareSets(t.containers, listed.value);
+  const present = t.containers.filter((c) => !missing.includes(c));
   const sample = await attempt(async () =>
     present.length > 0 ? inspectContainers(docker, present) : new Map());
   if (sample.reason !== undefined) {
@@ -339,7 +384,7 @@ async function checkContainers(docker, report) {
   const stopped = present.filter((c) => sample.value.get(c).status !== "running");
   const running = new Set(present.filter((c) => !stopped.includes(c)));
   const value =
-    `expected=${CONTAINERS.length} found=${listed.value.length} missing=[${missing}] ` +
+    `expected=${t.containers.length} found=${listed.value.length} missing=[${missing}] ` +
     `unexpected=[${unexpected}] not-running=[${stopped}]`;
   if (missing.length > 0) {
     report("CANNOT-LOOK", name, value);
@@ -360,9 +405,9 @@ async function checkPolar(ps, report) {
   report("PASS", name, `processes=${processes.length} matched=0`);
 }
 
-async function checkCompose(readCompose, report) {
+async function checkCompose(readCompose, report, t) {
   const name = "compose-restart-policy";
-  const file = path.join(os.homedir(), ".polar", "networks", "1", "docker-compose.yml");
+  const file = t.composePath;
   const policy = await attempt(async () => {
     let text;
     try {
@@ -376,27 +421,27 @@ async function checkCompose(readCompose, report) {
   report(policy.value === "unless-stopped" ? "PASS" : "FAIL", name, `backend1 restart=${policy.value ?? "absent"}`);
 }
 
-async function checkRestartCounts({ docker, sleep, report, firstSample }) {
+async function checkRestartCounts({ docker, sleep, report, firstSample, t }) {
   const name = "restart-counts-steady";
   if (!firstSample) return report("CANNOT-LOOK", name, "blocked-by=containers");
   await sleep(RESTART_WINDOW_MS);
-  const second = await attempt(() => inspectContainers(docker, CONTAINERS));
+  const second = await attempt(() => inspectContainers(docker, t.containers));
   if (second.reason !== undefined) return report("CANNOT-LOOK", name, second.reason);
   const counts = (sample, c) => sample.get(c).restartCount;
-  const changed = CONTAINERS
+  const changed = t.containers
     .filter((c) => counts(firstSample, c) !== counts(second.value, c))
     .map((c) => `${c}:${counts(firstSample, c)}->${counts(second.value, c)}`);
   const value = `window=${RESTART_WINDOW_MS / 1000}s changed=[${changed}]`;
   report(changed.length > 0 ? "FAIL" : "PASS", name, value);
 }
 
-async function checkBitcoind({ docker, report, running }) {
+async function checkBitcoind({ docker, report, running, t }) {
   const name = "bitcoind";
-  if (!running.has(BACKEND)) {
+  if (!running.has(t.backend)) {
     report("CANNOT-LOOK", name, "blocked-by=containers");
     return null;
   }
-  const chain = await attempt(() => readChain(docker));
+  const chain = await attempt(() => readChain(docker, t));
   if (chain.reason !== undefined) {
     report("CANNOT-LOOK", name, chain.reason);
     return null;
@@ -417,13 +462,13 @@ const describeNode = (info, chain) =>
   `synced=${info.synced} height=${info.height} hash=${info.hash}` +
   (chain ? ` bitcoind-match=${matchesTip(info, chain) ? "yes" : "no"}` : "");
 
-async function checkLnds({ docker, sleep, report, running, chain, repair }) {
-  const before = await Promise.all(LND_NODES.map((node) => readNode(docker, node, running)));
+async function checkLnds({ docker, sleep, report, running, chain, repair, t }) {
+  const before = await Promise.all(t.lndNodes.map((node) => readNode(docker, node, running)));
   let after = null;
 
   if (repair && before.some((n) => n.info && !n.info.synced)) {
     if (decideMine({ repair, chain, nodes: before })) {
-      after = await mineAndRecheck({ docker, sleep, report, running, before });
+      after = await mineAndRecheck({ docker, sleep, report, running, before, t });
     } else {
       report("FAIL", "repair-stale-tip", "mined=0 reason=stale-tip-condition-not-met");
     }
@@ -444,8 +489,8 @@ async function checkLnds({ docker, sleep, report, running, chain, repair }) {
   return after ?? before;
 }
 
-async function mineAndRecheck({ docker, sleep, report, running, before }) {
-  const args = ["exec", "-u", "bitcoin", BACKEND, "bitcoin-cli", "-regtest", "generatetodescriptor", "1", "raw(6a)"];
+async function mineAndRecheck({ docker, sleep, report, running, before, t }) {
+  const args = ["exec", "-u", "bitcoin", t.backend, "bitcoin-cli", "-regtest", "generatetodescriptor", "1", "raw(6a)"];
   const mined = await attempt(() => read(() => docker(args), "generatetodescriptor"));
   if (mined.reason !== undefined) {
     report("FAIL", "repair-stale-tip", mined.reason);
@@ -456,7 +501,7 @@ async function mineAndRecheck({ docker, sleep, report, running, before }) {
   let nodes = before;
   for (let i = 0; i < RECHECK_ATTEMPTS; i++) {
     await sleep(RECHECK_INTERVAL_MS);
-    nodes = await Promise.all(LND_NODES.map((node) => readNode(docker, node, running)));
+    nodes = await Promise.all(t.lndNodes.map((node) => readNode(docker, node, running)));
     if (nodes.every((n) => n.info?.synced)) break;
   }
   const done = nodes.every((n) => n.info?.synced);
@@ -464,10 +509,10 @@ async function mineAndRecheck({ docker, sleep, report, running, before }) {
   return nodes;
 }
 
-function spokes(nodes, running) {
-  const others = nodes.filter((n) => n.container !== TREASURY);
+function spokes(nodes, running, t) {
+  const others = nodes.filter((n) => n.container !== t.treasury);
   const blocked = others.filter((n) => !n.info).map((n) => n.name);
-  if (!running.has(TREASURY)) return { blockedBy: "blocked-by=containers" };
+  if (!running.has(t.treasury)) return { blockedBy: "blocked-by=containers" };
   if (blocked.length > 0) return { blockedBy: `blocked-by=getinfo:${blocked}` };
   return { others, expected: others.map((n) => n.info.pubkey) };
 }
@@ -478,15 +523,15 @@ const describeSets = ({ missing, unexpected }, others, observed) => {
     `missing=[${missing.map(nameOf)}] unexpected=[${unexpected.map(nameOf)}]`;
 };
 
-async function checkPeers({ docker, report, running, nodes, repair }) {
+async function checkPeers({ docker, report, running, nodes, repair, t }) {
   const name = "treasury-peers";
-  const { blockedBy, others, expected } = spokes(nodes, running);
+  const { blockedBy, others, expected } = spokes(nodes, running, t);
   if (blockedBy) {
     report("CANNOT-LOOK", name, blockedBy);
     return false;
   }
 
-  const peers = await attempt(() => readPeers(docker));
+  const peers = await attempt(() => readPeers(docker, t));
   if (peers.reason !== undefined) {
     report("CANNOT-LOOK", name, peers.reason);
     return false;
@@ -504,13 +549,13 @@ async function checkPeers({ docker, report, running, nodes, repair }) {
   const attempted = [];
   for (const pubkey of before.missing) {
     const node = others.find((n) => n.info.pubkey === pubkey);
-    const args = lndArgs(treasuryNode, "connect", `${pubkey}@${node.host}:9735`);
+    const args = lndArgs(t.treasuryNode, "connect", `${pubkey}@${node.host}:9735`);
     const connected = await attempt(() => read(() => docker(args), "lncli connect"));
     if (connected.reason !== undefined) report("FAIL", `repair-peer:${node.name}`, connected.reason);
     else attempted.push(node);
   }
 
-  const recheck = await attempt(() => readPeers(docker));
+  const recheck = await attempt(() => readPeers(docker, t));
   if (recheck.reason !== undefined) {
     for (const node of attempted) report("FAIL", `repair-peer:${node.name}`, "re-check unreadable");
     report("CANNOT-LOOK", name, recheck.reason);
@@ -525,9 +570,9 @@ async function checkPeers({ docker, report, running, nodes, repair }) {
   return attempted.length > 0;
 }
 
-async function checkChannels({ docker, sleep, report, running, nodes, peersRepaired }) {
+async function checkChannels({ docker, sleep, report, running, nodes, peersRepaired, t }) {
   const name = "treasury-channels";
-  const { blockedBy, others, expected } = spokes(nodes, running);
+  const { blockedBy, others, expected } = spokes(nodes, running, t);
   if (blockedBy) return report("CANNOT-LOOK", name, blockedBy);
 
   // A channel goes active a moment after its peer reconnects. This only waits;
@@ -536,7 +581,7 @@ async function checkChannels({ docker, sleep, report, running, nodes, peersRepai
   let channels;
   for (let i = 0; i < attempts; i++) {
     if (i > 0) await sleep(RECHECK_INTERVAL_MS);
-    channels = await attempt(() => readChannels(docker));
+    channels = await attempt(() => readChannels(docker, t));
     if (channels.value && compareSets(expected, channels.value).ok) break;
   }
   if (channels.reason !== undefined) return report("CANNOT-LOOK", name, channels.reason);
