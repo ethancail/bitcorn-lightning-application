@@ -457,6 +457,7 @@ function LoopOutTab({
               </label>
               <input
                 id="swapops-typed-amount"
+                className="form-input action-confirm-input"
                 type="text"
                 inputMode="numeric"
                 autoComplete="off"

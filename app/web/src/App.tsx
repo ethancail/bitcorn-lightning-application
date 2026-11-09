@@ -1413,6 +1413,7 @@ function ChannelsPage() {
               </label>
               <input
                 id="close-channel-challenge"
+                className="form-input action-confirm-input"
                 type="text"
                 autoComplete="off"
                 value={closeTyped}
