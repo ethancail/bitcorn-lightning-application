@@ -1390,6 +1390,12 @@ input[type="number"] {
   min-height: 0;
   overflow-y: auto;
 }
+/* The type-to-confirm input (ActionConfirmModal, the admin swap dialog, the
+   treasury close-channel dialog). It is a .form-input; this adds only a 44px
+   minimum height (fix/confirm-input-height, option B). confirmInput.test.ts. */
+.action-confirm-input {
+  min-height: 44px;
+}
 
 .dialog-title {
   font-size: 1rem;

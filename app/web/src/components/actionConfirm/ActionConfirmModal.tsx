@@ -138,6 +138,7 @@ export default function ActionConfirmModal({
             </label>
             <input
               id="action-confirm-challenge"
+              className="form-input action-confirm-input"
               type="text"
               inputMode={summary.challenge.kind === "amount" ? "numeric" : "text"}
               autoComplete="off"
