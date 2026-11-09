@@ -289,6 +289,13 @@ describe("R8: this modal's confirmation errors", () => {
     expect(buttonNamed("Try again")).toBeDefined();
   });
 
+  it("status_incomplete (no numeric paid_through, ruled 2026-11-09) shows the ruled sentence", async () => {
+    await mountInCard();
+    await confirmRefusedWith(refusal(503, { error: "status_incomplete", detail: "treasury status has no numeric paid_through" }));
+    expect(document.querySelector(".dialog-title")?.textContent).toBe("Payment failed");
+    expect(errorText()).toBe("Nothing was sent. Your node couldn't read your subscription status; try again later.");
+  });
+
   it("the shared classifier's copy is unchanged (the override is this modal's only)", () => {
     expect(classifyConfirmError({ status: 400, code: "confirmation_required" })?.detail).toBe(
       "This action needs a confirmation and none was sent. Check that every field is filled in, then confirm again.",

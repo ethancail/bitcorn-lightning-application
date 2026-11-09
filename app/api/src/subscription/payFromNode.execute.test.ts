@@ -67,6 +67,7 @@ function applicable(over: Record<string, unknown> = {}) {
 
 let db: Database.Database;
 let execute: typeof import("./payFromNode").executePayFromNode;
+let errorHttpStatus: typeof import("./payFromNode").errorHttpStatus;
 let lnd: typeof import("../lightning/lnd");
 let markers: typeof import("./sendMarker");
 let profile: typeof import("../profile/profileStore");
@@ -77,7 +78,7 @@ beforeAll(async () => {
   const { runMigrations } = await import("../db/migrate");
   runMigrations();
   ({ db } = await import("../db"));
-  ({ executePayFromNode: execute } = await import("./payFromNode"));
+  ({ executePayFromNode: execute, errorHttpStatus } = await import("./payFromNode"));
   lnd = await import("../lightning/lnd");
   markers = await import("./sendMarker");
   profile = await import("../profile/profileStore");
@@ -347,6 +348,59 @@ describe("C13 — ruling 3: what clears or keeps a marker is WHERE the error aro
     h.sendThrows = new Error("insufficient funds available to construct transaction");
     expect(await manual()).toMatchObject({ ok: false, code: "insufficient_funds" });
     expect(active()).toHaveLength(1);
+  });
+});
+
+describe("C18 — a status without a numeric paid_through is refused before any marker (ruled 2026-11-09)", () => {
+  // One assertion over three facts, so the control's red line shows them all:
+  // the refusal's code, whether the send was called, and whether a marker is
+  // still active after a LATER payment is credited (paid_through moves, and
+  // last_payment_txid names that later payment, not this one). A marker
+  // written with paid_through_at_write NULL survives that credit: the
+  // paid_through clause needs a non-NULL value, and the txid clause needs
+  // this payment's own txid.
+  async function attemptThenLaterCredit(send: () => ReturnType<typeof execute>) {
+    const r = await send();
+    const sends = vi.mocked(lnd.sendLndToChainAddress).mock.calls.length;
+    markers.clearMarkersOnCredit(db, PUB, { paid_through: 9_000_000, last_payment_txid: "txlater" }, nowSec());
+    return { code: r.ok ? "sent" : r.code, sends, activeAfterLaterCredit: active().length };
+  }
+  const REFUSED = { code: "status_incomplete", sends: 0, activeAfterLaterCredit: 0 };
+
+  it("manual, paid_through missing → status_incomplete, no send, no marker", async () => {
+    const { paid_through: _omit, ...rest } = applicable();
+    h.status = rest;
+    expect(await attemptThenLaterCredit(() => manual())).toEqual(REFUSED);
+  });
+
+  it("manual, paid_through null → status_incomplete, no send, no marker", async () => {
+    h.status = applicable({ paid_through: null });
+    expect(await attemptThenLaterCredit(() => manual())).toEqual(REFUSED);
+  });
+
+  it("manual, paid_through not a number → status_incomplete, no send, no marker", async () => {
+    h.status = applicable({ paid_through: "1000000" });
+    expect(await attemptThenLaterCredit(() => manual())).toEqual(REFUSED);
+  });
+
+  it("auto, paid_through null → status_incomplete, no send, no marker", async () => {
+    h.status = applicable({ paid_through: null });
+    expect(await attemptThenLaterCredit(() => auto())).toEqual(REFUSED);
+  });
+
+  it("the refusal maps to HTTP 503 and carries the price for context", async () => {
+    h.status = applicable({ paid_through: null });
+    const r = await manual();
+    expect(r).toMatchObject({ ok: false, code: "status_incomplete", price_sats: PRICE });
+    expect(errorHttpStatus("status_incomplete")).toBe(503);
+  });
+
+  it("permitting control: the same send with a numeric paid_through goes, and its marker clears on the later credit", async () => {
+    expect(await attemptThenLaterCredit(() => manual())).toEqual({
+      code: "sent",
+      sends: 1,
+      activeAfterLaterCredit: 0,
+    });
   });
 });
 

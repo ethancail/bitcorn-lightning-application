@@ -151,6 +151,7 @@ describe("errorHttpStatus — error code → HTTP status", () => {
   const cases: Array<[PayFromNodeError, number]> = [
     ["payment_in_flight", 409],
     ["status_unavailable", 503],
+    ["status_incomplete", 503],
     ["lnd_unavailable", 503],
     ["insufficient_funds", 400],
     ["fee_estimate_failed", 502],

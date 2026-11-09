@@ -28,6 +28,11 @@ describe("classifyAutoPayError", () => {
     expect(classifyAutoPayError("payment_in_flight")).toBeNull();
   });
 
+  // Ruled 2026-11-09: no new alert type; the scheduler logs it instead.
+  it("status_incomplete (no numeric paid_through) is a silent defer too", () => {
+    expect(classifyAutoPayError("status_incomplete")).toBeNull();
+  });
+
   // pay-from-node, ruled 2026-11-05.
   it("settlement_pending is a silent defer; settlement_overdue alerts", () => {
     expect(classifyAutoPayError("settlement_pending")).toBeNull();

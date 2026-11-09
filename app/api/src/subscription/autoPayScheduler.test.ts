@@ -109,6 +109,19 @@ describe("C3 — a young marker holds auto-pay silently", () => {
   });
 });
 
+describe("C18 — a status without a numeric paid_through (ruled 2026-11-09)", () => {
+  it("refuses: no send, no marker, no alert row, and one warning naming status_incomplete", async () => {
+    h.status = status({ paid_through: null });
+    vi.mocked(console.warn).mockClear();
+    await tick();
+    expect(lnd.sendLndToChainAddress).not.toHaveBeenCalled();
+    expect(markers.listActiveMarkers(db, PUB)).toHaveLength(0);
+    expect(rows()).toHaveLength(0);
+    const warned = vi.mocked(console.warn).mock.calls.map((c) => String(c[0]));
+    expect(warned.filter((w) => w.includes("status_incomplete"))).toHaveLength(1);
+  });
+});
+
 describe("C4 — dismissing the success alert does not lift the guard", () => {
   it("after a success, dismissing AUTOPAY_SUCCEEDED and ticking again sends nothing", async () => {
     await tick();

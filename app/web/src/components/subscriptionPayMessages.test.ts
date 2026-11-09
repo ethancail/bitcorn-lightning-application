@@ -11,6 +11,12 @@ describe("payErrorMessage", () => {
     expect(payErrorMessage("member_required")).toMatch(/member nodes/i);
   });
 
+  it("status_incomplete reads exactly as ruled 2026-11-09", () => {
+    expect(payErrorMessage("status_incomplete", "treasury status has no numeric paid_through")).toBe(
+      "Nothing was sent. Your node couldn't read your subscription status; try again later.",
+    );
+  });
+
   it("includes the raw detail for send_failed", () => {
     expect(payErrorMessage("send_failed", "chain backend rejected tx")).toContain("chain backend rejected tx");
     expect(payErrorMessage("send_failed")).toMatch(/couldn't be sent/i);

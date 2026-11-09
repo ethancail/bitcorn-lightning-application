@@ -48,6 +48,10 @@ export type PayFromNodeError =
   | "lnd_unavailable"
   | "send_failed"
   | "status_unavailable"
+  // The treasury status was read but carries no numeric paid_through, so a
+  // marker written now could only ever be cleared by its own txid (ruled
+  // 2026-11-09). Refused before any marker is written; nothing is sent.
+  | "status_incomplete"
   | "payment_in_flight"
   // The echo (D1, manual only): the price or address the member confirmed
   // is no longer what the server derives. Nothing is sent.
@@ -82,6 +86,7 @@ export function errorHttpStatus(code: PayFromNodeError): number {
     case "price_unacknowledged":
       return 409;
     case "status_unavailable":
+    case "status_incomplete":
     case "lnd_unavailable":
       return 503;
     case "insufficient_funds":
@@ -406,6 +411,20 @@ export async function executePayFromNode(
       return { ok: false, code: status.code, detail: status.detail };
     }
     const { deposit_address, price_sats } = status.target;
+
+    // No numeric paid_through: refuse before the database is touched (ruled
+    // 2026-11-09). The marker records paid_through as paid_through_at_write,
+    // and the clearing rule's paid_through clause needs it non-NULL; without
+    // it, a marker whose own payment is never credited would stay active
+    // through every later credit and hold auto-pay indefinitely.
+    if (status.credit.paid_through == null) {
+      return {
+        ok: false,
+        code: "status_incomplete",
+        detail: "treasury status has no numeric paid_through",
+        price_sats,
+      };
+    }
 
     // Lazy: db-free at load (see the note at the top of this file).
     const { db } = await import("../db");

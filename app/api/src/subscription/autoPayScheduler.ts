@@ -138,7 +138,13 @@ export async function runOnce(): Promise<void> {
     // hold time) classify to null → no alert, retry next tick.
     const alertType = classifyAutoPayError(result.code);
     if (!alertType) {
-      if (ENV.debug) console.log(`[autopay] deferred (${result.code}); no alert`);
+      if (result.code === "status_incomplete") {
+        // Logged whatever the debug setting: a malformed treasury status, not
+        // a transient outage, and it holds auto-pay until the status is fixed.
+        console.warn(`[autopay] renewal refused — ${result.code}: ${result.detail}`);
+      } else if (ENV.debug) {
+        console.log(`[autopay] deferred (${result.code}); no alert`);
+      }
       return;
     }
     console.warn(`[autopay] renewal failed — ${result.code}: ${result.detail}`);

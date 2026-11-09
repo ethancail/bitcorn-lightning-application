@@ -125,6 +125,9 @@ export function classifyAutoPayError(error: PayFromNodeError): AutoPayAlertType 
     case "price_unacknowledged":
       return "AUTOPAY_PRICE_NOT_ACKNOWLEDGED";
     case "status_unavailable":
+    // A status without a numeric paid_through (ruled 2026-11-09): a refusal
+    // on the same silent-deferral path, no new alert type; the scheduler logs it.
+    case "status_incomplete":
     case "payment_in_flight":
     case "settlement_pending":
     case "pay_target_changed":

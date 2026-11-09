@@ -23,6 +23,8 @@ export function payErrorMessage(code?: string, detail?: string): string {
         : "The payment couldn't be sent. Try again.";
     case "status_unavailable":
       return "Couldn't confirm your subscription details with the treasury. Try again in a moment.";
+    case "status_incomplete":
+      return "Nothing was sent. Your node couldn't read your subscription status; try again later.";
     case "payment_in_flight":
       return "A payment is already being sent from this node. Wait for it to finish before trying again.";
     case "member_required":
