@@ -12,7 +12,7 @@
     "dev:webB": "node scripts/harness-slot.mjs run dev:webB",
     "dev:all": "concurrently -n T,A,B,wT,wA,wB \"npm:dev:treasury\" \"npm:dev:memberA\" \"npm:dev:memberB\" \"npm:dev:webT\" \"npm:dev:webA\" \"npm:dev:webB\"",
     "dev:kill": "node scripts/harness-slot.mjs run dev:kill",
-    "_comment_loop_layer": "Optional Loop fidelity layer scripts. loopserver runs as a Docker container (Lightning Labs publishes lightninglabs/loopserver:latest — there is no Go source for it in lightninglabs/loop). loopd runs as a native binary built from lightninglabs/loop v0.33.0-beta. See docs/dev-setup.md § Optional: Loop Fidelity Layer for setup details.",
+    "_comment_loop_layer": "Optional Loop fidelity layer scripts. loopserver runs as a Docker container, pinned to lightninglabs/loopserver:v0.9.221-beta (Lightning Labs publishes it only as an image — there is no Go source for it in lightninglabs/loop). loopd runs as a native binary built from lightninglabs/loop v0.33.0-beta. See docs/dev-setup.md § Optional: Loop Fidelity Layer for setup details.",
     "dev:loopserver": "node scripts/harness-slot.mjs run dev:loopserver",
     "dev:loopd-T": "node scripts/harness-slot.mjs run dev:loopd-T",
     "dev:loopd-A": "node scripts/harness-slot.mjs run dev:loopd-A",

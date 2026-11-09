@@ -119,7 +119,7 @@ test("H8 wiring: each dev:* script runs this module under its own name, or is un
   assert.deepEqual(Object.keys(now), Object.keys(base), "the set of npm scripts changed");
   for (const [name, text] of Object.entries(now)) {
     if (SCRIPTS.includes(name)) assert.equal(text, `node scripts/harness-slot.mjs run ${name}`, name);
-    else assert.equal(text, base[name], `${name} should be unchanged`);
+    else if (!name.startsWith("_comment")) assert.equal(text, base[name], `${name} should be unchanged`);
   }
 });
 

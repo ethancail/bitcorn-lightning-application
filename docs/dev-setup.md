@@ -423,7 +423,7 @@ cd ~/.bitcorn-dev/loop-src
 go build -o ~/.bitcorn-dev/loopserver/loopd ./cmd/loopd
 ```
 
-Verify: `~/.bitcorn-dev/loopserver/loopd --version` should print `loopd version 0.33.0-beta`. `docker image inspect lightninglabs/loopserver:latest --format '{{.Id}}'` should print a sha256.
+Verify: `~/.bitcorn-dev/loopserver/loopd --version` should print `loopd version 0.33.0-beta`. `docker image inspect lightninglabs/loopserver:v0.9.221-beta --format '{{.Id}}'` should print a sha256.
 
 You also need to be in the `docker` group to run the loopserver container — `sudo usermod -aG docker $USER && newgrp docker` (one-time, then either `newgrp docker` in your current shell or log out / log back in).
 
