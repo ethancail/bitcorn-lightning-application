@@ -150,6 +150,72 @@ describe("the type-to-confirm input is a sized text field", () => {
   });
 });
 
+// ── The focus ring inside ActionConfirmModal's scroll (ruling 2026-11-09, item 1)
+// .form-input's focus ring is an outline outside the field (width + offset).
+// The field is the last thing in .action-confirm-scroll, whose overflow clips
+// anything past its padding box, so the ring showed on the top edge only (2026-11-09
+// gate). The scroll gets padding of at least the ring's reach on every side, and
+// the same negative margin, so nothing moves while the content fits. (While
+// the middle scrolls, its visible edge moves out by the padding: accepted.)
+
+/** The four sides of a padding/margin shorthand, in px; null if any side is not px. */
+export function sides(v: string | undefined): [number, number, number, number] | null {
+  const t = (v ?? "").trim().split(/\s+/).filter(Boolean);
+  if (t.length === 0 || t.length > 4) return null;
+  const n = t.map((x) => (/^-?0$/.test(x) ? 0 : /^-?[\d.]+px$/.test(x) ? parseFloat(x) : NaN));
+  if (n.some(Number.isNaN)) return null;
+  const [a, b = a, c = a, d = b] = n;
+  return [a, b, c, d];
+}
+
+/** How far the focus ring reaches outside the field: outline width + offset. */
+export function ringReach(focus: Record<string, string>): number | null {
+  const w = /^([\d.]+)px\b/.exec((focus.outline ?? "").trim())?.[1];
+  const off = /^(-?[\d.]+)px$/.exec((focus["outline-offset"] ?? "").trim())?.[1];
+  return w === undefined || off === undefined ? null : parseFloat(w) + parseFloat(off);
+}
+
+/** Problems with the scroll's room for the ring, as messages. */
+export function ringRoomProblems(scroll: Record<string, string>, reach: number): string[] {
+  const out: string[] = [];
+  const pad = sides(scroll.padding);
+  const mar = sides(scroll.margin);
+  const NAMES = ["top", "right", "bottom", "left"];
+  if (!pad) return [`padding ${scroll.padding ?? "unset"} — no room for the ${reach}px ring`];
+  pad.forEach((p, k) => { if (p < reach) out.push(`padding-${NAMES[k]} ${p}px < the ring's ${reach}px`); });
+  if (!mar) out.push(`margin ${scroll.margin ?? "unset"} — the padding would move the layout`);
+  else mar.forEach((m, k) => { if (m !== -pad[k]) out.push(`margin-${NAMES[k]} ${m}px is not -${pad[k]}px — the layout moves`); });
+  return out;
+}
+
+describe("the focus ring shows all round inside ActionConfirmModal's scroll", () => {
+  it("not vacuous: the field is a .form-input inside .action-confirm-scroll, and the ring reaches 4px out", () => {
+    const src = read(COPIES[0][1]);
+    expect(src.indexOf('className="action-confirm-scroll"')).toBeGreaterThan(-1);
+    expect(src.indexOf('className="action-confirm-scroll"')).toBeLessThan(src.indexOf('id="action-confirm-challenge"'));
+    expect(ringReach(declsFor(".form-input:focus-visible"))).toBe(4);
+  });
+
+  it(".action-confirm-scroll's padding is at least the ring's reach on every side, offset by an equal negative margin", () => {
+    const reach = ringReach(declsFor(".form-input:focus-visible"))!;
+    expect(ringRoomProblems(declsFor(".action-confirm-scroll"), reach)).toEqual([]);
+  });
+
+  it("negative controls: no padding, too little, one short side and no margin are caught", () => {
+    expect(sides("4px")).toEqual([4, 4, 4, 4]);
+    expect(sides("4px 2px")).toEqual([4, 2, 4, 2]);
+    expect(sides("-4px")).toEqual([-4, -4, -4, -4]);
+    expect(sides("1rem")).toBeNull();
+    expect(ringReach({ outline: "2px solid var(--focus-ring)", "outline-offset": "2px" })).toBe(4);
+    expect(ringReach({})).toBeNull();
+    expect(ringRoomProblems({}, 4)).toHaveLength(1);
+    expect(ringRoomProblems({ padding: "2px", margin: "-2px" }, 4)).toHaveLength(4);
+    expect(ringRoomProblems({ padding: "4px 4px 0", margin: "-4px -4px 0" }, 4)).toEqual(["padding-bottom 0px < the ring's 4px"]);
+    expect(ringRoomProblems({ padding: "4px" }, 4)).toEqual(["margin unset — the padding would move the layout"]);
+    expect(ringRoomProblems({ padding: "4px", margin: "-4px" }, 4)).toEqual([]);
+  });
+});
+
 // ── The inline dialogs' action rows (ruling 2026-11-09, item 2) ─────────────
 // The swap and close-channel dialogs put `.dialog-actions` straight after the
 // challenge's wrapper, and .dialog-actions has no top margin, so the buttons
