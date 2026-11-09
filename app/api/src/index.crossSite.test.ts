@@ -5,13 +5,15 @@
 // running. A browser sends a POST typed text/plain, form-encoded, multipart or
 // untyped WITHOUT a preflight, and the handlers JSON.parse the body whatever its
 // type. Routes exempt from per-action confirmation therefore ran for any page on
-// any site — including three that move funds and need no body at all.
+// any site — including two that move funds and need no body at all. (There
+// were three; pay-from-node now takes a confirmed body, 2026-11-05 D1, and
+// its rows below assert that.)
 //
 // "THE HANDLER NEVER RAN" is measured, not inferred, two ways:
 //   · classifyMutation is the only road from handleRequest to dispatch for a
 //     mutation, and the probe below counts its calls. Zero calls = no dispatch.
 //     The permitting rows prove the probe can see a call.
-//   · the three capital routes' own primitives are counted directly.
+//   · the capital routes' own primitives are counted directly.
 //
 // RED FIRST: run against the pre-change index.ts, every forbidding row here
 // failed (see the commit message for the recorded counts).
@@ -22,7 +24,7 @@ import path from "path";
 import { PassThrough } from "stream";
 import type http from "http";
 import ts from "typescript";
-import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "bitcorn-cross-site-test-"));
 process.env.DB_DIR = path.join(TMP, "db");
@@ -48,7 +50,7 @@ vi.mock("./utils/action-confirmation", async (importOriginal) => {
   };
 });
 
-// The three capital routes' primitives, counted. Role checks are lifted so the
+// The capital routes' primitives, counted. Role checks are lifted so the
 // permitting controls reach the primitive on a temp DB with no node row.
 vi.mock("./utils/role", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./utils/role")>()),
@@ -248,14 +250,59 @@ describe("unclassified mutations go through the guard too", () => {
   });
 });
 
-// ─── The three bodiless capital routes, by name ─────────────────────────────
+// ─── The two bodiless capital routes, by name ───────────────────────────────
 // Each moves funds, takes no parameter, and is exempt from confirmation — so
 // before this guard a bodiless text/plain POST from any site ran it.
-const CAPITAL: Array<[url: string, counter: "payFromNode" | "autobuyTick" | "autoLoopOut"]> = [
-  ["/api/subscription/pay-from-node", "payFromNode"],
+const CAPITAL: Array<[url: string, counter: "autobuyTick" | "autoLoopOut"]> = [
   ["/api/autobuy/execute-now", "autobuyTick"],
   ["/api/treasury/rebalance/loop-out/auto", "autoLoopOut"],
 ];
+
+// ─── pay-from-node: confirmed by echo, no longer bodiless (2026-11-05 D1) ───
+describe("POST /api/subscription/pay-from-node", () => {
+  const URL = "/api/subscription/pay-from-node";
+  const BODY = { amount_sats: 50_000, deposit_address: "bcrt1qmember" };
+
+  // The handler passes the node's pubkey to the primitive, so the permitting
+  // row needs a node row; scoped to this block so no other row sees one.
+  beforeAll(() => {
+    db.prepare(
+      `INSERT OR REPLACE INTO lnd_node_info (id, pubkey, network, node_role, updated_at)
+       VALUES (1, '02crosssitemember', 'regtest', 'member', 0)`,
+    ).run();
+  });
+  afterAll(() => {
+    db.prepare("DELETE FROM lnd_node_info").run();
+  });
+
+  it("bodiless text/plain is refused and the primitive never runs", async () => {
+    const r = await call("POST", URL, { "content-type": "text/plain" });
+    expect(r.status).toBe(415);
+    expect(r.body).toEqual({ error: "unsupported_content_type" });
+    expect(probe.payFromNode).toBe(0);
+  });
+
+  it("bodiless application/json is refused at the gate: 400 confirmation_required, primitive never runs", async () => {
+    const r = await call("POST", URL, { "content-type": "application/json" });
+    expect(r.status).toBe(400);
+    expect(r.body?.error).toBe("confirmation_required");
+    expect(probe.payFromNode).toBe(0);
+  });
+
+  it("a correctly confirmed body reaches the primitive (permitting control: the counter can see a run)", async () => {
+    const route = tables.findConfirmedRoute("POST", URL)!;
+    const d = tables.deriveConfirmation(route, { url: URL, body: BODY });
+    if (!d.ok) throw new Error(`could not derive a confirmation: ${d.reason}`);
+    const r = await call(
+      "POST",
+      URL,
+      { "content-type": "application/json", [tables.CONFIRMATION_HEADER]: d.value },
+      JSON.stringify(BODY),
+    );
+    expect(r.status).toBe(200);
+    expect(probe.payFromNode).toBe(1);
+  });
+});
 
 describe.each(CAPITAL)("POST %s", (url, counter) => {
   it("bodiless text/plain is refused and the primitive never runs", async () => {

@@ -17,7 +17,7 @@
 //               success is still settling, or a failure is cooling down / paused.
 //               Re-evaluated on the next tick, all within the grace runway.
 
-import { SEVERITY_BY_TYPE, type AutoPayActiveAlertRow, type AutoPayAlertType } from "./autoPayAlerts";
+import { SEND_FAILURE_TYPES, type AutoPayActiveAlertRow, type AutoPayAlertType } from "./autoPayAlerts";
 
 /** The tier values the trigger reasons over. `null` = status not applicable. */
 export type AutoPayTier =
@@ -57,8 +57,14 @@ export interface ShouldAutoPayInput {
 
 export type AutoPayDecision = "fire" | "skip" | "defer";
 
-function isWarning(type: string): boolean {
-  return SEVERITY_BY_TYPE[type as AutoPayAlertType] === "warning";
+/** A send-failure alert: the only kind that feeds the failure backoff and
+ *  pause. The two guard alerts (settlement overdue, price not acknowledged)
+ *  are warning-severity too, but they report a hold the marker or the price
+ *  ceiling already enforces; letting them pause the trigger would keep
+ *  auto-pay held after their cause cleared, until the member dismissed them
+ *  (pay-from-node spec §4.3, ruled 2026-11-05). */
+function isSendFailure(type: string): boolean {
+  return SEND_FAILURE_TYPES.includes(type as AutoPayAlertType);
 }
 
 export function shouldAutoPay(input: ShouldAutoPayInput): AutoPayDecision {
@@ -70,10 +76,12 @@ export function shouldAutoPay(input: ShouldAutoPayInput): AutoPayDecision {
   if (input.sendInFlight) return "defer";
 
   // Settlement cooldown: a recent successful pay is still awaiting on-chain
-  // confirmation + treasury crediting (detector requires conf >= 1). Without
-  // this, a level-triggered tick would re-send every cycle until the first
-  // block — the double-send window. Reuses the SUCCEEDED row's updated_at as
-  // the "recently paid" marker (no extra column).
+  // confirmation + treasury crediting (detector requires conf >= 1). This is
+  // no longer the double-send guard: the durable settlement marker, checked
+  // inside executePayFromNode under the send lock, is (pay-from-node D2), and
+  // it holds regardless of any alert's state. This cooldown is kept as an
+  // extra deferral. It reuses the SUCCEEDED row's updated_at (no extra
+  // column), so dismissing that alert ends the cooldown but not the guard.
   const recentSuccess = input.activeAlerts.some(
     (a) =>
       a.type === "AUTOPAY_SUCCEEDED" &&
@@ -82,10 +90,11 @@ export function shouldAutoPay(input: ShouldAutoPayInput): AutoPayDecision {
   );
   if (recentSuccess) return "defer";
 
-  // Failure backoff + auto-pause, reusing the warning row's own
-  // consecutive_count / updated_at as the backoff state (§5).
+  // Failure backoff + auto-pause, reusing the send-failure row's own
+  // consecutive_count / updated_at as the backoff state (§5). Send-failure
+  // types only — see isSendFailure.
   const activeWarnings = input.activeAlerts.filter(
-    (a) => a.status === "active" && isWarning(a.type),
+    (a) => a.status === "active" && isSendFailure(a.type),
   );
   const paused = activeWarnings.some(
     (a) => a.consecutive_count >= input.failurePauseThreshold,

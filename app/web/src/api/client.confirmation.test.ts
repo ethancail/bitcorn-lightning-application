@@ -78,6 +78,17 @@ const LI_CEILINGS = { max_swap_fee_sat: 500, max_miner_fee_sat: 900 };
 
 describe("every capital route the UI can reach sends a confirmation the server accepts", () => {
   const CALLS: Array<[label: string, run: () => Promise<unknown>]> = [
+    ["subscription/pay-from-node", () => api.payFromNode({ amount_sats: 50_000, deposit_address: "bc1qdeposit" })],
+    [
+      "subscription/pay-from-node + both acknowledgements",
+      () =>
+        api.payFromNode({
+          amount_sats: 50_000,
+          deposit_address: "bc1qdeposit",
+          repeat_acknowledged: true,
+          price_acknowledged: true,
+        }),
+    ],
     ["member/open-channel", () => api.openMemberChannel({ capacity_sats: 1_000_000 })],
     [
       "member/open-channel + socket",

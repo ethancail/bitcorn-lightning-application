@@ -6,6 +6,11 @@ import {
   shouldAutoClear,
   decideAutoPayAlert,
   resolveOnSuccess,
+  priceCauseKey,
+  overdueCauseKey,
+  currentPriceCauseKey,
+  decideCauseAlert,
+  causeAlertsToResolve,
   type AutoPayAlertType,
   type AutoPayActiveAlertRow,
 } from "./autoPayAlerts";
@@ -21,6 +26,63 @@ describe("classifyAutoPayError", () => {
   it("returns null (silent defer) for status_unavailable and payment_in_flight", () => {
     expect(classifyAutoPayError("status_unavailable")).toBeNull();
     expect(classifyAutoPayError("payment_in_flight")).toBeNull();
+  });
+
+  // Ruled 2026-11-09: no new alert type; the scheduler logs it instead.
+  it("status_incomplete (no numeric paid_through) is a silent defer too", () => {
+    expect(classifyAutoPayError("status_incomplete")).toBeNull();
+  });
+
+  // pay-from-node, ruled 2026-11-05.
+  it("settlement_pending is a silent defer; settlement_overdue alerts", () => {
+    expect(classifyAutoPayError("settlement_pending")).toBeNull();
+    expect(classifyAutoPayError("settlement_overdue")).toBe("AUTOPAY_SETTLEMENT_OVERDUE");
+  });
+
+  it("both price-ceiling refusals map to AUTOPAY_PRICE_NOT_ACKNOWLEDGED (context.reason tells them apart)", () => {
+    expect(classifyAutoPayError("price_above_acknowledged")).toBe("AUTOPAY_PRICE_NOT_ACKNOWLEDGED");
+    expect(classifyAutoPayError("price_unacknowledged")).toBe("AUTOPAY_PRICE_NOT_ACKNOWLEDGED");
+  });
+
+  it("the manual-only refusals raise nothing on the auto path", () => {
+    expect(classifyAutoPayError("pay_target_changed")).toBeNull();
+    expect(classifyAutoPayError("repeat_unacknowledged")).toBeNull();
+  });
+});
+
+describe("the guard alerts' causes (pay-from-node §4.3, ruled 2026-11-05)", () => {
+  const row = (id: number, status: string, cause_key: string | null) => ({
+    id,
+    type: "AUTOPAY_PRICE_NOT_ACKNOWLEDGED",
+    status,
+    cause_key,
+  });
+
+  it("the price cause key is (reason, current price, acknowledged price)", () => {
+    expect(priceCauseKey("price_above_acknowledged", 60_000, 50_000)).toBe("price_above_acknowledged|60000|50000");
+    expect(priceCauseKey("no_acknowledged_price", 60_000, null)).toBe("no_acknowledged_price|60000|null");
+    expect(overdueCauseKey(7)).toBe("marker:7");
+  });
+
+  it("the live price cause: none at or below the acknowledged price", () => {
+    expect(currentPriceCauseKey(50_000, 50_000)).toBeNull();
+    expect(currentPriceCauseKey(40_000, 50_000)).toBeNull();
+    expect(currentPriceCauseKey(60_000, 50_000)).toBe("price_above_acknowledged|60000|50000");
+    expect(currentPriceCauseKey(60_000, null)).toBe("no_acknowledged_price|60000|null");
+  });
+
+  it("raised once per cause: a dismissed row with the same key suppresses a new one", () => {
+    expect(decideCauseAlert("AUTOPAY_PRICE_NOT_ACKNOWLEDGED", "k", [row(1, "dismissed", "k")])).toBe("noop");
+    expect(decideCauseAlert("AUTOPAY_PRICE_NOT_ACKNOWLEDGED", "k", [row(1, "active", "k")])).toBe("noop");
+  });
+
+  it("a new cause raises a new row", () => {
+    expect(decideCauseAlert("AUTOPAY_PRICE_NOT_ACKNOWLEDGED", "k2", [row(1, "dismissed", "k")])).toBe("create");
+  });
+
+  it("resolves the active rows whose cause is no longer live, and only those", () => {
+    const rows = [row(1, "active", "gone"), row(2, "active", "live"), row(3, "dismissed", "gone")];
+    expect(causeAlertsToResolve(rows, new Set(["live"]))).toEqual([{ alertId: 1 }]);
   });
 });
 
@@ -55,6 +117,11 @@ describe("shouldAutoClear", () => {
 
   it("is false for AUTOPAY_SUCCEEDED (its lifecycle is time/episode-based, not failure-resolution)", () => {
     expect(shouldAutoClear("AUTOPAY_SUCCEEDED")).toBe(false);
+  });
+
+  it("is false for the two guard types (they resolve when their cause clears)", () => {
+    expect(shouldAutoClear("AUTOPAY_SETTLEMENT_OVERDUE")).toBe(false);
+    expect(shouldAutoClear("AUTOPAY_PRICE_NOT_ACKNOWLEDGED")).toBe(false);
   });
 });
 

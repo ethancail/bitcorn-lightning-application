@@ -10,6 +10,8 @@ import {
   getBadgeCount,
   dismissAlert,
   resolveStaleSucceeded,
+  recordCauseAlert,
+  resolveClearedCauseAlerts,
 } from "./autoPayAlertStore";
 
 // Store-level integration tests against a real in-memory better-sqlite3 DB
@@ -158,5 +160,51 @@ describe("resolveStaleSucceeded — the 24h SUCCEEDED auto-resolve sweep", () =>
     resolveStaleSucceeded(db, A, 1000); // cutoff far in the future relative to updated_at=1
     const active = getActiveAlerts(db, A);
     expect(active.map((a) => a.type)).toEqual(["AUTOPAY_PAYMENT_FAILED"]);
+  });
+});
+
+// pay-from-node, ruled 2026-11-05 (spec §4.3).
+describe("the guard alerts — once per cause, resolved when it clears", () => {
+  const PRICE = "AUTOPAY_PRICE_NOT_ACKNOWLEDGED" as const;
+  const count = () =>
+    (db.prepare("SELECT COUNT(*) AS n FROM subscription_autopay_alerts WHERE member_pubkey = ?").get(A) as { n: number }).n;
+
+  it("creates one warning row carrying its cause key", () => {
+    recordCauseAlert(db, A, { type: PRICE, causeKey: "k1", context: { reason: "price_above_acknowledged" } });
+    const [row] = getActiveAlerts(db, A);
+    expect(row).toMatchObject({ type: PRICE, severity: "warning", consecutive_count: 1 });
+    expect(row!.context).toMatchObject({ reason: "price_above_acknowledged", cause_key: "k1" });
+  });
+
+  it("C16: the same cause again does nothing — not while active, and not after dismissal", () => {
+    recordCauseAlert(db, A, { type: PRICE, causeKey: "k1", context: {} });
+    recordCauseAlert(db, A, { type: PRICE, causeKey: "k1", context: {} });
+    expect(count()).toBe(1);
+    const [row] = getActiveAlerts(db, A);
+    dismissAlert(db, A, row!.id);
+    recordCauseAlert(db, A, { type: PRICE, causeKey: "k1", context: {} });
+    expect(count()).toBe(1);
+    expect(getActiveAlerts(db, A)).toHaveLength(0);
+  });
+
+  it("C16 permitting: a new cause raises a new row", () => {
+    recordCauseAlert(db, A, { type: PRICE, causeKey: "k1", context: {} });
+    recordCauseAlert(db, A, { type: PRICE, causeKey: "k2", context: {} });
+    expect(count()).toBe(2);
+  });
+
+  it("C17: resolves the active row whose cause is no longer live, and keeps a live one", () => {
+    recordCauseAlert(db, A, { type: PRICE, causeKey: "gone", context: {} });
+    recordCauseAlert(db, A, { type: PRICE, causeKey: "live", context: {} });
+    resolveClearedCauseAlerts(db, A, PRICE, new Set(["live"]));
+    const active = getActiveAlerts(db, A);
+    expect(active).toHaveLength(1);
+    expect(active[0]!.context).toMatchObject({ cause_key: "live" });
+  });
+
+  it("is member-scoped", () => {
+    recordCauseAlert(db, A, { type: PRICE, causeKey: "k1", context: {} });
+    recordCauseAlert(db, B, { type: PRICE, causeKey: "k1", context: {} });
+    expect(getActiveAlerts(db, B)).toHaveLength(1);
   });
 });

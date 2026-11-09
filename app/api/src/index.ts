@@ -1059,14 +1059,17 @@ async function dispatchRequest(
   //
   // Source of truth: decisions/2026-06-11-subscription-panel-action-
   // button-behaviors.md (§ Backend endpoint design) + deltas/2026-06-11-
-  // subscription-pay-from-node-implementation-deltas.md.
+  // subscription-pay-from-node-implementation-deltas.md +
+  // decisions/2026-11-05-pay-from-node-confirmation-by-echo-settlement-
+  // guard-and-price-ceiling.md (D1–D3).
   //
-  // Member-local, member-only. NO request body — amount and destination
-  // are derived server-side (treasury price_sats + the member's own
-  // deposit_address) so this can only ever send the subscription price
-  // to the member's own address. The quote endpoint is separate from
-  // status because the fee estimate is member-local LND truth the
-  // treasury can't compute.
+  // Member-local, member-only. The POST's body ECHOES the price and address
+  // the member was shown (confirmed by hash at the gate, D1); the server
+  // re-derives both (treasury price_sats + the member's own deposit_address),
+  // refuses a mismatch, and sends only its own values — so this can only
+  // ever send the subscription price to the member's own address. The quote
+  // endpoint is separate from status because the fee estimate is
+  // member-local LND truth the treasury can't compute.
 
   // GET quote — preview the fee for the pay-from-node confirm step.
   // (More specific path than the POST below; method differs anyway.)
@@ -1108,8 +1111,9 @@ async function dispatchRequest(
   }
 
   // POST pay-from-node — send the subscription price from the member's
-  // own LND on-chain wallet to their own deposit address. Single
-  // in-flight send per node (the authoritative double-send defense).
+  // own LND on-chain wallet to their own deposit address. The double-send
+  // defense is two things together: the single in-flight send per node, and
+  // the durable settlement marker that makes a repeat deliberate (D2).
   if (req.method === "POST" && req.url === "/api/subscription/pay-from-node") {
     const node = getNodeInfo();
     try { assertMember(node?.node_role); } catch (err: any) {
@@ -1117,19 +1121,55 @@ async function dispatchRequest(
       res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
       return;
     }
-    // Deliberately no request-body read: amount + destination are
-    // server-derived. executePayFromNode owns the in-flight lock, the
-    // server-side derivation, the balance pre-check, the send, and error
-    // classification — the SAME entry point the auto-pay scheduler calls, so
-    // the single in-flight lock serializes manual + automatic sends.
+    // The body the gate already verified: the echo of what the member was
+    // shown, plus the two acknowledgements, each read only when literally
+    // `true` (the gate hashed them as booleans). The echo is compared
+    // against the server's derivation inside executePayFromNode and is never
+    // used as the destination or amount. executePayFromNode owns the
+    // in-flight lock, the derivation, the marker, the price ceiling, the
+    // balance pre-check, the send and error classification — the SAME entry
+    // point the auto-pay scheduler calls.
+    let parsed: Record<string, unknown>;
     try {
-      const result = await executePayFromNode();
+      const raw = (await readRawBody(req)).toString("utf8");
+      const value: unknown = JSON.parse(raw || "{}");
+      parsed = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+    } catch {
+      parsed = {};
+    }
+    const amount = parsed.amount_sats;
+    const address = parsed.deposit_address;
+    if (typeof amount !== "number" || !Number.isFinite(amount) || typeof address !== "string" || address.length === 0) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        error: "invalid_request",
+        detail: "amount_sats (a finite number) and deposit_address (a non-empty string) are required",
+      }));
+      return;
+    }
+    try {
+      const result = await executePayFromNode({
+        origin: "manual",
+        memberPubkey: node!.pubkey,
+        expected: { amount_sats: amount, deposit_address: address },
+        repeatAcknowledged: parsed.repeat_acknowledged === true,
+        priceAcknowledged: parsed.price_acknowledged === true,
+      });
       if (result.ok) {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ txid: result.txid }));
       } else {
+        // The refusals the modal turns into a step carry what it shows:
+        // the earlier payment (repeat), or both prices (price ceiling).
         res.writeHead(errorHttpStatus(result.code), { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: result.code, detail: result.detail }));
+        res.end(JSON.stringify({
+          error: result.code,
+          detail: result.detail,
+          ...(result.marker ? { marker: result.marker } : {}),
+          ...(result.code === "price_above_acknowledged"
+            ? { price_sats: result.price_sats, acknowledged_price_sats: result.acknowledged_price_sats }
+            : {}),
+        }));
       }
     } catch (err: any) {
       console.error("[subscription] pay-from-node send failed:", err);
@@ -1254,7 +1294,10 @@ async function dispatchRequest(
     return;
   }
 
-  // B. POST /api/profile/acknowledge-price-change — no body; reads current price.
+  // B. POST /api/profile/acknowledge-price-change — body { price_sats }, the
+  //    price the member was shown. Recorded only if it is still the current
+  //    price; a mismatch is 409 and records nothing (pay-from-node §4.1, Q6).
+  //    Body validation here, not a confirmation: the route stays exempt.
   if (req.method === "POST" && req.url === "/api/profile/acknowledge-price-change") {
     const node = getNodeInfo();
     try { assertMember(node?.node_role); } catch (err: any) {
@@ -1262,10 +1305,22 @@ async function dispatchRequest(
       res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
       return;
     }
+    let shown: unknown;
     try {
-      const result = await acknowledgePriceChange(node!.pubkey);
+      const raw = (await readRawBody(req)).toString("utf8");
+      shown = (JSON.parse(raw || "{}") as { price_sats?: unknown })?.price_sats;
+    } catch {
+      shown = undefined;
+    }
+    if (typeof shown !== "number" || !Number.isFinite(shown) || shown <= 0) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid_request", detail: "price_sats must be a finite positive number" }));
+      return;
+    }
+    try {
+      const result = await acknowledgePriceChange(node!.pubkey, shown);
       if (!result.ok) {
-        res.writeHead(503, { "Content-Type": "application/json" });
+        res.writeHead(result.code === "acknowledged_price_mismatch" ? 409 : 503, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: result.code, detail: result.detail }));
         return;
       }

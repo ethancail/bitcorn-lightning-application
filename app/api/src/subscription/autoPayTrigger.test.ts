@@ -122,3 +122,21 @@ describe("shouldAutoPay — defer conditions (would fire, temporarily held)", ()
     ).toBe("skip");
   });
 });
+
+// pay-from-node, ruled 2026-11-05 (spec §4.3): the two guard alerts report a
+// hold the marker or the price ceiling already enforces. They do not feed the
+// failure backoff or the pause, so they cannot keep auto-pay held after their
+// cause has cleared.
+describe("shouldAutoPay — the guard alerts do not feed the backoff or the pause (C15)", () => {
+  for (const type of ["AUTOPAY_SETTLEMENT_OVERDUE", "AUTOPAY_PRICE_NOT_ACKNOWLEDGED"]) {
+    it(`${type}: a fresh active row does not trigger the failure backoff`, () => {
+      expect(shouldAutoPay(base({ activeAlerts: [warning({ type, updated_at: NOW })] }))).toBe("fire");
+    });
+
+    it(`${type}: a row past the pause threshold does not pause auto-pay`, () => {
+      expect(
+        shouldAutoPay(base({ activeAlerts: [warning({ type, consecutive_count: 5, updated_at: NOW - 99999 })] })),
+      ).toBe("fire");
+    });
+  }
+});

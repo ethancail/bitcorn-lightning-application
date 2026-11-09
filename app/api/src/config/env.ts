@@ -193,6 +193,13 @@ export const ENV = {
     // before the tier returns to current. 2h is comfortably > the 6-block
     // (~60min) target and trivially inside the grace runway.
     autoPaySettlementCooldownMs: Number(process.env.AUTOPAY_SETTLEMENT_COOLDOWN_MS ?? "7200000"),
+    // Hold time before an uncredited payment raises an alert (pay-from-node
+    // spec §3.6, 48 hours ruled 2026-11-05). While a send marker is active,
+    // auto-pay stays held; once the oldest active marker is this old, the next
+    // due auto-pay tick raises AUTOPAY_SETTLEMENT_OVERDUE instead of deferring
+    // silently. The hold itself never times out: the marker clears only on
+    // credit. Lowered on regtest to exercise the alert.
+    autoPaySettlementAlertMs: Number(process.env.AUTOPAY_SETTLEMENT_ALERT_MS ?? "172800000"),
     // After a failure, don't re-attempt within this window (default 1h) — avoids
     // retry-spamming a broken/underfunded node every 60s tick.
     autoPayFailureBackoffMs: Number(process.env.AUTOPAY_FAILURE_BACKOFF_MS ?? "3600000"),
