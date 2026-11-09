@@ -22,7 +22,8 @@
 //   Polar network    the one named bitcorn-dev-N in ~/.polar/networks/networks.json;
 //                    absent is an error, never a fallback to network 1
 //   API env files    .env.dev.slot-N.<role> (D14: slot N's identity), with the
-//                    computed values above injected over them (D7). dotenv-cli
+//                    computed values above, BITCOIN_NETWORK=regtest and
+//                    LOOP_GRPC_HOST=127.0.0.1 injected over them (D7). dotenv-cli
 //                    does not override a variable already set, so the injected
 //                    values win; the scripts must never pass it -o.
 //
@@ -137,7 +138,13 @@ export function resolveNetwork(slot, networksJson) {
 
 const lndVolume = (home, networkId, node) => `${checkHome(home)}/.polar/networks/${networkId}/volumes/lnd/${node}`;
 
-// D15: slot 1 injects nothing. Slot N: its computed values, over its own files.
+// Slot N's files hold identity only (D14), so the two settings a dev API cannot
+// do without, and whose API defaults are production values, are injected too
+// (Ethan's ruling, option (b), 2026-11-09). Slot 1 gets them from its own files.
+export const SLOT_N_SETTINGS = { BITCOIN_NETWORK: "regtest", LOOP_GRPC_HOST: "127.0.0.1" };
+
+// D15: slot 1 injects nothing. Slot N: its computed values and SLOT_N_SETTINGS,
+// over its own files.
 export function injectedEnv(slot, roleIndex, ctx) {
   if (slot === 1) return {};
   const { role, node } = ROLES[roleIndex];
@@ -153,6 +160,7 @@ export function injectedEnv(slot, roleIndex, ctx) {
     LOOP_GRPC_PORT: String(ports.loopdRpc[roleIndex]),
     LOOP_TLS_CERT_PATH: `${dir}/loopd/regtest/tls.cert`,
     LOOP_MACAROON_PATH: `${dir}/loopd/regtest/loop.macaroon`,
+    ...SLOT_N_SETTINGS,
   };
 }
 

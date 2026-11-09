@@ -574,7 +574,9 @@ Polar's own node ports are not computed: they are read from `~/.polar/networks/n
    - `LOOP_SERVER_PUBKEYS` — slot N's External-Peer-1 pubkey, in all three;
    - `TREASURY_API_URL` — in the two member files, `http://localhost:<slot N's treasury API port>` (3111 for slot 2).
 
-   The scripts inject the rest for slot N and the injected values win over the file: `PORT`, `DB_DIR`, `SECRETS_DIR`, `LND_GRPC_HOST`, `LND_DIR`, `LOOP_GRPC_PORT`, `LOOP_TLS_CERT_PATH`, `LOOP_MACAROON_PATH`. Nothing else reaches slot N's APIs, so a setting that the slot-1 files carry and that is not listed here (for example `BITCOIN_NETWORK`) is not loaded, and the API's default applies. Slot 1 injects nothing: its `.env.dev.<role>` files stay authoritative.
+   Optional, in any of the three: `COINBASE_WORKER_URL` and `BASE_RPC_URL`. Without `COINBASE_WORKER_URL` the onramp answers `coinbase_not_configured`; without `BASE_RPC_URL`, wallet binding uses the BASE chain's public RPC.
+
+   The scripts inject the rest for slot N, and the injected values win over the file: the computed `PORT`, `DB_DIR`, `SECRETS_DIR`, `LND_GRPC_HOST`, `LND_DIR`, `LOOP_GRPC_PORT`, `LOOP_TLS_CERT_PATH` and `LOOP_MACAROON_PATH`, plus `BITCOIN_NETWORK=regtest` and `LOOP_GRPC_HOST=127.0.0.1`, whose API defaults are production values. Slot 1 injects nothing: its `.env.dev.<role>` files stay authoritative.
 3. Create the loopd directories: `mkdir -p ~/.bitcorn-dev/slot-N/{treasury,member-a,member-b}/loopd`.
 
 **Running slot N.** Set the slot on each command:

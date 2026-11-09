@@ -163,6 +163,8 @@ test("H7 slot 2: every row", () => {
     LOOP_GRPC_PORT: "11120",
     LOOP_TLS_CERT_PATH: "/home/user/.bitcorn-dev/slot-2/member-a/loopd/regtest/tls.cert",
     LOOP_MACAROON_PATH: "/home/user/.bitcorn-dev/slot-2/member-a/loopd/regtest/loop.macaroon",
+    BITCOIN_NETWORK: "regtest",
+    LOOP_GRPC_HOST: "127.0.0.1",
   });
 });
 
@@ -181,6 +183,7 @@ test("H8 slot 2: the command lines carry slot 2's values", () => {
     "LND_DIR=/home/user/.polar/networks/2/volumes/lnd/Treasury LOOP_GRPC_PORT=11110 " +
     "LOOP_TLS_CERT_PATH=/home/user/.bitcorn-dev/slot-2/treasury/loopd/regtest/tls.cert " +
     "LOOP_MACAROON_PATH=/home/user/.bitcorn-dev/slot-2/treasury/loopd/regtest/loop.macaroon " +
+    "BITCOIN_NETWORK=regtest LOOP_GRPC_HOST=127.0.0.1 " +
     "dotenv -e ../../.env.dev.slot-2.treasury -- npm run dev");
   assert.equal(scriptCommand("dev:loopserver-stop", 2, c),
     "docker stop bitcorn-loopserver-2 2>/dev/null && echo 'loopserver stopped'");
@@ -237,6 +240,16 @@ test("H7 env files: slot 1 selects today's .env.dev.<role> and injects nothing; 
     assert.match(one, new RegExp(`^cd app/api && dotenv -e \\.\\./\\.\\./\\.env\\.dev\\.${r.role} +-- npm run dev$`));
     assert.match(two, new RegExp(`dotenv -e \\.\\./\\.\\./\\.env\\.dev\\.slot-2\\.${r.role} -- npm run dev$`));
     assert.match(two, new RegExp(`PORT=${3111 + i} `));
+  }
+});
+
+test("ruling (b): slot 2's API lines inject BITCOIN_NETWORK=regtest and LOOP_GRPC_HOST=127.0.0.1; slot 1's inject neither", () => {
+  for (const r of ROLES) {
+    const one = scriptCommand(r.api, 1, ctx(1));
+    const two = scriptCommand(r.api, 2, ctx(2));
+    assert.match(two, / BITCOIN_NETWORK=regtest .* dotenv -e /, `${r.api} slot 2`);
+    assert.match(two, / LOOP_GRPC_HOST=127\.0\.0\.1 .*dotenv -e /, `${r.api} slot 2`);
+    assert.doesNotMatch(one, /BITCOIN_NETWORK|LOOP_GRPC_HOST/, `${r.api} slot 1`);
   }
 });
 
