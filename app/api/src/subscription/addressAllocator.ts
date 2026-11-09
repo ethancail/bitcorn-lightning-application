@@ -12,15 +12,27 @@
 // - "fresh"       — new member, paid_through = created_at, current_tier = 'prepay',
 //                   no ledger row. The dispatch identifies prepay state by the
 //                   absence of any `subscription_payment` row for the member.
-// - "grandfather" — pre-existing member at flip-day, paid_through = now(),
-//                   current_tier = 'current', PLUS a sentinel admin_override
-//                   ledger row so the dispatch's "no payment row → prepay"
-//                   check correctly routes them away from prepay.
+// - "grandfather" — pre-existing member at flip-day, current_tier = 'current',
+//                   a sentinel admin_override ledger row (period_extension_days
+//                   0, unchanged), AND the founding-member credit: a second
+//                   admin_override row crediting period_days, with paid_through
+//                   = now + period_days days. The sentinel alone credits no time,
+//                   so without the credit the dispatch would put the row in
+//                   `prepay` (membership-gating T3, ruling R2: grandfather mode
+//                   writes the same credit migration 072 wrote, so a first-run
+//                   acknowledgement after the update matches the migration).
 
 import { db } from "../db";
 import { createLndChainAddress } from "../lightning/lnd";
 import { assertFirstRunAcknowledged } from "./firstRunGate";
 import { subscriptionLabel } from "./labels";
+import { getSubscriptionPolicy } from "./policy";
+
+const MS_PER_DAY = 86_400_000;
+
+/** The founding-member credit's admin_reason. Members see it in payment
+ *  history. Same text as migration 072. */
+export const FOUNDING_MEMBER_CREDIT_REASON = "Founding member credit";
 
 export interface AllocationResult {
   member_pubkey: string;
@@ -71,11 +83,27 @@ export async function allocateSubscriptionForMember(
      ) VALUES (?, 0, ?, 0, 'admin_override', 'Stage 2 grandfather backfill at flip-day')`,
   );
 
+  const insertFoundingCredit = db.prepare(
+    `INSERT INTO subscription_payment (
+        member_pubkey, amount_sats, received_at,
+        period_extension_days, kind, admin_reason
+     ) VALUES (?, 0, ?, ?, 'admin_override', ?)`,
+  );
+
   const tier = mode === "grandfather" ? "current" : "prepay";
+  const periodDays =
+    mode === "grandfather" ? getSubscriptionPolicy().period_days : 0;
+  const paidThrough = now + periodDays * MS_PER_DAY;
   const allocate = db.transaction(() => {
-    insertSubscription.run(memberPubkey, address, label, now, now, tier);
+    insertSubscription.run(memberPubkey, address, label, paidThrough, now, tier);
     if (mode === "grandfather") {
       insertGrandfatherSentinel.run(memberPubkey, now);
+      insertFoundingCredit.run(
+        memberPubkey,
+        now,
+        periodDays,
+        FOUNDING_MEMBER_CREDIT_REASON,
+      );
     }
   });
   allocate();
@@ -84,7 +112,7 @@ export async function allocateSubscriptionForMember(
     member_pubkey: memberPubkey,
     deposit_address: address,
     label,
-    paid_through: now,
+    paid_through: paidThrough,
     current_tier: tier,
     created_at: now,
   };

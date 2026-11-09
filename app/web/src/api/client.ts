@@ -824,7 +824,14 @@ export type SubscriptionTier =
   | "routing_lapsed"
   | "close_due";
 
-export type SubscriptionStatusApplicable = {
+/**
+ * The treasury's verdict on this node opening a channel to it (membership-
+ * gating T4): true, false, or null when it couldn't be evaluated. A treasury
+ * that predates the field sends nothing, which reads as unknown.
+ */
+type OpenChannelVerdict = { open_channel_allowed?: boolean | null };
+
+export type SubscriptionStatusApplicable = OpenChannelVerdict & {
   applicable: true;
   member_pubkey: string;
   current_tier: SubscriptionTier;
@@ -836,10 +843,10 @@ export type SubscriptionStatusApplicable = {
   last_payment_txid: string | null;
   grace: {
     /**
-     * Pre-payment fresh-onboarding grace deadline (ms epoch). Meaningful
-     * only when `last_payment_txid === null` (member hasn't paid yet).
-     * After this milestone the row drops from `current` to `prepay`
-     * until a payment lands. Added in migration 042.
+     * `created_at + grace_days_fresh` (ms epoch), added in migration 042.
+     * Describes no grace any more: membership-gating D1 removed fresh grace,
+     * so a never-paid row is `prepay` from the start. The treasury keeps
+     * sending it for older member nodes; nothing should branch on it.
      */
     fresh_until: number;
     worker_until: number;
@@ -855,7 +862,7 @@ export type SubscriptionNotApplicableReason =
   | "missing"
   | "no_channel";
 
-export type SubscriptionStatusNotApplicable = {
+export type SubscriptionStatusNotApplicable = OpenChannelVerdict & {
   applicable: false;
   reason: SubscriptionNotApplicableReason;
   /** Present only when reason === "not_yet_allocated". */

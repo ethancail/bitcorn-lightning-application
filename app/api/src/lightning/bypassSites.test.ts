@@ -51,6 +51,11 @@ const EXPECTED_BYPASS: Record<string, { bounded: number; held: number }> = {
   "lightning/fees.ts": { bounded: 3, held: 0 }, // 2x updateRoutingFees, getChannels
   "lightning/network-payments.ts": { bounded: 3, held: 0 }, // 2x decodePaymentRequest, getRouteToDestination (drive-mode P1 item 4's read-only fee-refusal query, R18(8))
   "lightning/pay.ts": { bounded: 0, held: 1 }, // payViaPaymentRequest — HELD
+  // subscribeToOpenRequests — a long-lived stream, not a request. It returns an
+  // EventEmitter synchronously, so there is no promise a deadline could bound.
+  // Its liveness is handled instead by re-subscribing on end/error/client
+  // rebuild and by the "Channel gate offline" alert (membership-gating T4, T5).
+  "lightning/channelAcceptor.ts": { bounded: 0, held: 0 },
 };
 
 describe("raw ln-service call sites", () => {

@@ -2,9 +2,11 @@
 //
 // The policy row is seeded by migration 036 with the canonical
 // 50,000 sats / 30 days / 7-30-60 grace / 95% tolerance defaults.
-// Migration 042 adds grace_days_fresh (default 30) — a pre-payment
-// onboarding window during which fresh prepay members are treated as
-// `current` so they have full-scope access while evaluating the service.
+// Migration 042 added grace_days_fresh (default 30), a pre-payment
+// onboarding window that the tier dispatch no longer reads (membership-
+// gating D1 removed fresh grace). The column is still read here because
+// the status response keeps reporting `grace.fresh_until` for older member
+// nodes. Migration 071 moves grace_days_worker from 7 to 30.
 // Values can be edited via /api/admin/subscription-policy (Stage 5).
 
 import { db } from "../db";

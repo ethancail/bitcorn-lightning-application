@@ -630,9 +630,29 @@ const TEXT_SCALE_PRESETS = [
   { value: "1.3", label: "Extra Large" },
 ];
 
+/**
+ * The Settings membership section's hook (membership-gating B1): the element id
+ * that /settings?focus=membership finds. Pinned by App.settingsMembershipFocus.test.tsx;
+ * a Settings restructure keeps this id on the element wrapping SubscriptionPanel.
+ */
+const MEMBERSHIP_SECTION_ID = "settings-membership";
+
 function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // ?focus=membership: once the panel has loaded, scroll its section into view
+  // and move keyboard focus to its heading. No highlight. Runs once per mount.
+  const focusMembership = searchParams.get("focus") === "membership";
+  const membershipFocused = useRef(false);
+  const focusMembershipSection = useCallback(() => {
+    if (!focusMembership || membershipFocused.current) return;
+    const section = document.getElementById(MEMBERSHIP_SECTION_ID);
+    const heading = section?.querySelector<HTMLElement>("h2");
+    if (!section || !heading) return;
+    membershipFocused.current = true;
+    section.scrollIntoView({ block: "start" });
+    heading.focus({ preventScroll: true });
+  }, [focusMembership]);
   const [theme, setTheme] = useState<ThemeChoice>(() => {
     const stored = localStorage.getItem("bitcorn_theme");
     if (stored === "light" || stored === "dark") return stored;
@@ -678,8 +698,13 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           subscribe to itself; its own /api/subscription/status returns
           Case E (no_channel to self), which would render a misleading
           state. The treasury operator inspects subscription state via
-          the admin debug path (Stage 5b admin view). */}
-      {!isTreasury && <SubscriptionPanel />}
+          the admin debug path (Stage 5b admin view). The wrapper carries
+          the ?focus=membership hook (MEMBERSHIP_SECTION_ID, above). */}
+      {!isTreasury && (
+        <div id={MEMBERSHIP_SECTION_ID}>
+          <SubscriptionPanel onLoaded={focusMembershipSection} />
+        </div>
+      )}
 
       {/* Stablecoin Wallet — a POINTER now. The registration panel itself moved
           to pages/Stablecoin.tsx, where the wallet is actually used; this stays

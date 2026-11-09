@@ -228,11 +228,11 @@ describe("CHART: the price chart sits immediately beneath the headline numbers",
 describe("J9 / J9a (P6-3): the notice slots", () => {
   const slotText = (cls: string) => host.querySelector(`.dash > .${cls}`)!.textContent ?? "";
 
-  it("routing_lapsed — payments refused — takes the top slot", async () => {
+  it("routing_lapsed — membership overdue, hosted services paused — takes the top slot", async () => {
     stub.getSubscriptionStatus.mockResolvedValue(subscription("routing_lapsed"));
     await renderDashboard();
-    expect(slotText("dash-notices-top")).toContain("Urgent: routing access blocked");
-    expect(slotText("dash-notices-info")).not.toContain("routing access blocked");
+    expect(slotText("dash-notices-top")).toContain("Your membership payment is overdue");
+    expect(slotText("dash-notices-info")).not.toContain("Your membership payment is overdue");
   });
 
   it("close_due — a close is coming — takes the top slot", async () => {

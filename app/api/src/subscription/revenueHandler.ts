@@ -13,16 +13,19 @@
 //
 // "Paying" = has actually paid: at least one CONFIRMED on-chain row in
 // the ledger (kind='onchain', confirmed_at set). Deliberately NOT
-// current_tier = 'current' — that tier includes fresh-grace members
-// inside their onboarding window (tierDispatch.ts) who have never made
-// a payment, which inflated the count and the entitlement projection.
+// current_tier = 'current' — that tier includes members who have never
+// made an on-chain payment: today, grandfathered rows carrying the
+// founding-member credit (migration 072, addressAllocator.ts); before
+// membership-gating removed it, fresh-grace members inside their
+// onboarding window. Counting them inflated the count and the
+// entitlement projection.
 // The flip side — a lapsed member who paid once stays "paying" forever
 // — is right for the "N of M" card but ratcheted the entitlement
 // projection up as members churned. The entitlement basis is therefore
 // the narrower ACTIVE-paid count: paying ∩ current_tier = 'current'
 // (the persisted tier from tierDispatch.ts; 'current' spans paid-up
-// and worker-grace, and its never-paid fresh-grace contaminant is
-// removed by the paying intersection). member_count is all
+// and worker-grace, and its never-paid contaminant — founding-member
+// credited rows — is removed by the paying intersection). member_count is all
 // subscription rows (enrolled members), giving the widget's "N of M".
 //
 // Like autoPayAlertStore.ts, functions take the DB connection as a

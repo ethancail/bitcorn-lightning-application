@@ -20,7 +20,7 @@ const status = (current_tier: SubscriptionTier): SubscriptionStatus => ({
 });
 
 describe("subscriptionBannerSlot", () => {
-  it("routing_lapsed — payments through the hub are refused — stays on top", () => {
+  it("routing_lapsed — membership overdue, hosted services paused — stays on top", () => {
     expect(subscriptionBannerSlot(status("routing_lapsed"))).toBe("top");
   });
 

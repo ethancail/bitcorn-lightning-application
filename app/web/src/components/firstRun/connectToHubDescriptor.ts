@@ -1,7 +1,9 @@
 // ConnectToHub's descriptor — the literals the form shows and checks, moved
 // unchanged out of pages/MemberDashboard.tsx (member-first-run-ui separation
-// slice, B.1). Nothing here is new: each value is today's, and each literal
-// occurs here exactly as many times as it did in the old code (D1). The two
+// slice, B.1). Nothing here was new at the move: each value was the old code's,
+// and each literal occurred exactly as many times as it did there (D1). Entries
+// added since: membershipNotPaid (membership-gating M2); activateMembership,
+// renewMembership and RENEW_MEMBERSHIP_TIERS (membership-gating B1, L1). The two
 // 100k checks stay two constants; merging them is out of the slice (D1).
 //
 // Carried as they are, NOT fixed (B): the Economy option sends no fee rate
@@ -55,4 +57,33 @@ export const CONNECT_TO_HUB_COPY = {
   feeRates: "Fee rates",
   feeRatesDetail: "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB",
   openFailed: "Failed to open channel",
+  /**
+   * The hub refused because this node's membership isn't paid (membership-
+   * gating M2 item 1, ruling R7): the API's `membership_not_paid`, from its
+   * app check or from the hub's channel acceptor. Not from the old code — a
+   * new literal. member-first-run-ui owns this surface and may restyle the
+   * words; their meaning is fixed by R7. Reworded by Ethan's ruling S2
+   * (2026-11-05); the acceptor's own refusal text is unchanged.
+   */
+  membershipNotPaid:
+    "Your membership isn't paid, so the hub can't accept your channel. Pay your membership, then connect.",
+  /**
+   * The button shown when the treasury's verdict is false (membership-gating
+   * B1, Ethan's ruling (a), 2026-11-06). It goes to the Settings membership
+   * section; it opens no payment modal. This label is for a member who has
+   * never paid (tier prepay), and the fallback for a missing or unrecognised
+   * tier (Ethan's ruling L1, 2026-11-06).
+   */
+  activateMembership: "Activate membership",
+  /**
+   * The same button's label for a member who has paid and lapsed: the three
+   * lapsed tiers in RENEW_MEMBERSHIP_TIERS below (Ethan's ruling L1).
+   */
+  renewMembership: "Renew membership",
 };
+
+/** The tiers that take the renew label (L1); every other tier takes the activate one. */
+export const RENEW_MEMBERSHIP_TIERS: readonly string[] = ["worker_lapsed", "routing_lapsed", "close_due"];
+
+/** Where the activate button goes: Settings, focused on the membership section. */
+export const ACTIVATE_MEMBERSHIP_PATH = "/settings?focus=membership";
