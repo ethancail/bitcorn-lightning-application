@@ -7,7 +7,7 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | File | Purpose |
 |------|---------|
 | `src/index.ts` | All HTTP routes (raw `http.createServer`, if/else chain — NOT Express) |
-| `src/lightning/sync.ts` | Main sync orchestrator (15s loop) |
+| `src/lightning/sync.ts` | Main sync orchestrator (15s loop). `membership_status`'s "active" follows the hub rule (`getHubChannel`) over the channels just persisted, not the first treasury channel lnd lists (drive-mode P3) |
 | `src/lightning/persist-channels.ts` | Channel + peer sync to SQLite (upsert current, DELETE stale); stores reserves, commit fee, commitment type, in-flight HTLC totals |
 | `src/lightning/hubChannel.ts` | The hub channel, one definition for every site: largest active channel to the treasury, lowest short channel ID (numeric) between equals; `getHubChannelForDisplay()` falls back to the largest inactive for stats only |
 | `src/lightning/capacity.ts` | One capacity computation: room to send / room to receive from lnd's reserves; for a channel this node opened, room to send also subtracts lnd's fee headroom (derived from lnd v0.20.1-beta, never above what lnd sends); in-flight HTLCs reported, not subtracted |
@@ -22,6 +22,13 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/swaps/effectiveLimits.ts` | Pure: the stricter of env limits and loopd's terms, per direction (used by the advisor and `swapLimits.ts`) |
 | `src/swaps/swapLimits.ts` | `GET /api/swaps/limits`: effective limits, daily remaining, Withdraw's `available_now_sats` and `always_stays` (what a withdrawal never takes, with its parts), Top Up's on-chain rule (`loopInOnchainRule`) |
 | `src/swaps/swapReceipt.ts` | Pure: a completed swap's fee receipt (`receipt` on `GET /api/swaps/:id`) from the poller's stored loopd costs; no migration |
+| `src/swaps/swapOptions.ts` | Drive-mode P3: `GET /api/swaps/options` — Withdraw's / Top Up's option cards, exactly one recommended; R25's quote-based Withdraw maximum. Read-only (raw loopd quotes, cached ~60 s; no row, no probe) |
+| `src/transfers/transferSettings.ts` | Drive-mode P3: the member's strategy and rails (migrations 074–079); NULL = the code default (`TRANSFER_DEFAULTS`); R16(2) floors and the US-Central day boundary as constants; validation |
+| `src/transfers/transferSettingsRoutes.ts` | Drive-mode P3: `GET` / `PATCH /api/transfers/settings` (PATCH exempt from action-confirmation, R40(4)) |
+| `src/transfers/minimumConnection.ts` | Drive-mode P3: the one minimum-connection formula, `ceil((F + S_min + K + Q + H + C) / (1 − 2r))`, both roles and strategies (R40(2)) |
+| `src/transfers/memberMinimums.ts` | Drive-mode P3: the formula's live inputs for the settings page (role, hub channel, rate, Loop's minimum, the member's fee limit) |
+| `src/transfers/feeSamples.ts` | Drive-mode P3: the read-only 6-block fee sampler (≤ every 10 min off the sync tick, 8 days kept) and `calmReading` (calm = estimate ≤ the 7-day median; `unknown` until 7 days of samples) |
+| `src/api/nodeBalances.ts` | `GET /api/node/balances`' Lightning side: active-only `lightning_sats` plus `lightning_inactive_sats` (drive-mode P3) |
 | `src/api/member-costs.ts` | `GET /api/member/costs`: payment and swap fees over the last 30 days, read-only |
 | `src/api/treasury.ts` | Aggregate treasury metrics |
 | `src/api/treasury-liquidity-health.ts` | Per-channel liquidity assessment |
@@ -31,7 +38,7 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/config/env.ts` | All environment variables with defaults — authoritative |
 | `src/memberAdvisor/channelClassifier.ts` | Member-side: classifies treasury channel state (5 states × 3 urgencies) |
 | `src/memberAdvisor/loopAvailability.ts` | Member-side: checks Loop daemon availability and terms |
-| `src/memberAdvisor/recommendationEngine.ts` | Member-side: role-aware recommendations (merchant/farmer/unknown) |
+| `src/memberAdvisor/recommendationEngine.ts` | Member-side: role-aware recommendations (merchant/farmer/unknown). The "recommended minimum" is the one formula's live size (`advisorMinimum.ts`), not 032's stored 2,000,000 / 1,000,000 columns, which are no longer read (drive-mode P3) |
 | `src/memberAdvisor/loopAlert.ts` | Member-side, pure: the Loop-unavailable alert per direction (`loopAlert` on `/api/liquidity/status`), four cases, rendered API-side so the unavailability reason stays internal |
 | `src/memberAdvisor/liquidityAdvisorRoutes.ts` | Member-side: route handlers for `/api/liquidity/*` |
 | `src/memberAdvisor/advisorScheduler.ts` | Member-side: 15-min scheduler (skips treasury nodes) |
@@ -98,6 +105,8 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/components/CommodityPricesPanel.tsx` | Price ticker strip (BTC + gold + corn + soy + wheat) |
 | `app/web/src/data/power-law-data.json` | ~10,000 daily entries, 2015-01-01 to 2042-05-31; bundled by Vite |
 | `app/web/src/pages/Wizard.tsx` | 5-screen treasury setup wizard |
+| `app/web/src/pages/AutomaticTransfers.tsx` | Drive-mode P3: member route `/automatic-transfers` (nav after Withdraw / Top Up) — the strategy, ONE minimum connection size (R19(6); Manual only's as advice; Keep room open's "unavailable" sentence), the three rails and the US-Central day boundary. No "Turn on", no badge: "Automatic transfers aren't switched on yet." Fetches for itself (no shell read) |
+| `app/web/src/components/OptionCards.tsx` | Drive-mode P3: Withdraw's / Top Up's option cards from `GET /api/swaps/options`; a card only pre-fills the amount (the quote and confirmation are unchanged); over the fee limit, "Allow it this once" (UI only) |
 | `app/web/src/pages/Dashboard.tsx` | Treasury dashboard: headline (24-hour net, total capital, capital deployed), the price chart, alert rows, then Treasury Revenue, Balances + Fund Node, subscription and rail-fee tiles |
 | `app/web/src/pages/MemberDashboard.tsx` | Member view: notice slots, a headline per declared role, the price chart, the alerts slot (`.dash-notices-alerts`: connection down, Loop unavailable, no price — one sentence and one action each), then the channel tile (`ConnectToHub` form when there's no channel; the gauge reads P1's room figures), a Your node tile (dollars first with sats underneath, Fund Node, the farmer's "Received, lifetime") and "Costs, last 30 days". No figure appears twice with every `<details>` closed (D2.1) |
 | `app/web/src/pages/WithdrawBitcoin.tsx` | Member Loop Out withdrawal — routes `/withdraw`, `/cashout` (farmer). `/refill` (merchant) routes to `RefillChannel.tsx`, the member Loop In page (`docs/plans/2026-04-14-merchant-refill-channel-design.md`), which reaches `swaps/loopProvider.ts` through `swapService.ts`. |

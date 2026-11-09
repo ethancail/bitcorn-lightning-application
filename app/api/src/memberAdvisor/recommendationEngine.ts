@@ -30,6 +30,7 @@ import { db } from "../db";
 import type { ChannelClassification, ChannelRole } from "./channelClassifier";
 import type { LoopAvailability } from "./loopAvailability";
 import { effectiveLimits, type LoopTermsLike } from "../swaps/effectiveLimits";
+import { advisorMinimumSats } from "./advisorMinimum";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -59,8 +60,11 @@ interface RecommendationConfig {
   maxLoopSats: number;
   floorSats: number;
   minChannelCapacitySat: number;
-  merchantRecommendedCapacitySat: number;
-  farmerRecommendedCapacitySat: number;
+  // Drive-mode P3 (R40(2)): the merchant/farmer "recommended capacity" is the
+  // one formula's live size (advisorMinimum.ts). 032's stored
+  // merchant_recommended_capacity_sat / farmer_recommended_capacity_sat are
+  // no longer read — their seeded 2,000,000 / 1,000,000 would outrank any code
+  // default.
 }
 
 function getConfig(): RecommendationConfig {
@@ -74,8 +78,6 @@ function getConfig(): RecommendationConfig {
     maxLoopSats: row?.max_loop_sats ?? 2_000_000,
     floorSats: row?.floor_sats ?? 10_000,
     minChannelCapacitySat: row?.min_channel_capacity_sat ?? 500_000,
-    merchantRecommendedCapacitySat: row?.merchant_recommended_capacity_sat ?? 2_000_000,
-    farmerRecommendedCapacitySat: row?.farmer_recommended_capacity_sat ?? 1_000_000,
   };
 }
 
@@ -211,21 +213,24 @@ function recommendMerchant(
 
   // ── Structurally undersized? ──────────────────────────────────────────
   // Capacity below recommended minimum OR repeated depletion (3+ exhaustion runs)
-  const undersized = c.capacitySat < cfg.merchantRecommendedCapacitySat;
+  // The minimum is the one formula's, for the member's strategy (R40(2));
+  // null (no rate, or no synced commitment fee) makes no size claim.
+  const minSize = advisorMinimumSats("merchant", c, loop);
+  const undersized = minSize != null && c.capacitySat < minSize;
   const repeatedDepletion = c.consecutiveNonHealthyRuns >= 3 &&
     (c.state === "receive_heavy" || c.state === "receive_exhausted");
 
   if (undersized || repeatedDepletion) {
     const reason = undersized
       ? `Your channel (${fmt(c.capacitySat)} sats) is below the recommended merchant ` +
-        `minimum of ${fmt(cfg.merchantRecommendedCapacitySat)} sats. Open a larger channel ` +
+        `minimum of ${fmt(minSize!)} sats. Open a larger channel ` +
         `to avoid running low on sending balance so often.`
       : `Your sending balance has stayed low for ${describeSustainedRuns(c.consecutiveNonHealthyRuns)}. ` +
         `This usually means the channel is too small for your payment volume. ` +
         `Consider opening a larger channel instead of topping up repeatedly.`;
     return {
       action: "channel_upgrade",
-      suggestedAmountSats: cfg.merchantRecommendedCapacitySat,
+      suggestedAmountSats: minSize,
       projectedMemberLocalPct: null,
       reason,
       urgency: c.urgency === "none" ? "low" : c.urgency,
@@ -326,21 +331,24 @@ function recommendFarmer(
   const localPct = c.memberLocalPct;
 
   // ── Structurally undersized? ──────────────────────────────────────────
-  const undersized = c.capacitySat < cfg.farmerRecommendedCapacitySat;
+  // The minimum is the one formula's, for the member's strategy (R40(2));
+  // null (no rate, or no synced commitment fee) makes no size claim.
+  const minSize = advisorMinimumSats("farmer", c, loop);
+  const undersized = minSize != null && c.capacitySat < minSize;
   const repeatedFilling = c.consecutiveNonHealthyRuns >= 3 &&
     (c.state === "send_heavy" || c.state === "send_saturated");
 
   if (undersized || repeatedFilling) {
     const reason = undersized
       ? `Your channel (${fmt(c.capacitySat)} sats) is below the recommended farmer ` +
-        `minimum of ${fmt(cfg.farmerRecommendedCapacitySat)} sats. Open a larger channel ` +
+        `minimum of ${fmt(minSize!)} sats. Open a larger channel ` +
         `to receive larger or more frequent earnings without filling up.`
       : `Your channel has been full or nearly full for ${describeSustainedRuns(c.consecutiveNonHealthyRuns)}. ` +
         `This usually means it's too small for your earnings flow. ` +
         `Consider opening a larger channel instead of withdrawing frequently.`;
     return {
       action: "channel_upgrade",
-      suggestedAmountSats: cfg.farmerRecommendedCapacitySat,
+      suggestedAmountSats: minSize,
       projectedMemberLocalPct: null,
       reason,
       urgency: c.urgency === "none" ? "low" : c.urgency,

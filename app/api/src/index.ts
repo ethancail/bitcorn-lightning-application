@@ -263,6 +263,10 @@ import {
   handleAdminGetSwap,
 } from "./swaps/swapRoutes";
 import { startSwapPoller } from "./swaps/swapPoller";
+import { nodeLightningBalances } from "./api/nodeBalances";
+import { handleTransferSettingsGet, handleTransferSettingsPatch } from "./transfers/transferSettingsRoutes";
+import { maybeSampleFeeEstimate } from "./transfers/feeSamples";
+import { handleSwapOptions } from "./swaps/swapOptions";
 
 // Boot-only side effects. These used to run at module scope, so merely
 // importing this file opened the DB, applied migrations, reached for LND and
@@ -312,6 +316,12 @@ export function bootSideEffects(): void {
         .catch(err =>
           console.warn("[lnd] periodic sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "")
         );
+      // Drive-mode P3 (R40(8)): a read-only fee-estimate sample for "calm",
+      // at most one per 10 minutes (transfers/feeSamples.ts). Off the sync
+      // chain, so it can neither delay nor fail it.
+      maybeSampleFeeEstimate().catch((err) =>
+        console.warn("[feeSamples] sample failed:", err?.message ?? String(err)),
+      );
     }, 15000);
   })();
 }
@@ -544,15 +554,15 @@ async function dispatchRequest(
   if (req.method === "GET" && req.url === "/api/node/balances") {
     try {
       const { chain_balance } = await getLndChainBalance();
-      const row = db
-        .prepare("SELECT COALESCE(SUM(local_balance_sat), 0) as total FROM lnd_channels WHERE active = 1")
-        .get() as { total: number };
+      // lightning_sats stays active-only (the treasury's total_sats reads
+      // it); drive-mode P3 adds the inactive channels' balance beside it.
+      const { lightning_sats, lightning_inactive_sats } = nodeLightningBalances();
       const onchain_sats = chain_balance ?? 0;
-      const lightning_sats = row?.total ?? 0;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         onchain_sats,
         lightning_sats,
+        lightning_inactive_sats,
         total_sats: onchain_sats + lightning_sats,
       }));
     } catch (err) {
@@ -3098,6 +3108,18 @@ async function dispatchRequest(
     return;
   }
 
+  // Drive-mode P3: the automatic-transfer settings (transfers/transferSettings.ts).
+  // Stored and shown only; nothing in P3 reads them to move money.
+  if (req.method === "GET" && req.url === "/api/transfers/settings") {
+    await handleTransferSettingsGet(res);
+    return;
+  }
+
+  if (req.method === "PATCH" && req.url === "/api/transfers/settings") {
+    await handleTransferSettingsPatch(req, res);
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/pay") {
     try {
       let body = "";
@@ -4160,6 +4182,16 @@ async function dispatchRequest(
   // Before the generic /api/swaps/:id read below (drive-mode P1 item 6).
   if (req.method === "GET" && req.url === "/api/swaps/limits") {
     try { await handleSwapLimits(req, res); } catch (e: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Drive-mode P3: Withdraw's / Top Up's option cards. Read-only (raw loopd
+  // quotes, no swap_requests row). Before the generic /api/swaps/:id below.
+  if (req.method === "GET" && req.url?.startsWith("/api/swaps/options?")) {
+    try { await handleSwapOptions(req, res); } catch (e: any) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));
     }

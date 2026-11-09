@@ -370,6 +370,9 @@ export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: stri
   { method: "POST", match: { kind: "exact", url: "/api/treasury/fees/apply-dynamic" }, why: "fee policy" },
   { method: "POST", match: { kind: "exact", url: "/api/treasury/capital-policy" }, why: "policy config" },
   { method: "PATCH", match: { kind: "exact", url: "/api/liquidity/config" }, why: "config" },
+  // Drive-mode P3 (R40(4)): automatic-transfer settings govern what an outflow
+  // may do, so exempt BY the 2026-09-03 decision; P3 moves nothing on them.
+  { method: "PATCH", match: { kind: "exact", url: "/api/transfers/settings" }, why: "policy config" },
   { method: "POST", match: { kind: "exact", url: "/api/network/sync-settlements" }, why: "sync only" },
   { method: "DELETE", match: { kind: "prefix", url: "/api/network/payments/" }, why: "ledger row delete" },
   { method: "POST", match: { kind: "exact", url: "/api/network/decode" }, why: "decode only" },

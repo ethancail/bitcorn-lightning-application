@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
-import { api, fmtSats, swapExecuteBody } from "../api/client";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { api, fmtSats, swapExecuteBody, transfersApi, type SwapOptions } from "../api/client";
+import { OptionCards } from "../components/OptionCards";
 import { rateNote } from "../api/rate";
 import type { ExchangeRate, SwapLimits } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse, SwapReceipt } from "../api/client";
@@ -101,8 +102,16 @@ export function QuoteFeeDetails({ swapFee, minerFee, prepay }: { swapFee: number
  * total. Page-local on purpose, as RefillChannel's copy is: a shared component
  * is member-first-run-ui's to build (spec §1.3).
  */
-function FeeReceipt({ receipt, toUsd }: { receipt: SwapReceipt; toUsd: (sats: number) => string | null }) {
-  const dollars = toUsd(receipt.total_sat);
+/** US cents as dollars: 300 → "$3.00". */
+function centsText(cents: number): string {
+  return `$${(cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function FeeReceipt({ receipt, usdCents }: { receipt: SwapReceipt; usdCents: number | null | undefined }) {
+  // Drive-mode P3 (R40(5)): a past record's dollars are the ones STORED at
+  // completion (actual_fee_usd_cents, written only with a fresh rate); without
+  // them, sats — never today's price (the amount component spec §1.1).
+  const dollars = usdCents != null ? centsText(usdCents) : null;
   const parts: Array<[string, number]> = [
     ["Swap service fee", receipt.swap_fee_sat],
     ["Bitcoin network fee", receipt.network_fee_sat],
@@ -188,6 +197,15 @@ export default function WithdrawBitcoin() {
   // daily amount and the channel less the swap-only buffer.
   const availableNow = limits?.loop_out?.available_now_sats ?? null;
   const canWithdraw = minW != null && availableNow != null && availableNow >= minW;
+  // Whether the hub channel is up (drive-mode P3): stats fall back to the
+  // largest inactive hub channel for display (R18(2)), and the server refuses
+  // every Loop Out while it is down, so the page says why rather than blaming
+  // the balance. null until stats arrive.
+  const [hubActive, setHubActive] = useState<boolean | null>(null);
+  // GET /api/swaps/options (drive-mode P3): null until read, or on failure.
+  const [options, setOptions] = useState<SwapOptions | null>(null);
+  const [optionsDone, setOptionsDone] = useState(false);
+  const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
   // ─── Quote state ──────────────────────────────────────────────────────
@@ -243,6 +261,7 @@ export default function WithdrawBitcoin() {
     api.getMemberStats()
       .then((s) => {
         if (s.treasury_channel) {
+          setHubActive(s.treasury_channel.is_active);
           setChannelLocal(s.treasury_channel.local_sats);
           setChannelCapacity(s.treasury_channel.capacity_sats);
           setChannelLocalPct(
@@ -266,13 +285,24 @@ export default function WithdrawBitcoin() {
       })
       .catch(() => {});
     loadAdvisor();
+    // Drive-mode P3: the option cards and the quote-based Max (read-only).
+    transfersApi.getSwapOptions("loop_out")
+      .then(setOptions)
+      .catch(() => setOptions(null))
+      .finally(() => setOptionsDone(true));
   }, []);
 
-  // Most you can withdraw, and the Max button: the server's available_now,
-  // shown only when it reaches the minimum.
-  const maxWithdrawable = canWithdraw ? availableNow : null;
+  // Most you can withdraw, and the Max button (drive-mode P3, R25): the
+  // QUOTE-BASED maximum — available_now less today's quoted fee, re-quoted,
+  // so a Loop Out of exactly Max passes execute's amount + fee ≤ room check.
+  // While the quote is out, Max says it is checking; if loopd can't quote, it
+  // falls back to available_now and keeps the R25 sentence.
+  const nowCard = options?.state === "ok" ? options.cards.find((c) => c.key === "now") ?? null : null;
+  const quoteBased = options?.quote_state === "ok" && nowCard?.amount_sats != null;
+  const maxWithdrawable = !canWithdraw ? null : quoteBased ? nowCard!.amount_sats! : optionsDone ? availableNow : null;
+  const checkingFees = canWithdraw && !optionsDone;
   // Presets the policy would accept now; none when nothing can be withdrawn.
-  const presets = canWithdraw ? AMOUNT_PRESETS.filter((p) => p >= minW! && p <= availableNow!) : [];
+  const presets = canWithdraw ? AMOUNT_PRESETS.filter((p) => p >= minW! && p <= (maxWithdrawable ?? availableNow!)) : [];
 
   // ─── Pending swap detection ───────────────────────────────────────────
   useEffect(() => {
@@ -603,6 +633,23 @@ export default function WithdrawBitcoin() {
                   </details>
                 );
               })()}
+              {/* Drive-mode P3 (gate 2): when nothing can move there is no
+                  amount to choose — no input, placeholder, presets or
+                  after-line, only the sentence below. */}
+              {canWithdraw && (<>
+              {/* Drive-mode P3: the option cards. They only pre-fill the
+                  amount below; the quote and its confirmation are unchanged. */}
+              {options && (
+                <div style={{ marginBottom: 12 }}>
+                  <OptionCards
+                    options={options}
+                    usd={rateInfo?.state === "none" ? null : usdRate}
+                    onUse={(sats) => setAmount(sats)}
+                    onLeave={() => navigate("/dashboard")}
+                    onDeposit={() => navigate("/deposit")}
+                  />
+                </div>
+              )}
               <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                 {presets.map((preset) => (
                   <button
@@ -626,10 +673,17 @@ export default function WithdrawBitcoin() {
                     Max
                   </button>
                 )}
+                {checkingFees && (
+                  <button className="btn btn-outline" disabled style={{ fontSize: "0.75rem", padding: "4px 10px", flex: "1 1 auto" }}>
+                    Checking today's fees…
+                  </button>
+                )}
               </div>
               {maxWithdrawable != null && maxWithdrawable > 0 && (
-                <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 0, marginBottom: 8 }}>
-                  The swap's fees come out of this, so the exact amount you can withdraw is set when you get a quote.
+                <p className="text-dim" data-testid="max-fee-note" style={{ fontSize: "0.6875rem", marginTop: 0, marginBottom: 8 }}>
+                  {quoteBased
+                    ? "This allows for today's fees; if they rise before you confirm, the quote will say so."
+                    : "The swap's fees come out of this, so the exact amount you can withdraw is set when you get a quote."}
                 </p>
               )}
               <div style={{ position: "relative" }}>
@@ -661,16 +715,33 @@ export default function WithdrawBitcoin() {
                   </strong>
                 </div>
               )}
+              </>)}
               {minW != null && maxW != null && (
                 <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
                   Minimum: {minW.toLocaleString()} sats. Maximum: {maxW.toLocaleString()} sats.
                 </p>
               )}
-              {minW != null && availableNow != null && !canWithdraw && (
-                <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
-                  Not enough in your channel to withdraw right now — the minimum is {minW.toLocaleString()} sats.
-                </div>
-              )}
+              {minW != null && availableNow != null && !canWithdraw && (() => {
+                const stays = limits?.loop_out?.always_stays ?? null;
+                const dailyLeft = limits?.loop_out?.daily_remaining_sats ?? null;
+                // One sentence, the binding cause first: the connection is
+                // down (the server refuses every Loop Out), today's limit is
+                // used, or too little is waiting — the minimum plus what
+                // always stays (the server's figure).
+                const sentence =
+                  hubActive === false
+                    ? "Your connection to Bitcorn is down, so payments can't go through it right now. It usually reconnects within a few minutes; if it's still down in an hour, restart the Lightning app."
+                    : dailyLeft != null && dailyLeft < minW
+                      ? "You've withdrawn as much as the daily limit allows. It frees up over the next 24 hours."
+                      : stays
+                        ? `You can move ${minW.toLocaleString()} sats once ${(minW + stays.total_sats).toLocaleString()} sats is waiting in your connection.`
+                        : `Not enough in your connection to withdraw right now — the minimum is ${minW.toLocaleString()} sats.`;
+                return (
+                  <div data-testid="withdraw-nothing-movable" style={{ fontSize: "0.75rem", color: "var(--text-2)", marginTop: 4 }}>
+                    {sentence}
+                  </div>
+                );
+              })()}
               {canWithdraw && amount > availableNow! && (
                 <div style={{ fontSize: "0.75rem", color: "var(--red)", marginTop: 4 }}>
                   The most you can withdraw right now is {availableNow!.toLocaleString()} sats.
@@ -851,7 +922,7 @@ export default function WithdrawBitcoin() {
               </div>
               {trackingReceipt ? (
                 <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
-                  <FeeReceipt receipt={trackingReceipt} toUsd={toUsd} />
+                  <FeeReceipt receipt={trackingReceipt} usdCents={trackingSwap.actual_fee_usd_cents} />
                 </div>
               ) : trackingSwap.actual_fee_sat != null && (
                 <div className="stat-card" style={{ flex: 1, minWidth: 140 }}>
@@ -977,7 +1048,10 @@ export default function WithdrawBitcoin() {
                           <td data-label="Status"><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
                           <td data-label="Fee" className="td-num td-mono col-secondary">
                             {s.actual_fee_sat != null
-                              ? s.actual_fee_sat.toLocaleString()
+                              ? (s.actual_fee_usd_cents != null
+                                  // Drive-mode P3 (R40(5)): the stored dollars, sats beneath.
+                                  ? <><div>{centsText(s.actual_fee_usd_cents)}</div><div style={{ fontSize: "0.6875rem", color: "var(--text-3)" }}>{s.actual_fee_sat.toLocaleString()}</div></>
+                                  : s.actual_fee_sat.toLocaleString())
                               : s.quoted_fee_sat != null
                                 ? `~${s.quoted_fee_sat.toLocaleString()}`
                                 : "—"}
@@ -1014,7 +1088,7 @@ export default function WithdrawBitcoin() {
                                       </div>
                                       {expandedDetail.receipt ? (
                                         <div style={{ gridColumn: "1 / -1" }}>
-                                          <FeeReceipt receipt={expandedDetail.receipt} toUsd={toUsd} />
+                                          <FeeReceipt receipt={expandedDetail.receipt} usdCents={expandedDetail.swap_request.actual_fee_usd_cents} />
                                         </div>
                                       ) : (
                                         <div>

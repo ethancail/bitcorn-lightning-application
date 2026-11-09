@@ -683,6 +683,9 @@ export type RotationPreviewResult = {
 export type NodeBalances = {
   onchain_sats: number;
   lightning_sats: number;
+  /** Local balance in INACTIVE channels (drive-mode P3). Not in total_sats,
+   *  which stays active-only for the treasury dashboard; member pages add it. */
+  lightning_inactive_sats?: number;
   total_sats: number;
 };
 
@@ -1347,6 +1350,9 @@ export type SwapRequest = {
   quoted_prepay_sat: number | null;
   quoted_miner_fee_sat: number | null;
   actual_fee_sat: number | null;
+  /** The fee in US cents as of completion, stored only with a fresh rate
+   *  (API migration 082; drive-mode P3, R40(5)). Absent/null → show sats. */
+  actual_fee_usd_cents?: number | null;
   destination_address: string | null;
   channel_id: string | null;
   quote_expires_at: number | null;
@@ -1832,3 +1838,71 @@ export type ValuationInput = {
 };
 
 export type ValuationInputsResponse = Record<string, ValuationInput>;
+
+// ─── Drive-mode P3: automatic-transfer settings (appended at the end of the
+//     file, away from other arcs' hunks). Read-only except the settings PATCH,
+//     which stores the member's choices; nothing in P3 moves money on them.
+
+export type TransferStrategy = "save" | "open" | "manual";
+
+export type TransferSettingsValues = {
+  strategy: TransferStrategy;
+  fee_limit_pct_bps: number;
+  fee_limit_usd_cents: number;
+  daily_fee_budget_usd_cents: number;
+  max_moved_per_day_usd_cents: number;
+};
+
+export type MinimumBreakdown = {
+  sats: number;
+  F: number; S_min: number; K: number; Q: number; H: number; C: number; r: number;
+};
+
+export type TransferSettingsResponse = {
+  settings: TransferSettingsValues;
+  stored: { [K in keyof TransferSettingsValues]: TransferSettingsValues[K] | null } & { updated_at: number | null };
+  defaults: TransferSettingsValues;
+  floors_usd_cents: { farmer: { save: number; open: number }; merchant: { save: number; open: number } };
+  day_boundary_tz: string;
+  member: {
+    role: "farmer" | "merchant" | "unknown";
+    capacity_sats: number | null;
+    hub_active: boolean | null;
+    save: MinimumBreakdown | null;
+    open: MinimumBreakdown | null;
+  };
+};
+
+export type TransferSettingsPatch = Partial<{ [K in keyof TransferSettingsValues]: TransferSettingsValues[K] | null }>;
+
+export const transfersApi = {
+  getTransferSettings: () => apiFetch<TransferSettingsResponse>("/api/transfers/settings"),
+  patchTransferSettings: (patch: TransferSettingsPatch) =>
+    apiFetch<TransferSettingsResponse>("/api/transfers/settings", {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }),
+  /** Withdraw's / Top Up's option cards. Read-only on the server: raw loopd
+   *  quotes, no swap row. */
+  getSwapOptions: (direction: "loop_out" | "loop_in") =>
+    apiFetch<SwapOptions>(`/api/swaps/options?direction=${direction}`),
+};
+
+export type OptionCardKey = "now" | "wait_bigger" | "wait_calm" | "wait_lower" | "deposit_first" | "wait";
+export type OptionReason =
+  | "room_low" | "fees_low" | "fees_high" | "over_fee_limit" | "bigger_share" | "keep_room_open"
+  | "plenty_ready" | "enough_ready" | "wallet_low";
+
+export type SwapOptions = {
+  direction: "loop_out" | "loop_in";
+  state: "ok" | "connection_down" | "no_hub_channel" | "nothing_movable" | "daily_limit" | "unavailable";
+  strategy: TransferStrategy;
+  floor_sats: number | null;
+  room_sats: number | null;
+  calm: "calm" | "not_calm" | "unknown";
+  min_sats: number;
+  trigger_sats: number | null;
+  quote_state: "ok" | "unavailable" | "not_needed";
+  cards: Array<{ key: OptionCardKey; amount_sats: number | null; fee_sats: number | null; over_fee_limit: boolean; recommended: boolean }>;
+  reason: OptionReason | null;
+};

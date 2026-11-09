@@ -30,6 +30,11 @@ export async function checkMemberLoopOutPolicy(params: {
   // with no fee, and the fee cap is skipped — the shape Loop In already has.
   // Provide for the fee phase, after the quote, and at execute.
   quotedFeeSat?: number;
+  // The swap_requests row this check is FOR (fee phase and execute). Its own
+  // row is already in the table, so the daily sum leaves it out — otherwise
+  // the swap counts against itself twice (its row + amountSat). Drive-mode P3,
+  // R26(1); Ethan's go, R39. Omitted pre-quote, when no row exists yet.
+  excludeSwapRequestId?: string;
 }): Promise<PolicyResult> {
   const { amountSat, nodePubkey } = params;
   const preQuote = params.quotedFeeSat === undefined;
@@ -157,7 +162,8 @@ export async function checkMemberLoopOutPolicy(params: {
     WHERE node_pubkey = ? AND role = 'member' AND swap_type = 'loop_out'
       AND status NOT IN ('failed', 'expired', 'blocked_policy')
       AND created_at > ?
-  `).get(nodePubkey, dayAgo) as { total: number };
+      AND id != ?
+  `).get(nodePubkey, dayAgo, params.excludeSwapRequestId ?? "") as { total: number };
 
   if (dailyRow.total + amountSat > ENV.memberMaxDailyWithdrawalSat) {
     return {
