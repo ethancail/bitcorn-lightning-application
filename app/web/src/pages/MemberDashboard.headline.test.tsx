@@ -235,10 +235,11 @@ describe("J9 / J9a (P6-3): the notice slots", () => {
     expect(slotText("dash-notices-info")).not.toContain("Your membership payment is overdue");
   });
 
-  it("close_due — a close is coming — takes the top slot", async () => {
+  it("close_due — membership overdue (L2: no close is issued) — takes the top slot", async () => {
     stub.getSubscriptionStatus.mockResolvedValue(subscription("close_due"));
     await renderDashboard();
-    expect(slotText("dash-notices-top")).toContain("Critical: channel close imminent");
+    expect(slotText("dash-notices-top")).toContain("Your membership payment is overdue");
+    expect(slotText("dash-notices-top")).not.toMatch(/clos(e|ed|es|ing)|halt|scheduler|queued|cooperativ/i);
   });
 
   it("worker_lapsed takes the info slot, below the headline on a phone", async () => {

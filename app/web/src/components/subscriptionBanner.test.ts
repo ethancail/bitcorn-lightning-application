@@ -103,15 +103,15 @@ describe("bannerFor — gated tiers render with correct severity/copy", () => {
     expect(text).toMatch(/hosted services are paused/i);
   });
 
-  it("close_due → red, halt-close action, imminent (no countdown)", () => {
+  it("close_due → red, with routing_lapsed's words and Renew action (L2: Tier 3 issues no close)", () => {
     const d = bannerFor(applicable("close_due"), NOW);
     expect(d.render).toBe(true);
     expect(d.severity).toBe("red");
-    expect(d.headline).toBe("Critical: channel close imminent");
-    expect(d.actionLabel).toBe("Pay now to halt close");
-    expect(d.body).toContain("queued");
-    expect(d.body).toContain("halts it");
-    expect(d.body).toContain("50,000 sats");
+    expect(d.headline).toBe("Your membership payment is overdue");
+    expect(d.body).toBe(
+      "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay 50,000 sats to restore them.",
+    );
+    expect(d.actionLabel).toBe("Renew 50,000 sats");
   });
 
   it("close_due never renders a countdown — close_at is always past for close_due", () => {

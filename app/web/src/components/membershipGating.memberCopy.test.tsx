@@ -125,6 +125,98 @@ describe("DW5 / item C — the panel's routing_lapsed render says hosted service
   });
 });
 
+// ─── L2 — no close claim; close_due carries routing_lapsed's copy ─────────
+//
+// Tier 3 issues no close (app/api/src/subscription/tier3Scheduler.ts returns
+// would_close and calls nothing), so neither tier may claim or imply one.
+
+const CLOSE_CLAIM = /clos(e|ed|es|ing)|halt|scheduler|queued|cooperativ/i;
+
+describe("L2 — neither lapsed tier claims a channel close, and close_due matches routing_lapsed", () => {
+  async function panelText(status: unknown) {
+    stub.getSubscriptionStatus.mockResolvedValue(status);
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    const text = host.textContent ?? "";
+    await act(async () => { root.render(React.createElement("div")); });
+    return text;
+  }
+  const closeDue = () => ({ ...routingLapsed(), current_tier: "close_due", paid_through: NOW - 65 * DAY });
+  const banner = (s: unknown) => {
+    const d = bannerFor(s as any, NOW);
+    if (!d.render) throw new Error("no banner");
+    return d;
+  };
+
+  it("routing_lapsed: the panel and the banner make no close/halt/scheduler/queued claim", async () => {
+    const text = await panelText(routingLapsed());
+    expect(text).toContain("Your membership payment is overdue"); // it rendered the tier
+    expect(text).not.toMatch(CLOSE_CLAIM);
+    const d = banner(routingLapsed());
+    expect(`${d.headline} ${d.body} ${d.actionLabel}`).not.toMatch(CLOSE_CLAIM);
+  });
+
+  it("close_due: the panel and the banner make no close/halt/scheduler/queued claim", async () => {
+    const text = await panelText(closeDue());
+    expect(text).toContain("Your membership payment is overdue");
+    expect(text).not.toMatch(CLOSE_CLAIM);
+    const d = banner(closeDue());
+    expect(`${d.headline} ${d.body} ${d.actionLabel}`).not.toMatch(CLOSE_CLAIM);
+  });
+
+  it("close_due's panel copy equals routing_lapsed's, word for word", async () => {
+    // Same paid_through, so the PAID THROUGH stat is equal too; only the tier
+    // differs. The alert's icon glyph is severity (⚠ orange, ✕ red), not copy.
+    const routing = await panelText(routingLapsed());
+    const close = await panelText({ ...routingLapsed(), current_tier: "close_due" });
+    expect(routing).toContain("⚠");
+    expect(close).toContain("✕");
+    expect(close.replace(/[⚠✕]/g, "")).toBe(routing.replace(/[⚠✕]/g, ""));
+  });
+
+  it("close_due's banner copy equals routing_lapsed's; only the severity differs", () => {
+    const r = banner(routingLapsed());
+    const c = banner({ ...routingLapsed(), current_tier: "close_due" });
+    expect({ headline: c.headline, body: c.body, actionLabel: c.actionLabel })
+      .toEqual({ headline: r.headline, body: r.body, actionLabel: r.actionLabel });
+    expect(c.headline).toBe("Your membership payment is overdue");
+    expect(c.actionLabel).toBe("Renew 50,000 sats");
+    expect([r.severity, c.severity]).toEqual(["orange", "red"]);
+  });
+
+  it("the not-renewing line says only what is true", async () => {
+    const text = await panelText(closeDue());
+    expect(text).toContain("If you don't renew — hosted services stay paused and your channel stays open.");
+  });
+});
+
+describe("L2 — 'lapsed N days ago' and the PAID THROUGH stat's 'Nd ago' use one day computation", () => {
+  it("agree on a fractional day, where ceil and floor of the elapsed time differ", async () => {
+    // 88.5 days: ceil would say 89, floor 88 — the gate 1 screenshot's split.
+    const paidThrough = NOW - 88.5 * DAY;
+    stub.getSubscriptionStatus.mockResolvedValue({
+      ...routingLapsed(),
+      current_tier: "worker_lapsed",
+      paid_through: paidThrough,
+      last_payment_at: paidThrough - 30 * DAY,
+    });
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    const text = host.textContent ?? "";
+    const lapsed = text.match(/lapsed (\d+) days? ago/)?.[1];
+    const suffixes = Array.from(host.querySelectorAll(".sub-stat-suffix"), (el) => el.textContent ?? "");
+    const paid = suffixes.map((s) => s.match(/^(\d+)d ago$/)?.[1]).find(Boolean);
+    expect(lapsed).toBeDefined();
+    expect(paid).toBeDefined();
+    expect(lapsed).toBe(paid);
+    expect(paid).toBe("88");
+  });
+});
+
 // ─── M2 item 4 / item D ───────────────────────────────────────────────────
 
 describe("item D — the pre-pause banner is unchanged and, under T2, shows for 30 days", () => {

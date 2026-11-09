@@ -339,8 +339,12 @@ function daysUntil(ms: number): number {
   return Math.ceil((ms - Date.now()) / 86_400_000);
 }
 
+// The negation of daysUntil, so "lapsed N days ago" and the PAID THROUGH
+// stat's "Nd ago" (relativePaidThrough) are one computation and can't
+// disagree (a gate 1 screenshot showed 89 against 88: this was Math.ceil of
+// the elapsed time, the stat the floor).
 function daysAgo(ms: number): number {
-  return Math.ceil((Date.now() - ms) / 86_400_000);
+  return -daysUntil(ms);
 }
 
 function relativePaidThrough(ms: number): string {
@@ -640,20 +644,49 @@ function RoutingLapsedRender({
   status: SubscriptionStatusApplicable;
   handlers: ActionHandlers;
 }) {
+  return <OverdueRender tier="routing_lapsed" tone="orange" icon="⚠" status={status} handlers={handlers} />;
+}
+
+function CloseDueRender({
+  status,
+  handlers,
+}: {
+  status: SubscriptionStatusApplicable;
+  handlers: ActionHandlers;
+}) {
+  // L2: close_due's copy matches routing_lapsed's because Tier 3 issues no
+  // close (tier3Scheduler.ts is dry-run only and returns would_close). Stage 6
+  // restores close copy only once a close is real. Only the color differs.
+  return <OverdueRender tier="close_due" tone="red" icon="✕" status={status} handlers={handlers} />;
+}
+
+// routing_lapsed and close_due: one body, so their copy can't drift apart.
+function OverdueRender({
+  tier,
+  tone,
+  icon,
+  status,
+  handlers,
+}: {
+  tier: "routing_lapsed" | "close_due";
+  tone: "orange" | "red";
+  icon: string;
+  status: SubscriptionStatusApplicable;
+  handlers: ActionHandlers;
+}) {
   // Membership-gating M2 item 3, widened by pass 10 item C: the same rewrite as
   // the routing_lapsed banner. Routing does not stop at + 30; hosted services do.
-  // The close warning after it is unchanged (Stage 6 copy is out of scope, §7).
-  const daysToClose = Math.max(0, daysUntil(status.grace.close_at));
+  // L2 removed the close warning: no close is issued (Stage 6 copy, §7).
   return (
     <section className="sub-panel">
-      <PanelHeader pill={<Pill kind="orange" label="payment overdue" />} />
-      <AlertBox variant="orange" icon="⚠">
-        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay {fmtSats(status.price_sats)} to restore them. Your channel is still open and your funds are safe — but if you don't renew, your channel will be closed in about <strong>{daysToClose} more days</strong>.
+      <PanelHeader pill={<Pill kind={tone} label="payment overdue" />} />
+      <AlertBox variant={tone} icon={icon}>
+        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay {fmtSats(status.price_sats)} to restore them. Your channel is still open and your funds are safe.
       </AlertBox>
       <p className="sub-reassure">
         <span className="sub-bullet-tick">✓</span> You can still use <strong>Coinbase Onramp</strong> to buy BTC and renew, and monitor your channel state from this dashboard.
       </p>
-      <StatsGrid status={status} accent="orange" />
+      <StatsGrid status={status} accent={tone} />
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
@@ -665,56 +698,18 @@ function RoutingLapsedRender({
         <TimelineRow marker="·">
           <strong>If you renew</strong> — recovery is fully in-app. Payment is detected within ~15 seconds; all paused services come back online, and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
-        <TimelineRow marker="!" tone="orange">
-          <strong>If you don't renew within ~{daysToClose} more days</strong> — your channel will be cooperatively closed. The on-chain funds in your channel return to your wallet, but you'll need to open a new channel to rejoin the network.
+        <TimelineRow marker="!" tone={tone}>
+          <strong>If you don't renew</strong> — hosted services stay paused and your channel stays open.
         </TimelineRow>
         <TimelineRow marker="✓" tone="emerald">
-          <strong>Right now</strong> — your channel remains open, your channel balance is unchanged, and no automated close has been scheduled yet.
+          <strong>Right now</strong> — your channel remains open and your channel balance is unchanged.
         </TimelineRow>
       </Timeline>
       <BracketHeading>ACTIONS</BracketHeading>
-      <OnrampPrimaryActions tier="routing_lapsed" status={status} handlers={handlers} />
-    </section>
-  );
-}
-
-function CloseDueRender({
-  status,
-  handlers,
-}: {
-  status: SubscriptionStatusApplicable;
-  handlers: ActionHandlers;
-}) {
-  const lapsedDays = daysAgo(status.paid_through);
-  return (
-    <section className="sub-panel">
-      <PanelHeader pill={<Pill kind="red" label="pay to halt close" />} />
-      <AlertBox variant="red" icon="✕">
-        Your subscription lapsed <strong>{lapsedDays} day{lapsedDays === 1 ? "" : "s"}</strong> ago. Your channel will be cooperatively closed on the next scheduler tick. A payment of <strong>{fmtSats(status.price_sats)}</strong> received before then will <strong>halt</strong> the close.
-      </AlertBox>
-      <StatsGrid status={status} accent="red" />
-      <DepositBlock
-        status={status}
-        captionSats={status.price_sats}
-        helper={`Send ${fmtSats(status.price_sats)} to halt the pending close.`}
-        fineprint="The scheduler re-checks your subscription status immediately before issuing the close. A confirmed payment in that window halts it."
-      />
-      <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
-      <Timeline>
-        <TimelineRow marker="·">
-          <strong>On confirmation</strong> — payment is detected within ~15s, your subscription resumes, the close is halted.
-        </TimelineRow>
-        <TimelineRow marker="!" tone="red">
-          <strong>If no payment arrives</strong> — your channel closes cooperatively. On-chain funds are returned to your wallet. The close cannot be reversed once initiated.
-        </TimelineRow>
-      </Timeline>
-      <BracketHeading>ACTIONS</BracketHeading>
-      {/* Per spec §11 acceptance + Stage 5a deltas: Onramp button
-          required in close_due (recovery path stays open through every
-          state a member could plausibly recover from). Inverted
-          hierarchy: Onramp primary, pay-now secondary — same pattern
-          as worker_lapsed/routing_lapsed. */}
-      <OnrampPrimaryActions tier="close_due" status={status} handlers={handlers} />
+      {/* Per spec §11 acceptance + Stage 5a deltas: the Onramp button stays
+          in close_due too (recovery path stays open through every state a
+          member could plausibly recover from). */}
+      <OnrampPrimaryActions tier={tier} status={status} handlers={handlers} />
     </section>
   );
 }
