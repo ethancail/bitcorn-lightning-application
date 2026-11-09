@@ -149,3 +149,90 @@ describe("the type-to-confirm input is a sized text field", () => {
     expect(sizingProblems(CLASSES, [rule([".form-input"], { padding: "0" }), rule([".action-confirm-input"], { "min-height": "44px" })])).toEqual(["no vertical padding (padding: 0)"]);
   });
 });
+
+// ── The inline dialogs' action rows (ruling 2026-11-09, item 2) ─────────────
+// The swap and close-channel dialogs put `.dialog-actions` straight after the
+// challenge's wrapper, and .dialog-actions has no top margin, so the buttons
+// sat flush under the 44px field (2026-11-09 gate). They get ActionConfirmModal's
+// 16px gap from a rule that reaches only an action row following a challenge
+// wrapper; .dialog-actions itself, used by other dialogs, is unchanged.
+
+const MODAL_GAP = "16px";
+
+/** The source after the challenge input's wrapper closes: what follows the field. */
+export function afterWrapper(src: string, id: string): string | null {
+  const tag = inputTag(src, id);
+  if (!tag) return null;
+  const close = src.indexOf("</div>", src.indexOf(tag) + tag.length);
+  return close === -1 ? null : src.slice(close + "</div>".length).trimStart();
+}
+
+/** margin-top from the top-level rules that match `el`, later rules winning
+ *  (`margin` shorthand included). The stylesheet's rules for these elements are
+ *  in specificity order, so source order stands in for the cascade. */
+export function marginTopFor(el: Element, rules: CssRule[]): string | undefined {
+  let out: string | undefined;
+  for (const r of rules) {
+    if (r.media !== null || r.container !== null) continue;
+    if (!r.selectors.some((s) => { try { return el.matches(s); } catch { return false; } })) continue;
+    if (r.decls.margin !== undefined) out = r.decls.margin.split(/\s+/)[0];
+    if (r.decls["margin-top"] !== undefined) out = r.decls["margin-top"];
+  }
+  return out;
+}
+
+/** An inline dialog's challenge block and action row, as both dialogs build
+ *  them, beside a plain dialog's action row. */
+function dialogs(): { row: Element; plain: Element } {
+  document.body.innerHTML = `
+    <div class="dialog-card">
+      <div class="dialog-body">summary</div>
+      <div><label>Type to confirm</label><input class="form-input action-confirm-input"></div>
+      <div class="dialog-actions" data-t="row"></div>
+    </div>
+    <div class="dialog-card">
+      <div class="dialog-body">another dialog</div>
+      <div class="dialog-actions" data-t="plain"></div>
+    </div>`;
+  return { row: document.querySelector('[data-t="row"]')!, plain: document.querySelector('[data-t="plain"]')! };
+}
+
+const zero = (v: string | undefined) => /^0(px)?$/.test(v ?? "0");
+
+describe("the inline dialogs' action rows sit below the field with the modal's gap", () => {
+  it(`not vacuous: ActionConfirmModal's action row is ${MODAL_GAP} below its content`, () => {
+    expect(read(COPIES[0][1])).toContain(`<div style={{ display: "flex", gap: 10, marginTop: ${parseInt(MODAL_GAP)} }}>`);
+  });
+
+  for (const [where, file, id] of COPIES.slice(1)) {
+    it(`${where}: the action row directly follows the challenge's wrapper`, () => {
+      expect(afterWrapper(read(file), id)).toMatch(/^<div className="dialog-actions">/);
+    });
+  }
+
+  it(`a rule gives that row margin-top ${MODAL_GAP}; a plain .dialog-actions gets none, and .dialog-actions is unchanged`, () => {
+    const rules = cssRules();
+    const { row, plain } = dialogs();
+    expect(marginTopFor(row, rules)).toBe(MODAL_GAP);
+    expect(zero(marginTopFor(plain, rules)), `plain row: ${marginTopFor(plain, rules)}`).toBe(true);
+    expect(declsFor(".dialog-actions")).toEqual({ display: "flex", gap: "10px", "justify-content": "flex-end" });
+  });
+
+  it("negative controls: no rule, a too-broad rule and a different next element are caught", () => {
+    const rule = (selectors: string[], decls: Record<string, string>): CssRule => ({ media: null, container: null, selectors, decls, line: 0 });
+    const reset = rule(["*", "*::before", "*::after"], { margin: "0" });
+    const { row, plain } = dialogs();
+    // only the reset: the row is flush
+    expect(zero(marginTopFor(row, [reset]))).toBe(true);
+    // a rule on .dialog-actions itself reaches the plain dialog too
+    const broad = [reset, rule([".dialog-actions"], { "margin-top": MODAL_GAP })];
+    expect(marginTopFor(plain, broad)).toBe(MODAL_GAP);
+    // the narrow rule reaches the row and not the plain one
+    const narrow = [reset, rule(["div:has(> .action-confirm-input) + .dialog-actions"], { "margin-top": MODAL_GAP })];
+    expect(marginTopFor(row, narrow)).toBe(MODAL_GAP);
+    expect(zero(marginTopFor(plain, narrow))).toBe(true);
+    // the source scan sees what follows the wrapper
+    expect(afterWrapper(`<div>\n  <input\n    id="p"\n  />\n</div>\n<div className="other">`, "p")).toMatch(/^<div className="other">/);
+    expect(afterWrapper("<div></div>", "absent")).toBeNull();
+  });
+});

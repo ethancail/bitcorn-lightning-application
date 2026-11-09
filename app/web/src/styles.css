@@ -1396,6 +1396,13 @@ input[type="number"] {
 .action-confirm-input {
   min-height: 44px;
 }
+/* The admin swap and treasury close-channel dialogs put .dialog-actions
+   straight after the challenge's wrapper; this gives that row
+   ActionConfirmModal's 16px gap. Only an action row following a challenge
+   field matches; .dialog-actions itself is unchanged. confirmInput.test.ts. */
+div:has(> .action-confirm-input) + .dialog-actions {
+  margin-top: 16px;
+}
 
 .dialog-title {
   font-size: 1rem;
