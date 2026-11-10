@@ -163,9 +163,11 @@ A note on `VITE_API_BASE`: each web instance is pinned to a specific API port vi
 
 ## Step 5: Run and validate
 
-From the repo root:
+From the repo root, with the go to use the harness, take slot 1's lock first (see [The harness lock](#the-harness-lock)); every script that starts, stops or kills refuses without it:
 
 ```bash
+node scripts/harness-slot.mjs lock acquire --slot 1 --holder <arc> --go "<who gave the go, where, when>"
+export HARNESS_HOLDER=<arc>
 npm run dev:all
 ```
 
@@ -179,7 +181,35 @@ Open three browser tabs:
 
 The treasury tab should show treasury-only features; the member tabs should show the member view. If either tab shows the "external/degraded" view, see the troubleshooting section.
 
-To stop everything: `Ctrl+C` in the terminal running `dev:all`.
+To stop everything: `Ctrl+C` in the terminal running `dev:all`. Then release the lock and paste its report (below).
+
+## The harness lock
+
+The dev harness on a host is shared by every arc that gates on it, so the rule is Ethan's: **one user per slot, a go before use, release reported.** `scripts/harness-slot.mjs` enforces it with a lock per slot and one host-wide lock for Polar setup windows, both in `~/.bitcorn-dev/locks/`.
+
+**The procedure.**
+
+1. **Get the go**: the orchestrator's, or Ethan's when the orchestrator is not in the loop.
+2. **Acquire the slot's lock**, recording who gave the go:
+   ```bash
+   node scripts/harness-slot.mjs lock acquire --slot 1 --holder <arc> --go "<who gave the go, where, when>"
+   ```
+   It writes `~/.bitcorn-dev/locks/slot-1.lock` with an exclusive create, holding `holder`, `go`, `acquired_at` (UTC), `host` and `slot`. A second acquire is refused and names the holder. The go is a claim: the lock records what was typed and cannot check it.
+3. **Set `HARNESS_HOLDER=<arc>`** in every terminal that runs a `dev:*` script or the pre-flight (`export HARNESS_HOLDER=<arc>`).
+4. **Run.** Each `dev:*` script that starts, stops or kills anything, and `node scripts/polar-preflight.mjs`, refuses with exit 2 unless the slot's lock exists and its holder equals `HARNESS_HOLDER`, naming the holder, or "no lock". Read-only commands need no lock: `lock status`, `npm run dev:kill -- --print`, and `node scripts/harness-slot.mjs command <script>`.
+5. **Release, and paste the report to the orchestrator**:
+   ```bash
+   node scripts/harness-slot.mjs lock release --slot 1 --holder <arc>
+   ```
+   It prints one line, `harness lock released: slot 1, holder <arc>, held <from> to <to> (<h>h<mm>m) on <host>; go "<go>"`. A release by anyone but the holder is refused and leaves the lock.
+
+`node scripts/harness-slot.mjs lock status` lists what is held. Every acquire, release and forced release appends a line to `~/.bitcorn-dev/locks/history.log`, which nothing rewrites.
+
+**A Polar setup window** (creating or changing a Polar network) takes the host-wide lock instead: `lock acquire --setup --holder <arc> --go "<text>"`, released with `lock release --setup --holder <arc>`. It is refused while any slot lock is held, and while it is held no slot lock can be taken and every slot's scripts refuse.
+
+**A stale lock** (its holder gone) is cleared only with a written reason, which the history keeps: `lock release --slot N --force --reason "<why>"`.
+
+For slot N, use `--slot N` and the same `HARNESS_SLOT` as the scripts: slot 1's lock does not cover slot 2.
 
 ## Troubleshooting
 
@@ -197,7 +227,7 @@ To stop everything: `Ctrl+C` in the terminal running `dev:all`.
 
 **Polar AppImage won't run — "AppImage requires FUSE".** `sudo apt install libfuse2t64` on Ubuntu 24.04.
 
-**Port already in use.** Either `dev:all` is already running in another terminal, or another process has grabbed 3101–3103 / 5173–5175. The most common cause is orphan API processes from a prior `dev:all` that didn't shut down cleanly when you `Ctrl+C`'d the parent — `concurrently → npm → tsx → node` is enough indirection that SIGINT sometimes doesn't reach the leaf `node` processes. Run `npm run dev:kill` to force-clear all six dev ports, then re-run `dev:all`. `lsof -i :3101` shows what specifically owns a single port if you want to investigate before killing.
+**Port already in use.** Either `dev:all` is already running in another terminal, or another process has grabbed 3101–3103 / 5173–5175. The most common cause is orphan API processes from a prior `dev:all` that didn't shut down cleanly when you `Ctrl+C`'d the parent — `concurrently → npm → tsx → node` is enough indirection that SIGINT sometimes doesn't reach the leaf `node` processes. Run `npm run dev:kill` (with the slot's lock held, see [The harness lock](#the-harness-lock)) to force-clear all six dev ports, then re-run `dev:all`. `lsof -i :3101` shows what specifically owns a single port if you want to investigate before killing.
 
 **Polar regtest recovery — symptom → action.**
 Container names embed the Polar network id: `polar-n<id>-<Node>`, so `polar-n1-*` is network 1 (`ls ~/.polar/networks/`). The commands below use network 1 and the compose hostnames `Treasury`, `Farmer1`, `Merchant1`, `External-Peer-1`, `backend1` — substitute yours. Each symptom is something you observe directly; match on it, not on a similar-looking error.
@@ -274,6 +304,8 @@ This section is the single statement of the gate procedure. `docs/RELEASE.md` on
 
 **The harness it expects.** Polar network 1 with the Step 1 nodes plus `External-Peer-1` and its Treasury channel (Steps A and B of the Loop Fidelity Layer below). That is five containers (`polar-n1-backend1`, `polar-n1-Treasury`, `polar-n1-Merchant1`, `polar-n1-Farmer1`, `polar-n1-External-Peer-1`) and three active Treasury channels, one to each other node. Polar itself stays closed, because a running Polar can rewrite the compose file.
 
+**The lock.** The whole gate runs with the slot's lock held by the gate's arc ([The harness lock](#the-harness-lock)): acquired with the go before the first pre-flight, released after the last, its one-line report pasted to the orchestrator and kept with the evidence.
+
 **The phases, in this order.**
 
 1. Pre-flight.
@@ -289,13 +321,13 @@ This section is the single statement of the gate procedure. `docs/RELEASE.md` on
 node scripts/polar-preflight.mjs
 ```
 
-Run it immediately before each gate, not once per session, because a stale tip can arise while the nodes are up. It takes about 30 seconds, the window for comparing restart counts. It prints one timestamped line per check, then a summary, and writes nothing.
+It refuses unless the slot's lock is held by `HARNESS_HOLDER` (see [The harness lock](#the-harness-lock)). Run it immediately before each gate, not once per session, because a stale tip can arise while the nodes are up. It takes about 30 seconds, the window for comparing restart counts. It prints one timestamped line per check, then a summary, and writes nothing.
 
 | Exit | Meaning |
 |---|---|
 | 0 | Every check passed |
 | 1 | At least one check failed |
-| 2 | It could not look: docker unreachable, a container missing, or a command errored or printed output that does not parse. Wins over 1 |
+| 2 | It could not look: docker unreachable, a container missing, or a command errored or printed output that does not parse. Wins over 1. Also: refused by the lock, before any check, with the refusal on stderr and nothing on stdout |
 
 It checks the five containers against the pinned set, that Polar is not running, that the compose file still gives `backend1` `restart: unless-stopped`, that restart counts hold steady across the window, that bitcoind answers with `blocks` equal to `headers`, that all four LNDs report `synced_to_chain: true`, and that Treasury's peers and active channels are exactly the three other nodes. Those last two compare sets as well as counts, so a right count made of the wrong members fails. It uses the active docker context or `DOCKER_HOST`.
 
@@ -340,6 +372,8 @@ Pass and fail conditions, quoted from the spec, not paraphrased:
 
 Do not add, drop or soften a condition, and do not write your own.
 
+Slot lock: acquire slot <N> as <arc> with the go before the first pre-flight; release
+after the last; paste the release report (docs/dev-setup.md, "The harness lock").
 Backup target: <path>
 Evidence file, outside the repo: <path>
 Vault gate record: <investigations/ path>
@@ -416,14 +450,15 @@ Two binaries with different distribution methods:
 # missing is the static-address Loop In variant, which we don't use).
 docker pull lightninglabs/loopserver:v0.9.221-beta
 
-# Build loopd from source (pinned tag — master is volatile)
+# Build loopd, and the loop CLI that talks to it, from source (pinned tag — master is volatile)
 LOOP_TAG=v0.33.0-beta
 git clone --depth 1 --branch ${LOOP_TAG} https://github.com/lightninglabs/loop ~/.bitcorn-dev/loop-src
 cd ~/.bitcorn-dev/loop-src
 go build -o ~/.bitcorn-dev/loopserver/loopd ./cmd/loopd
+go build -o ~/.bitcorn-dev/loopserver/loop ./cmd/loop
 ```
 
-Verify: `~/.bitcorn-dev/loopserver/loopd --version` should print `loopd version 0.33.0-beta`. `docker image inspect lightninglabs/loopserver:v0.9.221-beta --format '{{.Id}}'` should print a sha256.
+Verify: `~/.bitcorn-dev/loopserver/loopd --version` should print `loopd version 0.33.0-beta`. `docker image inspect lightninglabs/loopserver:v0.9.221-beta --format '{{.Id}}'` should print a sha256. The `loop` CLI is what Step F's `getinfo` check uses; given `--loopdir` and `--network`, it finds that loopd's `tls.cert` and `loop.macaroon` under `<loopdir>/<network>/`.
 
 You also need to be in the `docker` group to run the loopserver container — `sudo usermod -aG docker $USER && newgrp docker` (one-time, then either `newgrp docker` in your current shell or log out / log back in).
 
@@ -498,12 +533,23 @@ In a separate terminal from the one running `npm run dev:all`:
 # Start loopserver (Docker container, anchored to External-Peer-1)
 npm run dev:loopserver
 
-# Wait ~3s for it to log "listening on" — `docker logs bitcorn-loopserver`
+# Wait for loopserver's own log line, up to 60 s. Not `nc -z` on its port: Docker's proxy
+# accepts on the host port before loopserver listens, so a port check passes early, and a
+# loopd started then exits ("connection reset by peer"). On an empty Postgres it takes ~10 s.
+LS=bitcorn-loopserver; [ "${HARNESS_SLOT:-1}" = 1 ] || LS="bitcorn-loopserver-$HARNESS_SLOT"
+ready=; for i in $(seq 60); do
+  if docker logs "$LS" 2>&1 | grep -q 'RPC server listening on'; then ready=1; break; fi
+  sleep 1
+done
+if [ -n "$ready" ]; then echo "loopserver ($LS) is listening"
+else echo "FAILED: $LS has not logged 'RPC server listening on' after 60 s; loopd not started. Read: docker logs $LS --tail 30"; fi
 
-# Start the three per-role loopd clients (in three more terminals or as background jobs)
-npm run dev:loopd-T &
-npm run dev:loopd-A &
-npm run dev:loopd-B &
+# Start the three per-role loopd clients, only once loopserver is listening (as background jobs)
+if [ -n "$ready" ]; then
+  npm run dev:loopd-T &
+  npm run dev:loopd-A &
+  npm run dev:loopd-B &
+fi
 ```
 
 What the scripts run:
@@ -519,32 +565,40 @@ What the scripts run:
 Verify reachability:
 
 ```bash
-nc -z localhost 11009 && echo "loopserver OK"
+# loopserver: its own log line, not nc -z on 11009 (Docker's proxy answers that port first)
+LS=bitcorn-loopserver; [ "${HARNESS_SLOT:-1}" = 1 ] || LS="bitcorn-loopserver-$HARNESS_SLOT"
+docker logs "$LS" 2>&1 | grep -q 'RPC server listening on' && echo "loopserver OK" || echo "loopserver NOT listening: docker logs $LS --tail 30"
 nc -z localhost 11010 && echo "loopd-T OK"
 nc -z localhost 11020 && echo "loopd-A OK"
 nc -z localhost 11030 && echo "loopd-B OK"
-docker logs bitcorn-loopserver --tail 20    # should show 'listening on ...'
+docker logs "$LS" --tail 20    # should show 'RPC server listening on [::]:11009'
+# loopd-T's getinfo, through the loop CLI from Step D (member-a: 11020, member-b: 11030):
+~/.bitcorn-dev/loopserver/loop --rpcserver=localhost:11010 --network=regtest --loopdir=$HOME/.bitcorn-dev/treasury/loopd getinfo
 ```
 
 To stop just the loopserver container without killing other things: `npm run dev:loopserver-stop`.
 
-Stopping the whole Loop layer: `npm run dev:kill` (kills the loopd ports 11010/11020/11030 and 8801–8803) plus `npm run dev:loopserver-stop` for the Docker container. `dev:kill` does not touch 11009: loopserver is a container, and `dev:loopserver-stop` stops it.
+Stopping the whole Loop layer: `npm run dev:kill` (kills the processes listening on the loopd ports 11010/11020/11030 and 8801–8803) plus `npm run dev:loopserver-stop` for the Docker container. `dev:kill` does not touch 11009: loopserver is a container, and `dev:loopserver-stop` stops it.
 
 > **⚠ Channel-direction caveat for Loop In:** The current Treasury↔External-Peer-1 channel was opened by Treasury with all funds on Treasury's side (cap=10M, External-Peer-1 local=0). Loop Out from Farmer1 (the §6 first smoke test) works fine because Treasury → External-Peer-1 has full forward capacity. **Loop In from Merchant1 will fail until External-Peer-1 has some outbound capacity.** Two options: (a) run the Loop Out smoke test first, which moves sats to External-Peer-1's side via the off-chain HTLC, then attempt Loop In; (b) open a second channel from External-Peer-1 → Treasury funded from External-Peer-1's 5 BTC on-chain so the asymmetric provisioning the spec called for is in place. Option (a) matches the spec's §6 ordering and is simpler if you only need to validate end-to-end once.
 
 ### Step G: Smoke tests
 
-Per spec §6. Two scenarios — both should complete cleanly without manual intervention beyond the trigger:
+Per spec §6. Two scenarios. Beyond the trigger, each needs **blocks mined by hand**: nothing mines on this regtest network by itself, and a swap waits for its on-chain transactions to confirm. Mine one block at a time, with the command from [Stale tip](#stale-tip), and read loopd's log between blocks:
 
-**Loop Out from Farmer1.** Pre-state: Farmer1's channel to Treasury has > 2,000,000 sats on Farmer1's side. Trigger from `localhost:5174` → Liquidity → Loop Out. Should route Farmer1 → Treasury → External-Peer-1, settle on-chain, and update Farmer1's UI + the rebalance cost ledger.
+```bash
+docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest generatetodescriptor 1 "raw(6a)"
+```
 
-**Loop In from Merchant1.** Pre-state: Merchant1's channel to Treasury has < 500,000 sats on Merchant1's side, plus 1,000,000+ sats on-chain. Trigger from `localhost:5175` → Liquidity → Loop In. Should pay on-chain to `loopserver`'s swap address, refill Merchant1's outbound capacity, and update the cost ledger.
+**Loop Out from Farmer1.** Pre-state: Farmer1's channel to Treasury has > 2,000,000 sats on Farmer1's side. Trigger from `localhost:5174` → **Withdraw** (`/cashout`): **Get Quote**, then **Confirm Withdrawal**, which opens a confirm modal; type the amount there and press **Withdraw**. Should route Farmer1 → Treasury → External-Peer-1, settle on-chain, and update Farmer1's UI + the rebalance cost ledger. It took two blocks in the 2026-11-10 run: one once loopserver published its HTLC (loopd logs `Waiting for either htlc on-chain confirmation`), and one once loopd published its sweep (`published sweep`); the swap then logs `Loop out swap state: Success`.
+
+**Loop In from Merchant1.** Pre-state: Merchant1's channel to Treasury has < 500,000 sats on Merchant1's side, plus 1,000,000+ sats on-chain. Trigger from `localhost:5175` → **Top Up** (`/refill`), behind the same confirm modal. The member nav shows Top Up to a member whose channel role is merchant and Withdraw to the others. Should pay on-chain to `loopserver`'s swap address, refill Merchant1's outbound capacity, and update the cost ledger. Mine blocks as above until the swap reports success.
 
 If either fails, the failure mode (which step, what error) is the input for a debug session before declaring the layer ready.
 
 ### Resetting / cleanup
 
-`npm run dev:kill` clears all dev-stack ports, including loopd's (11010, 11020, 11030, 8801–8803); `npm run dev:kill -- --print` lists the PIDs it would kill and kills nothing. loopserver stops with `npm run dev:loopserver-stop`. If you also want to wipe loopd state: `rm -rf ~/.bitcorn-dev/{treasury,member-a,member-b}/loopd && mkdir -p ...` (rerun the per-role mkdir from Step E).
+`npm run dev:kill` clears all dev-stack ports, including loopd's (11010, 11020, 11030, 8801–8803), by killing the processes **listening** on them: a process that only holds a connection to one of those ports, such as a browser talking to another host's 3101, is not touched. It needs the slot's lock. `npm run dev:kill -- --print` lists exactly those listener PIDs, kills nothing, and needs no lock. loopserver stops with `npm run dev:loopserver-stop`. If you also want to wipe loopd state: `rm -rf ~/.bitcorn-dev/{treasury,member-a,member-b}/loopd && mkdir -p ...` (rerun the per-role mkdir from Step E).
 
 To remove External-Peer-1: stop the network in Polar, delete the node, restart. The Treasury↔External-Peer-1 channel is lost; you'll need to redo Step B.
 
@@ -579,15 +633,18 @@ Polar's own node ports are not computed: they are read from `~/.polar/networks/n
    The scripts inject the rest for slot N, and the injected values win over the file: the computed `PORT`, `DB_DIR`, `SECRETS_DIR`, `LND_GRPC_HOST`, `LND_DIR`, `LOOP_GRPC_PORT`, `LOOP_TLS_CERT_PATH` and `LOOP_MACAROON_PATH`, plus `BITCOIN_NETWORK=regtest` and `LOOP_GRPC_HOST=127.0.0.1`, whose API defaults are production values. Slot 1 injects nothing: its `.env.dev.<role>` files stay authoritative.
 3. Create the loopd directories: `mkdir -p ~/.bitcorn-dev/slot-N/{treasury,member-a,member-b}/loopd`.
 
-**Running slot N.** Set the slot on each command:
+**Running slot N.** Take slot N's own lock ([The harness lock](#the-harness-lock)), then set the slot on each command:
 
 ```bash
+node scripts/harness-slot.mjs lock acquire --slot 2 --holder <arc> --go "<who gave the go>"
+export HARNESS_HOLDER=<arc>
 HARNESS_SLOT=2 npm run dev:all
 HARNESS_SLOT=2 npm run dev:loopserver
 HARNESS_SLOT=2 npm run dev:loopd-T     # and -A, -B
 HARNESS_SLOT=2 node scripts/polar-preflight.mjs
-HARNESS_SLOT=2 npm run dev:kill -- --print   # list the slot's PIDs; drop --print to kill them
+HARNESS_SLOT=2 npm run dev:kill -- --print   # list the PIDs listening on the slot's ports; drop --print to kill them
 HARNESS_SLOT=2 npm run dev:loopserver-stop
+node scripts/harness-slot.mjs lock release --slot 2 --holder <arc>
 ```
 
 `HARNESS_SLOT=2 node scripts/harness-slot.mjs command <script>` prints what any script would run. `dev:kill` acts only on its slot's ports and never on loopserver's. The pre-flight prints a `slot` line first for slot N, and its Polar-GUI check stays host-wide in every slot. On a 15 GB host such as ubuntu-pc, run slot 2 on its own with slot 1 stopped; two slots at once need a host with more memory.
