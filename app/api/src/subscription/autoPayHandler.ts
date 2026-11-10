@@ -65,7 +65,7 @@ export interface AutoPayConfigResponse {
   status_verification: "verified" | "unsigned" | "invalid" | "unverifiable" | null;
   status_verification_reason: "key_unset" | "lnd_unavailable" | null;
   /** A verified price this app will not pay (S4, S5), or null. */
-  price_refusal: PriceRefusalCode | null;
+  price_refusal: { code: PriceRefusalCode; price_sats: number } | null;
   active_alerts: AutoPayAlertView[];
   badge: { active_count: number; highest_severity: "info" | "warning" | null };
 }
@@ -98,7 +98,7 @@ export async function getAutoPayConfig(memberPubkey: string): Promise<AutoPayCon
     status_verification:
       live.kind === "unverified" ? live.verdict : live.kind === "unavailable" ? null : "verified",
     status_verification_reason: live.kind === "unverified" ? live.verification_reason ?? null : null,
-    price_refusal: live.kind === "refused" ? live.code : null,
+    price_refusal: live.kind === "refused" ? { code: live.code, price_sats: live.price } : null,
     active_alerts: getActiveAlerts(db, memberPubkey),
     badge: getBadgeCount(db, memberPubkey),
   };
