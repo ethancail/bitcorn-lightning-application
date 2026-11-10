@@ -31,7 +31,9 @@ const SEVERITY_BY_TIER: Record<GatedTier, { banner: BannerSeverity; badge: Badge
   prepay: { banner: "info", badge: "blue" },
   worker_lapsed: { banner: "amber", badge: "amber" },
   routing_lapsed: { banner: "orange", badge: "orange" },
-  close_due: { banner: "red", badge: "red" },
+  // L2: routing_lapsed's severity, not red. Tier 3 issues no close, so nothing
+  // escalates at close_due; Stage 6 restores red only once a close is real.
+  close_due: { banner: "orange", badge: "orange" },
 };
 
 /** Banner severity for a gated tier — imported by RoutingDeniedNotice so
@@ -175,7 +177,7 @@ export function bannerFor(
     case "close_due":
       // L2: close_due's copy matches routing_lapsed's because Tier 3 issues no
       // close (tier3Scheduler.ts is dry-run only and returns would_close). Stage 6
-      // restores close copy only once a close is real. Only the severity differs.
+      // restores close copy only once a close is real. The severity is the same too.
       return {
         render: true,
         severity: bannerSeverityForTier(tier),

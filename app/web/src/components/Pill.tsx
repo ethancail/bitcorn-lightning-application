@@ -55,8 +55,9 @@ export function tierToPill(tier: SubscriptionTier): { kind: PillKind; label: str
     case "current":         return { kind: "emerald", label: "current" };
     case "prepay":          return { kind: "blue", label: "prepay" };
     case "worker_lapsed":   return { kind: "amber", label: "services paused" };
-    case "routing_lapsed":  return { kind: "orange", label: "routing paused" };
-    case "close_due":       return { kind: "red", label: "payment overdue" }; // L2: Tier 3 issues no close
+    // Routing doesn't pause at either tier, and Tier 3 issues no close (L2).
+    case "routing_lapsed":  return { kind: "orange", label: "payment overdue" };
+    case "close_due":       return { kind: "orange", label: "payment overdue" };
   }
 }
 

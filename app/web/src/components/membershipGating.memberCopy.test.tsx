@@ -40,7 +40,9 @@ vi.mock("../api/client", async (importOriginal) => {
 
 import SubscriptionPanel from "./SubscriptionPanel";
 import { useConnectToHub } from "./firstRun/useConnectToHub";
-import { bannerFor } from "./subscriptionBanner";
+import { bannerFor, bannerSeverityForTier, bannerSeverityForTierName, settingsBadgeFor } from "./subscriptionBanner";
+import { tierToPill } from "./Pill";
+import { railGateNoticeFor } from "../stablecoin/railAccess";
 
 // R7's meaning, in S2's words (Ethan, 2026-11-05).
 const R7_APP_CHECK =
@@ -140,9 +142,11 @@ describe("L2 — neither lapsed tier claims a channel close, and close_due match
     });
     await settle();
     const text = host.textContent ?? "";
+    lastHtml = host.innerHTML;
     await act(async () => { root.render(React.createElement("div")); });
     return text;
   }
+  let lastHtml = "";
   const closeDue = () => ({ ...routingLapsed(), current_tier: "close_due", paid_through: NOW - 65 * DAY });
   const banner = (s: unknown) => {
     const d = bannerFor(s as any, NOW);
@@ -166,29 +170,81 @@ describe("L2 — neither lapsed tier claims a channel close, and close_due match
     expect(`${d.headline} ${d.body} ${d.actionLabel}`).not.toMatch(CLOSE_CLAIM);
   });
 
-  it("close_due's panel copy equals routing_lapsed's, word for word", async () => {
-    // Same paid_through, so the PAID THROUGH stat is equal too; only the tier
-    // differs. The alert's icon glyph is severity (⚠ orange, ✕ red), not copy.
+  it("close_due's panel equals routing_lapsed's: every word, and the markup (colors, icon)", async () => {
+    // Same paid_through, so the PAID THROUGH stat is equal too; only the tier differs.
     const routing = await panelText(routingLapsed());
+    const routingHtml = lastHtml;
     const close = await panelText({ ...routingLapsed(), current_tier: "close_due" });
-    expect(routing).toContain("⚠");
-    expect(close).toContain("✕");
-    expect(close.replace(/[⚠✕]/g, "")).toBe(routing.replace(/[⚠✕]/g, ""));
+    expect(close).toBe(routing);
+    expect(lastHtml).toBe(routingHtml); // pill kind, alert variant and ⚠ icon included
+    expect(routingHtml).toContain("sub-stat-accent-orange");
+    expect(routingHtml).not.toMatch(/\bred\b|critical|✕/);
   });
 
-  it("close_due's banner copy equals routing_lapsed's; only the severity differs", () => {
+  it("close_due's banner equals routing_lapsed's, severity included", () => {
     const r = banner(routingLapsed());
     const c = banner({ ...routingLapsed(), current_tier: "close_due" });
-    expect({ headline: c.headline, body: c.body, actionLabel: c.actionLabel })
-      .toEqual({ headline: r.headline, body: r.body, actionLabel: r.actionLabel });
+    expect(c).toEqual(r);
     expect(c.headline).toBe("Your membership payment is overdue");
     expect(c.actionLabel).toBe("Renew 50,000 sats");
-    expect([r.severity, c.severity]).toEqual(["orange", "red"]);
+    expect(c.severity).toBe("orange");
+  });
+
+  it("close_due's severity equals routing_lapsed's on every surface: banner, badge, 402 notice, rail notice, pill", () => {
+    expect(bannerSeverityForTier("close_due")).toBe(bannerSeverityForTier("routing_lapsed"));
+    expect(bannerSeverityForTierName("close_due")).toBe(bannerSeverityForTierName("routing_lapsed")); // 402 notice
+    expect(settingsBadgeFor(closeDue() as any)).toEqual(settingsBadgeFor(routingLapsed() as any));
+    const rail = (s: unknown) => {
+      const n = railGateNoticeFor(s as any);
+      if (!n.render) throw new Error("no rail notice");
+      return { severity: n.severity, variantClass: n.variantClass, icon: n.icon };
+    };
+    expect(rail(closeDue())).toEqual(rail(routingLapsed()));
+    expect(tierToPill("close_due")).toEqual(tierToPill("routing_lapsed"));
+    expect(bannerSeverityForTier("close_due")).toBe("orange");
   });
 
   it("the not-renewing line says only what is true", async () => {
     const text = await panelText(closeDue());
     expect(text).toContain("If you don't renew — hosted services stay paused and your channel stays open.");
+  });
+});
+
+describe("L2 follow-up — no lapsed tier claims routing pauses", () => {
+  // "routing paused", "routing pauses", "routing also pauses", "routing is paused".
+  const ROUTING_PAUSE_CLAIM = /routing (is |also )?paus(e|ed|es)\b/i;
+  const tiers = ["worker_lapsed", "routing_lapsed", "close_due"] as const;
+  const statusFor = (tier: (typeof tiers)[number]) => ({ ...routingLapsed(), current_tier: tier });
+
+  it.each(tiers)("%s: the panel says nothing about routing pausing", async (tier) => {
+    stub.getSubscriptionStatus.mockResolvedValue(statusFor(tier));
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    const text = host.textContent ?? "";
+    expect(text).toContain("If you don't renew"); // the timeline rendered
+    expect(text).not.toMatch(ROUTING_PAUSE_CLAIM);
+  });
+
+  it.each(tiers)("%s: the pill and the banner say nothing about routing pausing", (tier) => {
+    expect(tierToPill(tier).label).not.toMatch(ROUTING_PAUSE_CLAIM);
+    const d = bannerFor(statusFor(tier) as any, NOW);
+    if (!d.render) throw new Error("no banner");
+    expect(`${d.headline} ${d.body} ${d.actionLabel}`).not.toMatch(ROUTING_PAUSE_CLAIM);
+  });
+
+  it("worker_lapsed's not-renewing line says only what is true", async () => {
+    stub.getSubscriptionStatus.mockResolvedValue(statusFor("worker_lapsed"));
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    expect(host.textContent ?? "").toContain("If you don't renew — hosted services stay paused and your channel stays open.");
+  });
+
+  it("routing_lapsed's pill is the panel's 'payment overdue'", () => {
+    expect(tierToPill("routing_lapsed")).toEqual({ kind: "orange", label: "payment overdue" });
   });
 });
 

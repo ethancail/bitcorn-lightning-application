@@ -113,7 +113,8 @@ describe("railGateNoticeFor", () => {
     expect(railGateNoticeFor(status("prepay")).severity).toBe("info");
     expect(railGateNoticeFor(status("worker_lapsed")).severity).toBe("amber");
     expect(railGateNoticeFor(status("routing_lapsed")).severity).toBe("orange");
-    expect(railGateNoticeFor(status("close_due")).severity).toBe("red");
+    // L2: close_due is routing_lapsed's orange — Tier 3 issues no close.
+    expect(railGateNoticeFor(status("close_due")).severity).toBe("orange");
   });
 
   it("gives prepay activation copy, not renewal copy", () => {

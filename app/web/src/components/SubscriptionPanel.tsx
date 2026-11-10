@@ -601,7 +601,6 @@ function WorkerLapsedRender({
   handlers: ActionHandlers;
 }) {
   const lapsedDays = daysAgo(status.paid_through);
-  const daysToRouting = Math.max(0, daysUntil(status.grace.routing_until));
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="amber" label="services paused" />} />
@@ -623,8 +622,9 @@ function WorkerLapsedRender({
         <TimelineRow marker="·">
           <strong>If you renew</strong> — recovery is fully in-app. Buy BTC via Onramp or send from a wallet you already have. Payment is detected within ~15 seconds; price quotes and valuation come back online and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
+        {/* Routing doesn't pause at routing_until (M2 item 3); only this is true. */}
         <TimelineRow marker="!" tone="amber">
-          <strong>If you don't renew within ~{daysToRouting} more days</strong> — channel routing also pauses. Your channel stays open and your funds stay yours; routing can be restored by renewing.
+          <strong>If you don't renew</strong> — hosted services stay paused and your channel stays open.
         </TimelineRow>
       </Timeline>
       <BracketHeading>ACTIONS</BracketHeading>
@@ -644,7 +644,7 @@ function RoutingLapsedRender({
   status: SubscriptionStatusApplicable;
   handlers: ActionHandlers;
 }) {
-  return <OverdueRender tier="routing_lapsed" tone="orange" icon="⚠" status={status} handlers={handlers} />;
+  return <OverdueRender tier="routing_lapsed" status={status} handlers={handlers} />;
 }
 
 function CloseDueRender({
@@ -656,31 +656,28 @@ function CloseDueRender({
 }) {
   // L2: close_due's copy matches routing_lapsed's because Tier 3 issues no
   // close (tier3Scheduler.ts is dry-run only and returns would_close). Stage 6
-  // restores close copy only once a close is real. Only the color differs.
-  return <OverdueRender tier="close_due" tone="red" icon="✕" status={status} handlers={handlers} />;
+  // restores close copy (and red) only once a close is real.
+  return <OverdueRender tier="close_due" status={status} handlers={handlers} />;
 }
 
-// routing_lapsed and close_due: one body, so their copy can't drift apart.
+// routing_lapsed and close_due: one body and one color, so they can't drift apart.
 function OverdueRender({
   tier,
-  tone,
-  icon,
   status,
   handlers,
 }: {
   tier: "routing_lapsed" | "close_due";
-  tone: "orange" | "red";
-  icon: string;
   status: SubscriptionStatusApplicable;
   handlers: ActionHandlers;
 }) {
+  const tone = "orange";
   // Membership-gating M2 item 3, widened by pass 10 item C: the same rewrite as
   // the routing_lapsed banner. Routing does not stop at + 30; hosted services do.
   // L2 removed the close warning: no close is issued (Stage 6 copy, §7).
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={tone} label="payment overdue" />} />
-      <AlertBox variant={tone} icon={icon}>
+      <AlertBox variant={tone} icon="⚠">
         Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay {fmtSats(status.price_sats)} to restore them. Your channel is still open and your funds are safe.
       </AlertBox>
       <p className="sub-reassure">

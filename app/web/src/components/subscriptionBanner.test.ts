@@ -103,10 +103,10 @@ describe("bannerFor — gated tiers render with correct severity/copy", () => {
     expect(text).toMatch(/hosted services are paused/i);
   });
 
-  it("close_due → red, with routing_lapsed's words and Renew action (L2: Tier 3 issues no close)", () => {
+  it("close_due → orange, with routing_lapsed's words and Renew action (L2: Tier 3 issues no close)", () => {
     const d = bannerFor(applicable("close_due"), NOW);
     expect(d.render).toBe(true);
-    expect(d.severity).toBe("red");
+    expect(d.severity).toBe("orange");
     expect(d.headline).toBe("Your membership payment is overdue");
     expect(d.body).toBe(
       "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay 50,000 sats to restore them.",
@@ -153,7 +153,7 @@ describe("settingsBadgeFor — severity per tier", () => {
     expect(settingsBadgeFor(applicable("prepay"))).toEqual({ show: true, severity: "blue" });
     expect(settingsBadgeFor(applicable("worker_lapsed"))).toEqual({ show: true, severity: "amber" });
     expect(settingsBadgeFor(applicable("routing_lapsed"))).toEqual({ show: true, severity: "orange" });
-    expect(settingsBadgeFor(applicable("close_due"))).toEqual({ show: true, severity: "red" });
+    expect(settingsBadgeFor(applicable("close_due"))).toEqual({ show: true, severity: "orange" }); // L2
   });
 
   it("hidden for current, every not-applicable reason, and null", () => {
@@ -170,7 +170,7 @@ describe("shared severity map — banner and badge agree on the lapsed family", 
     expect(bannerSeverityForTier("prepay")).toBe("info");
     expect(bannerSeverityForTier("worker_lapsed")).toBe("amber");
     expect(bannerSeverityForTier("routing_lapsed")).toBe("orange");
-    expect(bannerSeverityForTier("close_due")).toBe("red");
+    expect(bannerSeverityForTier("close_due")).toBe("orange"); // L2
   });
 });
 
