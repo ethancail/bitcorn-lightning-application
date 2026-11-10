@@ -193,10 +193,11 @@ export function trustCopy(
     case "S5_price_not_integer":
       return split("Payments are paused.", "The subscription price arrived in a form this app won't pay.");
     case "S6_deposit_address_changed":
-      // ⚠ OWED (spec §8): the host command, or a support pointer, and its wording.
+      // The support pointer (spec §8's owed wording): DRAFT, drafted by the
+      // treasury-price-trust arc chat, 2026-11-10, for drive-mode review.
       return split(
         `Your subscription payment address has changed, from ${shortAddress(s.pinned)} to ${shortAddress(s.stated)}.`,
-        "Your node won't send to a new address until you confirm it on the node itself. Nothing has been sent.",
+        "Your node won't send to a new address until you confirm it on the node itself. Nothing has been sent. If you expected this change, contact Bitcorn before paying from any wallet.",
       );
   }
 }

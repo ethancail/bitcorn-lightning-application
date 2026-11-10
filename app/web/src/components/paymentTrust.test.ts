@@ -23,7 +23,7 @@ const S = {
   S4: (p: string) => `Payments are paused. The subscription price, ${p}, is above the limit built into this app.`,
   S5: "Payments are paused. The subscription price arrived in a form this app won't pay.",
   S6: (a: string, b: string) =>
-    `Your subscription payment address has changed, from ${a} to ${b}. Your node won't send to a new address until you confirm it on the node itself. Nothing has been sent.`,
+    `Your subscription payment address has changed, from ${a} to ${b}. Your node won't send to a new address until you confirm it on the node itself. Nothing has been sent. If you expected this change, contact Bitcorn before paying from any wallet.`,
 };
 const PINNED = "bc1qpinnedaddress000000000000aaaa";
 const STATED = "bc1qstatedaddress000000000000bbbb";
@@ -111,7 +111,7 @@ describe("auto-pay: the alert copy, the section's state, the opt-in", () => {
       autoPayAlertContent("AUTOPAY_PAY_TARGET_REFUSED", { reason: "deposit_address_changed", pinned_address: PINNED, stated_address: STATED }),
     ).toEqual({
       headline: `Your subscription payment address has changed, from ${shortAddress(PINNED)} to ${shortAddress(STATED)}.`,
-      body: "Your node won't send to a new address until you confirm it on the node itself. Nothing has been sent.",
+      body: "Your node won't send to a new address until you confirm it on the node itself. Nothing has been sent. If you expected this change, contact Bitcorn before paying from any wallet.",
     });
   });
 

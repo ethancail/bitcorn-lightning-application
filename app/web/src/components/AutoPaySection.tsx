@@ -225,6 +225,12 @@ export function autoPayLabel(type: string): string {
       return "Held: earlier payment not credited";
     case "AUTOPAY_PRICE_NOT_ACKNOWLEDGED":
       return "Price not accepted";
+    // treasury-price-trust: DRAFT, drafted by its arc chat, 2026-11-10, for
+    // drive-mode review. Without these the raw type name showed.
+    case "AUTOPAY_STATUS_UNVERIFIED":
+      return "Auto-pay paused: couldn't confirm Bitcorn's details";
+    case "AUTOPAY_PAY_TARGET_REFUSED":
+      return "Auto-pay paused: payment held for safety";
     default:
       return type;
   }
