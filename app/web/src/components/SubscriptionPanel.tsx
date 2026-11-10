@@ -26,7 +26,7 @@ import {
 import { Pill, tierToPill, type PillKind } from "./Pill";
 import PayFromNodeModal from "./PayFromNodeModal";
 import PaymentTrustNotice from "./PaymentTrustNotice";
-import { trustStateOfStatus } from "./paymentTrust";
+import { depositAddressDisplay, trustStateOfStatus } from "./paymentTrust";
 import AutoPaySection from "./AutoPaySection";
 import { useAutoPayConfig } from "./useAutoPayConfig";
 import { actionsFor, type ActionDescriptor } from "./subscriptionActions";
@@ -1056,6 +1056,16 @@ function DepositBlock({
       setTimeout(() => setCopied(false), 1800);
     });
   }, [status.deposit_address]);
+  // treasury-price-trust C15: no address, QR, URI or copy unless the status is
+  // verified and the address is the pinned one — the S-state instead.
+  if (!depositAddressDisplay(status).show) {
+    return (
+      <>
+        <BracketHeading>DEPOSIT</BracketHeading>
+        <PaymentTrustNotice status={status} />
+      </>
+    );
+  }
   return (
     <>
       <BracketHeading>DEPOSIT</BracketHeading>

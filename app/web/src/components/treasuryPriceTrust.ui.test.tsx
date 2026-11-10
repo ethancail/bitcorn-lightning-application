@@ -135,7 +135,8 @@ describe("the Settings panel (spec §8)", () => {
 
 describe("the pay modal's quote refusal (spec §4 R8)", () => {
   const modal = () =>
-    React.createElement(PayFromNodeModal, { status: { price_sats: PRICE, deposit_address: ADDR }, onClose: () => undefined });
+    // Verified at open; the QUOTE refuses (the case under test).
+    React.createElement(PayFromNodeModal, { status: { price_sats: PRICE, deposit_address: ADDR, treasury_signature: "verified" }, onClose: () => undefined });
   const named = (label: string) =>
     [...document.querySelectorAll("button")].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
   const refusal = (code: string, body: Record<string, unknown>) =>

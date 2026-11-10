@@ -69,13 +69,42 @@ function fromPayRefusal(r: TreasuryPayRefusal | Record<string, unknown> | null |
   return null;
 }
 
+type TrustLabels = Pick<SubscriptionStatus, "treasury_signature" | "treasury_signature_reason" | "treasury_pay_refusal">;
+
 /** The state a status puts payments in, or null when this node may pay. */
-export function trustStateOfStatus(status: SubscriptionStatus | null | undefined): TrustState | null {
+export function trustStateOfStatus(status: TrustLabels | null | undefined): TrustState | null {
   if (!status) return null;
   return (
     fromVerdict(status.treasury_signature, status.treasury_signature_reason) ??
     fromPayRefusal(status.treasury_pay_refusal)
   );
+}
+
+export type DepositAddressDisplay =
+  | { show: true; address: string }
+  | { show: false; state: TrustState | null };
+
+/**
+ * Whether the subscription deposit address — and anything derived from it:
+ * its QR, its BIP-21 URI, its copy button, its tooltip — may render
+ * (treasury-price-trust C15; finding 8.1, ruled into the arc 2026-11-10).
+ *
+ * ONLY for a status this node VERIFIED that names no refusal. The proxy writes
+ * the first-sight pin before it compares, so "no deposit_address_changed"
+ * means the stated address IS the pin. S4/S5 also withhold it: the QR and the
+ * URI carry the refused price. Otherwise the caller shows `state` (S1–S6) and
+ * no address. A missing label is not verified.
+ */
+export function depositAddressDisplay(
+  status: (TrustLabels & { applicable?: boolean; deposit_address?: string | null }) | null | undefined,
+): DepositAddressDisplay {
+  if (!status) return { show: false, state: null };
+  const state = trustStateOfStatus(status);
+  if (state) return { show: false, state };
+  if (status.applicable !== true || typeof status.deposit_address !== "string" || status.deposit_address.length === 0) {
+    return { show: false, state: null };
+  }
+  return { show: true, address: status.deposit_address };
 }
 
 /** The state GET /api/profile/auto-pay reports (S1–S5), or null: verified and
