@@ -535,7 +535,8 @@ npm run dev:loopserver
 
 # Wait for loopserver's own log line, up to 60 s. Not `nc -z` on its port: Docker's proxy
 # accepts on the host port before loopserver listens, so a port check passes early, and a
-# loopd started then exits ("connection reset by peer"). On an empty Postgres it takes ~10 s.
+# loopd started then exits ("connection reset by peer"). On an empty Postgres, loopserver has
+# taken from about 10 to 35 s to start listening; the wait allows 60.
 LS=bitcorn-loopserver; [ "${HARNESS_SLOT:-1}" = 1 ] || LS="bitcorn-loopserver-$HARNESS_SLOT"
 ready=; for i in $(seq 60); do
   if docker logs "$LS" 2>&1 | grep -q 'RPC server listening on'; then ready=1; break; fi
