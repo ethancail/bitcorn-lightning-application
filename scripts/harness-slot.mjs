@@ -17,8 +17,8 @@
 // SLOT 1 IS TODAY'S HARNESS (D6). Its command lines are byte-identical to the
 // scripts at 523e6ab, except dev:loopserver (D13: the bridge network, bound to
 // 127.0.0.1) and dev:kill (H11: no loopserver port, the loopd REST ports added,
-// a --print mode). Slot 1 injects no environment (D15): today's .env.dev.<role>
-// files stay authoritative.
+// a --print mode; H15: listening sockets only). Slot 1 injects no environment
+// (D15): today's .env.dev.<role> files stay authoritative.
 //
 // SLOT N (N >= 2), per D8:
 //   API ports        3101-3103 + 10(N-1)     web ports   5173-5175 + 10(N-1)
@@ -38,7 +38,8 @@
 // an error; a Polar network whose node names are not D16's five.
 //
 // Spec (vault): specs/2026-11-09-harness-host-b2-slot-implementation-spec.md,
-// H7 to H12. Tests: scripts/harness-slot.test.mjs, run by hand under Node 20.
+// H7 to H12, H14 (the lock) and H15 (dev:kill, listeners only).
+// Tests: scripts/harness-slot.test.mjs, run by hand under Node 20.
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -244,10 +245,16 @@ export function killPorts(slot) {
   return [...p.api, ...p.web, ...p.loopdRpc, ...p.loopdRest];
 }
 
+// H15: listening sockets only. `lsof -i:<port>` also matches a connection whose
+// REMOTE end is that port (a browser holding a connection to another host's
+// 3101, say), and dev:kill would kill -9 it. -sTCP:LISTEN keeps only listeners.
+// --print uses the same selection, so it lists exactly what a real run kills.
+const listenerPids = (ports) => `lsof -t -nP -iTCP:${ports} -sTCP:LISTEN`;
+
 function killCommand(slot, print) {
   const ports = killPorts(slot).join(",");
-  if (print) return `lsof -ti:${ports} || echo 'no process on slot ${slot} ports'`;
-  return `lsof -ti:${ports} | xargs -r kill -9 2>/dev/null; ` +
+  if (print) return `${listenerPids(ports)} || echo 'no listener on slot ${slot} ports'`;
+  return `${listenerPids(ports)} | xargs -r kill -9 2>/dev/null; ` +
     "echo 'dev ports cleared (incl loopd; stop loopserver with npm run dev:loopserver-stop)'";
 }
 

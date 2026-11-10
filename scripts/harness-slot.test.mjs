@@ -17,7 +17,8 @@
 // No CI job runs this, and the Stop hook does not watch scripts/. Run it by hand.
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -311,12 +312,13 @@ test("H11: slot 1's and slot 2's kill lists do not overlap, carry the loopd REST
   }
 });
 
-test("H11: dev:kill's kill and --print command lines for slot 1", () => {
+test("H11/H15: dev:kill's kill and --print command lines for slot 1, both selecting listeners only", () => {
   const ports = "3101,3102,3103,5173,5174,5175,11010,11020,11030,8801,8802,8803";
   assert.equal(scriptCommand("dev:kill", 1, ctx(1)),
-    `lsof -ti:${ports} | xargs -r kill -9 2>/dev/null; ` +
+    `lsof -t -nP -iTCP:${ports} -sTCP:LISTEN | xargs -r kill -9 2>/dev/null; ` +
     "echo 'dev ports cleared (incl loopd; stop loopserver with npm run dev:loopserver-stop)'");
-  assert.equal(scriptCommand("dev:kill", 1, ctx(1), ["--print"]), `lsof -ti:${ports} || echo 'no process on slot 1 ports'`);
+  assert.equal(scriptCommand("dev:kill", 1, ctx(1), ["--print"]),
+    `lsof -t -nP -iTCP:${ports} -sTCP:LISTEN || echo 'no listener on slot 1 ports'`);
   assert.doesNotMatch(scriptCommand("dev:kill", 1, ctx(1), ["--print"]), /kill/);
   assert.throws(() => scriptCommand("dev:kill", 1, ctx(1), ["--all"]), /dev:kill takes only --print/);
 });
@@ -603,4 +605,85 @@ test("H14 cli: lock acquire, status and release through the entry point; a refus
   assert.equal(release.status, 0, release.stderr);
   assert.match(release.stdout, /^harness lock released: slot 1, holder harness-host, held /);
   assert.equal(history(home).length, 2);
+});
+
+// ─── H15: dev:kill selects listening sockets only ─────────────────────────
+//
+// A fake lsof over a socket table, with lsof's selection rules as the window's
+// run of the real lsof showed them: -i:<ports> matches a socket whose LOCAL or
+// REMOTE port is listed; -sTCP:<state> keeps only sockets in that state. Two
+// real, idle child processes stand in for a listener on 3101 and for a process
+// (a browser, say) holding a connection to another host's 3101. A real dev:kill
+// runs against them in the sandbox, so its kill -9 can reach only these two.
+
+const FAKE_LSOF = `#!${process.execPath}
+const fs = require("node:fs");
+const table = JSON.parse(fs.readFileSync(process.env.FAKE_LSOF_TABLE, "utf8"));
+fs.appendFileSync(process.env.STUB_LOG, "lsof " + process.argv.slice(2).join(" ") + "\\n");
+let ports = null, state = null;
+for (const arg of process.argv.slice(2)) {
+  let m;
+  if (arg === "-t" || arg === "-n" || arg === "-P" || arg === "-nP") continue;
+  else if ((m = arg.match(/^-t?i(?:TCP)?:([0-9,]+)$/))) ports = m[1].split(",").map(Number);
+  else if ((m = arg.match(/^-sTCP:([A-Z_]+)$/))) state = m[1];
+  else { console.error("fake lsof: unsupported argument " + arg); process.exit(2); }
+}
+const pids = [...new Set(table
+  .filter((s) => ports && (ports.includes(s.local) || ports.includes(s.remote)))
+  .filter((s) => state === null || s.state === state)
+  .map((s) => s.pid))];
+if (pids.length) console.log(pids.join("\\n"));
+process.exit(pids.length ? 0 : 1);
+`;
+
+async function killScene() {
+  const { home, run } = sandbox();
+  fs.writeFileSync(path.join(home, "bin", "lsof"), FAKE_LSOF, { mode: 0o755 });
+  const idle = () => spawn(process.execPath, ["-e", "setInterval(() => {}, 1e9)"], { stdio: "ignore" });
+  const listener = idle();
+  const holder = idle();
+  const table = path.join(home, "sockets.json");
+  fs.writeFileSync(table, JSON.stringify([
+    { pid: listener.pid, state: "LISTEN", local: 3101, remote: null },
+    { pid: holder.pid, state: "ESTABLISHED", local: 51234, remote: 3101 },
+  ]));
+  const exited = (child, ms) => Promise.race([
+    once(child, "exit").then(([code, signal]) => signal ?? `code ${code}`),
+    new Promise((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+  const cleanup = () => { for (const c of [listener, holder]) if (c.exitCode === null && c.signalCode === null) c.kill("SIGKILL"); };
+  return { home, run, listener, holder, env: { FAKE_LSOF_TABLE: table }, exited, cleanup };
+}
+
+test("H15 --print: lists the listener on a slot port and not a process holding a connection to that port", async () => {
+  const s = await killScene();
+  try {
+    const r = s.run(["run", "dev:kill", "--print"], s.env);
+    console.log(`listener pid ${s.listener.pid}, connection-holder pid ${s.holder.pid}; --print printed: ${JSON.stringify(r.stdout)}`);
+    assert.equal(r.status, 0, r.stderr);
+    const listed = r.stdout.trim().split("\n").map(Number);
+    assert.ok(listed.includes(s.listener.pid), "the listener must be listed");
+    assert.ok(!listed.includes(s.holder.pid), "the non-listening connection holder must not be listed");
+  } finally {
+    s.cleanup();
+  }
+});
+
+test("H15 real dev:kill: stops the listener, and the non-listening process holding a connection to the port survives", async () => {
+  const s = await killScene();
+  try {
+    take(s.home, 1);
+    console.log(`before: listener ${s.listener.pid} running, connection-holder ${s.holder.pid} running`);
+    const r = s.run(["run", "dev:kill"], { ...s.env, HARNESS_HOLDER: "harness-host" });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /dev ports cleared/);
+    const listenerEnd = await s.exited(s.listener, 5_000);
+    const holderEnd = await s.exited(s.holder, 1_000);
+    console.log(`after:  listener ${s.listener.pid} ${listenerEnd ? `ended (${listenerEnd})` : "still running"}, ` +
+      `connection-holder ${s.holder.pid} ${holderEnd ? `ended (${holderEnd})` : "still running"}`);
+    assert.equal(listenerEnd, "SIGKILL", "the listener must be killed");
+    assert.equal(holderEnd, null, "the non-listening connection holder must survive");
+  } finally {
+    s.cleanup();
+  }
 });
