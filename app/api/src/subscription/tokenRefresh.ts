@@ -103,9 +103,13 @@ async function fetchTreasuryInfoFromWorker(): Promise<TreasuryInfo | null> {
       api_url?: string | null;
       subscription_public_key?: object | null;
     };
+    // HTTPS only when the WORKER supplies the URL (treasury-price-trust spec
+    // §3.5, ruling 2). An operator-set TREASURY_API_URL stays unrestricted —
+    // development and the treasury's own loopback use http:// — and never
+    // reaches this function.
     const apiUrlCandidate = body?.api_url;
     const apiUrl =
-      typeof apiUrlCandidate === "string" && /^https?:\/\//i.test(apiUrlCandidate)
+      typeof apiUrlCandidate === "string" && /^https:\/\//i.test(apiUrlCandidate)
         ? apiUrlCandidate
         : null;
     const subKey =

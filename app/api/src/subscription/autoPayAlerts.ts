@@ -15,9 +15,10 @@
 
 import type { PayFromNodeError } from "./payFromNode";
 
-/** The seven canonical auto-pay alert types: the five of the auto-pay spec
- *  §5, plus the two the pay-from-node guards report (pay-from-node spec §3.6,
- *  §4.2, §4.3; ruled 2026-11-05). */
+/** The nine canonical auto-pay alert types: the five of the auto-pay spec
+ *  §5, the two the pay-from-node guards report (pay-from-node spec §3.6,
+ *  §4.2, §4.3; ruled 2026-11-05), and the two of treasury-price-trust (its
+ *  spec §4, §5, §6.3). */
 export type AutoPayAlertType =
   | "AUTOPAY_INSUFFICIENT_FUNDS"
   | "AUTOPAY_LND_UNAVAILABLE"
@@ -30,7 +31,14 @@ export type AutoPayAlertType =
   // Auto-pay refused by the price ceiling: the price is above the last
   // acknowledged one, or none was ever acknowledged (context.reason says
   // which).
-  | "AUTOPAY_PRICE_NOT_ACKNOWLEDGED";
+  | "AUTOPAY_PRICE_NOT_ACKNOWLEDGED"
+  // treasury-price-trust (spec §4): the status response is unsigned, fails
+  // its signature check, or cannot be checked; context.verdict says which.
+  | "AUTOPAY_STATUS_UNVERIFIED"
+  // treasury-price-trust (spec §5, §6.3): the verified price is above the cap
+  // or not a whole number, or the address differs from the pin;
+  // context.reason says which.
+  | "AUTOPAY_PAY_TARGET_REFUSED";
 
 /** Auto-pay emits info (success) or warning (failure) only — never critical. */
 export type AutoPayAlertSeverity = "info" | "warning";
@@ -45,6 +53,8 @@ export const SEVERITY_BY_TYPE: Record<AutoPayAlertType, AutoPayAlertSeverity> = 
   AUTOPAY_SUCCEEDED: "info",
   AUTOPAY_SETTLEMENT_OVERDUE: "warning",
   AUTOPAY_PRICE_NOT_ACKNOWLEDGED: "warning",
+  AUTOPAY_STATUS_UNVERIFIED: "warning",
+  AUTOPAY_PAY_TARGET_REFUSED: "warning",
 };
 
 /** The four SEND-FAILURE types — the recoverable set that auto-clears on a
@@ -124,6 +134,14 @@ export function classifyAutoPayError(error: PayFromNodeError): AutoPayAlertType 
     case "price_above_acknowledged":
     case "price_unacknowledged":
       return "AUTOPAY_PRICE_NOT_ACKNOWLEDGED";
+    // treasury-price-trust. Not a silent deferral like status_unavailable: a
+    // member whose treasury never signs would lapse with no sign of why (§4).
+    case "status_unverified":
+      return "AUTOPAY_STATUS_UNVERIFIED";
+    case "price_above_cap":
+    case "price_not_integer":
+    case "deposit_address_changed":
+      return "AUTOPAY_PAY_TARGET_REFUSED";
     case "status_unavailable":
     // A status without a numeric paid_through (ruled 2026-11-09): a refusal
     // on the same silent-deferral path, no new alert type; the scheduler logs it.
@@ -140,12 +158,40 @@ export function classifyAutoPayError(error: PayFromNodeError): AutoPayAlertType 
 // The guard alerts' causes (pay-from-node spec §4.3, ruled 2026-11-05)
 // ───────────────────────────────────────────────────────────────────────
 
-/** The two alert types that are raised once per cause and resolve when their
- *  cause clears, rather than deduping by type and clearing on success. */
+/** The alert types that are raised once per cause and resolve when their
+ *  cause clears, rather than deduping by type and clearing on success. The
+ *  two treasury-price-trust types take the same lifecycle (spec §4, §5). */
 export const CAUSE_ALERT_TYPES: AutoPayAlertType[] = [
   "AUTOPAY_SETTLEMENT_OVERDUE",
   "AUTOPAY_PRICE_NOT_ACKNOWLEDGED",
+  "AUTOPAY_STATUS_UNVERIFIED",
+  "AUTOPAY_PAY_TARGET_REFUSED",
 ];
+
+/**
+ * The unverified alert's cause: the verdict (and its reason), within one
+ * EPISODE — the time of the last verified status this process saw. A stored
+ * row of the same key suppresses a new one (decideCauseAlert), so without the
+ * episode a second unsigned stretch after a verified one could never alert
+ * again. Resolved on the next verified status (spec §4).
+ */
+export function unverifiedCauseKey(
+  verdict: string,
+  verificationReason: string | null | undefined,
+  episodeSinceSec: number,
+): string {
+  return `${verdict}|${verificationReason ?? "-"}|since:${episodeSinceSec}`;
+}
+
+/** The pay-target alert's cause: the refusal and the values it refused. */
+export function payTargetCauseKey(
+  reason: "price_above_cap" | "price_not_integer" | "deposit_address_changed",
+  detail: { price_sats?: number; pinned_address?: string | null; stated_address?: string },
+): string {
+  return reason === "deposit_address_changed"
+    ? `${reason}|${detail.pinned_address ?? "null"}|${detail.stated_address ?? ""}`
+    : `${reason}|${detail.price_sats ?? ""}`;
+}
 
 export function isCauseAlertType(type: string): boolean {
   return (CAUSE_ALERT_TYPES as string[]).includes(type);

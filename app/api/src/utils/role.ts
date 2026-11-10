@@ -20,8 +20,13 @@ export function assertNonEmpty(role: string | undefined): void {
 // members whose role classification may still be "unknown"/pending;
 // the strict `role === "member"` variant would reject exactly those
 // members the pay-from-node flow exists to serve. The endpoint is
-// already non-generalizable (no body, server-derived 50,000-sats-to-
-// own-address), so a treasury-rejection gate is the correct strictness.
+// already non-generalizable: its body carries only an echo of what the
+// member was shown plus the acknowledgements, never the amount or the
+// destination; the amount is the treasury's SIGNED price, a whole number of
+// sats at or below SUBSCRIPTION_PRICE_CAP_SATS, and the destination is the
+// member's PINNED deposit address (bitcorn-research specs/2026-11-10-
+// treasury-price-trust-spec.md §5, §6). So a treasury-rejection gate is the
+// correct strictness.
 export function assertMember(role: string | undefined): void {
   if (role === "treasury") {
     throw new Error("Member node required");

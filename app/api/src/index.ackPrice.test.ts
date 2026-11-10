@@ -17,6 +17,14 @@ process.env.SECRETS_DIR = path.join(TMP, "secrets");
 
 const h = vi.hoisted(() => ({ price: 50_000 as number }));
 
+// The cap is not under test here (treasury-price-trust's controls test it);
+// its shipped value is owed, so inject one that bounds nothing these tests
+// acknowledge. Not a proposal for SUBSCRIPTION_PRICE_CAP_SATS.
+vi.mock("./subscription/priceCap", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./subscription/priceCap")>()),
+  SUBSCRIPTION_PRICE_CAP_SATS: Number.MAX_SAFE_INTEGER,
+}));
+
 vi.mock("./subscription/memberStatusClient", () => ({
   fetchLocalSubscriptionStatus: async () => ({
     ok: true,

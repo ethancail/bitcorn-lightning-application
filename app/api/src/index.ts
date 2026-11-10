@@ -55,7 +55,7 @@ import {
   assertCanExpand,
   CapitalGuardrailError,
 } from "./utils/capital-guardrails";
-import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, getLndChainFeeRate, updateNodeAlias, clearNodeAlias } from "./lightning/lnd";
+import { getLndClient, getLndChainBalance, getLndPendingChainBalance, getLndChainTransactions, getLndPeers, getLndChannels, getLndPendingChannels, openTreasuryChannel, closeTreasuryChannel, connectToPeer, createLndChainAddress, isKeysendEnabled, getLndChainFeeRate, updateNodeAlias, clearNodeAlias, lndSignMessage } from "./lightning/lnd";
 // One route handler in this file calls ln-service DIRECTLY off getLndClient()'s
 // handle instead of through an lnd.ts wrapper (POST /api/pay's decode). It
 // bypasses the wrappers' deadlines, so it binds its own. (The gossip alias
@@ -217,7 +217,14 @@ import { handleRailFeeRevenue } from "./stablecoin/feeRevenue";
 import { sweepExpiredChallenges } from "./stablecoin/nonceStore";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
 import { isAcceptorRefusal, startChannelAcceptor } from "./lightning/channelAcceptor";
-import { fetchLocalSubscriptionStatus } from "./subscription/memberStatusClient";
+import {
+  fetchLocalSubscriptionStatus,
+  fetchVerifiedTreasuryStatus,
+  ownNodePubkey,
+} from "./subscription/memberStatusClient";
+import { STATUS_NONCE_HEADER, buildSignedStatusResponse, parseStatusBytes } from "./subscription/statusSignature";
+import { getCurrentPin } from "./subscription/depositAddressPin";
+import { SUBSCRIPTION_PRICE_CAP_SATS } from "./subscription/priceCap";
 import {
   isAdminMemberQuery,
   ADMIN_QUERY_REJECTION,
@@ -244,6 +251,8 @@ import {
   estimateFeeSats,
   errorHttpStatus,
   executePayFromNode,
+  parseStatusForPayment,
+  payTargetRefusal,
 } from "./subscription/payFromNode";
 import { computeMembersListForTreasury } from "./subscription/adminMembersHandler";
 import { computeSubscriptionRevenueForTreasury } from "./subscription/revenueHandler";
@@ -765,10 +774,21 @@ async function dispatchRequest(
   //   Admin query-param is rejected with 403 (admin paths are treasury-
   //   only). Bearer JWT is validated LOCALLY for the fast-path 401/503
   //   per §5.1 (gives the UI a quick rejection without a cross-node
-  //   round trip for obviously-bad tokens). Then forward to treasury,
-  //   return its response unmodified. On a successful Case A response,
-  //   fire the tier-transition observer (§6.5) which checks for scope
-  //   mismatch and triggers an out-of-band token refresh if needed.
+  //   round trip for obviously-bad tokens). Then fetch from the treasury
+  //   through the one verifying fetch (treasury-price-trust spec §3.1) and
+  //   return the body PARSED AND RE-SERIALIZED — not unmodified: for
+  //   display only, with `treasury_signature` (verified / unsigned /
+  //   invalid / unverifiable) and, when verified, `treasury_pay_refusal`
+  //   set by this proxy, overwriting any field of those names the treasury
+  //   sent (§4 R3). Nothing this returns moves money; the send path
+  //   re-derives through the verifying fetch. On a VERIFIED Case A
+  //   response, fire the tier-transition observer (§6.5) which checks for
+  //   scope mismatch and triggers an out-of-band token refresh if needed.
+  //
+  // ── Signing (treasury) ──
+  //   A request carrying X-Bitcorn-Status-Nonce gets its 200 body signed by
+  //   the treasury's LND for the JWT's subject (spec §1–§2); without one,
+  //   the response is today's bytes, unsigned, for older members (§10).
   if (req.method === "GET" && req.url?.startsWith("/api/subscription/status")) {
     try {
       const url = new URL(req.url, "http://localhost");
@@ -815,8 +835,15 @@ async function dispatchRequest(
           }
         }
         const payload = computeSubscriptionStatusForPubkey(lookupPubkey);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(payload));
+        // Only this 200 is signed; the 401/403/503 fast paths above are not.
+        const signedRes = await buildSignedStatusResponse({
+          payload,
+          memberPubkey: lookupPubkey,
+          nonceHeader: req.headers[STATUS_NONCE_HEADER],
+          sign: lndSignMessage,
+        });
+        res.writeHead(200, signedRes.headers);
+        res.end(signedRes.body);
         return;
       }
 
@@ -850,10 +877,16 @@ async function dispatchRequest(
       // If neither source produces a usable token, return 503 (same
       // semantic as treasury_unreachable — infrastructure isn't ready
       // to serve status yet).
+      //
+      // The member the treasury must have signed for (treasury-price-trust
+      // spec §3.1): a header bearer's own subject, or — for the cached
+      // token — this node.
+      const ownPubkey = await ownNodePubkey();
+      let expectedMember: string | null = ownPubkey;
       let bearer = extractBearerToken(req.headers["authorization"] ?? null);
       if (bearer) {
         try {
-          await verifyEntitlementToken(bearer);
+          expectedMember = (await verifyEntitlementToken(bearer)).sub.toLowerCase();
         } catch (err: any) {
           if (err instanceof JwtVerificationError) {
             const fp = mapJwtErrorToFastPath(err);
@@ -893,40 +926,57 @@ async function dispatchRequest(
         return;
       }
 
-      let treasuryRes: Response;
-      try {
-        treasuryRes = await fetch(
-          `${treasuryBase.replace(/\/+$/, "")}/api/subscription/status`,
-          {
-            method: "GET",
-            headers: { Authorization: `Bearer ${bearer}` },
-            // 5s timeout per spec §5.1
-            signal: AbortSignal.timeout(5000),
-          },
-        );
-      } catch (err: any) {
+      // The one verifying fetch (5s timeout, spec §5.1). A first verified
+      // sight of THIS node's address writes its pin (§6.2).
+      const isOwn = !!ownPubkey && expectedMember === ownPubkey;
+      const fetched = await fetchVerifiedTreasuryStatus({
+        bearer,
+        treasuryBase,
+        expectedMemberPubkey: expectedMember,
+        pinFor: isOwn ? ownPubkey : null,
+      });
+      if (!fetched.ok && fetched.code !== "status_unverified") {
+        if (fetched.httpStatus != null && fetched.httpStatus !== 200 && fetched.bytes) {
+          // A treasury non-2xx: its status and body, forwarded as before.
+          res.writeHead(fetched.httpStatus, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(parseStatusBytes(fetched.bytes) ?? {}));
+          return;
+        }
         res.writeHead(503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          error: "treasury_unreachable",
-          detail: err?.message ?? String(err),
-        }));
+        res.end(JSON.stringify({ error: "treasury_unreachable", detail: fetched.detail }));
         return;
       }
-      const treasuryBody = await treasuryRes.json().catch(() => ({}));
-      res.writeHead(treasuryRes.status, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(treasuryBody));
+      // For display only. An unverified body is parsed here and nowhere else,
+      // and labelled; the labels overwrite any same-named treasury field.
+      const shown = fetched.ok ? (fetched.status as unknown as Record<string, unknown>) : parseStatusBytes(fetched.bytes);
+      if (!shown) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "treasury_unreachable", detail: "status_malformed" }));
+        return;
+      }
+      const target = fetched.ok ? parseStatusForPayment(shown) : null;
+      const payRefusal = target
+        ? payTargetRefusal(
+            target,
+            isOwn && ownPubkey ? getCurrentPin(db, ownPubkey)?.deposit_address ?? null : target.deposit_address,
+            SUBSCRIPTION_PRICE_CAP_SATS,
+          )
+        : null;
+      const labelled = {
+        ...shown,
+        treasury_signature: fetched.ok ? "verified" : fetched.verdict,
+        treasury_signature_reason: !fetched.ok ? fetched.verification_reason ?? null : null,
+        treasury_pay_refusal: payRefusal,
+      };
+      res.writeHead(fetched.httpStatus, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(labelled));
 
-      // Side-effect: tier-transition observation. Only fires on
-      // applicable: true responses (no tier to observe otherwise).
-      // The observer itself dedupes via in-flight guard and no-ops
-      // when scope already matches the new tier.
-      if (
-        treasuryRes.status === 200 &&
-        treasuryBody &&
-        typeof treasuryBody === "object" &&
-        (treasuryBody as { applicable?: boolean }).applicable === true
-      ) {
-        const tier = (treasuryBody as { current_tier?: string }).current_tier;
+      // Side-effect: tier-transition observation, on VERIFIED applicable
+      // responses only (an unverified body is no response for any actor).
+      // The observer itself dedupes via in-flight guard and no-ops when
+      // scope already matches the new tier.
+      if (fetched.ok && fetched.status.applicable === true) {
+        const tier = (fetched.status as { current_tier?: string }).current_tier;
         if (typeof tier === "string") observeTierForTransition(tier);
       }
     } catch (err: any) {
@@ -1091,10 +1141,14 @@ async function dispatchRequest(
       return;
     }
     try {
-      const status = await deriveLocalMemberStatus();
+      const status = await deriveLocalMemberStatus(node!.pubkey);
       if (!status.ok) {
-        res.writeHead(errorHttpStatus(status.code), { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: status.code, detail: status.detail }));
+        // The quote refuses whatever the send would (treasury-price-trust
+        // spec §4 R8, §5 E1, §6.3), with what the modal shows: the verdict's
+        // reason, the refused price, or both addresses. No confirm follows.
+        const { ok: _ok, code, ...rest } = status;
+        res.writeHead(errorHttpStatus(code), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: code, ...rest }));
         return;
       }
       let rate: { tokens_per_vbyte: number };
@@ -1149,11 +1203,13 @@ async function dispatchRequest(
     }
     const amount = parsed.amount_sats;
     const address = parsed.deposit_address;
-    if (typeof amount !== "number" || !Number.isFinite(amount) || typeof address !== "string" || address.length === 0) {
+    // E3 (treasury-price-trust spec §5): the echoed amount must be a whole
+    // number of sats.
+    if (typeof amount !== "number" || !Number.isSafeInteger(amount) || typeof address !== "string" || address.length === 0) {
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         error: "invalid_request",
-        detail: "amount_sats (a finite number) and deposit_address (a non-empty string) are required",
+        detail: "amount_sats (a whole number of sats) and deposit_address (a non-empty string) are required",
       }));
       return;
     }
@@ -1178,6 +1234,17 @@ async function dispatchRequest(
           ...(result.marker ? { marker: result.marker } : {}),
           ...(result.code === "price_above_acknowledged"
             ? { price_sats: result.price_sats, acknowledged_price_sats: result.acknowledged_price_sats }
+            : {}),
+          // treasury-price-trust S1–S6: the verdict's reason, the refused
+          // price, or both addresses.
+          ...(result.code === "status_unverified"
+            ? { reason: result.reason, verification_reason: result.verification_reason ?? null }
+            : {}),
+          ...(result.code === "price_above_cap" || result.code === "price_not_integer"
+            ? { price_sats: result.price_sats }
+            : {}),
+          ...(result.code === "deposit_address_changed"
+            ? { pinned_address: result.pinned_address ?? null, stated_address: result.stated_address }
             : {}),
         }));
       }
@@ -1322,16 +1389,23 @@ async function dispatchRequest(
     } catch {
       shown = undefined;
     }
-    if (typeof shown !== "number" || !Number.isFinite(shown) || shown <= 0) {
+    // E4 (treasury-price-trust spec §5): a whole number of sats.
+    if (typeof shown !== "number" || !Number.isSafeInteger(shown) || shown <= 0) {
       res.writeHead(400, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "invalid_request", detail: "price_sats must be a finite positive number" }));
+      res.end(JSON.stringify({ error: "invalid_request", detail: "price_sats must be a positive whole number of sats" }));
       return;
     }
     try {
       const result = await acknowledgePriceChange(node!.pubkey, shown);
       if (!result.ok) {
-        res.writeHead(result.code === "acknowledged_price_mismatch" ? 409 : 503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: result.code, detail: result.detail }));
+        // 409: a refusal the member resolves (or cannot acknowledge: above the
+        // cap, not a whole number). 503: the price could not be read or
+        // verified. Records nothing either way.
+        const { ok: _ok, code, ...rest } = result;
+        const conflict =
+          code === "acknowledged_price_mismatch" || code === "price_above_cap" || code === "price_not_integer";
+        res.writeHead(conflict ? 409 : 503, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: code, ...rest }));
         return;
       }
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -3527,8 +3601,10 @@ async function dispatchRequest(
         // Membership gate, app side (membership-gating M1, R4). The treasury's
         // own verdict rides on its status response; false refuses here, before
         // any funding step, so nothing goes on chain. Unknown — a treasury that
-        // sends no verdict, a null verdict, a failed status fetch — lets the
-        // open through and the treasury's channel acceptor decides.
+        // sends no verdict, a null verdict, a failed status fetch, or a status
+        // that is not VERIFIED (treasury-price-trust spec §4 R9: `ok` is the
+        // verified variant only) — lets the open through and the treasury's
+        // channel acceptor decides.
         const local = await fetchLocalSubscriptionStatus();
         if (local.ok && local.status.open_channel_allowed === false) {
           res.writeHead(403, { "Content-Type": "application/json" });

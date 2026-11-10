@@ -31,3 +31,32 @@ export const NAME_SIGNATURE_PREFIX = "bitcorn:member-name:";
 export function buildNameSignedString(challenge: string, name: string): string {
   return `${NAME_SIGNATURE_PREFIX}${challenge}:${name}`;
 }
+
+// The treasury's signed status response (bitcorn-research specs/2026-11-10-
+// treasury-price-trust-spec.md §1.1; decisions/2026-11-10-treasury-price-
+// trust-lnd-signed-status-cap-address-pin-and-sibling-exemption-ground.md D1,
+// D2). The treasury's LND signs, and the member verifies against the
+// release-pinned TREASURY_PUBKEY:
+//
+//     bitcorn:treasury-status:v1:<member_pubkey>:<nonce>:<body_sha256>
+//
+// - member_pubkey: 66 lowercase hex, the member the response is for (stops a
+//   response signed for one member being served to another).
+// - nonce: 32 lowercase hex, drawn by the member for THIS request (stops a
+//   replay). The treasury stores nothing; the member holds it for the call.
+// - body_sha256: 64 lowercase hex, SHA-256 of the exact response body bytes.
+//   The whole body, no canonicalisation, no field list (D2).
+//
+// Every field has a fixed grammar, so the string is unambiguous without
+// escaping. Both ends BUILD it from their own inputs; neither parses one apart.
+// The prefix starts with neither prefix above, and neither starts with it, so
+// no signature over one of the three strings verifies as another.
+export const TREASURY_STATUS_PREFIX = "bitcorn:treasury-status:v1:";
+
+export function buildTreasuryStatusSignedString(
+  memberPubkey: string,
+  nonce: string,
+  bodySha256Hex: string,
+): string {
+  return `${TREASURY_STATUS_PREFIX}${memberPubkey}:${nonce}:${bodySha256Hex}`;
+}

@@ -34,6 +34,14 @@ vi.mock("./memberStatusClient", () => ({
       : { ok: false, code: "treasury_unreachable", detail: "treasury down" },
 }));
 
+// The cap is not under test here (treasury-price-trust's controls test it);
+// its shipped value is owed, so inject one that bounds nothing these tests
+// send. Not a proposal for SUBSCRIPTION_PRICE_CAP_SATS.
+vi.mock("./priceCap", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./priceCap")>()),
+  SUBSCRIPTION_PRICE_CAP_SATS: Number.MAX_SAFE_INTEGER,
+}));
+
 vi.mock("../lightning/lnd", () => ({
   getLndChainFeeRate: vi.fn(async () => {
     if (h.feeThrows) throw h.feeThrows;
@@ -88,6 +96,7 @@ beforeAll(async () => {
 beforeEach(() => {
   db.prepare("DELETE FROM subscription_send_marker").run();
   db.prepare("DELETE FROM member_profile").run();
+  db.prepare("DELETE FROM subscription_deposit_address_pin").run();
   h.status = applicable();
   h.statusOk = true;
   h.balance = 1_000_000;

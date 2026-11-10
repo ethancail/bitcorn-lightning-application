@@ -17,19 +17,40 @@ import {
 } from "../profile/profileStore";
 import { fetchLocalSubscriptionStatus } from "./memberStatusClient";
 import { priceChangePending } from "./priceChange";
+import { SUBSCRIPTION_PRICE_CAP_SATS, checkSubscriptionPrice, type PriceRefusalCode } from "./priceCap";
 import { getActiveAlerts, getBadgeCount, type AutoPayAlertView } from "./autoPayAlertStore";
 
 function nowSec(): number {
   return Math.floor(Date.now() / 1000);
 }
 
-/** Pull the live subscription price (sats) from the proxied status, or null if
- *  the status is unavailable / not applicable. */
-async function currentPriceSats(): Promise<number | null> {
+/** The live subscription price, from the VERIFIED status only
+ *  (treasury-price-trust spec §4 R10, §5 E4). It seeds and raises the D3
+ *  ceiling, so an unverified, fractional or over-cap price is never returned
+ *  as a price — each is its own variant, so the caller says why. */
+type CurrentPrice =
+  | { kind: "ok"; price: number }
+  | { kind: "unavailable" }
+  | {
+      kind: "unverified";
+      verdict: "unsigned" | "invalid" | "unverifiable";
+      verification_reason?: "key_unset" | "lnd_unavailable";
+    }
+  | { kind: "refused"; code: PriceRefusalCode; detail: string; price: number };
+
+async function currentPriceSats(): Promise<CurrentPrice> {
   const result = await fetchLocalSubscriptionStatus();
-  if (!result.ok) return null;
+  if (!result.ok) {
+    return result.code === "status_unverified"
+      ? { kind: "unverified", verdict: result.verdict, verification_reason: result.verification_reason }
+      : { kind: "unavailable" };
+  }
   const s = result.status as any;
-  return s.applicable === true && typeof s.price_sats === "number" ? s.price_sats : null;
+  if (s.applicable !== true || typeof s.price_sats !== "number") return { kind: "unavailable" };
+  const check = checkSubscriptionPrice(s.price_sats, SUBSCRIPTION_PRICE_CAP_SATS);
+  return check.ok
+    ? { kind: "ok", price: s.price_sats }
+    : { kind: "refused", code: check.code, detail: check.detail, price: s.price_sats };
 }
 
 export interface AutoPayConfigResponse {
@@ -39,6 +60,12 @@ export interface AutoPayConfigResponse {
   last_acknowledged_price_at: number | null;
   current_price: number | null;
   price_change_pending: boolean;
+  /** treasury-price-trust (spec §4 R10, §8): the status's verdict, or null
+   *  when the treasury could not be read at all. */
+  status_verification: "verified" | "unsigned" | "invalid" | "unverifiable" | null;
+  status_verification_reason: "key_unset" | "lnd_unavailable" | null;
+  /** A verified price this app will not pay (S4, S5), or null. */
+  price_refusal: PriceRefusalCode | null;
   active_alerts: AutoPayAlertView[];
   badge: { active_count: number; highest_severity: "info" | "warning" | null };
 }
@@ -49,7 +76,8 @@ export async function getAutoPayConfig(memberPubkey: string): Promise<AutoPayCon
   const profile = getMemberProfile(memberPubkey);
   const enabled = profile?.auto_pay_enabled === 1;
   const lastAck = profile?.last_acknowledged_price ?? null;
-  const current = await currentPriceSats();
+  const live = await currentPriceSats();
+  const current = live.kind === "ok" ? live.price : null;
 
   const pricePending =
     current != null &&
@@ -67,6 +95,10 @@ export async function getAutoPayConfig(memberPubkey: string): Promise<AutoPayCon
     last_acknowledged_price_at: profile?.last_acknowledged_price_at ?? null,
     current_price: current,
     price_change_pending: pricePending,
+    status_verification:
+      live.kind === "unverified" ? live.verdict : live.kind === "unavailable" ? null : "verified",
+    status_verification_reason: live.kind === "unverified" ? live.verification_reason ?? null : null,
+    price_refusal: live.kind === "refused" ? live.code : null,
     active_alerts: getActiveAlerts(db, memberPubkey),
     badge: getBadgeCount(db, memberPubkey),
   };
@@ -81,7 +113,11 @@ export async function setAutoPay(
 ): Promise<{ enabled: boolean; enabled_at: number | null }> {
   const now = nowSec();
   if (enabled) {
-    const seed = await currentPriceSats(); // null-safe: banner shows until first ack if unknown
+    // The seed sets the D3 ceiling, so only a verified, integer, capped price
+    // seeds it (E4); otherwise NULL, and auto-pay refuses price_unacknowledged
+    // until a verified acknowledgement.
+    const live = await currentPriceSats();
+    const seed = live.kind === "ok" ? live.price : null;
     setAutoPayEnabled(memberPubkey, true, now, seed);
     return { enabled: true, enabled_at: now };
   }
@@ -105,16 +141,39 @@ export async function acknowledgePriceChange(
 ): Promise<
   | { ok: true; acknowledged_price: number; acknowledged_at: number }
   | { ok: false; code: "status_unavailable"; detail: string }
+  | {
+      ok: false;
+      code: "status_unverified";
+      detail: string;
+      reason: "unsigned" | "invalid" | "unverifiable";
+      verification_reason?: "key_unset" | "lnd_unavailable";
+    }
+  | { ok: false; code: PriceRefusalCode; detail: string; price_sats: number }
   | { ok: false; code: "acknowledged_price_mismatch"; detail: string }
 > {
-  const current = await currentPriceSats();
-  if (current == null) {
+  const live = await currentPriceSats();
+  if (live.kind === "unverified") {
+    // It sets the ceiling: records nothing from an unverified body (§4 R10).
+    return {
+      ok: false,
+      code: "status_unverified",
+      detail: "the subscription price could not be verified as the treasury's; nothing was recorded",
+      reason: live.verdict,
+      ...(live.verification_reason ? { verification_reason: live.verification_reason } : {}),
+    };
+  }
+  if (live.kind === "refused") {
+    // Neither refusal can be acknowledged (§5, C6b).
+    return { ok: false, code: live.code, detail: live.detail, price_sats: live.price };
+  }
+  if (live.kind === "unavailable") {
     return {
       ok: false,
       code: "status_unavailable",
       detail: "could not read the current subscription price from the treasury",
     };
   }
+  const current = live.price;
   if (current !== shownPriceSats) {
     return {
       ok: false,

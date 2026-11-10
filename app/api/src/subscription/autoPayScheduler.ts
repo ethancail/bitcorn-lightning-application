@@ -22,15 +22,25 @@ import { ENV } from "../config/env";
 import { getNodeInfo } from "../api/read";
 import { getMemberProfile } from "../profile/profileStore";
 import { fetchLocalSubscriptionStatus } from "./memberStatusClient";
-import { executePayFromNode, isSendInFlight, parseCreditState } from "./payFromNode";
+import {
+  executePayFromNode,
+  isSendInFlight,
+  parseCreditState,
+  parseStatusForPayment,
+  payTargetRefusal,
+} from "./payFromNode";
 import { shouldAutoPay, type AutoPayTier } from "./autoPayTrigger";
 import {
   classifyAutoPayError,
   currentPriceCauseKey,
   overdueCauseKey,
+  payTargetCauseKey,
   priceCauseKey,
+  unverifiedCauseKey,
   type PriceAlertReason,
 } from "./autoPayAlerts";
+import { getCurrentPin } from "./depositAddressPin";
+import { SUBSCRIPTION_PRICE_CAP_SATS } from "./priceCap";
 import {
   getActiveAlerts,
   recordAutoPaySuccess,
@@ -47,6 +57,9 @@ const SUCCEEDED_TTL_SEC = 24 * 3600;
 
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 let running = false; // skip overlapping ticks (the async runOnce may still be in flight)
+// The episode an AUTOPAY_STATUS_UNVERIFIED alert belongs to: the last verified
+// status this process saw, or process start (unverifiedCauseKey).
+let lastVerifiedAtSec = Math.floor(Date.now() / 1000);
 
 function nowSec(): number {
   return Math.floor(Date.now() / 1000);
@@ -65,21 +78,73 @@ export async function runOnce(): Promise<void> {
     // Housekeeping: retire stale SUCCEEDED notifications (24h lifecycle).
     resolveStaleSucceeded(db, memberPubkey, nowSec() - SUCCEEDED_TTL_SEC);
 
-    // Observe the member's own tier (browser-independent). A failure here is a
-    // silent deferral — treasury unreachable / no cached token — no alert.
+    const profile = getMemberProfile(memberPubkey);
+    const autoPayEnabled = profile?.auto_pay_enabled === 1;
+
+    // Observe the member's own tier (browser-independent), through the one
+    // verifying fetch. Unreachable / no cached token is a silent deferral, no
+    // alert. An UNVERIFIED status counts as no status for every actor below
+    // (treasury-price-trust spec §4): the trigger does not run, no marker is
+    // cleared, no alert is housekept — and, if auto-pay is on, the member is
+    // told why (AUTOPAY_STATUS_UNVERIFIED), once per episode.
     const statusResult = await fetchLocalSubscriptionStatus();
     if (!statusResult.ok) {
+      if (statusResult.code === "status_unverified") {
+        const key = unverifiedCauseKey(
+          statusResult.verdict,
+          statusResult.verification_reason,
+          lastVerifiedAtSec,
+        );
+        if (autoPayEnabled) {
+          recordCauseAlert(db, memberPubkey, {
+            type: "AUTOPAY_STATUS_UNVERIFIED",
+            causeKey: key,
+            context: {
+              verdict: statusResult.verdict,
+              verification_reason: statusResult.verification_reason ?? null,
+              detail: statusResult.detail,
+            },
+          });
+        }
+        resolveClearedCauseAlerts(
+          db,
+          memberPubkey,
+          "AUTOPAY_STATUS_UNVERIFIED",
+          new Set(autoPayEnabled ? [key] : []),
+        );
+        if (ENV.debug) {
+          console.log(`[autopay] status not verified (${statusResult.verdict}); not acting on it`);
+        }
+        return;
+      }
       if (ENV.debug) {
         console.log(`[autopay] status unavailable (${statusResult.code}); deferring`);
       }
       return;
     }
     const status = statusResult.status;
+    lastVerifiedAtSec = nowSec();
+    resolveClearedCauseAlerts(db, memberPubkey, "AUTOPAY_STATUS_UNVERIFIED", new Set());
     const tier: AutoPayTier =
       status.applicable === true ? (status.current_tier as AutoPayTier) : null;
 
-    const profile = getMemberProfile(memberPubkey);
-    const autoPayEnabled = profile?.auto_pay_enabled === 1;
+    // The pay-target alert resolves when its cause no longer holds on a
+    // verified status: the price is integer and capped, and the address is
+    // the pin (spec §5, §6.3).
+    const liveTarget = status.applicable === true ? parseStatusForPayment(status) : null;
+    const liveRefusal = liveTarget
+      ? payTargetRefusal(
+          liveTarget,
+          getCurrentPin(db, memberPubkey)?.deposit_address ?? null,
+          SUBSCRIPTION_PRICE_CAP_SATS,
+        )
+      : null;
+    resolveClearedCauseAlerts(
+      db,
+      memberPubkey,
+      "AUTOPAY_PAY_TARGET_REFUSED",
+      new Set(liveRefusal ? [payTargetCauseKey(liveRefusal.code, liveRefusal)] : []),
+    );
 
     // The pay-from-node guards' housekeeping, every tick and whatever the
     // trigger decides (spec §3.6, §4.3): clear send markers the status shows
@@ -178,6 +243,40 @@ export async function runOnce(): Promise<void> {
           reason,
           price_sats: result.price_sats,
           acknowledged_price_sats: acknowledged,
+        },
+      });
+      return;
+    }
+    // treasury-price-trust: one alert per cause, never fed to the backoff.
+    if (alertType === "AUTOPAY_STATUS_UNVERIFIED" && result.reason) {
+      recordCauseAlert(db, memberPubkey, {
+        type: alertType,
+        causeKey: unverifiedCauseKey(result.reason, result.verification_reason, lastVerifiedAtSec),
+        context: {
+          error_code: result.code,
+          detail: result.detail,
+          verdict: result.reason,
+          verification_reason: result.verification_reason ?? null,
+        },
+      });
+      return;
+    }
+    if (
+      alertType === "AUTOPAY_PAY_TARGET_REFUSED" &&
+      (result.code === "price_above_cap" ||
+        result.code === "price_not_integer" ||
+        result.code === "deposit_address_changed")
+    ) {
+      recordCauseAlert(db, memberPubkey, {
+        type: alertType,
+        causeKey: payTargetCauseKey(result.code, result),
+        context: {
+          error_code: result.code,
+          detail: result.detail,
+          reason: result.code,
+          price_sats: result.price_sats ?? null,
+          pinned_address: result.pinned_address ?? null,
+          stated_address: result.stated_address ?? null,
         },
       });
       return;
