@@ -25,6 +25,8 @@ import {
 } from "../api/client";
 import { Pill, tierToPill, type PillKind } from "./Pill";
 import PayFromNodeModal from "./PayFromNodeModal";
+import PaymentTrustNotice from "./PaymentTrustNotice";
+import { trustStateOfStatus } from "./paymentTrust";
 import AutoPaySection from "./AutoPaySection";
 import { useAutoPayConfig } from "./useAutoPayConfig";
 import { actionsFor, type ActionDescriptor } from "./subscriptionActions";
@@ -38,6 +40,9 @@ import { bip21Uri } from "./bip21";
  *  / close_due. */
 interface ActionHandlers {
   onOpenPayModal: () => void;
+  /** treasury-price-trust §8: the status is not verified, or names a target
+   *  this node won't pay (S1–S6). The pay button is disabled. */
+  payBlocked?: boolean;
   onOnramp: () => void;
   onrampLoading: boolean;
   onrampError: string | null;
@@ -241,10 +246,11 @@ export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void 
   if (status.applicable) {
     return (
       <>
+        <PaymentTrustNotice status={status} />
         <ApplicablePanel
           status={status}
           onRefresh={fetchStatus}
-          handlers={actionHandlers}
+          handlers={{ ...actionHandlers, payBlocked: trustStateOfStatus(status) != null }}
         />
         {/* Auto-renew (auto-pay opt-in) — the automation of the Renew now
             action, so it lives with the subscription surface rather than in
@@ -465,7 +471,7 @@ function renderActionButton(
       );
     case "pay-modal":
       return (
-        <button className="sub-btn" onClick={handlers.onOpenPayModal}>
+        <button className="sub-btn" onClick={handlers.onOpenPayModal} disabled={handlers.payBlocked}>
           {labelWithGlyph}
         </button>
       );

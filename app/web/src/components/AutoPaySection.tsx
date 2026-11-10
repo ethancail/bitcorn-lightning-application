@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type AutoPayConfig, type AutoPayAlert } from "../api/client";
 import { formatDistanceToNow } from "date-fns";
+import { autoPayCanEnable, trustCopy, trustStateOfAutoPayConfig } from "./paymentTrust";
 
 const sats = (n: number | null | undefined) =>
   typeof n === "number" ? `${new Intl.NumberFormat("en-US").format(n)} sats` : "—";
@@ -70,6 +71,13 @@ export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {})
   }
 
   const enabled = cfg?.enabled ?? false;
+  // treasury-price-trust (spec §8): why the current price is unavailable (S1–S5),
+  // and opting IN only on a verified, payable status. Opting out always works.
+  const trust = trustStateOfAutoPayConfig(cfg);
+  const trustText = trust
+    ? trustCopy(trust, trust.state === "S4_price_above_cap" ? sats(trust.price_sats) : undefined).text
+    : null;
+  const canEnable = autoPayCanEnable(cfg);
 
   return (
     <div>
@@ -79,7 +87,7 @@ export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {})
           <input
             type="checkbox"
             checked={enabled}
-            disabled={saving || !cfg}
+            disabled={saving || !cfg || (!enabled && !canEnable)}
             onChange={(e) => void onToggle(e.target.checked)}
           />
           <span style={{ fontSize: "0.8125rem", color: enabled ? "var(--green, #22c55e)" : "var(--text-3)" }}>
@@ -87,6 +95,12 @@ export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {})
           </span>
         </label>
       </div>
+
+      {trustText && (
+        <p role="status" data-trust-state={trust!.state} style={{ color: "var(--text)", fontSize: "0.8125rem", margin: "6px 0 0" }}>
+          {trustText}
+        </p>
+      )}
 
       {loadFailed && (
         <p style={{ color: "var(--text-3)", fontSize: "0.8125rem", margin: "6px 0 0" }}>

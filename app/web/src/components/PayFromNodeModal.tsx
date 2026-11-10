@@ -54,6 +54,7 @@ import {
 } from "./payModalMachine";
 import { renewalAmount } from "./subscriptionBanner";
 import { payErrorMessage } from "./subscriptionPayMessages";
+import { trustCopy, trustStateOfRefusal, type TrustState } from "./paymentTrust";
 
 // This modal's wording for a missing confirmation (G3 ruling R8).
 const CONFIRMATION_REQUIRED_MESSAGE = "Not confirmed. Nothing was sent. Close this window and try again.";
@@ -102,6 +103,10 @@ export default function PayFromNodeModal({
   const [state, dispatch] = useReducer(reducePayModal, INITIAL_PAY_MODAL_STATE);
   const [quote, setQuote] = useState<PayFromNodeQuote | null>(null);
   const [quoteError, setQuoteError] = useState(false);
+  // treasury-price-trust (spec §4 R8): a quote refused because the status is
+  // not verified, or names a target this node won't pay. The state shows and
+  // no confirm is offered.
+  const [quoteRefusal, setQuoteRefusal] = useState<TrustState | null>(null);
   const [copied, setCopied] = useState(false);
   // What is rendered, and therefore what is echoed.
   const [target, setTarget] = useState({
@@ -150,10 +155,16 @@ export default function PayFromNodeModal({
     let cancelled = false;
     setQuote(null);
     setQuoteError(false);
+    setQuoteRefusal(null);
     api
       .getPayFromNodeQuote()
       .then((q) => { if (!cancelled) setQuote(q); })
-      .catch(() => { if (!cancelled) setQuoteError(true); });
+      .catch((e: any) => {
+        if (cancelled) return;
+        const refusal = trustStateOfRefusal(e?.code, e?.body);
+        if (refusal) setQuoteRefusal(refusal);
+        else setQuoteError(true);
+      });
     return () => { cancelled = true; };
   }, [state.step]);
 
@@ -206,7 +217,7 @@ export default function PayFromNodeModal({
           dispatch({ t: "error", message: payErrorMessage("pay_target_changed"), code: "pay_target_changed" });
         }
       } else {
-        dispatch({ t: "error", message: payErrorMessage(e?.code, e?.detail), code: e?.code });
+        dispatch({ t: "error", message: payErrorMessage(e?.code, e?.detail, e?.body), code: e?.code });
       }
     }
   }
@@ -285,6 +296,23 @@ export default function PayFromNodeModal({
                 </div>
               </div>
             )}
+            {quoteRefusal && (() => {
+              const copy = trustCopy(
+                quoteRefusal,
+                quoteRefusal.state === "S4_price_above_cap"
+                  ? renewalAmount(quoteRefusal.price_sats, usdRate).text
+                  : undefined,
+              );
+              return (
+                <div className="sub-alert sub-alert-amber" role="alert" data-trust-state={quoteRefusal.state} style={{ marginBottom: 14 }}>
+                  <span className="sub-alert-icon" aria-hidden>!</span>
+                  <div className="sub-alert-body">
+                    <strong>{copy.headline}</strong>
+                    {copy.body ? <> {copy.body}</> : null}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="dialog-body" style={{ marginBottom: 14 }}>
               Sends an on-chain payment from your node's wallet to your own
               subscription deposit address.
@@ -328,7 +356,7 @@ export default function PayFromNodeModal({
               <button
                 className="btn btn-primary"
                 onClick={handleConfirm}
-                disabled={state.step === "sending"}
+                disabled={state.step === "sending" || quoteRefusal != null}
               >
                 {state.step === "sending" ? "Sending…" : "Confirm send"}
               </button>

@@ -17,6 +17,7 @@
 // healthy member.
 
 import { fmtSats, type SubscriptionStatus, type AutoPayConfig } from "../api/client";
+import { trustCopy, trustStateOfRefusal } from "./paymentTrust";
 
 export type GatedTier = "prepay" | "worker_lapsed" | "routing_lapsed" | "close_due";
 export type BannerSeverity = "info" | "amber" | "orange" | "red";
@@ -255,6 +256,22 @@ export function autoPayAlertContent(
             headline: "Auto-pay is paused: the price went up",
             body: "Auto-pay won't pay the new subscription price until you accept it.",
           };
+    // treasury-price-trust (spec §8): the S1–S6 draft copy, split at its
+    // first sentence (paymentTrust.ts). DRAFT until the screenshot gate.
+    case "AUTOPAY_STATUS_UNVERIFIED":
+    case "AUTOPAY_PAY_TARGET_REFUSED": {
+      const c = context ?? {};
+      const trust =
+        type === "AUTOPAY_STATUS_UNVERIFIED"
+          ? trustStateOfRefusal("status_unverified", { reason: c.verdict, verification_reason: c.verification_reason })
+          : trustStateOfRefusal(String(c.reason ?? ""), c);
+      if (!trust) return { headline: "Auto-pay update", body: "" };
+      const { headline, body } = trustCopy(
+        trust,
+        trust.state === "S4_price_above_cap" ? renewalAmount(trust.price_sats, null).text : undefined,
+      );
+      return { headline, body };
+    }
     case "AUTOPAY_INSUFFICIENT_FUNDS":
       return {
         headline: "Auto-pay couldn't renew your subscription",
