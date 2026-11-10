@@ -593,6 +593,14 @@ function PrepayRender({
 
 // ─── lapsed family (worker_lapsed / routing_lapsed / close_due) ─
 
+/** The "still open / stays open / remains open" sentences are true only while
+ *  the treasury's Tier 3 can't close a channel. A missing field (an older
+ *  treasury) counts as "dry_run". When "live", they are omitted and nothing
+ *  replaces them (L2 / T3). */
+function connectionStaysOpen(status: SubscriptionStatusApplicable): boolean {
+  return status.close_enforcement !== "live";
+}
+
 function WorkerLapsedRender({
   status,
   handlers,
@@ -623,9 +631,11 @@ function WorkerLapsedRender({
           <strong>If you renew</strong> — recovery is fully in-app. Buy BTC via Onramp or send from a wallet you already have. Payment is detected within ~15 seconds; price quotes and valuation come back online and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
         {/* Routing doesn't pause at routing_until (M2 item 3); only this is true. */}
-        <TimelineRow marker="!" tone="amber">
-          <strong>If you don't renew</strong> — hosted services stay paused and your connection to Bitcorn stays open.
-        </TimelineRow>
+        {connectionStaysOpen(status) && (
+          <TimelineRow marker="!" tone="amber">
+            <strong>If you don't renew</strong> — hosted services stay paused and your connection to Bitcorn stays open.
+          </TimelineRow>
+        )}
       </Timeline>
       <BracketHeading>ACTIONS</BracketHeading>
       {/* Relabeled 2026-06-11 to the locked Onramp-primary pattern
@@ -678,7 +688,8 @@ function OverdueRender({
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={tone} label="payment overdue" />} />
       <AlertBox variant={tone} icon="⚠">
-        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay {fmtSats(status.price_sats)} to restore them. Your connection to Bitcorn is still open and its balance is unchanged.
+        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay {fmtSats(status.price_sats)} to restore them.
+        {connectionStaysOpen(status) && " Your connection to Bitcorn is still open and its balance is unchanged."}
       </AlertBox>
       <p className="sub-reassure">
         <span className="sub-bullet-tick">✓</span> You can still use <strong>Coinbase Onramp</strong> to buy BTC and renew, and monitor your channel state from this dashboard.
@@ -695,12 +706,16 @@ function OverdueRender({
         <TimelineRow marker="·">
           <strong>If you renew</strong> — recovery is fully in-app. Payment is detected within ~15 seconds; all paused services come back online, and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
-        <TimelineRow marker="!" tone={tone}>
-          <strong>If you don't renew</strong> — hosted services stay paused and your connection to Bitcorn stays open.
-        </TimelineRow>
-        <TimelineRow marker="✓" tone="emerald">
-          <strong>Right now</strong> — your connection to Bitcorn remains open and its balance is unchanged.
-        </TimelineRow>
+        {connectionStaysOpen(status) && (
+          <>
+            <TimelineRow marker="!" tone={tone}>
+              <strong>If you don't renew</strong> — hosted services stay paused and your connection to Bitcorn stays open.
+            </TimelineRow>
+            <TimelineRow marker="✓" tone="emerald">
+              <strong>Right now</strong> — your connection to Bitcorn remains open and its balance is unchanged.
+            </TimelineRow>
+          </>
+        )}
       </Timeline>
       <BracketHeading>ACTIONS</BracketHeading>
       {/* Per spec §11 acceptance + Stage 5a deltas: the Onramp button stays

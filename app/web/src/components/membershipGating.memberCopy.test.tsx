@@ -292,6 +292,51 @@ describe("L2 drive-mode review — no 'funds are safe', R14's 'connection', amou
   });
 });
 
+describe("L2 / T3 — the 'open' sentences render only while Tier 3 can't close", () => {
+  const OPEN_CLAIM = /still open|stays open|remains open|balance is unchanged/i;
+  const STAYS_OPEN_ROW = "If you don't renew — hosted services stay paused and your connection to Bitcorn stays open.";
+  const ALERT_OPEN = "Your connection to Bitcorn is still open and its balance is unchanged.";
+  const RIGHT_NOW = "Right now — your connection to Bitcorn remains open and its balance is unchanged.";
+  const tiers = ["worker_lapsed", "routing_lapsed", "close_due"] as const;
+  type Enforcement = "dry_run" | "live" | undefined;
+
+  async function panel(tier: (typeof tiers)[number], enforcement: Enforcement) {
+    const s: Record<string, unknown> = { ...routingLapsed(), current_tier: tier };
+    if (enforcement !== undefined) s.close_enforcement = enforcement;
+    stub.getSubscriptionStatus.mockResolvedValue(s);
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    return host.textContent ?? "";
+  }
+
+  it.each(tiers)("%s with close_enforcement 'live': no open or balance sentence, and nothing in their place", async (tier) => {
+    const text = await panel(tier, "live");
+    expect(text).toContain("If you renew"); // the tier's timeline rendered
+    expect(text).not.toMatch(OPEN_CLAIM);
+    expect(text).not.toContain("If you don't renew");
+    expect(text).not.toContain("Right now");
+  });
+
+  it.each(tiers.flatMap((t) => [[t, "dry_run"], [t, undefined]] as const))(
+    "%s with close_enforcement %s: the open sentences render",
+    async (tier, enforcement) => {
+      const text = await panel(tier, enforcement);
+      expect(text).toContain(STAYS_OPEN_ROW);
+      if (tier !== "worker_lapsed") {
+        expect(text).toContain(ALERT_OPEN);
+        expect(text).toContain(RIGHT_NOW);
+      }
+    },
+  );
+
+  it("'live' leaves the alert ending at the restore sentence, with no trailing claim", async () => {
+    const text = await panel("close_due", "live");
+    expect(text).toContain("Pay 50,000 sats to restore them.✓"); // alert ends, the reassure tick follows
+  });
+});
+
 describe("L2 — 'lapsed N days ago' and the PAID THROUGH stat's 'Nd ago' use one day computation", () => {
   it("agree on a fractional day, where ceil and floor of the elapsed time differ", async () => {
     // 88.5 days: ceil would say 89, floor 88 — the gate 1 screenshot's split.

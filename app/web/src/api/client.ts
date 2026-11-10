@@ -869,6 +869,13 @@ export type SubscriptionStatusApplicable = OpenChannelVerdict & {
     routing_until: number;
     close_at: number;
   };
+  /**
+   * Whether the treasury's Tier 3 can close this channel. Missing (a treasury
+   * that predates the field) reads as "dry_run": no treasury before it could
+   * close one. The "connection stays open" copy shows only while it isn't
+   * "live" (SubscriptionPanel's connectionStaysOpen).
+   */
+  close_enforcement?: "dry_run" | "live";
 };
 
 export type SubscriptionNotApplicableReason =
