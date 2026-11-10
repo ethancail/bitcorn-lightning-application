@@ -802,3 +802,109 @@ test("(h) running under the Node major pinned in .nvmrc", () => {
   const pinned = fs.readFileSync(path.join(ROOT, ".nvmrc"), "utf8").trim();
   assert.equal(process.version.split(".")[0], `v${pinned}`);
 });
+
+// ─── (i) slots: HARNESS_SLOT picks the Polar network (H10) ─────────────────
+// Added with scripts/harness-slot.mjs. Every case above runs with env {} and so
+// is slot 1, unchanged. These run through their own fake, because slot N reads
+// networks.json, which run() above does not inject.
+
+import { preflightTargets } from "./polar-preflight.mjs";
+
+const slotNodes = (names = ALL_NODES) => ({
+  bitcoin: [{ name: "backend1", ports: {} }],
+  lightning: names.map((name, i) => ({ name, ports: { grpc: 10008 + i } })),
+});
+const SLOT_NETWORKS = {
+  networks: [
+    { id: 1, name: "bitcorn-dev", nodes: slotNodes() },
+    { id: 2, name: "bitcorn-dev-2", nodes: slotNodes() },
+  ],
+};
+const T2 = preflightTargets(2);
+const lncli2 = (name, ...rest) => `exec -u lnd polar-n2-${name} lncli --network regtest ${rest.join(" ")}`;
+const healthy2 = () => ({
+  [K.version]: ok('"29.9.1"\n'),
+  [K.context]: ok("default\n"),
+  "ps -a --filter name=^polar-n2- --format {{json .Names}}": listOut(T2.containers),
+  [`inspect ${T2.containers.join(" ")}`]: inspectOut(T2.containers),
+  "exec -u bitcoin polar-n2-backend1 bitcoin-cli -regtest getblockchaininfo": chainOut(),
+  ...Object.fromEntries(ALL_NODES.map((n) => [lncli2(n, "getinfo"), getinfoOut(n)])),
+  [lncli2("Treasury", "listpeers")]: peersOut(),
+  [lncli2("Treasury", "listchannels", "--active_only")]: channelsOut(),
+});
+
+async function runSlot(slot, { networks = SLOT_NETWORKS, psOut = ok(QUIET_PS) } = {}) {
+  const responses = healthy2();
+  const calls = [];
+  const unplanned = [];
+  const composeReads = [];
+  const lines = [];
+  let networkReads = 0;
+  const { exitCode } = await runPreflight({
+    docker: async (args) => {
+      calls.push(args);
+      const key = args.join(" ");
+      if (!(key in responses)) {
+        unplanned.push(key);
+        throw new Error(`unplanned docker call: ${key}`);
+      }
+      return responses[key];
+    },
+    ps: async () => psOut,
+    readCompose: async (file) => { composeReads.push(file); return COMPOSE; },
+    readNetworks: async () => { networkReads += 1; return networks; },
+    sleep: async () => {},
+    now: () => new Date("2026-10-30T16:00:00.000Z"),
+    print: (line) => lines.push(line),
+    env: { HARNESS_SLOT: slot },
+  });
+  for (const args of calls) assert.ok(!FORBIDDEN_DOCKER_VERBS.has(args[0]), `forbidden docker verb: ${args.join(" ")}`);
+  return { exitCode, lines, calls, unplanned, composeReads, networkReads };
+}
+
+test("(i) slot 2, healthy: every check passes against polar-n2- and network 2's compose file, with no network-1 call", async () => {
+  const { exitCode, lines, calls, unplanned, composeReads } = await runSlot("2");
+  assert.deepEqual(unplanned, []);
+  assert.equal(exitCode, 0, lines.join("\n"));
+  assert.match(lineOf(lines, "slot") ?? "(no slot line)", / PASS slot slot=2 network=2 name=bitcorn-dev-2$/);
+  for (const name of CHECKS) assert.equal(statusOf(lines, name), "PASS");
+  assert.deepEqual(composeReads, [path.join(os.homedir(), ".polar", "networks", "2", "docker-compose.yml")]);
+  assert.ok(calls.some((a) => a.join(" ") === "ps -a --filter name=^polar-n2- --format {{json .Names}}"));
+  assert.ok(!calls.some((a) => a.join(" ").includes("polar-n1-")), "a slot-2 run touched network 1");
+});
+
+test("(i) slot 2: a running Polar GUI still fails the preflight, because the check stays host-wide (D10)", async () => {
+  const gui = ok(`${QUIET_PS}1001 /home/user/Downloads/polar-linux-x86_64-v4.0.0.AppImage\n`);
+  const { exitCode, lines } = await runSlot("2", { psOut: gui });
+  assert.equal(statusOf(lines, "polar-not-running"), "FAIL");
+  assert.equal(exitCode, 1);
+});
+
+test("(i) slot 2 with no bitcorn-dev-2: CANNOT-LOOK for every check, exit 2, no docker call", async () => {
+  const { exitCode, lines, calls } = await runSlot("2", { networks: { networks: [SLOT_NETWORKS.networks[0]] } });
+  assert.equal(exitCode, 2);
+  assert.match(lineOf(lines, "slot") ?? "(no slot line)", /CANNOT-LOOK slot slot 2: no Polar network with the name bitcorn-dev-2/);
+  for (const name of CHECKS) assert.equal(statusOf(lines, name), "CANNOT-LOOK");
+  assert.deepEqual(passLines(lines), []);
+  assert.deepEqual(calls, []);
+});
+
+test("(i) slot 2 whose network's node names differ (D16): CANNOT-LOOK, exit 2", async () => {
+  const renamed = { networks: [{ id: 2, name: "bitcorn-dev-2", nodes: slotNodes(["Treasury", "Merchant1", "Farmer2", "External-Peer-1"]) }] };
+  const { exitCode, lines, calls } = await runSlot("2", { networks: renamed });
+  assert.equal(exitCode, 2);
+  assert.match(lineOf(lines, "slot") ?? "(no slot line)", /CANNOT-LOOK slot .*Farmer2.*not the five/);
+  assert.deepEqual(calls, []);
+});
+
+test("(i) an unparseable HARNESS_SLOT is CANNOT-LOOK, exit 2", async () => {
+  const { exitCode, lines } = await runSlot("two");
+  assert.equal(exitCode, 2);
+  assert.match(lineOf(lines, "slot") ?? "(no slot line)", /HARNESS_SLOT must be/);
+});
+
+test("(i) slot 1, given as HARNESS_SLOT=1, reads no networks.json and prints no slot line", async () => {
+  const { lines, networkReads } = await runSlot("1");
+  assert.equal(networkReads, 0);
+  assert.equal(lineOf(lines, "slot"), undefined);
+});
