@@ -27,6 +27,20 @@ import { classifyLanePurpose } from "./lanePurpose";
 import { getSubscriptionPolicy } from "./policy";
 import { recomputeAllTiers } from "./tierDispatch";
 
+/**
+ * Whether Tier 3 can actually close a member's channel, as the treasury tells
+ * members on every status response that carries a tier (statusHandler.ts,
+ * `close_enforcement`). Members show "your connection stays open" only while
+ * this isn't "live".
+ *
+ * Stage 6 sets "live" in the same change that adds the real closeChannel call.
+ * Never derive this from SUBSCRIPTION_TIER3_LIVE: that flag closes nothing. It
+ * only sets isDryRun (runTier3Tick, below), which labels the logs; the would_close
+ * path in evaluateCandidate returns without a close call either way.
+ */
+export type CloseEnforcement = "dry_run" | "live";
+export const CLOSE_ENFORCEMENT: CloseEnforcement = "dry_run";
+
 let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
 interface CloseCandidate {

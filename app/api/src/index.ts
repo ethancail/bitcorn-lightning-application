@@ -216,6 +216,8 @@ import {
 import { handleRailFeeRevenue } from "./stablecoin/feeRevenue";
 import { sweepExpiredChallenges } from "./stablecoin/nonceStore";
 import { startKeypairSyncCheck } from "./subscription/keypairSyncCheck";
+import { isAcceptorRefusal, startChannelAcceptor } from "./lightning/channelAcceptor";
+import { fetchLocalSubscriptionStatus } from "./subscription/memberStatusClient";
 import {
   isAdminMemberQuery,
   ADMIN_QUERY_REJECTION,
@@ -261,6 +263,10 @@ import {
   handleAdminGetSwap,
 } from "./swaps/swapRoutes";
 import { startSwapPoller } from "./swaps/swapPoller";
+import { nodeLightningBalances } from "./api/nodeBalances";
+import { handleTransferSettingsGet, handleTransferSettingsPatch } from "./transfers/transferSettingsRoutes";
+import { maybeSampleFeeEstimate } from "./transfers/feeSamples";
+import { handleSwapOptions } from "./swaps/swapOptions";
 
 // Boot-only side effects. These used to run at module scope, so merely
 // importing this file opened the DB, applied migrations, reached for LND and
@@ -310,6 +316,12 @@ export function bootSideEffects(): void {
         .catch(err =>
           console.warn("[lnd] periodic sync failed:", err?.message ?? String(err), err?.details ?? "", err?.code ?? "")
         );
+      // Drive-mode P3 (R40(8)): a read-only fee-estimate sample for "calm",
+      // at most one per 10 minutes (transfers/feeSamples.ts). Off the sync
+      // chain, so it can neither delay nor fail it.
+      maybeSampleFeeEstimate().catch((err) =>
+        console.warn("[feeSamples] sample failed:", err?.message ?? String(err)),
+      );
     }, 15000);
   })();
 }
@@ -542,15 +554,15 @@ async function dispatchRequest(
   if (req.method === "GET" && req.url === "/api/node/balances") {
     try {
       const { chain_balance } = await getLndChainBalance();
-      const row = db
-        .prepare("SELECT COALESCE(SUM(local_balance_sat), 0) as total FROM lnd_channels WHERE active = 1")
-        .get() as { total: number };
+      // lightning_sats stays active-only (the treasury's total_sats reads
+      // it); drive-mode P3 adds the inactive channels' balance beside it.
+      const { lightning_sats, lightning_inactive_sats } = nodeLightningBalances();
       const onchain_sats = chain_balance ?? 0;
-      const lightning_sats = row?.total ?? 0;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         onchain_sats,
         lightning_sats,
+        lightning_inactive_sats,
         total_sats: onchain_sats + lightning_sats,
       }));
     } catch (err) {
@@ -3096,6 +3108,18 @@ async function dispatchRequest(
     return;
   }
 
+  // Drive-mode P3: the automatic-transfer settings (transfers/transferSettings.ts).
+  // Stored and shown only; nothing in P3 reads them to move money.
+  if (req.method === "GET" && req.url === "/api/transfers/settings") {
+    await handleTransferSettingsGet(res);
+    return;
+  }
+
+  if (req.method === "PATCH" && req.url === "/api/transfers/settings") {
+    await handleTransferSettingsPatch(req, res);
+    return;
+  }
+
   if (req.method === "POST" && req.url === "/api/pay") {
     try {
       let body = "";
@@ -3500,6 +3524,18 @@ async function dispatchRequest(
           return;
         }
 
+        // Membership gate, app side (membership-gating M1, R4). The treasury's
+        // own verdict rides on its status response; false refuses here, before
+        // any funding step, so nothing goes on chain. Unknown — a treasury that
+        // sends no verdict, a null verdict, a failed status fetch — lets the
+        // open through and the treasury's channel acceptor decides.
+        const local = await fetchLocalSubscriptionStatus();
+        if (local.ok && local.status.open_channel_allowed === false) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "membership_not_paid" }));
+          return;
+        }
+
         // Connect to peer first if socket address provided
         if (partnerSocket) {
           await connectToPeer(hubPubkey, partnerSocket);
@@ -3514,6 +3550,13 @@ async function dispatchRequest(
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: true, funding_txid: result.transaction_id ?? null }));
       } catch (err: any) {
+        // The treasury's acceptor refused (the verdict was unknown, or stale):
+        // the same answer as the app check above (M1, item A).
+        if (isAcceptorRefusal(err)) {
+          res.writeHead(403, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "membership_not_paid" }));
+          return;
+        }
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: err?.message ?? "failed_to_open_channel" }));
       }
@@ -4139,6 +4182,16 @@ async function dispatchRequest(
   // Before the generic /api/swaps/:id read below (drive-mode P1 item 6).
   if (req.method === "GET" && req.url === "/api/swaps/limits") {
     try { await handleSwapLimits(req, res); } catch (e: any) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
+  // Drive-mode P3: Withdraw's / Top Up's option cards. Read-only (raw loopd
+  // quotes, no swap_requests row). Before the generic /api/swaps/:id below.
+  if (req.method === "GET" && req.url?.startsWith("/api/swaps/options?")) {
+    try { await handleSwapOptions(req, res); } catch (e: any) {
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));
     }
@@ -4993,6 +5046,13 @@ function main(): void {
     // nodes early-out inside the function. Logs a WARN with the operator
     // runbook if drift is detected.
     startKeypairSyncCheck(() => getNodeInfo()?.pubkey ?? null);
+    // Treasury-side channel gate (membership-gating T4): an LND ChannelAcceptor
+    // admitting inbound opens only from paid members and peers classified
+    // external. Registers only while this node's own pubkey is TREASURY_PUBKEY
+    // — re-read every tick, same thunk as above — and re-subscribes after the
+    // stream ends or the LND client is rebuilt. Its state feeds the
+    // "Channel gate offline" alert (T5).
+    startChannelAcceptor(() => getNodeInfo()?.pubkey ?? null);
     // BASE sync loop — polls the Worker /base/* endpoints at 60s cadence to
     // refresh per-wallet USDC balances and the SettlementRouter governance
     // state. No-op on a MEMBER node until it registers a BASE wallet; the

@@ -1,7 +1,9 @@
 // ConnectToHub's behaviour — the form state, validation, the open-channel call
 // and the confirm-modal flow, moved as they are out of pages/MemberDashboard.tsx
-// (member-first-run-ui separation slice, B.1). No behaviour changes here: the
-// handlers are today's, line for line.
+// (member-first-run-ui separation slice, B.1). The move changed no behaviour.
+// Since then handleOpen maps the API's `membership_not_paid` to its own message
+// (membership-gating M1/M2 item 1), and it reads the treasury's verdict for
+// the "Activate membership" button (B1); everything else is as moved.
 
 import { useEffect, useState } from "react";
 import { api, type TreasuryInfo } from "../../api/client";
@@ -13,6 +15,7 @@ import {
   HUB_PUBKEY,
   MIN_CAPACITY_OPEN_SATS,
   MIN_CAPACITY_WARNING_SATS,
+  RENEW_MEMBERSHIP_TIERS,
 } from "./connectToHubDescriptor";
 
 export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initialCapacity?: number }) {
@@ -31,6 +34,30 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
       .catch(() => setTreasuryInfo(null))
       .finally(() => setTreasuryInfoLoading(false));
   }, []);
+
+  // B1 (Ethan's ruling (a), 2026-11-06): the "Activate membership" button
+  // shows only when the treasury's verdict is false. True, null, an absent
+  // field (an older treasury) or a failed read all hide it. Read once per
+  // mount, not polled: the status is a treasury-proxied call.
+  // Its label (Ethan's ruling L1) comes from current_tier in the same response:
+  // renew for a lapsed tier, activate for prepay and for anything else.
+  const [membershipLocked, setMembershipLocked] = useState(false);
+  const [membershipTier, setMembershipTier] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    api.getSubscriptionStatus()
+      .then((st) => {
+        if (cancelled) return;
+        setMembershipLocked(st.open_channel_allowed === false);
+        setMembershipTier("current_tier" in st ? st.current_tier : undefined);
+      })
+      .catch(() => { if (!cancelled) setMembershipLocked(false); });
+    return () => { cancelled = true; };
+  }, []);
+  const membershipLabel =
+    membershipTier !== undefined && RENEW_MEMBERSHIP_TIERS.includes(membershipTier)
+      ? CONNECT_TO_HUB_COPY.renewMembership
+      : CONNECT_TO_HUB_COPY.activateMembership;
 
   const hubPubkey = treasuryInfo?.pubkey || HUB_PUBKEY;
   const hubSocket = treasuryInfo?.socket || null;
@@ -67,6 +94,11 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
     } catch (e: any) {
       // Confirmation failures go to the modal the operator is looking at.
       if (classifyConfirmError(e)) throw e;
+      // The hub's membership gate (membership-gating M1/M2 item 1).
+      if (e?.code === "membership_not_paid") {
+        setError(CONNECT_TO_HUB_COPY.membershipNotPaid);
+        return;
+      }
       setError(e.message ?? CONNECT_TO_HUB_COPY.openFailed);
     } finally {
       setSubmitting(false);
@@ -97,6 +129,8 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
     confirm,
     openChannelConfirm,
     handleOpen,
+    membershipLocked,
+    membershipLabel,
     belowMinimum: capacity > 0 && capacity < MIN_CAPACITY_WARNING_SATS,
     openDisabled: submitting || capacity < MIN_CAPACITY_OPEN_SATS,
   };

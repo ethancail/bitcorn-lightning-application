@@ -24,13 +24,27 @@ import { db } from "../db";
 import { getSubscriptionPolicy } from "./policy";
 import { classifyLanePurpose } from "./lanePurpose";
 import { JwtVerificationError } from "./jwtVerify";
+import { openChannelVerdict } from "../lightning/channelAcceptor";
+import { CLOSE_ENFORCEMENT, type CloseEnforcement } from "./tier3Scheduler";
 
 const MS_PER_DAY = 86_400_000;
 const NOT_YET_ALLOCATED_WINDOW_MS = 60 * 1000; // spec §5.2 Case C threshold
 
 // ─── Response shape (matches Stage 5a spec §5.2) ──────────────────
 
-export interface SubscriptionStatusApplicable {
+/**
+ * The treasury's own verdict on whether this member may open a channel to it
+ * (membership-gating T4, R4; field name and values by pass 10 item 2). The
+ * channel acceptor's predicate applied to the requesting pubkey, on every
+ * case: true or false, or null when it could not be evaluated. The member's
+ * app check refuses on false and lets null through for the acceptor to decide.
+ * A treasury that predates the field sends nothing, which reads as unknown.
+ */
+interface OpenChannelVerdictField {
+  open_channel_allowed: boolean | null;
+}
+
+export interface SubscriptionStatusApplicable extends OpenChannelVerdictField {
   applicable: true;
   member_pubkey: string;
   current_tier: "prepay" | "current" | "worker_lapsed" | "routing_lapsed" | "close_due";
@@ -42,21 +56,27 @@ export interface SubscriptionStatusApplicable {
   last_payment_txid: string | null;
   grace: {
     /**
-     * Pre-payment fresh-onboarding grace deadline (ms epoch). Computed
-     * as `created_at + grace_days_fresh * MS_PER_DAY`. Only meaningful
-     * when the member has no payment row yet — once they pay, the
-     * post-payment grace milestones (worker_until/routing_until/close_at)
-     * take over. The UI can surface "fresh grace remaining" by
-     * comparing now to this value when `last_payment_txid === null`.
+     * Computed as `created_at + grace_days_fresh * MS_PER_DAY`. Kept in the
+     * response only so older member nodes, which read it, keep working.
+     * It no longer describes any grace: the tier dispatch removed fresh
+     * grace (membership-gating D1), so a never-paid row is `prepay` from
+     * the start whatever this value says.
      */
     fresh_until: number;
     worker_until: number;
     routing_until: number;
     close_at: number;
   };
+  /**
+   * Whether Tier 3 can close this member's channel (tier3Scheduler.ts,
+   * CLOSE_ENFORCEMENT). Members show "your connection stays open" only while
+   * it isn't "live". A treasury that predates the field sends nothing, which
+   * members read as "dry_run": no treasury before it could close a channel.
+   */
+  close_enforcement: CloseEnforcement;
 }
 
-export interface SubscriptionStatusNotApplicable {
+export interface SubscriptionStatusNotApplicable extends OpenChannelVerdictField {
   applicable: false;
   reason: "external_peer" | "unclassified" | "not_yet_allocated" | "missing" | "no_channel";
   /** Set only when reason === "not_yet_allocated" (Case C). */
@@ -95,6 +115,17 @@ export function computeSubscriptionStatusForPubkey(
   memberPubkey: string,
 ): SubscriptionStatusResponse {
   const pubkey = memberPubkey.toLowerCase();
+  return {
+    ...computeStatusCase(pubkey),
+    open_channel_allowed: openChannelVerdict(pubkey),
+  };
+}
+
+function computeStatusCase(
+  pubkey: string,
+):
+  | Omit<SubscriptionStatusApplicable, "open_channel_allowed">
+  | Omit<SubscriptionStatusNotApplicable, "open_channel_allowed"> {
 
   // Case A — subscription row exists.
   const row = db
@@ -122,6 +153,7 @@ export function computeSubscriptionStatusForPubkey(
         routing_until: row.paid_through + policy.grace_days_routing * MS_PER_DAY,
         close_at: row.paid_through + policy.grace_days_close * MS_PER_DAY,
       },
+      close_enforcement: CLOSE_ENFORCEMENT,
     };
   }
 

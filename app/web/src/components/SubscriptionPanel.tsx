@@ -101,7 +101,7 @@ function useStateEnteredAt(stateKey: string | null): number | null {
   return enteredAt;
 }
 
-export default function SubscriptionPanel() {
+export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void } = {}) {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const [pendingSinceMs, setPendingSinceMs] = useState<number | null>(null);
   // Pay-from-node modal + Coinbase Onramp handler — shared across the
@@ -182,6 +182,14 @@ export default function SubscriptionPanel() {
     const id = setInterval(() => void fetchStatus(), POLL_INTERVAL_MS);
     return () => clearInterval(id);
   }, [fetchStatus]);
+
+  // Settings' ?focus=membership waits for this (membership-gating B1): the
+  // loading skeleton's header is replaced when the status lands, so focus
+  // moved to it earlier would be lost.
+  const loaded = view.kind !== "loading" && view.kind !== "auth_error";
+  useEffect(() => {
+    if (loaded) onLoaded?.();
+  }, [loaded, onLoaded]);
 
   // Dispatch.
   if (view.kind === "loading") {
@@ -271,7 +279,8 @@ function PanelHeader({ pill }: { pill?: React.ReactNode }) {
     <header className="sub-panel-header">
       <div className="sub-panel-title">
         <span className="sub-panel-glyph" aria-hidden>◆</span>
-        <h2>Subscription</h2>
+        {/* tabIndex -1: focusable by script only, for /settings?focus=membership. */}
+        <h2 tabIndex={-1}>Subscription</h2>
       </div>
       {pill}
     </header>
@@ -330,8 +339,12 @@ function daysUntil(ms: number): number {
   return Math.ceil((ms - Date.now()) / 86_400_000);
 }
 
+// The negation of daysUntil, so "lapsed N days ago" and the PAID THROUGH
+// stat's "Nd ago" (relativePaidThrough) are one computation and can't
+// disagree (a gate 1 screenshot showed 89 against 88: this was Math.ceil of
+// the elapsed time, the stat the floor).
 function daysAgo(ms: number): number {
-  return Math.ceil((Date.now() - ms) / 86_400_000);
+  return -daysUntil(ms);
 }
 
 function relativePaidThrough(ms: number): string {
@@ -580,6 +593,14 @@ function PrepayRender({
 
 // ─── lapsed family (worker_lapsed / routing_lapsed / close_due) ─
 
+/** The "still open / stays open / remains open" sentences are true only while
+ *  the treasury's Tier 3 can't close a channel. A missing field (an older
+ *  treasury) counts as "dry_run". When "live", they are omitted and nothing
+ *  replaces them (L2 / T3). */
+function connectionStaysOpen(status: SubscriptionStatusApplicable): boolean {
+  return status.close_enforcement !== "live";
+}
+
 function WorkerLapsedRender({
   status,
   handlers,
@@ -588,7 +609,6 @@ function WorkerLapsedRender({
   handlers: ActionHandlers;
 }) {
   const lapsedDays = daysAgo(status.paid_through);
-  const daysToRouting = Math.max(0, daysUntil(status.grace.routing_until));
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="amber" label="services paused" />} />
@@ -610,9 +630,12 @@ function WorkerLapsedRender({
         <TimelineRow marker="·">
           <strong>If you renew</strong> — recovery is fully in-app. Buy BTC via Onramp or send from a wallet you already have. Payment is detected within ~15 seconds; price quotes and valuation come back online and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
-        <TimelineRow marker="!" tone="amber">
-          <strong>If you don't renew within ~{daysToRouting} more days</strong> — channel routing also pauses. Your channel stays open and your funds stay yours; routing can be restored by renewing.
-        </TimelineRow>
+        {/* Routing doesn't pause at routing_until (M2 item 3); only this is true. */}
+        {connectionStaysOpen(status) && (
+          <TimelineRow marker="!" tone="amber">
+            <strong>If you don't renew</strong> — hosted services stay paused and your connection to Bitcorn stays open.
+          </TimelineRow>
+        )}
       </Timeline>
       <BracketHeading>ACTIONS</BracketHeading>
       {/* Relabeled 2026-06-11 to the locked Onramp-primary pattern
@@ -631,40 +654,7 @@ function RoutingLapsedRender({
   status: SubscriptionStatusApplicable;
   handlers: ActionHandlers;
 }) {
-  const lapsedDays = daysAgo(status.paid_through);
-  const daysToClose = Math.max(0, daysUntil(status.grace.close_at));
-  return (
-    <section className="sub-panel">
-      <PanelHeader pill={<Pill kind="orange" label="routing paused" />} />
-      <AlertBox variant="orange" icon="⚠">
-        Your subscription lapsed <strong>{lapsedDays} day{lapsedDays === 1 ? "" : "s"}</strong> ago. Lightning routing through the treasury is paused, along with price quotes and valuation. Your channel is still open and your funds are safe — but if you don't renew, your channel will be closed in about <strong>{daysToClose} more days</strong>.
-      </AlertBox>
-      <p className="sub-reassure">
-        <span className="sub-bullet-tick">✓</span> You can still use <strong>Coinbase Onramp</strong> to buy BTC and renew, and monitor your channel state from this dashboard.
-      </p>
-      <StatsGrid status={status} accent="orange" />
-      <DepositBlock
-        status={status}
-        captionSats={status.price_sats}
-        helper={`Send ${fmtSats(status.price_sats)} to renew for ${status.period_days} days.`}
-        fineprint="Don't have BTC on hand? Use Coinbase Onramp from the Buy Bitcoin tab — it's still available in this state. Funds you buy land in this same wallet."
-      />
-      <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
-      <Timeline>
-        <TimelineRow marker="·">
-          <strong>If you renew</strong> — recovery is fully in-app. Payment is detected within ~15 seconds; routing and all paused services come back online, and your paid-through date advances by {status.period_days} days.
-        </TimelineRow>
-        <TimelineRow marker="!" tone="orange">
-          <strong>If you don't renew within ~{daysToClose} more days</strong> — your channel will be cooperatively closed. The on-chain funds in your channel return to your wallet, but you'll need to open a new channel to rejoin the network.
-        </TimelineRow>
-        <TimelineRow marker="✓" tone="emerald">
-          <strong>Right now</strong> — your channel remains open, your channel balance is unchanged, and no automated close has been scheduled yet.
-        </TimelineRow>
-      </Timeline>
-      <BracketHeading>ACTIONS</BracketHeading>
-      <OnrampPrimaryActions tier="routing_lapsed" status={status} handlers={handlers} />
-    </section>
-  );
+  return <OverdueRender tier="routing_lapsed" status={status} handlers={handlers} />;
 }
 
 function CloseDueRender({
@@ -674,36 +664,64 @@ function CloseDueRender({
   status: SubscriptionStatusApplicable;
   handlers: ActionHandlers;
 }) {
-  const lapsedDays = daysAgo(status.paid_through);
+  // L2: close_due's copy matches routing_lapsed's because Tier 3 issues no
+  // close (tier3Scheduler.ts is dry-run only and returns would_close). Stage 6
+  // restores close copy (and red) only once a close is real.
+  return <OverdueRender tier="close_due" status={status} handlers={handlers} />;
+}
+
+// routing_lapsed and close_due: one body and one color, so they can't drift apart.
+function OverdueRender({
+  tier,
+  status,
+  handlers,
+}: {
+  tier: "routing_lapsed" | "close_due";
+  status: SubscriptionStatusApplicable;
+  handlers: ActionHandlers;
+}) {
+  const tone = "orange";
+  // Membership-gating M2 item 3, widened by pass 10 item C: the same rewrite as
+  // the routing_lapsed banner. Routing does not stop at + 30; hosted services do.
+  // L2 removed the close warning: no close is issued (Stage 6 copy, §7).
   return (
     <section className="sub-panel">
-      <PanelHeader pill={<Pill kind="red" label="pay to halt close" />} />
-      <AlertBox variant="red" icon="✕">
-        Your subscription lapsed <strong>{lapsedDays} day{lapsedDays === 1 ? "" : "s"}</strong> ago. Your channel will be cooperatively closed on the next scheduler tick. A payment of <strong>{fmtSats(status.price_sats)}</strong> received before then will <strong>halt</strong> the close.
+      <PanelHeader pill={<Pill kind={tone} label="payment overdue" />} />
+      <AlertBox variant={tone} icon="⚠">
+        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay {fmtSats(status.price_sats)} to restore them.
+        {connectionStaysOpen(status) && " Your connection to Bitcorn is still open and its balance is unchanged."}
       </AlertBox>
-      <StatsGrid status={status} accent="red" />
+      <p className="sub-reassure">
+        <span className="sub-bullet-tick">✓</span> You can still use <strong>Coinbase Onramp</strong> to buy BTC and renew, and monitor your channel state from this dashboard.
+      </p>
+      <StatsGrid status={status} accent={tone} />
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
-        helper={`Send ${fmtSats(status.price_sats)} to halt the pending close.`}
-        fineprint="The scheduler re-checks your subscription status immediately before issuing the close. A confirmed payment in that window halts it."
+        helper={`Send ${fmtSats(status.price_sats)} to renew for ${status.period_days} days.`}
+        fineprint="Don't have BTC on hand? Use Coinbase Onramp from the Buy Bitcoin tab — it's still available in this state. Funds you buy land in this same wallet."
       />
       <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
       <Timeline>
         <TimelineRow marker="·">
-          <strong>On confirmation</strong> — payment is detected within ~15s, your subscription resumes, the close is halted.
+          <strong>If you renew</strong> — recovery is fully in-app. Payment is detected within ~15 seconds; all paused services come back online, and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
-        <TimelineRow marker="!" tone="red">
-          <strong>If no payment arrives</strong> — your channel closes cooperatively. On-chain funds are returned to your wallet. The close cannot be reversed once initiated.
-        </TimelineRow>
+        {connectionStaysOpen(status) && (
+          <>
+            <TimelineRow marker="!" tone={tone}>
+              <strong>If you don't renew</strong> — hosted services stay paused and your connection to Bitcorn stays open.
+            </TimelineRow>
+            <TimelineRow marker="✓" tone="emerald">
+              <strong>Right now</strong> — your connection to Bitcorn remains open and its balance is unchanged.
+            </TimelineRow>
+          </>
+        )}
       </Timeline>
       <BracketHeading>ACTIONS</BracketHeading>
-      {/* Per spec §11 acceptance + Stage 5a deltas: Onramp button
-          required in close_due (recovery path stays open through every
-          state a member could plausibly recover from). Inverted
-          hierarchy: Onramp primary, pay-now secondary — same pattern
-          as worker_lapsed/routing_lapsed. */}
-      <OnrampPrimaryActions tier="close_due" status={status} handlers={handlers} />
+      {/* Per spec §11 acceptance + Stage 5a deltas: the Onramp button stays
+          in close_due too (recovery path stays open through every state a
+          member could plausibly recover from). */}
+      <OnrampPrimaryActions tier={tier} status={status} handlers={handlers} />
     </section>
   );
 }

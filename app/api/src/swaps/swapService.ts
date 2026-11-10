@@ -41,6 +41,9 @@ export type SwapRequest = {
   quoted_prepay_sat: number | null; // Loop Out only; NULL for Loop In by design
   quoted_miner_fee_sat: number | null; // Loop Out: sweep fee; Loop In: HTLC fee
   actual_fee_sat: number | null;
+  // The fee in US cents as of completion, stored only with a fresh rate
+  // (migration 082; drive-mode P3, R40(5)). NULL → the record shows sats.
+  actual_fee_usd_cents: number | null;
   destination_address: string | null;
   channel_id: string | null;
   quote_expires_at: number | null;
@@ -459,7 +462,7 @@ async function assertLoopOutPrechecks(req: SwapRequest): Promise<void> {
 const SWAP_REQUEST_COLUMNS = `
   id, created_at, updated_at, node_pubkey, role, swap_type, direction, status,
   amount_sat, quoted_fee_sat, quoted_swap_fee_sat, quoted_prepay_sat,
-  quoted_miner_fee_sat, actual_fee_sat, destination_address, channel_id,
+  quoted_miner_fee_sat, actual_fee_sat, actual_fee_usd_cents, destination_address, channel_id,
   quote_expires_at, failure_reason, notes`;
 
 export function getSwapRequest(id: string): SwapRequest | null {

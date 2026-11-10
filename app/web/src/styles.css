@@ -1389,6 +1389,25 @@ input[type="number"] {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+  /* Room for .form-input's focus ring (2px + 2px offset), which this overflow
+     would otherwise clip; the negative margin cancels it, so nothing moves
+     while the content fits. While it scrolls, the visible edge sits 4px out
+     (accepted, ruling 2026-11-09 item 1). confirmInput.test.ts. */
+  padding: 4px;
+  margin: -4px;
+}
+/* The type-to-confirm input (ActionConfirmModal, the admin swap dialog, the
+   treasury close-channel dialog). It is a .form-input; this adds only a 44px
+   minimum height (fix/confirm-input-height, option B). confirmInput.test.ts. */
+.action-confirm-input {
+  min-height: 44px;
+}
+/* The admin swap and treasury close-channel dialogs put .dialog-actions
+   straight after the challenge's wrapper; this gives that row
+   ActionConfirmModal's 16px gap. Only an action row following a challenge
+   field matches; .dialog-actions itself is unchanged. confirmInput.test.ts. */
+div:has(> .action-confirm-input) + .dialog-actions {
+  margin-top: 16px;
 }
 
 .dialog-title {

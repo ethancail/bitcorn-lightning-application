@@ -242,11 +242,15 @@ export default function MemberDashboard() {
   // the unknown role included, so the label means one thing (R33 finding 6).
   // The unknown role's balance stays the local balance.
   // Pinned by MemberDashboard.topRegion.test.tsx (D2.2).
+  // Drive-mode P3: a member's Total counts the balance in inactive channels
+  // too — it is still theirs. total_sats is active-only (the treasury
+  // dashboard reads it), so the member page adds lightning_inactive_sats.
+  const memberTotal = balances ? balances.total_sats + (balances.lightning_inactive_sats ?? 0) : null;
   const hl1Label = isMerchant ? "Available to send" : isFarmer ? "In your connection" : "Your balance";
   const hl1Sats = ch ? (isMerchant ? ch.room_to_send_sats : ch.local_sats) : null;
   const hl2Label = isMerchant ? "Total" : "Room to receive";
   const hl2Sats = isMerchant
-    ? (balances ? balances.total_sats : null)
+    ? memberTotal
     : ch ? ch.room_to_receive_sats : null;
   const hl2Sub = isMerchant ? "Bitcoin + channel" : "Inbound on your hub channel";
 
@@ -683,7 +687,7 @@ export default function MemberDashboard() {
                     governs enabledness inside it, not whether it appears. */}
                 {isFarmer && (minWithdrawal == null || ch!.local_sats >= minWithdrawal) && ch!.local_sats > 0 && (
                   (() => {
-                    const withdrawGate = withdrawCtaGate(advisor);
+                    const withdrawGate = withdrawCtaGate(advisor, ch!.is_active);
                     return (
                       <div className="member-action">
                         <button
@@ -698,8 +702,11 @@ export default function MemberDashboard() {
                             fault the Loop Out alert states, so it goes while
                             the alert shows (R33 finding 5; R34 item 3 keeps
                             it, being the same fault). The gate itself is
-                            unchanged. */}
-                        {withdrawGate.explanation && !memberLoopAlert && (
+                            unchanged. Drive-mode P3: the connection-down
+                            refusal is the fault the connection alert above
+                            states, so its caption goes too — one statement
+                            per fault. */}
+                        {withdrawGate.explanation && !memberLoopAlert && ch!.is_active !== false && (
                           <div className="caption">{withdrawGate.explanation}</div>
                         )}
                       </div>
@@ -775,7 +782,7 @@ export default function MemberDashboard() {
               {!isMerchant && (
                 <div className="kv">
                   <span className="kv-label">Total</span>
-                  <NodeFigure sats={balances ? balances.total_sats : null} usd={toUsd} />
+                  <NodeFigure sats={memberTotal} usd={toUsd} />
                 </div>
               )}
             </div>
@@ -810,16 +817,25 @@ export default function MemberDashboard() {
                         {dollars ?? `${costs.total_sat.toLocaleString()} sats`}
                       </span>
                       {dollars && <div className="kv-meta" data-testid="costs-total-sats">{costs.total_sat.toLocaleString()} sats</div>}
+                      {/* Drive-mode P3 (R40(5)): an aggregate of many past
+                          records has no one stored rate, so it is converted at
+                          today's and says so. */}
+                      {dollars && <div className="kv-meta" data-testid="costs-price-note">at today's price</div>}
                     </div>
                   </div>
                 </div>
                 <details className="tile-details">
                   <summary>Itemised</summary>
                   <div className="kv-list">
+                    {/* Drive-mode P3 (gate 2): dollars first here too, at
+                        today's price, sats beneath. */}
                     {rows.map(([label, sats]) => (
                       <div className="kv" key={label} data-testid="cost-part" data-sats={sats}>
                         <span className="kv-label">{label}</span>
-                        <span className="kv-value">{sats.toLocaleString()} sats</span>
+                        <div style={{ textAlign: "right" }}>
+                          <span className="kv-value">{toUsd(sats) ?? `${sats.toLocaleString()} sats`}</span>
+                          {toUsd(sats) && <div className="kv-meta">{sats.toLocaleString()} sats</div>}
+                        </div>
                       </div>
                     ))}
                   </div>

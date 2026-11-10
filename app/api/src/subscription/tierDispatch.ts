@@ -3,16 +3,24 @@
 //
 // Source of truth: bitcorn-research/specs/2026-05-08-member-subscription.md §5
 //
-// Dispatch order (per spec, augmented by migration 042's fresh grace):
+// Dispatch order:
 //
-//   if NOT EXISTS (SELECT 1 FROM subscription_payment WHERE member_pubkey = m.member_pubkey)
-//     if now() <= created_at + grace_days_fresh                   → current  (fresh-onboarding grace)
-//     else                                                        → prepay
+//   if NOT EXISTS (SELECT 1 FROM subscription_payment
+//                  WHERE member_pubkey = m.member_pubkey
+//                    AND period_extension_days > 0)              → prepay
 //   elif now() <= paid_through                                    → current
 //   elif now() <= paid_through + grace_days_worker                → current  (Tier 1 grace)
 //   elif now() <= paid_through + grace_days_routing               → worker_lapsed
 //   elif now() <= paid_through + grace_days_close                 → routing_lapsed
 //   else                                                          → close_due
+//
+// There is no pre-payment grace. A row that has never been credited time
+// computes `prepay` from the moment it exists, so a never-paid node holds a
+// payment-scope token from its first /token call (membership-gating D1,
+// bitcorn-research specs/2026-11-05-membership-gating-spec.md T1). Migration
+// 042's fresh-grace window (grace_days_fresh) is no longer read here; the
+// column stays, because the status response still reports
+// `grace.fresh_until` for older member nodes.
 //
 // The prepay test is `NOT EXISTS` against subscription_payment with
 // `period_extension_days > 0`, not `last_payment_txid IS NULL` against
@@ -21,19 +29,14 @@
 // point 6): grandfathered members get a sentinel admin_override row
 // at backfill time with `period_extension_days = 0`.
 //
-// The `period_extension_days > 0` filter (added in v1.17.3) is what
-// makes fresh-grace work for grandfathered members too: the sentinel
-// row marks "this member existed at flip-day" but doesn't credit any
-// time, so it shouldn't disqualify them from the 30-day evaluation
-// window. Real payments (`kind='onchain'` or operator overrides that
-// credit time) have `period_extension_days > 0` and continue to set
-// `hasAnyPaymentRow=true`, routing the paid-tier ladder as before.
-//
-// The fresh-grace branch lets newly signed-up members evaluate the
-// full-scope feature set (Auto-Buy, valuation reads) for grace_days_fresh
-// days before their JWT scope drops to payment-only. After that window
-// expires with no payment they fall to `prepay` and need to pay to
-// recover access. Default 30 days = one full subscription period.
+// The `period_extension_days > 0` filter means the sentinel alone does
+// not count as a payment: it marks "this member existed at flip-day" but
+// credits no time. A grandfathered row reaches the paid ladder through
+// the founding-member credit (migration 072, and grandfather-mode
+// allocation in addressAllocator.ts), an admin_override row that does
+// credit time, written together with a move of paid_through. Real
+// payments (`kind='onchain'` or operator overrides that credit time)
+// have `period_extension_days > 0` and set `hasAnyPaymentRow=true`.
 //
 // Run from the detector after the UTXO scan. Cheap to run every 15s —
 // it's an UPDATE per row keyed on the indexed primary.
@@ -57,24 +60,13 @@ const MS_PER_DAY = 86_400_000;
  */
 export function computeTier(args: {
   hasAnyPaymentRow: boolean;
-  createdAtMs: number;
   paidThroughMs: number;
-  graceDaysFresh: number;
   graceDaysWorker: number;
   graceDaysRouting: number;
   graceDaysClose: number;
   nowMs: number;
 }): TierValue {
-  if (!args.hasAnyPaymentRow) {
-    // Fresh-onboarding grace: new members get `current` (and therefore
-    // full-scope tokens) for grace_days_fresh days from sign-up so they
-    // can evaluate the service before being asked to pay. After the
-    // window they fall to `prepay` until a payment lands.
-    if (args.nowMs <= args.createdAtMs + args.graceDaysFresh * MS_PER_DAY) {
-      return "current";
-    }
-    return "prepay";
-  }
+  if (!args.hasAnyPaymentRow) return "prepay";
   const t = args.paidThroughMs;
   if (args.nowMs <= t) return "current";
   if (args.nowMs <= t + args.graceDaysWorker * MS_PER_DAY) return "current";
@@ -96,7 +88,6 @@ export interface RecomputeSummary {
 export function recomputeAllTiers(
   policy: Pick<
     SubscriptionPolicy,
-    | "grace_days_fresh"
     | "grace_days_worker"
     | "grace_days_routing"
     | "grace_days_close"
@@ -109,16 +100,14 @@ export function recomputeAllTiers(
   // EXISTS keeps the result boolean instead of materialising the count.
   //
   // `period_extension_days > 0` filters out sentinel admin_override
-  // rows (grandfather backfill markers with extension=0 that exist
-  // only to anchor `paid_through`). See the spec note above — without
-  // this filter, every grandfathered member would short-circuit the
-  // fresh-grace branch and fall straight into the paid-tier ladder at
-  // day 7 (worker grace expires).
+  // rows (grandfather backfill markers with extension=0 that credit no
+  // time). See the note above: without this filter, a sentinel-only row
+  // would enter the paid-tier ladder with paid_through at its allocation
+  // moment, and land in a lapsed tier set by how long ago the backfill ran.
   const rows = db
     .prepare(
       `SELECT
          s.member_pubkey,
-         s.created_at,
          s.paid_through,
          s.current_tier AS old_tier,
          EXISTS (
@@ -130,7 +119,6 @@ export function recomputeAllTiers(
     )
     .all() as Array<{
       member_pubkey: string;
-      created_at: number;
       paid_through: number;
       old_tier: TierValue;
       has_payment_row: 0 | 1;
@@ -144,9 +132,7 @@ export function recomputeAllTiers(
     summary.rows_seen++;
     const newTier = computeTier({
       hasAnyPaymentRow: row.has_payment_row === 1,
-      createdAtMs: row.created_at,
       paidThroughMs: row.paid_through,
-      graceDaysFresh: policy.grace_days_fresh,
       graceDaysWorker: policy.grace_days_worker,
       graceDaysRouting: policy.grace_days_routing,
       graceDaysClose: policy.grace_days_close,

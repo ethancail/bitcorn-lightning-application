@@ -65,6 +65,12 @@ const s = vi.hoisted(() => ({
   probeThrows: false,
   /** lnd_channels' distinct peers. Empty, so a quiet treasury stays quiet. */
   channelPeers: [] as string[],
+  /**
+   * The channel acceptor's health (membership-gating T5). Defaults to a node
+   * the acceptor's supervisor has not found to be the treasury, which raises
+   * nothing — the pre-T5 behaviour of every case above it.
+   */
+  channelGate: { applicable: false, stream_open: false, last_predicate_error_at: null as number | null },
 }));
 
 // ⚠ THE CHANNEL-DATA READS ARE ANSWERED SPECIFICALLY, NOT BY THE `{ v: 0 }`
@@ -174,6 +180,13 @@ vi.mock("../lightning/lndProbeRoute", async (importOriginal) => {
   };
 });
 
+// The real alert builder (channelGateAlert); only the in-memory stream state is
+// supplied, since the supervisor that sets it needs a live LND stream.
+vi.mock("../lightning/channelAcceptor", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lightning/channelAcceptor")>();
+  return { ...actual, getChannelAcceptorHealth: () => ({ ...s.channelGate }) };
+});
+
 vi.mock("../valuation/manualInputStore", () => ({
   MANUAL_METRIC_KEYS: s.metricKeys,
   listLatestPerMetric: () => s.latestPerMetric,
@@ -229,6 +242,7 @@ beforeEach(() => {
   s.env.rebalanceSchedulerDryRun = false;
   s.probeThrows = false;
   s.channelPeers = [];
+  s.channelGate = { applicable: false, stream_open: false, last_predicate_error_at: null };
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -659,12 +673,14 @@ const RULED_HEADINGS: Record<string, string> = {
   LOOP_OUT_AVAILABLE: "Loop Out available for critical channels",
   LOOP_NOT_INSTALLED: "Loop unavailable while channels need rebalancing",
   VALUATION_MANUAL_STALE: "Valuation inputs need attention",
+  // Membership-gating pass 10 item 4 (spec T5).
+  CHANNEL_GATE_OFFLINE: "Channel gate offline",
 };
 
 function emittableTypes(): string[] {
   const src = (f: string) => readFileSync(join(__dirname, f), "utf8");
   const types = new Set<string>();
-  for (const f of ["treasury-alerts.ts", "channelDataStaleness.ts"]) {
+  for (const f of ["treasury-alerts.ts", "channelDataStaleness.ts", "../lightning/channelAcceptor.ts"]) {
     for (const m of src(f).matchAll(/^\s+type: "([A-Z][A-Z0-9_]+)",$/gm)) types.add(m[1]);
   }
   for (const m of src("lndFaultAlerts.ts").matchAll(/export const \w+_ALERT\s*=\s*"([A-Z][A-Z0-9_]+)"/g)) {
@@ -699,6 +715,9 @@ const SCENARIOS: Record<string, () => void> = {
     s.loopAvailable = { available: false, error: "unreachable" };
   },
   "valuation never entered": () => { s.metricKeys.push("mvrv"); },
+  "channel gate stream not open": () => {
+    s.channelGate = { applicable: true, stream_open: false, last_predicate_error_at: null };
+  },
 };
 
 /** The suite's beforeEach reset, for use between scenarios inside one test. */
@@ -710,11 +729,12 @@ function resetState() {
   s.liquidityHealth = []; s.loopAvailable = { available: true, version: "v0.9" };
   s.metricKeys.length = 0;
   s.channelPeers = [];
+  s.channelGate = { applicable: false, stream_open: false, last_predicate_error_at: null };
 }
 
 describe("SH1/SH2: every alert carries its ruled heading", () => {
   it("the ruled table covers exactly the types the API can emit", () => {
-    expect(emittableTypes().length).toBe(15);
+    expect(emittableTypes().length).toBe(16);
     expect(Object.keys(RULED_HEADINGS).sort()).toEqual(emittableTypes());
   });
 
@@ -754,5 +774,42 @@ describe("SH1/SH2: every alert carries its ruled heading", () => {
   it("the Loop heading asserts no cause and names no remediation (Loop decision D3)", () => {
     expect(RULED_HEADINGS.LOOP_NOT_INSTALLED).not.toMatch(/install|configur|expire|running|start|restart|loopd|credential|cert/i);
     expect(RULED_HEADINGS.LOOP_NOT_INSTALLED).toMatch(/loop/i);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Membership-gating T5 / DW10: the channel gate's alert reaches this surface.
+// The alert's own trigger logic is pinned in lightning/channelAcceptor.test.ts;
+// this proves the wiring through the real getTreasuryAlerts().
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("DW10: the channel-gate alert reaches the alerts surface", () => {
+  const gate = () => getTreasuryAlerts().then((a) => a.filter((x) => x.type === "CHANNEL_GATE_OFFLINE"));
+
+  it("FIRES on the treasury while the acceptor stream isn't open, with the ruled words", async () => {
+    s.channelGate = { applicable: true, stream_open: false, last_predicate_error_at: null };
+    const [alert, ...rest] = await gate();
+    expect(rest).toEqual([]);
+    expect(alert.heading).toBe("Channel gate offline");
+    expect(alert.message).toBe(
+      "The hub isn't checking new channel requests. Opens from unpaid members will be accepted until it reconnects.",
+    );
+    expect(alert.severity).toBe("warning");
+  });
+
+  it("FIRES while the stream is open if a predicate error occurred in the last hour, with S4's words", async () => {
+    s.channelGate = { applicable: true, stream_open: true, last_predicate_error_at: Date.now() - 59 * 60_000 };
+    const [alert, ...rest] = await gate();
+    expect(rest).toEqual([]);
+    expect(alert.heading).toBe("Channel gate offline");
+    expect(alert.message).toBe(
+      "The hub couldn't check a recent channel request and accepted it. Check the API logs.",
+    );
+    expect(alert.severity).toBe("warning");
+  });
+
+  it("CLEARS once the stream is open and no predicate error is recent", async () => {
+    s.channelGate = { applicable: true, stream_open: true, last_predicate_error_at: Date.now() - 61 * 60_000 };
+    expect(await gate()).toEqual([]);
   });
 });

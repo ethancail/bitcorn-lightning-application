@@ -83,24 +83,35 @@ describe("bannerFor — gated tiers render with correct severity/copy", () => {
     expect(d.body).toContain("routing still work");
   });
 
-  it("routing_lapsed → orange, Renew action", () => {
+  it("routing_lapsed → orange, Renew action, membership-gating M2 item 3's words", () => {
     const d = bannerFor(applicable("routing_lapsed"), NOW);
     expect(d.render).toBe(true);
     expect(d.severity).toBe("orange");
-    expect(d.headline).toBe("Urgent: routing access blocked");
+    expect(d.headline).toBe("Your membership payment is overdue");
+    expect(d.body).toBe(
+      "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay 50,000 sats to restore them.",
+    );
     expect(d.actionLabel).toBe("Renew 50,000 sats");
-    expect(d.body).toContain("refused until you renew");
   });
 
-  it("close_due → red, halt-close action, imminent (no countdown)", () => {
+  it("DW5: the routing_lapsed banner claims no routing loss", () => {
+    const d = bannerFor(applicable("routing_lapsed"), NOW);
+    if (!d.render) throw new Error("unreachable");
+    const text = `${d.headline} ${d.body}`;
+    expect(text).not.toMatch(/routing/i);
+    expect(text).not.toMatch(/refused|blocked/i);
+    expect(text).toMatch(/hosted services are paused/i);
+  });
+
+  it("close_due → orange, with routing_lapsed's words and Renew action (L2: Tier 3 issues no close)", () => {
     const d = bannerFor(applicable("close_due"), NOW);
     expect(d.render).toBe(true);
-    expect(d.severity).toBe("red");
-    expect(d.headline).toBe("Critical: channel close imminent");
-    expect(d.actionLabel).toBe("Pay now to halt close");
-    expect(d.body).toContain("queued");
-    expect(d.body).toContain("halts it");
-    expect(d.body).toContain("50,000 sats");
+    expect(d.severity).toBe("orange");
+    expect(d.headline).toBe("Your membership payment is overdue");
+    expect(d.body).toBe(
+      "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay 50,000 sats to restore them.",
+    );
+    expect(d.actionLabel).toBe("Renew 50,000 sats");
   });
 
   it("close_due never renders a countdown — close_at is always past for close_due", () => {
@@ -142,7 +153,7 @@ describe("settingsBadgeFor — severity per tier", () => {
     expect(settingsBadgeFor(applicable("prepay"))).toEqual({ show: true, severity: "blue" });
     expect(settingsBadgeFor(applicable("worker_lapsed"))).toEqual({ show: true, severity: "amber" });
     expect(settingsBadgeFor(applicable("routing_lapsed"))).toEqual({ show: true, severity: "orange" });
-    expect(settingsBadgeFor(applicable("close_due"))).toEqual({ show: true, severity: "red" });
+    expect(settingsBadgeFor(applicable("close_due"))).toEqual({ show: true, severity: "orange" }); // L2
   });
 
   it("hidden for current, every not-applicable reason, and null", () => {
@@ -159,7 +170,7 @@ describe("shared severity map — banner and badge agree on the lapsed family", 
     expect(bannerSeverityForTier("prepay")).toBe("info");
     expect(bannerSeverityForTier("worker_lapsed")).toBe("amber");
     expect(bannerSeverityForTier("routing_lapsed")).toBe("orange");
-    expect(bannerSeverityForTier("close_due")).toBe("red");
+    expect(bannerSeverityForTier("close_due")).toBe("orange"); // L2
   });
 });
 

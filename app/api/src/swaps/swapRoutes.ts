@@ -111,6 +111,7 @@ export async function handleMemberLoopOutQuote(req: IncomingMessage, res: Res): 
     nodePubkey: node.pubkey,
     amountSat,
     quotedFeeSat: netFeeSat,
+    excludeSwapRequestId: swapRequest.id, // drive-mode P3, R26(1): not its own row twice
   });
 
   json(res, 200, { swap_request: swapRequest, quote, ceilings: ceilingsFor(swapRequest), policy_check: policy });
@@ -142,6 +143,7 @@ export async function handleMemberLoopOut(req: IncomingMessage, res: Res): Promi
     nodePubkey: node.pubkey,
     amountSat: existing.amount_sat,
     quotedFeeSat: existing.quoted_fee_sat ?? 0,
+    excludeSwapRequestId: existing.id, // drive-mode P3, R26(1): not its own row twice
   });
   if (!policy.ok) return json(res, 429, { error: "policy_violation", detail: policy.reason, code: policy.code });
 

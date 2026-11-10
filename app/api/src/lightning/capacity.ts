@@ -94,6 +94,14 @@ function commitWeight(type: string | null | undefined): number {
   }
 }
 
+/** The funder's fee headroom, ceil((A+1)(W+688)/W) + 1 (R23(i)); see the
+ *  header for the derivation. Exported for drive-mode P3's minimum-connection
+ *  formula (transfers/minimumConnection.ts), so H has one source. */
+export function funderHeadroomSats(commitFeeSat: number, commitmentType: string | null | undefined): number {
+  const w = commitWeight(commitmentType);
+  return Math.ceil(((commitFeeSat + 1) * (w + 4 * HTLC_WEIGHT)) / w) + 1;
+}
+
 /** Room to send under lnd's add-HTLC rule; see the header for the derivation. */
 function roomToSend(ch: CapacityChannel, localReserve: number, remoteReserve: number): number {
   const base = ch.local_balance_sat - localReserve;
@@ -101,7 +109,7 @@ function roomToSend(ch: CapacityChannel, localReserve: number, remoteReserve: nu
   const isFunder = ch.is_initiator !== 0; // NULL (not yet synced) → funder
   if (isFunder) {
     if (ch.commit_fee_sat == null) return 0;
-    const headroom = Math.ceil(((ch.commit_fee_sat + 1) * (w + 4 * HTLC_WEIGHT)) / w) + 1;
+    const headroom = funderHeadroomSats(ch.commit_fee_sat, ch.commitment_type);
     return Math.max(0, base - headroom);
   }
   if (ch.commit_fee_sat != null) {

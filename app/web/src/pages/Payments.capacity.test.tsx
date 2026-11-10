@@ -142,15 +142,9 @@ describe("the request form's cap is room to receive", () => {
 // R34 item 5: the "Current channel" gauge and its "After …" projection read
 // room to send (570,000 of 1,000,000 here), not the local balance (600,000):
 // the gauge says "available to send", and room to send is that figure.
+// The receive form's case moved: drive-mode P3, R40(7), gives the Request tab
+// a room-to-receive gauge (Payments.requestGauge.test.tsx).
 describe("R34 item 5 — the Payments gauge reads room to send", () => {
-  it("receive form: 57% available to send, and after receiving 50,000: 57% → 62%", async () => {
-    await render();
-    expect(text()).toContain("57% available to send");
-    expect(text()).not.toContain("60% available to send");
-    await typeAmount("50000");
-    expect(text()).toMatch(/After receive: 57% → 62% available to send/);
-  });
-
   it("send form: 57% available to send, and after paying 100,000: 57% → 47%", async () => {
     await render();
     await decodeAmount(100_000);

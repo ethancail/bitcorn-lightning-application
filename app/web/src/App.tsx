@@ -54,6 +54,8 @@ import Daybreak from "./pages/Daybreak";
 import { DAYBREAK_NAV_LABEL } from "./daybreak/daybreakCopy";
 import { SHOW_DAYBREAK_IN_MEMBER_NAV } from "./daybreak/launch";
 import DaybreakEditor from "./pages/DaybreakEditor";
+import AutomaticTransfers from "./pages/AutomaticTransfers";
+import { transfersApi } from "./api/client";
 import { EDITOR_NAV_LABEL } from "./daybreakEditor/editorCopy";
 
 // ─── Prevent scroll-to-change on number inputs ──────────────────────────
@@ -406,6 +408,10 @@ function Sidebar({
 }
 
 const DEPOSIT: NavItem = { to: "/deposit", icon: "↙", label: "Deposit Bitcoin" };
+// Drive-mode P3 (R14): its own member page and nav item, after Withdraw / Top
+// Up and before Charts (mockup r5). The page does its own fetching — no
+// shell-level read is added for it.
+const AUTOMATIC_TRANSFERS: NavItem = { to: "/automatic-transfers", icon: "↻", label: "Automatic transfers" };
 
 function TreasurySidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const navItems = [
@@ -514,7 +520,7 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
       open={open}
       onClose={onClose}
       items={navItems}
-      afterFirst={[DEPOSIT, liquidity]}
+      afterFirst={[DEPOSIT, liquidity, AUTOMATIC_TRANSFERS]}
       settingsBadge={<SubscriptionNavBadge status={subStatus} />}
     />
   );
@@ -603,6 +609,7 @@ function MemberShell() {
             <Route path="/cashout" element={<WithdrawBitcoin />} />
             <Route path="/refill" element={<RefillChannel />} />
             <Route path="/withdraw" element={<WithdrawBitcoin />} />
+            <Route path="/automatic-transfers" element={<AutomaticTransfers />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/subscription/payments" element={<SubscriptionPayments />} />
             {/* Intentionally NOT gated — the nav entry above is hidden for a
@@ -630,9 +637,29 @@ const TEXT_SCALE_PRESETS = [
   { value: "1.3", label: "Extra Large" },
 ];
 
+/**
+ * The Settings membership section's hook (membership-gating B1): the element id
+ * that /settings?focus=membership finds. Pinned by App.settingsMembershipFocus.test.tsx;
+ * a Settings restructure keeps this id on the element wrapping SubscriptionPanel.
+ */
+const MEMBERSHIP_SECTION_ID = "settings-membership";
+
 function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // ?focus=membership: once the panel has loaded, scroll its section into view
+  // and move keyboard focus to its heading. No highlight. Runs once per mount.
+  const focusMembership = searchParams.get("focus") === "membership";
+  const membershipFocused = useRef(false);
+  const focusMembershipSection = useCallback(() => {
+    if (!focusMembership || membershipFocused.current) return;
+    const section = document.getElementById(MEMBERSHIP_SECTION_ID);
+    const heading = section?.querySelector<HTMLElement>("h2");
+    if (!section || !heading) return;
+    membershipFocused.current = true;
+    section.scrollIntoView({ block: "start" });
+    heading.focus({ preventScroll: true });
+  }, [focusMembership]);
   const [theme, setTheme] = useState<ThemeChoice>(() => {
     const stored = localStorage.getItem("bitcorn_theme");
     if (stored === "light" || stored === "dark") return stored;
@@ -678,8 +705,13 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           subscribe to itself; its own /api/subscription/status returns
           Case E (no_channel to self), which would render a misleading
           state. The treasury operator inspects subscription state via
-          the admin debug path (Stage 5b admin view). */}
-      {!isTreasury && <SubscriptionPanel />}
+          the admin debug path (Stage 5b admin view). The wrapper carries
+          the ?focus=membership hook (MEMBERSHIP_SECTION_ID, above). */}
+      {!isTreasury && (
+        <div id={MEMBERSHIP_SECTION_ID}>
+          <SubscriptionPanel onLoaded={focusMembershipSection} />
+        </div>
+      )}
 
       {/* Stablecoin Wallet — a POINTER now. The registration panel itself moved
           to pages/Stablecoin.tsx, where the wallet is actually used; this stays
@@ -1291,6 +1323,18 @@ function ChannelsPage() {
   const [closeResult, setCloseResult] = useState<{ channelId: string; txid: string | null } | null>(null);
   const [closingPubkeys, setClosingPubkeys] = useState<Set<string>>(new Set());
 
+  // Drive-mode P3 (R40(2)): on a MEMBER's page, the hub channel is measured
+  // against the one formula's live minimum for the member's strategy, not a
+  // fixed 2,000,000 with 5,000,000 recommended. The treasury's branch is
+  // unchanged. null: no figure (no rate yet) — no size claim.
+  const [memberMinimum, setMemberMinimum] = useState<number | null>(null);
+  useEffect(() => {
+    if (nodeRole !== "member") return;
+    transfersApi.getTransferSettings()
+      .then((r) => setMemberMinimum(r.member[r.settings.strategy === "open" ? "open" : "save"]?.sats ?? null))
+      .catch(() => setMemberMinimum(null));
+  }, [nodeRole]);
+
   useEffect(() => {
     api.getNode().then((n) => setNodeRole(n.node_role)).catch(() => {});
     Promise.all([
@@ -1388,6 +1432,7 @@ function ChannelsPage() {
               </label>
               <input
                 id="close-channel-challenge"
+                className="form-input action-confirm-input"
                 type="text"
                 autoComplete="off"
                 value={closeTyped}
@@ -1888,8 +1933,12 @@ function ChannelsPage() {
               const localPct = c.capacity_sat > 0 ? (c.local_balance_sat / c.capacity_sat) * 100 : 0;
               const remotePct = c.capacity_sat > 0 ? (c.remote_balance_sat / c.capacity_sat) * 100 : 0;
               const isTreasury = c.peer_pubkey === TREASURY_PUBKEY;
-              const capStatus = classifyCapacity(c.capacity_sat, isTreasury);
-              const upgradeSize = recommendedUpgradeSize(c.capacity_sat, isTreasury);
+              // Drive-mode P3: a member's own hub channel uses the formula's size.
+              const memberHub = nodeRole === "member" && isTreasury;
+              const capStatus: CapacityStatus = memberHub
+                ? (memberMinimum != null && c.capacity_sat < memberMinimum ? "undersized" : "adequate")
+                : classifyCapacity(c.capacity_sat, isTreasury);
+              const upgradeSize = memberHub ? (memberMinimum ?? 0) : recommendedUpgradeSize(c.capacity_sat, isTreasury);
               const isExpanded = expandedHint === c.channel_id;
               return (
                 <div key={c.channel_id} className="channel-card">

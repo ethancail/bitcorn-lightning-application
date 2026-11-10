@@ -30,6 +30,15 @@ vi.mock("../db", () => {
   return { db: d };
 });
 
+// Drive-mode P3 (R40(2)): the recommended minimum is the one formula's live
+// size (advisorMinimum.ts), read from tables this in-memory mock does not
+// have. These tests characterise the engine's BRANCHING given a minimum, so
+// it is stubbed at the sizes the fixtures below were built around (merchant
+// 2,000,000, farmer 1,000,000). advisorMinimum.test.ts tests the real size.
+vi.mock("./advisorMinimum", () => ({
+  advisorMinimumSats: (role: string) => (role === "merchant" ? 2_000_000 : 1_000_000),
+}));
+
 // Resolves to the mock above, so this IS the in-memory handle — which is what
 // lets the one test that needs a non-default floor_sats set it (see
 // "farmer's SECOND manual_recovery" below).

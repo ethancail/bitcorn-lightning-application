@@ -15,11 +15,11 @@
 // already the tested tier filter behind the dashboard banner and nav badge — is
 // reused verbatim rather than re-deriving the same four-tier list here.
 //
-// FRESH GRACE RIDES ALONG, DELIBERATELY. A never-paid node inside its 30-day
-// grace_days_fresh window (migration 042) has tier === "current", so
-// gatedTierOf returns null and this module reports `entitled`. That is the
-// decision recorded in the Worker's rationale block, not an accident of reusing
-// gatedTierOf — trial members are meant to see the rail.
+// NO PRE-PAYMENT ACCESS. A never-paid node is `prepay` from its first status
+// read (membership-gating D1 removed migration 042's fresh grace), so
+// gatedTierOf returns "prepay" and this module reports `gated`. A node reaches
+// the rail only once its tier is `current`: paid, or inside the renewal grace
+// after paid_through.
 
 import type { SubscriptionStatus } from "../api/client";
 import {
@@ -31,7 +31,7 @@ import {
 } from "../components/subscriptionBanner";
 
 export type RailAccess =
-  /** Tier `current` (paid, post-payment grace, or fresh grace) — full scope. */
+  /** Tier `current` (paid, or inside the renewal grace) — full scope. */
   | { kind: "entitled" }
   /** A payment-scope tier. The Worker refuses this member's rail reads. */
   | { kind: "gated"; tier: GatedTier }

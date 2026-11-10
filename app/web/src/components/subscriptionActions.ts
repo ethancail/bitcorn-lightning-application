@@ -59,17 +59,17 @@ const HISTORY_TERTIARY: ActionDescriptor = {
 };
 
 /** Secondary "I have BTC — …" label per state. Verb and amount-framing
- *  match the locked copy: prepay pays, the lapsed family renews, and
- *  close_due halts the pending close. */
+ *  match the locked copy: prepay pays, and the lapsed family renews.
+ *  close_due renews like routing_lapsed: Tier 3 issues no close (L2), and
+ *  Stage 6 restores close copy only once a close is real. */
 function payModalSecondary(tier: SubscriptionTier, priceSats: number): ActionDescriptor {
   switch (tier) {
     case "prepay":
       return { kind: "pay-modal", label: `I have BTC — pay ${fmtSats(priceSats)}` };
     case "worker_lapsed":
     case "routing_lapsed":
-      return { kind: "pay-modal", label: `I have BTC — renew (${fmtSats(priceSats)})` };
     case "close_due":
-      return { kind: "pay-modal", label: "I have BTC — pay now to halt close" };
+      return { kind: "pay-modal", label: `I have BTC — renew (${fmtSats(priceSats)})` };
     default:
       return { kind: "pay-modal", label: `I have BTC — pay ${fmtSats(priceSats)}` };
   }

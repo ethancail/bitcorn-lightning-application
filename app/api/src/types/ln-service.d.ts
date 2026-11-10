@@ -237,6 +237,41 @@ declare module "ln-service" {
     transaction_vout: number;
   }>;
 
+  /**
+   * One inbound channel open, as subscribeToOpenRequests emits it
+   * (lightning/lnd_methods/offchain/subscribe_to_open_requests.js, lightning
+   * 11.1.0 under ln-service 58.1.0). Only the fields the app reads, plus the
+   * two answers. An unanswered request is refused by LND after a short delay.
+   */
+  export interface OpenRequest {
+    accept: (params?: {
+      cooperative_close_address?: string;
+      is_trusted_funding?: boolean;
+      min_confirmations?: number;
+      remote_csv?: number;
+      remote_reserve?: number;
+      remote_max_htlcs?: number;
+      remote_max_pending_mtokens?: string;
+      remote_min_htlc_mtokens?: string;
+    }) => void;
+    /** `reason` is passed to the opener, limited to 500 characters. */
+    reject: (params?: { reason?: string }) => void;
+    capacity: number;
+    id: string;
+    is_private: boolean;
+    partner_public_key: string;
+  }
+
+  /**
+   * Registers an LND ChannelAcceptor. Needs `offchain:write` and
+   * `onchain:write`. Emits 'channel_request' (OpenRequest), 'error' (dropped
+   * unless a listener is attached) and 'end' (the stream does not reconnect).
+   * Removing the last 'channel_request' listener cancels the stream.
+   */
+  export function subscribeToOpenRequests(options: {
+    lnd: any;
+  }): import("events").EventEmitter;
+
   export interface PendingChannel {
     capacity: number;
     is_opening?: boolean;

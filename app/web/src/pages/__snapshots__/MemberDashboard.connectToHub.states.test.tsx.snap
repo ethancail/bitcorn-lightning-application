@@ -1280,7 +1280,7 @@ portals: 1
       <div style="margin-top: 14px;">
         <label for="action-confirm-challenge" style="display: block; margin-bottom: 6px;">
           "Type the amount to confirm: 1,000,000"
-        <input autocomplete="off" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="" prop:value="" prop:disabled=false>
+        <input autocomplete="off" class="form-input action-confirm-input" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="" prop:value="" prop:disabled=false>
     <div style="display: flex; gap: 10px; margin-top: 16px;">
       <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
         "Open channel"
@@ -1404,7 +1404,7 @@ portals: 1
       <div style="margin-top: 14px;">
         <label for="action-confirm-challenge" style="display: block; margin-bottom: 6px;">
           "Type the amount to confirm: 1,000,000"
-        <input autocomplete="off" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="" prop:value="" prop:disabled=false>
+        <input autocomplete="off" class="form-input action-confirm-input" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="" prop:value="" prop:disabled=false>
     <div style="display: flex; gap: 10px; margin-top: 16px;">
       <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
         "Open channel"
@@ -1523,7 +1523,7 @@ portals: 1
       <div style="margin-top: 14px;">
         <label for="action-confirm-challenge" style="display: block; margin-bottom: 6px;">
           "Type the amount to confirm: 1,000,000"
-        <input autocomplete="off" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="1000000" prop:value="1000000" prop:disabled=false>
+        <input autocomplete="off" class="form-input action-confirm-input" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="1000000" prop:value="1000000" prop:disabled=false>
     <div style="display: flex; gap: 10px; margin-top: 16px;">
       <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
         "Open channel"
