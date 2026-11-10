@@ -174,19 +174,24 @@ export function bannerFor(
       // hosted services; the old copy ("routing access blocked", "payments
       // through the hub are refused") claimed a routing loss that does not
       // happen. The banner file's long-term owner is still open (spec §8).
-    case "close_due":
+    case "close_due": {
       // L2: close_due's copy matches routing_lapsed's because Tier 3 issues no
       // close (tier3Scheduler.ts is dry-run only and returns would_close). Stage 6
       // restores close copy only once a close is real. The severity is the same too.
+      // The body's amount is dollars first with the sats, or sats alone with no
+      // rate (drive-mode's amount rules, as item 12). The action stays in sats:
+      // P2 pins routing_lapsed's action as unchanged by a rate.
+      const amount = renewalAmount(status.price_sats, usdRate);
       return {
         render: true,
         severity: bannerSeverityForTier(tier),
         headline: "Your membership payment is overdue",
         body:
           "Hosted services are paused: valuation, Auto-Buy and stablecoin " +
-          `settlement data. Pay ${price} to restore them.`,
+          `settlement data. Pay ${amount.text} to restore them.`,
         actionLabel: `Renew ${price}`,
       };
+    }
   }
 }
 

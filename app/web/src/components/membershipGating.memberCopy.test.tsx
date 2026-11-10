@@ -206,7 +206,7 @@ describe("L2 — neither lapsed tier claims a channel close, and close_due match
 
   it("the not-renewing line says only what is true", async () => {
     const text = await panelText(closeDue());
-    expect(text).toContain("If you don't renew — hosted services stay paused and your channel stays open.");
+    expect(text).toContain("If you don't renew — hosted services stay paused and your connection to Bitcorn stays open.");
   });
 });
 
@@ -240,11 +240,55 @@ describe("L2 follow-up — no lapsed tier claims routing pauses", () => {
       root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
     });
     await settle();
-    expect(host.textContent ?? "").toContain("If you don't renew — hosted services stay paused and your channel stays open.");
+    expect(host.textContent ?? "").toContain("If you don't renew — hosted services stay paused and your connection to Bitcorn stays open.");
   });
 
   it("routing_lapsed's pill is the panel's 'payment overdue'", () => {
     expect(tierToPill("routing_lapsed")).toEqual({ kind: "orange", label: "payment overdue" });
+  });
+});
+
+describe("L2 drive-mode review — no 'funds are safe', R14's 'connection', amounts dollars first", () => {
+  const RATE = 60_000; // 50,000 sats → $30.00
+  const overdue = ["routing_lapsed", "close_due"] as const;
+  async function panel(tier: string) {
+    stub.getSubscriptionStatus.mockResolvedValue({ ...routingLapsed(), current_tier: tier });
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    return host.textContent ?? "";
+  }
+
+  it.each(overdue)("%s panel: the balance sentence, not 'funds are safe'", async (tier) => {
+    const text = await panel(tier);
+    expect(text).toContain("Your connection to Bitcorn is still open and its balance is unchanged.");
+    expect(text).not.toMatch(/funds are safe/i);
+  });
+
+  it.each(overdue)("%s panel: R14's 'connection to Bitcorn' in every line L2 wrote", async (tier) => {
+    const text = await panel(tier);
+    expect(text).toContain("If you don't renew — hosted services stay paused and your connection to Bitcorn stays open.");
+    expect(text).toContain("Right now — your connection to Bitcorn remains open and its balance is unchanged.");
+    expect(text).not.toMatch(/your channel (is still open|stays open|remains open)|channel balance/i);
+  });
+
+  it.each(overdue)("%s banner with a rate: dollars first, the sats beside them", (tier) => {
+    const d = bannerFor({ ...routingLapsed(), current_tier: tier } as any, NOW, RATE);
+    if (!d.render) throw new Error("no banner");
+    expect(d.body).toBe(
+      "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay $30.00 (50,000 sats) to restore them.",
+    );
+    expect(d.actionLabel).toBe("Renew 50,000 sats"); // P2: the action is unchanged by a rate
+  });
+
+  it.each(overdue)("%s banner with no rate: the sats alone", (tier) => {
+    const d = bannerFor({ ...routingLapsed(), current_tier: tier } as any, NOW, null);
+    if (!d.render) throw new Error("no banner");
+    expect(d.body).toBe(
+      "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay 50,000 sats to restore them.",
+    );
+    expect(d.body).not.toContain("$");
   });
 });
 
