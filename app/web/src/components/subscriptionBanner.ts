@@ -31,7 +31,9 @@ const SEVERITY_BY_TIER: Record<GatedTier, { banner: BannerSeverity; badge: Badge
   prepay: { banner: "info", badge: "blue" },
   worker_lapsed: { banner: "amber", badge: "amber" },
   routing_lapsed: { banner: "orange", badge: "orange" },
-  close_due: { banner: "red", badge: "red" },
+  // L2: routing_lapsed's severity, not red. Tier 3 issues no close, so nothing
+  // escalates at close_due; Stage 6 restores red only once a close is real.
+  close_due: { banner: "orange", badge: "orange" },
 };
 
 /** Banner severity for a gated tier — imported by RoutingDeniedNotice so
@@ -111,12 +113,8 @@ export function renewalAmount(sats: number, usdRate: number | null): { text: str
  * the banner says when hosted services pause. Both dates are the status's
  * own, never a literal 7 days. usdRate, when there is one, puts dollars
  * first in that warning and in the services-paused banner (item 12).
- * The close_due banner deliberately does NOT show a countdown:
- * `grace.close_at` is paid_through + grace_days_close, which is the
- * moment the close_due tier BEGINS — by the time the tier is close_due,
- * that instant is already in the past, and the Tier 3 scheduler closes
- * on its next tick (no further grace). A countdown would render a
- * non-positive number; the honest framing is "imminent / pay now".
+ * No banner shows a close countdown: Tier 3 issues no close (L2), so
+ * close_due carries routing_lapsed's copy.
  */
 export function bannerFor(
   status: SubscriptionStatus | null,
@@ -176,25 +174,24 @@ export function bannerFor(
       // hosted services; the old copy ("routing access blocked", "payments
       // through the hub are refused") claimed a routing loss that does not
       // happen. The banner file's long-term owner is still open (spec §8).
+    case "close_due": {
+      // L2: close_due's copy matches routing_lapsed's because Tier 3 issues no
+      // close (tier3Scheduler.ts is dry-run only and returns would_close). Stage 6
+      // restores close copy only once a close is real. The severity is the same too.
+      // The body's amount is dollars first with the sats, or sats alone with no
+      // rate (drive-mode's amount rules, as item 12). The action stays in sats:
+      // P2 pins routing_lapsed's action as unchanged by a rate.
+      const amount = renewalAmount(status.price_sats, usdRate);
       return {
         render: true,
-        severity: "orange",
+        severity: bannerSeverityForTier(tier),
         headline: "Your membership payment is overdue",
         body:
           "Hosted services are paused: valuation, Auto-Buy and stablecoin " +
-          `settlement data. Pay ${price} to restore them.`,
+          `settlement data. Pay ${amount.text} to restore them.`,
         actionLabel: `Renew ${price}`,
       };
-    case "close_due":
-      return {
-        render: true,
-        severity: "red",
-        headline: "Critical: channel close imminent",
-        body:
-          `Your subscription lapsed on ${lapsedOn}. Your channel is now queued ` +
-          `for cooperative close — paying ${price} now halts it.`,
-        actionLabel: "Pay now to halt close",
-      };
+    }
   }
 }
 

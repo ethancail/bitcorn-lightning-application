@@ -25,6 +25,7 @@ import { getSubscriptionPolicy } from "./policy";
 import { classifyLanePurpose } from "./lanePurpose";
 import { JwtVerificationError } from "./jwtVerify";
 import { openChannelVerdict } from "../lightning/channelAcceptor";
+import { CLOSE_ENFORCEMENT, type CloseEnforcement } from "./tier3Scheduler";
 
 const MS_PER_DAY = 86_400_000;
 const NOT_YET_ALLOCATED_WINDOW_MS = 60 * 1000; // spec §5.2 Case C threshold
@@ -66,6 +67,13 @@ export interface SubscriptionStatusApplicable extends OpenChannelVerdictField {
     routing_until: number;
     close_at: number;
   };
+  /**
+   * Whether Tier 3 can close this member's channel (tier3Scheduler.ts,
+   * CLOSE_ENFORCEMENT). Members show "your connection stays open" only while
+   * it isn't "live". A treasury that predates the field sends nothing, which
+   * members read as "dry_run": no treasury before it could close a channel.
+   */
+  close_enforcement: CloseEnforcement;
 }
 
 export interface SubscriptionStatusNotApplicable extends OpenChannelVerdictField {
@@ -145,6 +153,7 @@ function computeStatusCase(
         routing_until: row.paid_through + policy.grace_days_routing * MS_PER_DAY,
         close_at: row.paid_through + policy.grace_days_close * MS_PER_DAY,
       },
+      close_enforcement: CLOSE_ENFORCEMENT,
     };
   }
 

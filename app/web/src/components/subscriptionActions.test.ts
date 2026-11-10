@@ -52,9 +52,9 @@ describe("actionsFor — both buttons carry a handler-bearing kind in all four s
     expect(a.tertiary?.kind).toBe("history");
   });
 
-  it("close_due's secondary halts the close and shows history", () => {
+  it("close_due's secondary renews, like routing_lapsed (L2), and shows history", () => {
     const a = actionsFor("close_due", PRICE);
-    expect(a.secondary?.label).toBe("I have BTC — pay now to halt close");
+    expect(a.secondary?.label).toBe("I have BTC — renew (50,000 sats)");
     expect(a.tertiary?.kind).toBe("history");
   });
 });

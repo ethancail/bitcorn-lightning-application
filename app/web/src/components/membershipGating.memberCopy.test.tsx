@@ -40,7 +40,9 @@ vi.mock("../api/client", async (importOriginal) => {
 
 import SubscriptionPanel from "./SubscriptionPanel";
 import { useConnectToHub } from "./firstRun/useConnectToHub";
-import { bannerFor } from "./subscriptionBanner";
+import { bannerFor, bannerSeverityForTier, bannerSeverityForTierName, settingsBadgeFor } from "./subscriptionBanner";
+import { tierToPill } from "./Pill";
+import { railGateNoticeFor } from "../stablecoin/railAccess";
 
 // R7's meaning, in S2's words (Ethan, 2026-11-05).
 const R7_APP_CHECK =
@@ -122,6 +124,241 @@ describe("DW5 / item C — the panel's routing_lapsed render says hosted service
     expect(text).not.toMatch(/routing and all paused services/i);
     expect(text).not.toMatch(/routing/i);
     expect(text).not.toMatch(/refused|blocked/i);
+  });
+});
+
+// ─── L2 — no close claim; close_due carries routing_lapsed's copy ─────────
+//
+// Tier 3 issues no close (app/api/src/subscription/tier3Scheduler.ts returns
+// would_close and calls nothing), so neither tier may claim or imply one.
+
+const CLOSE_CLAIM = /clos(e|ed|es|ing)|halt|scheduler|queued|cooperativ/i;
+
+describe("L2 — neither lapsed tier claims a channel close, and close_due matches routing_lapsed", () => {
+  async function panelText(status: unknown) {
+    stub.getSubscriptionStatus.mockResolvedValue(status);
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    const text = host.textContent ?? "";
+    lastHtml = host.innerHTML;
+    await act(async () => { root.render(React.createElement("div")); });
+    return text;
+  }
+  let lastHtml = "";
+  const closeDue = () => ({ ...routingLapsed(), current_tier: "close_due", paid_through: NOW - 65 * DAY });
+  const banner = (s: unknown) => {
+    const d = bannerFor(s as any, NOW);
+    if (!d.render) throw new Error("no banner");
+    return d;
+  };
+
+  it("routing_lapsed: the panel and the banner make no close/halt/scheduler/queued claim", async () => {
+    const text = await panelText(routingLapsed());
+    expect(text).toContain("Your membership payment is overdue"); // it rendered the tier
+    expect(text).not.toMatch(CLOSE_CLAIM);
+    const d = banner(routingLapsed());
+    expect(`${d.headline} ${d.body} ${d.actionLabel}`).not.toMatch(CLOSE_CLAIM);
+  });
+
+  it("close_due: the panel and the banner make no close/halt/scheduler/queued claim", async () => {
+    const text = await panelText(closeDue());
+    expect(text).toContain("Your membership payment is overdue");
+    expect(text).not.toMatch(CLOSE_CLAIM);
+    const d = banner(closeDue());
+    expect(`${d.headline} ${d.body} ${d.actionLabel}`).not.toMatch(CLOSE_CLAIM);
+  });
+
+  it("close_due's panel equals routing_lapsed's: every word, and the markup (colors, icon)", async () => {
+    // Same paid_through, so the PAID THROUGH stat is equal too; only the tier differs.
+    const routing = await panelText(routingLapsed());
+    const routingHtml = lastHtml;
+    const close = await panelText({ ...routingLapsed(), current_tier: "close_due" });
+    expect(close).toBe(routing);
+    expect(lastHtml).toBe(routingHtml); // pill kind, alert variant and ⚠ icon included
+    expect(routingHtml).toContain("sub-stat-accent-orange");
+    expect(routingHtml).not.toMatch(/\bred\b|critical|✕/);
+  });
+
+  it("close_due's banner equals routing_lapsed's, severity included", () => {
+    const r = banner(routingLapsed());
+    const c = banner({ ...routingLapsed(), current_tier: "close_due" });
+    expect(c).toEqual(r);
+    expect(c.headline).toBe("Your membership payment is overdue");
+    expect(c.actionLabel).toBe("Renew 50,000 sats");
+    expect(c.severity).toBe("orange");
+  });
+
+  it("close_due's severity equals routing_lapsed's on every surface: banner, badge, 402 notice, rail notice, pill", () => {
+    expect(bannerSeverityForTier("close_due")).toBe(bannerSeverityForTier("routing_lapsed"));
+    expect(bannerSeverityForTierName("close_due")).toBe(bannerSeverityForTierName("routing_lapsed")); // 402 notice
+    expect(settingsBadgeFor(closeDue() as any)).toEqual(settingsBadgeFor(routingLapsed() as any));
+    const rail = (s: unknown) => {
+      const n = railGateNoticeFor(s as any);
+      if (!n.render) throw new Error("no rail notice");
+      return { severity: n.severity, variantClass: n.variantClass, icon: n.icon };
+    };
+    expect(rail(closeDue())).toEqual(rail(routingLapsed()));
+    expect(tierToPill("close_due")).toEqual(tierToPill("routing_lapsed"));
+    expect(bannerSeverityForTier("close_due")).toBe("orange");
+  });
+
+  it("the not-renewing line says only what is true", async () => {
+    const text = await panelText(closeDue());
+    expect(text).toContain("If you don't renew — hosted services stay paused and your connection to Bitcorn stays open.");
+  });
+});
+
+describe("L2 follow-up — no lapsed tier claims routing pauses", () => {
+  // "routing paused", "routing pauses", "routing also pauses", "routing is paused".
+  const ROUTING_PAUSE_CLAIM = /routing (is |also )?paus(e|ed|es)\b/i;
+  const tiers = ["worker_lapsed", "routing_lapsed", "close_due"] as const;
+  const statusFor = (tier: (typeof tiers)[number]) => ({ ...routingLapsed(), current_tier: tier });
+
+  it.each(tiers)("%s: the panel says nothing about routing pausing", async (tier) => {
+    stub.getSubscriptionStatus.mockResolvedValue(statusFor(tier));
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    const text = host.textContent ?? "";
+    expect(text).toContain("If you don't renew"); // the timeline rendered
+    expect(text).not.toMatch(ROUTING_PAUSE_CLAIM);
+  });
+
+  it.each(tiers)("%s: the pill and the banner say nothing about routing pausing", (tier) => {
+    expect(tierToPill(tier).label).not.toMatch(ROUTING_PAUSE_CLAIM);
+    const d = bannerFor(statusFor(tier) as any, NOW);
+    if (!d.render) throw new Error("no banner");
+    expect(`${d.headline} ${d.body} ${d.actionLabel}`).not.toMatch(ROUTING_PAUSE_CLAIM);
+  });
+
+  it("worker_lapsed's not-renewing line says only what is true", async () => {
+    stub.getSubscriptionStatus.mockResolvedValue(statusFor("worker_lapsed"));
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    expect(host.textContent ?? "").toContain("If you don't renew — hosted services stay paused and your connection to Bitcorn stays open.");
+  });
+
+  it("routing_lapsed's pill is the panel's 'payment overdue'", () => {
+    expect(tierToPill("routing_lapsed")).toEqual({ kind: "orange", label: "payment overdue" });
+  });
+});
+
+describe("L2 drive-mode review — no 'funds are safe', R14's 'connection', amounts dollars first", () => {
+  const RATE = 60_000; // 50,000 sats → $30.00
+  const overdue = ["routing_lapsed", "close_due"] as const;
+  async function panel(tier: string) {
+    stub.getSubscriptionStatus.mockResolvedValue({ ...routingLapsed(), current_tier: tier });
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    return host.textContent ?? "";
+  }
+
+  it.each(overdue)("%s panel: the balance sentence, not 'funds are safe'", async (tier) => {
+    const text = await panel(tier);
+    expect(text).toContain("Your connection to Bitcorn is still open and its balance is unchanged.");
+    expect(text).not.toMatch(/funds are safe/i);
+  });
+
+  it.each(overdue)("%s panel: R14's 'connection to Bitcorn' in every line L2 wrote", async (tier) => {
+    const text = await panel(tier);
+    expect(text).toContain("If you don't renew — hosted services stay paused and your connection to Bitcorn stays open.");
+    expect(text).toContain("Right now — your connection to Bitcorn remains open and its balance is unchanged.");
+    expect(text).not.toMatch(/your channel (is still open|stays open|remains open)|channel balance/i);
+  });
+
+  it.each(overdue)("%s banner with a rate: dollars first, the sats beside them", (tier) => {
+    const d = bannerFor({ ...routingLapsed(), current_tier: tier } as any, NOW, RATE);
+    if (!d.render) throw new Error("no banner");
+    expect(d.body).toBe(
+      "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay $30.00 (50,000 sats) to restore them.",
+    );
+    expect(d.actionLabel).toBe("Renew 50,000 sats"); // P2: the action is unchanged by a rate
+  });
+
+  it.each(overdue)("%s banner with no rate: the sats alone", (tier) => {
+    const d = bannerFor({ ...routingLapsed(), current_tier: tier } as any, NOW, null);
+    if (!d.render) throw new Error("no banner");
+    expect(d.body).toBe(
+      "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay 50,000 sats to restore them.",
+    );
+    expect(d.body).not.toContain("$");
+  });
+});
+
+describe("L2 / T3 — the 'open' sentences render only while Tier 3 can't close", () => {
+  const OPEN_CLAIM = /still open|stays open|remains open|balance is unchanged/i;
+  const STAYS_OPEN_ROW = "If you don't renew — hosted services stay paused and your connection to Bitcorn stays open.";
+  const ALERT_OPEN = "Your connection to Bitcorn is still open and its balance is unchanged.";
+  const RIGHT_NOW = "Right now — your connection to Bitcorn remains open and its balance is unchanged.";
+  const tiers = ["worker_lapsed", "routing_lapsed", "close_due"] as const;
+  type Enforcement = "dry_run" | "live" | undefined;
+
+  async function panel(tier: (typeof tiers)[number], enforcement: Enforcement) {
+    const s: Record<string, unknown> = { ...routingLapsed(), current_tier: tier };
+    if (enforcement !== undefined) s.close_enforcement = enforcement;
+    stub.getSubscriptionStatus.mockResolvedValue(s);
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    return host.textContent ?? "";
+  }
+
+  it.each(tiers)("%s with close_enforcement 'live': no open or balance sentence, and nothing in their place", async (tier) => {
+    const text = await panel(tier, "live");
+    expect(text).toContain("If you renew"); // the tier's timeline rendered
+    expect(text).not.toMatch(OPEN_CLAIM);
+    expect(text).not.toContain("If you don't renew");
+    expect(text).not.toContain("Right now");
+  });
+
+  it.each(tiers.flatMap((t) => [[t, "dry_run"], [t, undefined]] as const))(
+    "%s with close_enforcement %s: the open sentences render",
+    async (tier, enforcement) => {
+      const text = await panel(tier, enforcement);
+      expect(text).toContain(STAYS_OPEN_ROW);
+      if (tier !== "worker_lapsed") {
+        expect(text).toContain(ALERT_OPEN);
+        expect(text).toContain(RIGHT_NOW);
+      }
+    },
+  );
+
+  it("'live' leaves the alert ending at the restore sentence, with no trailing claim", async () => {
+    const text = await panel("close_due", "live");
+    expect(text).toContain("Pay 50,000 sats to restore them.✓"); // alert ends, the reassure tick follows
+  });
+});
+
+describe("L2 — 'lapsed N days ago' and the PAID THROUGH stat's 'Nd ago' use one day computation", () => {
+  it("agree on a fractional day, where ceil and floor of the elapsed time differ", async () => {
+    // 88.5 days: ceil would say 89, floor 88 — the gate 1 screenshot's split.
+    const paidThrough = NOW - 88.5 * DAY;
+    stub.getSubscriptionStatus.mockResolvedValue({
+      ...routingLapsed(),
+      current_tier: "worker_lapsed",
+      paid_through: paidThrough,
+      last_payment_at: paidThrough - 30 * DAY,
+    });
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel)));
+    });
+    await settle();
+    const text = host.textContent ?? "";
+    const lapsed = text.match(/lapsed (\d+) days? ago/)?.[1];
+    const suffixes = Array.from(host.querySelectorAll(".sub-stat-suffix"), (el) => el.textContent ?? "");
+    const paid = suffixes.map((s) => s.match(/^(\d+)d ago$/)?.[1]).find(Boolean);
+    expect(lapsed).toBeDefined();
+    expect(paid).toBeDefined();
+    expect(lapsed).toBe(paid);
+    expect(paid).toBe("88");
   });
 });
 

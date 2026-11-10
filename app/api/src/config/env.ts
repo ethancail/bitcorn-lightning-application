@@ -244,11 +244,15 @@ export const ENV = {
     // ships enabled per spec §10 step 6 "feature-flag-able"; set to
     // "false" to disable the gate without code changes).
     subscriptionTier2Enabled: process.env.SUBSCRIPTION_TIER2_ENABLED !== "false",
-    // Tier 3 cooperative-close scheduler: when false (default), runs in
-    // dry-run mode and only structured-logs "would close" events. When
-    // true, actually issues LND CloseChannel calls. Per spec §10 step 7,
-    // promotion to live happens at Stage 6 after a ≥60-day observation
-    // of the dry-run behaviour.
+    // Tier 3 cooperative-close scheduler: this flag only labels its logs.
+    // True prints "LIVE" at startup and is_dry_run: false in each
+    // structured "would close" event; false (default) prints "DRY-RUN" and
+    // is_dry_run: true. It issues no LND CloseChannel call either way: no
+    // close call exists on any Tier 3 path yet (tier3Scheduler.ts,
+    // evaluateCandidate). Stage 6 adds that call after a ≥60-day
+    // observation of the dry-run behaviour (spec §10 step 7), and sets
+    // CLOSE_ENFORCEMENT = "live" in the same change; members read that
+    // constant, never this flag.
     subscriptionTier3Live: process.env.SUBSCRIPTION_TIER3_LIVE === "true",
     // Cadence for the Tier 3 dry-run scheduler tick. 5 min default per
     // spec §5.3 — the scheduler iterates members in close_due tier and
