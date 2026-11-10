@@ -26,7 +26,7 @@ import {
 import { Pill, tierToPill, type PillKind } from "./Pill";
 import PayFromNodeModal from "./PayFromNodeModal";
 import PaymentTrustNotice from "./PaymentTrustNotice";
-import { depositAddressDisplay, trustStateOfStatus } from "./paymentTrust";
+import { depositAddressDisplay, payBlocked } from "./paymentTrust";
 import AutoPaySection from "./AutoPaySection";
 import { useAutoPayConfig } from "./useAutoPayConfig";
 import { actionsFor, type ActionDescriptor } from "./subscriptionActions";
@@ -250,7 +250,7 @@ export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void 
         <ApplicablePanel
           status={status}
           onRefresh={fetchStatus}
-          handlers={{ ...actionHandlers, payBlocked: trustStateOfStatus(status) != null }}
+          handlers={{ ...actionHandlers, payBlocked: payBlocked(status) }}
         />
         {/* Auto-renew (auto-pay opt-in) — the automation of the Renew now
             action, so it lives with the subscription surface rather than in

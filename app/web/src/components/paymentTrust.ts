@@ -80,6 +80,31 @@ export function trustStateOfStatus(status: TrustLabels | null | undefined): Trus
   );
 }
 
+/**
+ * Whether a pay or renewal action is blocked, from the status proxy's two
+ * labels alone (treasury-price-trust spec §4 R3, §8). Pure and exported so
+ * other arcs can gate their own pay surfaces with the same rule (drive-mode
+ * R45).
+ *
+ * Blocked unless `treasury_signature` is "verified" AND `treasury_pay_refusal`
+ * names nothing. A missing label is NOT verified, so a status with both
+ * labels absent — or no status at all — is blocked (fail closed): this
+ * node's API labels every status it serves, so absence means the label was
+ * lost, not that the status was checked.
+ */
+export function payBlocked(
+  labels:
+    | {
+        treasury_signature?: TreasurySignature | string | null;
+        treasury_pay_refusal?: TreasuryPayRefusal | Record<string, unknown> | null;
+      }
+    | null
+    | undefined,
+): boolean {
+  if (!labels) return true;
+  return labels.treasury_signature !== "verified" || fromPayRefusal(labels.treasury_pay_refusal) != null;
+}
+
 export type DepositAddressDisplay =
   | { show: true; address: string }
   | { show: false; state: TrustState | null };
@@ -99,8 +124,7 @@ export function depositAddressDisplay(
   status: (TrustLabels & { applicable?: boolean; deposit_address?: string | null }) | null | undefined,
 ): DepositAddressDisplay {
   if (!status) return { show: false, state: null };
-  const state = trustStateOfStatus(status);
-  if (state) return { show: false, state };
+  if (payBlocked(status)) return { show: false, state: trustStateOfStatus(status) };
   if (status.applicable !== true || typeof status.deposit_address !== "string" || status.deposit_address.length === 0) {
     return { show: false, state: null };
   }
