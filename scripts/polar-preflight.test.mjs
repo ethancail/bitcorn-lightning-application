@@ -25,10 +25,12 @@ import { fileURLToPath } from "node:url";
 import {
   CONTAINERS,
   LND_NODES,
+  main,
   resolveExit,
   runCommand,
   runPreflight,
 } from "./polar-preflight.mjs";
+import { acquireLock } from "./harness-slot.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./polar-preflight.mjs", import.meta.url));
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
@@ -907,4 +909,96 @@ test("(i) slot 1, given as HARNESS_SLOT=1, reads no networks.json and prints no 
   const { lines, networkReads } = await runSlot("1");
   assert.equal(networkReads, 0);
   assert.equal(lineOf(lines, "slot"), undefined);
+});
+
+// ─── (j) the lock (H14): the CLI refuses unless HARNESS_HOLDER holds the slot's lock ──
+
+const lockHome = () => fs.mkdtempSync(path.join(os.tmpdir(), "preflight-lock-"));
+const lockFor = (home, target, holder = "harness-host") =>
+  acquireLock({ home, target, holder, go: "Ethan, orchestrator chat 2026-11-10", host: "test-host" });
+
+// main() with a stub in place of runPreflight, so no check runs and nothing is read.
+async function mainWith(home, env, args = []) {
+  const runs = [];
+  const errors = [];
+  const exitCode = await main(args, {
+    env, home, err: (line) => errors.push(line),
+    run: async (opts) => { runs.push(opts); return { exitCode: 0 }; },
+  });
+  return { exitCode, runs, stderr: errors.join("\n") };
+}
+
+test("(j) lock: with no lock the preflight refuses, exit 2, naming \"no lock\", and runs no check", async () => {
+  const r = await mainWith(lockHome(), { HARNESS_HOLDER: "harness-host" });
+  console.log(r.stderr);
+  assert.equal(r.exitCode, 2);
+  assert.match(r.stderr, /^polar-preflight: slot 1 refused: no lock/);
+  assert.deepEqual(r.runs, []);
+});
+
+test("(j) lock: held by another holder, or with HARNESS_HOLDER unset, the preflight refuses naming the holder", async () => {
+  const home = lockHome();
+  lockFor(home, 1, "drive-mode");
+  for (const env of [{ HARNESS_HOLDER: "harness-host" }, {}]) {
+    const r = await mainWith(home, env);
+    assert.equal(r.exitCode, 2, JSON.stringify(env));
+    assert.match(r.stderr, /slot 1 refused: locked by "drive-mode"/, JSON.stringify(env));
+    assert.deepEqual(r.runs, []);
+  }
+});
+
+test("(j) lock: while setup.lock is held the preflight refuses naming it", async () => {
+  const home = lockHome();
+  lockFor(home, "setup", "polar-setup");
+  const r = await mainWith(home, { HARNESS_HOLDER: "polar-setup" });
+  assert.equal(r.exitCode, 2);
+  assert.match(r.stderr, /slot 1 refused: setup\.lock is held by "polar-setup"/);
+  assert.deepEqual(r.runs, []);
+});
+
+test("(j) lock: the slot comes from HARNESS_SLOT, so slot 1's lock does not let slot 2's preflight run", async () => {
+  const home = lockHome();
+  lockFor(home, 1);
+  const r = await mainWith(home, { HARNESS_HOLDER: "harness-host", HARNESS_SLOT: "2" });
+  assert.equal(r.exitCode, 2);
+  assert.match(r.stderr, /slot 2 refused: no lock/);
+  assert.deepEqual(r.runs, []);
+});
+
+test("(j) lock: with the matching HARNESS_HOLDER the preflight runs, passing --repair and the environment through", async () => {
+  const home = lockHome();
+  lockFor(home, 1);
+  const env = { HARNESS_HOLDER: "harness-host" };
+  const plain = await mainWith(home, env);
+  assert.equal(plain.exitCode, 0, plain.stderr);
+  assert.deepEqual(plain.runs, [{ repair: false, env }]);
+  const repair = await mainWith(home, env, ["--repair"]);
+  assert.deepEqual(repair.runs, [{ repair: true, env }]);
+});
+
+test("(j) lock: an unknown flag is still named before the lock is checked", async () => {
+  const r = await mainWith(lockHome(), {}, ["--repiar"]);
+  assert.equal(r.exitCode, 2);
+  assert.match(r.stderr, /unknown argument --repiar/);
+  assert.deepEqual(r.runs, []);
+});
+
+// The real entry point, in a sandbox: a temporary HOME with no lock, and a PATH
+// whose docker and ps are stubs that record any call, so a broken refusal shows
+// as a recorded call and still reaches no harness.
+test("(j) lock, cli: the real entry point refuses with no lock, exit 2, printing no check line and calling nothing", () => {
+  const home = lockHome();
+  const bin = path.join(home, "bin");
+  fs.mkdirSync(bin);
+  const log = path.join(home, "stub.log");
+  const stub = '#!/bin/sh\necho "${0##*/} $*" >> "$STUB_LOG"\nexit 1\n';
+  for (const name of ["docker", "ps"]) fs.writeFileSync(path.join(bin, name), stub, { mode: 0o755 });
+  const r = spawnSync(process.execPath, [SCRIPT], {
+    encoding: "utf8", timeout: 60_000, env: { PATH: bin, HOME: home, STUB_LOG: log, HARNESS_HOLDER: "harness-host" },
+  });
+  console.log(`exit=${r.status} stderr=${r.stderr.trim()}`);
+  assert.equal(r.status, 2);
+  assert.equal(r.stdout, "");
+  assert.match(r.stderr, /^polar-preflight: slot 1 refused: no lock/);
+  assert.equal(fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "", "", "docker and ps must not be called");
 });

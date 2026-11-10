@@ -4,8 +4,15 @@
 //
 // Run:  node scripts/harness-slot.mjs command <npm-script>   print the resolved command line
 //       node scripts/harness-slot.mjs run <npm-script> [args]  run it under sh
+//       node scripts/harness-slot.mjs lock acquire|release|status ...   the slot locks (H14)
 // The root package.json's dev:* scripts call `run`. The slot comes from
 // HARNESS_SLOT, default 1.
+//
+// THE LOCK (H14, D11): `run` refuses every script unless the slot's lock,
+// ~/.bitcorn-dev/locks/slot-N.lock, exists and its holder equals
+// HARNESS_HOLDER, and refuses while setup.lock is held. The refusal names the
+// holder, or "no lock". Read-only needs no lock: `command`, `lock status` and
+// dev:kill --print. scripts/polar-preflight.mjs enforces the same lock.
 //
 // SLOT 1 IS TODAY'S HARNESS (D6). Its command lines are byte-identical to the
 // scripts at 523e6ab, except dev:loopserver (D13: the bridge network, bound to
@@ -254,14 +261,27 @@ export const SCRIPTS = [
 
 const quote = (arg) => (/^[A-Za-z0-9_./:=@%+,-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`);
 
-// ctx: { home, network() } — network() resolves lazily, so the scripts that
-// need no Polar network (web, kill, stop, slot 1's API) never read networks.json.
-export function scriptCommand(script, slot, ctx, args = []) {
-  const roleIndex = ROLES.findIndex((r) => r.api === script || `dev:web${r.key}` === script || `dev:loopd-${r.key}` === script);
-  let command;
+// The script name and dev:kill's arguments, checked before anything else
+// (main checks them before the lock, so an unknown script is named as such).
+export function checkScript(script, args = []) {
+  if (!SCRIPTS.includes(script)) throw new Error(`no slot command for ${JSON.stringify(script)}; known: ${SCRIPTS.join(" ")}`);
   if (script === "dev:kill") {
     const unknown = args.filter((a) => a !== "--print");
     if (unknown.length > 0) throw new Error(`dev:kill takes only --print, got ${unknown.join(" ")}`);
+  }
+}
+
+// Read-only, so they need no lock (H14): printing a command line (the `command`
+// subcommand) and dev:kill --print. Everything else `run` starts, stops or kills.
+export const isReadOnlyRun = (script, args = []) => script === "dev:kill" && args.includes("--print");
+
+// ctx: { home, network() } — network() resolves lazily, so the scripts that
+// need no Polar network (web, kill, stop, slot 1's API) never read networks.json.
+export function scriptCommand(script, slot, ctx, args = []) {
+  checkScript(script, args);
+  const roleIndex = ROLES.findIndex((r) => r.api === script || `dev:web${r.key}` === script || `dev:loopd-${r.key}` === script);
+  let command;
+  if (script === "dev:kill") {
     return killCommand(slot, args.includes("--print"));
   } else if (script === "dev:loopserver") command = loopserverCommand(slot, ctx);
   else if (script === "dev:loopserver-stop") command = loopserverStopCommand(slot);
@@ -271,6 +291,208 @@ export function scriptCommand(script, slot, ctx, args = []) {
   else throw new Error(`no slot command for ${JSON.stringify(script)}; known: ${SCRIPTS.join(" ")}`);
   // Extra npm arguments land at the end, as they did when the script was literal text.
   return args.length > 0 ? `${command} ${args.map(quote).join(" ")}` : command;
+}
+
+// ─── the lock (H14, D11) ──────────────────────────────────────────────────
+//
+// One lock per slot, ~/.bitcorn-dev/locks/slot-N.lock, and one host-wide lock
+// for Polar setup windows, setup.lock. A lock file is created with an exclusive
+// create, so a second acquire fails. It holds holder, go, acquired_at (UTC),
+// host and the slot number or "setup". The go is a claim: the lock records what
+// the acquirer typed and cannot verify it (D11b). Every acquire, release and
+// forced release appends one line to history.log. A setup lock and a slot lock
+// never coexist: each acquire checks for the other kind before and after its
+// own create, and backs out if one appeared in between.
+
+export const lockDir = (home) => path.join(home, ".bitcorn-dev", "locks");
+const lockFile = (home, target) => path.join(lockDir(home), target === "setup" ? "setup.lock" : `slot-${target}.lock`);
+const historyFile = (home) => path.join(lockDir(home), "history.log");
+const lockName = (target) => (target === "setup" ? "setup" : `slot ${target}`);
+const utc = (date) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
+
+// null when there is no lock; { unreadable: true } when the file does not parse.
+export function readLock(home, target) {
+  let text;
+  try {
+    text = fs.readFileSync(lockFile(home, target), "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  try {
+    const lock = JSON.parse(text);
+    if (typeof lock?.holder === "string") return lock;
+  } catch {}
+  return { unreadable: true, holder: "(unreadable lock file)" };
+}
+
+function heldSlots(home) {
+  let names;
+  try {
+    names = fs.readdirSync(lockDir(home));
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  return names.map((n) => n.match(/^slot-([1-9][0-9]*)\.lock$/)?.[1]).filter(Boolean).map(Number).sort((a, b) => a - b);
+}
+
+// The other kind of lock that stands in the way of acquiring `target`, or null.
+function exclusionConflict(home, target) {
+  if (target === "setup") {
+    const slots = heldSlots(home);
+    return slots.length === 0 ? null :
+      `setup refused: slot locks are held (${slots.map((s) => `slot ${s} by ${JSON.stringify(readLock(home, s)?.holder)}`).join(", ")})`;
+  }
+  const setup = readLock(home, "setup");
+  return setup === null ? null : `slot ${target} refused: setup.lock is held by ${JSON.stringify(setup.holder)}`;
+}
+
+function requireText(flag, value) {
+  if (typeof value !== "string" || value.trim() === "") throw new Error(`${flag} must be given and not empty`);
+  return value;
+}
+
+function appendHistory(home, line) {
+  fs.appendFileSync(historyFile(home), `${line}\n`);
+}
+
+const field = (k, v) => `${k}=${JSON.stringify(v)}`;
+
+function heldFor(from, to) {
+  const minutes = Math.max(0, Math.round((Date.parse(to) - Date.parse(from)) / 60_000));
+  return Number.isNaN(minutes) ? "?" : `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
+}
+
+export function acquireLock({ home, target, holder, go, now = new Date(), host = os.hostname() }) {
+  requireText("--holder", holder);
+  requireText("--go", go);
+  const before = exclusionConflict(home, target);
+  if (before) throw new Error(before);
+  fs.mkdirSync(lockDir(home), { recursive: true });
+  const lock = { holder, go, acquired_at: utc(now), host, slot: target };
+  try {
+    fs.writeFileSync(lockFile(home, target), `${JSON.stringify(lock, null, 2)}\n`, { flag: "wx" });
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    const held = readLock(home, target);
+    throw new Error(`${lockName(target)} is already locked by ${JSON.stringify(held?.holder)}` +
+      (held?.acquired_at ? ` since ${held.acquired_at}, go ${JSON.stringify(held.go)}` : ""));
+  }
+  const after = exclusionConflict(home, target);
+  if (after) {
+    fs.unlinkSync(lockFile(home, target));
+    throw new Error(after);
+  }
+  appendHistory(home, `${utc(now)} acquire ${field("lock", lockName(target))} ${field("holder", holder)} ${field("go", go)} ${field("host", host)}`);
+  return `acquired ${lockName(target)} for ${holder}: ${lockFile(home, target)}`;
+}
+
+export function releaseLock({ home, target, holder, now = new Date() }) {
+  requireText("--holder", holder);
+  const lock = readLock(home, target);
+  if (lock === null) throw new Error(`${lockName(target)}: no lock to release`);
+  if (lock.holder !== holder) {
+    throw new Error(`${lockName(target)} is held by ${JSON.stringify(lock.holder)}, not ${JSON.stringify(holder)}; ` +
+      "a stale lock is cleared with lock release --force --reason \"<why>\"");
+  }
+  fs.unlinkSync(lockFile(home, target));
+  const at = utc(now);
+  appendHistory(home, `${at} release ${field("lock", lockName(target))} ${field("holder", holder)} ` +
+    `${field("acquired_at", lock.acquired_at)} ${field("held", heldFor(lock.acquired_at, at))}`);
+  return `harness lock released: ${lockName(target)}, holder ${holder}, held ${lock.acquired_at} to ${at} ` +
+    `(${heldFor(lock.acquired_at, at)}) on ${lock.host}; go ${JSON.stringify(lock.go)}`;
+}
+
+export function forceReleaseLock({ home, target, reason, now = new Date() }) {
+  requireText("--reason", reason);
+  const lock = readLock(home, target);
+  if (lock === null) throw new Error(`${lockName(target)}: no lock to release`);
+  fs.unlinkSync(lockFile(home, target));
+  const at = utc(now);
+  appendHistory(home, `${at} force-release ${field("lock", lockName(target))} ${field("holder", lock.holder)} ` +
+    `${field("acquired_at", lock.acquired_at ?? null)} ${field("reason", reason)}`);
+  return `harness lock FORCE-released: ${lockName(target)}, was held by ${lock.holder} since ${lock.acquired_at ?? "?"}; ` +
+    `reason ${JSON.stringify(reason)}`;
+}
+
+export function lockStatus(home) {
+  const lines = [];
+  for (const target of ["setup", ...heldSlots(home)]) {
+    const lock = readLock(home, target);
+    if (lock === null) continue;
+    lines.push(lock.unreadable ? `${lockName(target)}: lock file unreadable (${lockFile(home, target)})` :
+      `${lockName(target)}: held by ${lock.holder} since ${lock.acquired_at} on ${lock.host}; go ${JSON.stringify(lock.go)}`);
+  }
+  return lines.length > 0 ? lines.join("\n") : "no locks held";
+}
+
+// Enforcement (D11a): null when HARNESS_HOLDER holds the slot's lock, else the
+// refusal, naming the current holder or "no lock".
+export function lockRefusal(slot, harnessHolder, home) {
+  const setup = readLock(home, "setup");
+  if (setup !== null) return `slot ${slot} refused: setup.lock is held by ${JSON.stringify(setup.holder)} (a Polar setup window)`;
+  const lock = readLock(home, slot);
+  if (lock === null) {
+    return `slot ${slot} refused: no lock. Acquire it first: node scripts/harness-slot.mjs lock acquire ` +
+      `--slot ${slot} --holder <arc> --go "<who gave the go>", then set HARNESS_HOLDER=<arc>`;
+  }
+  if (!harnessHolder) return `slot ${slot} refused: locked by ${JSON.stringify(lock.holder)}, and HARNESS_HOLDER is unset`;
+  if (harnessHolder !== lock.holder) {
+    return `slot ${slot} refused: locked by ${JSON.stringify(lock.holder)}, not HARNESS_HOLDER ${JSON.stringify(harnessHolder)}`;
+  }
+  return null;
+}
+
+const LOCK_USAGE =
+  "usage: harness-slot.mjs lock acquire (--slot N | --setup) --holder <arc> --go \"<text>\"\n" +
+  "       harness-slot.mjs lock release (--slot N | --setup) --holder <arc>\n" +
+  "       harness-slot.mjs lock release (--slot N | --setup) --force --reason \"<text>\"\n" +
+  "       harness-slot.mjs lock status";
+
+function parseLockArgs(args) {
+  const opts = {};
+  const valued = { "--slot": "slot", "--holder": "holder", "--go": "go", "--reason": "reason" };
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg in valued) {
+      if (i + 1 >= args.length) throw new Error(`${arg} needs a value`);
+      opts[valued[arg]] = args[++i];
+    } else if (arg === "--setup" || arg === "--force") {
+      opts[arg.slice(2)] = true;
+    } else {
+      throw new Error(`unknown lock argument ${JSON.stringify(arg)}`);
+    }
+  }
+  return opts;
+}
+
+function lockTarget(opts) {
+  if ((opts.slot !== undefined) === Boolean(opts.setup)) throw new Error("give exactly one of --slot N or --setup");
+  if (opts.setup) return "setup";
+  if (!/^[1-9][0-9]*$/.test(opts.slot)) throw new Error(`--slot must be a whole number from 1, got ${JSON.stringify(opts.slot)}`);
+  return Number(opts.slot);
+}
+
+export function lockMain(args, { home = os.homedir(), now = new Date(), host = os.hostname() } = {}) {
+  const [action, ...rest] = args;
+  const opts = parseLockArgs(rest);
+  if (action === "status") {
+    if (Object.keys(opts).length > 0) throw new Error("lock status takes no arguments");
+    return lockStatus(home);
+  }
+  if (action === "acquire") {
+    if (opts.force || opts.reason !== undefined) throw new Error("--force and --reason belong to lock release");
+    return acquireLock({ home, target: lockTarget(opts), holder: opts.holder, go: opts.go, now, host });
+  }
+  if (action === "release") {
+    if (opts.go !== undefined) throw new Error("--go belongs to lock acquire");
+    const target = lockTarget(opts);
+    if (opts.force) return forceReleaseLock({ home, target, reason: opts.reason, now });
+    if (opts.reason !== undefined) throw new Error("--reason needs --force");
+    return releaseLock({ home, target, holder: opts.holder, now });
+  }
+  throw new Error(LOCK_USAGE);
 }
 
 // ─── entry point ──────────────────────────────────────────────────────────
@@ -284,24 +506,7 @@ export function liveContext(slot, home = os.homedir()) {
   };
 }
 
-function main(argv, env) {
-  const [sub, script, ...args] = argv;
-  if (sub !== "command" && sub !== "run") {
-    console.error("usage: harness-slot.mjs command|run <npm-script> [args]");
-    return 2;
-  }
-  let command;
-  try {
-    const slot = parseSlot(env.HARNESS_SLOT);
-    command = scriptCommand(script, slot, liveContext(slot), args);
-  } catch (error) {
-    console.error(`harness-slot: ${error.message}`);
-    return 2;
-  }
-  if (sub === "command") {
-    console.log(command);
-    return 0;
-  }
+function spawnShell(command) {
   const child = spawn("sh", ["-c", command], { cwd: ROOT, stdio: "inherit" });
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) process.on(signal, () => child.kill(signal));
   child.on("exit", (code, signal) => {
@@ -310,6 +515,44 @@ function main(argv, env) {
     process.kill(process.pid, signal);
   });
   return null;
+}
+
+// Returns an exit code, or null once `run` has handed over to the shell.
+export function main(argv, env, { home = os.homedir(), shell = spawnShell, out = console.log, err = console.error } = {}) {
+  const [sub, ...rest] = argv;
+  if (sub === "lock") {
+    try {
+      out(lockMain(rest, { home }));
+      return 0;
+    } catch (error) {
+      err(`harness-slot lock: ${error.message}`);
+      return 2;
+    }
+  }
+  if (sub !== "command" && sub !== "run") {
+    err("usage: harness-slot.mjs command|run <npm-script> [args]\n       harness-slot.mjs lock acquire|release|status ...");
+    return 2;
+  }
+  const [script, ...args] = rest;
+  let command;
+  try {
+    const slot = parseSlot(env.HARNESS_SLOT);
+    checkScript(script, args);
+    // H14 enforcement, before the command is even built.
+    if (sub === "run" && !isReadOnlyRun(script, args)) {
+      const refusal = lockRefusal(slot, env.HARNESS_HOLDER, home);
+      if (refusal) throw new Error(refusal);
+    }
+    command = scriptCommand(script, slot, liveContext(slot, home), args);
+  } catch (error) {
+    err(`harness-slot: ${error.message}`);
+    return 2;
+  }
+  if (sub === "command") {
+    out(command);
+    return 0;
+  }
+  return shell(command);
 }
 
 if (process.argv[1] && fs.realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
