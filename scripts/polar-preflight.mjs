@@ -12,6 +12,11 @@
 // Polar-GUI check stays host-wide in every slot (D10): with several networks on
 // one host, a running Polar can rewrite any of their compose files.
 //
+// LOCK (H14): the CLI refuses, exit 2, before any check, unless the slot's lock
+// (~/.bitcorn-dev/locks/slot-N.lock) is held by HARNESS_HOLDER, and while
+// setup.lock is held. Acquire it with scripts/harness-slot.mjs lock acquire.
+// The report-only run needs the lock too: it is part of the gate.
+//
 // The procedure this serves is docs/dev-setup.md § Polar regtest gate. It runs
 // immediately before each gate and again after it, not once per session,
 // because a stale tip can arise while the nodes are up. One run takes about 30
@@ -68,7 +73,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { BITCOIN_NODE, LND_NODE_NAMES, parseSlot, resolveNetwork } from "./harness-slot.mjs";
+import { BITCOIN_NODE, LND_NODE_NAMES, lockRefusal, parseSlot, resolveNetwork } from "./harness-slot.mjs";
 
 // The expected set for one Polar network, by its id. Container names embed the
 // id (polar-n<id>-<Node>); the node names are D16's five in every slot.
@@ -591,14 +596,28 @@ async function checkChannels({ docker, sleep, report, running, nodes, peersRepai
 
 // ─── entry point ──────────────────────────────────────────────────────────
 
-async function main() {
-  const args = process.argv.slice(2);
+// The lock (H14, D11a): the CLI refuses, exit 2, before any check runs, unless
+// the slot's lock is held by HARNESS_HOLDER, as the dev:* scripts do. It refuses
+// after the argument check, so an unknown flag is still named as one.
+export async function main(args = process.argv.slice(2), {
+  env = process.env, home = os.homedir(), run = runPreflight, err = console.error,
+} = {}) {
   const unknown = args.find((arg) => arg !== "--repair");
   if (unknown !== undefined) {
-    console.error(`polar-preflight: unknown argument ${unknown}; the only flag is --repair`);
+    err(`polar-preflight: unknown argument ${unknown}; the only flag is --repair`);
     return 2;
   }
-  const { exitCode } = await runPreflight({ repair: args.includes("--repair") });
+  let refusal;
+  try {
+    refusal = lockRefusal(parseSlot(env.HARNESS_SLOT), env.HARNESS_HOLDER, home);
+  } catch (error) {
+    refusal = error.message;
+  }
+  if (refusal) {
+    err(`polar-preflight: ${refusal}`);
+    return 2;
+  }
+  const { exitCode } = await run({ repair: args.includes("--repair"), env });
   return exitCode;
 }
 
