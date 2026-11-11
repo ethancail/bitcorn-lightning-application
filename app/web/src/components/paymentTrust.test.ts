@@ -19,7 +19,7 @@ const S = {
   S1: "Payments are paused. Your node can't confirm this price came from Bitcorn, so it won't pay it. Nothing has been sent. If this doesn't clear, contact Bitcorn.",
   S2: "Payments are blocked. The subscription details your node received failed a security check. Nothing has been sent. Don't pay from another wallet. Contact Bitcorn.",
   S3k: "Payments are paused. Your app needs an update before it can pay. Update Bitcorn Lightning in the Umbrel App Store.",
-  S3l: "Your node's Lightning service isn't responding, so payments are paused. It usually comes back within a few minutes; if it's still down in an hour, restart the Lightning app.",
+  S3l: "Your node's Lightning service isn't responding, so payments are paused. It usually comes back within a few minutes; if it's still down in an hour, restart the Lightning app, then restart Bitcorn Lightning.",
   S4: (p: string) =>
     `Payments are paused. The subscription price, ${p}, is above the limit built into this app. Nothing has been sent. Contact Bitcorn.`,
   S5: "Payments are paused. The price your node received doesn't look right, so it won't pay it. Nothing has been sent. Contact Bitcorn.",

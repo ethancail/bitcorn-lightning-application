@@ -189,7 +189,7 @@ export function trustCopy(
           )
         : split(
             "Your node's Lightning service isn't responding, so payments are paused.",
-            "It usually comes back within a few minutes; if it's still down in an hour, restart the Lightning app.",
+            "It usually comes back within a few minutes; if it's still down in an hour, restart the Lightning app, then restart Bitcorn Lightning.",
           );
     case "S4_price_above_cap":
       return split(
