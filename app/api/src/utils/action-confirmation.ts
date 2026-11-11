@@ -145,8 +145,14 @@ const LOOP_IN_CEILING_FIELDS: Field[] = [
  * TWO reachable routes are deliberately absent, and their absence is enforced
  * as EXEMPT_MUTATIONS entries rather than left implicit: /api/autobuy/execute-now
  * and /api/treasury/rebalance/loop-out/auto take NO consequential caller-supplied
- * parameter, so there is nothing to prove knowledge of. An intent nonce was
- * considered for them and declined. /api/subscription/pay-from-node used to be
+ * parameter, so there is nothing to prove knowledge of. Ruled for both by
+ * bitcorn-research/decisions/2026-11-10-treasury-price-trust-lnd-signed-status-
+ * cap-address-pin-and-sibling-exemption-ground.md D8, which
+ * decisions/2026-11-10-treasury-price-trust-no-parameter-outflow-routes-exempt-
+ * amends-2026-09-03-domain.md places inside the 2026-09-03 domain. This code
+ * earlier also claimed that an intent nonce was considered for them and
+ * declined; that is the code's claim, not a vault ruling (D8 leaves it
+ * unruled). /api/subscription/pay-from-node used to be
  * the third; it is confirmed by echo of the server-derived values the member
  * was shown (bitcorn-research/decisions/2026-11-05-pay-from-node-confirmation-
  * by-echo-settlement-guard-and-price-ceiling.md, D1), below.
@@ -331,11 +337,18 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
  */
 export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: string }> = [
   // ── Reachable outflow, but no consequential caller-supplied parameter.
-  //    "Excluded by decision 2026-08-18; intent nonce considered and declined":
-  //    no vault record of that decision exists (decisions/2026-11-05-pay-from-
-  //    node-confirmation-by-echo-settlement-guard-and-price-ceiling.md §2).
-  //    That record's D4 leaves these two exactly as they are; pay-from-node,
-  //    once the third, left this group by its D1 and is in CONFIRMED_ROUTES.
+  //    Ground: decisions/2026-11-10-treasury-price-trust-lnd-signed-status-
+  //    cap-address-pin-and-sibling-exemption-ground.md D8 — each route takes
+  //    no parameters, and per-action confirmation proves only that the caller
+  //    knows the request's parameters, so for a route with none it would
+  //    prove nothing. decisions/2026-11-10-treasury-price-trust-no-parameter-
+  //    outflow-routes-exempt-amends-2026-09-03-domain.md places that
+  //    exemption inside the 2026-09-03 domain. (This comment used to cite a
+  //    "decision 2026-08-18"; no vault record of it exists.) Pay-from-node's
+  //    D4 (decisions/2026-11-05-pay-from-node-confirmation-by-echo-settlement-
+  //    guard-and-price-ceiling.md) left these two exactly as they are; pay-
+  //    from-node, once the third, left this group by its D1 and is in
+  //    CONFIRMED_ROUTES.
   { method: "POST", match: { kind: "exact", url: "/api/treasury/rebalance/loop-out/auto" }, why: "group3-no-parameter" },
   { method: "POST", match: { kind: "exact", url: "/api/autobuy/execute-now" }, why: "group3-no-parameter" },
 

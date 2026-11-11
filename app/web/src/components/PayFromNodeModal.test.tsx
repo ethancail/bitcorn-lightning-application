@@ -68,7 +68,8 @@ async function mountInCard() {
         { className: "panel fade-in", "data-testid": "page-card" },
         React.createElement("span", { "data-testid": "in-card" }),
         React.createElement(PayFromNodeModal, {
-          status: { price_sats: PRICE, deposit_address: ADDR },
+          // Verified and pinned (treasury-price-trust C15): the steps under test render.
+          status: { price_sats: PRICE, deposit_address: ADDR, treasury_signature: "verified" },
           onClose: () => undefined,
         }),
       ),

@@ -48,7 +48,9 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
     api.getSubscriptionStatus()
       .then((st) => {
         if (cancelled) return;
-        setMembershipLocked(st.open_channel_allowed === false);
+        // Only a VERIFIED false locks (treasury-price-trust §4 R9); an
+        // unverified one is unknown, and the treasury's acceptor decides.
+        setMembershipLocked(st.open_channel_allowed === false && st.treasury_signature === "verified");
         setMembershipTier("current_tier" in st ? st.current_tier : undefined);
       })
       .catch(() => { if (!cancelled) setMembershipLocked(false); });

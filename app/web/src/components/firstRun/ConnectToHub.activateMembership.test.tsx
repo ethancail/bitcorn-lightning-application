@@ -44,6 +44,9 @@ const PREPAY = {
   last_payment_at: null,
   last_payment_txid: null,
   grace: { fresh_until: 0, worker_until: 0, routing_until: 0, close_at: 0 },
+  // The member's proxy labels every status it serves (treasury-price-trust
+  // §4 R3); these cases are about a verdict the node has verified.
+  treasury_signature: "verified",
 };
 
 let host: HTMLDivElement;
@@ -138,6 +141,23 @@ describe("B1 — the Activate membership button follows the treasury's verdict",
     expect(activateButton()).toBeUndefined();
   });
 
+  it.each(["unsigned", "invalid", "unverifiable", undefined])(
+    "treasury-price-trust §4 R9: a false the node could NOT verify (%s) locks nothing — the plain Open Channel shows",
+    async (label) => {
+      stub.getSubscriptionStatus.mockResolvedValue({ ...PREPAY, open_channel_allowed: false, treasury_signature: label });
+      await render();
+      expect(activateButton(), "an unverified false locked the open").toBeUndefined();
+      expect(host.textContent).toContain("Open Channel");
+
+      // Anti-vacuity, remounted: the same false, VERIFIED, shows the button.
+      await act(async () => root.unmount());
+      root = createRoot(host);
+      stub.getSubscriptionStatus.mockResolvedValue({ ...PREPAY, open_channel_allowed: false, treasury_signature: "verified" });
+      await render();
+      expect(activateButton()).toBeDefined();
+    },
+  );
+
   it("hidden when the status can't be fetched", async () => {
     stub.getSubscriptionStatus.mockRejectedValue(Object.assign(new Error("treasury_unreachable"), { status: 503 }));
     await render();
@@ -170,7 +190,7 @@ describe("B1 — the Activate membership button follows the treasury's verdict",
 // button shows; only its label is under test.
 describe("L1 — the button's label follows current_tier", () => {
   async function labelFor(status: Record<string, unknown>) {
-    stub.getSubscriptionStatus.mockResolvedValue({ ...status, open_channel_allowed: false });
+    stub.getSubscriptionStatus.mockResolvedValue({ ...status, open_channel_allowed: false, treasury_signature: "verified" });
     await render();
     const b = activateButton();
     expect(b).toBeDefined();

@@ -54,6 +54,7 @@ import {
 } from "./payModalMachine";
 import { renewalAmount } from "./subscriptionBanner";
 import { payErrorMessage } from "./subscriptionPayMessages";
+import { depositAddressDisplay, trustCopy, trustStateOfRefusal, type TrustState } from "./paymentTrust";
 
 // This modal's wording for a missing confirmation (G3 ruling R8).
 const CONFIRMATION_REQUIRED_MESSAGE = "Not confirmed. Nothing was sent. Close this window and try again.";
@@ -96,12 +97,22 @@ export default function PayFromNodeModal({
   // to that Pick. The panel's full-status call site still satisfies it,
   // and the 402 RoutingDeniedNotice can feed the denial payload directly
   // without a second status fetch.
-  status: Pick<SubscriptionStatusApplicable, "price_sats" | "deposit_address">;
+  // treasury-price-trust C15: the proxy's labels ride along, so the modal can
+  // refuse to render the address (or its BIP-21 URI) from a status that is not
+  // verified and pinned, whichever surface opened it.
+  status: Pick<
+    SubscriptionStatusApplicable,
+    "price_sats" | "deposit_address" | "treasury_signature" | "treasury_signature_reason" | "treasury_pay_refusal"
+  >;
   onClose: () => void;
 }) {
   const [state, dispatch] = useReducer(reducePayModal, INITIAL_PAY_MODAL_STATE);
   const [quote, setQuote] = useState<PayFromNodeQuote | null>(null);
   const [quoteError, setQuoteError] = useState(false);
+  // treasury-price-trust (spec §4 R8): a quote refused because the status is
+  // not verified, or names a target this node won't pay. The state shows and
+  // no confirm is offered.
+  const [quoteRefusal, setQuoteRefusal] = useState<TrustState | null>(null);
   const [copied, setCopied] = useState(false);
   // What is rendered, and therefore what is echoed.
   const [target, setTarget] = useState({
@@ -150,10 +161,16 @@ export default function PayFromNodeModal({
     let cancelled = false;
     setQuote(null);
     setQuoteError(false);
+    setQuoteRefusal(null);
     api
       .getPayFromNodeQuote()
       .then((q) => { if (!cancelled) setQuote(q); })
-      .catch(() => { if (!cancelled) setQuoteError(true); });
+      .catch((e: any) => {
+        if (cancelled) return;
+        const refusal = trustStateOfRefusal(e?.code, e?.body);
+        if (refusal) setQuoteRefusal(refusal);
+        else setQuoteError(true);
+      });
     return () => { cancelled = true; };
   }, [state.step]);
 
@@ -206,7 +223,7 @@ export default function PayFromNodeModal({
           dispatch({ t: "error", message: payErrorMessage("pay_target_changed"), code: "pay_target_changed" });
         }
       } else {
-        dispatch({ t: "error", message: payErrorMessage(e?.code, e?.detail), code: e?.code });
+        dispatch({ t: "error", message: payErrorMessage(e?.code, e?.detail, e?.body), code: e?.code });
       }
     }
   }
@@ -233,6 +250,35 @@ export default function PayFromNodeModal({
     copyText(txid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
+  }
+
+  // treasury-price-trust C15: a status not verified and pinned shows its
+  // S-state and a Close button — no chooser, no address, no BIP-21 URI.
+  const display = depositAddressDisplay({ ...status, applicable: true });
+  if (!display.show) {
+    const s = display.state;
+    const copy = s
+      ? trustCopy(s, s.state === "S4_price_above_cap" ? renewalAmount(s.price_sats, usdRate).text : undefined)
+      : null;
+    return createPortal(
+      <div className="dialog-overlay" role="dialog" aria-modal="true" aria-label="Pay subscription">
+        <div className="dialog-card sub-pay-modal">
+          {copy && (
+            <div className="sub-alert sub-alert-amber" role="alert" data-trust-state={s!.state}>
+              <span className="sub-alert-icon" aria-hidden>!</span>
+              <div className="sub-alert-body">
+                <strong>{copy.headline}</strong>
+                {copy.body ? <> {copy.body}</> : null}
+              </div>
+            </div>
+          )}
+          <div className="dialog-actions" style={{ marginTop: 16 }}>
+            <button className="btn btn-outline" onClick={onClose}>Close</button>
+          </div>
+        </div>
+      </div>,
+      document.body,
+    );
   }
 
   return createPortal(
@@ -285,6 +331,23 @@ export default function PayFromNodeModal({
                 </div>
               </div>
             )}
+            {quoteRefusal && (() => {
+              const copy = trustCopy(
+                quoteRefusal,
+                quoteRefusal.state === "S4_price_above_cap"
+                  ? renewalAmount(quoteRefusal.price_sats, usdRate).text
+                  : undefined,
+              );
+              return (
+                <div className="sub-alert sub-alert-amber" role="alert" data-trust-state={quoteRefusal.state} style={{ marginBottom: 14 }}>
+                  <span className="sub-alert-icon" aria-hidden>!</span>
+                  <div className="sub-alert-body">
+                    <strong>{copy.headline}</strong>
+                    {copy.body ? <> {copy.body}</> : null}
+                  </div>
+                </div>
+              );
+            })()}
             <div className="dialog-body" style={{ marginBottom: 14 }}>
               Sends an on-chain payment from your node's wallet to your own
               subscription deposit address.
@@ -296,8 +359,9 @@ export default function PayFromNodeModal({
               </div>
               <div>
                 <dt>To deposit address</dt>
-                <dd className="sub-pay-address" title={target.deposit_address}>
-                  {truncMiddle(target.deposit_address)}
+                {/* C15: no address while the quote refuses it. */}
+                <dd className="sub-pay-address" title={quoteRefusal ? undefined : target.deposit_address}>
+                  {quoteRefusal ? "—" : truncMiddle(target.deposit_address)}
                 </dd>
               </div>
               <div>
@@ -328,7 +392,7 @@ export default function PayFromNodeModal({
               <button
                 className="btn btn-primary"
                 onClick={handleConfirm}
-                disabled={state.step === "sending"}
+                disabled={state.step === "sending" || quoteRefusal != null}
               >
                 {state.step === "sending" ? "Sending…" : "Confirm send"}
               </button>

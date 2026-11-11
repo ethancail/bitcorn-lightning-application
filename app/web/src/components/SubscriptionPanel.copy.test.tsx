@@ -54,6 +54,9 @@ const CURRENT = {
   last_payment_at: Date.now() - 10 * DAY,
   last_payment_txid: "f".repeat(64),
   grace: { fresh_until: 0, worker_until: 0, routing_until: 0, close_at: 0 },
+  // The proxy's label (treasury-price-trust C15): the deposit block renders
+  // only for a verified, pinned status.
+  treasury_signature: "verified",
 };
 const MISSING = { applicable: false, reason: "missing" };
 

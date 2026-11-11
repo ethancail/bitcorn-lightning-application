@@ -6,9 +6,14 @@
 //     response shape Cases A-E)
 //
 // The /api/subscription/status route runs on every node. Treasury
-// computes the actual payload by reading subscription state. Members
-// validate the caller's JWT locally for fast-path 401/503, then
-// forward to treasury and return the unmodified response.
+// computes the actual payload by reading subscription state, and its
+// route handler (index.ts) signs the serialized bytes with LND when the
+// member sends a nonce (treasury-price-trust spec §2); this module stays
+// pure of HTTP and signing. Members validate the caller's JWT locally for
+// fast-path 401/503, fetch from the treasury through the one verifying
+// fetch (memberStatusClient.ts), and return the body parsed and
+// re-serialized with the proxy's own `treasury_signature` label — not
+// the unmodified response.
 //
 // Case A (applicable: true) returns the full subscription payload. The
 // four other cases (B-E) return discriminated `applicable: false`

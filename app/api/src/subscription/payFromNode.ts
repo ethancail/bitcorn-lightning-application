@@ -12,10 +12,16 @@
 //     judgment.md; specs/2026-11-05-pay-from-node-spec.md
 //
 // Safety property (the whole reason this isn't a general send-coins
-// endpoint): amount and destination are derived SERVER-SIDE — the amount
-// from the treasury's authoritative `price_sats`, the destination from the
-// member's own treasury-allocated `deposit_address`. Never add a request
-// parameter that lets the caller choose the address or amount.
+// endpoint): amount and destination are derived SERVER-SIDE. The amount is
+// the treasury's `price_sats`, accepted only from a status response signed by
+// the treasury's LND key and verified against the release-pinned
+// TREASURY_PUBKEY, and only as a whole number of sats at or below
+// SUBSCRIPTION_PRICE_CAP_SATS (priceCap.ts). The destination is the member's
+// PINNED deposit address (depositAddressPin.ts); a stated address that differs
+// from the pin is refused until the change is acknowledged on the node itself
+// (bitcorn-research specs/2026-11-10-treasury-price-trust-spec.md §3–§6).
+// Never add a request parameter that lets the caller choose the address or
+// amount.
 //
 // What the manual route's body DOES carry (D1): an ECHO of the price and
 // address the member was shown, which is compared against the server's own
@@ -39,6 +45,8 @@
 // import time) is imported lazily inside deriveLocalMemberStatus so the
 // pure helpers above it can be unit-tested without a database — the
 // other API test files follow the same db-free-at-load discipline.
+
+import { SUBSCRIPTION_PRICE_CAP_SATS, checkSubscriptionPrice } from "./priceCap";
 
 // ─── Error contract ──────────────────────────────────────────────────────
 
@@ -67,7 +75,18 @@ export type PayFromNodeError =
   // Manual (without price_acknowledged) and auto.
   | "price_above_acknowledged"
   // Auto only: no price has ever been acknowledged (a manual send fills it).
-  | "price_unacknowledged";
+  | "price_unacknowledged"
+  // treasury-price-trust (spec §4, §5, §6.3). The status response is not
+  // signed, or its signature fails, or it cannot be checked: no actor reads
+  // it, so nothing is sent (D5).
+  | "status_unverified"
+  // The verified price is not a positive whole number of sats, or is above
+  // SUBSCRIPTION_PRICE_CAP_SATS. Neither can be acknowledged.
+  | "price_not_integer"
+  | "price_above_cap"
+  // The verified address differs from the pinned one; refused until the
+  // change is acknowledged on the node itself (spec §6.4).
+  | "deposit_address_changed";
 
 /** App-level error code → HTTP status. 409 for a guard that refused and
  *  can be resolved by the member (in-flight lock, decision § Idempotency;
@@ -84,8 +103,12 @@ export function errorHttpStatus(code: PayFromNodeError): number {
     case "settlement_overdue":
     case "price_above_acknowledged":
     case "price_unacknowledged":
+    case "price_not_integer":
+    case "price_above_cap":
+    case "deposit_address_changed":
       return 409;
     case "status_unavailable":
+    case "status_unverified":
     case "status_incomplete":
     case "lnd_unavailable":
       return 503;
@@ -262,13 +285,61 @@ export function isSendInFlight(): boolean {
   return sendInFlight;
 }
 
+// ─── The pay-target check (pure) ────────────────────────────────────────────
+//
+// treasury-price-trust spec §5 and §6.3: the price must be a positive whole
+// number of sats at or below SUBSCRIPTION_PRICE_CAP_SATS, and the address must
+// equal the pin. One function, used at E1 (the derivation every send and the
+// quote go through), at E2 (immediately before the marker write) and by the
+// status proxy's display label, so the three cannot disagree.
+
+export type PayTargetRefusal =
+  | { code: "price_not_integer" | "price_above_cap"; detail: string; price_sats: number }
+  | {
+      code: "deposit_address_changed";
+      detail: string;
+      pinned_address: string | null;
+      stated_address: string;
+    };
+
+/** Null when the target may be paid. A missing pin refuses (fail closed):
+ *  callers write the first-sight pin before asking. */
+export function payTargetRefusal(
+  target: PaymentTarget,
+  pinnedAddress: string | null,
+  cap: number | undefined,
+): PayTargetRefusal | null {
+  const price = checkSubscriptionPrice(target.price_sats, cap);
+  if (!price.ok) return { code: price.code, detail: price.detail, price_sats: target.price_sats };
+  if (pinnedAddress !== target.deposit_address) {
+    return {
+      code: "deposit_address_changed",
+      detail: "the treasury states a deposit address other than the one this node pinned",
+      pinned_address: pinnedAddress,
+      stated_address: target.deposit_address,
+    };
+  }
+  return null;
+}
+
 // ─── Status derivation (network) ────────────────────────────────────────────
 //
-// Replicates the member-side status proxy (index.ts /api/subscription/
-// status member path): cached JWT → resolved treasury base → fetch the
-// authoritative status → parse the payment target. Kept here so the
-// endpoint derives amount/destination from the same source of truth the
-// panel polls, rather than trusting anything client-supplied.
+// Through the one verifying fetch (memberStatusClient.fetchLocalSubscription
+// Status, spec §3.1) — the same fetch the status proxy, the scheduler and the
+// auto-pay settings use — then E1: the cap, the integer rule and the pin,
+// before any target is returned. Only a verified, integer, capped price to
+// the pinned address leaves this function.
+
+export type DeriveStatusFailure =
+  | { ok: false; code: "status_unavailable"; detail: string }
+  | {
+      ok: false;
+      code: "status_unverified";
+      detail: string;
+      reason: "unsigned" | "invalid" | "unverifiable";
+      verification_reason?: "key_unset" | "lnd_unavailable";
+    }
+  | ({ ok: false } & PayTargetRefusal);
 
 export type DeriveStatusResult =
   | {
@@ -276,15 +347,22 @@ export type DeriveStatusResult =
       target: PaymentTarget;
       credit: { paid_through: number | null; last_payment_txid: string | null };
     }
-  | { ok: false; code: "status_unavailable"; detail: string };
+  | DeriveStatusFailure;
 
-export async function deriveLocalMemberStatus(): Promise<DeriveStatusResult> {
-  // Reuse the shared member-local status fetch (memberStatusClient) so the
-  // pay path and the auto-pay scheduler derive amount/destination from one
-  // source of truth. Lazy import keeps this file db-free at load.
-  const { fetchLocalSubscriptionStatus } = await import("./memberStatusClient");
-  const result = await fetchLocalSubscriptionStatus();
+export async function deriveLocalMemberStatus(memberPubkey?: string): Promise<DeriveStatusResult> {
+  // Lazy imports keep this file db-free at load.
+  const client = await import("./memberStatusClient");
+  const result = await client.fetchLocalSubscriptionStatus();
   if (!result.ok) {
+    if (result.code === "status_unverified") {
+      return {
+        ok: false,
+        code: "status_unverified",
+        detail: result.detail,
+        reason: result.verdict,
+        ...(result.verification_reason ? { verification_reason: result.verification_reason } : {}),
+      };
+    }
     return { ok: false, code: "status_unavailable", detail: result.detail };
   }
   const target = parseStatusForPayment(result.status);
@@ -295,6 +373,18 @@ export async function deriveLocalMemberStatus(): Promise<DeriveStatusResult> {
       detail: "treasury status not applicable or missing deposit_address/price_sats",
     };
   }
+  // E1. The pin is written at first sight by the verifying fetch; ensurePin
+  // here is the same idempotent call, so E1 never compares against nothing.
+  const member = memberPubkey ?? (await client.ownNodePubkey());
+  if (!member) return { ok: false, code: "status_unavailable", detail: "this node's pubkey is not known yet" };
+  const { db } = await import("../db");
+  const { ensurePin } = await import("./depositAddressPin");
+  const priceRefusal = checkSubscriptionPrice(target.price_sats, SUBSCRIPTION_PRICE_CAP_SATS);
+  const pinned = priceRefusal.ok
+    ? ensurePin(db, member, target.deposit_address, Math.floor(Date.now() / 1000)).deposit_address
+    : null;
+  const refusal = payTargetRefusal(target, pinned, SUBSCRIPTION_PRICE_CAP_SATS);
+  if (refusal) return { ok: false, ...refusal };
   return { ok: true, target, credit: parseCreditState(result.status) };
 }
 
@@ -336,6 +426,12 @@ export interface ExecutePayFromNodeFailure {
   acknowledged_price_sats?: number | null;
   /** The marker a settlement refusal names. */
   marker?: MarkerSummary;
+  /** status_unverified: the verdict, and for `unverifiable` its reason. */
+  reason?: "unsigned" | "invalid" | "unverifiable";
+  verification_reason?: "key_unset" | "lnd_unavailable";
+  /** deposit_address_changed: both addresses, for the S6 copy. */
+  pinned_address?: string | null;
+  stated_address?: string;
 }
 export type ExecutePayFromNodeResult =
   | ExecutePayFromNodeSuccess
@@ -406,9 +502,12 @@ export async function executePayFromNode(
     };
   }
   try {
-    const status = await deriveLocalMemberStatus();
+    const status = await deriveLocalMemberStatus(args.memberPubkey);
     if (!status.ok) {
-      return { ok: false, code: status.code, detail: status.detail };
+      // Verification, the cap, the integer rule and the pin (E1) refuse here,
+      // before the database is touched: nothing sent, no marker, no price.
+      const { ok: _ok, ...refusal } = status;
+      return { ok: false, ...refusal };
     }
     const { deposit_address, price_sats } = status.target;
 
@@ -549,6 +648,19 @@ export async function executePayFromNode(
         estimated_fee_sats: estimatedFeeSats,
       };
     }
+
+    // E2 (treasury-price-trust spec §5): re-check the exact price and address
+    // about to be written and sent — the cap, the integer rule and the pin —
+    // immediately before the marker write, so a failure leaves no marker
+    // behind. It also guarantees that any price recorded as acknowledged
+    // below is a verified integer at or below the cap (§7, ruling 7).
+    const { getCurrentPin } = await import("./depositAddressPin");
+    const e2 = payTargetRefusal(
+      { deposit_address, price_sats },
+      getCurrentPin(db, memberPubkey)?.deposit_address ?? null,
+      SUBSCRIPTION_PRICE_CAP_SATS,
+    );
+    if (e2) return { ok: false, ...e2 };
 
     // Write the marker (and the acknowledged price, where ruled) and COMMIT
     // before the send is called. A crash between here and the broadcast

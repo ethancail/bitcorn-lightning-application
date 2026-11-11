@@ -8,7 +8,33 @@
 import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
-import { CHALLENGE_PREFIX, NAME_SIGNATURE_PREFIX, buildNameSignedString } from "./challengeGrammar";
+import {
+  CHALLENGE_PREFIX,
+  NAME_SIGNATURE_PREFIX,
+  TREASURY_STATUS_PREFIX,
+  buildNameSignedString,
+  buildTreasuryStatusSignedString,
+} from "./challengeGrammar";
+
+describe("treasury status grammar (treasury-price-trust spec §1.1)", () => {
+  it("TREASURY_STATUS_PREFIX is pinned to its literal", () => {
+    expect(TREASURY_STATUS_PREFIX).toBe("bitcorn:treasury-status:v1:");
+  });
+
+  it("no prefix of the three signed strings starts another (none verifies as another)", () => {
+    const all = ["bitcorn:token-request:", "bitcorn:member-name:", "bitcorn:treasury-status:v1:"];
+    for (const a of all) for (const b of all) if (a !== b) expect(a.startsWith(b), `${a} starts with ${b}`).toBe(false);
+  });
+
+  it("builds bitcorn:treasury-status:v1:<member_pubkey>:<nonce>:<body_sha256> exactly", () => {
+    const member = "02" + "ab".repeat(32);
+    const nonce = "0f".repeat(16);
+    const digest = "9e".repeat(32);
+    expect(buildTreasuryStatusSignedString(member, nonce, digest)).toBe(
+      `bitcorn:treasury-status:v1:${member}:${nonce}:${digest}`,
+    );
+  });
+});
 
 describe("challenge grammar", () => {
   it("CHALLENGE_PREFIX is byte-identical to the pre-D8 literal", () => {

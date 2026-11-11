@@ -50,6 +50,9 @@ const applicable = (o: { paid_through?: number; worker_until?: number; price?: n
   last_payment_at: NOW - 10 * DAY,
   last_payment_txid: "f".repeat(64),
   grace: { fresh_until: 0, worker_until: o.worker_until ?? NOW + 27 * DAY, routing_until: NOW + 50 * DAY, close_at: NOW + 80 * DAY },
+  // The proxy's label (treasury-price-trust C15): the deposit block renders
+  // only for a verified, pinned status.
+  treasury_signature: "verified",
 });
 
 const autoPay = (o: { enabled?: boolean; current_price?: number | null } = {}) => ({
