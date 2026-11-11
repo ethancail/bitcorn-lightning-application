@@ -804,7 +804,8 @@ function OverdueRender({
       <PanelHeader pill={<Pill kind={tone} label="payment overdue" />} />
       <AlertBox variant={tone} icon="⚠">
         {/* R45 Q5 (ruling 5): the services by the names a member sees. */}
-        Your membership payment is overdue, so hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements.
+        {/* R56 (1): U+2011, a NON-BREAKING hyphen, so "Auto‑Buy" never splits. */}
+        {"Your membership payment is overdue, so hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements."}
         {!blocked && <> Pay <Amount sats={status.price_sats} /> to restore them.</>}
         {connectionStaysOpen(status) && " Your connection to Bitcorn is still open and its balance is unchanged."}
       </AlertBox>

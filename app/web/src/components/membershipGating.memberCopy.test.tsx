@@ -116,7 +116,7 @@ describe("DW5 / item C — the panel's routing_lapsed render says hosted service
   it("carries the ruled meaning, with the live price", async () => {
     const text = await mountPanel();
     expect(text).toContain(
-      "Your membership payment is overdue, so hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements. Pay 50,000 sats to restore them.",
+      "Your membership payment is overdue, so hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements. Pay 50,000 sats to restore them.",
     );
     expect(text).toContain("payment overdue"); // the pill
   });
@@ -281,7 +281,7 @@ describe("L2 drive-mode review — no 'funds are safe', R14's 'connection', amou
     const d = bannerFor({ ...routingLapsed(), current_tier: tier } as any, NOW, RATE);
     if (!d.render) throw new Error("no banner");
     expect(d.body).toBe(
-      "Hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements. Pay $30.00 (50,000 sats) to restore them.",
+      "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements. Pay $30.00 (50,000 sats) to restore them.",
     );
     expect(d.actionLabel).toBe("Renew $30.00"); // R45 A1: the action follows the amount rules
   });
@@ -290,7 +290,7 @@ describe("L2 drive-mode review — no 'funds are safe', R14's 'connection', amou
     const d = bannerFor({ ...routingLapsed(), current_tier: tier } as any, NOW, null);
     if (!d.render) throw new Error("no banner");
     expect(d.body).toBe(
-      "Hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements. Pay 50,000 sats to restore them.",
+      "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements. Pay 50,000 sats to restore them.",
     );
     expect(d.body).not.toContain("$");
   });

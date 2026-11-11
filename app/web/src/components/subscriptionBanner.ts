@@ -193,7 +193,9 @@ export function bannerFor(
       // R45 A1 (ruling 2), which replaced P2's sats-only pin.
       const amount = renewalAmount(status.price_sats, usdRate);
       // R45 Q5 (ruling 5): the services by the names a member sees.
-      const context = "Hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements.";
+      // R56 (1): "Auto‑Buy" with a NON-BREAKING hyphen (U+2011), so a narrow
+      // screen never splits it at the hyphen.
+      const context = "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements.";
       return {
         render: true,
         severity: bannerSeverityForTier(tier),

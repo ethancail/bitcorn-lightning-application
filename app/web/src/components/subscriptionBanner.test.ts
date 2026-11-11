@@ -89,7 +89,7 @@ describe("bannerFor — gated tiers render with correct severity/copy", () => {
     expect(d.severity).toBe("orange");
     expect(d.headline).toBe("Your membership payment is overdue");
     expect(d.body).toBe(
-      "Hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements. Pay 50,000 sats to restore them.",
+      "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements. Pay 50,000 sats to restore them.",
     );
     expect(d.actionLabel).toBe("Renew 50,000 sats");
   });
@@ -109,7 +109,7 @@ describe("bannerFor — gated tiers render with correct severity/copy", () => {
     expect(d.severity).toBe("orange");
     expect(d.headline).toBe("Your membership payment is overdue");
     expect(d.body).toBe(
-      "Hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements. Pay 50,000 sats to restore them.",
+      "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements. Pay 50,000 sats to restore them.",
     );
     expect(d.actionLabel).toBe("Renew 50,000 sats");
   });

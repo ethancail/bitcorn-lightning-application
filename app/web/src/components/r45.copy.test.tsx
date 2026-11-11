@@ -6,7 +6,7 @@
 //     payment counts after its first confirmation on the Bitcoin network,
 //     usually within an hour."
 //   Q5 (ruling 5) — the paused services by the names a member sees: "Hosted
-//     services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin
+//     services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin
 //     settlements." "Pay {price} to restore them." stays, dollars first.
 //   Q6 (ruling 6) — member-facing "channel" → "connection", every reachable
 //     state, the non-renewal ones included; the no-connection button matches
@@ -168,7 +168,7 @@ const memberText = () => {
 const RENEW_ROW =
   "If you renew — recovery is fully in-app. Your payment counts after its first confirmation on the Bitcoin network, " +
   "usually within an hour. Then all paused services come back online, and your paid-through date advances by 30 days.";
-const SERVICES = "Hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements.";
+const SERVICES = "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements.";
 
 describe("R45 copy", () => {
   it("runs on the pinned Node 20", () => {
@@ -198,7 +198,7 @@ describe("R45 copy", () => {
     it.each(["routing_lapsed", "close_due"] as const)("%s panel alert: the services, then the dollar ask", async (tier) => {
       await panel(status(tier));
       expect(text()).toContain(
-        "Your membership payment is overdue, so hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements. " +
+        "Your membership payment is overdue, so hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements. " +
           "Pay $25.20 (42,000 sats) to restore them.",
       );
       expect(text()).not.toMatch(/valuation, Auto-Buy and stablecoin settlement data/);

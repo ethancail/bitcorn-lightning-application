@@ -14,9 +14,10 @@
 
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { api, type SubscriptionStatus } from "../api/client";
+import { api, fmtSats, type SubscriptionStatus } from "../api/client";
 import {
   bannerFor,
+  renewalAmount,
   priceChangeBannerFor,
   autoPayAlertContent,
   ALERT_VARIANT_CLASS,
@@ -31,6 +32,20 @@ import { usePendingPayment } from "./usePendingPayment";
 
 /** The banner's read of the waiting state: the dashboard's status cadence. */
 const PENDING_POLL_MS = 60_000;
+
+/** R56 (2), G3 ruling R2: every amount in the banner's text renders as one
+ *  unbreakable unit (.sub-amount, as on the panel and in the pay modal), so a
+ *  phone never splits "$X (N sats)" between its lines. The words are unchanged: each
+ *  occurrence of an amount is wrapped in place. Longest first, so "$X (N
+ *  sats)" wins over its own "$X". */
+function noWrapAmounts(text: string, amounts: string[]): React.ReactNode {
+  const list = [...new Set(amounts.filter(Boolean))].sort((a, b) => b.length - a.length);
+  if (list.length === 0) return text;
+  const re = new RegExp(`(${list.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`);
+  return text.split(re).map((part, i) =>
+    list.includes(part) ? <span key={i} className="sub-amount">{part}</span> : part,
+  );
+}
 
 export default function MemberSubscriptionBanner({
   status,
@@ -58,6 +73,9 @@ export default function MemberSubscriptionBanner({
   const pending = usePendingPayment(tierRenders, PENDING_POLL_MS);
   const waiting = tierRenders ? pendingPaymentView(pending, status) : null;
   const waitingCopy = waiting ? pendingPaymentCopy(waiting, Date.now()) : null;
+  // The amounts the banner's text can carry (R56 (2)).
+  const price = status?.applicable === true ? renewalAmount(status.price_sats, usdRate) : null;
+  const bannerAmounts = price ? [price.text, price.label] : [];
 
   const priceChange = priceChangeBannerFor(cfg);
   const activeAlerts = cfg?.active_alerts ?? [];
@@ -72,7 +90,7 @@ export default function MemberSubscriptionBanner({
           <span className="alert-icon" aria-hidden>{SEVERITY_ICON.info}</span>
           <div className="member-sub-banner-body">
             <div className="member-sub-banner-headline">{waitingCopy.headline}</div>
-            <div>{waitingCopy.body}</div>
+            <div>{noWrapAmounts(waitingCopy.body, waiting ? [fmtSats(waiting.amount_sats)] : [])}</div>
             <Link className="member-sub-banner-link" to="/settings">
               View subscription →
             </Link>
@@ -85,7 +103,7 @@ export default function MemberSubscriptionBanner({
           <span className="alert-icon" aria-hidden>{SEVERITY_ICON[tier.severity!]}</span>
           <div className="member-sub-banner-body">
             <div className="member-sub-banner-headline">{tier.headline}</div>
-            {tierBody && <div>{tierBody}</div>}
+            {tierBody && <div>{noWrapAmounts(tierBody, bannerAmounts)}</div>}
             <Link className="member-sub-banner-link" to="/settings">
               View subscription →
             </Link>
@@ -95,7 +113,10 @@ export default function MemberSubscriptionBanner({
             onClick={() => setPayModalOpen(true)}
             disabled={blocked}
           >
-            {tier.actionLabel}
+            {/* One span for the whole label: .btn is inline-flex with a gap, so a
+                text node + amount span would be two flex items with a gap
+                between them (seen at the c2 re-shoot). */}
+            <span className="sub-amount">{tier.actionLabel}</span>
           </button>
         </div>
       )}
