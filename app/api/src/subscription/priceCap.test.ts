@@ -1,22 +1,42 @@
 // The cap and the integer check (bitcorn-research specs/2026-11-10-treasury-
 // price-trust-spec.md §5, D3).
 //
-// ⚠ C13 IS RED BY DESIGN. SUBSCRIPTION_PRICE_CAP_SATS has no value until Ethan
-// gives one (spec §13 item 1; ruling 1). This test fails until that value
-// lands on the one line in priceCap.ts, so Phase 2 cannot merge without it.
-// Do not "fix" it by choosing a number.
+// C13: the shipped cap is set. Its value was ruled by Ethan, 2026-11-11
+// (100,000 sats). A build with no usable cap fails closed, and this test
+// fails with it.
 
 import fs from "fs";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import { SUBSCRIPTION_PRICE_CAP_SATS, checkSubscriptionPrice, isUsableCap } from "./priceCap";
 
-describe("C13 — the shipped cap is set (RED until Ethan's value lands)", () => {
+describe("C13 — the shipped cap is set", () => {
   it("SUBSCRIPTION_PRICE_CAP_SATS is a positive safe integer", () => {
     expect(
       isUsableCap(SUBSCRIPTION_PRICE_CAP_SATS),
-      `SUBSCRIPTION_PRICE_CAP_SATS is ${String(SUBSCRIPTION_PRICE_CAP_SATS)}: the cap's value is owed (spec §13 item 1)`,
+      `SUBSCRIPTION_PRICE_CAP_SATS is ${String(SUBSCRIPTION_PRICE_CAP_SATS)}: a build with no cap pays nothing`,
     ).toBe(true);
+  });
+});
+
+describe("the doc states the shipped cap (docs/API.md § Subscription price cap)", () => {
+  const repo = path.resolve(__dirname, "../../../..");
+  const doc = fs.readFileSync(path.join(repo, "docs/API.md"), "utf8");
+  const capSrc = fs.readFileSync(path.join(__dirname, "priceCap.ts"), "utf8");
+
+  it("the number in the doc equals the constant", () => {
+    // Anti-vacuity: the section exists and states the value exactly once.
+    expect(doc, "docs/API.md has no § Subscription price cap").toMatch(/^### Subscription price cap$/m);
+    const stated = [...doc.matchAll(/`SUBSCRIPTION_PRICE_CAP_SATS = ([\d,]+) sats`/g)].map((m) => Number(m[1].replace(/,/g, "")));
+    expect(stated, "the doc should state the cap once, as `SUBSCRIPTION_PRICE_CAP_SATS = N sats`").toHaveLength(1);
+    expect(stated[0], "docs/API.md states a different cap from priceCap.ts").toBe(SUBSCRIPTION_PRICE_CAP_SATS);
+  });
+
+  it("the file:line in the doc is the constant's line", () => {
+    const m = doc.match(/`app\/api\/src\/subscription\/priceCap\.ts:(\d+)`/);
+    expect(m, "the doc does not give priceCap.ts:<line>").not.toBeNull();
+    const line = capSrc.split("\n")[Number(m![1]) - 1];
+    expect(line, `docs/API.md points at priceCap.ts:${m![1]}`).toMatch(/^export const SUBSCRIPTION_PRICE_CAP_SATS\b/);
   });
 });
 
@@ -108,9 +128,18 @@ describe("checkSubscriptionPrice", () => {
         code: "price_above_cap",
       });
     }
-    // The unset shipped default, today: fails closed.
+    // An unset shipped default would fail closed the same way.
     if (!isUsableCap(SUBSCRIPTION_PRICE_CAP_SATS)) {
       expect(checkSubscriptionPrice(1, SUBSCRIPTION_PRICE_CAP_SATS)).toMatchObject({ ok: false, code: "price_above_cap" });
     }
+  });
+
+  it("the shipped cap admits the price it was set against (50,000 sats) and refuses one sat above itself", () => {
+    expect(checkSubscriptionPrice(50_000, SUBSCRIPTION_PRICE_CAP_SATS)).toEqual({ ok: true });
+    expect(checkSubscriptionPrice(SUBSCRIPTION_PRICE_CAP_SATS, SUBSCRIPTION_PRICE_CAP_SATS)).toEqual({ ok: true });
+    expect(checkSubscriptionPrice((SUBSCRIPTION_PRICE_CAP_SATS ?? 0) + 1, SUBSCRIPTION_PRICE_CAP_SATS)).toMatchObject({
+      ok: false,
+      code: "price_above_cap",
+    });
   });
 });

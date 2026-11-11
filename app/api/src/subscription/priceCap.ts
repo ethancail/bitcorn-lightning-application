@@ -15,11 +15,23 @@
 // Neither refusal can be acknowledged: price_acknowledged does not lift the
 // cap (C6b), and the acknowledge route refuses above it.
 
-// ⚠ OWED — the value is Ethan's (pricing policy, spec §13 item 1). It is
-// deliberately UNSET, so this build FAILS CLOSED: with no cap, no price is
-// within the cap and no subscription payment proceeds. priceCap.test.ts stays
-// red until a value lands on the line below. Do not put a placeholder here.
-export const SUBSCRIPTION_PRICE_CAP_SATS: number | undefined = undefined;
+// ── THE CAP ─────────────────────────────────────────────────────────────────
+// What it is: the most this member node pays for ONE subscription payment,
+// whatever the treasury states. A verified price above it is refused
+// (price_above_cap) on the manual send, auto-pay, the quote and the price
+// acknowledgement alike.
+//
+// Value: 100,000 sats, ruled by Ethan 2026-11-11 (treasury-price-trust arc).
+// The price when it was set: 50,000 sats per 30 days (as of 2026-11-11), so
+// the cap is 2× the price.
+//
+// How to change it: edit the number on the line below and ship a release.
+// Raise the cap in a release BEFORE raising the price: members get the new
+// cap only when they update, so a price raised first is refused by every node
+// still on the old cap. Never make it a per-node .env setting (BITCORN_CONTEXT
+// C6). docs/API.md § "Subscription price cap" states this value, and
+// priceCap.test.ts fails if the two disagree.
+export const SUBSCRIPTION_PRICE_CAP_SATS: number | undefined = 100_000;
 
 export type PriceRefusalCode = "price_not_integer" | "price_above_cap";
 
