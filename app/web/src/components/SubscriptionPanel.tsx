@@ -570,14 +570,18 @@ function PrepayRender({
   handlers: ActionHandlers;
 }) {
   const pill = tierToPill("prepay");
+  // G3 extension (ruled 2026-11-11): while payments are blocked, no sentence
+  // invites paying from another wallet; the two that do are not rendered.
+  const blocked = payBlocked(status);
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={pill.kind} label={pill.label} />} />
       <p className="sub-tagline">
-        You have <strong>payment access</strong> until your first payment. Send {fmtSats(status.price_sats)} to activate full membership.
+        You have <strong>payment access</strong> until your first payment.
+        {!blocked && ` Send ${fmtSats(status.price_sats)} to activate full membership.`}
       </p>
       <ul className="sub-prepay-bullets">
-        <li><span className="sub-bullet-tick">✓</span> <strong>Available now</strong> — Coinbase Onramp for buying BTC, BTC/USD price reads, and the address below for receiving your first payment.</li>
+        {!blocked && <li><span className="sub-bullet-tick">✓</span> <strong>Available now</strong> — Coinbase Onramp for buying BTC, BTC/USD price reads, and the address below for receiving your first payment.</li>}
         <li><span className="sub-bullet-plus">+</span> <strong>Activates on first payment</strong> — Lightning routing through the treasury, full hosted services, valuation engine, and complete dashboard.</li>
       </ul>
       <div className="sub-stats">
@@ -615,6 +619,9 @@ function WorkerLapsedRender({
   handlers: ActionHandlers;
 }) {
   const lapsedDays = daysAgo(status.paid_through);
+  // G3 extension (ruled 2026-11-11): while payments are blocked, the sentence
+  // inviting payment from another wallet is not rendered.
+  const blocked = payBlocked(status);
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="amber" label="services paused" />} />
@@ -634,7 +641,9 @@ function WorkerLapsedRender({
       <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
       <Timeline>
         <TimelineRow marker="·">
-          <strong>If you renew</strong> — recovery is fully in-app. Buy BTC via Onramp or send from a wallet you already have. Payment is detected within ~15 seconds; price quotes and valuation come back online and your paid-through date advances by {status.period_days} days.
+          <strong>If you renew</strong> — recovery is fully in-app.
+          {!blocked && " Buy BTC via Onramp or send from a wallet you already have."}
+          {" "}Payment is detected within ~15 seconds; price quotes and valuation come back online and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
         {/* Routing doesn't pause at routing_until (M2 item 3); only this is true. */}
         {connectionStaysOpen(status) && (

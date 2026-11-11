@@ -208,3 +208,40 @@ describe("G3 finding 3 — the auto-pay section says nothing about paying while 
     }
   });
 });
+
+describe("G3 extension — the Settings panel invites no payment from another wallet while blocked", () => {
+  // Every tier with such a sentence (ruled 2026-11-11). The deposit block's own
+  // helper and fineprint are already withheld by C15 while blocked.
+  const SITES = [
+    { tier: "prepay" as Tier, where: "prepay tagline", ask: "until your first payment. Send 42,000 sats to activate full membership.",
+      blockedText: "You have payment access until your first payment." },
+    { tier: "prepay" as Tier, where: "prepay \"Available now\" bullet",
+      ask: "Available now — Coinbase Onramp for buying BTC, BTC/USD price reads, and the address below for receiving your first payment.",
+      blockedText: "Activates on first payment" },
+    { tier: "worker_lapsed" as Tier, where: "worker_lapsed \"If you renew\" row",
+      ask: "recovery is fully in-app. Buy BTC via Onramp or send from a wallet you already have. Payment is detected within ~15 seconds;",
+      blockedText: "recovery is fully in-app. Payment is detected within ~15 seconds;" },
+  ];
+  const ANY = /wallet you already have|to activate full membership|address below for receiving your first payment/;
+  const iHaveBtc = () =>
+    [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("I have BTC")) as HTMLButtonElement | undefined;
+
+  it("each site is absent under unsigned and S6, and present under verified and unrefused", async () => {
+    for (const s of SITES) {
+      for (const [name, labels] of Object.entries(BLOCKED)) {
+        stub.getSubscriptionStatus.mockResolvedValue(status(s.tier, labels));
+        await show(React.createElement(SubscriptionPanel));
+        const where = `${s.where}, ${name}`;
+        expect(text(), `${where}: the panel invited payment from another wallet`).not.toContain(s.ask);
+        expect(text(), `${where}: no such sentence anywhere`).not.toMatch(ANY);
+        expect(text(), `${where}: the rest stays`).toContain(s.blockedText);
+        expect(iHaveBtc()?.disabled, `${where}: "I have BTC" stays disabled`).toBe(true);
+      }
+      // Anti-vacuity: verified and unrefused, the sentence renders.
+      stub.getSubscriptionStatus.mockResolvedValue(status(s.tier, VERIFIED));
+      await show(React.createElement(SubscriptionPanel));
+      expect(text(), `${s.where}, verified`).toContain(s.ask);
+      expect(iHaveBtc()?.disabled, `${s.where}, verified: "I have BTC" is enabled`).toBe(false);
+    }
+  });
+});
