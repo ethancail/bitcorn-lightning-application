@@ -83,8 +83,39 @@ describe("item 12: services paused carries the dollar amount", () => {
     expect(d.actionLabel).toBe("Renew 50,000 sats");
   });
 
-  it("the other tiers are unchanged by a rate", () => {
-    expect(bannerFor(status("routing_lapsed"), P + 31 * DAY, RATE).actionLabel).toBe("Renew 50,000 sats");
-    expect(bannerFor(status("prepay"), P, RATE).actionLabel).toBe("Pay 50,000 sats");
+});
+
+// drive-mode R45 A1 (ruling 2, Q3): every banner button follows the amount
+// rules — dollars with a rate, sats with none — through renewalAmount's
+// label. This replaces P2's pin "the other tiers are unchanged by a rate".
+describe("R45 A1: the banner buttons follow the amount rules", () => {
+  it("runs on the pinned Node 20", () => {
+    expect(process.versions.node.split(".")[0]).toBe("20");
+  });
+
+  it("with a rate: Renew / Pay in dollars, every tier", () => {
+    expect(bannerFor(status("routing_lapsed"), P + 31 * DAY, RATE).actionLabel).toBe("Renew $30.00");
+    expect(bannerFor(status("close_due"), P + 61 * DAY, RATE).actionLabel).toBe("Renew $30.00");
+    expect(bannerFor(status("prepay"), P, RATE).actionLabel).toBe("Pay $30.00");
+  });
+
+  it("with a rate: prepay's body is dollars first, the sats beside them (Q3)", () => {
+    expect(bannerFor(status("prepay"), P, RATE).body).toBe("Pay $30.00 (50,000 sats) to unlock Lightning routing.");
+  });
+
+  it("no rate: sats, every tier, and no dollar sign anywhere", () => {
+    expect(bannerFor(status("routing_lapsed"), P + 31 * DAY, null).actionLabel).toBe("Renew 50,000 sats");
+    expect(bannerFor(status("close_due"), P + 61 * DAY, null).actionLabel).toBe("Renew 50,000 sats");
+    const prepay = bannerFor(status("prepay"), P, null);
+    expect(prepay.actionLabel).toBe("Pay 50,000 sats");
+    expect(prepay.body).toBe("Pay 50,000 sats to unlock Lightning routing.");
+    for (const t of ["prepay", "routing_lapsed", "close_due"] as const) {
+      const d = bannerFor(status(t), t === "prepay" ? P : P + 31 * DAY, null);
+      expect(`${d.body} ${d.actionLabel}`).not.toContain("$");
+    }
+  });
+
+  it("a zero rate counts as no rate (renewalAmount's !usdRate)", () => {
+    expect(bannerFor(status("routing_lapsed"), P + 31 * DAY, 0).actionLabel).toBe("Renew 50,000 sats");
   });
 });

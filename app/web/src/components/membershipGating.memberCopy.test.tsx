@@ -283,7 +283,7 @@ describe("L2 drive-mode review — no 'funds are safe', R14's 'connection', amou
     expect(d.body).toBe(
       "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay $30.00 (50,000 sats) to restore them.",
     );
-    expect(d.actionLabel).toBe("Renew 50,000 sats"); // P2: the action is unchanged by a rate
+    expect(d.actionLabel).toBe("Renew $30.00"); // R45 A1: the action follows the amount rules
   });
 
   it.each(overdue)("%s banner with no rate: the sats alone", (tier) => {
