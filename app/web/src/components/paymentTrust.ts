@@ -174,30 +174,40 @@ export function trustCopy(
     case "S1_unsigned":
       return split(
         "Payments are paused.",
-        "Your node can't yet confirm this information came from Bitcorn. Nothing has been sent.",
+        "Your node can't confirm this price came from Bitcorn, so it won't pay it. Nothing has been sent. If this doesn't clear, contact Bitcorn.",
       );
     case "S2_invalid":
       return split(
         "Payments are blocked.",
-        "The subscription details your node received failed a security check. Nothing has been sent.",
+        "The subscription details your node received failed a security check. Nothing has been sent. Don't pay from another wallet. Contact Bitcorn.",
       );
     case "S3_unverifiable":
       return s.reason === "key_unset"
-        ? split("This node is missing Bitcorn's treasury key.", "Update the app to make payments.")
-        : split("Your node's Lightning service isn't responding, so payments are paused.");
+        ? split(
+            "Payments are paused.",
+            "Your app needs an update before it can pay. Update Bitcorn Lightning in the Umbrel App Store.",
+          )
+        : split(
+            "Your node's Lightning service isn't responding, so payments are paused.",
+            "It usually comes back within a few minutes; if it's still down in an hour, restart the Lightning app.",
+          );
     case "S4_price_above_cap":
       return split(
         "Payments are paused.",
-        `The subscription price, ${priceText ?? "—"}, is above the limit built into this app.`,
+        `The subscription price, ${priceText ?? "—"}, is above the limit built into this app. Nothing has been sent. Contact Bitcorn.`,
       );
     case "S5_price_not_integer":
-      return split("Payments are paused.", "The subscription price arrived in a form this app won't pay.");
+      return split(
+        "Payments are paused.",
+        "The price your node received doesn't look right, so it won't pay it. Nothing has been sent. Contact Bitcorn.",
+      );
     case "S6_deposit_address_changed":
-      // The support pointer (spec §8's owed wording): DRAFT, drafted by the
-      // treasury-price-trust arc chat, 2026-11-10, for drive-mode review.
+      // The support pointer: drive-mode's plain-language review, 2026-11-10.
+      // A changed address is confirmed only by the host command, with
+      // Bitcorn's help (S6 design ruled (a), 2026-11-10).
       return split(
         `Your subscription payment address has changed, from ${shortAddress(s.pinned)} to ${shortAddress(s.stated)}.`,
-        "Your node won't send to a new address until you confirm it on the node itself. Nothing has been sent. If you expected this change, contact Bitcorn before paying from any wallet.",
+        "Your node won't send to a new address until you confirm it on the node itself. Nothing has been sent. Don't pay until you've checked with Bitcorn, from this node or any other wallet. Contact Bitcorn and we'll help you confirm the new address.",
       );
   }
 }

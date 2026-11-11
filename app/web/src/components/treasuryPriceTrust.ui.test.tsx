@@ -112,7 +112,7 @@ describe("the Settings panel (spec §8)", () => {
   it.each([
     ["S1 unsigned", { treasury_signature: "unsigned" }, "S1_unsigned", "Payments are paused."],
     ["S2 invalid", { treasury_signature: "invalid" }, "S2_invalid", "Payments are blocked."],
-    ["S3 key_unset", { treasury_signature: "unverifiable", treasury_signature_reason: "key_unset" }, "S3_unverifiable", "missing Bitcorn's treasury key"],
+    ["S3 key_unset", { treasury_signature: "unverifiable", treasury_signature_reason: "key_unset" }, "S3_unverifiable", "needs an update before it can pay"],
     ["S4 above cap", { ...VERIFIED, treasury_pay_refusal: { code: "price_above_cap", detail: "", price_sats: 90_000 } }, "S4_price_above_cap", "$54.00 (90,000 sats)"],
     ["S5 not integer", { ...VERIFIED, treasury_pay_refusal: { code: "price_not_integer", detail: "", price_sats: 1.5 } }, "S5_price_not_integer", "won't pay"],
     ["S6 address changed", { ...VERIFIED, treasury_pay_refusal: { code: "deposit_address_changed", detail: "", pinned_address: ADDR, stated_address: "bc1qnew" + "e".repeat(30) } }, "S6_deposit_address_changed", "has changed"],
@@ -187,7 +187,7 @@ describe("the auto-pay opt-in (spec §4 R3, R10)", () => {
     stub.getAutoPayConfig.mockResolvedValue(autoPay({ status_verification: "unsigned", current_price: null }));
     await remount(panel());
     expect(toggle()!.disabled, "auto-pay could be turned on from an unverified status").toBe(true);
-    expect(host.textContent).toContain("Payments are paused. Your node can't yet confirm");
+    expect(host.textContent).toContain("Payments are paused. Your node can't confirm this price");
 
     // Already on: turning it off is never blocked.
     stub.getAutoPayConfig.mockResolvedValue(autoPay({ enabled: true, status_verification: "unsigned", current_price: null }));

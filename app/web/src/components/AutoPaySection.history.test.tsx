@@ -58,7 +58,7 @@ describe("auto-pay history labels (treasury-price-trust)", () => {
     expect(text, "a raw alert type name rendered in the history").not.toContain("AUTOPAY_PAY_TARGET_REFUSED");
 
     // Anti-vacuity: the history lists both rows, by their labels.
-    expect(text).toContain("Auto-pay paused: couldn't confirm Bitcorn's details");
+    expect(text).toContain("Auto-pay paused: couldn't confirm the price came from Bitcorn");
     expect(text).toContain("Auto-pay paused: payment held for safety");
   });
 });
