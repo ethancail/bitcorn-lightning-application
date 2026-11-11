@@ -263,6 +263,36 @@ describe("one S-state per panel screen", () => {
   });
 });
 
+describe("the auto-pay pointer shows only while auto-pay is on", () => {
+  // drive-mode, accepted by Ethan 2026-11-11: blocked + ON → the pointer;
+  // auto-pay OFF → the normal off-state line, blocked or not.
+  const POINTER = "Auto-pay is paused (see above).";
+  const OFF_LINE = "When on, your node renews from its Bitcoin balance once your subscription has lapsed.";
+  const at = (labels: Record<string, unknown>) => status("current", labels, { paid_through: NOW + 5 * DAY, worker_until: NOW + 35 * DAY });
+
+  it("blocked: ON shows the pointer, OFF the off-state line; verified: never the pointer", async () => {
+    for (const [name, labels] of Object.entries(BLOCKED)) {
+      stub.getSubscriptionStatus.mockResolvedValue(at(labels));
+      stub.getAutoPayConfig.mockResolvedValue(autoPay({ enabled: true, enabled_at: 1 }));
+      await show(React.createElement(SubscriptionPanel));
+      expect(text(), `${name}, ON: the pointer`).toContain(POINTER);
+      expect(text(), `${name}, ON: no off-state line`).not.toContain(OFF_LINE);
+
+      stub.getAutoPayConfig.mockResolvedValue(autoPay({ enabled: false }));
+      await show(React.createElement(SubscriptionPanel));
+      expect(text(), `${name}, OFF: the pointer showed while auto-pay is off`).not.toContain(POINTER);
+      expect(text(), `${name}, OFF: the off-state line, verbatim`).toContain(OFF_LINE);
+    }
+    for (const enabled of [true, false]) {
+      stub.getSubscriptionStatus.mockResolvedValue(at(VERIFIED));
+      stub.getAutoPayConfig.mockResolvedValue(autoPay(enabled ? { enabled: true, enabled_at: 1 } : { enabled: false }));
+      await show(React.createElement(SubscriptionPanel));
+      expect(text(), `verified, ${enabled ? "ON" : "OFF"}: no pointer`).not.toContain(POINTER);
+      if (!enabled) expect(text()).toContain(OFF_LINE);
+    }
+  });
+});
+
 describe("the panel's \"Renew now\" is gated", () => {
   const renewNow = () =>
     [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("Renew now")) as HTMLButtonElement | undefined;

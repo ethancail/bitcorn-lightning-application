@@ -102,9 +102,11 @@ export default function AutoPaySection({ pausesOn, payBlocked = true }: { pauses
 
       {/* One S-state per panel screen (drive-mode, accepted by Ethan
           2026-11-11): while payments are blocked the panel's page notice
-          carries the full S-state, so this section only points to it. */}
+          carries the full S-state, so this section only points to it, and
+          only while auto-pay is on (drive-mode, accepted 2026-11-11); off,
+          the off-state line below stands alone. */}
       {payBlocked ? (
-        <p style={{ color: "var(--text)", fontSize: "0.8125rem", margin: "6px 0 0" }}>Auto-pay is paused (see above).</p>
+        enabled && <p style={{ color: "var(--text)", fontSize: "0.8125rem", margin: "6px 0 0" }}>Auto-pay is paused (see above).</p>
       ) : trustText && (
         <p role="status" data-trust-state={trust!.state} style={{ color: "var(--text)", fontSize: "0.8125rem", margin: "6px 0 0" }}>
           {trustText}
