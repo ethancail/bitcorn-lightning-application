@@ -36,6 +36,8 @@ import { copyText } from "./copyText";
 import { bip21Uri } from "./bip21";
 import { renewalAmount } from "./subscriptionBanner";
 import { rateNote, RATE_NONE_SENTENCE } from "../api/rate";
+import { pendingPaymentCopy, pendingPaymentView, type PendingView } from "./pendingPayment";
+import { usePendingPayment } from "./usePendingPayment";
 
 // drive-mode R45 A2 (ruling 3): the panel's amounts, dollars first, from one
 // BTC/USD rate fetched with the status. A failed fetch is the no-rate state
@@ -67,6 +69,28 @@ function MonthlyStat({ sats, pendingValue }: { sats: number | null; pendingValue
   const a = renewalAmount(sats, usdRate);
   if (a.label === a.text) return <Stat label="MONTHLY" value={sats.toLocaleString()} suffix="sats" pendingValue={pendingValue} />;
   return <Stat label="MONTHLY" value={a.label} suffix={renewalAmount(sats, null).text} pendingValue={pendingValue} />;
+}
+
+// drive-mode R45, ruling 1: the payment this node sent that the treasury
+// hasn't credited yet, or null (pendingPaymentView decides).
+const PendingContext = createContext<PendingView | null>(null);
+
+/** "Payment sent, waiting for confirmation": a notice placed directly above
+ *  ACTIONS. The buttons stay — the pay modal's repeat step already guards a
+ *  second send. */
+function PendingNotice() {
+  const view = useContext(PendingContext);
+  if (!view) return null;
+  const copy = pendingPaymentCopy(view, Date.now());
+  return (
+    <div className="sub-alert sub-alert-dashed" role="status" data-pending-payment>
+      <span className="sub-alert-icon" aria-hidden>i</span>
+      <div className="sub-alert-body">
+        <strong>{copy.headline}</strong>
+        <div>{copy.body}</div>
+      </div>
+    </div>
+  );
 }
 
 /** The rate's sentence (rate.ts): placed once per panel, under its stats. */
@@ -244,6 +268,12 @@ export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void 
   }, []);
   const amounts = panelAmounts(rate);
 
+  // R45 ruling 1: the waiting state, read with the status, only while the
+  // status is applicable.
+  const applicableStatus = view.kind === "ok" && view.status.applicable ? view.status : null;
+  const pending = usePendingPayment(applicableStatus != null, POLL_INTERVAL_MS);
+  const pendingView = applicableStatus ? pendingPaymentView(pending, applicableStatus) : null;
+
   // Settings' ?focus=membership waits for this (membership-gating B1): the
   // loading skeleton's header is replaced when the status lands, so focus
   // moved to it earlier would be lost.
@@ -303,11 +333,13 @@ export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void 
     return (
       <PanelAmountsContext.Provider value={amounts}>
         <PaymentTrustNotice status={status} />
-        <ApplicablePanel
-          status={status}
-          onRefresh={fetchStatus}
-          handlers={{ ...actionHandlers, payBlocked: payBlocked(status) }}
-        />
+        <PendingContext.Provider value={pendingView}>
+          <ApplicablePanel
+            status={status}
+            onRefresh={fetchStatus}
+            handlers={{ ...actionHandlers, payBlocked: payBlocked(status) }}
+          />
+        </PendingContext.Provider>
         {/* Auto-renew (auto-pay opt-in) — the automation of the Renew now
             action, so it lives with the subscription surface rather than in
             Profile/identity (v1.17.18 relocation). Rendered once here for all
@@ -612,6 +644,7 @@ function CurrentRender({
         helper={<>Send <Amount sats={status.price_sats} /> to renew for one month.</>}
         fineprint="This address is yours for the lifetime of your membership. Payments are detected automatically on first confirmation."
       />
+      <PendingNotice />
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
         primary={<button className="sub-btn" onClick={handlers.onOpenPayModal} disabled={blocked}>Renew now <span aria-hidden>→</span></button>}
@@ -658,6 +691,7 @@ function PrepayRender({
         helper={<>Send <Amount sats={status.price_sats} /> to activate.</>}
         fineprint="This address is yours for the lifetime of your membership. Don't have BTC on hand? Use Coinbase Onramp from the Buy Bitcoin tab — funds land in this wallet."
       />
+      <PendingNotice />
       <BracketHeading>ACTIONS</BracketHeading>
       <OnrampPrimaryActions tier="prepay" status={status} handlers={handlers} />
     </section>
@@ -802,6 +836,7 @@ function OverdueRender({
           </>
         )}
       </Timeline>
+      <PendingNotice />
       <BracketHeading>ACTIONS</BracketHeading>
       {/* Per spec §11 acceptance + Stage 5a deltas: the Onramp button stays
           in close_due too (recovery path stays open through every state a

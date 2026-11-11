@@ -26,6 +26,11 @@ import {
 import { useAutoPayConfig } from "./useAutoPayConfig";
 import PayFromNodeModal from "./PayFromNodeModal";
 import { payBlocked } from "./paymentTrust";
+import { pendingPaymentCopy, pendingPaymentView } from "./pendingPayment";
+import { usePendingPayment } from "./usePendingPayment";
+
+/** The banner's read of the waiting state: the dashboard's status cadence. */
+const PENDING_POLL_MS = 60_000;
 
 export default function MemberSubscriptionBanner({
   status,
@@ -46,6 +51,13 @@ export default function MemberSubscriptionBanner({
   // disabled. The headline and the S-state alert banners stay.
   const blocked = payBlocked(status);
   const tierBody = blocked ? tier.context : tier.body;
+  // drive-mode R45, ruling 1 (Q1): while this node's payment waits for its
+  // confirmation, the tier banner is an info strip with no pay button. Read
+  // only while a tier banner shows; hidden once a verified status shows the
+  // credit (pendingPaymentView).
+  const pending = usePendingPayment(tierRenders, PENDING_POLL_MS);
+  const waiting = tierRenders ? pendingPaymentView(pending, status) : null;
+  const waitingCopy = waiting ? pendingPaymentCopy(waiting, Date.now()) : null;
 
   const priceChange = priceChangeBannerFor(cfg);
   const activeAlerts = cfg?.active_alerts ?? [];
@@ -55,7 +67,20 @@ export default function MemberSubscriptionBanner({
 
   return (
     <>
-      {tierRenders && status && status.applicable === true && (
+      {tierRenders && waitingCopy && (
+        <div className={`alert ${ALERT_VARIANT_CLASS.info} member-sub-banner`} data-pending-payment>
+          <span className="alert-icon" aria-hidden>{SEVERITY_ICON.info}</span>
+          <div className="member-sub-banner-body">
+            <div className="member-sub-banner-headline">{waitingCopy.headline}</div>
+            <div>{waitingCopy.body}</div>
+            <Link className="member-sub-banner-link" to="/settings">
+              View subscription →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {tierRenders && !waitingCopy && status && status.applicable === true && (
         <div className={`alert ${ALERT_VARIANT_CLASS[tier.severity!]} member-sub-banner`}>
           <span className="alert-icon" aria-hidden>{SEVERITY_ICON[tier.severity!]}</span>
           <div className="member-sub-banner-body">
