@@ -1033,12 +1033,12 @@ function NoChannelRender() {
     <section className="sub-panel sub-panel-quiet">
       <PanelHeader />
       <p className="sub-body-copy">
-        You don't have a connection to Bitcorn yet. Connect from your dashboard to enroll in the subscription system. If you believe you should have a connection, contact your operator.
+        You don't have a connection to Bitcorn yet. Connect from your dashboard to enroll in the subscription system. If you believe you should have a connection, contact Bitcorn.
       </p>
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
-        // R45 Q6: matched to the dashboard's "Connect to Hub" panel it opens.
-        secondary={<Link className="sub-btn" to="/dashboard">Connect to Hub <span aria-hidden>→</span></Link>}
+        // R45 Q6, as ruled by Ethan 2026-11-11 ("recs" 3): "Connect to Bitcorn".
+        secondary={<Link className="sub-btn" to="/dashboard">Connect to Bitcorn <span aria-hidden>→</span></Link>}
       />
     </section>
   );

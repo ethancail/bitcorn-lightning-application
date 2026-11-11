@@ -228,13 +228,17 @@ describe("R45 copy", () => {
       await panel({ applicable: false, reason: "not_yet_allocated", channel_age_seconds: 12 });
       expect(text()).toContain("connection detected 12s ago");
       await panel({ applicable: false, reason: "no_channel" });
+      // Ethan, 2026-11-11 ("recs" 3 + NEW): on a member node the farmer IS the
+      // operator (C6), so the body points to Bitcorn, and the button names it.
       expect(text()).toContain(
         "You don't have a connection to Bitcorn yet. Connect from your dashboard to enroll in the subscription system. " +
-          "If you believe you should have a connection, contact your operator.",
+          "If you believe you should have a connection, contact Bitcorn.",
       );
-      const btn = [...host.querySelectorAll("a")].find((a) => (a.textContent ?? "").includes("Connect to Hub"));
-      expect(btn?.textContent?.replace(/\s+/g, " ").trim()).toBe("Connect to Hub →");
+      expect(memberText()).not.toMatch(/\boperator\b/i);
+      const btn = [...host.querySelectorAll("a")].find((a) => (a.textContent ?? "").includes("Connect to"));
+      expect(btn?.textContent?.replace(/\s+/g, " ").trim()).toBe("Connect to Bitcorn →");
       expect(btn?.getAttribute("href")).toBe("/dashboard");
+      expect(memberText()).not.toMatch(/\bHub\b/);
     });
 
     it("SWEEP: no member text on the panel, in any reachable state, says 'channel'", async () => {
