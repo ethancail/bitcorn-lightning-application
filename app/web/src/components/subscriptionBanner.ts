@@ -192,7 +192,8 @@ export function bannerFor(
       // rate (drive-mode's amount rules, as item 12). So is the action's, since
       // R45 A1 (ruling 2), which replaced P2's sats-only pin.
       const amount = renewalAmount(status.price_sats, usdRate);
-      const context = "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.";
+      // R45 Q5 (ruling 5): the services by the names a member sees.
+      const context = "Hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements.";
       return {
         render: true,
         severity: bannerSeverityForTier(tier),

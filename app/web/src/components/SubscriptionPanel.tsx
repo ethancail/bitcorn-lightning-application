@@ -602,7 +602,7 @@ function CurrentRender({
       <p className="sub-tagline">
         {prePause
           ? `Hosted services pause on ${formatDate(status.grace.worker_until)}.${blocked ? "" : " Renew before then to keep them running."}`
-          : "Your access to channel routing and hosted services is paid up."}
+          : "Your connection to Bitcorn and your hosted services are paid up."}
       </p>
       <StatsGrid status={status} accent={prePause ? undefined : "emerald"} />
       <DepositBlock
@@ -769,12 +769,13 @@ function OverdueRender({
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={tone} label="payment overdue" />} />
       <AlertBox variant={tone} icon="⚠">
-        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.
+        {/* R45 Q5 (ruling 5): the services by the names a member sees. */}
+        Your membership payment is overdue, so hosted services are paused: Auto-Buy, with its Valuation Chart, and Stablecoin settlements.
         {!blocked && <> Pay <Amount sats={status.price_sats} /> to restore them.</>}
         {connectionStaysOpen(status) && " Your connection to Bitcorn is still open and its balance is unchanged."}
       </AlertBox>
       <p className="sub-reassure">
-        <span className="sub-bullet-tick">✓</span> You can still use <strong>Coinbase Onramp</strong> to buy BTC and renew, and monitor your channel state from this dashboard.
+        <span className="sub-bullet-tick">✓</span> You can still use <strong>Coinbase Onramp</strong> to buy BTC and renew, and check your connection from this dashboard.
       </p>
       <StatsGrid status={status} accent={tone} />
       <DepositBlock
@@ -786,7 +787,9 @@ function OverdueRender({
       <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
       <Timeline>
         <TimelineRow marker="·">
-          <strong>If you renew</strong> — recovery is fully in-app. Payment is detected within ~15 seconds; all paused services come back online, and your paid-through date advances by {status.period_days} days.
+          {/* R45 Q4 (ruling 4): the treasury credits at the first confirmation
+              (api detector.ts, pinned by detector.test.ts "R45 copy pin"). */}
+          <strong>If you renew</strong> — recovery is fully in-app. Your payment counts after its first confirmation on the Bitcoin network, usually within an hour. Then all paused services come back online, and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
         {connectionStaysOpen(status) && (
           <>
@@ -863,7 +866,7 @@ function UnclassifiedRender() {
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="muted-amber" label="unclassified" />} />
       <AlertBox variant="dashed" icon="i">
-        Your node's role is pending classification. Subscription doesn't activate until your channel is classified as farmer or merchant. Contact your operator if this persists more than a few minutes.
+        Your node's role is pending classification. Subscription doesn't activate until your connection is classified as farmer or merchant. Contact your operator if this persists more than a few minutes.
       </AlertBox>
       <div className="sub-stats">
         <MonthlyStat sats={monthly} />
@@ -926,7 +929,7 @@ function PendingInitialSyncRender({
           </p>
         )}
         <p className="sub-pending-channel-age">
-          channel detected {channelAgeSec}s ago
+          connection detected {channelAgeSec}s ago
         </p>
       </div>
     </section>
@@ -995,11 +998,12 @@ function NoChannelRender() {
     <section className="sub-panel sub-panel-quiet">
       <PanelHeader />
       <p className="sub-body-copy">
-        You don't have a channel to the treasury. Open a channel to enroll in the subscription system. If you believe you should have a channel, contact your operator.
+        You don't have a connection to Bitcorn yet. Connect from your dashboard to enroll in the subscription system. If you believe you should have a connection, contact your operator.
       </p>
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
-        secondary={<Link className="sub-btn" to="/dashboard">Open a channel <span aria-hidden>→</span></Link>}
+        // R45 Q6: matched to the dashboard's "Connect to Hub" panel it opens.
+        secondary={<Link className="sub-btn" to="/dashboard">Connect to Hub <span aria-hidden>→</span></Link>}
       />
     </section>
   );

@@ -139,14 +139,14 @@ describe("item 11: the panel says when services pause, from P", () => {
   it("before P: \"paid up\"", async () => {
     stub.getSubscriptionStatus.mockResolvedValue(applicable({ paid_through: NOW + DAY }));
     await mount();
-    expect(text()).toContain("is paid up.");
+    expect(text()).toContain("are paid up."); // R45 Q6: "Your connection to Bitcorn and your hosted services are paid up."
   });
 
   it("at P: not \"paid up\" — the pause date, read from the status", async () => {
     const workerUntil = NOW + 9 * DAY;
     stub.getSubscriptionStatus.mockResolvedValue(applicable({ paid_through: NOW, worker_until: workerUntil }));
     await mount();
-    expect(text()).not.toContain("is paid up.");
+    expect(text()).not.toContain("paid up.");
     expect(text()).toContain(`Hosted services pause on ${date(workerUntil)}. Renew before then to keep them running.`);
   });
 });

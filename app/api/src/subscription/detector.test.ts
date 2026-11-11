@@ -142,6 +142,28 @@ describe("scanSubscriptionDeposits — orchestration guards (audit §3/§6/§7)"
     expect(paymentRowsFor("tx_unconf")).toBe(0);
   });
 
+  // drive-mode R45 ruling 4: the member's Settings panel says "Your payment
+  // counts after its first confirmation on the Bitcoin network". That is true
+  // only while the credit threshold is exactly one confirmation: not zero (the
+  // copy would understate how soon), not two or more (it would be false). Both
+  // sides are pinned here, in one scan.
+  it("R45 copy pin: a payment counts at its FIRST confirmation — 0 is not credited, exactly 1 is", async () => {
+    expect(process.versions.node.split(".")[0]).toBe("20");
+    const OTHER = "02" + "d4".repeat(32);
+    const OTHER_ADDR = "bcrt1qr45firstconfirmationpin0000000000000";
+    seedMember(MEMBER, ADDR, Date.now() - MS_PER_DAY);
+    seedMember(OTHER, OTHER_ADDR, Date.now() - MS_PER_DAY);
+    lndState.utxos = [
+      utxo({ address: ADDR, txid: "tx_r45_zero", conf: 0 }),
+      utxo({ address: OTHER_ADDR, txid: "tx_r45_one", conf: 1 }),
+    ];
+
+    const summary = await scanSubscriptionDeposits();
+    expect(paymentRowsFor("tx_r45_zero")).toBe(0);
+    expect(paymentRowsFor("tx_r45_one")).toBe(1);
+    expect(summary.credits_written).toBe(1);
+  });
+
   it("case 9: a confirmed UTXO on an address NOT in the deposit set is ignored", async () => {
     const before = Date.now() + 10 * MS_PER_DAY;
     seedMember(MEMBER, ADDR, before);
