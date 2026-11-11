@@ -27,7 +27,8 @@ type Save = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: st
  *  that pause — the copy below says so (drive-mode P2 item 13, R6(b)(b)).
  *  payBlocked: payBlocked(status) from paymentTrust.ts; while true, the line
  *  saying the node pays from its balance is hidden (G3 finding 3, ruled
- *  2026-11-11). Omitted reads as blocked. */
+ *  2026-11-11) and the S-state shows as a pointer to the panel's notice.
+ *  Omitted reads as blocked. */
 export default function AutoPaySection({ pausesOn, payBlocked = true }: { pausesOn?: number; payBlocked?: boolean } = {}) {
   const [cfg, setCfg] = useState<AutoPayConfig | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -99,7 +100,12 @@ export default function AutoPaySection({ pausesOn, payBlocked = true }: { pauses
         </label>
       </div>
 
-      {trustText && (
+      {/* One S-state per panel screen (drive-mode, accepted by Ethan
+          2026-11-11): while payments are blocked the panel's page notice
+          carries the full S-state, so this section only points to it. */}
+      {payBlocked ? (
+        <p style={{ color: "var(--text)", fontSize: "0.8125rem", margin: "6px 0 0" }}>Auto-pay is paused (see above).</p>
+      ) : trustText && (
         <p role="status" data-trust-state={trust!.state} style={{ color: "var(--text)", fontSize: "0.8125rem", margin: "6px 0 0" }}>
           {trustText}
         </p>

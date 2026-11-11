@@ -555,7 +555,7 @@ function CurrentRender({
       />
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
-        primary={<button className="sub-btn" onClick={handlers.onOpenPayModal}>Renew now <span aria-hidden>→</span></button>}
+        primary={<button className="sub-btn" onClick={handlers.onOpenPayModal} disabled={blocked}>Renew now <span aria-hidden>→</span></button>}
         secondary={<button className="sub-btn" onClick={onRefresh}>Refresh token</button>}
         tertiary={<Link className="sub-link" to="/subscription/payments">View payment history <span aria-hidden>→</span></Link>}
       />
@@ -1073,12 +1073,16 @@ function DepositBlock({
     });
   }, [status.deposit_address]);
   // treasury-price-trust C15: no address, QR, URI or copy unless the status is
-  // verified and the address is the pinned one — the S-state instead.
+  // verified and the address is the pinned one. One S-state per panel screen
+  // (drive-mode, accepted by Ethan 2026-11-11): the full S-state is the page
+  // notice above the panel; here, only a pointer to it.
   if (!depositAddressDisplay(status).show) {
     return (
       <>
         <BracketHeading>DEPOSIT</BracketHeading>
-        <PaymentTrustNotice status={status} />
+        {payBlocked(status) && (
+          <p className="sub-deposit-helper">Payment address hidden while payments are paused (see above).</p>
+        )}
       </>
     );
   }

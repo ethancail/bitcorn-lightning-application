@@ -136,6 +136,8 @@ describe("C15 — the deposit address renders only when verified and pinned", ()
     await show(React.createElement(SubscriptionPanel));
     expect(rendered(ADDR), "C15: an unverified status rendered the deposit address").toEqual(NONE);
     expect(host.querySelector("[data-trust-state='S1_unsigned']")).not.toBeNull();
+    // One S-state per panel screen (2026-11-11): the deposit block points to the notice above.
+    expect(host.textContent).toContain("Payment address hidden while payments are paused (see above).");
 
     stub.getSubscriptionStatus.mockResolvedValue(status(NEW_ADDR, CHANGED));
     await show(React.createElement(SubscriptionPanel));
@@ -145,6 +147,7 @@ describe("C15 — the deposit address renders only when verified and pinned", ()
     stub.getSubscriptionStatus.mockResolvedValue(status(ADDR, VERIFIED));
     await show(React.createElement(SubscriptionPanel));
     expect(rendered(ADDR)).toEqual({ text: true, uri: false, qr: true, copy: true });
+    expect(host.textContent).not.toContain("Payment address hidden while payments are paused");
     expect(qr.toDataURL.mock.calls.some((c) => String(c[0]).startsWith("BITCOIN:"))).toBe(true);
   });
 

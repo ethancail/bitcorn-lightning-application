@@ -39,6 +39,8 @@ vi.mock("../api/client", async (importOriginal) => {
 import RoutingDeniedNotice from "./RoutingDeniedNotice";
 import MemberSubscriptionBanner from "./MemberSubscriptionBanner";
 import SubscriptionPanel from "./SubscriptionPanel";
+import { trustCopy, trustStateOfStatus } from "./paymentTrust";
+import { renewalAmount } from "./subscriptionBanner";
 
 const NOW = 1_790_000_000_000;
 const DAY = 86_400_000;
@@ -206,6 +208,75 @@ describe("G3 finding 3 — the auto-pay section says nothing about paying while 
       expect(text(), `${v.name}, verified`).toMatch(PAYS);
       expect(text()).toContain("42,000 sats from its Bitcoin balance");
     }
+  });
+});
+
+// Before-merge fixes from drive-mode's G3 judgement, accepted by Ethan
+// 2026-11-11: one S-state per panel screen, and "Renew now" gated.
+describe("one S-state per panel screen", () => {
+  // drive-mode's wording, verbatim.
+  const DEPOSIT_HIDDEN = "Payment address hidden while payments are paused (see above).";
+  const AUTOPAY_PAUSED = "Auto-pay is paused (see above).";
+  const STATES: Record<string, Record<string, unknown>> = {
+    S1: UNSIGNED,
+    S2: { treasury_signature: "invalid", treasury_signature_reason: null, treasury_pay_refusal: null },
+    "S3 key_unset": { treasury_signature: "unverifiable", treasury_signature_reason: "key_unset", treasury_pay_refusal: null },
+    "S3 lnd_unavailable": { treasury_signature: "unverifiable", treasury_signature_reason: "lnd_unavailable", treasury_pay_refusal: null },
+    S4: { ...VERIFIED, treasury_pay_refusal: { code: "price_above_cap", detail: "", price_sats: 100_001 } },
+    S5: { ...VERIFIED, treasury_pay_refusal: { code: "price_not_integer", detail: "", price_sats: 42_000.5 } },
+    S6: CHANGED,
+  };
+  const count = (hay: string, needle: string) => hay.split(needle).length - 1;
+  /** The full S-state paragraph for a status, as paymentTrust.ts writes it (no rate: sats). */
+  const fullText = (s: any) => {
+    const st = trustStateOfStatus(s)!;
+    return trustCopy(st, st.state === "S4_price_above_cap" ? renewalAmount(st.price_sats, null).text : undefined).text;
+  };
+  /** Anti-orphan, on every render: a short string never renders without the full notice. */
+  const assertNoOrphan = (where: string) => {
+    const t = text();
+    if (t.includes(DEPOSIT_HIDDEN) || t.includes(AUTOPAY_PAUSED)) {
+      expect(host.querySelector("div.sub-alert[data-trust-state]"), `${where}: a short string rendered without the S-state notice`).not.toBeNull();
+    }
+  };
+
+  it("every blocked state: the full S-state exactly once, the two pointers verbatim; verified: neither", async () => {
+    for (const [name, labels] of Object.entries(STATES)) {
+      const s = status("current", labels);
+      stub.getSubscriptionStatus.mockResolvedValue(s);
+      stub.getAutoPayConfig.mockResolvedValue(autoPay({ enabled: true, enabled_at: 1 }));
+      await show(React.createElement(SubscriptionPanel));
+      assertNoOrphan(name);
+      const full = fullText(s);
+      expect(count(text(), full), `${name}: the full S-state paragraph must render exactly once`).toBe(1);
+      expect(count(text(), DEPOSIT_HIDDEN), `${name}: the deposit block's pointer`).toBe(1);
+      expect(count(text(), AUTOPAY_PAUSED), `${name}: the auto-pay section's pointer`).toBe(1);
+    }
+    // Anti-vacuity: verified and unrefused, no S-state and no pointer; the address shows.
+    stub.getSubscriptionStatus.mockResolvedValue(status("current", VERIFIED));
+    await show(React.createElement(SubscriptionPanel));
+    expect(host.querySelector("[data-trust-state]")).toBeNull();
+    expect(text()).not.toContain(DEPOSIT_HIDDEN);
+    expect(text()).not.toContain(AUTOPAY_PAUSED);
+    expect(host.querySelector(".sub-deposit-address")).not.toBeNull();
+    assertNoOrphan("verified");
+  });
+});
+
+describe("the panel's \"Renew now\" is gated", () => {
+  const renewNow = () =>
+    [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("Renew now")) as HTMLButtonElement | undefined;
+
+  it("disabled under unsigned and S6, enabled under verified and unrefused", async () => {
+    for (const [name, labels] of Object.entries(BLOCKED)) {
+      stub.getSubscriptionStatus.mockResolvedValue(status("current", labels, { paid_through: NOW + 5 * DAY, worker_until: NOW + 35 * DAY }));
+      await show(React.createElement(SubscriptionPanel));
+      expect(renewNow(), `${name}: the Renew now button renders (setup)`).toBeDefined();
+      expect(renewNow()!.disabled, `${name}: Renew now offered a payment the node won't make`).toBe(true);
+    }
+    stub.getSubscriptionStatus.mockResolvedValue(status("current", VERIFIED, { paid_through: NOW + 5 * DAY, worker_until: NOW + 35 * DAY }));
+    await show(React.createElement(SubscriptionPanel));
+    expect(renewNow()!.disabled).toBe(false);
   });
 });
 
