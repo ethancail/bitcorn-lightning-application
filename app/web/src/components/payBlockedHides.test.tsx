@@ -209,6 +209,42 @@ describe("G3 finding 3 — the auto-pay section says nothing about paying while 
   });
 });
 
+describe("G3 extension 2 — the Settings panel's remaining payment asks are hidden while blocked", () => {
+  // Ruled 2026-11-11: the routing_lapsed/close_due alert's "Pay {price} to
+  // restore them." and the current tier's pre-pause "Renew before then to keep
+  // them running.". The surrounding sentences stay, with their spacing.
+  const OVERDUE_LEAD = "Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.";
+  const STILL_OPEN = " Your connection to Bitcorn is still open and its balance is unchanged.";
+  const SITES = [
+    { where: "routing_lapsed alert", s: (l: Record<string, unknown>) => status("routing_lapsed", l),
+      present: `${OVERDUE_LEAD} Pay 42,000 sats to restore them.${STILL_OPEN}`, absent: /Pay 42,000 sats to restore them/,
+      blocked: `${OVERDUE_LEAD}${STILL_OPEN}` },
+    { where: "close_due alert", s: (l: Record<string, unknown>) => status("close_due", l),
+      present: `${OVERDUE_LEAD} Pay 42,000 sats to restore them.${STILL_OPEN}`, absent: /Pay 42,000 sats to restore them/,
+      blocked: `${OVERDUE_LEAD}${STILL_OPEN}` },
+    { where: "current pre-pause line", s: (l: Record<string, unknown>) => status("current", l, { paid_through: NOW - DAY, worker_until: NOW + 9 * DAY }),
+      present: /Hosted services pause on [A-Z][a-z]{2} \d{1,2}, \d{4}\. Renew before then to keep them running\./,
+      absent: /Renew before then/, blocked: /Hosted services pause on [A-Z][a-z]{2} \d{1,2}, \d{4}\.MONTHLY/ },
+  ];
+  const has = (t: string, p: string | RegExp) => (typeof p === "string" ? t.includes(p) : p.test(t));
+
+  it("each ask is absent under unsigned and S6, and present under verified and unrefused", async () => {
+    for (const s of SITES) {
+      for (const [name, labels] of Object.entries(BLOCKED)) {
+        stub.getSubscriptionStatus.mockResolvedValue(s.s(labels));
+        await show(React.createElement(SubscriptionPanel));
+        const where = `${s.where}, ${name}`;
+        expect(text(), `${where}: the panel asked for payment`).not.toMatch(s.absent);
+        expect(has(text(), s.blocked), `${where}: the surrounding sentences stay, spaced: ${text().slice(0, 400)}`).toBe(true);
+      }
+      // Anti-vacuity: verified and unrefused, the ask renders in place.
+      stub.getSubscriptionStatus.mockResolvedValue(s.s(VERIFIED));
+      await show(React.createElement(SubscriptionPanel));
+      expect(has(text(), s.present), `${s.where}, verified: ${text().slice(0, 400)}`).toBe(true);
+    }
+  });
+});
+
 describe("G3 extension — the Settings panel invites no payment from another wallet while blocked", () => {
   // Every tier with such a sentence (ruled 2026-11-11). The deposit block's own
   // helper and fineprint are already withheld by C15 while blocked.

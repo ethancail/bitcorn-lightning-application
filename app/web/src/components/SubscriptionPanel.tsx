@@ -534,12 +534,15 @@ function CurrentRender({
   // and the stat are quiet rather than green.
   const prePause = Date.now() >= status.paid_through;
   const pill = prePause ? { kind: "quiet" as const, label: "current" } : tierToPill("current");
+  // G3 extension (ruled 2026-11-11): while payments are blocked, the pre-pause
+  // line asks for no renewal; the date stays.
+  const blocked = payBlocked(status);
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={pill.kind} label={pill.label} />} />
       <p className="sub-tagline">
         {prePause
-          ? `Hosted services pause on ${formatDate(status.grace.worker_until)}. Renew before then to keep them running.`
+          ? `Hosted services pause on ${formatDate(status.grace.worker_until)}.${blocked ? "" : " Renew before then to keep them running."}`
           : "Your access to channel routing and hosted services is paid up."}
       </p>
       <StatsGrid status={status} accent={prePause ? undefined : "emerald"} />
@@ -696,6 +699,9 @@ function OverdueRender({
   handlers: ActionHandlers;
 }) {
   const tone = "orange";
+  // G3 extension (ruled 2026-11-11): while payments are blocked, the alert
+  // asks for no payment; the sentences around it stay.
+  const blocked = payBlocked(status);
   // Membership-gating M2 item 3, widened by pass 10 item C: the same rewrite as
   // the routing_lapsed banner. Routing does not stop at + 30; hosted services do.
   // L2 removed the close warning: no close is issued (Stage 6 copy, §7).
@@ -703,7 +709,8 @@ function OverdueRender({
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={tone} label="payment overdue" />} />
       <AlertBox variant={tone} icon="⚠">
-        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay {fmtSats(status.price_sats)} to restore them.
+        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.
+        {!blocked && ` Pay ${fmtSats(status.price_sats)} to restore them.`}
         {connectionStaysOpen(status) && " Your connection to Bitcorn is still open and its balance is unchanged."}
       </AlertBox>
       <p className="sub-reassure">
