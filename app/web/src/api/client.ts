@@ -111,6 +111,10 @@ export const api = {
   // confirmation header is attached by apiFetch from this exact body. The
   // quote returns the member-local fee estimate for the confirm step.
   getPayFromNodeQuote: () => apiFetch<PayFromNodeQuote>("/api/subscription/pay-from-node/quote"),
+  // Read-only: the payment this node sent and the treasury hasn't credited
+  // yet, if any (drive-mode R45). Never fetches the treasury, never clears.
+  getPayFromNodePending: () =>
+    apiFetch<{ pending: PendingPayment | null }>("/api/subscription/pay-from-node/pending"),
   payFromNode: (body: PayFromNodeBody) =>
     apiFetch<PayFromNodeResult>("/api/subscription/pay-from-node", {
       method: "POST",
@@ -952,6 +956,19 @@ export type PayFromNodeMarker = {
   created_at: number; // unix seconds
   amount_sats: number;
   txid: string | null;
+};
+
+/** GET /api/subscription/pay-from-node/pending (drive-mode R45, ruling 1):
+ *  the newest send marker not yet cleared, from this node's own database. */
+export type PendingPayment = {
+  amount_sats: number;
+  /** null when the broadcast never returned: the payment may not have been sent. */
+  txid: string | null;
+  sent_at: number; // unix seconds
+  origin: "manual" | "auto";
+  /** The status's paid_through (ms) when the marker was written. */
+  paid_through_at_write: number | null;
+  count: number;
 };
 
 // ─── Subscription payment history (Stage 5a follow-up) ───────────────────
