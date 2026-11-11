@@ -241,6 +241,44 @@ describe("R45 copy", () => {
       expect(memberText()).not.toMatch(/\bHub\b/);
     });
 
+    // Ethan, 2026-11-11 ("recs" (2)): on a member node the farmer IS the
+    // operator (C6), so the panel points to Bitcorn; the dead
+    // mailto:operator@example.com button is removed.
+    it("operator → Bitcorn: each ruled sentence, exactly", async () => {
+      await panel({ applicable: false, reason: "external_peer" });
+      expect(text()).toContain("If you believe this is incorrect, contact Bitcorn.");
+      await panel({ applicable: false, reason: "unclassified" });
+      expect(text()).toContain(
+        "Subscription doesn't activate until your connection is classified as farmer or merchant. Contact Bitcorn if this lasts more than a few minutes.",
+      );
+      await panel({ applicable: false, reason: "missing" });
+      expect(text()).toContain("Share this with Bitcorn if you contact support.");
+      expect(text()).toContain("If this persists for more than a few minutes, contact Bitcorn with the pubkey above.");
+    });
+
+    it("unclassified: no 'Contact operator' button, no mailto, no empty ACTIONS section", async () => {
+      await panel({ applicable: false, reason: "unclassified" });
+      expect(text()).not.toMatch(/Contact operator/);
+      expect(host.querySelector('a[href^="mailto:"]')).toBeNull();
+      expect(text()).not.toContain("[ ACTIONS ]");
+      expect(host.querySelector(".sub-actions")).toBeNull();
+    });
+
+    it("SWEEP: no member text on the panel, in any reachable state, says 'operator'", async () => {
+      const states: Array<[string, () => void]> = [
+        ...REACHABLE.map((r) => [r.name, () => stub.getSubscriptionStatus.mockResolvedValue(r.s(VERIFIED))] as [string, () => void]),
+        ...NOT_APPLICABLE.map((s) => [s.reason, () => stub.getSubscriptionStatus.mockResolvedValue(s)] as [string, () => void]),
+        ...ERRORS.map((e) => [e.name, e.arrange] as [string, () => void]),
+      ];
+      for (const [name, arrange] of states) {
+        arrange();
+        await panel();
+        const hrefs = [...host.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "").join(" ");
+        expect(`${memberText()} ${hrefs}`, name).not.toMatch(/\boperator\b/i);
+      }
+      expect(states.length).toBe(REACHABLE.length + NOT_APPLICABLE.length + ERRORS.length);
+    });
+
     it("SWEEP: no member text on the panel, in any reachable state, says 'channel'", async () => {
       const seen: string[] = [];
       for (const r of REACHABLE) {

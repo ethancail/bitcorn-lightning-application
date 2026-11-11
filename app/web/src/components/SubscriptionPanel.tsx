@@ -880,7 +880,7 @@ function ExternalPeerRender() {
     <section className="sub-panel sub-panel-quiet">
       <PanelHeader />
       <p className="sub-body-copy">
-        This node is configured as a <strong>routing peer</strong>. Subscription doesn't apply to this node. If you believe this is incorrect, contact your operator.
+        This node is configured as a <strong>routing peer</strong>. Subscription doesn't apply to this node. If you believe this is incorrect, contact Bitcorn.
       </p>
     </section>
   );
@@ -901,7 +901,7 @@ function UnclassifiedRender() {
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="muted-amber" label="unclassified" />} />
       <AlertBox variant="dashed" icon="i">
-        Your node's role is pending classification. Subscription doesn't activate until your connection is classified as farmer or merchant. Contact your operator if this persists more than a few minutes.
+        Your node's role is pending classification. Subscription doesn't activate until your connection is classified as farmer or merchant. Contact Bitcorn if this lasts more than a few minutes.
       </AlertBox>
       <div className="sub-stats">
         <MonthlyStat sats={monthly} />
@@ -909,10 +909,9 @@ function UnclassifiedRender() {
         <Stat label="LAST PAYMENT" value="—" suffix="pending" pendingValue />
       </div>
       <RateNote />
-      <BracketHeading>ACTIONS</BracketHeading>
-      <ActionsRow
-        secondary={<a className="sub-btn" href="mailto:operator@example.com">Contact operator <span aria-hidden>↗</span></a>}
-      />
+      {/* No actions: the "Contact operator" button (a dead mailto placeholder)
+          was removed by Ethan's ruling, 2026-11-11; the alert says to contact
+          Bitcorn. */}
     </section>
   );
 }
@@ -1015,14 +1014,14 @@ function UnexpectedMissingRowRender({
         <div className="sub-stat-label">YOUR MEMBER PUBKEY</div>
         <code className="sub-pubkey">{memberPubkey}</code>
         <button className="sub-btn" onClick={copyPubkey}>Copy pubkey</button>
-        <p className="sub-fineprint">Share this with your operator if you need to file a support ticket.</p>
+        <p className="sub-fineprint">Share this with Bitcorn if you contact support.</p>
       </div>
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
         primary={<button className="sub-btn" onClick={handleRetry} disabled={locked}>{locked ? "Trying…" : <>Try now <span aria-hidden>→</span></>}</button>}
       />
       <p className="sub-footer-note">
-        If this persists for more than a few minutes, contact your operator with the pubkey above. The auto-retry will keep running in the background until the state loads.
+        If this persists for more than a few minutes, contact Bitcorn with the pubkey above. The auto-retry will keep running in the background until the state loads.
       </p>
     </section>
   );
