@@ -25,6 +25,7 @@ import {
 } from "./subscriptionBanner";
 import { useAutoPayConfig } from "./useAutoPayConfig";
 import PayFromNodeModal from "./PayFromNodeModal";
+import { payBlocked } from "./paymentTrust";
 
 export default function MemberSubscriptionBanner({
   status,
@@ -40,6 +41,11 @@ export default function MemberSubscriptionBanner({
 
   const tier = bannerFor(status, Date.now(), usdRate);
   const tierRenders = tier.render && !!status && status.applicable === true;
+  // G3 finding 2 (ruled 2026-11-11): while payments are blocked, the tier
+  // banner asks for no payment: its pay sentence is hidden and its button
+  // disabled. The headline and the S-state alert banners stay.
+  const blocked = payBlocked(status);
+  const tierBody = blocked ? tier.context : tier.body;
 
   const priceChange = priceChangeBannerFor(cfg);
   const activeAlerts = cfg?.active_alerts ?? [];
@@ -54,7 +60,7 @@ export default function MemberSubscriptionBanner({
           <span className="alert-icon" aria-hidden>{SEVERITY_ICON[tier.severity!]}</span>
           <div className="member-sub-banner-body">
             <div className="member-sub-banner-headline">{tier.headline}</div>
-            <div>{tier.body}</div>
+            {tierBody && <div>{tierBody}</div>}
             <Link className="member-sub-banner-link" to="/settings">
               View subscription →
             </Link>
@@ -62,6 +68,7 @@ export default function MemberSubscriptionBanner({
           <button
             className="btn btn-primary member-sub-banner-action"
             onClick={() => setPayModalOpen(true)}
+            disabled={blocked}
           >
             {tier.actionLabel}
           </button>

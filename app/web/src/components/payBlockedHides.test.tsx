@@ -1,0 +1,210 @@
+// G3 findings 1–3 (treasury-price-trust; ruled by Ethan 2026-11-11): while
+// payBlocked(status) holds (paymentTrust.ts), no surface asks for a payment
+// the node won't make. Hidden, with no new copy:
+//   1. the routing-denied notice's "Renew {price} to restore access." line;
+//   2. the dashboard tier banner's sentence asking for payment (every tier),
+//      and its Renew/Pay button is disabled; the headline and the S-state
+//      alert banners stay;
+//   3. the auto-pay section's "your node pays … from its Bitcoin balance" line.
+//
+// Each test asserts the element ABSENT under blocked statuses — unsigned (the
+// signature half of payBlocked) and verified-but-refused (the refusal half) —
+// and, in the same test, PRESENT under a verified, unrefused status (the
+// anti-vacuity half: a surface that never rendered it would otherwise pass).
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createRoot, type Root } from "react-dom/client";
+import { act } from "react-dom/test-utils";
+import React from "react";
+import { MemoryRouter } from "react-router-dom";
+
+vi.mock("qrcode", () => ({
+  default: { toDataURL: vi.fn().mockResolvedValue("data:image/png;base64,AA==") },
+}));
+
+const stub = vi.hoisted(() => ({
+  getNode: vi.fn(),
+  getSubscriptionStatus: vi.fn(),
+  getAutoPayConfig: vi.fn(),
+  getAutoPayHistory: vi.fn(),
+  getExchangeRate: vi.fn(),
+  getPayFromNodeQuote: vi.fn(),
+  payFromNode: vi.fn(),
+}));
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return { ...actual, api: { ...(actual as any).api, ...stub } };
+});
+
+import RoutingDeniedNotice from "./RoutingDeniedNotice";
+import MemberSubscriptionBanner from "./MemberSubscriptionBanner";
+import SubscriptionPanel from "./SubscriptionPanel";
+
+const NOW = 1_790_000_000_000;
+const DAY = 86_400_000;
+const ADDR = "bc1qpinnedsubscriptionaddr000000000000zz";
+const NEW_ADDR = "bc1qtreasurystatedaddress0000000000000yy";
+const PRICE = 42_000;
+
+const VERIFIED = { treasury_signature: "verified", treasury_signature_reason: null, treasury_pay_refusal: null };
+const UNSIGNED = { treasury_signature: "unsigned", treasury_signature_reason: null, treasury_pay_refusal: null };
+const CHANGED = {
+  treasury_signature: "verified",
+  treasury_signature_reason: null,
+  treasury_pay_refusal: { code: "deposit_address_changed", detail: "", pinned_address: ADDR, stated_address: NEW_ADDR },
+};
+const BLOCKED = { unsigned: UNSIGNED, "verified, address changed": CHANGED };
+
+type Tier = "prepay" | "current" | "worker_lapsed" | "routing_lapsed" | "close_due";
+const status = (tier: Tier, labels: Record<string, unknown>, o: { paid_through?: number; worker_until?: number } = {}) => ({
+  applicable: true,
+  member_pubkey: "02" + "c".repeat(64),
+  current_tier: tier,
+  paid_through: o.paid_through ?? NOW - 10 * DAY,
+  price_sats: PRICE,
+  period_days: 30,
+  deposit_address: labels === CHANGED ? NEW_ADDR : ADDR,
+  last_payment_at: null,
+  last_payment_txid: null,
+  grace: { fresh_until: 0, worker_until: o.worker_until ?? NOW - 3 * DAY, routing_until: NOW + 20 * DAY, close_at: NOW + 50 * DAY },
+  ...labels,
+});
+
+const autoPay = (o: Record<string, unknown> = {}) => ({
+  enabled: false, enabled_at: null, last_acknowledged_price: null, last_acknowledged_price_at: null,
+  current_price: PRICE, price_change_pending: false, status_verification: "verified",
+  status_verification_reason: null, price_refusal: null, active_alerts: [],
+  badge: { active_count: 0, highest_severity: null },
+  ...o,
+});
+
+let host: HTMLDivElement;
+let root: Root;
+let nowSpy: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  nowSpy = vi.spyOn(Date, "now").mockReturnValue(NOW);
+  stub.getNode.mockResolvedValue({ pubkey: "02" + "c".repeat(64) });
+  stub.getAutoPayConfig.mockResolvedValue(autoPay());
+  stub.getAutoPayHistory.mockResolvedValue([]);
+  stub.getExchangeRate.mockResolvedValue({ usd: null, source: "coinbase", fetched_at: null, age_ms: null, state: "none" });
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+});
+
+afterEach(async () => {
+  await act(async () => { root.unmount(); });
+  host.remove();
+  nowSpy.mockRestore();
+});
+
+async function flush() {
+  for (let i = 0; i < 8; i++) await act(async () => { await Promise.resolve(); });
+}
+async function show(el: React.ReactElement) {
+  await act(async () => { root.unmount(); });
+  root = createRoot(host);
+  await act(async () => { root.render(React.createElement(MemoryRouter, null, el)); });
+  await flush();
+}
+const text = () => (document.body.textContent ?? "").replace(/\s+/g, " ");
+
+describe("G3 finding 1 — the routing-denied notice asks for no payment while blocked", () => {
+  it("the \"Renew {price} to restore access.\" line is absent when blocked, present when verified", async () => {
+    const payload = { tier: "routing_lapsed", paid_through: NOW - 10 * DAY, deposit_address: ADDR, price_sats: PRICE };
+    const notice = () => React.createElement(RoutingDeniedNotice, { payload, blockedAction: "receive" });
+    const ASK = "Renew 42,000 sats to restore access.";
+
+    for (const [name, labels] of Object.entries(BLOCKED)) {
+      stub.getSubscriptionStatus.mockResolvedValue(status("routing_lapsed", labels));
+      await show(notice());
+      expect(text(), `${name}: the notice asked for payment`).not.toContain(ASK);
+      expect(text(), `${name}: the standing line stays`).toContain("Services paused since");
+      expect(host.querySelector("[data-trust-state]"), `${name}: the S-state shows`).not.toBeNull();
+    }
+
+    // Anti-vacuity: verified and unrefused, the line renders.
+    stub.getSubscriptionStatus.mockResolvedValue(status("routing_lapsed", VERIFIED));
+    await show(notice());
+    expect(text()).toContain(ASK);
+    expect(host.querySelector("[data-trust-state]")).toBeNull();
+  });
+});
+
+describe("G3 finding 2 — the dashboard tier banner asks for no payment while blocked", () => {
+  // Every tier that renders a banner, with its body's sentence asking for payment.
+  const TIERS: Array<{ name: string; s: (l: Record<string, unknown>) => any; ask: string; context: string | null; headline: string }> = [
+    { name: "pre-pause (current, from P)", s: (l) => status("current", l, { paid_through: NOW - DAY, worker_until: NOW + 9 * DAY }),
+      ask: "Renew for 42,000 sats before then to keep them running.", context: null, headline: "Hosted services pause on" },
+    { name: "prepay", s: (l) => status("prepay", l), ask: "Pay 42,000 sats to unlock Lightning routing.", context: null,
+      headline: "Welcome to BitCorn — activate your membership" },
+    { name: "worker_lapsed", s: (l) => status("worker_lapsed", l), ask: "Renew for 42,000 sats to restore.",
+      context: "Hosted services are paused; your channel and routing still work.", headline: "Action needed: hosted services lapsed" },
+    { name: "routing_lapsed", s: (l) => status("routing_lapsed", l), ask: "Pay 42,000 sats to restore them.",
+      context: "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.", headline: "Your membership payment is overdue" },
+    { name: "close_due", s: (l) => status("close_due", l), ask: "Pay 42,000 sats to restore them.",
+      context: "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.", headline: "Your membership payment is overdue" },
+  ];
+  const banner = (s: any) => React.createElement(MemberSubscriptionBanner, { status: s, usdRate: null });
+  const action = () => host.querySelector(".member-sub-banner-action") as HTMLButtonElement | null;
+  const tierBanner = () => host.querySelector(".member-sub-banner") as HTMLElement | null;
+
+  it("its pay sentence is absent and its button disabled when blocked, every tier; both present and enabled when verified", async () => {
+    // An S-state alert banner, active: it must stay while the tier banner is quieted.
+    stub.getAutoPayConfig.mockResolvedValue(autoPay({
+      active_alerts: [{ id: 4, member_pubkey: "02" + "c".repeat(64), type: "AUTOPAY_STATUS_UNVERIFIED", severity: "warning",
+        status: "active", consecutive_count: 1, context: { verdict: "unsigned" }, created_at: 1, updated_at: 1 }],
+    }));
+    for (const t of TIERS) {
+      for (const [name, labels] of Object.entries(BLOCKED)) {
+        await show(banner(t.s(labels)));
+        const where = `${t.name}, ${name}`;
+        expect(tierBanner(), `${where}: the tier banner renders`).not.toBeNull();
+        expect(tierBanner()!.textContent, `${where}: the headline stays`).toContain(t.headline);
+        expect(text(), `${where}: the banner asked for payment`).not.toContain(t.ask);
+        if (t.context) expect(text(), `${where}: the rest of the body stays`).toContain(t.context);
+        expect(action()?.disabled, `${where}: the Renew/Pay button is enabled`).toBe(true);
+        expect(text(), `${where}: the S-state alert banner stays`).toContain("Payments are paused.");
+      }
+      // Anti-vacuity: verified and unrefused, the sentence renders and the button works.
+      await show(banner(t.s(VERIFIED)));
+      expect(text(), `${t.name}, verified`).toContain(t.ask);
+      expect(action()?.disabled, `${t.name}, verified: the button is disabled`).toBe(false);
+    }
+  });
+});
+
+describe("G3 finding 3 — the auto-pay section says nothing about paying while blocked", () => {
+  const PAYS = /your node (pays|will pay) .* from its Bitcoin balance/;
+
+  it("the \"your node pays … from its Bitcoin balance\" line is absent when blocked, present when verified", async () => {
+    // Both variants of the line: lapsed (past the pause) and not yet lapsed.
+    const variants = [
+      { name: "lapsed", s: (l: Record<string, unknown>) => status("worker_lapsed", l) },
+      { name: "not lapsed", s: (l: Record<string, unknown>) => status("current", l, { paid_through: NOW + 5 * DAY, worker_until: NOW + 35 * DAY }) },
+    ];
+    for (const v of variants) {
+      for (const [name, labels] of Object.entries(BLOCKED)) {
+        stub.getSubscriptionStatus.mockResolvedValue(v.s(labels));
+        stub.getAutoPayConfig.mockResolvedValue(autoPay({
+          enabled: true, enabled_at: 1,
+          // As the API reports each: unsigned → no payable price; an address
+          // change → still verified with its price.
+          ...(labels === UNSIGNED ? { status_verification: "unsigned", current_price: null } : {}),
+        }));
+        await show(React.createElement(SubscriptionPanel));
+        const where = `${v.name}, ${name}`;
+        expect(text(), `${where}: auto-pay is on, so its block renders`).toContain("Requires sufficient on-chain BTC");
+        expect(text(), `${where}: the section said the node pays`).not.toMatch(PAYS);
+      }
+      // Anti-vacuity: verified and unrefused, the line renders.
+      stub.getSubscriptionStatus.mockResolvedValue(v.s(VERIFIED));
+      stub.getAutoPayConfig.mockResolvedValue(autoPay({ enabled: true, enabled_at: 1 }));
+      await show(React.createElement(SubscriptionPanel));
+      expect(text(), `${v.name}, verified`).toMatch(PAYS);
+      expect(text()).toContain("42,000 sats from its Bitcoin balance");
+    }
+  });
+});

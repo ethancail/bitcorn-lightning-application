@@ -21,7 +21,7 @@ import {
   renewalAmount,
 } from "./subscriptionBanner";
 import PayFromNodeModal from "./PayFromNodeModal";
-import { depositAddressDisplay, trustCopy } from "./paymentTrust";
+import { depositAddressDisplay, payBlocked, trustCopy } from "./paymentTrust";
 
 function formatDate(ms: number | null): string {
   if (!ms) return "—";
@@ -75,6 +75,9 @@ export default function RoutingDeniedNotice({
   const display = depositAddressDisplay(status);
   const canOpenModal = display.show;
   const trustState = !display.show ? display.state : null;
+  // G3 finding 1 (ruled 2026-11-11): while payments are blocked, no line asks
+  // for payment; the S-state shows alone. A status not yet loaded is blocked.
+  const blocked = payBlocked(status);
 
   return (
     <>
@@ -83,7 +86,7 @@ export default function RoutingDeniedNotice({
           <span className="alert-icon" aria-hidden>{SEVERITY_ICON[severity]}</span>
           <div>
             <div style={{ fontWeight: 600, marginBottom: 2 }}>{headline}</div>
-            <div>{standing} {cta}</div>
+            <div>{blocked ? standing : `${standing} ${cta}`}</div>
             {display.show && (
               <div style={{ marginTop: 6, fontSize: "0.75rem", opacity: 0.85 }}>
                 Deposit address:{" "}

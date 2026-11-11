@@ -259,7 +259,7 @@ export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void 
             not-applicable / loading / error states where it would be
             meaningless. Its own card below the subscription panel. */}
         <section className="sub-panel">
-          <AutoPaySection pausesOn={status.grace.worker_until} />
+          <AutoPaySection pausesOn={status.grace.worker_until} payBlocked={payBlocked(status)} />
         </section>
         {payModalOpen && (
           <PayFromNodeModal status={status} onClose={() => setPayModalOpen(false)} />

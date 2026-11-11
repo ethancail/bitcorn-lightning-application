@@ -91,6 +91,10 @@ export interface BannerDescriptor {
   severity?: BannerSeverity;
   headline?: string;
   body?: string;
+  /** The body without its sentence asking for payment, for a status this node
+   *  won't pay (G3 finding 2, ruled 2026-11-11). Absent when the body is only
+   *  that sentence. */
+  context?: string;
   actionLabel?: string;
 }
 
@@ -159,13 +163,15 @@ export function bannerFor(
     case "worker_lapsed": {
       // Item 12: the dollar amount, with the sats beside it.
       const amount = renewalAmount(status.price_sats, usdRate);
+      const context =
+        `Your subscription lapsed on ${lapsedOn}. Hosted services are ` +
+        `paused; your channel and routing still work.`;
       return {
         render: true,
         severity: "amber",
         headline: "Action needed: hosted services lapsed",
-        body:
-          `Your subscription lapsed on ${lapsedOn}. Hosted services are ` +
-          `paused; your channel and routing still work. Renew for ${amount.text} to restore.`,
+        body: `${context} Renew for ${amount.text} to restore.`,
+        context,
         actionLabel: `Renew ${amount.label}`,
       };
     }
@@ -183,13 +189,13 @@ export function bannerFor(
       // rate (drive-mode's amount rules, as item 12). The action stays in sats:
       // P2 pins routing_lapsed's action as unchanged by a rate.
       const amount = renewalAmount(status.price_sats, usdRate);
+      const context = "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.";
       return {
         render: true,
         severity: bannerSeverityForTier(tier),
         headline: "Your membership payment is overdue",
-        body:
-          "Hosted services are paused: valuation, Auto-Buy and stablecoin " +
-          `settlement data. Pay ${amount.text} to restore them.`,
+        body: `${context} Pay ${amount.text} to restore them.`,
+        context,
         actionLabel: `Renew ${price}`,
       };
     }

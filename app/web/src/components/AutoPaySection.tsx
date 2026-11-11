@@ -24,8 +24,11 @@ type Save = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: st
 /** pausesOn: the status's grace.worker_until (ms), when hosted services pause
  *  if the subscription is not renewed. Auto-pay fires only once a lapse has
  *  begun (autoPayTrigger.ts, the recoverable-lapsed tiers), which is after
- *  that pause — the copy below says so (drive-mode P2 item 13, R6(b)(b)). */
-export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {}) {
+ *  that pause — the copy below says so (drive-mode P2 item 13, R6(b)(b)).
+ *  payBlocked: payBlocked(status) from paymentTrust.ts; while true, the line
+ *  saying the node pays from its balance is hidden (G3 finding 3, ruled
+ *  2026-11-11). Omitted reads as blocked. */
+export default function AutoPaySection({ pausesOn, payBlocked = true }: { pausesOn?: number; payBlocked?: boolean } = {}) {
   const [cfg, setCfg] = useState<AutoPayConfig | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [save, setSave] = useState<Save>({ kind: "idle" });
@@ -112,7 +115,7 @@ export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {})
         <div style={{ fontSize: "0.75rem", color: "var(--text-3)", lineHeight: 1.5, marginTop: 8 }}>
           {/* Past the pause (the screenshot gate): the lapse has begun, which is
               exactly when auto-pay fires, so say that rather than "if". */}
-          {pausesOn != null && pausesOn <= Date.now() ? (
+          {payBlocked ? null : pausesOn != null && pausesOn <= Date.now() ? (
             <p style={{ margin: "0 0 6px" }}>
               Your subscription has lapsed and hosted services are paused, so your node will pay{" "}
               <strong>{sats(cfg.current_price)}</strong> from its Bitcoin balance to renew it.
