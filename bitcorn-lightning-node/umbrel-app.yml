@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.36"
+version: "1.18.37"
 port: 3200
 
 description: >
@@ -27,17 +27,10 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: |
-  v1.18.36
+  v1.18.37
 
-  Membership is now required
-  - New members: a paid Bitcorn membership is now required from the first time you open the app. There is no free period. Until you pay, valuation, Auto-Buy and stablecoin settlement data are unavailable, and the hub won't accept a new channel from your node.
-  - To pay or renew: open Settings → Subscription. Send the amount shown to your deposit address, or pay from your node's wallet. If the hub can't accept a channel from you, the Connect to Hub screen also shows a button that takes you there.
-  - Renewals: if your membership runs out, you now have 30 days before hosted services pause (it was 7). After those 30 days, the hub also won't accept a new channel from your node until you renew.
-  - Your existing channel to the hub stays open and keeps working.
-
-  Also in this release
-  - New Automatic transfers page: choose your strategy and see the one minimum connection size it needs, plus fee and daily limits. Automatic transfers aren't switched on yet.
-  - Withdraw and Top Up now suggest options before you get a quote. Withdraw's Max allows for today's fees, and both pages explain when your connection to the hub is down.
-  - Fees on past withdrawals and top-ups now show what they cost in dollars at the time.
-  - The liquidity advisor's minimum connection size has been recalculated, so fewer connections are flagged as too small.
-  - Type-to-confirm boxes are now properly sized, with a visible focus outline and space above the buttons.
+  Safer membership payments
+  - Before paying for your membership, your node now checks that the payment details really come from Bitcorn.
+  - Your node won't pay more than a built-in limit, even if it's asked to.
+  - Your node remembers your payment address. If that address ever changes, your node won't pay the new one until Bitcorn helps you confirm it.
+  - If payments are paused, the app tells you why and stops asking you to pay.

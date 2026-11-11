@@ -19,6 +19,14 @@ vi.mock("./memberStatusClient", () => ({
   fetchLocalSubscriptionStatus: async () => ({ ok: true, status: h.status }),
 }));
 
+// The cap is not under test here (treasury-price-trust's controls test it);
+// its shipped value is owed, so inject one that bounds nothing these tests
+// send. Not a proposal for SUBSCRIPTION_PRICE_CAP_SATS.
+vi.mock("./priceCap", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./priceCap")>()),
+  SUBSCRIPTION_PRICE_CAP_SATS: Number.MAX_SAFE_INTEGER,
+}));
+
 vi.mock("../lightning/lnd", () => ({
   getLndChainFeeRate: vi.fn(async () => ({ tokens_per_vbyte: 2 })),
   getLndChainBalance: vi.fn(async () => ({ chain_balance: 1_000_000 })),
@@ -70,6 +78,7 @@ beforeEach(() => {
   db.prepare("DELETE FROM subscription_send_marker").run();
   db.prepare("DELETE FROM subscription_autopay_alerts").run();
   db.prepare("DELETE FROM member_profile").run();
+  db.prepare("DELETE FROM subscription_deposit_address_pin").run();
   h.status = status();
   h.nextTxid = 1;
   vi.mocked(lnd.sendLndToChainAddress).mockClear();

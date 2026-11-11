@@ -496,7 +496,12 @@ export type AutoPayAlertType =
   // hold time; auto-pay refused by the price ceiling (context.reason:
   // "price_above_acknowledged" | "no_acknowledged_price").
   | "AUTOPAY_SETTLEMENT_OVERDUE"
-  | "AUTOPAY_PRICE_NOT_ACKNOWLEDGED";
+  | "AUTOPAY_PRICE_NOT_ACKNOWLEDGED"
+  // treasury-price-trust: the status is not verified (context.verdict), or a
+  // verified target this app won't pay (context.reason: price_above_cap |
+  // price_not_integer | deposit_address_changed).
+  | "AUTOPAY_STATUS_UNVERIFIED"
+  | "AUTOPAY_PAY_TARGET_REFUSED";
 
 export type AutoPayAlert = {
   id: number;
@@ -521,6 +526,12 @@ export type AutoPayConfig = {
   last_acknowledged_price_at: number | null;
   current_price: number | null;
   price_change_pending: boolean;
+  /** treasury-price-trust (spec §4 R10, §8): the status's verdict (null: the
+   *  treasury couldn't be read), its S3 reason, and a verified price this app
+   *  won't pay (S4, S5). current_price is null unless verified and payable. */
+  status_verification?: TreasurySignature | null;
+  status_verification_reason?: "key_unset" | "lnd_unavailable" | null;
+  price_refusal?: { code: "price_above_cap" | "price_not_integer"; price_sats: number } | null;
   active_alerts: AutoPayAlert[];
   badge: { active_count: number; highest_severity: "info" | "warning" | null };
 };
@@ -847,7 +858,23 @@ export type SubscriptionTier =
  */
 type OpenChannelVerdict = { open_channel_allowed?: boolean | null };
 
-export type SubscriptionStatusApplicable = OpenChannelVerdict & {
+/**
+ * treasury-price-trust (spec §4 R3): labels set by THIS node's status proxy,
+ * never by the treasury (the proxy overwrites any it sent). Only "verified"
+ * lets the web offer a payment or an auto-pay opt-in, or act on
+ * open_channel_allowed; anything else, or a missing label, is not verified.
+ */
+export type TreasurySignature = "verified" | "unsigned" | "invalid" | "unverifiable";
+export type TreasuryPayRefusal =
+  | { code: "price_above_cap" | "price_not_integer"; detail: string; price_sats: number }
+  | { code: "deposit_address_changed"; detail: string; pinned_address: string | null; stated_address: string };
+type TreasuryTrustLabels = {
+  treasury_signature?: TreasurySignature;
+  treasury_signature_reason?: "key_unset" | "lnd_unavailable" | null;
+  treasury_pay_refusal?: TreasuryPayRefusal | null;
+};
+
+export type SubscriptionStatusApplicable = OpenChannelVerdict & TreasuryTrustLabels & {
   applicable: true;
   member_pubkey: string;
   current_tier: SubscriptionTier;
@@ -885,7 +912,7 @@ export type SubscriptionNotApplicableReason =
   | "missing"
   | "no_channel";
 
-export type SubscriptionStatusNotApplicable = OpenChannelVerdict & {
+export type SubscriptionStatusNotApplicable = OpenChannelVerdict & TreasuryTrustLabels & {
   applicable: false;
   reason: SubscriptionNotApplicableReason;
   /** Present only when reason === "not_yet_allocated". */

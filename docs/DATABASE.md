@@ -88,6 +88,7 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `080_fee_estimate_samples.sql` | Drive-mode P3: `fee_estimate_samples` (`id`, `sampled_at`) — lnd's 6-block estimate, read-only, at most every 10 minutes off the sync tick, kept 8 days, for "calm" (`transfers/feeSamples.ts`) |
 | `081_fee_estimate_samples_rate.sql` | Drive-mode P3: `fee_estimate_samples.sat_per_vbyte` |
 | `082_swap_requests_actual_fee_usd.sql` | Drive-mode P3: `swap_requests.actual_fee_usd_cents` — the completed fee in cents, written by the poller only with a fresh rate; NULL → sats |
+| `083_subscription_deposit_address_pin.sql` | Treasury-price-trust (D4): `subscription_deposit_address_pin` — APPEND-ONLY; the member's current pin is its newest row. Written on the first VERIFIED status (`first_sight`, or `marker_seed` = the newest send marker's address); a stated address that differs refuses manual and auto pay until the host command `node dist/cli/acknowledge-deposit-address.js <address>` appends an `acknowledged` row (never an HTTP route). Member-local; empty on the treasury (`subscription/depositAddressPin.ts`) |
 
 `001` through `070` are contiguous. `071`–`073` are held by unmerged arcs (membership-gating `071`, `072`; pay-from-node `073`), so drive-mode P3 starts at `074`; until those merge the set has that gap, which the runner tolerates (it applies any unapplied filename in sorted order, `migrate.ts`). Always check the other arcs' branches, then allocate the next free number at or above the highest.
 

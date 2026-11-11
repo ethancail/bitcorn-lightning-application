@@ -370,6 +370,10 @@ describe("items 11-12: the dashboard's renewal banner reads its rate", () => {
     applicable: true, member_pubkey: "03" + "a".repeat(64), current_tier, paid_through,
     price_sats: 50_000, period_days: 30, deposit_address: "bcrt1qexample", last_payment_at: null, last_payment_txid: null,
     grace: { fresh_until: 0, worker_until: paid_through + 9 * 86_400_000, routing_until: paid_through + 30 * 86_400_000, close_at: paid_through + 60 * 86_400_000 },
+    // The labels this node's status proxy always sets: verified and payable. A
+    // status without them is not verified, and the banner then asks for no
+    // payment (G3 finding 2; payBlockedHides.test.tsx).
+    treasury_signature: "verified", treasury_signature_reason: null, treasury_pay_refusal: null,
   });
 
   it("at P: the pre-pause warning, in dollars", async () => {

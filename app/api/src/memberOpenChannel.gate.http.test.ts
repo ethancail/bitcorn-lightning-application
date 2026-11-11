@@ -157,6 +157,27 @@ describe("R4 — an unknown verdict lets the open through; the acceptor decides"
   });
 });
 
+describe("treasury-price-trust §4 R9 — an UNVERIFIED status is unknown: a forged false cannot block an open", () => {
+  it.each(["unsigned", "invalid", "unverifiable"] as const)(
+    "%s body stating open_channel_allowed:false → the funding call runs; the same verdict VERIFIED refuses",
+    async (verdict) => {
+      // The real verifying fetch's unverified shape: bytes, no `status` field.
+      const forged = Buffer.from(JSON.stringify({ applicable: true, open_channel_allowed: false }));
+      m.status = { ok: false, code: "status_unverified", verdict, detail: "", httpStatus: 200, bytes: forged };
+      const r = await open();
+      expect(m.openCalls, "R9: an unverified false blocked the open").toBe(1);
+      expect(r.status).toBe(200);
+
+      // Anti-vacuity: the same false, verified, is refused before funding.
+      m.openCalls = 0;
+      m.status = statusWith(false);
+      const refused = await open();
+      expect(refused.status).toBe(403);
+      expect(m.openCalls).toBe(0);
+    },
+  );
+});
+
 describe("item A — the acceptor's refusal, read out of ln-service's array error, shows as the app check's answer", () => {
   it("verdict unknown, acceptor refuses: 403 membership_not_paid (not failed_to_open_channel)", async () => {
     m.status = statusWith(undefined);

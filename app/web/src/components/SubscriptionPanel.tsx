@@ -25,6 +25,8 @@ import {
 } from "../api/client";
 import { Pill, tierToPill, type PillKind } from "./Pill";
 import PayFromNodeModal from "./PayFromNodeModal";
+import PaymentTrustNotice from "./PaymentTrustNotice";
+import { depositAddressDisplay, payBlocked } from "./paymentTrust";
 import AutoPaySection from "./AutoPaySection";
 import { useAutoPayConfig } from "./useAutoPayConfig";
 import { actionsFor, type ActionDescriptor } from "./subscriptionActions";
@@ -38,6 +40,9 @@ import { bip21Uri } from "./bip21";
  *  / close_due. */
 interface ActionHandlers {
   onOpenPayModal: () => void;
+  /** treasury-price-trust §8: the status is not verified, or names a target
+   *  this node won't pay (S1–S6). The pay button is disabled. */
+  payBlocked?: boolean;
   onOnramp: () => void;
   onrampLoading: boolean;
   onrampError: string | null;
@@ -241,10 +246,11 @@ export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void 
   if (status.applicable) {
     return (
       <>
+        <PaymentTrustNotice status={status} />
         <ApplicablePanel
           status={status}
           onRefresh={fetchStatus}
-          handlers={actionHandlers}
+          handlers={{ ...actionHandlers, payBlocked: payBlocked(status) }}
         />
         {/* Auto-renew (auto-pay opt-in) — the automation of the Renew now
             action, so it lives with the subscription surface rather than in
@@ -253,7 +259,7 @@ export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void 
             not-applicable / loading / error states where it would be
             meaningless. Its own card below the subscription panel. */}
         <section className="sub-panel">
-          <AutoPaySection pausesOn={status.grace.worker_until} />
+          <AutoPaySection pausesOn={status.grace.worker_until} payBlocked={payBlocked(status)} />
         </section>
         {payModalOpen && (
           <PayFromNodeModal status={status} onClose={() => setPayModalOpen(false)} />
@@ -465,7 +471,7 @@ function renderActionButton(
       );
     case "pay-modal":
       return (
-        <button className="sub-btn" onClick={handlers.onOpenPayModal}>
+        <button className="sub-btn" onClick={handlers.onOpenPayModal} disabled={handlers.payBlocked}>
           {labelWithGlyph}
         </button>
       );
@@ -528,12 +534,15 @@ function CurrentRender({
   // and the stat are quiet rather than green.
   const prePause = Date.now() >= status.paid_through;
   const pill = prePause ? { kind: "quiet" as const, label: "current" } : tierToPill("current");
+  // G3 extension (ruled 2026-11-11): while payments are blocked, the pre-pause
+  // line asks for no renewal; the date stays.
+  const blocked = payBlocked(status);
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={pill.kind} label={pill.label} />} />
       <p className="sub-tagline">
         {prePause
-          ? `Hosted services pause on ${formatDate(status.grace.worker_until)}. Renew before then to keep them running.`
+          ? `Hosted services pause on ${formatDate(status.grace.worker_until)}.${blocked ? "" : " Renew before then to keep them running."}`
           : "Your access to channel routing and hosted services is paid up."}
       </p>
       <StatsGrid status={status} accent={prePause ? undefined : "emerald"} />
@@ -546,7 +555,7 @@ function CurrentRender({
       />
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
-        primary={<button className="sub-btn" onClick={handlers.onOpenPayModal}>Renew now <span aria-hidden>→</span></button>}
+        primary={<button className="sub-btn" onClick={handlers.onOpenPayModal} disabled={blocked}>Renew now <span aria-hidden>→</span></button>}
         secondary={<button className="sub-btn" onClick={onRefresh}>Refresh token</button>}
         tertiary={<Link className="sub-link" to="/subscription/payments">View payment history <span aria-hidden>→</span></Link>}
       />
@@ -564,14 +573,18 @@ function PrepayRender({
   handlers: ActionHandlers;
 }) {
   const pill = tierToPill("prepay");
+  // G3 extension (ruled 2026-11-11): while payments are blocked, no sentence
+  // invites paying from another wallet; the two that do are not rendered.
+  const blocked = payBlocked(status);
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={pill.kind} label={pill.label} />} />
       <p className="sub-tagline">
-        You have <strong>payment access</strong> until your first payment. Send {fmtSats(status.price_sats)} to activate full membership.
+        You have <strong>payment access</strong> until your first payment.
+        {!blocked && ` Send ${fmtSats(status.price_sats)} to activate full membership.`}
       </p>
       <ul className="sub-prepay-bullets">
-        <li><span className="sub-bullet-tick">✓</span> <strong>Available now</strong> — Coinbase Onramp for buying BTC, BTC/USD price reads, and the address below for receiving your first payment.</li>
+        {!blocked && <li><span className="sub-bullet-tick">✓</span> <strong>Available now</strong> — Coinbase Onramp for buying BTC, BTC/USD price reads, and the address below for receiving your first payment.</li>}
         <li><span className="sub-bullet-plus">+</span> <strong>Activates on first payment</strong> — Lightning routing through the treasury, full hosted services, valuation engine, and complete dashboard.</li>
       </ul>
       <div className="sub-stats">
@@ -609,6 +622,9 @@ function WorkerLapsedRender({
   handlers: ActionHandlers;
 }) {
   const lapsedDays = daysAgo(status.paid_through);
+  // G3 extension (ruled 2026-11-11): while payments are blocked, the sentence
+  // inviting payment from another wallet is not rendered.
+  const blocked = payBlocked(status);
   return (
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="amber" label="services paused" />} />
@@ -628,7 +644,9 @@ function WorkerLapsedRender({
       <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
       <Timeline>
         <TimelineRow marker="·">
-          <strong>If you renew</strong> — recovery is fully in-app. Buy BTC via Onramp or send from a wallet you already have. Payment is detected within ~15 seconds; price quotes and valuation come back online and your paid-through date advances by {status.period_days} days.
+          <strong>If you renew</strong> — recovery is fully in-app.
+          {!blocked && " Buy BTC via Onramp or send from a wallet you already have."}
+          {" "}Payment is detected within ~15 seconds; price quotes and valuation come back online and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
         {/* Routing doesn't pause at routing_until (M2 item 3); only this is true. */}
         {connectionStaysOpen(status) && (
@@ -681,6 +699,9 @@ function OverdueRender({
   handlers: ActionHandlers;
 }) {
   const tone = "orange";
+  // G3 extension (ruled 2026-11-11): while payments are blocked, the alert
+  // asks for no payment; the sentences around it stay.
+  const blocked = payBlocked(status);
   // Membership-gating M2 item 3, widened by pass 10 item C: the same rewrite as
   // the routing_lapsed banner. Routing does not stop at + 30; hosted services do.
   // L2 removed the close warning: no close is issued (Stage 6 copy, §7).
@@ -688,7 +709,8 @@ function OverdueRender({
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={tone} label="payment overdue" />} />
       <AlertBox variant={tone} icon="⚠">
-        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data. Pay {fmtSats(status.price_sats)} to restore them.
+        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.
+        {!blocked && ` Pay ${fmtSats(status.price_sats)} to restore them.`}
         {connectionStaysOpen(status) && " Your connection to Bitcorn is still open and its balance is unchanged."}
       </AlertBox>
       <p className="sub-reassure">
@@ -1050,6 +1072,20 @@ function DepositBlock({
       setTimeout(() => setCopied(false), 1800);
     });
   }, [status.deposit_address]);
+  // treasury-price-trust C15: no address, QR, URI or copy unless the status is
+  // verified and the address is the pinned one. One S-state per panel screen
+  // (drive-mode, accepted by Ethan 2026-11-11): the full S-state is the page
+  // notice above the panel; here, only a pointer to it.
+  if (!depositAddressDisplay(status).show) {
+    return (
+      <>
+        <BracketHeading>DEPOSIT</BracketHeading>
+        {payBlocked(status) && (
+          <p className="sub-deposit-helper">Payment address hidden while payments are paused (see above).</p>
+        )}
+      </>
+    );
+  }
   return (
     <>
       <BracketHeading>DEPOSIT</BracketHeading>

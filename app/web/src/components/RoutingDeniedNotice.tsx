@@ -10,16 +10,18 @@
 // away. Severity derives from payload.tier through the SAME shared map the
 // banner uses (bannerSeverityForTierName), so the two surfaces can't drift.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { fmtSats, truncPubkey } from "../api/client";
+import { api, fmtSats, truncPubkey, type SubscriptionStatus } from "../api/client";
 import type { RoutingDeniedPayload } from "./subscription402";
 import {
   bannerSeverityForTierName,
   ALERT_VARIANT_CLASS,
   SEVERITY_ICON,
+  renewalAmount,
 } from "./subscriptionBanner";
 import PayFromNodeModal from "./PayFromNodeModal";
+import { depositAddressDisplay, payBlocked, trustCopy } from "./paymentTrust";
 
 function formatDate(ms: number | null): string {
   if (!ms) return "—";
@@ -59,10 +61,23 @@ export default function RoutingDeniedNotice({
     ? `Pay ${price} to activate.`
     : `Renew ${price} to restore access.`;
 
-  // deposit_address is nullable by type (Tier2DenialBody). With an address
-  // the inline modal handles payment; without one we degrade to the
-  // Settings panel, which can render the richer not-ready states.
-  const canOpenModal = payload.deposit_address != null;
+  // treasury-price-trust C15: the deposit address, and the pay modal that
+  // carries it, render only from a status this node verified whose address is
+  // the pinned one — read from the status proxy, never from the 402 payload,
+  // which carries no verification label. Otherwise the S-state shows, with no
+  // address, and the button degrades to the Settings panel as before.
+  const [status, setStatus] = useState<SubscriptionStatus | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api.getSubscriptionStatus().then((s) => { if (!cancelled) setStatus(s); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const display = depositAddressDisplay(status);
+  const canOpenModal = display.show;
+  const trustState = !display.show ? display.state : null;
+  // G3 finding 1 (ruled 2026-11-11): while payments are blocked, no line asks
+  // for payment; the S-state shows alone. A status not yet loaded is blocked.
+  const blocked = payBlocked(status);
 
   return (
     <>
@@ -71,13 +86,21 @@ export default function RoutingDeniedNotice({
           <span className="alert-icon" aria-hidden>{SEVERITY_ICON[severity]}</span>
           <div>
             <div style={{ fontWeight: 600, marginBottom: 2 }}>{headline}</div>
-            <div>{standing} {cta}</div>
-            {payload.deposit_address && (
+            <div>{blocked ? standing : `${standing} ${cta}`}</div>
+            {display.show && (
               <div style={{ marginTop: 6, fontSize: "0.75rem", opacity: 0.85 }}>
                 Deposit address:{" "}
-                <code className="ident" title={payload.deposit_address}>
-                  {truncPubkey(payload.deposit_address)}
+                <code className="ident" title={display.address}>
+                  {truncPubkey(display.address)}
                 </code>
+              </div>
+            )}
+            {trustState && (
+              <div style={{ marginTop: 6 }} data-trust-state={trustState.state}>
+                {trustCopy(
+                  trustState,
+                  trustState.state === "S4_price_above_cap" ? renewalAmount(trustState.price_sats, null).text : undefined,
+                ).text}
               </div>
             )}
           </div>
@@ -94,11 +117,8 @@ export default function RoutingDeniedNotice({
           )}
         </div>
       </div>
-      {payModalOpen && payload.deposit_address && (
-        <PayFromNodeModal
-          status={{ price_sats: payload.price_sats, deposit_address: payload.deposit_address }}
-          onClose={() => setPayModalOpen(false)}
-        />
+      {payModalOpen && display.show && status?.applicable === true && (
+        <PayFromNodeModal status={status} onClose={() => setPayModalOpen(false)} />
       )}
     </>
   );

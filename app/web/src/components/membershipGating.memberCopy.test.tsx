@@ -94,6 +94,10 @@ const routingLapsed = () => {
     last_payment_txid: "f".repeat(64),
     open_channel_allowed: false,
     grace: { fresh_until: 0, worker_until: paidThrough + 30 * DAY, routing_until: paidThrough + 30 * DAY, close_at: paidThrough + 60 * DAY },
+    // The labels this node's status proxy always sets: verified and payable. A
+    // status without them is not verified, and the panel then asks for no
+    // payment (G3 extension; payBlockedHides.test.tsx).
+    treasury_signature: "verified", treasury_signature_reason: null, treasury_pay_refusal: null,
   };
 };
 

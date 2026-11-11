@@ -17,6 +17,7 @@
 // healthy member.
 
 import { fmtSats, type SubscriptionStatus, type AutoPayConfig } from "../api/client";
+import { trustCopy, trustStateOfRefusal } from "./paymentTrust";
 
 export type GatedTier = "prepay" | "worker_lapsed" | "routing_lapsed" | "close_due";
 export type BannerSeverity = "info" | "amber" | "orange" | "red";
@@ -90,6 +91,10 @@ export interface BannerDescriptor {
   severity?: BannerSeverity;
   headline?: string;
   body?: string;
+  /** The body without its sentence asking for payment, for a status this node
+   *  won't pay (G3 finding 2, ruled 2026-11-11). Absent when the body is only
+   *  that sentence. */
+  context?: string;
   actionLabel?: string;
 }
 
@@ -158,13 +163,15 @@ export function bannerFor(
     case "worker_lapsed": {
       // Item 12: the dollar amount, with the sats beside it.
       const amount = renewalAmount(status.price_sats, usdRate);
+      const context =
+        `Your subscription lapsed on ${lapsedOn}. Hosted services are ` +
+        `paused; your channel and routing still work.`;
       return {
         render: true,
         severity: "amber",
         headline: "Action needed: hosted services lapsed",
-        body:
-          `Your subscription lapsed on ${lapsedOn}. Hosted services are ` +
-          `paused; your channel and routing still work. Renew for ${amount.text} to restore.`,
+        body: `${context} Renew for ${amount.text} to restore.`,
+        context,
         actionLabel: `Renew ${amount.label}`,
       };
     }
@@ -182,13 +189,13 @@ export function bannerFor(
       // rate (drive-mode's amount rules, as item 12). The action stays in sats:
       // P2 pins routing_lapsed's action as unchanged by a rate.
       const amount = renewalAmount(status.price_sats, usdRate);
+      const context = "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.";
       return {
         render: true,
         severity: bannerSeverityForTier(tier),
         headline: "Your membership payment is overdue",
-        body:
-          "Hosted services are paused: valuation, Auto-Buy and stablecoin " +
-          `settlement data. Pay ${amount.text} to restore them.`,
+        body: `${context} Pay ${amount.text} to restore them.`,
+        context,
         actionLabel: `Renew ${price}`,
       };
     }
@@ -255,6 +262,22 @@ export function autoPayAlertContent(
             headline: "Auto-pay is paused: the price went up",
             body: "Auto-pay won't pay the new subscription price until you accept it.",
           };
+    // treasury-price-trust (spec §8): the S1–S6 draft copy, split at its
+    // first sentence (paymentTrust.ts). DRAFT until the screenshot gate.
+    case "AUTOPAY_STATUS_UNVERIFIED":
+    case "AUTOPAY_PAY_TARGET_REFUSED": {
+      const c = context ?? {};
+      const trust =
+        type === "AUTOPAY_STATUS_UNVERIFIED"
+          ? trustStateOfRefusal("status_unverified", { reason: c.verdict, verification_reason: c.verification_reason })
+          : trustStateOfRefusal(String(c.reason ?? ""), c);
+      if (!trust) return { headline: "Auto-pay update", body: "" };
+      const { headline, body } = trustCopy(
+        trust,
+        trust.state === "S4_price_above_cap" ? renewalAmount(trust.price_sats, null).text : undefined,
+      );
+      return { headline, body };
+    }
     case "AUTOPAY_INSUFFICIENT_FUNDS":
       return {
         headline: "Auto-pay couldn't renew your subscription",

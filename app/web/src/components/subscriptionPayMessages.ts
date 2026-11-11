@@ -9,7 +9,19 @@
 // Codes arrive on the thrown Error's `.code` field (apiFetch sets
 // `code = err.error`); `.detail` carries the raw LND/backend detail.
 
-export function payErrorMessage(code?: string, detail?: string): string {
+import { trustCopy, trustStateOfRefusal } from "./paymentTrust";
+import { renewalAmount } from "./subscriptionBanner";
+
+export function payErrorMessage(code?: string, detail?: string, body?: unknown): string {
+  // treasury-price-trust S1–S6 (spec §8; DRAFT copy, paymentTrust.ts). S4's
+  // price is in sats here: this map has no rate.
+  const trust = trustStateOfRefusal(code, body);
+  if (trust) {
+    return trustCopy(
+      trust,
+      trust.state === "S4_price_above_cap" ? renewalAmount(trust.price_sats, null).text : undefined,
+    ).text;
+  }
   switch (code) {
     case "insufficient_funds":
       return "Not enough on-chain balance in your node wallet to cover the payment plus the network fee.";

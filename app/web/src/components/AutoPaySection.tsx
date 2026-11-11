@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, type AutoPayConfig, type AutoPayAlert } from "../api/client";
 import { formatDistanceToNow } from "date-fns";
+import { autoPayCanEnable, trustCopy, trustStateOfAutoPayConfig } from "./paymentTrust";
 
 const sats = (n: number | null | undefined) =>
   typeof n === "number" ? `${new Intl.NumberFormat("en-US").format(n)} sats` : "—";
@@ -23,8 +24,12 @@ type Save = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: st
 /** pausesOn: the status's grace.worker_until (ms), when hosted services pause
  *  if the subscription is not renewed. Auto-pay fires only once a lapse has
  *  begun (autoPayTrigger.ts, the recoverable-lapsed tiers), which is after
- *  that pause — the copy below says so (drive-mode P2 item 13, R6(b)(b)). */
-export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {}) {
+ *  that pause — the copy below says so (drive-mode P2 item 13, R6(b)(b)).
+ *  payBlocked: payBlocked(status) from paymentTrust.ts; while true, the line
+ *  saying the node pays from its balance is hidden (G3 finding 3, ruled
+ *  2026-11-11) and the S-state shows as a pointer to the panel's notice.
+ *  Omitted reads as blocked. */
+export default function AutoPaySection({ pausesOn, payBlocked = true }: { pausesOn?: number; payBlocked?: boolean } = {}) {
   const [cfg, setCfg] = useState<AutoPayConfig | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [save, setSave] = useState<Save>({ kind: "idle" });
@@ -70,6 +75,13 @@ export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {})
   }
 
   const enabled = cfg?.enabled ?? false;
+  // treasury-price-trust (spec §8): why the current price is unavailable (S1–S5),
+  // and opting IN only on a verified, payable status. Opting out always works.
+  const trust = trustStateOfAutoPayConfig(cfg);
+  const trustText = trust
+    ? trustCopy(trust, trust.state === "S4_price_above_cap" ? sats(trust.price_sats) : undefined).text
+    : null;
+  const canEnable = autoPayCanEnable(cfg);
 
   return (
     <div>
@@ -79,7 +91,7 @@ export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {})
           <input
             type="checkbox"
             checked={enabled}
-            disabled={saving || !cfg}
+            disabled={saving || !cfg || (!enabled && !canEnable)}
             onChange={(e) => void onToggle(e.target.checked)}
           />
           <span style={{ fontSize: "0.8125rem", color: enabled ? "var(--green, #22c55e)" : "var(--text-3)" }}>
@@ -87,6 +99,19 @@ export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {})
           </span>
         </label>
       </div>
+
+      {/* One S-state per panel screen (drive-mode, accepted by Ethan
+          2026-11-11): while payments are blocked the panel's page notice
+          carries the full S-state, so this section only points to it, and
+          only while auto-pay is on (drive-mode, accepted 2026-11-11); off,
+          the off-state line below stands alone. */}
+      {payBlocked ? (
+        enabled && <p style={{ color: "var(--text)", fontSize: "0.8125rem", margin: "6px 0 0" }}>Auto-pay is paused (see above).</p>
+      ) : trustText && (
+        <p role="status" data-trust-state={trust!.state} style={{ color: "var(--text)", fontSize: "0.8125rem", margin: "6px 0 0" }}>
+          {trustText}
+        </p>
+      )}
 
       {loadFailed && (
         <p style={{ color: "var(--text-3)", fontSize: "0.8125rem", margin: "6px 0 0" }}>
@@ -98,7 +123,7 @@ export default function AutoPaySection({ pausesOn }: { pausesOn?: number } = {})
         <div style={{ fontSize: "0.75rem", color: "var(--text-3)", lineHeight: 1.5, marginTop: 8 }}>
           {/* Past the pause (the screenshot gate): the lapse has begun, which is
               exactly when auto-pay fires, so say that rather than "if". */}
-          {pausesOn != null && pausesOn <= Date.now() ? (
+          {payBlocked ? null : pausesOn != null && pausesOn <= Date.now() ? (
             <p style={{ margin: "0 0 6px" }}>
               Your subscription has lapsed and hosted services are paused, so your node will pay{" "}
               <strong>{sats(cfg.current_price)}</strong> from its Bitcoin balance to renew it.
@@ -211,6 +236,12 @@ export function autoPayLabel(type: string): string {
       return "Held: earlier payment not credited";
     case "AUTOPAY_PRICE_NOT_ACKNOWLEDGED":
       return "Price not accepted";
+    // treasury-price-trust: drive-mode's plain-language review, 2026-11-10.
+    // Without these the raw type name showed.
+    case "AUTOPAY_STATUS_UNVERIFIED":
+      return "Auto-pay paused: couldn't confirm the price came from Bitcorn";
+    case "AUTOPAY_PAY_TARGET_REFUSED":
+      return "Auto-pay paused: payment held for safety";
     default:
       return type;
   }
