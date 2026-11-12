@@ -2,7 +2,8 @@
 //   min = ceil((F + S_min + K + Q + H + C) / (1 − 2r)).
 // Golden figures are the P3 plan's table (item 3) at mockup r5's price,
 // $76,848.88, on an anchor channel with commit fee A = 872 (so C = 1,532 and
-// H = 1,409), default rails (Q = min(2% × 250,000, $3) = 3,904):
+// H = 1,409), default rails (Q = $3 = 3,904; under R40(2)'s old "lower of 2%
+// or $3" it was the same, since 2% of 250,000 was about $3.84):
 //   farmer  Save on fees 406,055   Keep room open 499,002
 //   merchant Save on fees 370,605  Keep room open 636,167
 // The plan's merchant figures with H = 0 reproduce the P1 recon exactly
@@ -22,7 +23,6 @@ const BASE = {
   usdPerBtc: PRICE,
   commitFeeSats: 872,
   commitmentType: "anchor",
-  feeLimitPctBps: 200,
   feeLimitUsdCents: 300,
 };
 const farmer = { ...BASE, role: "farmer" as const, loopMinSats: 250_000 };
@@ -97,8 +97,8 @@ describe("moves with its inputs", () => {
     expect(minimumConnection({ ...merchant, strategy: "save", loopMinSats: 150_000 })!.sats).toBeGreaterThan(370_605);
   });
 
-  it("a member's lower fee-limit percentage lowers Q", () => {
-    expect(minimumConnection({ ...farmer, strategy: "save", feeLimitPctBps: 100 })!.Q).toBe(2_500);
+  it("a lower dollar figure lowers Q ($2 → 2,603)", () => {
+    expect(minimumConnection({ ...farmer, strategy: "save", feeLimitUsdCents: 200 })!.Q).toBe(2_603);
   });
 });
 

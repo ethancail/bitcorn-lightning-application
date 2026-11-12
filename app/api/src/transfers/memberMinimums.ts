@@ -53,7 +53,6 @@ export async function memberMinimumConnections(): Promise<MemberMinimums> {
     loopMinSats: effectiveLimits(direction, terms).min_sats,
     commitFeeSats: hub?.commit_fee_sat ?? null,
     commitmentType: hub?.commitment_type ?? null,
-    feeLimitPctBps: rails.fee_limit_pct_bps,
     feeLimitUsdCents: rails.fee_limit_usd_cents,
   });
   return { ...base, ...m };

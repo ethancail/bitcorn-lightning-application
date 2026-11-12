@@ -11,8 +11,9 @@
 //   K      the Loop Out swap buffer (env swapMemberRoutingBufferSat, 50,000)
 //          for a farmer; 0 for a merchant.
 //   Q      a farmer's Loop Out fee allowance — execute needs amount + fee ≤
-//          room − K — taken as the member's own fee-limit rail at S_min:
-//          min(pct × S_min, the dollar cap), R40(2). 0 for a merchant.
+//          room − K — taken as the member's own fee-limit rail, R40(2): the
+//          one dollar figure (R48; the percent is removed, R59(1)) at the
+//          cached rate. 0 for a merchant.
 //   H      the funder's fee headroom (capacity.ts funderHeadroomSats; members
 //          open their own channels, so they are the funder).
 //   C      the commitment fee plus the two 330-sat anchor outputs on anchor
@@ -51,7 +52,6 @@ export type MinimumInputs = {
   commitFeeSats: number | null;
   commitmentType: string | null;
   /** The member's fee-limit rail (effective settings), for Q. */
-  feeLimitPctBps: number;
   feeLimitUsdCents: number;
 };
 
@@ -73,9 +73,7 @@ export function minimumConnection(i: MinimumInputs): MinimumBreakdown | null {
   const S_min = i.loopMinSats;
   const farmer = i.role === "farmer";
   const K = farmer ? ENV.swapMemberRoutingBufferSat : 0;
-  const Q = farmer
-    ? Math.min(Math.round((S_min * i.feeLimitPctBps) / 10_000), usdCentsToSats(i.feeLimitUsdCents, i.usdPerBtc))
-    : 0;
+  const Q = farmer ? usdCentsToSats(i.feeLimitUsdCents, i.usdPerBtc) : 0;
   const H = funderHeadroomSats(i.commitFeeSats, i.commitmentType);
   const anchors = i.commitmentType == null || ANCHOR_TYPES.includes(i.commitmentType) ? ANCHOR_OUTPUTS_SAT : 0;
   const C = i.commitFeeSats + anchors;

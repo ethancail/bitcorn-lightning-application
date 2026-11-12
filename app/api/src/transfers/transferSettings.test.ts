@@ -57,12 +57,11 @@ async function call(method: "GET" | "PATCH", body?: unknown): Promise<{ status: 
 const storedRow = () => db.prepare("SELECT * FROM member_transfer_settings").all();
 
 describe("D3.1 — defaults, floors and the day boundary on a fresh node", () => {
-  it("defaults: Save on fees; 2% or $3; $10 a day in fees; $500 moved a day", async () => {
+  it("defaults: Save on fees; $3 per transfer (R48); $10 a day in fees; $500 moved a day", async () => {
     const { status, json } = await call("GET");
     expect(status).toBe(200);
     expect(json.settings).toEqual({
       strategy: "save",
-      fee_limit_pct_bps: 200,
       fee_limit_usd_cents: 300,
       daily_fee_budget_usd_cents: 1_000,
       max_moved_per_day_usd_cents: 50_000,
@@ -105,10 +104,10 @@ describe("saving", () => {
   });
 
   it("saved values survive a restart (a fresh module graph on the same DB)", async () => {
-    await call("PATCH", { strategy: "manual", fee_limit_pct_bps: 150, max_moved_per_day_usd_cents: 20_000 });
+    await call("PATCH", { strategy: "manual", fee_limit_usd_cents: 450, max_moved_per_day_usd_cents: 20_000 });
     vi.resetModules();
     const again = await import("./transferSettings");
-    expect(again.effectiveTransferSettings()).toMatchObject({ strategy: "manual", fee_limit_pct_bps: 150, max_moved_per_day_usd_cents: 20_000 });
+    expect(again.effectiveTransferSettings()).toMatchObject({ strategy: "manual", fee_limit_usd_cents: 450, max_moved_per_day_usd_cents: 20_000 });
   });
 });
 
@@ -116,10 +115,8 @@ describe("validation — each bad field is a 400 and nothing is written", () => 
   const bad: Array<[string, unknown]> = [
     ["unknown strategy", { strategy: "fast" }],
     ["strategy not a string", { strategy: 1 }],
-    ["fee percent zero", { fee_limit_pct_bps: 0 }],
-    ["fee percent above the 15% swap fee ceiling", { fee_limit_pct_bps: 1_501 }],
-    ["fee percent fractional", { fee_limit_pct_bps: 1.5 }],
     ["fee dollars negative", { fee_limit_usd_cents: -300 }],
+    ["fee dollars fractional cents", { fee_limit_usd_cents: 1.5 }],
     ["daily budget a string", { daily_fee_budget_usd_cents: "1000" }],
     ["daily max zero", { max_moved_per_day_usd_cents: 0 }],
     ["an unknown field", { enabled: true }],
@@ -139,10 +136,6 @@ describe("validation — each bad field is a 400 and nothing is written", () => 
     const r = await call("PATCH", "{not json");
     expect(r.status).toBe(400);
     expect(storedRow()).toEqual([]);
-  });
-
-  it("the 15% boundary itself is accepted", async () => {
-    expect((await call("PATCH", { fee_limit_pct_bps: 1_500 })).status).toBe(200);
   });
 });
 

@@ -94,9 +94,9 @@ describe("the member's minimums, live", () => {
     expect((await memberMinimumConnections()).save!.S_min).toBe(250_000);
   });
 
-  it("the member's own fee limit feeds Q (1% → 2,500)", async () => {
-    db.prepare("INSERT INTO member_transfer_settings (id, fee_limit_pct_bps) VALUES (1, 100)").run();
-    expect((await memberMinimumConnections()).save!.Q).toBe(2_500);
+  it("the member's own fee limit feeds Q ($2 → 2,603)", async () => {
+    db.prepare("INSERT INTO member_transfer_settings (id, fee_limit_usd_cents) VALUES (1, 200)").run();
+    expect((await memberMinimumConnections()).save!.Q).toBe(2_603);
   });
 
   it("no rate: no figures", async () => {

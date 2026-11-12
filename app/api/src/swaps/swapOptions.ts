@@ -64,6 +64,9 @@ export type SwapOptions = {
    *  line's "once … is waiting". */
   trigger_sats: number | null;
   quote_state: "ok" | "unavailable" | "not_needed";
+  /** false when there is no BTC/USD rate: the fee limit is a dollar figure,
+   *  so no card can be checked against it, and none is flagged (R59(2)). */
+  fee_limit_checked: boolean;
   cards: OptionCard[];
   reason: ReasonCode | null;
 };
@@ -125,11 +128,11 @@ export async function quoteBasedMax(
   return null; // did not settle in three quotes: offer no Max rather than a refusable one
 }
 
-/** The member's fee limit for an amount: the lower of the percentage and the
- *  dollar cap (the dollar cap only with a rate). */
-export function feeLimitSats(amount: number, pctBps: number, usdCents: number, usdPerBtc: number | null): number {
-  const byPct = Math.floor((amount * pctBps) / 10_000);
-  return usdPerBtc != null ? Math.min(byPct, usdCentsToSats(usdCents, usdPerBtc)) : byPct;
+/** The member's fee limit in sats: the one dollar figure (R48) at the rate.
+ *  null with no rate — then it can't be checked, and a card is not flagged
+ *  (R59(2)). */
+export function feeLimitSats(usdCents: number, usdPerBtc: number | null): number | null {
+  return usdPerBtc != null ? usdCentsToSats(usdCents, usdPerBtc) : null;
 }
 
 export async function getSwapOptions(direction: "loop_out" | "loop_in", nodePubkey: string, now = Date.now()): Promise<SwapOptions> {
@@ -143,7 +146,7 @@ export async function getSwapOptions(direction: "loop_out" | "loop_in", nodePubk
   const limits = await getMemberSwapLimits(nodePubkey);
   const dir = direction === "loop_out" ? limits.loop_out : limits.loop_in;
   const min = dir.min_sats;
-  const base = { direction, strategy, floor_sats: floorSats, calm, min_sats: min, trigger_sats: null };
+  const base = { direction, strategy, floor_sats: floorSats, calm, min_sats: min, trigger_sats: null, fee_limit_checked: usd != null };
 
   const hub = getHubChannel();
   if (!hub) {
@@ -151,10 +154,10 @@ export async function getSwapOptions(direction: "loop_out" | "loop_in", nodePubk
     return { ...base, state: shown ? "connection_down" : "no_hub_channel", room_sats: null, quote_state: "not_needed", cards: [], reason: null };
   }
   const cap = capacityOf(hub);
-  const overLimit = (amount: number, fee: number | null) =>
-    fee != null && fee > feeLimitSats(amount, settings.fee_limit_pct_bps, settings.fee_limit_usd_cents, usd);
+  const limitSats = feeLimitSats(settings.fee_limit_usd_cents, usd);
+  const overLimit = (fee: number | null) => fee != null && limitSats != null && fee > limitSats;
   const card = (key: CardKey, amount: number | null, fee: number | null): OptionCard =>
-    ({ key, amount_sats: amount, fee_sats: fee, over_fee_limit: amount != null && overLimit(amount, fee), recommended: false });
+    ({ key, amount_sats: amount, fee_sats: fee, over_fee_limit: amount != null && overLimit(fee), recommended: false });
   const finish = (cards: OptionCard[], rec: CardKey, reason: ReasonCode, quote_state: SwapOptions["quote_state"], room: number): SwapOptions => {
     for (const c of cards) c.recommended = c.key === rec;
     return { ...base, state: "ok", room_sats: room, quote_state, cards, reason };
