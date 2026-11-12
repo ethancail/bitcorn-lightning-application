@@ -97,17 +97,17 @@ describe("saving", () => {
   });
 
   it("null puts a value back to the default", async () => {
-    await call("PATCH", { strategy: "manual" });
+    await call("PATCH", { strategy: "open" });
     const r = await call("PATCH", { strategy: null });
     expect(r.json.stored.strategy).toBeNull();
     expect(r.json.settings.strategy).toBe("save");
   });
 
   it("saved values survive a restart (a fresh module graph on the same DB)", async () => {
-    await call("PATCH", { strategy: "manual", fee_limit_usd_cents: 450, max_moved_per_day_usd_cents: 20_000 });
+    await call("PATCH", { strategy: "open", fee_limit_usd_cents: 450, max_moved_per_day_usd_cents: 20_000 });
     vi.resetModules();
     const again = await import("./transferSettings");
-    expect(again.effectiveTransferSettings()).toMatchObject({ strategy: "manual", fee_limit_usd_cents: 450, max_moved_per_day_usd_cents: 20_000 });
+    expect(again.effectiveTransferSettings()).toMatchObject({ strategy: "open", fee_limit_usd_cents: 450, max_moved_per_day_usd_cents: 20_000 });
   });
 });
 

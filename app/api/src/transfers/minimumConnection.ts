@@ -28,8 +28,9 @@
 // R40(2): the FORMULA is the ruling. Sizes are computed live — there are no
 // separate number rulings — so they move with the BTC price.
 //
-// Manual only is shown Save on fees' size as advice, with no gate (R21(1)), so
-// "manual" computes as "save".
+// Anything but "open" computes as "save". Manual only is dropped (R59(4)); a
+// row that stored it reads as "save" before it reaches here (transferSettings
+// strategyOf), as it always computed (R21(1)).
 
 import { ENV } from "../config/env";
 import { funderHeadroomSats } from "../lightning/capacity";

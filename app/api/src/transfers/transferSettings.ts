@@ -34,8 +34,20 @@
 import { db } from "../db";
 import type { MemberRole } from "./minimumConnection";
 
-export type TransferStrategy = "save" | "open" | "manual";
-export const STRATEGIES: readonly TransferStrategy[] = ["save", "open", "manual"];
+// R50(1), ruled R59(4): two answers, "Wait for low fees" (save) and "Move
+// sooner" (open). "Manual only" is dropped: a row that stored "manual" keeps
+// it (no migration) and it READS as "save", which is how it always behaved
+// (swapOptions and the minimum formula, R21(1)). A PATCH cannot store it.
+export type TransferStrategy = "save" | "open";
+export const STRATEGIES: readonly TransferStrategy[] = ["save", "open"];
+
+/** A stored strategy as it applies: "manual" (dropped) is "save"; NULL is
+ *  NULL, so the default applies. */
+function strategyOf(stored: string | null): TransferStrategy | null {
+  if (stored === "open") return "open";
+  if (stored === "save" || stored === "manual") return "save";
+  return null;
+}
 
 export type TransferRails = {
   /** "Most you'll pay per transfer", in US cents: the ONE fee limit (R48). */
@@ -74,9 +86,7 @@ export function memberRole(): MemberRole | "unknown" {
   return row?.channel_role === "farmer" || row?.channel_role === "merchant" ? row.channel_role : "unknown";
 }
 
-/** R16(2): each strategy's room floor, by role, in US cents. Manual only runs
- *  nothing; where a floor is needed for it (advice, card recommendation), it
- *  is Save on fees' (R21(1)). */
+/** R16(2): each strategy's room floor, by role, in US cents. */
 export const STRATEGY_FLOORS_USD_CENTS = Object.freeze({
   farmer: Object.freeze({ save: 7_000, open: 14_000 }),
   merchant: Object.freeze({ save: 20_000, open: 40_000 }),
@@ -88,7 +98,11 @@ export const DAY_BOUNDARY_TZ = "America/Chicago";
 const FIELDS = ["strategy", "fee_limit_usd_cents", "daily_fee_budget_usd_cents", "max_moved_per_day_usd_cents"] as const;
 type Field = (typeof FIELDS)[number];
 
-export type StoredTransferSettings = { [K in keyof TransferSettingsValues]: TransferSettingsValues[K] | null } & { updated_at: number | null };
+/** The row as stored. strategy is the raw column: it may still hold a
+ *  dropped "manual" (read through strategyOf). */
+export type StoredTransferSettings =
+  { [K in Exclude<keyof TransferSettingsValues, "strategy">]: TransferSettingsValues[K] | null }
+  & { strategy: string | null; updated_at: number | null };
 
 export function readStoredTransferSettings(): StoredTransferSettings {
   const row = db.prepare(`
@@ -108,7 +122,7 @@ export function readStoredTransferSettings(): StoredTransferSettings {
 export function effectiveTransferSettings(stored = readStoredTransferSettings(), role = memberRole()): TransferSettingsValues {
   const d = transferDefaults(role);
   return {
-    strategy: stored.strategy ?? d.strategy,
+    strategy: strategyOf(stored.strategy) ?? d.strategy,
     fee_limit_usd_cents: stored.fee_limit_usd_cents ?? d.fee_limit_usd_cents,
     daily_fee_budget_usd_cents: stored.daily_fee_budget_usd_cents ?? d.daily_fee_budget_usd_cents,
     max_moved_per_day_usd_cents: stored.max_moved_per_day_usd_cents ?? d.max_moved_per_day_usd_cents,
@@ -141,7 +155,7 @@ export function validateTransferSettingsPatch(body: unknown):
     if (v === null) { (patch as any)[key] = null; continue; }
     if (key === "strategy") {
       if (typeof v === "string" && (STRATEGIES as readonly string[]).includes(v)) patch.strategy = v as TransferStrategy;
-      else errors.push("strategy must be 'save', 'open' or 'manual'");
+      else errors.push("strategy must be 'save' or 'open'");
     } else {
       if (positiveInt(v)) (patch as any)[key] = v;
       else errors.push(`${key} must be a positive whole number of cents`);
