@@ -1894,11 +1894,12 @@ export type ValuationInputsResponse = Record<string, ValuationInput>;
 //     file, away from other arcs' hunks). Read-only except the settings PATCH,
 //     which stores the member's choices; nothing in P3 moves money on them.
 
-export type TransferStrategy = "save" | "open" | "manual";
+// R59(4): two answers; a stored "manual" arrives as "save" in `settings`.
+export type TransferStrategy = "save" | "open";
 
 export type TransferSettingsValues = {
   strategy: TransferStrategy;
-  fee_limit_pct_bps: number;
+  /** "Most you'll pay per transfer": the ONE fee limit (R48); no percent. */
   fee_limit_usd_cents: number;
   daily_fee_budget_usd_cents: number;
   max_moved_per_day_usd_cents: number;
@@ -1911,7 +1912,8 @@ export type MinimumBreakdown = {
 
 export type TransferSettingsResponse = {
   settings: TransferSettingsValues;
-  stored: { [K in keyof TransferSettingsValues]: TransferSettingsValues[K] | null } & { updated_at: number | null };
+  /** The row as stored; strategy is the raw column (it may hold a dropped "manual"). */
+  stored: { [K in Exclude<keyof TransferSettingsValues, "strategy">]: TransferSettingsValues[K] | null } & { strategy: string | null; updated_at: number | null };
   defaults: TransferSettingsValues;
   floors_usd_cents: { farmer: { save: number; open: number }; merchant: { save: number; open: number } };
   day_boundary_tz: string;
@@ -1954,6 +1956,9 @@ export type SwapOptions = {
   min_sats: number;
   trigger_sats: number | null;
   quote_state: "ok" | "unavailable" | "not_needed";
+  /** false with no BTC/USD rate: the dollar fee limit can't be checked, and
+   *  no card is flagged (R59(2)). */
+  fee_limit_checked: boolean;
   cards: Array<{ key: OptionCardKey; amount_sats: number | null; fee_sats: number | null; over_fee_limit: boolean; recommended: boolean }>;
   reason: OptionReason | null;
 };

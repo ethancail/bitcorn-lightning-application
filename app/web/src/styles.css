@@ -4034,6 +4034,73 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .tap-amount:hover { text-decoration-color: var(--text-2); }
 .tap-amount-static { font-weight: 600; }
 
+/* ─── Automatic transfers (drive-mode; pages/AutomaticTransfers.tsx) ─
+   The approved mockup's layer (R48, R51): one 720px column (Daybreak's
+   precedent), one panel split into sections by rules, no box inside a box
+   beyond the help note (A15). Hints and help at --d-label. */
+.at-page { max-width: 720px; margin: 0 auto; }
+.at-head { margin-bottom: 20px; }
+.at-head h1 { margin-bottom: 6px; }
+.at-lede { max-width: 56ch; font-size: var(--d-body); color: var(--text-2); }
+.at-rate-note { margin-top: 4px; font-size: 0.75rem; color: var(--text-3); }
+.at-section { padding: var(--d-tile-pad); }
+.at-section + .at-section { border-top: 1px solid var(--border); }
+
+.at-status-line { display: flex; align-items: center; gap: 10px; font-size: 1rem; font-weight: 600; }
+.at-dot {
+  width: 10px; height: 10px; flex-shrink: 0; border-radius: var(--radius-full);
+  background: transparent; box-shadow: inset 0 0 0 2px var(--text-3);
+}
+
+.at-q { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.at-q h2 { font-size: 1.0625rem; }
+.at-help-btn {
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 2px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-2); font-size: var(--d-label); white-space: nowrap; cursor: pointer; min-height: 44px;
+}
+.at-help-btn:hover { color: var(--text); }
+.at-help-q {
+  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
+  border: 1px solid var(--border-control); border-radius: var(--radius-full); font-size: 0.6875rem; font-weight: 600;
+}
+.at-help-btn[aria-expanded="true"] .at-help-q { background: var(--text); color: var(--bg); border-color: var(--text); }
+.at-help { margin: 0 0 12px; padding: 14px 16px; border-radius: var(--radius-md); background: var(--bg-2); font-size: var(--d-label); color: var(--text-2); }
+.at-help[hidden] { display: none; }
+.at-help p + p { margin-top: 6px; }
+
+.at-limits-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9375rem; }
+.at-limits-row b { font-weight: 600; }
+.at-sep { color: var(--text-3); }
+.at-link {
+  padding: 0; border: none; background: none; color: var(--text); font-size: inherit; cursor: pointer; min-height: 44px;
+  text-decoration: underline; text-decoration-color: var(--border-control); text-underline-offset: 3px;
+}
+.at-link:hover { text-decoration-color: var(--text); }
+.at-limits { display: flex; flex-direction: column; margin-top: 6px; }
+.at-limits[hidden] { display: none; }
+.at-field { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--border); }
+.at-field:first-child { border-top: none; padding-top: 0; }
+.at-field-text { flex: 1 1 auto; min-width: 0; }
+.at-field-text label { font-size: 0.9375rem; font-weight: 500; }
+.at-field-hint { margin-top: 2px; font-size: var(--d-label); color: var(--text-2); }
+.at-money { position: relative; width: 132px; flex-shrink: 0; }
+.at-money span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-2); pointer-events: none; }
+.at-money .form-input { padding-left: 26px; text-align: right; min-height: 44px; }
+.at-reset { padding-top: 12px; border-top: 1px solid var(--border); font-size: var(--d-label); color: var(--text-2); }
+
+.at-where { font-size: var(--d-label); color: var(--text-2); }
+.at-where b { color: var(--text); font-weight: 500; }
+
+.at-save-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.at-save-msg { font-size: var(--d-label); color: var(--text-2); }
+.at-save-msg.is-error { color: var(--red); }
+
+@media (max-width: 767px) {
+  .at-section { padding: var(--d-tile-pad-ph); }
+  .at-q { flex-direction: column; gap: 0; }
+  .at-money { width: 116px; }
+}
+
 /* ─── Reduced motion ───────────────────────────────────────────────
    Gentler, not none: movement goes (translate, scale, width, radius
    growth, sliding panels, moving shimmers and pulses); opacity and colour

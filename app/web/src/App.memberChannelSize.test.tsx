@@ -50,7 +50,7 @@ const MEMBER_PEER = "02" + "c".repeat(64);
 let channels: unknown[] = [];
 
 const settings = (strategy: string) => ({
-  settings: { strategy, fee_limit_pct_bps: 200, fee_limit_usd_cents: 300, daily_fee_budget_usd_cents: 1_000, max_moved_per_day_usd_cents: 50_000 },
+  settings: { strategy, fee_limit_usd_cents: 300, daily_fee_budget_usd_cents: 1_000, max_moved_per_day_usd_cents: 50_000 },
   member: { role: "farmer", capacity_sats: 500_000, hub_active: true, save: { sats: 406_055 }, open: { sats: 499_002 } },
 });
 

@@ -1,23 +1,36 @@
-// Automatic transfers — the member's settings page (drive-mode P3, plan item 2;
-// R14's terms; mockup r5's layout, with P3's rulings applied).
+// Automatic transfers — the member's settings page, redesigned (R48, R50,
+// R51; built under R59 [RELAYED — drive-mode arc chat, 2026-11-12]). The
+// approved mockup is drive-mode-evidence/design/at-redesign (R51: "design
+// approved with those"), with R51's five changes and R59's rulings.
 //
-// Shows and saves the strategy and the three rails. NOTHING MOVES IN P3: there
-// is no "Turn on" (D3.2), no badge — "Automatic transfers aren't switched on
-// yet." instead (R40(3)) — no gauge mark and no "For you" line about what
-// would move on its own. Those are P4's.
+// NOTHING MOVES YET. There is no "Turn on" (P4 adds it, R59(5)): the status
+// line says automatic transfers aren't switched on, and no string claims a
+// transfer happens.
 //
-// Every figure is the server's (GET /api/transfers/settings): the defaults
-// (NULL = default), R16(2)'s floors, the day boundary, and the ONE minimum
-// connection size for the strategy the member is on (R19(6); one formula,
-// R40(2)). Manual only shows Save on fees' size as advice, with no gate
-// (R21(1)); Keep room open, below its own size, is unavailable and its
-// sentence names that size (R21(2)) — the only second size on the screen.
+//   - ONE question, two answers (R50(1), R59(4)): "Wait for low fees"
+//     (save, Recommended) and "Move sooner" / merchant "Top up sooner"
+//     (open). Radio cards (components/RadioCards.tsx), committed ONLY by the
+//     one Save.
+//   - The minimum connection size shows only where it blocks, as ONE
+//     sentence in a card's meta: in the chosen card when the chosen answer
+//     is too big for the connection; else in "Move sooner"'s card when that
+//     one is unavailable (R21(2): disabled unless it is the member's current
+//     strategy). No "What can I do?" until "who pays for a bigger
+//     connection" is decided (R51).
+//   - Limits: one number, "Most you'll pay per transfer" (R48: $3 farmer /
+//     $5 merchant, no percent, R59(1)), with the daily budget and daily max
+//     behind "Change limits" (R48), each with a one-line hint (R51).
+//   - "How this works" holds the technical notes (R48), with R50(2)'s Loop
+//     sentence for farmers and R50(3)'s cost text.
+//   - Amounts are the interim tap-for-sats (components/TapAmount.tsx). With
+//     no price: the rate sentence once (rate.ts), amounts in sats, and no
+//     minimum sentence (the server sends no sizes without a rate).
+//   - Connection down: nothing new here (R41); the capacity is the server's
+//     hub channel for display.
 //
-// Amounts use the amount component's interim, dollars with sats beneath, until
-// member-first-run-ui ships the component (spec §1.3). The radio rows and
-// money inputs are page-local for the same reason: no shared primitive exists.
+// Every figure is the server's (GET /api/transfers/settings).
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import {
   api,
   transfersApi,
@@ -27,42 +40,85 @@ import {
   type TransferStrategy,
 } from "../api/client";
 import { rateNote } from "../api/rate";
-
-/** Ethan's one-line descriptions, verbatim (mockup r5, STRAT). */
-const STRATEGIES: Array<{ key: TransferStrategy; name: string; desc: string }> = [
-  { key: "save", name: "Save on fees", desc: "Bigger moves, made when network fees are calm. Room dips lower between moves." },
-  { key: "open", name: "Keep room open", desc: "Moves sooner and smaller, accepting a higher cost per dollar moved." },
-  { key: "manual", name: "Manual only", desc: "Nothing moves on its own. Your dashboard recommends when to move." },
-];
-const NAME: Record<TransferStrategy, string> = { save: "Save on fees", open: "Keep room open", manual: "Manual only" };
+import { RadioCards, type RadioCardOption } from "../components/RadioCards";
+import { TapAmount } from "../components/TapAmount";
 
 export const NOT_ON_SENTENCE = "Automatic transfers aren't switched on yet.";
 export const DAY_BOUNDARY_SENTENCE = "Daily limits reset at midnight US Central time.";
 
-/** The interim amount: dollars, with sats beneath; sats alone with no rate. */
-function Amount({ sats, usd }: { sats: number; usd: number | null }) {
-  const dollars = usd != null ? `$${((sats / 100_000_000) * usd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null;
-  if (!dollars) return <span data-testid="amount" data-sats={sats} style={{ fontWeight: 600 }}>{sats.toLocaleString()} sats</span>;
-  return (
-    <span data-testid="amount" data-sats={sats} style={{ display: "inline-flex", flexDirection: "column", verticalAlign: "top", lineHeight: 1.2 }}>
-      <span style={{ fontWeight: 600 }}>{dollars}</span>
-      <span style={{ fontSize: "0.6875rem", color: "var(--text-3)" }}>{sats.toLocaleString()} sats</span>
-    </span>
-  );
-}
+/** R50(3)'s cost text is for a 250,000-sat move (the cost check's size). */
+const EXAMPLE_MOVE_SATS = 250_000;
 
-type Form = { strategy: TransferStrategy; pct: string; feeUsd: string; budgetUsd: string; maxDayUsd: string };
+type Role = "farmer" | "merchant";
+
+const COPY: Record<Role, {
+  lede: string;
+  notOn: string;
+  question: string;
+  answers: Record<TransferStrategy, { label: string; desc: string }>;
+  perMove: string;
+  perMoveHint: string;
+  budgetHint: string;
+  perDay: string;
+  perDayHint: string;
+  where: string;
+  help: (amount: ReactNode) => ReactNode[];
+}> = {
+  farmer: {
+    lede: "Bitcorn can move your earnings to your wallet for you, so there's always room to get paid.",
+    notOn: NOT_ON_SENTENCE,
+    question: "How should Bitcorn move your earnings?",
+    answers: {
+      save: { label: "Wait for low fees", desc: "Moves bigger amounts when fees are low. Cheapest." },
+      open: { label: "Move sooner", desc: "Smaller, more frequent moves. Costs a little more." },
+    },
+    perMove: "Most you'll pay per transfer",
+    perMoveHint: "Checked against the quote before a move starts. A move that costs more waits.",
+    budgetHint: "Moves stop for the day once their fees reach this.",
+    perDay: "Most moved per day",
+    perDayHint: "A bigger move is cut to fit, or waits until tomorrow.",
+    where: "Where it goes:",
+    help: (amount) => [
+      "Your earnings build up in your connection to Bitcorn. To make room, Bitcorn sends a batch out through Loop, a swap service, and it lands in your node's wallet as regular bitcoin.",
+      <>A move of {amount} costs about $1, including Bitcorn's fee.</>,
+      "If a move would cost more than your limit, it waits until fees come down.",
+      "Once a move has started, its network fee can rise with the market, up to Loop's own limit.",
+    ],
+  },
+  merchant: {
+    lede: "Bitcorn can top up your connection from your wallet for you, so you always have room to pay.",
+    notOn: "Auto top-up isn't switched on yet.",
+    question: "How should Bitcorn top up your connection?",
+    answers: {
+      save: { label: "Wait for low fees", desc: "Adds bigger amounts when fees are low. Cheapest." },
+      open: { label: "Top up sooner", desc: "Smaller, more frequent top-ups. Costs a little more." },
+    },
+    perMove: "Most you'll pay per top-up",
+    perMoveHint: "Checked against the quote before a top-up starts. A top-up that costs more waits.",
+    budgetHint: "Top-ups stop for the day once their fees reach this.",
+    perDay: "Most added per day",
+    perDayHint: "A bigger top-up is cut to fit, or waits until tomorrow.",
+    where: "Where it comes from:",
+    help: (amount) => [
+      "Every payment you make uses up room in your connection to Bitcorn. When room runs low, Bitcorn sends bitcoin from your node's wallet back into it through Loop, a swap service.",
+      <>A top-up of {amount} costs about $2–3.</>,
+      "If a top-up would cost more than your limit, it waits until fees come down.",
+      "Once a top-up has started, its network fee follows the market.",
+    ],
+  },
+};
+
+type Form = { strategy: TransferStrategy; feeUsd: string; budgetUsd: string; maxDayUsd: string };
 
 const centsToInput = (c: number) => (c / 100).toFixed(2);
-const bpsToInput = (b: number) => String(b / 100);
 const inputToCents = (s: string) => Math.round(Number(s) * 100);
-const inputToBps = (s: string) => Math.round(Number(s) * 100);
+/** A dollar setting as the collapsed limits row says it: "$3", "$2.50". */
+const settingText = (cents: number) => (cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`);
 
 function formFrom(r: TransferSettingsResponse): Form {
   const s = r.settings;
   return {
     strategy: s.strategy,
-    pct: bpsToInput(s.fee_limit_pct_bps),
     feeUsd: centsToInput(s.fee_limit_usd_cents),
     budgetUsd: centsToInput(s.daily_fee_budget_usd_cents),
     maxDayUsd: centsToInput(s.max_moved_per_day_usd_cents),
@@ -70,31 +126,49 @@ function formFrom(r: TransferSettingsResponse): Form {
 }
 
 /** Only what the member changed is sent; untouched fields stay NULL
- *  (= the default) on the server. */
+ *  (= the default) on the server. Empty = the form matches the server. */
 function patchFrom(form: Form, r: TransferSettingsResponse): TransferSettingsPatch {
   const s = r.settings;
   const p: TransferSettingsPatch = {};
   if (form.strategy !== s.strategy) p.strategy = form.strategy;
-  if (inputToBps(form.pct) !== s.fee_limit_pct_bps) p.fee_limit_pct_bps = inputToBps(form.pct);
   if (inputToCents(form.feeUsd) !== s.fee_limit_usd_cents) p.fee_limit_usd_cents = inputToCents(form.feeUsd);
   if (inputToCents(form.budgetUsd) !== s.daily_fee_budget_usd_cents) p.daily_fee_budget_usd_cents = inputToCents(form.budgetUsd);
   if (inputToCents(form.maxDayUsd) !== s.max_moved_per_day_usd_cents) p.max_moved_per_day_usd_cents = inputToCents(form.maxDayUsd);
   return p;
 }
 
-function MoneyInput({ value, onChange, label, prefix, suffix }: { value: string; onChange: (v: string) => void; label: string; prefix?: string; suffix?: string }) {
+function MoneyField({ label, hint, value, onChange, disabled }: {
+  label: string; hint: string; value: string; onChange: (v: string) => void; disabled: boolean;
+}) {
+  const id = useId();
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-      {prefix && <span className="text-dim">{prefix}</span>}
-      <input
-        className="form-input"
-        aria-label={label}
-        inputMode="decimal"
-        value={value}
-        onChange={(e) => onChange(e.target.value.replace(/[^0-9.]/g, ""))}
-        style={{ width: 88 }}
-      />
-      {suffix && <span className="text-dim">{suffix}</span>}
+    <div className="at-field">
+      <div className="at-field-text">
+        <label id={`${id}-label`} htmlFor={`${id}-input`}>{label}</label>
+        <div id={`${id}-hint`} className="at-field-hint">{hint}</div>
+      </div>
+      <div className="at-money">
+        <span aria-hidden>$</span>
+        <input
+          id={`${id}-input`}
+          className="form-input"
+          inputMode="decimal"
+          aria-labelledby={`${id}-label`}
+          aria-describedby={`${id}-hint`}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value.replace(/[^0-9.]/g, ""))}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** The one minimum sentence (R51), its amounts tap-for-sats. */
+function TooSmall({ cap, need, rate, marked }: { cap: number; need: number; rate: ExchangeRate | null | undefined; marked: boolean }) {
+  return (
+    <span className={marked ? "warn-mark" : undefined}>
+      Your connection is too small for this yet: it holds <TapAmount sats={cap} rate={rate} />, and this needs <TapAmount sats={need} rate={rate} />.
     </span>
   );
 }
@@ -103,23 +177,95 @@ export default function AutomaticTransfers() {
   const [data, setData] = useState<TransferSettingsResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [form, setForm] = useState<Form | null>(null);
-  const [rate, setRate] = useState<ExchangeRate | null>(null);
+  // undefined while loading (no rate sentence, amounts not tappable, R31);
+  // null when the read failed.
+  const [rate, setRate] = useState<ExchangeRate | null | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [limitsOpen, setLimitsOpen] = useState(false);
+  const qId = useId();
+  const helpId = useId();
+  const limitsId = useId();
 
   useEffect(() => {
     transfersApi.getTransferSettings()
       .then((r) => { setData(r); setForm(formFrom(r)); })
       .catch((e) => setLoadError(e?.message ?? "Request failed"));
-    api.getExchangeRate().then(setRate).catch(() => {});
+    api.getExchangeRate().then(setRate).catch(() => setRate(null));
   }, []);
 
-  const usd = rate && rate.state !== "none" ? rate.usd : null;
+  const note = rateNote(rate);
+  const head = (lede: string | null) => (
+    <header className="at-head">
+      <h1>Automatic transfers</h1>
+      {lede && <p className="at-lede">{lede}</p>}
+      {note && <p className="at-rate-note">{note}</p>}
+    </header>
+  );
+
+  if (loadError) {
+    return (
+      <div className="at-page">
+        {head(null)}
+        <div className="alert warning"><span className="alert-icon" aria-hidden>⚠</span>
+          <div className="alert-body"><div className="alert-msg">Couldn't load your settings: {loadError}.</div></div>
+        </div>
+      </div>
+    );
+  }
+  if (!data || !form) {
+    return <div className="at-page">{head(null)}<div className="loading-shimmer" style={{ height: 240, borderRadius: 8 }} /></div>;
+  }
+
+  const m = data.member;
+  if (m.role === "unknown") {
+    return (
+      <div className="at-page">
+        {head(null)}
+        <p data-testid="not-on" className="at-status-line"><span className="at-dot" aria-hidden />{NOT_ON_SENTENCE}</p>
+        <p className="at-lede">Set your channel role in Settings to see what automatic transfers would do for your connection.</p>
+      </div>
+    );
+  }
+
+  const role: Role = m.role;
+  const c = COPY[role];
+  const dirty = Object.keys(patchFrom(form, data)).length > 0;
+
+  // The minimum sentence (R51): one, only where it blocks. No sizes come
+  // without a rate, so with no price there is none and nothing is disabled.
+  const cap = m.capacity_sats;
+  const need = (k: TransferStrategy) => m[k]?.sats ?? null;
+  const blocked = (k: TransferStrategy) => cap != null && need(k) != null && cap < need(k)!;
+  const chosenBlocked = blocked(form.strategy);
+  // R21(2): below its size, "Move sooner" can't be chosen, unless it is the
+  // member's current (saved) strategy.
+  const openUnavailable = data.settings.strategy !== "open" && blocked("open");
+
+  const options: RadioCardOption<TransferStrategy>[] = (["save", "open"] as const).map((k) => {
+    let meta: ReactNode = undefined;
+    if (k === form.strategy && chosenBlocked) meta = <TooSmall cap={cap!} need={need(k)!} rate={rate} marked />;
+    else if (k === "open" && openUnavailable && !chosenBlocked) meta = <TooSmall cap={cap!} need={need(k)!} rate={rate} marked={false} />;
+    return {
+      value: k,
+      label: c.answers[k].label,
+      description: c.answers[k].desc,
+      badge: k === "save" ? "Recommended" : undefined,
+      meta,
+      disabled: k === "open" && openUnavailable,
+      disabledReason: "Needs a bigger connection",
+    };
+  });
+
+  const edit = (next: Partial<Form>) => { setForm({ ...form, ...next }); setSaveMsg(null); };
+  const feeCents = inputToCents(form.feeUsd);
+  const feeShown = settingText(Number.isFinite(feeCents) && feeCents > 0 ? feeCents : data.settings.fee_limit_usd_cents);
 
   async function save() {
     if (!data || !form) return;
     const patch = patchFrom(form, data);
-    if (Object.keys(patch).length === 0) { setSaveMsg({ ok: true, text: "Nothing changed." }); return; }
+    if (Object.keys(patch).length === 0) return;
     setSaving(true);
     setSaveMsg(null);
     try {
@@ -135,182 +281,86 @@ export default function AutomaticTransfers() {
     }
   }
 
-  const head = (intro: string | null) => (
-    <div style={{ marginBottom: 16 }}>
-      <h1 style={{ marginBottom: 4 }}>Automatic transfers</h1>
-      {intro && <p className="text-dim" style={{ fontSize: "0.875rem" }}>{intro}</p>}
-      {rateNote(rate) && <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>{rateNote(rate)}</p>}
-    </div>
-  );
-
-  if (loadError) {
-    return (
-      <div>
-        {head(null)}
-        <div className="alert warning"><span className="alert-icon" aria-hidden>⚠</span>
-          <div className="alert-body"><div className="alert-msg">Couldn't load your settings: {loadError}.</div></div>
-        </div>
-      </div>
-    );
-  }
-  if (!data || !form) {
-    return <div>{head(null)}<div className="loading-shimmer" style={{ height: 240, borderRadius: 8 }} /></div>;
-  }
-
-  const m = data.member;
-  const farmer = m.role === "farmer";
-  if (m.role === "unknown") {
-    return (
-      <div>
-        {head(null)}
-        <p data-testid="not-on" style={{ fontSize: "0.875rem" }}>{NOT_ON_SENTENCE}</p>
-        <p className="text-dim" style={{ fontSize: "0.875rem" }}>Set your channel role in Settings to see what automatic transfers would do for your connection.</p>
-      </div>
-    );
-  }
-
-  const cap = m.capacity_sats;
-  // R19(6): ONE minimum — the strategy the member is on; Manual only shows
-  // Save on fees' size as advice (R21(1)).
-  const sizeKey = form.strategy === "open" ? "open" : "save";
-  const min = m[sizeKey]?.sats ?? null;
-  const below = min != null && cap != null && cap < min;
-  const openMin = m.open?.sats ?? null;
-  // R17(1) + R21(2): below its own size, Keep room open can't be chosen (unless
-  // it is already the member's strategy), and its sentence names that size.
-  const openUnavailable = form.strategy !== "open" && openMin != null && cap != null && cap < openMin;
-
-  let minLine: JSX.Element | null = null;
-  if (min != null && cap != null) {
-    minLine = form.strategy === "manual" ? (
-      <p data-testid="min-line" style={{ fontSize: "0.8125rem", color: "var(--text-2)" }}>
-        <b>Advice:</b> to move on its own, Save on fees needs a connection of at least <Amount sats={min} usd={usd} />; yours is <Amount sats={cap} usd={usd} />{below ? ", so it couldn't yet" : ""}. Nothing is held back by this under Manual only.
-      </p>
-    ) : (
-      <p data-testid="min-line" style={{ fontSize: "0.8125rem", color: "var(--text-2)" }}>
-        {NAME[form.strategy]} needs a connection of at least <Amount sats={min} usd={usd} />; yours is <Amount sats={cap} usd={usd} />{below ? ", so it couldn't run on its own yet. A bigger connection lets it start." : "."}
-      </p>
-    );
-  }
-
-  const set = (k: keyof Form) => (v: string) => setForm({ ...form, [k]: v });
-  const rowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" as const, padding: "10px 0", borderTop: "1px solid var(--border)" };
-
   return (
-    <div>
-      {head(farmer
-        ? "Moves your earnings from your connection to your node's wallet on its own, so you always have room to receive."
-        : "Tops up your connection from your node's wallet on its own, so you always have room to send.")}
+    <div className="at-page">
+      {head(c.lede)}
 
-      <div className="alert info" style={{ marginBottom: 12 }}>
-        <span className="alert-icon" aria-hidden>ℹ</span>
-        <div className="alert-body"><div className="alert-msg" data-testid="not-on">{NOT_ON_SENTENCE}</div></div>
-      </div>
+      <div className="panel at-panel fade-in">
+        <section className="at-section">
+          <p data-testid="not-on" className="at-status-line"><span className="at-dot" aria-hidden />{c.notOn}</p>
+        </section>
 
-      <div className="panel fade-in">
-        <div className="panel-header">
-          <span className="panel-title"><span className="icon">↻</span>{farmer ? "Auto-transfer to wallet" : "Auto top-up"}</span>
-        </div>
-        <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <div className="form-label" id="strat-label">Strategy</div>
-          <div role="radiogroup" aria-labelledby="strat-label" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {STRATEGIES.map((s) => {
-              const na = s.key === "open" && openUnavailable;
-              return (
-                <label
-                  key={s.key}
-                  data-testid={`strategy-${s.key}`}
-                  style={{
-                    display: "grid", gridTemplateColumns: "auto 1fr", gap: "2px 10px", padding: "10px 12px",
-                    border: `1px solid ${form.strategy === s.key ? "var(--amber)" : "var(--border)"}`, borderRadius: 8,
-                    opacity: na ? 0.7 : 1, cursor: na ? "default" : "pointer",
-                  }}
-                >
-                  <input
-                    type="radio"
-                    name="strategy"
-                    value={s.key}
-                    checked={form.strategy === s.key}
-                    disabled={na}
-                    onChange={() => setForm({ ...form, strategy: s.key })}
-                    style={{ marginTop: 3 }}
-                  />
-                  <span style={{ fontWeight: 600 }}>
-                    {s.name}
-                    {s.key === "save" && <span className="badge badge-green" style={{ marginLeft: 8 }}>Recommended</span>}
-                    {na && <span className="badge badge-muted" style={{ marginLeft: 8 }}>Unavailable</span>}
-                  </span>
-                  <span />
-                  <span className="text-dim" style={{ fontSize: "0.8125rem" }}>{s.desc}</span>
-                  {na && openMin != null && (
-                    <>
-                      <span />
-                      <span data-testid="open-unavailable" style={{ fontSize: "0.8125rem" }}>
-                        <b>Unavailable:</b> Keep room open needs a connection of at least <Amount sats={openMin} usd={usd} />.
-                      </span>
-                    </>
-                  )}
-                </label>
-              );
-            })}
+        <section className="at-section">
+          <div className="at-q">
+            <h2 id={qId}>{c.question}</h2>
+            <button
+              type="button"
+              className="at-help-btn"
+              aria-expanded={helpOpen}
+              aria-controls={helpId}
+              onClick={() => setHelpOpen(!helpOpen)}
+            >
+              <span className="at-help-q" aria-hidden>?</span>How this works
+            </button>
           </div>
-          {minLine}
-
-          <div className="form-label" style={{ marginTop: 8 }}>Safety rails</div>
-          <p className="text-dim" style={{ fontSize: "0.8125rem", marginTop: -6 }}>
-            Every automatic transfer stays inside these, whatever the strategy. A transfer you start yourself that costs more asks you first.
-          </p>
-          <div>
-            <div style={rowStyle}>
-              <div style={{ flex: "1 1 260px" }}>
-                <div style={{ fontWeight: 600 }} data-testid="fee-limit-label">Fee limit per transfer, checked before it starts</div>
-                <div className="text-dim" style={{ fontSize: "0.75rem" }} data-testid="fee-limit-help">
-                  Bitcorn checks the quote against this and won't start a transfer that costs more.{" "}
-                  {farmer
-                    ? "Once a transfer has started, the Bitcoin network fee for its last step follows the market and is capped only by Loop's own limit, 20% of the amount; Bitcorn can't lower that cap."
-                    : "Once a top-up has started, its network fee follows the market."}
-                </div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                <MoneyInput value={form.pct} onChange={set("pct")} label="Maximum fee percent" suffix="%" />
-                <span className="text-dim">and</span>
-                <MoneyInput value={form.feeUsd} onChange={set("feeUsd")} label="Maximum fee dollars" prefix="$" />
-                <span className="text-dim">whichever is lower</span>
-              </div>
-            </div>
-            <div style={rowStyle}>
-              <div style={{ flex: "1 1 260px" }}>
-                <div style={{ fontWeight: 600 }}>Daily fee budget</div>
-                <div className="text-dim" style={{ fontSize: "0.75rem" }}>Automatic transfers stop for the day once their fees reach this, and an alert says so.</div>
-              </div>
-              <MoneyInput value={form.budgetUsd} onChange={set("budgetUsd")} label="Daily fee budget" prefix="$" />
-            </div>
-            <div style={rowStyle}>
-              <div style={{ flex: "1 1 260px" }}>
-                <div style={{ fontWeight: 600 }}>Most moved per day</div>
-                <div className="text-dim" style={{ fontSize: "0.75rem" }}>A transfer bigger than what's left today moves what fits, if that's still at least Loop's smallest; otherwise it moves tomorrow.</div>
-              </div>
-              <MoneyInput value={form.maxDayUsd} onChange={set("maxDayUsd")} label="Most moved per day" prefix="$" />
-            </div>
-            <p className="text-dim" data-testid="day-boundary" style={{ fontSize: "0.75rem", margin: "4px 0 0" }}>{DAY_BOUNDARY_SENTENCE}</p>
+          <div id={helpId} className="at-help" data-testid="help" hidden={!helpOpen}>
+            {helpOpen && c.help(<TapAmount sats={EXAMPLE_MOVE_SATS} rate={rate} />).map((p, i) => <p key={i}>{p}</p>)}
           </div>
+          <RadioCards<TransferStrategy>
+            name="strategy"
+            labelledBy={qId}
+            options={options}
+            value={form.strategy}
+            onChange={(v) => edit({ strategy: v })}
+            layout="column"
+            busy={saving}
+          />
+        </section>
 
-          <div className="form-label" style={{ marginTop: 8 }}>Where it goes</div>
-          <div style={rowStyle}>
-            <div style={{ flex: "1 1 260px" }}>
-              <div style={{ fontWeight: 600 }}>{farmer ? "Earnings go to" : "Top-ups come from"}</div>
-              <div className="text-dim" style={{ fontSize: "0.75rem" }}>Your node's own Bitcoin wallet, the one Umbrel set up with your Lightning node. This is fixed.</div>
-            </div>
-            <span style={{ fontWeight: 600 }}>Your wallet</span>
+        <section className="at-section">
+          <div className="at-limits-row">
+            {!limitsOpen && (
+              <>
+                <span data-testid="limits-summary">{c.perMove}: <b>{feeShown}</b></span>
+                <span className="at-sep" aria-hidden>·</span>
+              </>
+            )}
+            <button
+              type="button"
+              className="at-link"
+              aria-expanded={limitsOpen}
+              aria-controls={limitsId}
+              onClick={() => setLimitsOpen(!limitsOpen)}
+            >
+              {limitsOpen ? "Hide limits ▾" : "Change limits ▸"}
+            </button>
           </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button className="btn btn-primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
-            {saveMsg && (
-              <span data-testid="save-msg" style={{ fontSize: "0.8125rem", color: saveMsg.ok ? "var(--text-2)" : "var(--red)" }}>{saveMsg.text}</span>
+          <div id={limitsId} className="at-limits" hidden={!limitsOpen}>
+            {limitsOpen && (
+              <>
+                <MoneyField label={c.perMove} hint={c.perMoveHint} value={form.feeUsd} onChange={(v) => edit({ feeUsd: v })} disabled={saving} />
+                <MoneyField label="Daily fee budget" hint={c.budgetHint} value={form.budgetUsd} onChange={(v) => edit({ budgetUsd: v })} disabled={saving} />
+                <MoneyField label={c.perDay} hint={c.perDayHint} value={form.maxDayUsd} onChange={(v) => edit({ maxDayUsd: v })} disabled={saving} />
+                <p className="at-reset" data-testid="day-boundary">{DAY_BOUNDARY_SENTENCE}</p>
+              </>
             )}
           </div>
-        </div>
+        </section>
+
+        <section className="at-section">
+          <p className="at-where" data-testid="where">{c.where} <b>Your node's wallet</b></p>
+        </section>
+
+        {(dirty || saving || saveMsg) && (
+          <section className="at-section at-save-row">
+            {(dirty || saving) && (
+              <button type="button" className="btn btn-primary" onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+            )}
+            {saveMsg && (
+              <span data-testid="save-msg" className={`at-save-msg${saveMsg.ok ? "" : " is-error"}`}>{saveMsg.text}</span>
+            )}
+          </section>
+        )}
       </div>
     </div>
   );
