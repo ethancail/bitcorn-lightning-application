@@ -1,6 +1,6 @@
 # Local Development Setup
 
-A guide to setting up the Bitcorn Lightning app for local development against a regtest Lightning network using Polar. Following this end-to-end gets you a working three-instance stack — treasury, member-A, and member-B — running on your machine with hot reload and no involvement of farmers' real Umbrel nodes.
+A guide to setting up the Bitcorn Lightning app for local development against a regtest Lightning network using Polar. Following this end-to-end gets you a working three-instance stack — treasury, member-A, and member-B — running on your machine with hot reload and no involvement of farmers' real Umbrel nodes. The optional [Loop Fidelity Layer](#optional-loop-fidelity-layer) adds a fourth Polar node, External-Peer-1, which is a routing peer, not an app instance.
 
 ## Why this exists
 
@@ -11,9 +11,21 @@ Historically, testing changes required merging to `main` so Umbrel would detect 
 Before starting, you should have:
 
 - **Docker** installed and running. On Ubuntu 24.04, install via the official Ubuntu instructions (https://docs.docker.com/engine/install/ubuntu/) — do **not** follow the Debian instructions; the repos differ.
-- **Polar** v4.0.0 or later (https://github.com/jamaljsr/polar/releases). On Ubuntu 24.04, the AppImage works but requires `libfuse2t64` (`sudo apt install libfuse2t64`) and disabling the AppArmor unprivileged user namespace restriction (`echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/60-apparmor-namespace.conf && sudo sysctl --system`).
+- **Polar** v4.0.0 or later (https://github.com/jamaljsr/polar/releases). On Ubuntu 24.04, the AppImage works but requires `libfuse2t64` (`sudo apt install libfuse2t64`) and one of two sandbox fixes: either disable the AppArmor unprivileged user namespace restriction machine-wide (`echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/60-apparmor-namespace.conf && sudo sysctl --system`), or launch Polar with `--no-sandbox` (`<the AppImage> --no-sandbox`), which changes nothing system-wide.
 - **Node.js** matching the version the project uses (check the `.nvmrc` or `engines` field in `app/api/package.json`).
 - Your user added to the `docker` group (`sudo usermod -aG docker $USER`, then log out / back in).
+- **On a harness host, Docker publishing to loopback only, on every network.** Docker-published ports bypass ufw. Docker's `"ip"` setting in `/etc/docker/daemon.json` covers only the default bridge, not the networks Polar creates, so Polar's ports would still bind `0.0.0.0` and `[::]`. Set `default-network-opts` as well, so every new bridge network binds its published ports to `127.0.0.1`:
+  ```json
+  {
+    "ip": "127.0.0.1",
+    "default-network-opts": {
+      "bridge": { "com.docker.network.bridge.host_binding_ipv4": "127.0.0.1" }
+    }
+  }
+  ```
+  Restart Docker for it to take effect (then see [Stale-IP peer drop](#stale-ip-peer-drop)). A Polar network created before the setting keeps its old bindings and needs recreating. Verified on the OptiPlex harness host. After any network recreate, check that no port binds `0.0.0.0` or `[::]`: `docker ps --format '{{.Names}} {{.Ports}}'`.
+
+**The OptiPlex harness host** has its own specifics — reaching it, its users, its lock use and its gotchas — in the vault: `bitcorn-research/runbooks/2026-11-11-optiplex-harness-host.md`. This page covers what any harness host needs; read the runbook as well before working there.
 
 ## Step 1: Set up the local Lightning network in Polar
 
@@ -163,6 +175,14 @@ A note on `VITE_API_BASE`: each web instance is pinned to a specific API port vi
 
 ## Step 5: Run and validate
 
+**After a fresh `app/web` `npm ci`, warm Vite's cache once before the first `dev:all`.** In `app/web`:
+
+```bash
+npx --no-install vite optimize --force
+```
+
+On a cold cache the three Vite servers pre-bundle their dependencies at once and use about 3 GB more memory between them. `--no-install` runs the vite already installed and fetches nothing. Once is enough until the next fresh install.
+
 From the repo root, with the go to use the harness, take slot 1's lock first (see [The harness lock](#the-harness-lock)); every script that starts, stops or kills refuses without it:
 
 ```bash
@@ -232,7 +252,7 @@ For slot N, use `--slot N` and the same `HARNESS_SLOT` as the scripts: slot 1's 
 **Polar regtest recovery — symptom → action.**
 Container names embed the Polar network id: `polar-n<id>-<Node>`, so `polar-n1-*` is network 1 (`ls ~/.polar/networks/`). The commands below use network 1 and the compose hostnames `Treasury`, `Farmer1`, `Merchant1`, `External-Peer-1`, `backend1` — substitute yours. Each symptom is something you observe directly; match on it, not on a similar-looking error.
 - *All LND containers crash-loop (`Restarting (1)`) and log `lookup polar-n1-backend1 … server misbehaving`* → bitcoind is down. `docker start polar-n1-backend1`. Details in the next entry.
-- *LNDs are up, `lncli getinfo` shows `synced_to_chain: false` even though `block_height` matches bitcoind, and the log shows `Syncing to block chain … best_block_time=<days ago> is_synced=false`* → the tip is stale. See [Polar regtest gate: stale tip](#stale-tip).
+- *LNDs are up, `lncli getinfo` shows `synced_to_chain: false` even though `block_height` matches bitcoind, and the log shows `Syncing to block chain … best_block_time=<days ago> is_synced=false`* → the tip is stale. Expected after the harness sits idle about two hours, and Treasury's peers drop with it; one block fixes both. See [Polar regtest gate: stale tip](#stale-tip).
 - *`-8: Block height out of range` after an unclean host stop* → bitcoind lost a block the LND wallet had already saved, so the wallet is ahead of bitcoind. Mine one block at a time (the command is in [Polar regtest gate: stale tip](#stale-tip)) and after each, re-check `docker logs --tail 50 polar-n1-<Node>`, until the `-8` lines stop and LND logs `Chain backend is fully synced!`. Don't use the `start_height=` value in LND's log as a target: it is bitcoind's height, not the wallet's. Extra regtest blocks are harmless. Precedent: 2026-10-09, when six blocks mined at once cleared it and the wallet rolled back the orphaned block.
 - *After **any** Docker daemon restart* → Treasury can be missing peers, so check every time. See [Polar regtest gate: stale-IP peer drop](#stale-ip-peer-drop).
 - *Checking any of the above in logs* → always `docker logs --tail N <container>`. A full read (no `--tail`, or `--since`) can stop silently at a corrupt json-file log entry; on the dev machine it stops at 2026-09-29, so a grep over it misses everything since and looks like "nothing logged".
@@ -292,6 +312,16 @@ Should print the NEW base. **Never trust the absence of an error message** — `
 
 If you want to script a reset, the network state lives at `~/.polar/networks/<id>/` — Polar reconstructs from this on next start.
 
+**Quitting Polar v4.0.0's GUI tears its network down.** Closing the GUI does a full `docker compose down` of the network it is running: containers and the compose network removed, node data kept in the network's volumes. A stopped network is left alone. **Run the network without the GUI** instead, from `~/.polar/networks/<id>`:
+
+```bash
+USERID=$(id -u) GROUPID=$(id -g) docker compose up -d --pull never
+```
+
+`--pull never` uses the images already on the host. The containers come back on new IPs, so then check Treasury's peers and reconnect any that are missing ([Stale-IP peer drop](#stale-ip-peer-drop)). `backend1`'s restart policy survives only as the compose file's line, not a `docker update` ([Restart policy](#restart-policy)).
+
+**Locks:** bringing a network up or down with `docker compose` takes the lock of the slot whose network it is; opening Polar's GUI takes the setup lock ([The harness lock](#the-harness-lock)).
+
 ## Polar regtest gate
 
 This section is the single statement of the gate procedure. `docs/RELEASE.md` only points here.
@@ -302,7 +332,7 @@ This section is the single statement of the gate procedure. `docs/RELEASE.md` on
 
 **Where its conditions come from.** The arc's spec writes the pass and fail conditions before the run. The gate session never writes its own, and never adds, drops or softens one.
 
-**The harness it expects.** Polar network 1 with the Step 1 nodes plus `External-Peer-1` and its Treasury channel (Steps A and B of the Loop Fidelity Layer below). That is five containers (`polar-n1-backend1`, `polar-n1-Treasury`, `polar-n1-Merchant1`, `polar-n1-Farmer1`, `polar-n1-External-Peer-1`) and three active Treasury channels, one to each other node. Polar itself stays closed, because a running Polar can rewrite the compose file.
+**The harness it expects.** Polar network 1 with the Step 1 nodes plus `External-Peer-1` and its Treasury channel (Steps A and B of the Loop Fidelity Layer below). That is five containers (`polar-n1-backend1`, `polar-n1-Treasury`, `polar-n1-Merchant1`, `polar-n1-Farmer1`, `polar-n1-External-Peer-1`) and three active Treasury channels, one to each other node, plus External-Peer-1's contact row on Treasury, tagged `external-peer` (Step C). The pre-flight does not check the contact row. Polar itself stays closed, because a running Polar can rewrite the compose file. Quitting Polar tears the network down, so after a setup window the network is brought back up without the GUI ([Resetting state](#resetting-state)).
 
 **The lock.** The whole gate runs with the slot's lock held by the gate's arc ([The harness lock](#the-harness-lock)): acquired with the go before the first pre-flight, released after the last, its one-line report pasted to the orchestrator and kept with the evidence.
 
@@ -323,6 +353,8 @@ node scripts/polar-preflight.mjs
 
 It refuses unless the slot's lock is held by `HARNESS_HOLDER` (see [The harness lock](#the-harness-lock)). Run it immediately before each gate, not once per session, because a stale tip can arise while the nodes are up. It takes about 30 seconds, the window for comparing restart counts. It prints one timestamped line per check, then a summary, and writes nothing.
 
+**After an idle stretch, expect it to fail.** About two hours after the last block, the regtest tip is stale, so the first pre-flight after the harness sits idle is expected to fail on sync and on Treasury's peers. That is expected, not a fault: one block fixes both (see [Stale tip](#stale-tip)). It is still a non-zero exit, so in a gate the prompt's `--repair` line and its stop-and-report rule still decide what happens next.
+
 | Exit | Meaning |
 |---|---|
 | 0 | Every check passed |
@@ -340,6 +372,8 @@ It checks the five containers against the pinned set, that Polar is not running,
 `synced_to_chain` isn't only about height: LND also requires the tip's wall-clock timestamp to be recent (roughly 2 hours), and regtest only mines when you tell it to, so an idle network goes stale with every node on the same block. In the app, the `lnd_node_info.synced_to_chain` column shows the same flag, the API logs `membership_status: unsynced` for the local node, and code that gates on sync status (e.g. the autobuy scheduler, the rate-limited payment endpoint) treats the node as not ready.
 
 Mine one block to an unspendable output, with `--repair` or by hand: `docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest generatetodescriptor 1 "raw(6a)"`. `-u bitcoin` because cookie auth only works as that user, and `raw(6a)` is a bare OP_RETURN, so no wallet is needed and nothing spendable is created. All LNDs flip to synced within seconds.
+
+**The peers go with it.** While the tip is stale, LND does not start its peer server, so Treasury loses its peers and `lncli connect` fails with `server is still in the process of starting`; reconnecting cannot work until a new block arrives. On 2026-11-11, after about 2h27m idle, one block mined by hand with the command above fixed both: the LNDs synced, and peers and channels returned on their own, with no reconnect. That `--repair` clears both in one run is not verified.
 
 ### Stale-IP peer drop
 
@@ -394,7 +428,7 @@ When you do need real swap fidelity in regtest, this layer adds:
 
 After this layer is up, Member Liquidity Advisor recommendations on Farmer1 and Merchant1 trigger actual end-to-end Loop swaps against the local `loopserver`. Channel state transitions, the rebalance cost ledger, and every line of `src/swaps/` exercise their real code paths.
 
-> **⚠ DRAFT STATUS:** Spec §3 assumed `loopserver` was buildable from the `lightninglabs/loop` repo at `./cmd/loopserver`. **It isn't** — that path doesn't exist in any release of the repo (verified across v0.5.1-beta through v0.33.0-beta). Lightning Labs publishes `loopserver` only as a Docker image at `lightninglabs/loopserver:latest`, documented in the loop repo's own `regtest/README.md`. The walkthrough below uses Docker for `loopserver` and a native Go binary (built from the same repo's `cmd/loopd`) for the per-role `loopd` clients. The npm scripts have been filled in with verified `loopd v0.33.0-beta` flags. The §6 smoke tests still need to run end-to-end before this PR is ready for review.
+> **Note:** Spec §3 assumed `loopserver` was buildable from the `lightninglabs/loop` repo at `./cmd/loopserver`. **It isn't** — that path doesn't exist in any release of the repo (verified across v0.5.1-beta through v0.33.0-beta). `loopserver` was published only as a Docker image, `lightninglabs/loopserver`, documented in the loop repo's own `regtest/README.md`, and that image is now gone from Docker Hub; this harness pins `v0.9.221-beta` (Step D). The walkthrough below uses Docker for `loopserver` and a native Go binary (built from the same repo's `cmd/loopd`) for the per-role `loopd` clients, with verified `loopd v0.33.0-beta` flags. Step G records the Loop Out smoke test running end-to-end to `Success` on 2026-11-10; this page records no dated Loop In run.
 
 ### Step A: Add External-Peer-1 to Polar
 
@@ -414,7 +448,7 @@ Polar appends a numeric suffix and creates the LND data directory at `~/.polar/n
 
 In the Polar UI:
 
-1. Drag from the Treasury node onto External-Peer-1 to create a channel. Set capacity to **5,000,000 sats**, with most of the balance pushed to External-Peer-1's side (so `loopserver` has off-chain liquidity to fulfill Loop Out swaps).
+1. Drag from the Treasury node onto External-Peer-1 to create a channel. Set capacity to **10,000,000 sats**, with **no push**: the whole balance starts on Treasury's side. This is the channel the working harnesses have; the Loop In caveat in Step F covers its one consequence.
 2. Click the Bitcoin Core node → Actions → **Mine 6 Blocks**.
 3. Click External-Peer-1 → Actions → **Deposit**. Deposit **500,000,000 sats (5 BTC)** so `loopserver` has on-chain liquidity for Loop In settlements.
 
@@ -434,11 +468,11 @@ Refresh the Channels page. The Treasury↔External-Peer-1 channel should now sur
 
 Two binaries with different distribution methods:
 
-- **`loopserver`** is published as a Docker image only — `lightninglabs/loopserver:latest`. There is no Go source for it in the public `lightninglabs/loop` repo. Documented in the loop repo's `regtest/README.md`.
+- **`loopserver`** was published only as a Docker image, `lightninglabs/loopserver`, now gone from Docker Hub; this harness pins `v0.9.221-beta` (below). There is no Go source for it in the public `lightninglabs/loop` repo. Documented in the loop repo's `regtest/README.md`.
 - **`loopd`** is the swap client; we build it from source against a pinned tag of `lightninglabs/loop`.
 
 ```bash
-# Pull the loopserver Docker image — pinned to v0.9.221-beta (Nov 2024).
+# The loopserver Docker image — pinned to v0.9.221-beta (Nov 2024).
 # `latest` (v0.11.33-beta as of writing) and any v0.10+ tag have a buggy
 # Postgres migration in the static-address feature path that fails at
 # startup with "migration requires timezone to be UTC, got: UTC". The
@@ -448,7 +482,11 @@ Two binaries with different distribution methods:
 # feature, doesn't have those tables, so the broken migration can't
 # run. Loop In and Loop Out work fine on this version (the only thing
 # missing is the static-address Loop In variant, which we don't use).
-docker pull lightninglabs/loopserver:v0.9.221-beta
+#
+# lightninglabs/loopserver is no longer on Docker Hub, so `docker pull` fails.
+# Copy the pinned image from a host that has it. Run this on that host:
+docker save lightninglabs/loopserver:v0.9.221-beta | ssh <new-host> docker load
+# Keep the image on every host that has it: there is no public source left.
 
 # Build loopd, and the loop CLI that talks to it, from source (pinned tag — master is volatile)
 LOOP_TAG=v0.33.0-beta
@@ -458,7 +496,7 @@ go build -o ~/.bitcorn-dev/loopserver/loopd ./cmd/loopd
 go build -o ~/.bitcorn-dev/loopserver/loop ./cmd/loop
 ```
 
-Verify: `~/.bitcorn-dev/loopserver/loopd --version` should print `loopd version 0.33.0-beta`. `docker image inspect lightninglabs/loopserver:v0.9.221-beta --format '{{.Id}}'` should print a sha256. The `loop` CLI is what Step F's `getinfo` check uses; given `--loopdir` and `--network`, it finds that loopd's `tls.cert` and `loop.macaroon` under `<loopdir>/<network>/`.
+Verify: `~/.bitcorn-dev/loopserver/loopd --version` should print `loopd version 0.33.0-beta`. `docker image inspect lightninglabs/loopserver:v0.9.221-beta --format '{{.Id}}'`, run on both hosts, should print the same image ID. The `loop` CLI is what Step F's `getinfo` check uses; given `--loopdir` and `--network`, it finds that loopd's `tls.cert` and `loop.macaroon` under `<loopdir>/<network>/`. A host without the `loop` CLI can read each loopd's own log instead, at `<loopdir>/logs/regtest/loopd.log` (slot 1's treasury: `~/.bitcorn-dev/treasury/loopd/logs/regtest/loopd.log`).
 
 You also need to be in the `docker` group to run the loopserver container — `sudo usermod -aG docker $USER && newgrp docker` (one-time, then either `newgrp docker` in your current shell or log out / log back in).
 
@@ -555,11 +593,17 @@ fi
 
 What the scripts run:
 
-- **`dev:loopserver`** runs the official `lightninglabs/loopserver:v0.9.221-beta` Docker image (pinned, see Step D) on Polar's bridge network, `--network polar-network-1_default`, with its RPC port published only on loopback: `-p 127.0.0.1:11009:11009`. Docker-published ports bypass ufw, hence `127.0.0.1`; the status port (`1100`) is not published. On the bridge the container reaches LND and bitcoind by container name, at the **container's** ports, not the host ports Polar maps. Flags wired in:
+- **`dev:loopserver`** runs the official `lightninglabs/loopserver:v0.9.221-beta` Docker image (pinned, see Step D) on Polar's bridge network, `--network polar-network-1_default`, with its RPC port published only on loopback: `-p 127.0.0.1:11009:11009`. Docker-published ports bypass ufw, hence `127.0.0.1` (Polar's own ports need the daemon setting in [Prerequisites](#prerequisites)); the status port (`1100`) is not published. On the bridge the container reaches LND and bitcoind by container name, at the **container's** ports, not the host ports Polar maps. Flags wired in:
   - `--lnd.host=polar-n1-External-Peer-1:10009 --lnd.macaroondir=/lnd/data/chain/bitcoin/regtest --lnd.tlspath=/lnd/tls.cert` — anchor to External-Peer-1's LND (read-only volume mounted at `/lnd`, NOT `/root/.lnd` — the loopserver image runs as `uid=100(loopserver)` which can't traverse the container's `/root/` directory; mounting at `/lnd` puts the data under a world-traversable path). External-Peer-1's TLS certificate names `polar-n1-External-Peer-1`, so dialing by container name verifies.
+    **The host side needs loosening too, regtest only.** The mount keeps the host's modes, and LND creates External-Peer-1's `data`, `chain`, `bitcoin` and `regtest` directories `0700`, which uid 100 cannot traverse. On both harness hosts the end state is those four directories at `o+rx` (`0705`) and every `regtest/*.macaroon` readable by others; of the macaroons, only `admin.macaroon` needed the change. From External-Peer-1's LND directory (`~/.polar/networks/<id>/volumes/lnd/External-Peer-1`):
+    ```bash
+    chmod o+rx data data/chain data/chain/bitcoin data/chain/bitcoin/regtest
+    chmod o+r data/chain/bitcoin/regtest/*.macaroon
+    ```
+    This makes External-Peer-1's admin macaroon readable by every local account: accepted for Polar's regtest harness only, never for a node with real funds. The modes live in the network's volume, so a `docker compose up` keeps them; a network built from scratch needs them set again.
   - `--bitcoin.host=polar-n1-backend1:18443 --bitcoin.user=polaruser --bitcoin.password=polarpass` — Polar's bitcoind RPC (default Polar credentials)
   - `--bitcoin.zmqpubrawblock=tcp://polar-n1-backend1:28334 --bitcoin.zmqpubrawtx=tcp://polar-n1-backend1:28335` — Polar's bitcoind ZMQ ports for raw block/tx notifications. **Required** — loopserver crashes at startup with `invalid config: zmqpubrawblock must be set` if these aren't passed. Inside the container rawblock is `28334` and rawtx `28335`; on the host they are `28335` and `29336`, so the host numbers must not be carried over.
-  - `--maxamt=5000000` — caps any single swap at 5M sats (matches the channel capacity)
+  - `--maxamt=5000000` — caps any single swap at 5M sats, half of Step B's 10,000,000-sat channel
   - `docker rm -f bitcorn-loopserver` runs first to wipe any prior container by name. The container is NOT auto-removed on crash (no `--rm`), so `docker logs bitcorn-loopserver` is available for post-mortem if it dies.
 - **`dev:loopd-{T,A,B}`** runs `loopd --network=regtest --loopdir=<per-role dir> --rpclisten=localhost:<role port> --lnd.host=127.0.0.1:<that role's LND gRPC> --lnd.macaroonpath=<...> --lnd.tlspath=<...> --server.host=localhost:11009 --server.notls`. The `--server.notls` flag is required because the regtest loopserver doesn't run TLS.
 
@@ -575,6 +619,8 @@ nc -z localhost 11030 && echo "loopd-B OK"
 docker logs "$LS" --tail 20    # should show 'RPC server listening on [::]:11009'
 # loopd-T's getinfo, through the loop CLI from Step D (member-a: 11020, member-b: 11030):
 ~/.bitcorn-dev/loopserver/loop --rpcserver=localhost:11010 --network=regtest --loopdir=$HOME/.bitcorn-dev/treasury/loopd getinfo
+# No loop CLI on this host? Read that loopd's own log instead (<loopdir>/logs/regtest/loopd.log):
+tail -n 20 ~/.bitcorn-dev/treasury/loopd/logs/regtest/loopd.log
 ```
 
 To stop just the loopserver container without killing other things: `npm run dev:loopserver-stop`.
@@ -623,7 +669,7 @@ Polar's own node ports are not computed: they are read from `~/.polar/networks/n
 
 **Setting up slot N, once, in a setup window.** The Polar GUI is opened only when no slot is mid-gate, because a running Polar can rewrite any network's compose file.
 
-1. In Polar, create a network named `bitcorn-dev-N` with the five nodes above, named exactly so, and open and fund the same channels as slot 1 (Step 1 and Loop Steps A and B). Add `restart: unless-stopped` to its `backend1` service in `~/.polar/networks/<id>/docker-compose.yml` (see [Restart policy](#restart-policy)). Close Polar.
+1. In Polar, create a network named `bitcorn-dev-N` with the five nodes above, named exactly so, and open and fund the same channels as slot 1 (Step 1 and Loop Steps A and B). Add `restart: unless-stopped` to its `backend1` service in `~/.polar/networks/<id>/docker-compose.yml` (see [Restart policy](#restart-policy)). Close Polar. That tears network N down, so once the setup lock is released, bring it back up without the GUI under slot N's lock ([Resetting state](#resetting-state)).
 2. Write the three env files `.env.dev.slot-N.treasury`, `.env.dev.slot-N.member-a` and `.env.dev.slot-N.member-b` at the repo root (gitignored by the `.env.dev.*` rule). They hold slot N's identity only:
    - `TREASURY_PUBKEY` — slot N's Treasury node pubkey, in all three;
    - `LOOP_SERVER_PUBKEYS` — slot N's External-Peer-1 pubkey, in all three;
