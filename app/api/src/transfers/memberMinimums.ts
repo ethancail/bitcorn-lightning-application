@@ -11,13 +11,16 @@
 //   rails       the member's effective fee limit (for Q)
 // Read-only: one loopd terms call, no quote, no row written.
 
-import { db } from "../db";
 import { getHubChannelForDisplay } from "../lightning/hubChannel";
 import { getLoopInTerms, getLoopOutTerms } from "../lightning/loop";
 import { getBtcUsd } from "../price/btcUsdCache";
 import { effectiveLimits, type LoopTermsLike } from "../swaps/effectiveLimits";
 import { minimumsForRole, type MemberRole, type MinimumBreakdown } from "./minimumConnection";
-import { effectiveTransferSettings } from "./transferSettings";
+import { effectiveTransferSettings, memberRole } from "./transferSettings";
+
+// memberRole() lives in transferSettings.ts (the per-transfer default follows
+// it, R59(3)); re-exported here for this module's existing importers.
+export { memberRole };
 
 export type MemberMinimums = {
   role: MemberRole | "unknown";
@@ -26,13 +29,6 @@ export type MemberMinimums = {
   save: MinimumBreakdown | null;
   open: MinimumBreakdown | null;
 };
-
-export function memberRole(): MemberRole | "unknown" {
-  const row = db.prepare("SELECT channel_role FROM member_liquidity_advisor_config WHERE id = 1").get() as
-    | { channel_role: string | null }
-    | undefined;
-  return row?.channel_role === "farmer" || row?.channel_role === "merchant" ? row.channel_role : "unknown";
-}
 
 export async function memberMinimumConnections(): Promise<MemberMinimums> {
   const role = memberRole();

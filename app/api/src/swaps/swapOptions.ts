@@ -36,7 +36,7 @@ import { getLoopInQuote, getLoopOutQuote } from "../lightning/loop";
 import { getBtcUsd } from "../price/btcUsdCache";
 import { calmReading } from "../transfers/feeSamples";
 import { usdCentsToSats } from "../transfers/minimumConnection";
-import { effectiveTransferSettings, STRATEGY_FLOORS_USD_CENTS, type TransferStrategy } from "../transfers/transferSettings";
+import { effectiveTransferSettings, memberRole, readStoredTransferSettings, STRATEGY_FLOORS_USD_CENTS, type TransferStrategy } from "../transfers/transferSettings";
 import { getMemberSwapLimits } from "./swapLimits";
 
 export type CardKey = "now" | "wait_bigger" | "wait_calm" | "wait_lower" | "deposit_first" | "wait";
@@ -136,7 +136,9 @@ export function feeLimitSats(usdCents: number, usdPerBtc: number | null): number
 }
 
 export async function getSwapOptions(direction: "loop_out" | "loop_in", nodePubkey: string, now = Date.now()): Promise<SwapOptions> {
-  const settings = effectiveTransferSettings();
+  // The fee limit's default follows the member's channel_role (R59(3)), not
+  // the swap's direction; the floors below still follow the direction.
+  const settings = effectiveTransferSettings(readStoredTransferSettings(), memberRole());
   const strategy = settings.strategy;
   const usd = getBtcUsd(now).usd;
   const role = direction === "loop_out" ? "farmer" : "merchant";
