@@ -4023,6 +4023,17 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .radio-card.is-disabled .radio-card-label,
 .radio-card.is-disabled .radio-card-desc { color: var(--text-3); }
 
+/* ─── Tap-for-sats amount, the interim (components/TapAmount.tsx) ──
+   A button that reads as a figure inside its sentence: dollars first, a
+   dotted rule that says "tap me"; with no rate it is plain text. */
+.tap-amount {
+  background: none; border: none; padding: 0; margin: 0; font: inherit; font-weight: 600; color: inherit;
+  cursor: pointer; border-radius: var(--radius-sm);
+  text-decoration: underline dotted var(--border-control); text-underline-offset: 3px;
+}
+.tap-amount:hover { text-decoration-color: var(--text-2); }
+.tap-amount-static { font-weight: 600; }
+
 /* ─── Reduced motion ───────────────────────────────────────────────
    Gentler, not none: movement goes (translate, scale, width, radius
    growth, sliding panels, moving shimmers and pulses); opacity and colour
