@@ -4000,6 +4000,29 @@ div:has(> .action-confirm-input) + .dialog-actions {
   --d-cols: 2;
 }
 
+/* ─── Radio cards (drive-mode; components/RadioCards.tsx) ──────────
+   The mockup's answer rows (R48, approved R51): rows, not boxes, inside the
+   panel (A15, one level of containment). The chosen card takes the
+   sidebar's active mark, a --bg-2 fill and an amber inset rule: a mark,
+   never a word. Native radios; each card at least 44px tall. */
+.radio-cards { display: flex; flex-direction: column; gap: 2px; }
+.radio-cards[data-layout="row"] { flex-direction: row; flex-wrap: wrap; }
+.radio-card {
+  display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: 12px; align-items: start;
+  padding: 12px 12px 12px 14px; border-radius: var(--radius-md); cursor: pointer; min-height: 44px;
+}
+.radio-card:hover { background: var(--bg-2); }
+.radio-card.is-chosen { background: var(--bg-2); box-shadow: inset 3px 0 0 var(--amber); }
+.radio-card.is-disabled { cursor: default; }
+.radio-card.is-disabled:hover { background: transparent; }
+.radio-card input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--text); cursor: inherit; }
+.radio-card-body { display: flex; flex-direction: column; min-width: 0; }
+.radio-card-label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.9375rem; font-weight: 600; }
+.radio-card-desc { margin-top: 1px; font-size: var(--d-label); color: var(--text-2); }
+.radio-card-meta { margin-top: 8px; font-size: var(--d-label); color: var(--text); }
+.radio-card.is-disabled .radio-card-label,
+.radio-card.is-disabled .radio-card-desc { color: var(--text-3); }
+
 /* ─── Reduced motion ───────────────────────────────────────────────
    Gentler, not none: movement goes (translate, scale, width, radius
    growth, sliding panels, moving shimmers and pulses); opacity and colour
