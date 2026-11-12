@@ -12,7 +12,7 @@
 // tier banner path is unchanged — a healthy member with no auto-pay signal
 // still sees nothing.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fmtSats, type SubscriptionStatus } from "../api/client";
 import {
@@ -50,11 +50,15 @@ function noWrapAmounts(text: string, amounts: string[]): React.ReactNode {
 export default function MemberSubscriptionBanner({
   status,
   usdRate = null,
+  onWaitingChange,
 }: {
   status: SubscriptionStatus | null;
   /** The dashboard's BTC/USD rate, for dollars first in the renewal copy
    *  (drive-mode P2 items 11-12); null shows sats. Passed in, not fetched. */
   usdRate?: number | null;
+  /** Told whether the waiting strip shows, so the dashboard can poll the
+   *  status faster meanwhile (R45 Polar follow-up, 2026-11-12). */
+  onWaitingChange?: (waiting: boolean) => void;
 }) {
   const [payModalOpen, setPayModalOpen] = useState(false);
   const { cfg, reload } = useAutoPayConfig();
@@ -73,6 +77,11 @@ export default function MemberSubscriptionBanner({
   const pending = usePendingPayment(tierRenders, PENDING_POLL_MS);
   const waiting = tierRenders ? pendingPaymentView(pending, status) : null;
   const waitingCopy = waiting ? pendingPaymentCopy(waiting, Date.now()) : null;
+  const showsWaiting = tierRenders && waitingCopy != null;
+  useEffect(() => {
+    onWaitingChange?.(showsWaiting);
+  }, [showsWaiting, onWaitingChange]);
+  useEffect(() => () => onWaitingChange?.(false), [onWaitingChange]);
   // The amounts the banner's text can carry (R56 (2)).
   const price = status?.applicable === true ? renewalAmount(status.price_sats, usdRate) : null;
   const bannerAmounts = price ? [price.text, price.label] : [];
@@ -85,7 +94,7 @@ export default function MemberSubscriptionBanner({
 
   return (
     <>
-      {tierRenders && waitingCopy && (
+      {showsWaiting && waitingCopy && (
         <div className={`alert ${ALERT_VARIANT_CLASS.info} member-sub-banner`} data-pending-payment>
           <span className="alert-icon" aria-hidden>{SEVERITY_ICON.info}</span>
           <div className="member-sub-banner-body">
