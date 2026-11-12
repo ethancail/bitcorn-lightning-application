@@ -30,6 +30,7 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/transfers/feeSamples.ts` | Drive-mode P3: the read-only 6-block fee sampler (≤ every 10 min off the sync tick, 8 days kept) and `calmReading` (calm = estimate ≤ the 7-day median; `unknown` until 7 days of samples) |
 | `src/api/nodeBalances.ts` | `GET /api/node/balances`' Lightning side: active-only `lightning_sats` plus `lightning_inactive_sats` (drive-mode P3) |
 | `src/api/member-costs.ts` | `GET /api/member/costs`: payment and swap fees over the last 30 days, read-only |
+| `src/subscription/pendingPayment.ts` | Drive-mode R45: `GET /api/subscription/pay-from-node/pending` — the newest active pay-from-node send marker (migration 073) or null; reads this node's database only, never fetches the treasury, never clears a marker |
 | `src/api/treasury.ts` | Aggregate treasury metrics |
 | `src/api/treasury-liquidity-health.ts` | Per-channel liquidity assessment |
 | `src/api/treasury-channel-metrics.ts` | Per-channel profitability and payback |
@@ -96,6 +97,8 @@ All non-treasury nodes get the same `MemberShell`. `MemberDashboard` handles the
 | `app/web/src/styles.css` | Full design system |
 | `app/web/src/components/BitcoinPriceGraph.tsx` | BTC/USD price graph (recharts AreaChart, Coinbase public API). On all three dashboards it sits immediately beneath the headline numbers (CHART). It measures its plot and fits the time labels to the width (X5); the plot is `--d-chart-h` (480px) tall, `--d-chart-h-ph` (240px) on a phone (X5a, K4) |
 | `app/web/src/components/AlertRow.tsx` | X3: a treasury alert as one compact row — icon, the server's heading (SH1), the detail in a closed `<details>`, an optional action. Used by the treasury dashboard and `ValuationInputAlertBanner` |
+| `app/web/src/components/pendingPayment.ts` | Drive-mode R45: `pendingPaymentView()` — whether "payment sent, waiting for confirmation" shows (hidden once a **verified** status shows the credit: the marker's txid, or a later `paid_through`; never on an unverified one) — and `pendingPaymentCopy()`, its words (sats only; "may have sent" with no txid) |
+| `app/web/src/components/usePendingPayment.ts` | Drive-mode R45: polls the pending route while enabled (the Settings panel every 15 s while applicable; the dashboard banner every 60 s while a tier banner shows); fail-silent, keeps the last answer |
 | `app/web/src/components/subscriptionBannerSlot.ts` | J9/J9a: the member dashboard's slot for the subscription banner — `top` for `routing_lapsed`/`close_due`, `info` otherwise |
 | `app/web/src/components/loopFailureCopy.ts` | `loopFailureSentence()`: the member-facing sentence for a swap's `failure_reason` per direction — loopd's codes, Bitcorn's own, and a generic one; each money claim cited against loopd v0.33.0's source in the header. Withdraw and Top Up show it; the raw code stays in Technical details |
 | `app/web/src/components/PowerLawChart.tsx` | Bitcoin Power Law chart (log Y, percentile bands, 2042 projection); fills gap days with live Coinbase price |

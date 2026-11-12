@@ -15,6 +15,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api, type AutoPayConfig, type AutoPayAlert } from "../api/client";
 import { formatDistanceToNow } from "date-fns";
 import { autoPayCanEnable, trustCopy, trustStateOfAutoPayConfig } from "./paymentTrust";
+import { renewalAmount } from "./subscriptionBanner";
 
 const sats = (n: number | null | undefined) =>
   typeof n === "number" ? `${new Intl.NumberFormat("en-US").format(n)} sats` : "—";
@@ -28,8 +29,17 @@ type Save = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: st
  *  payBlocked: payBlocked(status) from paymentTrust.ts; while true, the line
  *  saying the node pays from its balance is hidden (G3 finding 3, ruled
  *  2026-11-11) and the S-state shows as a pointer to the panel's notice.
- *  Omitted reads as blocked. */
-export default function AutoPaySection({ pausesOn, payBlocked = true }: { pausesOn?: number; payBlocked?: boolean } = {}) {
+ *  Omitted reads as blocked.
+ *  usdRate: the panel's BTC/USD rate (drive-mode R45 A2, ruling 3), so the
+ *  "your node pays …" line is dollars first like the rest of the panel; null
+ *  or omitted shows sats. */
+export default function AutoPaySection({
+  pausesOn,
+  payBlocked = true,
+  usdRate = null,
+}: { pausesOn?: number; payBlocked?: boolean; usdRate?: number | null } = {}) {
+  const amount = (n: number | null | undefined) =>
+    typeof n === "number" ? <span className="sub-amount">{renewalAmount(n, usdRate).text}</span> : "—";
   const [cfg, setCfg] = useState<AutoPayConfig | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [save, setSave] = useState<Save>({ kind: "idle" });
@@ -126,11 +136,11 @@ export default function AutoPaySection({ pausesOn, payBlocked = true }: { pauses
           {payBlocked ? null : pausesOn != null && pausesOn <= Date.now() ? (
             <p style={{ margin: "0 0 6px" }}>
               Your subscription has lapsed and hosted services are paused, so your node will pay{" "}
-              <strong>{sats(cfg.current_price)}</strong> from its Bitcoin balance to renew it.
+              <strong>{amount(cfg.current_price)}</strong> from its Bitcoin balance to renew it.
             </p>
           ) : (
             <p style={{ margin: "0 0 6px" }}>
-              If your subscription lapses, your node pays <strong>{sats(cfg.current_price)}</strong> from its
+              If your subscription lapses, your node pays <strong>{amount(cfg.current_price)}</strong> from its
               Bitcoin balance to renew it. That happens after hosted services pause
               {pausesOn ? ` on ${new Date(pausesOn).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}` : ""}, so
               turning this on doesn't prevent the pause.

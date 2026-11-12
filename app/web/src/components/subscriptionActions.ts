@@ -12,8 +12,8 @@
 // rendering with no onClick, which a descriptor like this makes
 // impossible to reproduce silently.
 
-import { fmtSats } from "../api/client";
 import type { SubscriptionTier } from "../api/client";
+import { renewalAmount } from "./subscriptionBanner";
 
 /** What a button DOES. Every kind except "none" maps to a real handler
  *  in the panel; the test asserts the Onramp-primary states never carry
@@ -62,16 +62,18 @@ const HISTORY_TERTIARY: ActionDescriptor = {
  *  match the locked copy: prepay pays, and the lapsed family renews.
  *  close_due renews like routing_lapsed: Tier 3 issues no close (L2), and
  *  Stage 6 restores close copy only once a close is real. */
-function payModalSecondary(tier: SubscriptionTier, priceSats: number): ActionDescriptor {
+function payModalSecondary(tier: SubscriptionTier, priceSats: number, usdRate: number | null): ActionDescriptor {
+  // drive-mode R45 A2 (ruling 3): dollars with a rate, sats with none.
+  const amount = renewalAmount(priceSats, usdRate).label;
   switch (tier) {
     case "prepay":
-      return { kind: "pay-modal", label: `I have BTC — pay ${fmtSats(priceSats)}` };
+      return { kind: "pay-modal", label: `I have BTC — pay ${amount}` };
     case "worker_lapsed":
     case "routing_lapsed":
     case "close_due":
-      return { kind: "pay-modal", label: `I have BTC — renew (${fmtSats(priceSats)})` };
+      return { kind: "pay-modal", label: `I have BTC — renew (${amount})` };
     default:
-      return { kind: "pay-modal", label: `I have BTC — pay ${fmtSats(priceSats)}` };
+      return { kind: "pay-modal", label: `I have BTC — pay ${amount}` };
   }
 }
 
@@ -82,11 +84,11 @@ function payModalSecondary(tier: SubscriptionTier, priceSats: number): ActionDes
  * keeps its own (renew / refresh / history) shape — included for
  * completeness, though the panel renders `current` separately.
  */
-export function actionsFor(tier: SubscriptionTier, priceSats: number): PanelActions {
+export function actionsFor(tier: SubscriptionTier, priceSats: number, usdRate: number | null = null): PanelActions {
   if (isOnrampPrimary(tier)) {
     return {
       primary: ONRAMP_PRIMARY,
-      secondary: payModalSecondary(tier, priceSats),
+      secondary: payModalSecondary(tier, priceSats, usdRate),
       // prepay shows no tertiary; the lapsed family + close_due do.
       tertiary: tier === "prepay" ? undefined : HISTORY_TERTIARY,
     };

@@ -145,9 +145,9 @@ describe("G3 finding 2 — the dashboard tier banner asks for no payment while b
     { name: "worker_lapsed", s: (l) => status("worker_lapsed", l), ask: "Renew for 42,000 sats to restore.",
       context: "Hosted services are paused; your channel and routing still work.", headline: "Action needed: hosted services lapsed" },
     { name: "routing_lapsed", s: (l) => status("routing_lapsed", l), ask: "Pay 42,000 sats to restore them.",
-      context: "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.", headline: "Your membership payment is overdue" },
+      context: "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements.", headline: "Your membership payment is overdue" },
     { name: "close_due", s: (l) => status("close_due", l), ask: "Pay 42,000 sats to restore them.",
-      context: "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.", headline: "Your membership payment is overdue" },
+      context: "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements.", headline: "Your membership payment is overdue" },
   ];
   const banner = (s: any) => React.createElement(MemberSubscriptionBanner, { status: s, usdRate: null });
   const action = () => host.querySelector(".member-sub-banner-action") as HTMLButtonElement | null;
@@ -314,7 +314,7 @@ describe("G3 extension 2 — the Settings panel's remaining payment asks are hid
   // Ruled 2026-11-11: the routing_lapsed/close_due alert's "Pay {price} to
   // restore them." and the current tier's pre-pause "Renew before then to keep
   // them running.". The surrounding sentences stay, with their spacing.
-  const OVERDUE_LEAD = "Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.";
+  const OVERDUE_LEAD = "Your membership payment is overdue, so hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements.";
   const STILL_OPEN = " Your connection to Bitcorn is still open and its balance is unchanged.";
   const SITES = [
     { where: "routing_lapsed alert", s: (l: Record<string, unknown>) => status("routing_lapsed", l),
