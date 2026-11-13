@@ -39,6 +39,7 @@ import {
   lockStatus,
   loopserverContainer,
   parseSlot,
+  readLock,
   releaseLock,
   resolveNetwork,
   ROLES,
@@ -46,6 +47,7 @@ import {
   SCRIPTS,
   slotPorts,
 } from "./harness-slot.mjs";
+import * as slotModule from "./harness-slot.mjs"; // for exports a named import would fail to load without
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const HOME = "/home/user";
@@ -114,15 +116,30 @@ test("H7 pin: slot 1's values are today's literal values, every row", () => {
     lndGrpcPort: { Farmer1: 10004, Treasury: 10005, Merchant1: 10006, "External-Peer-1": 10007 },
   });
   assert.deepEqual(ROLES.map((r) => envFile(1, r.role)), [".env.dev.treasury", ".env.dev.member-a", ".env.dev.member-b"]);
-  for (const i of ROLES.keys()) assert.deepEqual(injectedEnv(1, i, ctx(1)), {}, "D15: slot 1 injects nothing");
+  // dev-safety R2 (decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…, R2) supersedes D15 for this one
+  // value: slot 1 injects API_LISTEN_HOST=127.0.0.1 and nothing else.
+  for (const i of ROLES.keys()) {
+    assert.deepEqual(injectedEnv(1, i, ctx(1)), { API_LISTEN_HOST: "127.0.0.1" }, "R2: slot 1 injects only API_LISTEN_HOST");
+  }
 });
 
-test(`H8 pin: with the slot unset, every slot-1 command line is byte-identical to ${BASE}`, () => {
+// dev-safety R2 (decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…, R2): the API lines now carry
+// API_LISTEN_HOST=127.0.0.1 after `cd app/api && `; every other byte is still 523e6ab's. The spec's own
+// H8 text is corrected by a vault pass, not here.
+const R2_PREFIX = "cd app/api && ";
+const withListenHost = (text) => {
+  assert.equal(text.split(R2_PREFIX).length, 2, `exactly one ${JSON.stringify(R2_PREFIX)} in ${JSON.stringify(text)}`);
+  return text.replace(R2_PREFIX, `${R2_PREFIX}API_LISTEN_HOST=127.0.0.1 `);
+};
+
+test(`H8 pin: with the slot unset, every slot-1 command line is byte-identical to ${BASE}, the API lines plus R2's host`, () => {
   const base = scriptsAtBase();
   // dev:loopserver follows H9 and dev:kill follows H11; both are pinned below.
   const pinned = SCRIPTS.filter((s) => s !== "dev:loopserver" && s !== "dev:kill");
+  const api = new Set(ROLES.map((r) => r.api));
   for (const script of pinned) {
-    assert.equal(scriptCommand(script, 1, ctx(1)), base[script], `${script} differs from ${BASE}`);
+    const expected = api.has(script) ? withListenHost(base[script]) : base[script];
+    assert.equal(scriptCommand(script, 1, ctx(1)), expected, `${script} differs from ${BASE}${api.has(script) ? " + R2" : ""}`);
   }
 });
 
@@ -178,6 +195,7 @@ test("H7 slot 2: every row", () => {
     LOOP_MACAROON_PATH: "/home/user/.bitcorn-dev/slot-2/member-a/loopd/regtest/loop.macaroon",
     BITCOIN_NETWORK: "regtest",
     LOOP_GRPC_HOST: "127.0.0.1",
+    API_LISTEN_HOST: "127.0.0.1", // dev-safety R2
   });
 });
 
@@ -196,7 +214,7 @@ test("H8 slot 2: the command lines carry slot 2's values", () => {
     "LND_DIR=/home/user/.polar/networks/2/volumes/lnd/Treasury LOOP_GRPC_PORT=11110 " +
     "LOOP_TLS_CERT_PATH=/home/user/.bitcorn-dev/slot-2/treasury/loopd/regtest/tls.cert " +
     "LOOP_MACAROON_PATH=/home/user/.bitcorn-dev/slot-2/treasury/loopd/regtest/loop.macaroon " +
-    "BITCOIN_NETWORK=regtest LOOP_GRPC_HOST=127.0.0.1 " +
+    "BITCOIN_NETWORK=regtest LOOP_GRPC_HOST=127.0.0.1 API_LISTEN_HOST=127.0.0.1 " + // API_LISTEN_HOST: dev-safety R2
     "dotenv -e ../../.env.dev.slot-2.treasury -- npm run dev");
   assert.equal(scriptCommand("dev:loopserver-stop", 2, c),
     "docker stop bitcorn-loopserver-2 2>/dev/null && echo 'loopserver stopped'");
@@ -246,23 +264,40 @@ test("H7 D16: a network whose node names differ from the five is refused, in slo
 
 // ─── H7, D14, D15: the env files by slot ──────────────────────────────────
 
-test("H7 env files: slot 1 selects today's .env.dev.<role> and injects nothing; slot 2 selects .env.dev.slot-2.<role>", () => {
+test("H7 env files: slot 1 selects today's .env.dev.<role> and injects only R2's host; slot 2 selects .env.dev.slot-2.<role>", () => {
   for (const [i, r] of ROLES.entries()) {
     const one = scriptCommand(r.api, 1, ctx(1));
     const two = scriptCommand(r.api, 2, ctx(2));
-    assert.match(one, new RegExp(`^cd app/api && dotenv -e \\.\\./\\.\\./\\.env\\.dev\\.${r.role} +-- npm run dev$`));
+    // API_LISTEN_HOST: dev-safety R2, which supersedes D15 for that value only.
+    assert.match(one, new RegExp(`^cd app/api && API_LISTEN_HOST=127\\.0\\.0\\.1 dotenv -e \\.\\./\\.\\./\\.env\\.dev\\.${r.role} +-- npm run dev$`));
     assert.match(two, new RegExp(`dotenv -e \\.\\./\\.\\./\\.env\\.dev\\.slot-2\\.${r.role} -- npm run dev$`));
     assert.match(two, new RegExp(`PORT=${3111 + i} `));
   }
 });
 
-test("ruling (b): slot 2's API lines inject BITCOIN_NETWORK=regtest and LOOP_GRPC_HOST=127.0.0.1; slot 1's inject neither", () => {
+// dev-safety R2 (decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…, R2): slot 1 now injects
+// API_LISTEN_HOST, so "slot 1's inject neither" holds for these two values only, not "inject nothing".
+test("ruling (b): slot 2's API lines inject BITCOIN_NETWORK=regtest and LOOP_GRPC_HOST=127.0.0.1; slot 1's inject neither (R2's host aside)", () => {
   for (const r of ROLES) {
     const one = scriptCommand(r.api, 1, ctx(1));
     const two = scriptCommand(r.api, 2, ctx(2));
     assert.match(two, / BITCOIN_NETWORK=regtest .* dotenv -e /, `${r.api} slot 2`);
     assert.match(two, / LOOP_GRPC_HOST=127\.0\.0\.1 .*dotenv -e /, `${r.api} slot 2`);
     assert.doesNotMatch(one, /BITCOIN_NETWORK|LOOP_GRPC_HOST/, `${r.api} slot 1`);
+    assert.match(one, /^cd app\/api && API_LISTEN_HOST=127\.0\.0\.1 dotenv -e /, `${r.api} slot 1: R2's host, and only it`);
+  }
+});
+
+test("R2: every slot's API environment injects API_LISTEN_HOST=127.0.0.1, slot 1 and slot N; no other line carries it", () => {
+  for (const slot of [1, 2, 3]) {
+    const c = ctx(slot, { networks: [NET1, NET2, { ...NET2, id: 3, name: "bitcorn-dev-3" }] });
+    for (const [i, r] of ROLES.entries()) {
+      assert.equal(injectedEnv(slot, i, c).API_LISTEN_HOST, "127.0.0.1", `${r.api} slot ${slot}: injectedEnv`);
+      assert.match(scriptCommand(r.api, slot, c), / API_LISTEN_HOST=127\.0\.0\.1 dotenv -e /, `${r.api} slot ${slot}: command line`);
+    }
+    for (const s of SCRIPTS.filter((s) => !ROLES.some((r) => r.api === s))) {
+      assert.doesNotMatch(scriptCommand(s, slot, c), /API_LISTEN_HOST/, `${s} slot ${slot}`);
+    }
   }
 });
 
@@ -487,7 +522,9 @@ test("H14 lock status: lists what is held, read-only", () => {
   assert.equal(lockStatus(home), "no locks held");
   take(home, 1);
   take(home, 2, "drive-mode", at(5));
-  const status = lockMain(["status"], { home });
+  // R5: a fresh lock, taken on this host, with a listener on its slot's ports, is not SUSPECT, so its line
+  // is exactly the pre-R5 line (this is also R5's anti-vacuity case).
+  const status = lockMain(["status"], { home, now: at(10), host: "test-host", listening: () => true });
   console.log(status);
   assert.equal(status, 'slot 1: held by harness-host since 2026-11-10T20:00:00Z on test-host; go "Ethan, orchestrator chat 2026-11-10"\n' +
     'slot 2: held by drive-mode since 2026-11-10T20:05:00Z on test-host; go "Ethan, orchestrator chat 2026-11-10"');
@@ -577,6 +614,22 @@ test("H14 enforcement: with the matching HARNESS_HOLDER, every script runs its c
   }
 });
 
+test("R2 end to end: the API process's environment carries API_LISTEN_HOST=127.0.0.1, slot 1 and slot 2", () => {
+  const { home, run } = sandbox();
+  fs.writeFileSync(path.join(home, ".polar", "networks", "networks.json"), JSON.stringify({ networks: [NET1, NET2] }));
+  // dotenv's stub records the environment it was started with, not just its argv.
+  fs.writeFileSync(path.join(home, "bin", "dotenv"),
+    '#!/bin/sh\necho "dotenv API_LISTEN_HOST=${API_LISTEN_HOST-<unset>} $*" >> "$STUB_LOG"\nexit 0\n', { mode: 0o755 });
+  for (const slot of [1, 2]) {
+    take(home, slot);
+    for (const r of ROLES) {
+      const res = run(["run", r.api], { HARNESS_SLOT: String(slot), HARNESS_HOLDER: "harness-host" });
+      assert.equal(res.status, 0, `${r.api} slot ${slot}: ${res.stderr}`);
+      assert.match(res.ran, /^dotenv API_LISTEN_HOST=127\.0\.0\.1 -e /m, `${r.api} slot ${slot}: ${res.ran}`);
+    }
+  }
+});
+
 test("H14 read-only needs no lock: command, lock status and dev:kill --print", () => {
   const { run } = sandbox();
   const printed = run(["command", "dev:loopd-T"]);
@@ -605,6 +658,272 @@ test("H14 cli: lock acquire, status and release through the entry point; a refus
   assert.equal(release.status, 0, release.stderr);
   assert.match(release.stdout, /^harness lock released: slot 1, holder harness-host, held /);
   assert.equal(history(home).length, 2);
+});
+
+// ─── dev-safety R3–R5: the lock's corrections ─────────────────────────────
+//
+// Vault: decisions/2026-11-13-dev-safety-rulings-r1-to-r5-keypair-log-by-network-api-listen-host-harness-lock.md.
+
+const GARBAGE = "{ this is not json\n";
+const UNREADABLE_HOLDER = "(unreadable lock file)"; // the holder string readLock gives an unparseable file
+const lockNames = (home) => fs.readdirSync(lockDir(home)).sort();
+
+test("R3 enforcement: an unreadable lock is refused even when HARNESS_HOLDER is the unreadable holder string", () => {
+  const home = tmpHome();
+  fs.mkdirSync(lockDir(home), { recursive: true });
+  fs.writeFileSync(lockPath(home, "slot-1.lock"), GARBAGE);
+  const refusal = lockRefusal(1, UNREADABLE_HOLDER, home);
+  console.log(`lockRefusal: ${refusal}`);
+  assert.notEqual(refusal, null, "an unreadable lock must never be matched by a holder string");
+  assert.match(refusal, /unreadable/);
+  assert.match(refusal, new RegExp(lockPath(home, "slot-1.lock").replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), "names the path");
+  assert.match(refusal, /--force --reason/, "names the way out");
+  // and through `run`, in the sandbox: refused, nothing started
+  const s = sandbox();
+  fs.mkdirSync(lockDir(s.home), { recursive: true });
+  fs.writeFileSync(lockPath(s.home, "slot-1.lock"), GARBAGE);
+  for (const script of ACTING) {
+    const r = s.run(["run", script], { HARNESS_HOLDER: UNREADABLE_HOLDER });
+    assert.equal(r.status, 2, `${script}: exit ${r.status}, stderr ${r.stderr}`);
+    assert.match(r.stderr, /refused: .*unreadable/, script);
+    assert.equal(r.ran, "", `${script} must start nothing, ran: ${r.ran}`);
+  }
+});
+
+test("R3 release: plain release refuses an unreadable lock, even as the unreadable holder string; the file is left", () => {
+  const home = tmpHome();
+  fs.mkdirSync(lockDir(home), { recursive: true });
+  fs.writeFileSync(lockPath(home, "slot-1.lock"), GARBAGE);
+  assert.throws(() => releaseLock({ home, target: 1, holder: UNREADABLE_HOLDER, now: at(1) }), (error) => {
+    console.log(`releaseLock: ${error.message}`);
+    return /unreadable/.test(error.message) && /--force --reason/.test(error.message);
+  });
+  assert.equal(fs.readFileSync(lockPath(home, "slot-1.lock"), "utf8"), GARBAGE, "the unreadable lock must be left as it was");
+  assert.deepEqual(lockNames(home), ["slot-1.lock"], "no history line, no tombstone");
+  // the way out still works
+  console.log(forceReleaseLock({ home, target: 1, reason: "garbage lock file", now: at(2) }));
+  assert.ok(!fs.existsSync(lockPath(home, "slot-1.lock")));
+});
+
+test("R3 acquire: the lock file is never written in place; it is linked from a complete temp file, which is removed", () => {
+  const home = tmpHome();
+  const realWrite = fs.writeFileSync;
+  const writes = [];
+  fs.writeFileSync = (file, ...rest) => { writes.push(String(file)); return realWrite(file, ...rest); };
+  try {
+    take(home, 1);
+  } finally {
+    fs.writeFileSync = realWrite;
+  }
+  console.log(`files written during acquire: ${writes.map((w) => path.basename(w)).join(", ")}`);
+  assert.ok(!writes.includes(lockPath(home, "slot-1.lock")), "the lock path must never be opened for writing");
+  assert.ok(writes.some((w) => path.dirname(w) === lockDir(home)), "the temp file is written in locks/");
+  assert.deepEqual(lockNames(home), ["history.log", "slot-1.lock"], "no temp file left behind");
+  assert.equal(readLock(home, 1).holder, "harness-host");
+  // a refused acquire cleans up its temp file too
+  assert.throws(() => take(home, 1, "drive-mode", at(1)), /is already locked by "harness-host"/);
+  assert.deepEqual(lockNames(home), ["history.log", "slot-1.lock"], "a refused acquire leaves no temp file");
+});
+
+// workflow-app's browser harness (bitcorn-workflow tests/browser-slot.py:113 @ origin/main 2b2c61e) waits while
+// `lock acquire --slot 1` exits 2 with a message matching this, and fails on anything else:
+const WORKFLOW_WAIT = /is already locked by |refused: setup\.lock is held by /;
+// its _cli(): stdout, else stderr, stripped, with the first "harness-slot lock: " removed
+const workflowMessage = (r) => (r.stdout.trim() || r.stderr.trim()).replace("harness-slot lock: ", "");
+
+test("workflow-app compatibility: every wait case exits 2 with a message browser-slot.py:113 waits on", () => {
+  const go = ["--go", "browser harness"];
+  const acquire = (s) => s.run(["lock", "acquire", "--slot", "1", "--holder", "workflow-app", ...go]);
+  const cases = {
+    "slot 1 held by another arc": (s) => take(s.home, 1, "drive-mode"),
+    "slot 1's lock file unreadable": (s) => {
+      fs.mkdirSync(lockDir(s.home), { recursive: true });
+      fs.writeFileSync(lockPath(s.home, "slot-1.lock"), GARBAGE);
+    },
+    "slot 1's lock file empty": (s) => {
+      fs.mkdirSync(lockDir(s.home), { recursive: true });
+      fs.writeFileSync(lockPath(s.home, "slot-1.lock"), "");
+    },
+    "setup.lock held": (s) => take(s.home, "setup", "polar-setup"),
+    "setup.lock unreadable": (s) => {
+      fs.mkdirSync(lockDir(s.home), { recursive: true });
+      fs.writeFileSync(lockPath(s.home, "setup.lock"), GARBAGE);
+    },
+  };
+  for (const [name, arrange] of Object.entries(cases)) {
+    const s = sandbox();
+    arrange(s);
+    const r = acquire(s);
+    const msg = workflowMessage(r);
+    console.log(`${name}: exit ${r.status}: ${msg}`);
+    assert.equal(r.status, 2, name);
+    assert.match(msg, WORKFLOW_WAIT, name);
+  }
+  // the back-out case (setup.lock appears between the create and the second check) cannot be staged through
+  // the CLI; its message is checked on the function, and main() turns every lock error into exit 2
+  const home = tmpHome();
+  const race = { afterCreate: () => realWriteSetup(home) };
+  assert.throws(() => acquireLock({ home, target: 1, holder: "workflow-app", go: "browser harness", now: T0, host: "test-host", race }),
+    (error) => { console.log(`back-out: ${error.message}`); return WORKFLOW_WAIT.test(error.message); });
+  assert.deepEqual(lockNames(home), ["setup.lock"], "the backed-out lock is gone, and no temp file or tombstone is left");
+});
+
+// setup.lock written directly: the "impossible" both-held state a race produces
+function realWriteSetup(home) {
+  fs.writeFileSync(lockPath(home, "setup.lock"), JSON.stringify({ holder: "polar-setup", go: "x", acquired_at: utc(T0), host: "test-host", slot: "setup" }));
+}
+const utc = (d) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
+const otherArcLock = (home, minutes) =>
+  fs.writeFileSync(lockPath(home, "slot-1.lock"), `${JSON.stringify({ holder: "other-arc", go: "x", acquired_at: utc(at(minutes)), host: "test-host", slot: 1 }, null, 2)}\n`);
+
+// R4. The seam is the `race` parameter: callbacks the lock functions run at fixed points, so a test can put
+// another process's lock operations between this one's check and its remove.
+
+test("R4 release: a force-release plus a re-acquire by other-arc between the check and the remove leaves other-arc's lock", () => {
+  const home = tmpHome();
+  take(home, 1, "harness-host");
+  let raced = false;
+  const race = {
+    beforeRemove: () => {
+      raced = true;
+      forceReleaseLock({ home, target: 1, reason: "the session ended", now: at(1) });
+      take(home, 1, "other-arc", at(1));
+    },
+  };
+  let outcome = "released";
+  try {
+    releaseLock({ home, target: 1, holder: "harness-host", now: at(2), race });
+  } catch (error) {
+    outcome = `refused: ${error.message}`;
+  }
+  console.log(`release by harness-host after the race: ${outcome}; slot 1 now ${JSON.stringify(readLock(home, 1)?.holder ?? null)}`);
+  assert.ok(raced, "the seam must have run, or this proves nothing");
+  assert.equal(readLock(home, 1)?.holder, "other-arc", "other-arc's lock must survive");
+  assert.match(outcome, /^refused: slot 1 is held by "other-arc", not "harness-host"/);
+  assert.deepEqual(lockNames(home), ["history.log", "slot-1.lock"], "no tombstone left behind");
+  assert.ok(!history(home).some((l) => / release lock="slot 1" holder="harness-host"/.test(l)), "no release line for a release that did not happen");
+});
+
+test("R4 force release: a lock that changed between the check and the remove is put back, and the force is refused", () => {
+  const home = tmpHome();
+  take(home, 1, "harness-host");
+  let raced = false;
+  const race = {
+    beforeRemove: () => {
+      raced = true;
+      releaseLock({ home, target: 1, holder: "harness-host", now: at(1) });
+      take(home, 1, "other-arc", at(1));
+    },
+  };
+  assert.throws(() => forceReleaseLock({ home, target: 1, reason: "looked stale", now: at(2), race }),
+    (error) => { console.log(`force release after the race: ${error.message}`); return /changed between/.test(error.message); });
+  assert.ok(raced);
+  assert.equal(readLock(home, 1)?.holder, "other-arc", "other-arc's lock must survive");
+  assert.deepEqual(lockNames(home), ["history.log", "slot-1.lock"]);
+});
+
+test("R4 acquire's back-out: a lock re-taken by other-arc before the back-out is left in place", () => {
+  const home = tmpHome();
+  let raced = false;
+  const race = {
+    afterCreate: () => realWriteSetup(home),
+    beforeRemove: () => {
+      raced = true;
+      forceReleaseLock({ home, target: 1, reason: "the session ended", now: at(1) });
+      otherArcLock(home, 1); // written directly: setup.lock would refuse other-arc's acquire, but its own race could precede it
+    },
+  };
+  assert.throws(() => acquireLock({ home, target: 1, holder: "harness-host", go: "x", now: T0, host: "test-host", race }),
+    (error) => { console.log(`acquire after the race: ${error.message}`); return WORKFLOW_WAIT.test(error.message); });
+  assert.ok(raced);
+  assert.equal(readLock(home, 1)?.holder, "other-arc", "other-arc's lock must survive the back-out");
+});
+
+test("R4 two releasers: the second finds no lock and says so, removing nothing", () => {
+  const home = tmpHome();
+  take(home, 1, "harness-host");
+  const race = { beforeRemove: () => forceReleaseLock({ home, target: 1, reason: "a concurrent force", now: at(1) }) };
+  assert.throws(() => releaseLock({ home, target: 1, holder: "harness-host", now: at(2), race }), /slot 1: no lock to release/);
+  assert.deepEqual(lockNames(home), ["history.log"]);
+});
+
+test("R4 residual: if a third lock lands while the removed one is out, the put-back fails loudly and keeps the removed lock", () => {
+  const home = tmpHome();
+  take(home, 1, "harness-host");
+  const race = {
+    beforeRemove: () => {
+      forceReleaseLock({ home, target: 1, reason: "the session ended", now: at(1) });
+      take(home, 1, "other-arc", at(1));
+    },
+    afterRename: () => take(home, 1, "third-arc", at(2)),
+  };
+  assert.throws(() => releaseLock({ home, target: 1, holder: "harness-host", now: at(3), race }), (error) => {
+    console.log(`residual: ${error.message}`);
+    return /could not be put back/.test(error.message) && /is held by "other-arc"/.test(error.message);
+  });
+  assert.equal(readLock(home, 1)?.holder, "third-arc");
+  const kept = lockNames(home).filter((n) => n.startsWith("slot-1.lock.release."));
+  assert.equal(kept.length, 1, "the removed lock is kept as its tombstone");
+  assert.equal(JSON.parse(fs.readFileSync(lockPath(home, kept[0]), "utf8")).holder, "other-arc");
+});
+
+// R5: lock status flags SUSPECT, and frees nothing.
+
+const statusAt = (home, opts) => lockStatus(home, { now: at(10), host: "test-host", listening: () => true, ...opts });
+
+test("R5: an aged, other-host, no-listener lock is flagged SUSPECT, on all three counts, and is still there after status", () => {
+  const home = tmpHome();
+  take(home, 1, "drive-mode"); // on "test-host", at T0
+  const before = fs.readFileSync(lockPath(home, "slot-1.lock"), "utf8");
+  const asked = [];
+  const status = lockStatus(home, { now: at(25 * 60), host: "this-host", listening: (ports) => { asked.push(ports); return false; } });
+  console.log(status);
+  assert.match(status, /^slot 1: held by drive-mode since 2026-11-10T20:00:00Z on test-host; go "Ethan, orchestrator chat 2026-11-10" — SUSPECT: /);
+  assert.match(status, /held 25h00m, over 24h/);
+  assert.match(status, /host "test-host" is not this host \("this-host"\)/);
+  assert.match(status, /no listener on slot 1's ports/);
+  assert.match(status, /lock release --slot 1 --force --reason/, "names the way to free it");
+  assert.deepEqual(asked, [killPorts(1)], "the slot's ports are the ones dev:kill uses");
+  assert.equal(fs.readFileSync(lockPath(home, "slot-1.lock"), "utf8"), before, "status must free nothing");
+  assert.equal(history(home).length, 1, "status writes nothing");
+});
+
+test("R5: each reason alone flags it; none flags nothing (anti-vacuity)", () => {
+  const home = tmpHome();
+  take(home, 1);
+  assert.doesNotMatch(statusAt(home, {}), /SUSPECT/, "fresh, same host, listener: not suspect");
+  assert.doesNotMatch(statusAt(home, { now: at(24 * 60) }), /SUSPECT/, "exactly 24h is not over 24h");
+  assert.match(statusAt(home, { now: at(24 * 60 + 1) }), /SUSPECT: held 24h01m, over 24h — /);
+  assert.match(statusAt(home, { host: "other" }), /SUSPECT: host "test-host" is not this host \("other"\) — /);
+  assert.match(statusAt(home, { listening: () => false }), /SUSPECT: no listener on slot 1's ports — /);
+  const unknown = statusAt(home, { listening: () => null });
+  assert.doesNotMatch(unknown, /SUSPECT/, "a listener check that could not run is not a reason");
+  assert.match(unknown, /listener check could not run/, "but it is said");
+});
+
+test("R5: setup.lock is checked for age and host only (it has no ports)", () => {
+  const home = tmpHome();
+  take(home, "setup", "polar-setup");
+  let asked = false;
+  const status = lockStatus(home, { now: at(30 * 60), host: "this-host", listening: () => { asked = true; return false; } });
+  console.log(status);
+  assert.match(status, /^setup: held by polar-setup .* — SUSPECT: held 30h00m, over 24h; host "test-host" is not this host \("this-host"\) — /);
+  assert.ok(!asked, "no listener check for setup");
+  assert.ok(fs.existsSync(lockPath(home, "setup.lock")));
+});
+
+test("R5: the default listener check sees a real listener, and a closed port as none", async () => {
+  const { portsListening } = slotModule;
+  assert.equal(typeof portsListening, "function", "harness-slot.mjs exports portsListening");
+  const server = (await import("node:net")).createServer();
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = server.address().port;
+  const open = portsListening([port]);
+  await new Promise((resolve) => server.close(resolve));
+  const closed = portsListening([port]);
+  console.log(`port ${port}: listening ${open}, after close ${closed}`);
+  assert.equal(open, true);
+  assert.equal(closed, false);
 });
 
 // ─── H15: dev:kill selects listening sockets only ─────────────────────────

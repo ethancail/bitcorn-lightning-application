@@ -12,12 +12,13 @@
 // panel renders a degraded state (loading-skeleton or "couldn't load"
 // error) without blocking the rest of the UI.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import QRCode from "qrcode";
 import {
   api,
   fmtSats,
+  type ExchangeRate,
   type SubscriptionStatus,
   type SubscriptionStatusApplicable,
   type SubscriptionStatusNotApplicable,
@@ -33,6 +34,70 @@ import { actionsFor, type ActionDescriptor } from "./subscriptionActions";
 import { onrampErrorMessage } from "./subscriptionPayMessages";
 import { copyText } from "./copyText";
 import { bip21Uri } from "./bip21";
+import { renewalAmount } from "./subscriptionBanner";
+import { rateNote, RATE_NONE_SENTENCE } from "../api/rate";
+import { pendingPaymentCopy, pendingPaymentView, type PendingView } from "./pendingPayment";
+import { usePendingPayment } from "./usePendingPayment";
+
+// drive-mode R45 A2 (ruling 3): the panel's amounts, dollars first, from one
+// BTC/USD rate fetched with the status. A failed fetch is the no-rate state
+// (as the pay modal does); while it is loading, sats and no sentence. Read by
+// every amount through context, so the panel shows one price format and the
+// rate's sentence once.
+type PanelAmounts = { usdRate: number | null; note: string | null };
+const PanelAmountsContext = createContext<PanelAmounts>({ usdRate: null, note: null });
+
+type PanelRate = { kind: "loading" } | { kind: "ok"; rate: ExchangeRate } | { kind: "failed" };
+
+function panelAmounts(rate: PanelRate): PanelAmounts {
+  if (rate.kind === "loading") return { usdRate: null, note: null };
+  if (rate.kind === "failed") return { usdRate: null, note: RATE_NONE_SENTENCE };
+  return { usdRate: rate.rate.state !== "none" ? rate.rate.usd : null, note: rateNote(rate.rate) };
+}
+
+/** An amount in a sentence: "$X (N sats)", or "N sats" with no rate. One
+ *  unbreakable unit on a phone (G3 ruling R2, .sub-amount). */
+function Amount({ sats }: { sats: number }) {
+  const { usdRate } = useContext(PanelAmountsContext);
+  return <span className="sub-amount">{renewalAmount(sats, usdRate).text}</span>;
+}
+
+/** The MONTHLY stat: dollars with the sats beside them, or the sats alone. */
+function MonthlyStat({ sats, pendingValue }: { sats: number | null; pendingValue?: boolean }) {
+  const { usdRate } = useContext(PanelAmountsContext);
+  if (sats == null) return <Stat label="MONTHLY" value="—" suffix="sats" pendingValue={pendingValue} />;
+  const a = renewalAmount(sats, usdRate);
+  if (a.label === a.text) return <Stat label="MONTHLY" value={sats.toLocaleString()} suffix="sats" pendingValue={pendingValue} />;
+  return <Stat label="MONTHLY" value={a.label} suffix={renewalAmount(sats, null).text} pendingValue={pendingValue} />;
+}
+
+// drive-mode R45, ruling 1: the payment this node sent that the treasury
+// hasn't credited yet, or null (pendingPaymentView decides).
+const PendingContext = createContext<PendingView | null>(null);
+
+/** "Payment sent, waiting for confirmation": a notice placed directly above
+ *  ACTIONS. The buttons stay — the pay modal's repeat step already guards a
+ *  second send. */
+function PendingNotice() {
+  const view = useContext(PendingContext);
+  if (!view) return null;
+  const copy = pendingPaymentCopy(view, Date.now());
+  return (
+    <div className="sub-alert sub-alert-dashed" role="status" data-pending-payment>
+      <span className="sub-alert-icon" aria-hidden>i</span>
+      <div className="sub-alert-body">
+        <strong>{copy.headline}</strong>
+        <div>{copy.body}</div>
+      </div>
+    </div>
+  );
+}
+
+/** The rate's sentence (rate.ts): placed once per panel, under its stats. */
+function RateNote() {
+  const { note } = useContext(PanelAmountsContext);
+  return note ? <p className="sub-fineprint sub-rate-note">{note}</p> : null;
+}
 
 /** Handlers for the four Onramp-primary states' action buttons. Lifted
  *  to the top-level panel so the Onramp session flow and the pay-from-
@@ -188,6 +253,27 @@ export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void 
     return () => clearInterval(id);
   }, [fetchStatus]);
 
+  // R45 A2: the rate, polled with the status.
+  const [rate, setRate] = useState<PanelRate>({ kind: "loading" });
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      api
+        .getExchangeRate()
+        .then((r) => { if (!cancelled) setRate({ kind: "ok", rate: r }); })
+        .catch(() => { if (!cancelled) setRate({ kind: "failed" }); });
+    void load();
+    const id = setInterval(() => void load(), POLL_INTERVAL_MS);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
+  const amounts = panelAmounts(rate);
+
+  // R45 ruling 1: the waiting state, read with the status, only while the
+  // status is applicable.
+  const applicableStatus = view.kind === "ok" && view.status.applicable ? view.status : null;
+  const pending = usePendingPayment(applicableStatus != null, POLL_INTERVAL_MS);
+  const pendingView = applicableStatus ? pendingPaymentView(pending, applicableStatus) : null;
+
   // Settings' ?focus=membership waits for this (membership-gating B1): the
   // loading skeleton's header is replaced when the status lands, so focus
   // moved to it earlier would be lost.
@@ -245,13 +331,15 @@ export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void 
   const { status } = view;
   if (status.applicable) {
     return (
-      <>
+      <PanelAmountsContext.Provider value={amounts}>
         <PaymentTrustNotice status={status} />
-        <ApplicablePanel
-          status={status}
-          onRefresh={fetchStatus}
-          handlers={{ ...actionHandlers, payBlocked: payBlocked(status) }}
-        />
+        <PendingContext.Provider value={pendingView}>
+          <ApplicablePanel
+            status={status}
+            onRefresh={fetchStatus}
+            handlers={{ ...actionHandlers, payBlocked: payBlocked(status) }}
+          />
+        </PendingContext.Provider>
         {/* Auto-renew (auto-pay opt-in) — the automation of the Renew now
             action, so it lives with the subscription surface rather than in
             Profile/identity (v1.17.18 relocation). Rendered once here for all
@@ -259,22 +347,24 @@ export default function SubscriptionPanel({ onLoaded }: { onLoaded?: () => void 
             not-applicable / loading / error states where it would be
             meaningless. Its own card below the subscription panel. */}
         <section className="sub-panel">
-          <AutoPaySection pausesOn={status.grace.worker_until} payBlocked={payBlocked(status)} />
+          <AutoPaySection pausesOn={status.grace.worker_until} payBlocked={payBlocked(status)} usdRate={amounts.usdRate} />
         </section>
         {payModalOpen && (
           <PayFromNodeModal status={status} onClose={() => setPayModalOpen(false)} />
         )}
-      </>
+      </PanelAmountsContext.Provider>
     );
   }
   return (
-    <NotApplicablePanel
-      status={status}
-      pendingSinceMs={pendingSinceMs}
-      stateEnteredAt={stateEnteredAt}
-      localPubkey={localPubkey}
-      onRetry={fetchStatus}
-    />
+    <PanelAmountsContext.Provider value={amounts}>
+      <NotApplicablePanel
+        status={status}
+        pendingSinceMs={pendingSinceMs}
+        stateEnteredAt={stateEnteredAt}
+        localPubkey={localPubkey}
+        onRetry={fetchStatus}
+      />
+    </PanelAmountsContext.Provider>
   );
 }
 
@@ -495,7 +585,8 @@ function OnrampPrimaryActions({
   status: SubscriptionStatusApplicable;
   handlers: ActionHandlers;
 }) {
-  const actions = actionsFor(tier, status.price_sats);
+  const { usdRate } = useContext(PanelAmountsContext);
+  const actions = actionsFor(tier, status.price_sats, usdRate);
   return (
     <>
       <ActionsRow
@@ -543,16 +634,17 @@ function CurrentRender({
       <p className="sub-tagline">
         {prePause
           ? `Hosted services pause on ${formatDate(status.grace.worker_until)}.${blocked ? "" : " Renew before then to keep them running."}`
-          : "Your access to channel routing and hosted services is paid up."}
+          : "Your connection to Bitcorn and your hosted services are paid up."}
       </p>
       <StatsGrid status={status} accent={prePause ? undefined : "emerald"} />
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
         // drive-mode P2 item 10 (D2.5): the live price, not a literal.
-        helper={`Send ${fmtSats(status.price_sats)} to renew for one month.`}
+        helper={<>Send <Amount sats={status.price_sats} /> to renew for one month.</>}
         fineprint="This address is yours for the lifetime of your membership. Payments are detected automatically on first confirmation."
       />
+      <PendingNotice />
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
         primary={<button className="sub-btn" onClick={handlers.onOpenPayModal} disabled={blocked}>Renew now <span aria-hidden>→</span></button>}
@@ -581,23 +673,25 @@ function PrepayRender({
       <PanelHeader pill={<Pill kind={pill.kind} label={pill.label} />} />
       <p className="sub-tagline">
         You have <strong>payment access</strong> until your first payment.
-        {!blocked && ` Send ${fmtSats(status.price_sats)} to activate full membership.`}
+        {!blocked && <> Send <Amount sats={status.price_sats} /> to activate full membership.</>}
       </p>
       <ul className="sub-prepay-bullets">
         {!blocked && <li><span className="sub-bullet-tick">✓</span> <strong>Available now</strong> — Coinbase Onramp for buying BTC, BTC/USD price reads, and the address below for receiving your first payment.</li>}
         <li><span className="sub-bullet-plus">+</span> <strong>Activates on first payment</strong> — Lightning routing through the treasury, full hosted services, valuation engine, and complete dashboard.</li>
       </ul>
       <div className="sub-stats">
-        <Stat label="MONTHLY" value={status.price_sats.toLocaleString()} suffix="sats" />
+        <MonthlyStat sats={status.price_sats} />
         <Stat label="PAID THROUGH" value="on first payment" suffix={`+${status.period_days} days`} accent="blue" pendingValue />
         <Stat label="LAST PAYMENT" value="—" suffix="none yet" pendingValue />
       </div>
+      <RateNote />
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
-        helper={`Send ${fmtSats(status.price_sats)} to activate.`}
+        helper={<>Send <Amount sats={status.price_sats} /> to activate.</>}
         fineprint="This address is yours for the lifetime of your membership. Don't have BTC on hand? Use Coinbase Onramp from the Buy Bitcoin tab — funds land in this wallet."
       />
+      <PendingNotice />
       <BracketHeading>ACTIONS</BracketHeading>
       <OnrampPrimaryActions tier="prepay" status={status} handlers={handlers} />
     </section>
@@ -709,24 +803,28 @@ function OverdueRender({
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind={tone} label="payment overdue" />} />
       <AlertBox variant={tone} icon="⚠">
-        Your membership payment is overdue, so hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.
-        {!blocked && ` Pay ${fmtSats(status.price_sats)} to restore them.`}
+        {/* R45 Q5 (ruling 5): the services by the names a member sees. */}
+        {/* R56 (1): U+2011, a NON-BREAKING hyphen, so "Auto‑Buy" never splits. */}
+        {"Your membership payment is overdue, so hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements."}
+        {!blocked && <> Pay <Amount sats={status.price_sats} /> to restore them.</>}
         {connectionStaysOpen(status) && " Your connection to Bitcorn is still open and its balance is unchanged."}
       </AlertBox>
       <p className="sub-reassure">
-        <span className="sub-bullet-tick">✓</span> You can still use <strong>Coinbase Onramp</strong> to buy BTC and renew, and monitor your channel state from this dashboard.
+        <span className="sub-bullet-tick">✓</span> You can still use <strong>Coinbase Onramp</strong> to buy BTC and renew, and check your connection from this dashboard.
       </p>
       <StatsGrid status={status} accent={tone} />
       <DepositBlock
         status={status}
         captionSats={status.price_sats}
-        helper={`Send ${fmtSats(status.price_sats)} to renew for ${status.period_days} days.`}
+        helper={<>Send <Amount sats={status.price_sats} /> to renew for {status.period_days} days.</>}
         fineprint="Don't have BTC on hand? Use Coinbase Onramp from the Buy Bitcoin tab — it's still available in this state. Funds you buy land in this same wallet."
       />
       <BracketHeading>WHAT HAPPENS NEXT</BracketHeading>
       <Timeline>
         <TimelineRow marker="·">
-          <strong>If you renew</strong> — recovery is fully in-app. Payment is detected within ~15 seconds; all paused services come back online, and your paid-through date advances by {status.period_days} days.
+          {/* R45 Q4 (ruling 4): the treasury credits at the first confirmation
+              (api detector.ts, pinned by detector.test.ts "R45 copy pin"). */}
+          <strong>If you renew</strong> — recovery is fully in-app. Your payment counts after its first confirmation on the Bitcoin network, usually within an hour. Then all paused services come back online, and your paid-through date advances by {status.period_days} days.
         </TimelineRow>
         {connectionStaysOpen(status) && (
           <>
@@ -739,6 +837,7 @@ function OverdueRender({
           </>
         )}
       </Timeline>
+      <PendingNotice />
       <BracketHeading>ACTIONS</BracketHeading>
       {/* Per spec §11 acceptance + Stage 5a deltas: the Onramp button stays
           in close_due too (recovery path stays open through every state a
@@ -782,7 +881,7 @@ function ExternalPeerRender() {
     <section className="sub-panel sub-panel-quiet">
       <PanelHeader />
       <p className="sub-body-copy">
-        This node is configured as a <strong>routing peer</strong>. Subscription doesn't apply to this node. If you believe this is incorrect, contact your operator.
+        This node is configured as a <strong>routing peer</strong>. Subscription doesn't apply to this node. If you believe this is incorrect, contact Bitcorn.
       </p>
     </section>
   );
@@ -790,10 +889,11 @@ function ExternalPeerRender() {
 
 /** The MONTHLY figure for a state with no price in its status (drive-mode P2
  *  item 10, R27(8)): auto-pay's current_price, read only when one of these
- *  states renders; "—" until it loads or when there is none. Never a literal. */
-function useMonthlyPrice(): string {
+ *  states renders; null ("—") until it loads or when there is none. Never a
+ *  literal. */
+function useMonthlyPrice(): number | null {
   const { cfg } = useAutoPayConfig();
-  return cfg?.current_price != null ? cfg.current_price.toLocaleString() : "—";
+  return cfg?.current_price ?? null;
 }
 
 function UnclassifiedRender() {
@@ -802,17 +902,17 @@ function UnclassifiedRender() {
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="muted-amber" label="unclassified" />} />
       <AlertBox variant="dashed" icon="i">
-        Your node's role is pending classification. Subscription doesn't activate until your channel is classified as farmer or merchant. Contact your operator if this persists more than a few minutes.
+        Your node's role is pending classification. Subscription doesn't activate until your connection is classified as farmer or merchant. Contact Bitcorn if this lasts more than a few minutes.
       </AlertBox>
       <div className="sub-stats">
-        <Stat label="MONTHLY" value={monthly} suffix="sats" />
+        <MonthlyStat sats={monthly} />
         <Stat label="PAID THROUGH" value="—" suffix="pending" pendingValue />
         <Stat label="LAST PAYMENT" value="—" suffix="pending" pendingValue />
       </div>
-      <BracketHeading>ACTIONS</BracketHeading>
-      <ActionsRow
-        secondary={<a className="sub-btn" href="mailto:operator@example.com">Contact operator <span aria-hidden>↗</span></a>}
-      />
+      <RateNote />
+      {/* No actions: the "Contact operator" button (a dead mailto placeholder)
+          was removed by Ethan's ruling, 2026-11-11; the alert says to contact
+          Bitcorn. */}
     </section>
   );
 }
@@ -834,10 +934,11 @@ function PendingInitialSyncRender({
     <section className="sub-panel">
       <PanelHeader pill={<Pill kind="gray-pulsing" label="setting up" />} />
       <div className="sub-stats">
-        <Stat label="MONTHLY" value={monthly} suffix="sats" pendingValue />
+        <MonthlyStat sats={monthly} pendingValue />
         <Stat label="PAID THROUGH" value="—" suffix="pending" pendingValue />
         <Stat label="LAST PAYMENT" value="—" suffix="pending" pendingValue />
       </div>
+      <RateNote />
       {/* Centered-figure alert per signal system §3: pulsing dots +
           sans-serif headline + monospace body. No filled background,
           dashed top-border separator. */}
@@ -863,7 +964,7 @@ function PendingInitialSyncRender({
           </p>
         )}
         <p className="sub-pending-channel-age">
-          channel detected {channelAgeSec}s ago
+          connection detected {channelAgeSec}s ago
         </p>
       </div>
     </section>
@@ -914,14 +1015,14 @@ function UnexpectedMissingRowRender({
         <div className="sub-stat-label">YOUR MEMBER PUBKEY</div>
         <code className="sub-pubkey">{memberPubkey}</code>
         <button className="sub-btn" onClick={copyPubkey}>Copy pubkey</button>
-        <p className="sub-fineprint">Share this with your operator if you need to file a support ticket.</p>
+        <p className="sub-fineprint">Share this with Bitcorn if you contact support.</p>
       </div>
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
         primary={<button className="sub-btn" onClick={handleRetry} disabled={locked}>{locked ? "Trying…" : <>Try now <span aria-hidden>→</span></>}</button>}
       />
       <p className="sub-footer-note">
-        If this persists for more than a few minutes, contact your operator with the pubkey above. The auto-retry will keep running in the background until the state loads.
+        If this persists for more than a few minutes, contact Bitcorn with the pubkey above. The auto-retry will keep running in the background until the state loads.
       </p>
     </section>
   );
@@ -932,11 +1033,12 @@ function NoChannelRender() {
     <section className="sub-panel sub-panel-quiet">
       <PanelHeader />
       <p className="sub-body-copy">
-        You don't have a channel to the treasury. Open a channel to enroll in the subscription system. If you believe you should have a channel, contact your operator.
+        You don't have a connection to Bitcorn yet. Connect from your dashboard to enroll in the subscription system. If you believe you should have a connection, contact Bitcorn.
       </p>
       <BracketHeading>ACTIONS</BracketHeading>
       <ActionsRow
-        secondary={<Link className="sub-btn" to="/dashboard">Open a channel <span aria-hidden>→</span></Link>}
+        // R45 Q6, as ruled by Ethan 2026-11-11 ("recs" 3): "Connect to Bitcorn".
+        secondary={<Link className="sub-btn" to="/dashboard">Connect to Bitcorn <span aria-hidden>→</span></Link>}
       />
     </section>
   );
@@ -1045,11 +1147,14 @@ function StatsGrid({
   const lastPaymentLabel = formatDate(status.last_payment_at);
   const lastPaymentSuffix = status.last_payment_at ? "confirmed" : "";
   return (
-    <div className="sub-stats">
-      <Stat label="MONTHLY" value={status.price_sats.toLocaleString()} suffix="sats" />
-      <Stat label="PAID THROUGH" value={paidThroughLabel} suffix={paidThroughRel} accent={accent} />
-      <Stat label="LAST PAYMENT" value={lastPaymentLabel} suffix={lastPaymentSuffix} />
-    </div>
+    <>
+      <div className="sub-stats">
+        <MonthlyStat sats={status.price_sats} />
+        <Stat label="PAID THROUGH" value={paidThroughLabel} suffix={paidThroughRel} accent={accent} />
+        <Stat label="LAST PAYMENT" value={lastPaymentLabel} suffix={lastPaymentSuffix} />
+      </div>
+      <RateNote />
+    </>
   );
 }
 
@@ -1061,7 +1166,7 @@ function DepositBlock({
 }: {
   status: SubscriptionStatusApplicable;
   captionSats: number;
-  helper: string;
+  helper: React.ReactNode;
   fineprint: string;
 }) {
   const [copied, setCopied] = useState(false);

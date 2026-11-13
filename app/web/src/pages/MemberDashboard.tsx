@@ -12,7 +12,11 @@ import type { ExchangeRate, MemberCosts, SwapLimits } from "../api/client";
 import BitcoinPriceGraph from "../components/BitcoinPriceGraph";
 import MemberSubscriptionBanner from "../components/MemberSubscriptionBanner";
 import { subscriptionBannerSlot } from "../components/subscriptionBannerSlot";
-import { useSubscriptionStatus } from "../components/useSubscriptionStatus";
+import {
+  useSubscriptionStatus,
+  STATUS_POLL_MS,
+  STATUS_POLL_WAITING_MS,
+} from "../components/useSubscriptionStatus";
 import ErrorState from "../components/ErrorState";
 import ConnectToHub, { HUB_PUBKEY } from "../components/firstRun/ConnectToHub";
 import StaleMarker from "../components/StaleMarker";
@@ -82,7 +86,10 @@ export default function MemberDashboard() {
   const [balFresh, setBalFresh] = useState<FreshnessState>(INITIAL_FRESHNESS);
   const [fundLoading, setFundLoading] = useState(false);
   const [fundError, setFundError] = useState<string | null>(null);
-  const subStatus = useSubscriptionStatus();
+  // R45 Polar follow-up (2026-11-12): 15 s while the banner's waiting strip
+  // shows, so the credit clears it as fast as the Settings panel does.
+  const [subWaiting, setSubWaiting] = useState(false);
+  const subStatus = useSubscriptionStatus(subWaiting ? STATUS_POLL_WAITING_MS : STATUS_POLL_MS);
   const [nameRead, setNameRead] = useState<BitcornNameRead>({ state: "loading" });
 
   // U24 H2: a failed stats fetch must be distinguishable from "no channel" —
@@ -257,7 +264,9 @@ export default function MemberDashboard() {
   // J9 / J9a (P6-3): the subscription banner's slot. On a phone the top slot
   // stays above the headline; the info slot goes below it and the chart.
   const subSlot = subscriptionBannerSlot(subStatus);
-  const subBanner = <MemberSubscriptionBanner status={subStatus} usdRate={usdRate} />;
+  const subBanner = (
+    <MemberSubscriptionBanner status={subStatus} usdRate={usdRate} onWaitingChange={setSubWaiting} />
+  );
 
   return (
     <div className="dash">

@@ -8,7 +8,10 @@
 // confirms it; "Leave it for now" goes back to the dashboard; "Deposit
 // Bitcoin" opens Deposit. A card whose cost is over the member's fee limit says
 // so, and its button stays off until the member ticks that they'd allow it
-// this once (a UI-only acknowledgement; no request body changes).
+// this once (a UI-only acknowledgement; no request body changes). The fee
+// limit is a dollar figure (R48), so with no price the server can't check a
+// card and flags none (R59(2)): each card with a fee says so in one neutral
+// sentence instead, and its fee shows in sats.
 //
 // Exactly one card is recommended (D3.3) — the server marks it; this renders
 // one badge and one reason line for it. Amounts are the interim: dollars with
@@ -37,7 +40,9 @@ export function reasonText(reason: OptionReason, farmer: boolean): string {
       ? "Today's fee is over your fee limit, and a later, bigger transfer costs a smaller share."
       : "Today's fee is over your fee limit, and you still have enough ready to send.";
     case "bigger_share": return "A later, bigger transfer costs a smaller share.";
-    case "keep_room_open": return farmer ? "You're on Keep room open, which moves sooner." : "You're on Keep room open, which tops up sooner.";
+    // R59(4): the strategy's name as the Automatic transfers page shows it;
+    // the name alone, no "which…" clause ("recs" 2026-11-12 (1)).
+    case "keep_room_open": return farmer ? "You're on Move sooner." : "You're on Top up sooner.";
     case "plenty_ready": return "You still have plenty ready to send, so you don't need to top up yet.";
     case "enough_ready": return "You still have enough ready to send.";
     case "wallet_low": return "Your wallet is too low to top up.";
@@ -45,6 +50,9 @@ export function reasonText(reason: OptionReason, farmer: boolean): string {
 }
 
 export const OVER_LIMIT_SENTENCE = "That's over your fee limit, so you'd allow it once.";
+
+/** R59(2), verbatim. */
+export const NO_PRICE_LIMIT_SENTENCE = "Can't check this against your fee limit right now: the bitcoin price isn't available.";
 
 function Amount({ sats, usd }: { sats: number; usd: number | null }) {
   const dollars = usd != null ? `$${((sats / 100_000_000) * usd).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : null;
@@ -124,6 +132,9 @@ export function OptionCards({
               {consequence(c.key, c.amount_sats)}
               {over && <> <span data-testid="over-limit">{OVER_LIMIT_SENTENCE}</span></>}
             </div>
+            {options.fee_limit_checked === false && c.fee_sats != null && (
+              <div data-testid="limit-unchecked" style={{ fontSize: "0.8125rem", color: "var(--text-2)" }}>{NO_PRICE_LIMIT_SENTENCE}</div>
+            )}
             {c.recommended && options.reason && (
               <div data-testid="recommended-reason" style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>{reasonText(options.reason, farmer)}</div>
             )}

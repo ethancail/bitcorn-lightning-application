@@ -4,9 +4,11 @@
 // ─── NULL MEANS "USE THE CODE DEFAULT" ──────────────────────────────────────
 // A column holds a value only once the member has saved one. R15(2)'s rail
 // defaults and R15(3)'s strategy default are shape (2) — they lack Ethan's
-// direct yes (spec §6, item 1) — so they live in ONE constant below and are
-// never written to a row: if Ethan rules different values, every member who
-// never chose their own follows the ruling with no data migration. (The 032
+// direct yes (spec §6, item 1) — so they live in ONE place below
+// (transferDefaults) and are never written to a row: if Ethan rules different
+// values, every member who never chose their own follows the ruling with no
+// data migration. The per-transfer figure is keyed by role (R59(3)), so a
+// member with nothing saved follows a role change too. (The 032
 // advisor row is the counter-example: its seeded values outrank its code
 // defaults to this day.)
 //
@@ -21,17 +23,34 @@
 // ─── DAY BOUNDARY ───────────────────────────────────────────────────────────
 // R16(4): the daily rails reset at US-Central midnight (America/Chicago,
 // daylight saving included). P3 only states it; P4 counts by it.
+//
+// ─── ONE FEE NUMBER, NO PERCENT (R48; R50(4), ruled R59(1)) ─────────────────
+// The per-transfer fee limit is a dollar figure only. The percent limit is
+// gone from the code and the API; migration 076's percent column
+// stays in the table, UNREAD — no SELECT names it and a PATCH that sends it is
+// an unknown field. noFeePercent.test.ts proves a stored percent changes
+// nothing and that no reference to it returns.
 
 import { db } from "../db";
-import { ENV } from "../config/env";
+import type { MemberRole } from "./minimumConnection";
 
-export type TransferStrategy = "save" | "open" | "manual";
-export const STRATEGIES: readonly TransferStrategy[] = ["save", "open", "manual"];
+// R50(1), ruled R59(4): two answers, "Wait for low fees" (save) and "Move
+// sooner" (open). "Manual only" is dropped: a row that stored "manual" keeps
+// it (no migration) and it READS as "save", which is how it always behaved
+// (swapOptions and the minimum formula, R21(1)). A PATCH cannot store it.
+export type TransferStrategy = "save" | "open";
+export const STRATEGIES: readonly TransferStrategy[] = ["save", "open"];
+
+/** A stored strategy as it applies: "manual" (dropped) is "save"; NULL is
+ *  NULL, so the default applies. */
+function strategyOf(stored: string | null): TransferStrategy | null {
+  if (stored === "open") return "open";
+  if (stored === "save" || stored === "manual") return "save";
+  return null;
+}
 
 export type TransferRails = {
-  /** Fee limit per transfer, as a percentage, in basis points (200 = 2%). */
-  fee_limit_pct_bps: number;
-  /** Fee limit per transfer, in US cents. The limit is the LOWER of the two. */
+  /** "Most you'll pay per transfer", in US cents: the ONE fee limit (R48). */
   fee_limit_usd_cents: number;
   daily_fee_budget_usd_cents: number;
   max_moved_per_day_usd_cents: number;
@@ -39,18 +58,35 @@ export type TransferRails = {
 
 export type TransferSettingsValues = { strategy: TransferStrategy } & TransferRails;
 
-/** R15(3) strategy, R15(2) rails: "2% or $3, whichever is lower; $10; $500". */
-export const TRANSFER_DEFAULTS: Readonly<TransferSettingsValues> = Object.freeze({
-  strategy: "save",
-  fee_limit_pct_bps: 200,
-  fee_limit_usd_cents: 300,
-  daily_fee_budget_usd_cents: 1_000,
-  max_moved_per_day_usd_cents: 50_000,
+/** R48's per-transfer default, by role (R59(3)): farmer $3, merchant $5;
+ *  a member with no role set gets $3, the lower. */
+export const FEE_LIMIT_DEFAULT_USD_CENTS: Readonly<Record<MemberRole | "unknown", number>> = Object.freeze({
+  farmer: 300,
+  merchant: 500,
+  unknown: 300,
 });
 
-/** R16(2): each strategy's room floor, by role, in US cents. Manual only runs
- *  nothing; where a floor is needed for it (advice, card recommendation), it
- *  is Save on fees' (R21(1)). */
+/** R15(3) strategy; rails: the role's per-transfer default, R15(2)'s $10 a
+ *  day in fees and $500 moved a day. */
+export function transferDefaults(role: MemberRole | "unknown"): Readonly<TransferSettingsValues> {
+  return Object.freeze({
+    strategy: "save",
+    fee_limit_usd_cents: FEE_LIMIT_DEFAULT_USD_CENTS[role],
+    daily_fee_budget_usd_cents: 1_000,
+    max_moved_per_day_usd_cents: 50_000,
+  });
+}
+
+/** The member's role, from the advisor config's channel_role (032). The
+ *  per-transfer default follows it; it is never inferred from balances. */
+export function memberRole(): MemberRole | "unknown" {
+  const row = db.prepare("SELECT channel_role FROM member_liquidity_advisor_config WHERE id = 1").get() as
+    | { channel_role: string | null }
+    | undefined;
+  return row?.channel_role === "farmer" || row?.channel_role === "merchant" ? row.channel_role : "unknown";
+}
+
+/** R16(2): each strategy's room floor, by role, in US cents. */
 export const STRATEGY_FLOORS_USD_CENTS = Object.freeze({
   farmer: Object.freeze({ save: 7_000, open: 14_000 }),
   merchant: Object.freeze({ save: 20_000, open: 40_000 }),
@@ -59,31 +95,37 @@ export const STRATEGY_FLOORS_USD_CENTS = Object.freeze({
 /** R16(4). */
 export const DAY_BOUNDARY_TZ = "America/Chicago";
 
-const FIELDS = ["strategy", "fee_limit_pct_bps", "fee_limit_usd_cents", "daily_fee_budget_usd_cents", "max_moved_per_day_usd_cents"] as const;
+const FIELDS = ["strategy", "fee_limit_usd_cents", "daily_fee_budget_usd_cents", "max_moved_per_day_usd_cents"] as const;
 type Field = (typeof FIELDS)[number];
 
-export type StoredTransferSettings = { [K in keyof TransferSettingsValues]: TransferSettingsValues[K] | null } & { updated_at: number | null };
+/** The row as stored. strategy is the raw column: it may still hold a
+ *  dropped "manual" (read through strategyOf). */
+export type StoredTransferSettings =
+  { [K in Exclude<keyof TransferSettingsValues, "strategy">]: TransferSettingsValues[K] | null }
+  & { strategy: string | null; updated_at: number | null };
 
 export function readStoredTransferSettings(): StoredTransferSettings {
   const row = db.prepare(`
-    SELECT strategy, fee_limit_pct_bps, fee_limit_usd_cents, daily_fee_budget_usd_cents,
+    SELECT strategy, fee_limit_usd_cents, daily_fee_budget_usd_cents,
            max_moved_per_day_usd_cents, updated_at
     FROM member_transfer_settings WHERE id = 1
   `).get() as StoredTransferSettings | undefined;
   return row ?? {
-    strategy: null, fee_limit_pct_bps: null, fee_limit_usd_cents: null,
+    strategy: null, fee_limit_usd_cents: null,
     daily_fee_budget_usd_cents: null, max_moved_per_day_usd_cents: null, updated_at: null,
   };
 }
 
-/** Each field: the member's saved value, else the default. */
-export function effectiveTransferSettings(stored = readStoredTransferSettings()): TransferSettingsValues {
+/** Each field: the member's saved value, else the default for their role.
+ *  A saved figure stays saved across a role change; an empty column follows
+ *  the role. */
+export function effectiveTransferSettings(stored = readStoredTransferSettings(), role = memberRole()): TransferSettingsValues {
+  const d = transferDefaults(role);
   return {
-    strategy: stored.strategy ?? TRANSFER_DEFAULTS.strategy,
-    fee_limit_pct_bps: stored.fee_limit_pct_bps ?? TRANSFER_DEFAULTS.fee_limit_pct_bps,
-    fee_limit_usd_cents: stored.fee_limit_usd_cents ?? TRANSFER_DEFAULTS.fee_limit_usd_cents,
-    daily_fee_budget_usd_cents: stored.daily_fee_budget_usd_cents ?? TRANSFER_DEFAULTS.daily_fee_budget_usd_cents,
-    max_moved_per_day_usd_cents: stored.max_moved_per_day_usd_cents ?? TRANSFER_DEFAULTS.max_moved_per_day_usd_cents,
+    strategy: strategyOf(stored.strategy) ?? d.strategy,
+    fee_limit_usd_cents: stored.fee_limit_usd_cents ?? d.fee_limit_usd_cents,
+    daily_fee_budget_usd_cents: stored.daily_fee_budget_usd_cents ?? d.daily_fee_budget_usd_cents,
+    max_moved_per_day_usd_cents: stored.max_moved_per_day_usd_cents ?? d.max_moved_per_day_usd_cents,
   };
 }
 
@@ -113,13 +155,7 @@ export function validateTransferSettingsPatch(body: unknown):
     if (v === null) { (patch as any)[key] = null; continue; }
     if (key === "strategy") {
       if (typeof v === "string" && (STRATEGIES as readonly string[]).includes(v)) patch.strategy = v as TransferStrategy;
-      else errors.push("strategy must be 'save', 'open' or 'manual'");
-    } else if (key === "fee_limit_pct_bps") {
-      // The percentage can never exceed the swap fee ceiling the server
-      // already enforces on every Loop quote (env.ts loopMaxSwapFeePct).
-      const maxBps = ENV.loopMaxSwapFeePct * 100;
-      if (positiveInt(v) && (v as number) <= maxBps) patch.fee_limit_pct_bps = v as number;
-      else errors.push(`fee_limit_pct_bps must be a whole number from 1 to ${maxBps}`);
+      else errors.push("strategy must be 'save' or 'open'");
     } else {
       if (positiveInt(v)) (patch as any)[key] = v;
       else errors.push(`${key} must be a positive whole number of cents`);
@@ -146,10 +182,11 @@ export function saveTransferSettings(patch: TransferSettingsPatch, now = Date.no
  *  and the day boundary — so the page states every figure from the server. */
 export function transferSettingsResponse() {
   const stored = readStoredTransferSettings();
+  const role = memberRole();
   return {
-    settings: effectiveTransferSettings(stored),
+    settings: effectiveTransferSettings(stored, role),
     stored,
-    defaults: TRANSFER_DEFAULTS,
+    defaults: transferDefaults(role),
     floors_usd_cents: STRATEGY_FLOORS_USD_CENTS,
     day_boundary_tz: DAY_BOUNDARY_TZ,
   };

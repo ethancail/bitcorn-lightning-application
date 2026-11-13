@@ -47,7 +47,6 @@ export function advisorMinimumSats(
     loopMinSats: effectiveLimits(direction, terms).min_sats,
     commitFeeSats: ch?.commit_fee_sat ?? null,
     commitmentType: ch?.commitment_type ?? null,
-    feeLimitPctBps: settings.fee_limit_pct_bps,
     feeLimitUsdCents: settings.fee_limit_usd_cents,
   })?.sats ?? null;
 }

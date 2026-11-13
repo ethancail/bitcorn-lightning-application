@@ -148,18 +148,21 @@ export function bannerFor(
   const tier = gatedTierOf(status);
   if (!tier || status?.applicable !== true) return { render: false };
 
-  const price = fmtSats(status.price_sats);
   const lapsedOn = formatDate(status.paid_through);
 
   switch (tier) {
-    case "prepay":
+    case "prepay": {
+      // R45 A1 (ruling 2, Q3): the button and the body follow the amount
+      // rules — dollars with a rate, sats with none.
+      const amount = renewalAmount(status.price_sats, usdRate);
       return {
         render: true,
         severity: "info",
         headline: "Welcome to BitCorn — activate your membership",
-        body: `Pay ${price} to unlock Lightning routing.`,
-        actionLabel: `Pay ${price}`,
+        body: `Pay ${amount.text} to unlock Lightning routing.`,
+        actionLabel: `Pay ${amount.label}`,
       };
+    }
     case "worker_lapsed": {
       // Item 12: the dollar amount, with the sats beside it.
       const amount = renewalAmount(status.price_sats, usdRate);
@@ -186,17 +189,20 @@ export function bannerFor(
       // close (tier3Scheduler.ts is dry-run only and returns would_close). Stage 6
       // restores close copy only once a close is real. The severity is the same too.
       // The body's amount is dollars first with the sats, or sats alone with no
-      // rate (drive-mode's amount rules, as item 12). The action stays in sats:
-      // P2 pins routing_lapsed's action as unchanged by a rate.
+      // rate (drive-mode's amount rules, as item 12). So is the action's, since
+      // R45 A1 (ruling 2), which replaced P2's sats-only pin.
       const amount = renewalAmount(status.price_sats, usdRate);
-      const context = "Hosted services are paused: valuation, Auto-Buy and stablecoin settlement data.";
+      // R45 Q5 (ruling 5): the services by the names a member sees.
+      // R56 (1): "Auto‑Buy" with a NON-BREAKING hyphen (U+2011), so a narrow
+      // screen never splits it at the hyphen.
+      const context = "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements.";
       return {
         render: true,
         severity: bannerSeverityForTier(tier),
         headline: "Your membership payment is overdue",
         body: `${context} Pay ${amount.text} to restore them.`,
         context,
-        actionLabel: `Renew ${price}`,
+        actionLabel: `Renew ${amount.label}`,
       };
     }
   }

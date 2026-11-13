@@ -17,8 +17,10 @@
 // SLOT 1 IS TODAY'S HARNESS (D6). Its command lines are byte-identical to the
 // scripts at 523e6ab, except dev:loopserver (D13: the bridge network, bound to
 // 127.0.0.1) and dev:kill (H11: no loopserver port, the loopd REST ports added,
-// a --print mode; H15: listening sockets only). Slot 1 injects no environment
-// (D15): today's .env.dev.<role> files stay authoritative.
+// a --print mode; H15: listening sockets only) and the API lines, which carry
+// API_LISTEN_HOST=127.0.0.1 (dev-safety R2, superseding D15 for that one
+// value). Slot 1 injects nothing else: today's .env.dev.<role> files stay
+// authoritative for every other value.
 //
 // SLOT N (N >= 2), per D8:
 //   API ports        3101-3103 + 10(N-1)     web ports   5173-5175 + 10(N-1)
@@ -29,8 +31,9 @@
 //   Polar network    the one named bitcorn-dev-N in ~/.polar/networks/networks.json;
 //                    absent is an error, never a fallback to network 1
 //   API env files    .env.dev.slot-N.<role> (D14: slot N's identity), with the
-//                    computed values above, BITCOIN_NETWORK=regtest and
-//                    LOOP_GRPC_HOST=127.0.0.1 injected over them (D7). dotenv-cli
+//                    computed values above, BITCOIN_NETWORK=regtest,
+//                    LOOP_GRPC_HOST=127.0.0.1 and API_LISTEN_HOST=127.0.0.1
+//                    injected over them (D7; R2). dotenv-cli
 //                    does not override a variable already set, so the injected
 //                    values win; the scripts must never pass it -o.
 //
@@ -41,7 +44,8 @@
 // H7 to H12, H14 (the lock) and H15 (dev:kill, listeners only).
 // Tests: scripts/harness-slot.test.mjs, run by hand under Node 20.
 
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -151,10 +155,15 @@ const lndVolume = (home, networkId, node) => `${checkHome(home)}/.polar/networks
 // (Ethan's ruling, option (b), 2026-11-09). Slot 1 gets them from its own files.
 export const SLOT_N_SETTINGS = { BITCOIN_NETWORK: "regtest", LOOP_GRPC_HOST: "127.0.0.1" };
 
-// D15: slot 1 injects nothing. Slot N: its computed values and SLOT_N_SETTINGS,
-// over its own files.
+// dev-safety R2 (vault: decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…):
+// every slot's API binds loopback only. The API reads it in ports.ts; unset
+// there means production's bind, so the harness is its single statement.
+export const ALL_SLOT_SETTINGS = { API_LISTEN_HOST: "127.0.0.1" };
+
+// Slot 1: ALL_SLOT_SETTINGS only (R2 supersedes D15 for that value). Slot N:
+// its computed values, SLOT_N_SETTINGS and ALL_SLOT_SETTINGS, over its own files.
 export function injectedEnv(slot, roleIndex, ctx) {
-  if (slot === 1) return {};
+  if (slot === 1) return { ...ALL_SLOT_SETTINGS };
   const { role, node } = ROLES[roleIndex];
   const ports = slotPorts(slot);
   const network = ctx.network();
@@ -169,6 +178,7 @@ export function injectedEnv(slot, roleIndex, ctx) {
     LOOP_TLS_CERT_PATH: `${dir}/loopd/regtest/tls.cert`,
     LOOP_MACAROON_PATH: `${dir}/loopd/regtest/loop.macaroon`,
     ...SLOT_N_SETTINGS,
+    ...ALL_SLOT_SETTINGS,
   };
 }
 
@@ -310,27 +320,99 @@ export function scriptCommand(script, slot, ctx, args = []) {
 // forced release appends one line to history.log. A setup lock and a slot lock
 // never coexist: each acquire checks for the other kind before and after its
 // own create, and backs out if one appeared in between.
+//
+// dev-safety (vault: decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…):
+// R3 — an unreadable lock is refused by enforcement and by plain release,
+//      decided on readLock's `unreadable` flag, never on a holder string; only
+//      --force --reason frees it. Acquire writes a complete temp file in locks/
+//      and links it into place, so the lock path never exists half-written.
+// R4 — release, forced release and acquire's back-out never unlink the lock
+//      path after reading it. They rename it to a tombstone private to this
+//      process (atomic: of several removers exactly one wins), check the
+//      tombstone, then unlink it, or link it back and refuse. The residual:
+//      POSIX has no compare-and-delete, so on the refuse path the lock that
+//      was there is missing from the rename to the link back; if another
+//      acquire lands in that gap, the link back fails and that is reported
+//      loudly, with the tombstone kept. heldSlots' anchored regex ignores
+//      temp and tombstone names.
+// R5 — lock status flags a lock SUSPECT when it is over 24 hours old, taken on
+//      another host, or (a slot lock) has no listener on the slot's ports. It
+//      frees nothing: the holder is an arc, not a process, so no signal says
+//      it is gone. Freeing stays --force --reason.
+//
+// `race` (acquireLock, releaseLock, forceReleaseLock) is a test seam: callbacks
+// run at fixed points, so a test can put another process's lock operations
+// between this one's steps. Nothing outside the tests passes it.
 
 export const lockDir = (home) => path.join(home, ".bitcorn-dev", "locks");
 const lockFile = (home, target) => path.join(lockDir(home), target === "setup" ? "setup.lock" : `slot-${target}.lock`);
 const historyFile = (home) => path.join(lockDir(home), "history.log");
 const lockName = (target) => (target === "setup" ? "setup" : `slot ${target}`);
+const lockFlag = (target) => (target === "setup" ? "--setup" : `--slot ${target}`);
 const utc = (date) => date.toISOString().replace(/\.\d{3}Z$/, "Z");
+const privateName = (file, kind) => `${file}.${kind}.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
 
-// null when there is no lock; { unreadable: true } when the file does not parse.
-export function readLock(home, target) {
-  let text;
-  try {
-    text = fs.readFileSync(lockFile(home, target), "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return null;
-    throw error;
-  }
+// { unreadable: true } when the text does not parse as a lock.
+function parseLock(text) {
   try {
     const lock = JSON.parse(text);
     if (typeof lock?.holder === "string") return lock;
   } catch {}
   return { unreadable: true, holder: "(unreadable lock file)" };
+}
+
+// The lock file's text, or null when there is none.
+function readLockText(home, target) {
+  try {
+    return fs.readFileSync(lockFile(home, target), "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+// null when there is no lock; { unreadable: true } when the file does not parse.
+export function readLock(home, target) {
+  const text = readLockText(home, target);
+  return text === null ? null : parseLock(text);
+}
+
+const unreadableRefusal = (home, target) =>
+  `${lockName(target)}'s lock file ${lockFile(home, target)} is unreadable, so its holder cannot be checked; ` +
+  `if it is stale, free it with lock release ${lockFlag(target)} --force --reason "<why>"`;
+
+// R4: remove `target`'s lock by renaming it to a private tombstone, then
+// check(lock, text) the tombstone: null unlinks it and returns the lock; a
+// refusal links it back and throws that refusal. Returns null, removing
+// nothing, when there is no lock to rename.
+function removeLock(home, target, check, race = {}) {
+  const file = lockFile(home, target);
+  const tomb = privateName(file, "release");
+  race.beforeRemove?.();
+  try {
+    fs.renameSync(file, tomb);
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+  race.afterRename?.();
+  const text = fs.readFileSync(tomb, "utf8");
+  const lock = parseLock(text);
+  const refusal = check(lock, text);
+  if (refusal === null) {
+    fs.unlinkSync(tomb);
+    return lock;
+  }
+  try {
+    fs.linkSync(tomb, file);
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    throw new Error(`${refusal}. AND the lock this took out could not be put back: ${lockName(target)} was ` +
+      `acquired again while it was out (now held by ${JSON.stringify(readLock(home, target)?.holder)}). ` +
+      `The lock taken out is kept at ${tomb}; nothing else was removed`);
+  }
+  fs.unlinkSync(tomb);
+  throw new Error(refusal);
 }
 
 function heldSlots(home) {
@@ -371,39 +453,56 @@ function heldFor(from, to) {
   return Number.isNaN(minutes) ? "?" : `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
 }
 
-export function acquireLock({ home, target, holder, go, now = new Date(), host = os.hostname() }) {
+export function acquireLock({ home, target, holder, go, now = new Date(), host = os.hostname(), race = {} }) {
   requireText("--holder", holder);
   requireText("--go", go);
   const before = exclusionConflict(home, target);
   if (before) throw new Error(before);
   fs.mkdirSync(lockDir(home), { recursive: true });
   const lock = { holder, go, acquired_at: utc(now), host, slot: target };
+  const text = `${JSON.stringify(lock, null, 2)}\n`;
+  // R3: written whole to a temp file, then linked into place, which fails with
+  // EEXIST if the lock exists: the lock path never holds a partial file.
+  const tmp = privateName(lockFile(home, target), "tmp");
+  fs.writeFileSync(tmp, text, { flag: "wx" });
   try {
-    fs.writeFileSync(lockFile(home, target), `${JSON.stringify(lock, null, 2)}\n`, { flag: "wx" });
+    fs.linkSync(tmp, lockFile(home, target));
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
     const held = readLock(home, target);
+    // workflow-app waits on "is already locked by" (bitcorn-workflow tests/browser-slot.py): keep it.
     throw new Error(`${lockName(target)} is already locked by ${JSON.stringify(held?.holder)}` +
-      (held?.acquired_at ? ` since ${held.acquired_at}, go ${JSON.stringify(held.go)}` : ""));
+      (held?.acquired_at ? ` since ${held.acquired_at}, go ${JSON.stringify(held.go)}` : "") +
+      (held?.unreadable ? ` (${unreadableRefusal(home, target)})` : ""));
+  } finally {
+    fs.rmSync(tmp, { force: true });
   }
+  race.afterCreate?.();
   const after = exclusionConflict(home, target);
   if (after) {
-    fs.unlinkSync(lockFile(home, target));
+    // R4: back out only the lock this acquire wrote, byte for byte.
+    removeLock(home, target, (held, heldText) => (heldText === text ? null :
+      `${after}; and ${lockName(target)} is no longer this acquire's lock (now held by ` +
+      `${JSON.stringify(held.holder)}), so it was left in place`), race);
     throw new Error(after);
   }
   appendHistory(home, `${utc(now)} acquire ${field("lock", lockName(target))} ${field("holder", holder)} ${field("go", go)} ${field("host", host)}`);
   return `acquired ${lockName(target)} for ${holder}: ${lockFile(home, target)}`;
 }
 
-export function releaseLock({ home, target, holder, now = new Date() }) {
+export function releaseLock({ home, target, holder, now = new Date(), race = {} }) {
   requireText("--holder", holder);
-  const lock = readLock(home, target);
-  if (lock === null) throw new Error(`${lockName(target)}: no lock to release`);
-  if (lock.holder !== holder) {
-    throw new Error(`${lockName(target)} is held by ${JSON.stringify(lock.holder)}, not ${JSON.stringify(holder)}; ` +
-      "a stale lock is cleared with lock release --force --reason \"<why>\"");
-  }
-  fs.unlinkSync(lockFile(home, target));
+  const noLock = `${lockName(target)}: no lock to release`;
+  // R3: an unreadable lock is refused on its flag, whatever --holder says.
+  const refusal = (held) => (held.unreadable ? unreadableRefusal(home, target) :
+    held.holder !== holder ? `${lockName(target)} is held by ${JSON.stringify(held.holder)}, not ${JSON.stringify(holder)}; ` +
+      "a stale lock is cleared with lock release --force --reason \"<why>\"" : null);
+  // The check before the remove is not authoritative (R4): removeLock checks again what it actually took out.
+  const seen = readLock(home, target);
+  if (seen === null) throw new Error(noLock);
+  if (refusal(seen) !== null) throw new Error(refusal(seen));
+  const lock = removeLock(home, target, refusal, race);
+  if (lock === null) throw new Error(`${noLock} (it was removed after it was read)`);
   const at = utc(now);
   appendHistory(home, `${at} release ${field("lock", lockName(target))} ${field("holder", holder)} ` +
     `${field("acquired_at", lock.acquired_at)} ${field("held", heldFor(lock.acquired_at, at))}`);
@@ -411,11 +510,17 @@ export function releaseLock({ home, target, holder, now = new Date() }) {
     `(${heldFor(lock.acquired_at, at)}) on ${lock.host}; go ${JSON.stringify(lock.go)}`;
 }
 
-export function forceReleaseLock({ home, target, reason, now = new Date() }) {
+export function forceReleaseLock({ home, target, reason, now = new Date(), race = {} }) {
   requireText("--reason", reason);
-  const lock = readLock(home, target);
-  if (lock === null) throw new Error(`${lockName(target)}: no lock to release`);
-  fs.unlinkSync(lockFile(home, target));
+  const noLock = `${lockName(target)}: no lock to release`;
+  // R4: force frees the lock it read, whoever holds it, and only that lock: if
+  // what it takes out differs by a byte from what it read, it is put back.
+  const seenText = readLockText(home, target);
+  if (seenText === null) throw new Error(noLock);
+  const lock = removeLock(home, target, (held, heldText) => (heldText === seenText ? null :
+    `${lockName(target)} changed between the check and the release (now held by ${JSON.stringify(held.holder)}); ` +
+    "nothing was released: run lock status and decide again"), race);
+  if (lock === null) throw new Error(`${noLock} (it was removed after it was read)`);
   const at = utc(now);
   appendHistory(home, `${at} force-release ${field("lock", lockName(target))} ${field("holder", lock.holder)} ` +
     `${field("acquired_at", lock.acquired_at ?? null)} ${field("reason", reason)}`);
@@ -423,13 +528,51 @@ export function forceReleaseLock({ home, target, reason, now = new Date() }) {
     `reason ${JSON.stringify(reason)}`;
 }
 
-export function lockStatus(home) {
+// R5: whether anything listens on these TCP ports, by the selection dev:kill
+// uses (H15): true, false, or null when lsof could not say. lsof sees only
+// this user's processes, as dev:kill does.
+export function portsListening(ports) {
+  const r = spawnSync("lsof", ["-t", "-nP", `-iTCP:${ports.join(",")}`, "-sTCP:LISTEN"], { encoding: "utf8" });
+  if (r.error || r.status === null) return null;
+  if (r.stdout.trim() !== "") return true;
+  return r.status === 1 ? false : null;
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// R5: the reasons a lock looks stale, and whether its listener check ran.
+function suspicion(target, lock, { now, host, listening }) {
+  const reasons = [];
+  const age = now.getTime() - Date.parse(lock.acquired_at);
+  if (Number.isNaN(age)) reasons.push(`its acquired_at ${JSON.stringify(lock.acquired_at)} is not a time`);
+  else if (age > DAY_MS) reasons.push(`held ${heldFor(lock.acquired_at, utc(now))}, over 24h`);
+  if (lock.host !== host) reasons.push(`host ${JSON.stringify(lock.host)} is not this host (${JSON.stringify(host)})`);
+  let unchecked = false;
+  if (target !== "setup") {
+    let heard = null;
+    try {
+      heard = listening(killPorts(target));
+    } catch {}
+    if (heard === false) reasons.push(`no listener on ${lockName(target)}'s ports`);
+    if (heard !== true && heard !== false) unchecked = true;
+  }
+  return { reasons, unchecked };
+}
+
+export function lockStatus(home, { now = new Date(), host = os.hostname(), listening = portsListening } = {}) {
   const lines = [];
   for (const target of ["setup", ...heldSlots(home)]) {
     const lock = readLock(home, target);
     if (lock === null) continue;
-    lines.push(lock.unreadable ? `${lockName(target)}: lock file unreadable (${lockFile(home, target)})` :
-      `${lockName(target)}: held by ${lock.holder} since ${lock.acquired_at} on ${lock.host}; go ${JSON.stringify(lock.go)}`);
+    if (lock.unreadable) {
+      lines.push(`${lockName(target)}: lock file unreadable (${lockFile(home, target)})`);
+      continue;
+    }
+    const { reasons, unchecked } = suspicion(target, lock, { now, host, listening });
+    lines.push(`${lockName(target)}: held by ${lock.holder} since ${lock.acquired_at} on ${lock.host}; go ${JSON.stringify(lock.go)}` +
+      (unchecked ? " (listener check could not run)" : "") +
+      (reasons.length === 0 ? "" : ` — SUSPECT: ${reasons.join("; ")} — status frees nothing; ` +
+        `if it is stale: lock release ${lockFlag(target)} --force --reason "<why>"`));
   }
   return lines.length > 0 ? lines.join("\n") : "no locks held";
 }
@@ -444,6 +587,8 @@ export function lockRefusal(slot, harnessHolder, home) {
     return `slot ${slot} refused: no lock. Acquire it first: node scripts/harness-slot.mjs lock acquire ` +
       `--slot ${slot} --holder <arc> --go "<who gave the go>", then set HARNESS_HOLDER=<arc>`;
   }
+  // R3: on the flag, before any holder comparison, so no HARNESS_HOLDER can match an unreadable lock.
+  if (lock.unreadable) return `slot ${slot} refused: ${unreadableRefusal(home, slot)}`;
   if (!harnessHolder) return `slot ${slot} refused: locked by ${JSON.stringify(lock.holder)}, and HARNESS_HOLDER is unset`;
   if (harnessHolder !== lock.holder) {
     return `slot ${slot} refused: locked by ${JSON.stringify(lock.holder)}, not HARNESS_HOLDER ${JSON.stringify(harnessHolder)}`;
@@ -481,12 +626,12 @@ function lockTarget(opts) {
   return Number(opts.slot);
 }
 
-export function lockMain(args, { home = os.homedir(), now = new Date(), host = os.hostname() } = {}) {
+export function lockMain(args, { home = os.homedir(), now = new Date(), host = os.hostname(), listening = portsListening } = {}) {
   const [action, ...rest] = args;
   const opts = parseLockArgs(rest);
   if (action === "status") {
     if (Object.keys(opts).length > 0) throw new Error("lock status takes no arguments");
-    return lockStatus(home);
+    return lockStatus(home, { now, host, listening });
   }
   if (action === "acquire") {
     if (opts.force || opts.reason !== undefined) throw new Error("--force and --reason belong to lock release");

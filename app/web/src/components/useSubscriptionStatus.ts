@@ -22,19 +22,27 @@
 // simply don't render — absence over noise. The Settings panel remains
 // the surface that *explains* status-fetch failures.
 
+//
+// drive-mode R45 Polar follow-up (Ethan, "recs", 2026-11-12, item 1): the
+// dashboard passes STATUS_POLL_WAITING_MS while its banner shows "Payment
+// sent, waiting for confirmation", so the credit clears the strip within one
+// 15 s poll (the Settings panel's cadence), not up to 60 s later. A change of
+// interval restarts the poll with an immediate read.
+
 import { useEffect, useState } from "react";
 import { api, type SubscriptionStatus } from "../api/client";
 
-const POLL_INTERVAL_MS = 60_000;
+export const STATUS_POLL_MS = 60_000;
+export const STATUS_POLL_WAITING_MS = 15_000;
 
-export function useSubscriptionStatus(): SubscriptionStatus | null {
+export function useSubscriptionStatus(pollMs: number = STATUS_POLL_MS): SubscriptionStatus | null {
   const [status, setStatus] = useState<SubscriptionStatus | null>(null);
   useEffect(() => {
     const load = () =>
       api.getSubscriptionStatus().then(setStatus).catch(() => {});
     load();
-    const id = setInterval(load, POLL_INTERVAL_MS);
+    const id = setInterval(load, pollMs);
     return () => clearInterval(id);
-  }, []);
+  }, [pollMs]);
   return status;
 }

@@ -254,6 +254,7 @@ import {
   parseStatusForPayment,
   payTargetRefusal,
 } from "./subscription/payFromNode";
+import { pendingPaymentOf } from "./subscription/pendingPayment";
 import { computeMembersListForTreasury } from "./subscription/adminMembersHandler";
 import { computeSubscriptionRevenueForTreasury } from "./subscription/revenueHandler";
 import { observeTierForTransition } from "./subscription/transitionObserver";
@@ -1170,6 +1171,28 @@ async function dispatchRequest(
       console.error("[subscription] pay-from-node quote failed:", err);
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: err?.message ?? "quote_failed" }));
+    }
+    return;
+  }
+
+  // GET pending — the newest active send marker, for the "payment sent,
+  // waiting for confirmation" state (drive-mode R45, ruling 1). Member-only,
+  // this node's database only: no treasury fetch, and no clearing (that stays
+  // with clearMarkersOnCredit, so a read can never lift the send guard).
+  if (req.method === "GET" && req.url === "/api/subscription/pay-from-node/pending") {
+    const node = getNodeInfo();
+    try { assertMember(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "member_required", detail: err?.message }));
+      return;
+    }
+    try {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ pending: pendingPaymentOf(db, node!.pubkey) }));
+    } catch (err: any) {
+      console.error("[subscription] pay-from-node pending read failed:", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "pending_read_failed" }));
     }
     return;
   }
@@ -5085,7 +5108,7 @@ function main(): void {
 
   const server = http.createServer(handleRequest);
 
-  server.listen(PORTS.userApi, () => {
+  server.listen(PORTS.userApi, PORTS.listenHost, () => {
     console.log(`[api] listening on port ${PORTS.userApi}`);
     // Re-assert the member's stored alias once LND is reachable (~5s, matching
     // the member advisor's startup delay). Member-scoped inside the function.
