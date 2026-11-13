@@ -15,6 +15,7 @@ import { classifyLanePurpose } from "../subscription/lanePurpose";
 import { findContactByPubkey } from "../utils/contact-pubkey";
 import { classifyNodeLookup } from "../profile/publicAliasOutcome";
 import { channelGateAlert, getChannelAcceptorHealth } from "../lightning/channelAcceptor";
+import { subscriptionCreditWaitAlert, getUncreditedSnapshot } from "../subscription/creditWaitAlert";
 
 export type AlertSeverity = "info" | "warning" | "critical";
 
@@ -22,8 +23,8 @@ export type TreasuryAlert = {
   type: string;
   /**
    * The plain-language heading the dashboard prints. SET WHERE EACH ALERT IS
-   * CREATED — here, in channelDataStaleness.ts, in lndFaultAlerts.ts and in
-   * lightning/channelAcceptor.ts — never
+   * CREATED — here, in channelDataStaleness.ts, in lndFaultAlerts.ts, in
+   * lightning/channelAcceptor.ts and in subscription/creditWaitAlert.ts — never
    * derived from `type` by a consumer. Decision: SH1/SH2,
    * bitcorn-research decisions/2026-10-13-ui-redesign-shipping-plan-rulings-sh1-sh8.md.
    * The client prints this and falls back to "Treasury alert"; it does not
@@ -162,6 +163,14 @@ export async function getTreasuryAlerts(): Promise<TreasuryAlert[]> {
   // until the acceptor's supervisor has found this node to be the treasury.
   const channelGate = channelGateAlert(getChannelAcceptorHealth(), now);
   if (channelGate) alerts.push(channelGate);
+
+  // --- Subscription payments not credited yet (recredit-check, spec §4.4, G3) ---
+  // Deposit outputs with ≥6 confirmations the detector left in neither
+  // subscription table, whatever the cause. In-memory snapshot the detector
+  // replaces each scan; no I/O. Silent until the first-run gate is
+  // acknowledged, because no scan writes the snapshot before then.
+  const uncredited = subscriptionCreditWaitAlert(getUncreditedSnapshot(), now);
+  if (uncredited) alerts.push(uncredited);
 
   // --- Rotation candidates ---
   const candidates = getRotationCandidates();
