@@ -34,6 +34,7 @@ import { classifyConfirmError } from "./components/actionConfirm/confirmErrors";
 import ProfilePanel from "./components/ProfilePanel";
 import BitcornNamePanel from "./components/BitcornNamePanel";
 import ChannelRolePanel from "./components/firstRun/ChannelRolePanel";
+import { Choice } from "./components/Choice";
 import LoadingSplash from "./components/shell/LoadingSplash";
 import ApiUnreachableScreen from "./components/shell/ApiUnreachableScreen";
 import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
@@ -779,27 +780,17 @@ function SettingsPage({ isTreasury }: { isTreasury?: boolean }) {
           — the only adjacent-panel transition on the page with 0px gap. */}
       <div className="panel" style={{ marginTop: 16 }}>
         <div className="panel-header">
-          <span className="panel-title"><span className="icon">◐</span>Appearance</span>
+          <span className="panel-title" id="settings-appearance-title"><span className="icon" aria-hidden="true">◐</span>Appearance</span>
         </div>
         <div className="panel-body" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {/* Theme: horizontal chips */}
-          <div style={{ display: "flex", gap: 6 }}>
-            {options.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => changeTheme(opt.value)}
-                style={{
-                  flex: 1, padding: "8px 12px", borderRadius: 8, cursor: "pointer",
-                  border: `2px solid ${theme === opt.value ? "var(--amber)" : "var(--border)"}`,
-                  background: theme === opt.value ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
-                  color: theme === opt.value ? "var(--text)" : "var(--text-3)",
-                  textAlign: "center", fontSize: "0.8125rem", fontWeight: 600, fontFamily: "var(--sans)",
-                }}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          {/* Theme: horizontal chips, a Choice; labels only, as before */}
+          <Choice
+            name="settings-theme"
+            labelledBy="settings-appearance-title"
+            value={theme}
+            onChange={changeTheme}
+            options={options.map((opt) => ({ value: opt.value, label: opt.label }))}
+          />
 
           {/* Text size: slider only, no presets */}
           <div>
@@ -1401,30 +1392,27 @@ function ChannelsPage() {
               Funds will return to your on-chain wallet after confirmation. This cannot be undone.
             </div>
             <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
+              <div id="close-fee-rate-label" style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
                 On-chain fee rate
               </div>
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {[
-                  { label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~192 sats" },
-                  { label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~960 sats" },
-                  { label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,885 sats" },
-                ].map((opt) => {
-                  const selected = closeFeeRate === opt.rate;
-                  return (
-                    <button
-                      key={opt.label}
-                      className={`btn ${selected ? "btn-primary" : "btn-outline"}`}
-                      onClick={() => setCloseFeeRate(opt.rate)}
-                      style={{ flex: "1 1 auto", fontSize: "0.7rem", padding: "6px 10px", textAlign: "left", lineHeight: 1.3 }}
-                    >
-                      <div style={{ fontWeight: 600 }}>{opt.label}</div>
-                      <div style={{ fontSize: "0.65rem", opacity: 0.8 }}>{opt.desc}</div>
-                      <div style={{ fontSize: "0.6875rem", opacity: 0.7 }}>{opt.time} · {opt.cost}</div>
-                    </button>
-                  );
-                })}
-              </div>
+              {/* String keys mapped to rates; Economy's rate is undefined. The
+                  cost is its own line, so "~192 sats" never splits. */}
+              {(() => {
+                const CLOSE_FEE = ([
+                  { key: "economy", label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~192 sats" },
+                  { key: "normal", label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~960 sats" },
+                  { key: "priority", label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,885 sats" },
+                ] as const);
+                return (
+                  <Choice
+                    name="close-fee-rate"
+                    labelledBy="close-fee-rate-label"
+                    value={CLOSE_FEE.find((o) => o.rate === closeFeeRate)?.key ?? null}
+                    onChange={(key) => setCloseFeeRate(CLOSE_FEE.find((o) => o.key === key)?.rate)}
+                    options={CLOSE_FEE.map((opt) => ({ value: opt.key, label: opt.label, description: opt.desc, meta: opt.time, cost: opt.cost }))}
+                  />
+                );
+              })()}
             </div>
             <div style={{ marginTop: 14 }}>
               <label htmlFor="close-channel-challenge" style={{ display: "block", marginBottom: 6, fontSize: "0.8125rem" }}>
@@ -2374,35 +2362,25 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
 
           {/* Fee rate selector */}
           <div>
-            <label className="form-label">Confirmation Speed</label>
-            <div style={{ display: "flex", gap: 6 }}>
-              {([
-                { label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~155 sats" },
-                { label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~770 sats" },
-                { label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,300 sats" },
-              ] as const).map((opt) => (
-                <button
-                  key={opt.label}
-                  onClick={() => setFeeRate(opt.rate)}
-                  style={{
-                    flex: 1, padding: "8px 6px", borderRadius: 8, cursor: "pointer",
-                    border: `2px solid ${feeRate === opt.rate ? "var(--amber)" : "var(--border)"}`,
-                    background: feeRate === opt.rate ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--text)" }}>
-                    {opt.label}
-                  </div>
-                  <div style={{ fontSize: "0.6875rem", color: "var(--text-2)" }}>
-                    {opt.time}
-                  </div>
-                  <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
-                    {opt.cost}
-                  </div>
-                </button>
-              ))}
-            </div>
+            <div className="form-label" id="treasury-open-fee-label">Confirmation Speed</div>
+            {/* String keys mapped to rates; Economy's rate is undefined. The
+                cost is its own line, so "~2,300 sats" never splits. */}
+            {(() => {
+              const OPEN_FEE = ([
+                { key: "economy", label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~155 sats" },
+                { key: "normal", label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~770 sats" },
+                { key: "priority", label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,300 sats" },
+              ] as const);
+              return (
+                <Choice
+                  name="treasury-open-fee"
+                  labelledBy="treasury-open-fee-label"
+                  value={OPEN_FEE.find((o) => o.rate === feeRate)?.key ?? null}
+                  onChange={(key) => setFeeRate(OPEN_FEE.find((o) => o.key === key)?.rate)}
+                  options={OPEN_FEE.map((opt) => ({ value: opt.key, label: opt.label, description: opt.time, cost: opt.cost }))}
+                />
+              );
+            })()}
           </div>
 
           {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}

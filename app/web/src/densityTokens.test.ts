@@ -31,9 +31,11 @@ const B: Record<string, string> = {
   "--d-gap-inner": "12px",
   "--d-label-gap": "6px",
   "--d-label": "0.8125rem",
-  "--d-body": "0.9375rem",
+  // Type steps (member-first-run-ui, ruled 2026-11-13): --d-body 0.9375 → 1rem
+  // (--t-base) and --d-hl2 1.625 → 1.75rem (--t-2xl); the rest already sat on a step.
+  "--d-body": "1rem",
   "--d-hl1": "2.25rem",
-  "--d-hl2": "1.625rem",
+  "--d-hl2": "1.75rem",
   "--d-price": "1.25rem",
   // K4: the price chart, desktop and phone.
   "--d-chart-h": "480px",

@@ -18,21 +18,11 @@
 
 import { useEffect, useState } from "react";
 import type { ExchangeRate } from "../api/client";
+import { formatSats, formatUsd } from "./amount/amountDescriptor";
 
-/** Item 4: "49,619 sats", "1 sat". */
-export function formatSats(sats: number): string {
-  return `${sats.toLocaleString("en-US")} ${sats === 1 ? "sat" : "sats"}`;
-}
-
-/** Item 3: sats × usd / 100,000,000, half-up to the cent (display only).
- *  The text and its spoken form ("< $0.01" is "less than $0.01"). */
-export function formatUsd(sats: number, usdPerBtc: number): { text: string; spoken: string } {
-  // toFixed(6) trims float noise so an exact half cent rounds up.
-  const cents = Math.round(Number(((sats * usdPerBtc) / 1_000_000).toFixed(6)));
-  if (cents === 0 && sats > 0) return { text: "< $0.01", spoken: "less than $0.01" };
-  const text = `$${(cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  return { text, spoken: text };
-}
+// Items 3 and 4's formats live in the amount component's descriptor (one
+// copy, drive-mode's); re-exported so this interim's callers are unchanged.
+export { formatSats, formatUsd };
 
 export function TapAmount({ sats, rate }: { sats: number | null; rate: ExchangeRate | null | undefined }) {
   const usd = rate != null && rate.state !== "none" && rate.usd != null ? rate.usd : null;

@@ -104,13 +104,16 @@ describe("SH9: the declared role with an inactive channel", () => {
   it("Settings shows the declared Merchant role as chosen while the channel is inactive", async () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(inactiveWithRole("merchant"));
     const el = await renderAppAt("/settings");
-    const roleButton = (label: string) =>
-      [...el.querySelectorAll("button.theme-option")].find((b) => (b.textContent ?? "").includes(label));
-    expect(roleButton("Merchant")).toBeTruthy();
-    // ChannelRolePanel marks the chosen role with .selected and a role badge.
-    expect(roleButton("Merchant")!.classList.contains("selected")).toBe(true);
-    expect(roleButton("Farmer")!.classList.contains("selected")).toBe(false);
-    const panel = roleButton("Merchant")!.closest(".panel")!;
+    // The role panel is a Choice (member-first-run-ui slice 1, ruled 2026-11-13):
+    // each role is a radio in a .choice-option card, not a button.theme-option.
+    const roleOption = (label: string) =>
+      [...el.querySelectorAll<HTMLElement>('label.choice-option')]
+        .find((o) => o.querySelector('input[name="channel-role"]') && o.querySelector(".choice-label")?.textContent === label);
+    expect(roleOption("Merchant")).toBeTruthy();
+    // ChannelRolePanel marks the chosen role as the checked radio and a role badge.
+    expect(roleOption("Merchant")!.querySelector("input")!.checked).toBe(true);
+    expect(roleOption("Farmer")!.querySelector("input")!.checked).toBe(false);
+    const panel = roleOption("Merchant")!.closest(".panel")!;
     expect(panel.querySelector(".panel-header .badge")?.textContent).toBe("merchant");
   });
 });
