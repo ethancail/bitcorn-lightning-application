@@ -364,13 +364,13 @@ It refuses unless the slot's lock is held by `HARNESS_HOLDER` (see [The harness 
 
 | Exit | Meaning |
 |---|---|
-| 0 | Every check passed |
+| 0 | Every check passed, or passed apart from a WARN (only `deposit-utxos-unledgered` prints one; it never sets the exit code) |
 | 1 | At least one check failed |
 | 2 | It could not look: docker unreachable, a container missing, or a command errored or printed output that does not parse. Wins over 1. Also: refused by the lock, before any check, with the refusal on stderr and nothing on stdout |
 
 It checks the five containers against the pinned set, that Polar is not running, that the compose file still gives `backend1` `restart: unless-stopped`, that restart counts hold steady across the window, that bitcoind answers with `blocks` equal to `headers`, that all four LNDs report `synced_to_chain: true`, and that Treasury's peers and active channels are exactly the three other nodes. Those last two compare sets as well as counts, so a right count made of the wrong members fails. It uses the active docker context or `DOCKER_HOST`.
 
-It also reads the slot's treasury DB (`~/.bitcorn-dev/treasury/db/bitcorn.sqlite`; slot N, `~/.bitcorn-dev/slot-N/treasury/db/bitcorn.sqlite`), read-only, with the `sqlite3` CLI, and Treasury's `listunspent`. Its `deposit-utxos-unledgered` line lists every UTXO at a subscription deposit address whose outpoint is in neither `subscription_payment` nor `subscription_pending_attribution`: one the API's next scan would credit. Any is a FAIL, named by outpoint; a DB or wallet it cannot read is CANNOT-LOOK, never a zero. It catches a teardown that skipped the sweep ([Teardown: sweep the deposit addresses](#teardown-sweep-the-deposit-addresses)), and it writes nothing, `--repair` included.
+It also reads the slot's treasury DB (`~/.bitcorn-dev/treasury/db/bitcorn.sqlite`; slot N, `~/.bitcorn-dev/slot-N/treasury/db/bitcorn.sqlite`), read-only, with the `sqlite3` CLI, and Treasury's `listunspent`. Its `deposit-utxos-unledgered` line lists every UTXO at a subscription deposit address whose outpoint is in neither `subscription_payment` nor `subscription_pending_attribution`: one the API's next scan would credit. It is non-blocking: any is a WARN, with the count and the outpoints, and does not change the exit code. The WARN is expected in a gate that deliberately reproduces a restore replay; otherwise it means the teardown sweep was skipped ([Teardown: sweep the deposit addresses](#teardown-sweep-the-deposit-addresses)). A DB or wallet it cannot read is still CANNOT-LOOK, which fails the run, never a zero. It writes nothing, `--repair` included.
 
 `--repair` is opt-in and makes exactly two writes, re-checking after each. It mines one block, only when every LND was read and every unsynced LND matches bitcoind's best height and hash; one mismatch and it mines nothing. It runs `lncli connect` by hostname, only for an expected peer missing from Treasury. An unexpected peer stays a FAIL. It never restarts or stops a container or the daemon, never edits the compose file, and never opens or closes a channel. A mined block advances the regtest chain, and the teardown does not undo it.
 
@@ -417,13 +417,13 @@ docker exec -u lnd polar-n1-Treasury lncli --network regtest sendcoins --sweepal
 docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest generatetodescriptor 1 "raw(6a)"
 ```
 
-`sendcoins` spends only outpoints with at least one confirmation, so if step 2 shows one with 0, mine the step-5 block first. With no UTXO at a deposit address, skip steps 3 to 5. In a slot other than 1, the containers are `polar-n<id>-Treasury` and `polar-n<id>-backend1`. Phase 6's pre-flight checks the result: `deposit-utxos-unledgered` must PASS with `unledgered=0`.
+`sendcoins` spends only outpoints with at least one confirmation, so if step 2 shows one with 0, mine the step-5 block first. With no UTXO at a deposit address, skip steps 3 to 5. In a slot other than 1, the containers are `polar-n<id>-Treasury` and `polar-n<id>-backend1`. Phase 6's pre-flight checks the result: `deposit-utxos-unledgered` should PASS with `unledgered=0`. A WARN there, outside a gate that reproduces a restore replay on purpose, names the outpoints the sweep missed.
 
 ### Evidence
 
 The gate session saves the pre-flight's full output to a dated file outside the repo. The gate record is a vault `investigations/` record. It holds that output verbatim, the DB backup path, its sha256 values and the session transcript id. If a run allocated (gate 1 advanced Treasury's regtest wallet address index by one) or mined a block under `--repair`, its record says the run is not fully restorable.
 
-**What a restore cannot put back: the wallets.** After a restore, wallet payments made since the snapshot are re-processed at the first scan, with any lapsed member reset to the start time: the scan's own time, from which a lapsed member's paid-through is recomputed (`computeNewPaidThrough`, `app/api/src/subscription/paymentMath.ts`). The [deposit sweep](#teardown-sweep-the-deposit-addresses) leaves that scan nothing to re-process, and the pre-flight's `deposit-utxos-unledgered` line reports any it missed. So a brief that tests tier behaviour seeds the tier state it needs after that first scan, not before it: the scan can move it.
+**What a restore cannot put back: the wallets.** After a restore, wallet payments made since the snapshot are re-processed at the first scan. How those credits are dated is governed by the vault's `decisions/2026-11-13-recredit-check-ruling-b-credit-from-confirmation-time.md`, which is changing it. The [deposit sweep](#teardown-sweep-the-deposit-addresses) leaves that scan nothing to re-process, and the pre-flight's `deposit-utxos-unledgered` line reports any it missed. So a brief that tests tier behaviour seeds the tier state it needs after that first scan, not before it: the scan can move it.
 
 ### Gate prompt template
 

@@ -28,10 +28,11 @@
 //   2  the script could not look: docker unreachable, a container missing, or a
 //      command errored or printed output that does not parse
 //   2 wins over 1. A run with both a FAIL and a CANNOT-LOOK exits 2.
+//   WARN never sets the exit code: only deposit-utxos-unledgered prints it.
 //
 // OUTPUT: one line per check, then a summary:
-//   <UTC ISO-8601> <PASS|FAIL|REPAIRED|CANNOT-LOOK> <check> <observed value>
-//   <UTC ISO-8601> summary pass=N fail=N repaired=N cannot-look=N exit=N
+//   <UTC ISO-8601> <PASS|FAIL|REPAIRED|WARN|CANNOT-LOOK> <check> <observed value>
+//   <UTC ISO-8601> summary pass=N fail=N repaired=N warn=N cannot-look=N exit=N
 // The summary is lowercase on purpose: "no PASS line" stays true for a plain
 // grep. A check that could not run never prints PASS; when an earlier step
 // fails, whatever depends on it prints CANNOT-LOOK rather than being skipped.
@@ -72,9 +73,12 @@
 // UTXO at a subscription deposit address whose (txid, vout) is in neither
 // subscription_payment nor subscription_pending_attribution: the detector's own
 // already-credited test (app/api/src/subscription/detector.ts, alreadyRecorded),
-// so each is one the API's next scan would credit. Any count above zero is FAIL.
-// A side it cannot read is CANNOT-LOOK, never a zero. The gate's teardown sweep
-// (docs/dev-setup.md § Teardown: sweep the deposit addresses) is what makes it 0.
+// so each is one the API's next scan would credit. The check is non-blocking:
+// any count above zero is WARN, with the outpoints, and leaves the exit code
+// alone. It is expected in a gate that deliberately reproduces a restore
+// replay; otherwise it means the teardown sweep (docs/dev-setup.md § Teardown:
+// sweep the deposit addresses) was skipped. A side it cannot read is still
+// CANNOT-LOOK, a failure, never a zero.
 //
 // Spec and decision (vault): specs/2026-10-29-polar-gate-preflight-and-procedure-spec.md,
 // decisions/2026-10-29-polar-gate-procedure-preflight-and-stale-ip.md.
@@ -378,7 +382,7 @@ export async function runPreflight({
     const exitCode = resolveExit(statuses);
     print(
       `${now().toISOString()} summary pass=${count("PASS")} fail=${count("FAIL")} ` +
-      `repaired=${count("REPAIRED")} cannot-look=${count("CANNOT-LOOK")} exit=${exitCode}`,
+      `repaired=${count("REPAIRED")} warn=${count("WARN")} cannot-look=${count("CANNOT-LOOK")} exit=${exitCode}`,
     );
     return { exitCode };
   };
@@ -654,7 +658,8 @@ async function checkChannels({ docker, sleep, report, running, nodes, peersRepai
   report(result.ok ? "PASS" : "FAIL", name, describeSets(result, others, channels.value));
 }
 
-// dev-safety R6: report-only, under --repair too. See TREASURY DB above.
+// dev-safety R6: report-only, under --repair too, and non-blocking: a count is
+// WARN, which resolveExit ignores. See TREASURY DB above.
 async function checkDepositUtxos({ docker, sqlite, report, running, t, slot, home }) {
   const name = "deposit-utxos-unledgered";
   if (!running.has(t.treasury)) return report("CANNOT-LOOK", name, "blocked-by=containers");
@@ -675,7 +680,7 @@ async function checkDepositUtxos({ docker, sqlite, report, running, t, slot, hom
   const value =
     `db=${file} deposit-addresses=${addresses.size} at-deposit=${atDeposit.length} ` +
     `unledgered=${unledgered.length} outpoints=[${unledgered}]`;
-  report(unledgered.length > 0 ? "FAIL" : "PASS", name, value);
+  report(unledgered.length > 0 ? "WARN" : "PASS", name, value);
 }
 
 // ─── entry point ──────────────────────────────────────────────────────────

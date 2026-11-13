@@ -228,7 +228,7 @@ async function run(overrides = {}, options = {}) {
 
 function statusOf(lines, name) {
   const found = lines
-    .map((l) => l.match(/^\S+ (PASS|FAIL|REPAIRED|CANNOT-LOOK) (\S+)(?: |$)/))
+    .map((l) => l.match(/^\S+ (PASS|FAIL|REPAIRED|WARN|CANNOT-LOOK) (\S+)(?: |$)/))
     .filter((m) => m && m[2] === name);
   assert.equal(found.length, 1, `expected exactly one line for ${name}, got:\n${lines.join("\n")}`);
   return found[0][1];
@@ -397,6 +397,10 @@ test("(c) resolveExit: 2 wins over 1, REPAIRED counts as passed, nothing checked
   assert.equal(resolveExit(["FAIL", "CANNOT-LOOK"]), 2);
   assert.equal(resolveExit(["CANNOT-LOOK", "FAIL"]), 2);
   assert.equal(resolveExit([]), 2);
+  // WARN (dev-safety R6, non-blocking) never sets the exit code by itself.
+  assert.equal(resolveExit(["PASS", "WARN"]), 0);
+  assert.equal(resolveExit(["WARN", "FAIL"]), 1);
+  assert.equal(resolveExit(["WARN", "CANNOT-LOOK"]), 2);
 });
 
 test("(c) exit 2 wins over exit 1, end to end", async () => {
@@ -414,11 +418,11 @@ test("(c) exit 2 wins over exit 1, end to end", async () => {
 test("(c) line format: UTC timestamp, status, check name, value; then a timestamped summary", async () => {
   const { lines } = await run(allStale());
   for (const line of lines.slice(0, -1)) {
-    assert.match(line, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z (PASS|FAIL|REPAIRED|CANNOT-LOOK) \S+ \S/);
+    assert.match(line, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z (PASS|FAIL|REPAIRED|WARN|CANNOT-LOOK) \S+ \S/);
   }
   assert.equal(
     lines.at(-1),
-    "2026-10-30T16:00:00.000Z summary pass=9 fail=4 repaired=0 cannot-look=0 exit=1",
+    "2026-10-30T16:00:00.000Z summary pass=9 fail=4 repaired=0 warn=0 cannot-look=0 exit=1",
   );
 });
 
@@ -1095,13 +1099,14 @@ async function runLedger({ home, wallet, sqlite, repair = false }) {
   return { exitCode, lines, calls };
 }
 
-test("(k) an outpoint at a deposit address with no ledger row is reported: FAIL, its outpoint, unledgered=1", async () => {
+test("(k) an outpoint at a deposit address with no ledger row is reported: WARN, its outpoint, unledgered=1, exit 0", async () => {
   const { home } = ledgerHome();
   const { exitCode, lines } = await runLedger({ home, wallet: utxosOut([utxo(DEPOSIT_A, `${TX_UNLEDGERED}:0`)]) });
-  assert.equal(statusOf(lines, LEDGER_CHECK), "FAIL");
+  assert.equal(statusOf(lines, LEDGER_CHECK), "WARN");
   assert.match(lineOf(lines, LEDGER_CHECK), / unledgered=1 /);
   assert.match(lineOf(lines, LEDGER_CHECK), new RegExp(`outpoints=\\[${TX_UNLEDGERED}:0\\]$`));
-  assert.equal(exitCode, 1);
+  assert.equal(lines.at(-1), "2026-11-13T16:00:00.000Z summary pass=12 fail=0 repaired=0 warn=1 cannot-look=0 exit=0");
+  assert.equal(exitCode, 0);
 });
 
 test("(k) an outpoint in subscription_payment is not reported", async () => {
@@ -1129,13 +1134,29 @@ test("(k) mixed: only the unledgered deposit outpoint is reported; a non-deposit
     utxo(OTHER_ADDR, `${TX_OTHER}:0`),
   ]);
   const { exitCode, lines } = await runLedger({ home, wallet });
-  assert.equal(statusOf(lines, LEDGER_CHECK), "FAIL");
+  assert.equal(statusOf(lines, LEDGER_CHECK), "WARN");
   assert.match(lineOf(lines, LEDGER_CHECK), / deposit-addresses=2 at-deposit=3 unledgered=1 outpoints=\[[0-9a-f]{64}:0\]$/);
   assert.match(lineOf(lines, LEDGER_CHECK), new RegExp(TX_UNLEDGERED));
+  assert.equal(exitCode, 0);
+});
+
+test("(k) WARN does not hide a real failure: with a FAIL elsewhere the exit is still 1", async () => {
+  const { home } = ledgerHome();
+  const responses = { ...healthy(), [K_UTXOS]: utxosOut([utxo(DEPOSIT_A, `${TX_UNLEDGERED}:0`)]), [K.peers]: peersOut(SPOKE_KEYS.slice(0, 2)) };
+  const lines = [];
+  const { exitCode } = await runPreflight({
+    docker: async (args) => responses[args.join(" ")] ?? bad("unplanned"),
+    ps: async () => ok(QUIET_PS), readCompose: async () => COMPOSE, sleep: async () => {},
+    print: (line) => lines.push(line), env: {}, home,
+  });
+  assert.equal(statusOf(lines, LEDGER_CHECK), "WARN");
+  assert.equal(statusOf(lines, "treasury-peers"), "FAIL");
   assert.equal(exitCode, 1);
 });
 
-// Loud failure: each case must be CANNOT-LOOK and exit 2, never a PASS or a zero.
+// Loud failure: each case must be CANNOT-LOOK and a failing exit, never a PASS,
+// a WARN or a zero. The exit is 2, the script's could-not-look code, which wins
+// over 1 (header, EXIT CODES).
 const assertLoud = ({ exitCode, lines }, reason) => {
   assert.equal(statusOf(lines, LEDGER_CHECK), "CANNOT-LOOK");
   assert.doesNotMatch(lineOf(lines, LEDGER_CHECK), /unledgered=/);
@@ -1227,8 +1248,8 @@ test("(k) read-only: with no -wal the check creates no -wal or -shm and leaves t
   assert.deepEqual(fs.readdirSync(path.dirname(db)), ["bitcorn.sqlite"]);
   const plain = await runLedger({ home, wallet: ONE_UNLEDGERED });
   const repaired = await runLedger({ home, wallet: ONE_UNLEDGERED, repair: true });
-  assert.equal(statusOf(plain.lines, LEDGER_CHECK), "FAIL");
-  assert.equal(statusOf(repaired.lines, LEDGER_CHECK), "FAIL");
+  assert.equal(statusOf(plain.lines, LEDGER_CHECK), "WARN");
+  assert.equal(statusOf(repaired.lines, LEDGER_CHECK), "WARN");
   assert.deepEqual(fs.readdirSync(path.dirname(db)), ["bitcorn.sqlite"]);
   assert.equal(sha(), before);
 });
@@ -1253,7 +1274,7 @@ test("(k) --repair adds no write: the check's only calls are listunspent and one
     ps: async () => ok(QUIET_PS), readCompose: async () => COMPOSE, sleep: async () => {},
     print: (line) => lines.push(line), env: {}, home, sqlite, repair: true,
   });
-  assert.equal(statusOf(lines, LEDGER_CHECK), "FAIL");
+  assert.equal(statusOf(lines, LEDGER_CHECK), "WARN");
   const treasuryCalls = calls
     .filter((a) => a[0] === "exec" && a[3] === "polar-n1-Treasury" && a[4] === "lncli")
     .map((a) => a.slice(7).join(" "));
