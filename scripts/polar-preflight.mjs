@@ -71,8 +71,10 @@
 // its -wal (never the -shm, which SQLite rebuilds) into a fresh temp directory,
 // reads the copy with the sqlite3 CLI, read-only, and deletes the directory,
 // on failure too. The live files' size and mtime are compared before and after
-// the copy; a change means a writer was active, and the copy may be torn, so
-// that is CANNOT-LOOK, never a count. It reports each Treasury
+// the copy; a change means a writer was active, and the copy may be torn. A torn
+// copy is retried, up to 3 attempts 250 ms apart (a slot's API may be running);
+// a third torn copy is CANNOT-LOOK, never a count. The line reports
+// copy-attempts. It reports each Treasury
 // UTXO at a subscription deposit address whose (txid, vout) is in neither
 // subscription_payment nor subscription_pending_attribution: the detector's own
 // already-credited test (app/api/src/subscription/detector.ts, alreadyRecorded),
@@ -323,33 +325,44 @@ function liveState(file) {
   return { db: one(file, false), wal: one(`${file}-wal`, true) };
 }
 
-async function readLedger(sqlite, file, { copyFile, tmpdir }) {
+// A slot's API can be running when the pre-flight runs (docs/dev-setup.md,
+// slot N's command list runs it after dev:all), so a torn copy is retried:
+// up to COPY_ATTEMPTS copies, COPY_RETRY_MS apart, then CANNOT-LOOK.
+const COPY_ATTEMPTS = 3;
+const COPY_RETRY_MS = 250;
+
+async function readLedger(sqlite, file, { copyFile, tmpdir, sleep }) {
   const what = "treasury db";
-  const before = liveState(file);
-  let dir;
-  try {
+  let torn;
+  for (let attempts = 1; attempts <= COPY_ATTEMPTS; attempts++) {
+    if (attempts > 1) await sleep(COPY_RETRY_MS);
+    const before = liveState(file);
+    let dir;
     try {
-      dir = fs.mkdtempSync(path.join(tmpdir, "preflight-treasury-db-"));
-    } catch (error) {
-      throw new CannotLook(`${what} could not be copied: ${oneLine(error.message)}`);
+      try {
+        dir = fs.mkdtempSync(path.join(tmpdir, "preflight-treasury-db-"));
+      } catch (error) {
+        throw new CannotLook(`${what} could not be copied: ${oneLine(error.message)}`);
+      }
+      const copy = path.join(dir, "bitcorn.sqlite");
+      try {
+        copyFile(file, copy);
+        if (before.wal !== "absent") copyFile(`${file}-wal`, `${copy}-wal`);
+      } catch (error) {
+        throw new CannotLook(`${what} could not be copied: ${oneLine(error.message)}`);
+      }
+      const after = liveState(file);
+      if (after.db !== before.db || after.wal !== before.wal) {
+        torn = `db ${before.db} -> ${after.db}, wal ${before.wal} -> ${after.wal}`;
+        continue;
+      }
+      const ledger = parseLedger(parse(await read(() => sqlite(sqliteReadArgs(copy, LEDGER_SQL)), what), what));
+      return { ...ledger, attempts };
+    } finally {
+      if (dir) fs.rmSync(dir, { recursive: true, force: true });
     }
-    const copy = path.join(dir, "bitcorn.sqlite");
-    try {
-      copyFile(file, copy);
-      if (before.wal !== "absent") copyFile(`${file}-wal`, `${copy}-wal`);
-    } catch (error) {
-      throw new CannotLook(`${what} could not be copied: ${oneLine(error.message)}`);
-    }
-    const after = liveState(file);
-    if (after.db !== before.db || after.wal !== before.wal) {
-      throw new CannotLook(
-        `${what} changed during the copy (db ${before.db} -> ${after.db}, wal ${before.wal} -> ${after.wal}): a writer is active`,
-      );
-    }
-    return parseLedger(parse(await read(() => sqlite(sqliteReadArgs(copy, LEDGER_SQL)), what), what));
-  } finally {
-    if (dir) fs.rmSync(dir, { recursive: true, force: true });
   }
+  throw new CannotLook(`${what} changed during the copy on all ${COPY_ATTEMPTS} attempts (last: ${torn}): a writer is active`);
 }
 
 function parseLedger(ledger) {
@@ -474,7 +487,7 @@ export async function runPreflight({
   const nodes = await checkLnds({ docker, sleep, report, running, chain, repair, t });
   const peersRepaired = await checkPeers({ docker, report, running, nodes, repair, t });
   await checkChannels({ docker, sleep, report, running, nodes, peersRepaired, t });
-  await checkDepositUtxos({ docker, sqlite, copyFile, tmpdir, report, running, t, slot, home });
+  await checkDepositUtxos({ docker, sqlite, copyFile, tmpdir, sleep, report, running, t, slot, home });
   return finish();
 }
 
@@ -705,7 +718,7 @@ async function checkChannels({ docker, sleep, report, running, nodes, peersRepai
 
 // dev-safety R6: report-only, under --repair too, and non-blocking: a count is
 // WARN, which resolveExit ignores. See TREASURY DB above.
-async function checkDepositUtxos({ docker, sqlite, copyFile, tmpdir, report, running, t, slot, home }) {
+async function checkDepositUtxos({ docker, sqlite, copyFile, tmpdir, sleep, report, running, t, slot, home }) {
   const name = "deposit-utxos-unledgered";
   if (!running.has(t.treasury)) return report("CANNOT-LOOK", name, "blocked-by=containers");
   let file;
@@ -714,16 +727,16 @@ async function checkDepositUtxos({ docker, sqlite, copyFile, tmpdir, report, run
   } catch (error) {
     return report("CANNOT-LOOK", name, `treasury db path: ${oneLine(error.message)}`);
   }
-  const ledger = await attempt(() => readLedger(sqlite, file, { copyFile, tmpdir }));
+  const ledger = await attempt(() => readLedger(sqlite, file, { copyFile, tmpdir, sleep }));
   if (ledger.reason !== undefined) return report("CANNOT-LOOK", name, ledger.reason);
   const utxos = await attempt(() => readUtxos(docker, t));
   if (utxos.reason !== undefined) return report("CANNOT-LOOK", name, utxos.reason);
 
-  const { addresses, ledgered } = ledger.value;
+  const { addresses, ledgered, attempts } = ledger.value;
   const atDeposit = utxos.value.filter((u) => addresses.has(u.address));
   const unledgered = atDeposit.filter((u) => !ledgered.has(u.outpoint)).map((u) => u.outpoint);
   const value =
-    `db=${file} deposit-addresses=${addresses.size} at-deposit=${atDeposit.length} ` +
+    `db=${file} copy-attempts=${attempts} deposit-addresses=${addresses.size} at-deposit=${atDeposit.length} ` +
     `unledgered=${unledgered.length} outpoints=[${unledgered}]`;
   report(unledgered.length > 0 ? "WARN" : "PASS", name, value);
 }

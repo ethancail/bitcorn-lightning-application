@@ -1097,6 +1097,7 @@ async function runLedger({ home, wallet, sqlite, copyFile, repair = false }) {
   const responses = { ...healthy(), [K_UTXOS]: wallet };
   const calls = [];
   const lines = [];
+  const sleeps = [];
   const { exitCode } = await runPreflight({
     docker: async (args) => {
       calls.push(args);
@@ -1108,7 +1109,7 @@ async function runLedger({ home, wallet, sqlite, copyFile, repair = false }) {
     },
     ps: async () => ok(QUIET_PS),
     readCompose: async () => COMPOSE,
-    sleep: async () => {},
+    sleep: async (ms) => { sleeps.push(ms); },
     now: () => new Date("2026-11-13T16:00:00.000Z"),
     print: (line) => lines.push(line),
     env: {},
@@ -1120,7 +1121,7 @@ async function runLedger({ home, wallet, sqlite, copyFile, repair = false }) {
   });
   console.log(lineOf(lines, LEDGER_CHECK) ?? "(no deposit-utxos-unledgered line)");
   assert.deepEqual(fs.readdirSync(tmpdir), [], "the check left its temporary copy behind");
-  return { exitCode, lines, calls };
+  return { exitCode, lines, calls, sleeps };
 }
 
 test("(k) an outpoint at a deposit address with no ledger row is reported: WARN, its outpoint, unledgered=1, exit 0", async () => {
@@ -1326,15 +1327,39 @@ test("(k) copy-then-read: a row only in the live -wal is seen, and the live db, 
   assert.deepEqual(after, before);
 });
 
-test("(k) copy-then-read: the live DB changing during the copy is CANNOT-LOOK, exit 2, never a count", async () => {
-  const { home, db } = ledgerHome();
-  // A writer between the copy's start and its end: the second row of a real
-  // sqlite3 write lands on the live file while the check copies it.
-  const copyFile = (src, dst) => {
+// A writer between a copy's start and its end: a real sqlite3 INSERT into the
+// live pending table, run right after the main file is copied, on the copies
+// named by `torn` (1-based). Each write is its own row, for the UNIQUE index.
+function tornCopy(db, torn) {
+  let copies = 0;
+  return (src, dst) => {
     fs.copyFileSync(src, dst);
-    if (src === db) sqliteRun(db, `INSERT INTO subscription_pending_attribution (txid, vout, amount_sats, member_pubkey, received_at, confirmed_at, reason) VALUES ('${"77".repeat(32)}', 0, 1, '${PUB.Farmer1}', 0, 0, 'writer');`);
+    if (src !== db) return;
+    copies += 1;
+    // An unbounded retry would otherwise spin: the check's only await here is
+    // the test's no-op sleep, so a test timeout could never fire.
+    if (copies > 10) throw new Error(`retried forever: copy ${copies}`);
+    if (!torn(copies)) return;
+    const txid = copies.toString(16).padStart(64, "7");
+    sqliteRun(db, "INSERT INTO subscription_pending_attribution (txid, vout, amount_sats, member_pubkey, received_at, confirmed_at, reason)" +
+      ` VALUES ('${txid}', 0, 1, '${PUB.Farmer1}', 0, 0, 'writer');`);
   };
-  assertLoud(await runLedger({ home, wallet: ONE_UNLEDGERED, copyFile }), /treasury db changed during the copy/);
+}
+
+test("(k) copy retry: a writer active during the first copy only: the second attempt reads, copy-attempts=2", async () => {
+  const { home, db } = ledgerHome();
+  const r = await runLedger({ home, wallet: ONE_UNLEDGERED, copyFile: tornCopy(db, (n) => n === 1) });
+  assert.equal(statusOf(r.lines, LEDGER_CHECK), "WARN");
+  assert.match(lineOf(r.lines, LEDGER_CHECK), / copy-attempts=2 deposit-addresses=2 at-deposit=1 unledgered=1 /);
+  assert.equal(r.exitCode, 0);
+  assert.deepEqual(r.sleeps.filter((ms) => ms !== 30_000), [250], "one 250 ms wait, between attempts 1 and 2");
+});
+
+test("(k) copy retry: a writer always active is still CANNOT-LOOK after 3 attempts, exit 2, never a count", { timeout: 20_000 }, async () => {
+  const { home, db } = ledgerHome();
+  const r = await runLedger({ home, wallet: ONE_UNLEDGERED, copyFile: tornCopy(db, () => true) });
+  assertLoud(r, /treasury db changed during the copy on all 3 attempts \(last: db \d+:\d+ -> \d+:\d+, wal absent -> absent\): a writer is active/);
+  assert.deepEqual(r.sleeps.filter((ms) => ms !== 30_000), [250, 250], "two 250 ms waits, none after the last attempt");
 });
 
 test("(k) copy-then-read: a copy that fails is CANNOT-LOOK, and the temp directory is still removed", async () => {
