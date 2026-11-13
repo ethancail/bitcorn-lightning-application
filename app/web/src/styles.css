@@ -1968,18 +1968,18 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .choice-cost { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); white-space: nowrap; }
 .choice-reason { font-size: 0.75rem; color: var(--text-2); }
 
-/* ─── Amount (components/amount/Amount.tsx) ───────────────────────
+/* ─── Amount (components/amount/Amount.tsx, NoRateNote.tsx) ───────
    Dollars with the sats always directly under them, smaller; with no rate,
-   sats over a one-line note. hero: 35px over 17.5px at text 1.0 (2.5rem is
-   the hero figure's own size, outside the nine steps). inline: the figure
-   takes the surrounding size, the line under it --t-xs. */
+   sats alone, and the page shows NoRateNote once. hero: --t-3xl over --t-lg
+   (31.5px over 17.5px at text 1.0). inline: the figure takes the surrounding
+   size, the line under it --t-xs. */
 .amount { display: inline-flex; flex-direction: column; vertical-align: top; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .amount-figure { font-weight: 600; color: var(--text); white-space: nowrap; }
 .amount-sub { color: var(--text-3); white-space: nowrap; }
-.amount-note { margin-top: 2px; font-size: 0.8125rem; font-weight: 400; color: var(--text-2); }
 .amount-inline .amount-sub { font-size: 0.75rem; }
-.amount-hero .amount-figure { font-size: 2.5rem; line-height: 1.1; letter-spacing: -0.02em; }
+.amount-hero .amount-figure { font-size: 2.25rem; line-height: 1.1; letter-spacing: -0.02em; }
 .amount-hero .amount-sub { font-size: 1.25rem; color: var(--text-2); }
+.amount-page-note { margin: 0; font-size: 0.8125rem; color: var(--text-2); }
 
 /* ─── Liquidity page overhaul ────────────────────────────────── */
 

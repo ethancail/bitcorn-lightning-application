@@ -7,7 +7,9 @@
 // the sats ALWAYS directly under them; nothing is behind a tap. That replaces
 // the spec's §1 item 5 tap; its items 3, 4 and 6 are these formats and copy.
 
-/** §1 item 6, verbatim: the line shown when there is no exchange rate. */
+/** §1 item 6, verbatim: the line shown when there is no exchange rate, ONCE
+ *  per page by NoRateNote.tsx, never per amount (ruled 2026-11-13). The same
+ *  words as api/rate.ts's RATE_NONE_SENTENCE; Amount.test.tsx holds them equal. */
 export const NO_RATE_NOTE = "The bitcoin price isn't available right now, so amounts are shown in sats.";
 
 /** §1 item 8: an unknown amount (null), and a negative one (R30(2)). */

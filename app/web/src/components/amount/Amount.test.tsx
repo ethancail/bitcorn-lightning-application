@@ -1,10 +1,11 @@
 // The amount (member-first-run-ui slice 1, ruled 2026-11-13): dollars, with
 // the sats ALWAYS directly under them, smaller; nothing behind a tap. With no
-// exchange rate, sats only plus the descriptor's one-line note. Formats and
-// copy are amountDescriptor.ts's (amount component spec §1 items 3, 4, 6, 8).
+// exchange rate, sats alone: the "price isn't available" sentence is the
+// page's, once (NoRateNote), never per amount (ruled 2026-11-13, 2). Formats
+// and copy are amountDescriptor.ts's (amount component spec §1 items 3, 4, 6, 8).
 //
-// The negative control for "both lines in every state": delete the sats line
-// from Amount.tsx and that describe goes red.
+// Negative controls: delete the sats line from Amount.tsx and "both lines"
+// goes red; put the note back inside Amount and "no exchange rate" goes red.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -12,7 +13,9 @@ import { act } from "react-dom/test-utils";
 import React from "react";
 import type { ExchangeRate } from "../../api/client";
 import { declsFor } from "../../styleRules.testutil";
+import { RATE_NONE_SENTENCE } from "../../api/rate";
 import { Amount, type AmountSize } from "./Amount";
+import { NoRateNote } from "./NoRateNote";
 import { NO_RATE_NOTE, formatSats } from "./amountDescriptor";
 
 const rate = (usd: number | null, state: ExchangeRate["state"] = "fresh"): ExchangeRate =>
@@ -34,6 +37,10 @@ afterEach(async () => {
 
 async function show(sats: number | null, r: ExchangeRate | null | undefined, size?: AmountSize) {
   await act(async () => { root.render(React.createElement(Amount, { sats, rate: r, size })); });
+}
+
+async function showNote(r: ExchangeRate | null | undefined) {
+  await act(async () => { root.render(React.createElement(NoRateNote, { rate: r })); });
 }
 
 const amount = () => host.querySelector(".amount") as HTMLElement;
@@ -72,27 +79,55 @@ describe("both lines, in every state", () => {
   });
 });
 
-describe("no exchange rate", () => {
+describe("no exchange rate: the amount is sats only, with no note", () => {
   for (const [name, r] of [
     ["state none", rate(null, "none")],
     ["state none, a usd left over", rate(76_848.88, "none")],
     ["no usd", rate(null, "fresh")],
     ["unread (null)", null],
+    ["loading (undefined)", undefined],
   ] as const) {
-    it(`${name}: sats only, then the descriptor's one-line note`, async () => {
-      await show(49_619, r as ExchangeRate | null);
-      expect(lines()).toEqual([["sats", "49,619 sats"], ["note", NO_RATE_NOTE]]);
-      expect(host.textContent).not.toContain("$");
+    it(`${name}: sats alone`, async () => {
+      await show(49_619, r as ExchangeRate | null | undefined, "hero");
+      expect(lines()).toEqual([["sats", "49,619 sats"]]);
+      expect(host.textContent).toBe("49,619 sats");
+      expect(host.textContent).not.toContain(NO_RATE_NOTE);
+    });
+  }
+});
+
+describe("NoRateNote: the page's one line", () => {
+  for (const [name, r] of [
+    ["state none", rate(null, "none")],
+    ["no usd", rate(null, "fresh")],
+    ["unread (null)", null],
+  ] as const) {
+    it(`${name}: renders the descriptor's copy`, async () => {
+      await showNote(r as ExchangeRate | null);
+      expect(host.textContent).toBe(NO_RATE_NOTE);
     });
   }
 
-  it("the note is the descriptor's, verbatim (spec §1 item 6)", () => {
-    expect(NO_RATE_NOTE).toBe("The bitcoin price isn't available right now, so amounts are shown in sats.");
+  it("loading (rate undefined): nothing; the sentence never shows while the rate loads (R31)", async () => {
+    await showNote(undefined);
+    expect(host.textContent).toBe("");
   });
 
-  it("loading (rate undefined): sats alone; the note never shows while the rate loads (R31)", async () => {
-    await show(49_619, undefined);
-    expect(lines()).toEqual([["sats", "49,619 sats"]]);
+  it("a usable rate (fresh or stale): nothing", async () => {
+    await showNote(rate(76_848.88));
+    expect(host.textContent).toBe("");
+    await showNote(rate(76_848.88, "stale"));
+    expect(host.textContent).toBe("");
+  });
+
+  it("no aria-live", async () => {
+    await showNote(null);
+    expect(host.querySelector("[aria-live]")).toBeNull();
+  });
+
+  it("the copy is spec §1 item 6 verbatim, and the same words as rate.ts's sentence", () => {
+    expect(NO_RATE_NOTE).toBe("The bitcoin price isn't available right now, so amounts are shown in sats.");
+    expect(NO_RATE_NOTE).toBe(RATE_NONE_SENTENCE);
   });
 });
 
@@ -146,8 +181,10 @@ describe("sizes", () => {
     await show(49_619, rate(73_700), "hero");
     expect(amount().classList.contains("amount-hero")).toBe(true);
   });
-  it("hero is 35px over 17.5px at text 1.0 (the 14px root)", () => {
-    expect(parseFloat(declsFor(".amount-hero .amount-figure")["font-size"]) * 14).toBe(35);
+  it("hero is --t-3xl over --t-lg: 31.5px over 17.5px at text 1.0 (the 14px root)", () => {
+    expect(declsFor(".amount-hero .amount-figure")["font-size"]).toBe("2.25rem");
+    expect(parseFloat(declsFor(".amount-hero .amount-figure")["font-size"]) * 14).toBe(31.5);
+    expect(declsFor(".amount-hero .amount-sub")["font-size"]).toBe("1.25rem");
     expect(parseFloat(declsFor(".amount-hero .amount-sub")["font-size"]) * 14).toBe(17.5);
   });
   it("inline: the sats are smaller than the figure, at --t-xs", () => {
