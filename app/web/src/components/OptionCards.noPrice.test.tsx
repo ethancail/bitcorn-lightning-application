@@ -84,12 +84,14 @@ describe("R59(2): no price", () => {
   });
 });
 
+// R59(4) gave the name; Ethan's "recs" 2026-11-12 (1) dropped the "which…"
+// clause, which only repeated the name.
 describe("R59(4): the strategy's name in the reason line", () => {
   it("farmer: Move sooner", () => {
-    expect(reasonText("keep_room_open", true)).toBe("You're on Move sooner, which moves sooner.");
+    expect(reasonText("keep_room_open", true)).toBe("You're on Move sooner.");
   });
   it("merchant: Top up sooner", () => {
-    expect(reasonText("keep_room_open", false)).toBe("You're on Top up sooner, which tops up sooner.");
+    expect(reasonText("keep_room_open", false)).toBe("You're on Top up sooner.");
   });
   it("no 'Keep room open' left in any reason", () => {
     const reasons = ["room_low", "fees_low", "fees_high", "over_fee_limit", "bigger_share", "keep_room_open", "plenty_ready", "enough_ready", "wallet_low"] as const;

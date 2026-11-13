@@ -40,8 +40,9 @@ export function reasonText(reason: OptionReason, farmer: boolean): string {
       ? "Today's fee is over your fee limit, and a later, bigger transfer costs a smaller share."
       : "Today's fee is over your fee limit, and you still have enough ready to send.";
     case "bigger_share": return "A later, bigger transfer costs a smaller share.";
-    // R59(4): the strategy's name as the Automatic transfers page shows it.
-    case "keep_room_open": return farmer ? "You're on Move sooner, which moves sooner." : "You're on Top up sooner, which tops up sooner.";
+    // R59(4): the strategy's name as the Automatic transfers page shows it;
+    // the name alone, no "which…" clause ("recs" 2026-11-12 (1)).
+    case "keep_room_open": return farmer ? "You're on Move sooner." : "You're on Top up sooner.";
     case "plenty_ready": return "You still have plenty ready to send, so you don't need to top up yet.";
     case "enough_ready": return "You still have enough ready to send.";
     case "wallet_low": return "Your wallet is too low to top up.";
