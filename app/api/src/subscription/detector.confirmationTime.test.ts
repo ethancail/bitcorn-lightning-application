@@ -430,11 +430,16 @@ describe("§9 controls — replay and order", () => {
 });
 
 describe("§9 (viii) — the alert, the time source failing", () => {
-  /** One candidate output at `conf` confirmations whose block cannot be timed. */
-  function brokenCandidate(txid: string, conf: number): void {
+  /**
+   * One candidate output at `conf` confirmations whose block cannot be timed.
+   * `blockTimeMs` gives a test its own block: the same height and time would
+   * be the same hash, which the process-lifetime hash → time cache may
+   * already hold from another test's recovery leg.
+   */
+  function brokenCandidate(txid: string, conf: number, blockTimeMs = T0): void {
     seedMember(MEMBER, ADDR, T0 - MS_PER_DAY);
     chain.tip = 2_000;
-    const b = confirm(txid, chain.tip - conf + 1, T0);
+    const b = confirm(txid, chain.tip - conf + 1, blockTimeMs);
     chain.broken.add(b.hash);
     setUtxos([{ txid, address: ADDR }]);
     vi.setSystemTime(T0 + MS_PER_DAY);
@@ -480,32 +485,44 @@ describe("§9 (viii) — the alert, the time source failing", () => {
     expect(typeof a.data.outputs[0].detail).toBe("string");
   });
 
-  it("at 144 confirmations: exactly one critical alert; after a restart, none before the first scan and one critical after it; recovery credits and clears", async () => {
+  it("at 144 confirmations: exactly one critical alert; recovery credits and clears", async () => {
     const tx = "cf".repeat(32);
     brokenCandidate(tx, 144);
     await scanSubscriptionDeposits();
     expect(ledgerRows(tx)).toBe(0);
     expect(warnsNaming(`${tx}:0`)).toBe(1);
-    let alerts = await uncreditedAlerts();
+    const alerts = await uncreditedAlerts();
     expect(alerts).toHaveLength(1);
     expect(alerts[0].severity).toBe("critical");
-
-    // Restart: a fresh module import over the same DB_DIR.
-    closeDb();
-    await reopen();
-    expect(await uncreditedAlerts()).toEqual([]);
-    await scanSubscriptionDeposits();
-    alerts = await uncreditedAlerts();
-    expect(alerts).toHaveLength(1);
-    expect(alerts[0].severity).toBe("critical");
-    expect(alerts[0].data.oldest_confirmations).toBe(144);
-    expect(warnsNaming(`${tx}:0`)).toBe(2); // the restart reset the throttle; the warning stays
 
     // Recovery.
     chain.broken.clear();
     await scanSubscriptionDeposits();
     expect(ledgerRows(tx)).toBe(1);
     expect(await uncreditedAlerts()).toEqual([]);
+  });
+
+  it("restart at 144: after a fresh import, no alert before the first scan, one critical after it; the warning stays", async () => {
+    // Its own test, so a mutation that drops the alert trips HERE, on the
+    // restart leg's own assertion, not on an earlier leg's. Nothing below
+    // asserts the alert before the restart.
+    const tx = "ce".repeat(32);
+    brokenCandidate(tx, 144, T0 + 60_000);
+    await scanSubscriptionDeposits(); // the pre-restart scan
+    expect(ledgerRows(tx)).toBe(0);
+    expect(warnsNaming(`${tx}:0`)).toBe(1);
+
+    // Restart: a fresh module import over the same DB_DIR.
+    closeDb();
+    await reopen();
+    expect(await uncreditedAlerts()).toEqual([]); // the snapshot starts empty
+    await scanSubscriptionDeposits(); // the boot scan
+    const alerts = await uncreditedAlerts();
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].severity).toBe("critical");
+    expect(alerts[0].data.oldest_confirmations).toBe(144); // the wait did not reset
+    expect(ledgerRows(tx)).toBe(0);
+    expect(warnsNaming(`${tx}:0`)).toBe(2); // the restart reset the throttle; the warning stays
   });
 });
 
