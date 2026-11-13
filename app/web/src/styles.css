@@ -93,6 +93,23 @@
 
   --text-scale: 1;
 
+  /* The nine named type steps (member-first-run-ui, ruled 2026-11-13). Every
+     font-size in this file is written as one of these LITERAL values (not
+     var()), so the parser guards (typeFloor, typeShrink, inputZoom) keep
+     reading real sizes. rem is the 14px root × --text-scale. Outside the
+     steps: Daybreak's own scale, the allowlisted 0.5625rem, px chart ticks,
+     and the drive-mode radio-card / automatic-transfers blocks (left as
+     built). */
+  --t-xs:    0.75rem;
+  --t-label: 0.8125rem;
+  --t-sm:    0.875rem;
+  --t-base:  1rem;
+  --t-md:    1.125rem;
+  --t-lg:    1.25rem;
+  --t-xl:    1.5rem;
+  --t-2xl:   1.75rem;
+  --t-3xl:   2.25rem;
+
   /* Aliases for token names consumed in the app but never declared, which
      rendered as unset. Declared here once: the light theme sets data-theme on
      this same element, so each alias follows the active theme's target. */
@@ -129,7 +146,7 @@ body {
 /* ─── Typography ───────────────────────────────────────────────── */
 h1 { font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em; }
 h2 { font-size: 1.125rem; font-weight: 600; letter-spacing: -0.01em; }
-h3 { font-size: 0.9375rem; font-weight: 500; }
+h3 { font-size: 1rem; font-weight: 500; }
 
 .mono { font-family: var(--mono); }
 /* .ident (Z2, identifiers in --font-id) is the LAST rule in this file — see there. */
@@ -204,14 +221,14 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 .topbar-wordmark {
   font-family: var(--mono);
   font-weight: 600;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   color: var(--text);
   letter-spacing: 0.02em;
 }
 
 .topbar-tag {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -255,7 +272,7 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
 
 .sidebar-label {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-3);
@@ -366,7 +383,7 @@ button, input, select, textarea { font-variant-numeric: tabular-nums; }
   gap: 8px;
   margin: 18px 2px 6px;
   font-family: var(--sans);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -432,13 +449,13 @@ p + .settings-section-label { margin-top: 8px; }
 }
 .policy-card .policy-card-meta {
   margin-top: 1px;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   line-height: 1.3;
   color: var(--text-2);
 }
 .policy-card .policy-card-value {
   font-family: var(--mono);
-  font-size: 1.0625rem;
+  font-size: 1rem;
   font-weight: 700;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -447,7 +464,7 @@ p + .settings-section-label { margin-top: 8px; }
 }
 .policy-card .policy-card-value .unit {
   margin-left: 4px;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 400;
   color: var(--text-3);
   letter-spacing: 0.04em;
@@ -455,7 +472,7 @@ p + .settings-section-label { margin-top: 8px; }
 .policy-card .policy-card-caret {
   margin-left: 6px;
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.06em;
   color: var(--text-3);
 }
@@ -477,7 +494,7 @@ p + .settings-section-label { margin-top: 8px; }
 }
 .policy-card .policy-card-edit input {
   font-family: var(--mono);
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 700;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -496,7 +513,7 @@ p + .settings-section-label { margin-top: 8px; }
 }
 .policy-card .policy-card-edit .unit {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
   min-width: 32px;
   font-weight: 400;
@@ -555,7 +572,7 @@ p + .settings-section-label { margin-top: 8px; }
 }
 .member-action .caption {
   text-align: center;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
   font-family: var(--mono);
 }
@@ -582,7 +599,7 @@ p + .settings-section-label { margin-top: 8px; }
 .revenue-hero-num.neutral { color: var(--text); }
 .revenue-hero-caption {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -590,7 +607,7 @@ p + .settings-section-label { margin-top: 8px; }
 .revenue-hero-alltime {
   margin-left: auto;
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   padding: 3px 8px;
   border-radius: var(--radius-sm);
   background: var(--amber-glow2);
@@ -619,7 +636,7 @@ p + .settings-section-label { margin-top: 8px; }
 
 .stat-label {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-3);
@@ -628,7 +645,7 @@ p + .settings-section-label { margin-top: 8px; }
 
 .stat-value {
   font-family: var(--mono);
-  font-size: 1.375rem;
+  font-size: 1.25rem;
   font-weight: 600;
   color: var(--text);
   line-height: 1.2;
@@ -640,7 +657,7 @@ p + .settings-section-label { margin-top: 8px; }
 
 .stat-sub {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
   margin-top: 4px;
 }
@@ -667,7 +684,7 @@ p + .settings-section-label { margin-top: 8px; }
 }
 
 .channel-capacity {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
   margin-bottom: 10px;
 }
@@ -694,7 +711,7 @@ p + .settings-section-label { margin-top: 8px; }
   display: flex;
   justify-content: space-between;
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-2);
 }
 
@@ -763,7 +780,7 @@ p + .settings-section-label { margin-top: 8px; }
 
 .price-ticker-label {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -773,7 +790,7 @@ p + .settings-section-label { margin-top: 8px; }
 
 .price-ticker-value {
   font-family: var(--mono);
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 700;
   color: var(--text);
   line-height: 1.2;
@@ -787,7 +804,7 @@ p + .settings-section-label { margin-top: 8px; }
 
 .price-ticker-unit {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
   letter-spacing: 0.04em;
   line-height: 1;
@@ -854,7 +871,7 @@ p + .settings-section-label { margin-top: 8px; }
    copy — no text-transform, and no caps tracking. */
 .alert-type {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   opacity: 0.7;
   margin-bottom: 2px;
 }
@@ -965,7 +982,7 @@ p + .settings-section-label { margin-top: 8px; }
   padding: 2px 8px;
   border-radius: var(--radius-sm);
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 500;
   letter-spacing: 0.02em;
 }
@@ -1009,7 +1026,7 @@ p + .settings-section-label { margin-top: 8px; }
   padding: 1px 8px;
   border-radius: var(--radius-full);
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   background: var(--amber-glow);
   color: var(--text);
   letter-spacing: 0.02em;
@@ -1079,14 +1096,14 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
 .btn-danger:hover:not(:disabled) { background: var(--red-glow); }
 
 .btn-sm { padding: 5px 10px; font-size: 0.75rem; }
-.btn-lg { padding: 12px 28px; font-size: 0.9375rem; }
+.btn-lg { padding: 12px 28px; font-size: 1rem; }
 
 /* ─── Form elements ────────────────────────────────────────────── */
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 
 .form-label {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-3);
@@ -1125,7 +1142,7 @@ button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px
    Each is the inline value it replaced, so a desktop renders as before; they
    follow .form-input so they win on order. */
 .form-input-sm { font-size: 0.8125rem; }
-.payment-request-input { font-size: 0.8rem; }
+.payment-request-input { font-size: 0.8125rem; }
 .daybreak-editor-field { font-size: 1rem; }
 .identity-input { font-size: 0.875rem; }
 .autobuy-filter { font-size: 0.75rem; }
@@ -1294,7 +1311,7 @@ input[type="number"] {
 }
 .wizard-rail-item .num {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 700;
   width: 18px;
   text-align: right;
@@ -1453,7 +1470,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 
 .sub-pay-preview dt {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-3);
@@ -1602,7 +1619,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
   .topbar { padding: 0 16px; gap: 8px; }
 
   .topbar-node {
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     gap: 6px;
     min-width: 0;
   }
@@ -1655,7 +1672,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
   .sidebar-mobile-title {
     font-family: var(--mono);
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-3);
@@ -1689,7 +1706,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
   .btn-sm {
     padding: 4px 8px;
-    font-size: 0.6875rem;
+    font-size: 0.75rem;
   }
 
   /* Power law chart: shorter on mobile */
@@ -1758,7 +1775,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 .bolt11-text {
   font-family: var(--font-id);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   line-height: 1.4;
   word-break: break-all;
   background: rgba(0, 0, 0, 0.3);
@@ -1947,7 +1964,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 .liq-kpi-label {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-2);
@@ -1956,7 +1973,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 .liq-kpi-value {
   font-family: var(--mono);
-  font-size: 1.625rem;
+  font-size: 1.75rem;
   font-weight: 600;
   color: var(--text);
   line-height: 1.1;
@@ -2024,7 +2041,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 .liq-health-chip {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   padding: 2px 8px;
   border-radius: var(--radius-sm);
@@ -2170,11 +2187,11 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 .sub-panel-glyph {
   color: var(--amber);  /* a glyph marker, a mark */
-  font-size: 0.8571rem;
+  font-size: 0.875rem;
 }
 .sub-panel-title h2 {
   font-family: var(--mono);
-  font-size: 0.7857rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -2190,7 +2207,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
   padding: 2px 10px;
   border-radius: var(--radius-sm);
   font-family: var(--mono);
-  font-size: 0.7857rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.04em;
   border: 1px solid transparent;
 }
@@ -2228,7 +2245,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 /* Tagline */
 .sub-tagline {
   font-family: var(--mono);
-  font-size: 0.9286rem;
+  font-size: 1rem;
   color: var(--text-3);
   margin: 8px 0 20px 0;
 }
@@ -2239,7 +2256,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
   margin: 8px 0 16px 0;
   padding: 0;
   font-family: var(--mono);
-  font-size: 0.9286rem;
+  font-size: 1rem;
   color: var(--text-2);
 }
 .sub-prepay-bullets li {
@@ -2264,7 +2281,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 /* Reassurance line (✓ Onramp ... ) */
 .sub-reassure {
   font-family: var(--mono);
-  font-size: 0.9286rem;
+  font-size: 1rem;
   color: var(--text-2);
   margin: 12px 0 18px 0;
   padding-left: 22px;
@@ -2283,7 +2300,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
   border-radius: var(--radius-sm);
   margin: 12px 0;
   font-family: var(--mono);
-  font-size: 0.9286rem;
+  font-size: 1rem;
   line-height: 1.5;
 }
 .sub-alert-icon {
@@ -2333,7 +2350,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 .sub-bracket-label {
   font-family: var(--mono);
-  font-size: 0.7857rem;
+  font-size: 0.8125rem;
   letter-spacing: 0.16em;
   color: var(--text-2);
 }
@@ -2356,18 +2373,18 @@ div:has(> .action-confirm-input) + .dialog-actions {
   font-family: var(--mono);
 }
 .sub-stat-label {
-  font-size: 0.7143rem;
+  font-size: 0.75rem;
   letter-spacing: 0.18em;
   color: var(--text-3);
   margin-bottom: 6px;
 }
 .sub-stat-value {
-  font-size: 1.2857rem;
+  font-size: 1.25rem;
   color: var(--text);
   line-height: 1;
 }
 .sub-stat-suffix {
-  font-size: 0.8571rem;
+  font-size: 0.875rem;
   color: var(--text-3);
   margin-top: 4px;
 }
@@ -2408,7 +2425,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .sub-deposit-address {
   display: block;
   font-family: var(--font-id);
-  font-size: 0.9286rem;
+  font-size: 1rem;
   line-height: 1.6;
   color: var(--text);
   padding: 12px;
@@ -2424,7 +2441,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 .sub-deposit-helper {
   font-family: var(--mono);
-  font-size: 0.8571rem;
+  font-size: 0.875rem;
   color: var(--text-2);
   margin: 8px 0 4px 0;
 }
@@ -2437,7 +2454,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
   padding: 8px 14px;
   border-radius: var(--radius-sm);
   font-family: var(--mono);
-  font-size: 0.9286rem;
+  font-size: 1rem;
   color: var(--text);
   background: transparent;
   border: 1px solid var(--border);
@@ -2456,7 +2473,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 .sub-link {
   font-family: var(--mono);
-  font-size: 0.8571rem;
+  font-size: 0.875rem;
   color: var(--text-3);
   text-decoration: none;
 }
@@ -2493,7 +2510,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-family: var(--mono);
-  font-size: 0.9286rem;
+  font-size: 1rem;
   line-height: 1.5;
   color: var(--text-2);
 }
@@ -2517,7 +2534,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 /* Body copy (external_peer, no_channel) */
 .sub-body-copy {
   font-family: var(--mono);
-  font-size: 0.9286rem;
+  font-size: 1rem;
   color: var(--text-2);
   line-height: 1.6;
   margin: 8px 0;
@@ -2526,7 +2543,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 /* Fineprint */
 .sub-fineprint {
   font-family: var(--mono);
-  font-size: 0.8571rem;
+  font-size: 0.875rem;
   color: var(--text-3);
   line-height: 1.5;
   margin-top: 14px;
@@ -2535,7 +2552,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 /* Footer note (unexpected_missing_row) */
 .sub-footer-note {
   font-family: var(--mono);
-  font-size: 0.8571rem;
+  font-size: 0.875rem;
   color: var(--text-3);
   line-height: 1.5;
   margin-top: 18px;
@@ -2567,14 +2584,14 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .sub-pulsing-dots span:nth-child(3) { animation-delay: 0.4s; }
 .sub-centered-headline {
   font-family: var(--sans);
-  font-size: 1.2857rem;
+  font-size: 1.25rem;
   color: var(--text);
   font-weight: 500;
   margin: 0 0 8px 0;
 }
 .sub-centered-body {
   font-family: var(--mono);
-  font-size: 0.9286rem;
+  font-size: 1rem;
   color: var(--text-2);
   line-height: 1.6;
   max-width: 520px;
@@ -2582,13 +2599,13 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 .sub-stuck-escalation {
   font-family: var(--mono);
-  font-size: 0.9286rem;
+  font-size: 1rem;
   color: var(--text);
   margin-top: 12px;
 }
 .sub-pending-channel-age {
   font-family: var(--mono);
-  font-size: 0.7857rem;
+  font-size: 0.8125rem;
   color: var(--text-3);
   opacity: 0.7;
   margin-top: 12px;
@@ -2597,7 +2614,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 /* Retry indicator (unexpected_missing_row, error states) */
 .sub-retry-indicator {
   font-family: var(--mono);
-  font-size: 0.8571rem;
+  font-size: 0.875rem;
   color: var(--text-3);
   margin: 8px 0 16px 0;
 }
@@ -2613,7 +2630,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .sub-pubkey {
   display: block;
   font-family: var(--font-id);
-  font-size: 0.8571rem;
+  font-size: 0.875rem;
   color: var(--text);
   word-break: break-all;
   user-select: all;
@@ -2631,7 +2648,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 /* Error detail */
 .sub-error-detail {
   color: var(--text-3);
-  font-size: 0.7857rem;
+  font-size: 0.8125rem;
 }
 
 /* ─── Light-mode overrides for SubscriptionPanel ─────────────────
@@ -2853,7 +2870,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 .admin-members-table thead th {
   text-align: left;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -2883,7 +2900,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
   color: var(--text);
 }
 .admin-sort-arrow {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   margin-left: 0.125rem;
 }
 
@@ -2910,7 +2927,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
   padding: 0;
 }
 .admin-members-pubkey-copied {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: var(--green, #34d399);
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -2942,7 +2959,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 .admin-members-pubkey-short {
   font-family: var(--font-id);
-  font-size: 0.7rem;
+  font-size: 0.75rem;
   color: var(--fg-2);
   opacity: 0.8;
 }
@@ -2970,7 +2987,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 .admin-members-unidentified-marker {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--text);
@@ -2978,7 +2995,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 .admin-members-unidentified-link {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
   text-decoration: none;
   border-bottom: 1px dotted currentColor;
@@ -3047,7 +3064,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 .stablecoin-label {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-3);
@@ -3075,7 +3092,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 
 .stablecoin-balance-staleness {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
 }
 
@@ -3175,7 +3192,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 }
 
 .stablecoin-tile-label {
-  font-size: 0.9375rem;
+  font-size: 1rem;
   font-weight: 500;
 }
 
@@ -3238,14 +3255,14 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 .stablecoin-field-label {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-3);
 }
 
 .stablecoin-field-hint {
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
   font-style: italic;
 }
@@ -3413,7 +3430,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 .stablecoin-row-amount {
   font-family: var(--mono);
-  font-size: 0.9375rem;
+  font-size: 1rem;
   color: var(--text);
   font-weight: 500;
   margin-left: auto;
@@ -3421,7 +3438,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 .stablecoin-row-link {
   font-family: var(--font-id);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   color: var(--text-3);
   text-decoration: none;
   white-space: nowrap;
@@ -3446,7 +3463,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
   color: var(--text);
 }
 .stablecoin-extlink-icon {
-  font-size: 0.95rem;
+  font-size: 1rem;
   line-height: 1;
   color: var(--amber);
   opacity: 0.8;
@@ -3458,7 +3475,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 .stablecoin-pill {
   font-family: var(--mono);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   padding: 2px 8px;
@@ -3526,7 +3543,7 @@ div:has(> .action-confirm-input) + .dialog-actions {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   min-width: 110px;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
 
 .stablecoin-detail-value {
@@ -3994,8 +4011,8 @@ div:has(> .action-confirm-input) + .dialog-actions {
   --d-title-size: 0.8125rem; --d-title-gap: 12px;
   --d-table: 0.875rem;       --d-th: 0.75rem;
   --d-td-py: 12px;           --d-td-px: 14px;    --d-th-py: 10px;
-  --d-label: 0.8125rem;      --d-body: 0.9375rem;
-  --d-hl1: 2.25rem;          --d-hl2: 1.625rem;
+  --d-label: 0.8125rem;      --d-body: 1rem;        /* --t-label, --t-base */
+  --d-hl1: 2.25rem;          --d-hl2: 1.75rem;      /* --t-3xl, --t-2xl */
   --d-price: 1.25rem;        --d-chart-h: 480px;   --d-chart-h-ph: 240px;
   --d-cols: 2;
 }

@@ -124,7 +124,7 @@ function FeeReceipt({ receipt, usdCents }: { receipt: SwapReceipt; usdCents: num
         {dollars ?? fmtSats(receipt.total_sat)}
       </div>
       {dollars && (
-        <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", marginTop: 4 }} data-testid="fee-summary-sats">
+        <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 4 }} data-testid="fee-summary-sats">
           {fmtSats(receipt.total_sat)}
         </div>
       )}
@@ -565,7 +565,7 @@ export default function WithdrawBitcoin() {
                       capacity, a share of the connection; it no longer claims
                       that share can be withdrawn ("Most you can withdraw" is
                       the server's figure). */}
-                  <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
+                  <div style={{ fontSize: "0.75rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
                     In your connection
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -586,7 +586,7 @@ export default function WithdrawBitcoin() {
                   border: "1px solid color-mix(in srgb, var(--amber) 30%, transparent)",
                 }}>
                   <div>
-                    <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+                    <div style={{ fontSize: "0.75rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
                       In your connection
                     </div>
                     <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
@@ -596,7 +596,7 @@ export default function WithdrawBitcoin() {
                   </div>
                   {maxWithdrawable != null && minW != null && maxWithdrawable >= minW && (
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+                      <div style={{ fontSize: "0.75rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
                         Most you can withdraw
                       </div>
                       <div style={{ fontFamily: "var(--mono)", fontSize: "0.8125rem", color: "var(--text-2)" }}>
@@ -680,7 +680,7 @@ export default function WithdrawBitcoin() {
                 )}
               </div>
               {maxWithdrawable != null && maxWithdrawable > 0 && (
-                <p className="text-dim" data-testid="max-fee-note" style={{ fontSize: "0.6875rem", marginTop: 0, marginBottom: 8 }}>
+                <p className="text-dim" data-testid="max-fee-note" style={{ fontSize: "0.75rem", marginTop: 0, marginBottom: 8 }}>
                   {quoteBased
                     ? "This allows for today's fees; if they rise before you confirm, the quote will say so."
                     : "The swap's fees come out of this, so the exact amount you can withdraw is set when you get a quote."}
@@ -709,7 +709,7 @@ export default function WithdrawBitcoin() {
                 </span>
               </div>
               {channelLocal != null && channelCapacity != null && channelCapacity > 0 && (
-                <div style={{ background: "var(--bg-2)", borderLeft: "2px solid var(--amber)", padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 10 }}>
+                <div style={{ background: "var(--bg-2)", borderLeft: "2px solid var(--amber)", padding: 8, fontSize: "0.75rem", color: "var(--text-2)", marginBottom: 10 }}>
                   After withdrawal: <strong data-testid="capacity-text" style={{ color: "var(--text)" }}>
                     {channelLocalPct}% → {Math.max(0, Math.round(((channelLocal - amount) / channelCapacity) * 100))}% of your connection
                   </strong>
@@ -717,7 +717,7 @@ export default function WithdrawBitcoin() {
               )}
               </>)}
               {minW != null && maxW != null && (
-                <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
+                <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>
                   Minimum: {minW.toLocaleString()} sats. Maximum: {maxW.toLocaleString()} sats.
                 </p>
               )}
@@ -798,7 +798,7 @@ export default function WithdrawBitcoin() {
                   </button>
                 </div>
               )}
-              <p className="text-dim" style={{ fontSize: "0.6875rem", marginTop: 4 }}>
+              <p className="text-dim" style={{ fontSize: "0.75rem", marginTop: 4 }}>
                 Your withdrawn bitcoin will be sent to this on-chain address.
               </p>
             </div>
@@ -852,7 +852,7 @@ export default function WithdrawBitcoin() {
                         ~{fmtSats(netFee)}
                       </div>
                       {toUsd(netFee) && (
-                        <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", marginTop: 4 }}>
+                        <div style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 4 }}>
                           (~{toUsd(netFee)})
                         </div>
                       )}
@@ -1050,7 +1050,7 @@ export default function WithdrawBitcoin() {
                             {s.actual_fee_sat != null
                               ? (s.actual_fee_usd_cents != null
                                   // Drive-mode P3 (R40(5)): the stored dollars, sats beneath.
-                                  ? <><div>{centsText(s.actual_fee_usd_cents)}</div><div style={{ fontSize: "0.6875rem", color: "var(--text-3)" }}>{s.actual_fee_sat.toLocaleString()}</div></>
+                                  ? <><div>{centsText(s.actual_fee_usd_cents)}</div><div style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>{s.actual_fee_sat.toLocaleString()}</div></>
                                   : s.actual_fee_sat.toLocaleString())
                               : s.quoted_fee_sat != null
                                 ? `~${s.quoted_fee_sat.toLocaleString()}`
@@ -1109,7 +1109,7 @@ export default function WithdrawBitcoin() {
                                       {expandedDetail.swap_request.destination_address && (
                                         <div style={{ gridColumn: "1 / -1" }}>
                                           <span style={{ color: "var(--text-3)" }}>Destination:</span>{" "}
-                                          <span style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", wordBreak: "break-all" }}>
+                                          <span style={{ fontFamily: "var(--font-id)", fontSize: "0.75rem", wordBreak: "break-all" }}>
                                             {expandedDetail.swap_request.destination_address}
                                           </span>
                                         </div>
@@ -1126,19 +1126,19 @@ export default function WithdrawBitcoin() {
                                       </>
                                     )}
                                     {expandedDetail.execution?.provider_swap_id && (
-                                      <div style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
+                                      <div style={{ fontFamily: "var(--font-id)", fontSize: "0.75rem", color: "var(--text-3)", wordBreak: "break-all" }}>
                                         Swap hash: {expandedDetail.execution.provider_swap_id}
                                       </div>
                                     )}
                                     {expandedDetail.execution?.onchain_txid && (
-                                      <div style={{ fontFamily: "var(--font-id)", fontSize: "0.65rem", color: "var(--text-3)", wordBreak: "break-all" }}>
+                                      <div style={{ fontFamily: "var(--font-id)", fontSize: "0.75rem", color: "var(--text-3)", wordBreak: "break-all" }}>
                                         Bitcoin transaction: {expandedDetail.execution.onchain_txid}
                                       </div>
                                     )}
                                     {!isTerminal(expandedDetail.swap_request.status) && (
                                       <button
                                         className="btn btn-outline"
-                                        style={{ alignSelf: "flex-start", fontSize: "0.7rem", padding: "4px 12px" }}
+                                        style={{ alignSelf: "flex-start", fontSize: "0.75rem", padding: "4px 12px" }}
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           setTrackingId(expandedDetail.swap_request.id);
