@@ -114,15 +114,30 @@ test("H7 pin: slot 1's values are today's literal values, every row", () => {
     lndGrpcPort: { Farmer1: 10004, Treasury: 10005, Merchant1: 10006, "External-Peer-1": 10007 },
   });
   assert.deepEqual(ROLES.map((r) => envFile(1, r.role)), [".env.dev.treasury", ".env.dev.member-a", ".env.dev.member-b"]);
-  for (const i of ROLES.keys()) assert.deepEqual(injectedEnv(1, i, ctx(1)), {}, "D15: slot 1 injects nothing");
+  // dev-safety R2 (decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…, R2) supersedes D15 for this one
+  // value: slot 1 injects API_LISTEN_HOST=127.0.0.1 and nothing else.
+  for (const i of ROLES.keys()) {
+    assert.deepEqual(injectedEnv(1, i, ctx(1)), { API_LISTEN_HOST: "127.0.0.1" }, "R2: slot 1 injects only API_LISTEN_HOST");
+  }
 });
 
-test(`H8 pin: with the slot unset, every slot-1 command line is byte-identical to ${BASE}`, () => {
+// dev-safety R2 (decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…, R2): the API lines now carry
+// API_LISTEN_HOST=127.0.0.1 after `cd app/api && `; every other byte is still 523e6ab's. The spec's own
+// H8 text is corrected by a vault pass, not here.
+const R2_PREFIX = "cd app/api && ";
+const withListenHost = (text) => {
+  assert.equal(text.split(R2_PREFIX).length, 2, `exactly one ${JSON.stringify(R2_PREFIX)} in ${JSON.stringify(text)}`);
+  return text.replace(R2_PREFIX, `${R2_PREFIX}API_LISTEN_HOST=127.0.0.1 `);
+};
+
+test(`H8 pin: with the slot unset, every slot-1 command line is byte-identical to ${BASE}, the API lines plus R2's host`, () => {
   const base = scriptsAtBase();
   // dev:loopserver follows H9 and dev:kill follows H11; both are pinned below.
   const pinned = SCRIPTS.filter((s) => s !== "dev:loopserver" && s !== "dev:kill");
+  const api = new Set(ROLES.map((r) => r.api));
   for (const script of pinned) {
-    assert.equal(scriptCommand(script, 1, ctx(1)), base[script], `${script} differs from ${BASE}`);
+    const expected = api.has(script) ? withListenHost(base[script]) : base[script];
+    assert.equal(scriptCommand(script, 1, ctx(1)), expected, `${script} differs from ${BASE}${api.has(script) ? " + R2" : ""}`);
   }
 });
 
@@ -178,6 +193,7 @@ test("H7 slot 2: every row", () => {
     LOOP_MACAROON_PATH: "/home/user/.bitcorn-dev/slot-2/member-a/loopd/regtest/loop.macaroon",
     BITCOIN_NETWORK: "regtest",
     LOOP_GRPC_HOST: "127.0.0.1",
+    API_LISTEN_HOST: "127.0.0.1", // dev-safety R2
   });
 });
 
@@ -196,7 +212,7 @@ test("H8 slot 2: the command lines carry slot 2's values", () => {
     "LND_DIR=/home/user/.polar/networks/2/volumes/lnd/Treasury LOOP_GRPC_PORT=11110 " +
     "LOOP_TLS_CERT_PATH=/home/user/.bitcorn-dev/slot-2/treasury/loopd/regtest/tls.cert " +
     "LOOP_MACAROON_PATH=/home/user/.bitcorn-dev/slot-2/treasury/loopd/regtest/loop.macaroon " +
-    "BITCOIN_NETWORK=regtest LOOP_GRPC_HOST=127.0.0.1 " +
+    "BITCOIN_NETWORK=regtest LOOP_GRPC_HOST=127.0.0.1 API_LISTEN_HOST=127.0.0.1 " + // API_LISTEN_HOST: dev-safety R2
     "dotenv -e ../../.env.dev.slot-2.treasury -- npm run dev");
   assert.equal(scriptCommand("dev:loopserver-stop", 2, c),
     "docker stop bitcorn-loopserver-2 2>/dev/null && echo 'loopserver stopped'");
@@ -246,23 +262,40 @@ test("H7 D16: a network whose node names differ from the five is refused, in slo
 
 // ─── H7, D14, D15: the env files by slot ──────────────────────────────────
 
-test("H7 env files: slot 1 selects today's .env.dev.<role> and injects nothing; slot 2 selects .env.dev.slot-2.<role>", () => {
+test("H7 env files: slot 1 selects today's .env.dev.<role> and injects only R2's host; slot 2 selects .env.dev.slot-2.<role>", () => {
   for (const [i, r] of ROLES.entries()) {
     const one = scriptCommand(r.api, 1, ctx(1));
     const two = scriptCommand(r.api, 2, ctx(2));
-    assert.match(one, new RegExp(`^cd app/api && dotenv -e \\.\\./\\.\\./\\.env\\.dev\\.${r.role} +-- npm run dev$`));
+    // API_LISTEN_HOST: dev-safety R2, which supersedes D15 for that value only.
+    assert.match(one, new RegExp(`^cd app/api && API_LISTEN_HOST=127\\.0\\.0\\.1 dotenv -e \\.\\./\\.\\./\\.env\\.dev\\.${r.role} +-- npm run dev$`));
     assert.match(two, new RegExp(`dotenv -e \\.\\./\\.\\./\\.env\\.dev\\.slot-2\\.${r.role} -- npm run dev$`));
     assert.match(two, new RegExp(`PORT=${3111 + i} `));
   }
 });
 
-test("ruling (b): slot 2's API lines inject BITCOIN_NETWORK=regtest and LOOP_GRPC_HOST=127.0.0.1; slot 1's inject neither", () => {
+// dev-safety R2 (decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…, R2): slot 1 now injects
+// API_LISTEN_HOST, so "slot 1's inject neither" holds for these two values only, not "inject nothing".
+test("ruling (b): slot 2's API lines inject BITCOIN_NETWORK=regtest and LOOP_GRPC_HOST=127.0.0.1; slot 1's inject neither (R2's host aside)", () => {
   for (const r of ROLES) {
     const one = scriptCommand(r.api, 1, ctx(1));
     const two = scriptCommand(r.api, 2, ctx(2));
     assert.match(two, / BITCOIN_NETWORK=regtest .* dotenv -e /, `${r.api} slot 2`);
     assert.match(two, / LOOP_GRPC_HOST=127\.0\.0\.1 .*dotenv -e /, `${r.api} slot 2`);
     assert.doesNotMatch(one, /BITCOIN_NETWORK|LOOP_GRPC_HOST/, `${r.api} slot 1`);
+    assert.match(one, /^cd app\/api && API_LISTEN_HOST=127\.0\.0\.1 dotenv -e /, `${r.api} slot 1: R2's host, and only it`);
+  }
+});
+
+test("R2: every slot's API environment injects API_LISTEN_HOST=127.0.0.1, slot 1 and slot N; no other line carries it", () => {
+  for (const slot of [1, 2, 3]) {
+    const c = ctx(slot, { networks: [NET1, NET2, { ...NET2, id: 3, name: "bitcorn-dev-3" }] });
+    for (const [i, r] of ROLES.entries()) {
+      assert.equal(injectedEnv(slot, i, c).API_LISTEN_HOST, "127.0.0.1", `${r.api} slot ${slot}: injectedEnv`);
+      assert.match(scriptCommand(r.api, slot, c), / API_LISTEN_HOST=127\.0\.0\.1 dotenv -e /, `${r.api} slot ${slot}: command line`);
+    }
+    for (const s of SCRIPTS.filter((s) => !ROLES.some((r) => r.api === s))) {
+      assert.doesNotMatch(scriptCommand(s, slot, c), /API_LISTEN_HOST/, `${s} slot ${slot}`);
+    }
   }
 });
 
@@ -574,6 +607,22 @@ test("H14 enforcement: with the matching HARNESS_HOLDER, every script runs its c
     assert.equal(r.status, 0, `${script}: exit ${r.status}, stderr ${r.stderr}`);
     assert.notEqual(r.ran, "", `${script} ran nothing`);
     if (expect[script]) assert.match(r.ran, expect[script], script);
+  }
+});
+
+test("R2 end to end: the API process's environment carries API_LISTEN_HOST=127.0.0.1, slot 1 and slot 2", () => {
+  const { home, run } = sandbox();
+  fs.writeFileSync(path.join(home, ".polar", "networks", "networks.json"), JSON.stringify({ networks: [NET1, NET2] }));
+  // dotenv's stub records the environment it was started with, not just its argv.
+  fs.writeFileSync(path.join(home, "bin", "dotenv"),
+    '#!/bin/sh\necho "dotenv API_LISTEN_HOST=${API_LISTEN_HOST-<unset>} $*" >> "$STUB_LOG"\nexit 0\n', { mode: 0o755 });
+  for (const slot of [1, 2]) {
+    take(home, slot);
+    for (const r of ROLES) {
+      const res = run(["run", r.api], { HARNESS_SLOT: String(slot), HARNESS_HOLDER: "harness-host" });
+      assert.equal(res.status, 0, `${r.api} slot ${slot}: ${res.stderr}`);
+      assert.match(res.ran, /^dotenv API_LISTEN_HOST=127\.0\.0\.1 -e /m, `${r.api} slot ${slot}: ${res.ran}`);
+    }
   }
 });
 

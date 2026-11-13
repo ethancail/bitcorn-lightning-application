@@ -5108,7 +5108,7 @@ function main(): void {
 
   const server = http.createServer(handleRequest);
 
-  server.listen(PORTS.userApi, () => {
+  server.listen(PORTS.userApi, PORTS.listenHost, () => {
     console.log(`[api] listening on port ${PORTS.userApi}`);
     // Re-assert the member's stored alias once LND is reachable (~5s, matching
     // the member advisor's startup delay). Member-scoped inside the function.

@@ -17,8 +17,10 @@
 // SLOT 1 IS TODAY'S HARNESS (D6). Its command lines are byte-identical to the
 // scripts at 523e6ab, except dev:loopserver (D13: the bridge network, bound to
 // 127.0.0.1) and dev:kill (H11: no loopserver port, the loopd REST ports added,
-// a --print mode; H15: listening sockets only). Slot 1 injects no environment
-// (D15): today's .env.dev.<role> files stay authoritative.
+// a --print mode; H15: listening sockets only) and the API lines, which carry
+// API_LISTEN_HOST=127.0.0.1 (dev-safety R2, superseding D15 for that one
+// value). Slot 1 injects nothing else: today's .env.dev.<role> files stay
+// authoritative for every other value.
 //
 // SLOT N (N >= 2), per D8:
 //   API ports        3101-3103 + 10(N-1)     web ports   5173-5175 + 10(N-1)
@@ -29,8 +31,9 @@
 //   Polar network    the one named bitcorn-dev-N in ~/.polar/networks/networks.json;
 //                    absent is an error, never a fallback to network 1
 //   API env files    .env.dev.slot-N.<role> (D14: slot N's identity), with the
-//                    computed values above, BITCOIN_NETWORK=regtest and
-//                    LOOP_GRPC_HOST=127.0.0.1 injected over them (D7). dotenv-cli
+//                    computed values above, BITCOIN_NETWORK=regtest,
+//                    LOOP_GRPC_HOST=127.0.0.1 and API_LISTEN_HOST=127.0.0.1
+//                    injected over them (D7; R2). dotenv-cli
 //                    does not override a variable already set, so the injected
 //                    values win; the scripts must never pass it -o.
 //
@@ -151,10 +154,15 @@ const lndVolume = (home, networkId, node) => `${checkHome(home)}/.polar/networks
 // (Ethan's ruling, option (b), 2026-11-09). Slot 1 gets them from its own files.
 export const SLOT_N_SETTINGS = { BITCOIN_NETWORK: "regtest", LOOP_GRPC_HOST: "127.0.0.1" };
 
-// D15: slot 1 injects nothing. Slot N: its computed values and SLOT_N_SETTINGS,
-// over its own files.
+// dev-safety R2 (vault: decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…):
+// every slot's API binds loopback only. The API reads it in ports.ts; unset
+// there means production's bind, so the harness is its single statement.
+export const ALL_SLOT_SETTINGS = { API_LISTEN_HOST: "127.0.0.1" };
+
+// Slot 1: ALL_SLOT_SETTINGS only (R2 supersedes D15 for that value). Slot N:
+// its computed values, SLOT_N_SETTINGS and ALL_SLOT_SETTINGS, over its own files.
 export function injectedEnv(slot, roleIndex, ctx) {
-  if (slot === 1) return {};
+  if (slot === 1) return { ...ALL_SLOT_SETTINGS };
   const { role, node } = ROLES[roleIndex];
   const ports = slotPorts(slot);
   const network = ctx.network();
@@ -169,6 +177,7 @@ export function injectedEnv(slot, roleIndex, ctx) {
     LOOP_TLS_CERT_PATH: `${dir}/loopd/regtest/tls.cert`,
     LOOP_MACAROON_PATH: `${dir}/loopd/regtest/loop.macaroon`,
     ...SLOT_N_SETTINGS,
+    ...ALL_SLOT_SETTINGS,
   };
 }
 
