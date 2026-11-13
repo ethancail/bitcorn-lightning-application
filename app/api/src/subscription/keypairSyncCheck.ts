@@ -85,12 +85,26 @@ async function runSyncCheck(): Promise<void> {
   }
 
   const publishedX = body?.subscription_public_key?.x ?? null;
+  // dev-safety R1: the publish command is given on mainnet only. The only
+  // Worker is production; off mainnet both warnings say this key must not be
+  // published there, and give no command.
+  const devKey =
+    `This is a dev/regtest key (BITCOIN_NETWORK=${ENV.bitcoinNetwork}). ` +
+    `The only Worker is production, and this key must not be published there.`;
+  if (!publishedX && ENV.bitcoinNetwork !== "mainnet") {
+    console.warn(`[SUBSCRIPTION_KEYPAIR_SYNC] Worker has no SUBSCRIPTION_PUBLIC_KEY set. ${devKey}`);
+    return;
+  }
   if (!publishedX) {
     console.warn(
       `[SUBSCRIPTION_KEYPAIR_SYNC] Worker has no SUBSCRIPTION_PUBLIC_KEY set; ` +
         `member-side JWT validation will fail until you publish it. ` +
         `Run: cd cloudflare-worker && wrangler secret put SUBSCRIPTION_PUBLIC_KEY (paste ${localX} when prompted, no trailing newline) && wrangler deploy`,
     );
+    return;
+  }
+  if (publishedX !== localX && ENV.bitcoinNetwork !== "mainnet") {
+    console.warn(`[SUBSCRIPTION_KEYPAIR_SYNC] Worker SUBSCRIPTION_PUBLIC_KEY does not match local keypair. ${devKey}`);
     return;
   }
   if (publishedX !== localX) {

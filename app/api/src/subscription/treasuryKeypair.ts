@@ -16,6 +16,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { generateKeyPair, exportJWK, importJWK, type JWK, type KeyLike } from "jose";
+import { ENV } from "../config/env";
 
 const SECRETS_DIR = process.env.SECRETS_DIR ?? "/data/secrets";
 const SIGNING_KEY_PATH = join(SECRETS_DIR, "subscription_signing.jwk");
@@ -56,6 +57,17 @@ async function generateAndPersist(): Promise<StoredKeyfile> {
   // they need to copy into the Worker secret. The log fires exactly
   // once per keypair lifetime (subsequent reads of the existing keyfile
   // skip this branch via loadKeyfile()).
+  //
+  // dev-safety R1: only on mainnet. The only Worker is production, so a
+  // dev/regtest API's log must never carry the command that publishes its key
+  // there; off mainnet it says so instead, and gives no command.
+  if (ENV.bitcoinNetwork !== "mainnet") {
+    console.log(
+      `[SUBSCRIPTION_KEYPAIR_GENERATED] A dev/regtest key was generated (BITCOIN_NETWORK=${ENV.bitcoinNetwork}). ` +
+        `The only Worker is production, and this key must not be published there.`,
+    );
+    return file;
+  }
   const jwkValueJson = JSON.stringify(file.publicJwk);
   const rawXValue = String(file.publicJwk.x ?? "");
   console.log(
