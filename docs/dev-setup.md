@@ -348,7 +348,7 @@ This section is the single statement of the gate procedure. `docs/RELEASE.md` on
 1. Pre-flight.
 2. DB backup.
 3. The spec's checks.
-4. Teardown with a sha256 restore.
+4. Teardown with a sha256 restore, then the deposit sweep ([Teardown: sweep the deposit addresses](#teardown-sweep-the-deposit-addresses)).
 5. Post-run harness state.
 6. Pre-flight again.
 
@@ -364,11 +364,15 @@ It refuses unless the slot's lock is held by `HARNESS_HOLDER` (see [The harness 
 
 | Exit | Meaning |
 |---|---|
-| 0 | Every check passed |
+| 0 | Every check passed, or passed apart from a WARN (only `deposit-utxos-unledgered` prints one; it never sets the exit code) |
 | 1 | At least one check failed |
 | 2 | It could not look: docker unreachable, a container missing, or a command errored or printed output that does not parse. Wins over 1. Also: refused by the lock, before any check, with the refusal on stderr and nothing on stdout |
 
 It checks the five containers against the pinned set, that Polar is not running, that the compose file still gives `backend1` `restart: unless-stopped`, that restart counts hold steady across the window, that bitcoind answers with `blocks` equal to `headers`, that all four LNDs report `synced_to_chain: true`, and that Treasury's peers and active channels are exactly the three other nodes. Those last two compare sets as well as counts, so a right count made of the wrong members fails. It uses the active docker context or `DOCKER_HOST`.
+
+It also reads the slot's treasury DB (`~/.bitcorn-dev/treasury/db/bitcorn.sqlite`; slot N, `~/.bitcorn-dev/slot-N/treasury/db/bitcorn.sqlite`) and Treasury's `listunspent`. It never opens the live DB files: any SQLite open of a WAL-mode DB, read-only included, can write its `-shm`, beside files the restore verifies by sha256. It copies `bitcorn.sqlite` and, if present, its `-wal` (not the `-shm`, which SQLite rebuilds) into a fresh temp directory, reads the copy read-only with the `sqlite3` CLI, and deletes the directory, on failure too. If the live files' size or mtime changed during the copy, a writer was active and the copy may be torn. A slot's API can be running when the pre-flight runs (slot N's commands below run it after `dev:all`), so a torn copy is retried, up to 3 attempts 250 ms apart; a third torn copy is CANNOT-LOOK, never a count. The line reports `copy-attempts=N`. Its `deposit-utxos-unledgered` line lists every UTXO at a subscription deposit address whose outpoint is in neither `subscription_payment` nor `subscription_pending_attribution`: one the API's next scan would credit. It is non-blocking: any is a WARN, with the count and the outpoints, and does not change the exit code. The WARN is expected in a gate that deliberately reproduces a restore replay; otherwise it means the teardown sweep was skipped ([Teardown: sweep the deposit addresses](#teardown-sweep-the-deposit-addresses)). A DB or wallet it cannot read is still CANNOT-LOOK, which fails the run, never a zero. It writes nothing, `--repair` included.
+
+The check needs the `sqlite3` CLI on the host; without it, the check reports CANNOT-LOOK. ubuntu-pc has `3.45.1-1ubuntu2.8`. The OptiPlex had none: `3.45.1-1ubuntu2.9` was installed there on 2026-11-13 under the outside-code adoption rule, pinned to that host's own `libsqlite3-0` version. Check a host with `dpkg-query -W sqlite3 libsqlite3-0`.
 
 `--repair` is opt-in and makes exactly two writes, re-checking after each. It mines one block, only when every LND was read and every unsynced LND matches bitcoind's best height and hash; one mismatch and it mines nothing. It runs `lncli connect` by hostname, only for an expected peer missing from Treasury. An unexpected peer stays a FAIL. It never restarts or stops a container or the daemon, never edits the compose file, and never opens or closes a channel. A mined block advances the regtest chain, and the teardown does not undo it.
 
@@ -392,9 +396,43 @@ Reconnect with `--repair` or by hand. Check with `docker exec -u lnd polar-n1-Tr
 
 As of 2026-10-28, `backend1` has `restart: unless-stopped` on the dev machine — in `~/.polar/networks/1/docker-compose.yml` and on the live container (`docker update --restart unless-stopped polar-n1-backend1`) — and came back by itself through a daemon restart the same day. A Polar rewrite of the compose file drops that line, so the pre-flight checks the file. To check the live container, `docker inspect --format '{{.HostConfig.RestartPolicy.Name}}' polar-n1-backend1`.
 
+### Teardown: sweep the deposit addresses
+
+The sha256 restore puts back the app DBs, not Treasury's LND wallet. A payment made to a deposit address since the snapshot stays in the wallet as a UTXO, while the restored DB has no ledger row for it, so the API's first scan after the restore would credit it again. The teardown therefore spends every UTXO at a deposit address to a Treasury address that is not one (dev-safety R6). Do it after the restore is verified and before any API starts, with the slot's lock still held:
+
+```bash
+# 1. The deposit addresses, from a copy of the restored treasury DB, never the live files: an open
+#    of the live DB can write its -shm beside the files the restore just verified. Copy the main
+#    file and its -wal if present (not the -shm), and read the copy only if neither live file's
+#    size or mtime changed during the copy. (Slot N: D=~/.bitcorn-dev/slot-N/treasury/db.)
+D=~/.bitcorn-dev/treasury/db; T=$(mktemp -d)
+before=$(stat -c '%n %s %y' "$D/bitcorn.sqlite" "$D/bitcorn.sqlite-wal" 2>/dev/null)
+cp "$D/bitcorn.sqlite" "$T/"; if [ -e "$D/bitcorn.sqlite-wal" ]; then cp "$D/bitcorn.sqlite-wal" "$T/"; fi
+after=$(stat -c '%n %s %y' "$D/bitcorn.sqlite" "$D/bitcorn.sqlite-wal" 2>/dev/null)
+if [ "$before" = "$after" ]; then sqlite3 -readonly "$T/bitcorn.sqlite" "SELECT deposit_address FROM subscription"; else echo "the DB changed during the copy: is an API still running?"; fi
+rm -rf "$T"
+
+# 2. Treasury's UTXOs. Note the outpoint of each one whose address is in that list.
+docker exec -u lnd polar-n1-Treasury lncli --network regtest listunspent
+
+# 3. The target: a taproot address. Deposit addresses are p2wpkh (createLndChainAddress in
+#    app/api/src/lightning/lnd.ts), so this can never be one.
+docker exec -u lnd polar-n1-Treasury lncli --network regtest newaddress p2tr
+
+# 4. The sweep: every outpoint from step 2, one --utxo each, all of it to the step-3 address.
+docker exec -u lnd polar-n1-Treasury lncli --network regtest sendcoins --sweepall --addr <p2tr address> --utxo <txid:vout> --utxo <txid:vout> --label "gate teardown: deposit sweep"
+
+# 5. Confirm it.
+docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest generatetodescriptor 1 "raw(6a)"
+```
+
+`sendcoins` spends only outpoints with at least one confirmation, so if step 2 shows one with 0, mine the step-5 block first. With no UTXO at a deposit address, skip steps 3 to 5. In a slot other than 1, the containers are `polar-n<id>-Treasury` and `polar-n<id>-backend1`. Phase 6's pre-flight checks the result: `deposit-utxos-unledgered` should PASS with `unledgered=0`. A WARN there, outside a gate that reproduces a restore replay on purpose, names the outpoints the sweep missed.
+
 ### Evidence
 
 The gate session saves the pre-flight's full output to a dated file outside the repo. The gate record is a vault `investigations/` record. It holds that output verbatim, the DB backup path, its sha256 values and the session transcript id. If a run allocated (gate 1 advanced Treasury's regtest wallet address index by one) or mined a block under `--repair`, its record says the run is not fully restorable.
+
+**What a restore cannot put back: the wallets.** After a restore, wallet payments made since the snapshot are re-processed at the first scan. The vault's `decisions/2026-11-13-recredit-check-ruling-b-credit-from-confirmation-time.md` governs both: its "## 2. What the recon found" describes the restore-replay mechanism, and its "## 3. The ruling, in two steps" says how those credits are dated, which it is changing. The [deposit sweep](#teardown-sweep-the-deposit-addresses) leaves that scan nothing to re-process, and the pre-flight's `deposit-utxos-unledgered` line reports any it missed. So a brief that tests tier behaviour seeds the tier state it needs after that first scan, not before it: the scan can move it.
 
 ### Gate prompt template
 
@@ -404,8 +442,8 @@ Fill in the blanks and give it to a Claude Code session in this repo.
 Polar regtest gate for PR #<number>, head <sha>. Work against that head, before merge.
 
 Procedure: docs/dev-setup.md, section "Polar regtest gate". The phases are fixed:
-pre-flight; DB backup; the spec's checks; teardown with a sha256 restore; post-run
-harness state; pre-flight again.
+pre-flight; DB backup; the spec's checks; teardown with a sha256 restore, then the
+deposit sweep; post-run harness state; pre-flight again.
 
 Arc spec: <path>
 Pass and fail conditions, quoted from the spec, not paraphrased:
