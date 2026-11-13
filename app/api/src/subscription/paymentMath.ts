@@ -49,26 +49,34 @@ export function attributePayment(
 
 /**
  * Computes the new `paid_through` value after a creditable payment per
- * spec §4.2. Branches on whether the member is currently within their
- * paid window or already lapsed.
+ * spec §4.2. Branches on whether the member was within their paid window
+ * or already lapsed AT THE CREDIT TIME.
  *
- * - Early payment (now <= currentPaidThrough): stack forward from
+ * `creditTimeMs` is the payment's credit time. For an on-chain credit it
+ * is the deposit output's CONFIRMATION TIME — the confirming block's
+ * header nTime × 1000 — never the wall clock (recredit-check ruling (b),
+ * bitcorn-research specs/2026-11-13-recredit-check-credit-from-
+ * confirmation-time-spec.md §3, which supersedes the 2026-05-08 spec's
+ * "now()" here). A chain fact, so a replay after a DB restore computes
+ * the same value as the original credit.
+ *
+ * - Early payment (creditTime <= currentPaidThrough): stack forward from
  *   currentPaidThrough.
- * - Late payment OR pre-payment first-ever (now > currentPaidThrough,
- *   i.e. currently lapsed or grandfathered/prepay sentinel): reset
- *   from now.
+ * - Late payment OR pre-payment first-ever (creditTime >
+ *   currentPaidThrough, i.e. lapsed or grandfathered/prepay sentinel):
+ *   reset from creditTime.
  *
  * Pre-payment first-ever is naturally handled by the late-payment
- * branch because `paid_through = created_at` < now() at first payment.
+ * branch because `paid_through = created_at` < creditTime at first payment.
  */
 export function computeNewPaidThrough(
   currentPaidThroughMs: number,
   periodExtensionDays: number,
-  nowMs: number,
+  creditTimeMs: number,
 ): number {
   const extensionMs = periodExtensionDays * MS_PER_DAY;
-  if (nowMs <= currentPaidThroughMs) {
+  if (creditTimeMs <= currentPaidThroughMs) {
     return currentPaidThroughMs + extensionMs;
   }
-  return nowMs + extensionMs;
+  return creditTimeMs + extensionMs;
 }
