@@ -16,6 +16,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -98,7 +99,12 @@ const K = {
   peers: lncli("Treasury", "listpeers"),
   channels: lncli("Treasury", "listchannels", "--active_only"),
   connect: (name) => lncli("Treasury", "connect", `${PUB[name]}@${name}:9735`),
+  utxos: lncli("Treasury", "listunspent"),
 };
+
+// The treasury-DB read, faked for every case outside (k), so none reads this
+// host's own ~/.bitcorn-dev DB. (k) runs the real sqlite3 on a fixture.
+const emptyLedger = async () => ok(JSON.stringify({ deposit_addresses: [], payment: [], pending: [] }));
 
 const healthy = () => ({
   [K.version]: ok('"29.9.1"\n'),
@@ -109,6 +115,7 @@ const healthy = () => ({
   ...Object.fromEntries(ALL_NODES.map((n) => [K.getinfo(n), getinfoOut(n)])),
   [K.peers]: peersOut(),
   [K.channels]: channelsOut(),
+  [K.utxos]: ok(JSON.stringify({ utxos: [] })),
 });
 
 const allStale = () =>
@@ -150,6 +157,7 @@ const CHECKS = [
   ...ALL_NODES.map((n) => `synced-to-chain:${n}`),
   "treasury-peers",
   "treasury-channels",
+  "deposit-utxos-unledgered",
 ];
 
 const FORBIDDEN_DOCKER_VERBS = new Set([
@@ -204,6 +212,7 @@ async function run(overrides = {}, options = {}) {
     print: (line) => lines.push(line),
     env: options.env ?? {},
     repair: options.repair ?? false,
+    sqlite: emptyLedger,
   });
 
   assert.deepEqual(unplanned, [], "the script made a docker call the scenario did not plan");
@@ -409,7 +418,7 @@ test("(c) line format: UTC timestamp, status, check name, value; then a timestam
   }
   assert.equal(
     lines.at(-1),
-    "2026-10-30T16:00:00.000Z summary pass=8 fail=4 repaired=0 cannot-look=0 exit=1",
+    "2026-10-30T16:00:00.000Z summary pass=9 fail=4 repaired=0 cannot-look=0 exit=1",
   );
 });
 
@@ -833,6 +842,7 @@ const healthy2 = () => ({
   ...Object.fromEntries(ALL_NODES.map((n) => [lncli2(n, "getinfo"), getinfoOut(n)])),
   [lncli2("Treasury", "listpeers")]: peersOut(),
   [lncli2("Treasury", "listchannels", "--active_only")]: channelsOut(),
+  [lncli2("Treasury", "listunspent")]: ok(JSON.stringify({ utxos: [] })),
 });
 
 async function runSlot(slot, { networks = SLOT_NETWORKS, psOut = ok(QUIET_PS) } = {}) {
@@ -859,6 +869,7 @@ async function runSlot(slot, { networks = SLOT_NETWORKS, psOut = ok(QUIET_PS) } 
     now: () => new Date("2026-10-30T16:00:00.000Z"),
     print: (line) => lines.push(line),
     env: { HARNESS_SLOT: slot },
+    sqlite: emptyLedger,
   });
   for (const args of calls) assert.ok(!FORBIDDEN_DOCKER_VERBS.has(args[0]), `forbidden docker verb: ${args.join(" ")}`);
   return { exitCode, lines, calls, unplanned, composeReads, networkReads };
@@ -1001,4 +1012,253 @@ test("(j) lock, cli: the real entry point refuses with no lock, exit 2, printing
   assert.equal(r.stdout, "");
   assert.match(r.stderr, /^polar-preflight: slot 1 refused: no lock/);
   assert.equal(fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "", "", "docker and ps must not be called");
+});
+
+// ─── (k) deposit UTXOs with no ledger row (dev-safety R6) ─────────────────
+// A UTXO at a deposit address that is in neither subscription_payment nor
+// subscription_pending_attribution is one the detector would credit at its next
+// scan (detector.ts:115, :189-204). These run the real sqlite3 against a fixture
+// treasury DB built from migration 036, and the fake docker for the wallet.
+
+import * as preflight from "./polar-preflight.mjs";
+
+const MIGRATION_036 = path.join(ROOT, "app", "api", "src", "db", "migrations", "036_member_subscription.sql");
+const DEPOSIT_A = "bcrt1qdepositaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const DEPOSIT_B = "bcrt1qdepositbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const OTHER_ADDR = "bcrt1pnotadepositcccccccccccccccccccccccccccccc";
+const TX_UNLEDGERED = "11".repeat(32);
+const TX_PAYMENT = "22".repeat(32);
+const TX_PENDING = "33".repeat(32);
+const TX_OTHER = "44".repeat(32);
+
+function sqliteRun(db, sql) {
+  const r = spawnSync("sqlite3", [db], { input: sql, encoding: "utf8" });
+  assert.equal(r.status, 0, `fixture sqlite3 failed: ${r.stderr}`);
+  return r.stdout;
+}
+
+// A fake HOME whose slot-1 treasury DB (dataDir(1, "treasury")/db) holds two
+// members, one onchain payment and one pending attribution. WAL mode, as the
+// API sets it (db/index.ts:16); closed cleanly, so no -wal or -shm is left.
+function ledgerHome({ dropPending = false } = {}) {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-ledger-"));
+  const dir = path.join(home, ".bitcorn-dev", "treasury", "db");
+  fs.mkdirSync(dir, { recursive: true });
+  const db = path.join(dir, "bitcorn.sqlite");
+  sqliteRun(db, "PRAGMA journal_mode=WAL;\n" + fs.readFileSync(MIGRATION_036, "utf8"));
+  sqliteRun(db, `
+    INSERT INTO subscription (member_pubkey, deposit_address, derivation_path, paid_through, created_at, current_tier)
+      VALUES ('${PUB.Merchant1}', '${DEPOSIT_A}', 'label-a', 0, 0, 'prepay'),
+             ('${PUB.Farmer1}', '${DEPOSIT_B}', 'label-b', 0, 0, 'prepay');
+    INSERT INTO subscription_payment (member_pubkey, txid, vout, amount_sats, received_at, confirmed_at, period_extension_days, kind)
+      VALUES ('${PUB.Merchant1}', '${TX_PAYMENT}', 0, 50000, 0, 0, 30, 'onchain');
+    INSERT INTO subscription_pending_attribution (txid, vout, amount_sats, member_pubkey, received_at, confirmed_at, reason)
+      VALUES ('${TX_PENDING}', 1, 100, '${PUB.Farmer1}', 0, 0, 'underpaid');
+    ${dropPending ? "DROP TABLE subscription_pending_attribution;" : ""}
+  `);
+  return { home, db };
+}
+
+const utxo = (address, outpoint) => ({
+  address_type: 0, address, amount_sat: 50000, pk_script: "00", outpoint, confirmations: 3,
+});
+const utxosOut = (list) => ok(JSON.stringify({ utxos: list }));
+const K_UTXOS = K.utxos;
+const LEDGER_CHECK = "deposit-utxos-unledgered";
+
+// The whole preflight, healthy apart from what a case sets, with the real
+// sqlite3 runner (runPreflight's default) and the fixture HOME.
+async function runLedger({ home, wallet, sqlite, repair = false }) {
+  const responses = { ...healthy(), [K_UTXOS]: wallet };
+  const calls = [];
+  const lines = [];
+  const { exitCode } = await runPreflight({
+    docker: async (args) => {
+      calls.push(args);
+      const key = args.join(" ");
+      if (!(key in responses)) throw new Error(`unplanned docker call: ${key}`);
+      const r = responses[key];
+      if (r instanceof Error) throw r;
+      return r;
+    },
+    ps: async () => ok(QUIET_PS),
+    readCompose: async () => COMPOSE,
+    sleep: async () => {},
+    now: () => new Date("2026-11-13T16:00:00.000Z"),
+    print: (line) => lines.push(line),
+    env: {},
+    repair,
+    home,
+    ...(sqlite ? { sqlite } : {}),
+  });
+  console.log(lineOf(lines, LEDGER_CHECK) ?? "(no deposit-utxos-unledgered line)");
+  return { exitCode, lines, calls };
+}
+
+test("(k) an outpoint at a deposit address with no ledger row is reported: FAIL, its outpoint, unledgered=1", async () => {
+  const { home } = ledgerHome();
+  const { exitCode, lines } = await runLedger({ home, wallet: utxosOut([utxo(DEPOSIT_A, `${TX_UNLEDGERED}:0`)]) });
+  assert.equal(statusOf(lines, LEDGER_CHECK), "FAIL");
+  assert.match(lineOf(lines, LEDGER_CHECK), / unledgered=1 /);
+  assert.match(lineOf(lines, LEDGER_CHECK), new RegExp(`outpoints=\\[${TX_UNLEDGERED}:0\\]$`));
+  assert.equal(exitCode, 1);
+});
+
+test("(k) an outpoint in subscription_payment is not reported", async () => {
+  const { home } = ledgerHome();
+  const { exitCode, lines } = await runLedger({ home, wallet: utxosOut([utxo(DEPOSIT_A, `${TX_PAYMENT}:0`)]) });
+  assert.equal(statusOf(lines, LEDGER_CHECK), "PASS");
+  assert.match(lineOf(lines, LEDGER_CHECK), / at-deposit=1 unledgered=0 outpoints=\[\]$/);
+  assert.equal(exitCode, 0);
+});
+
+test("(k) an outpoint in subscription_pending_attribution is not reported", async () => {
+  const { home } = ledgerHome();
+  const { exitCode, lines } = await runLedger({ home, wallet: utxosOut([utxo(DEPOSIT_B, `${TX_PENDING}:1`)]) });
+  assert.equal(statusOf(lines, LEDGER_CHECK), "PASS");
+  assert.match(lineOf(lines, LEDGER_CHECK), / at-deposit=1 unledgered=0 outpoints=\[\]$/);
+  assert.equal(exitCode, 0);
+});
+
+test("(k) mixed: only the unledgered deposit outpoint is reported; a non-deposit address is ignored", async () => {
+  const { home } = ledgerHome();
+  const wallet = utxosOut([
+    utxo(DEPOSIT_A, `${TX_UNLEDGERED}:0`),
+    utxo(DEPOSIT_A, `${TX_PAYMENT}:0`),
+    utxo(DEPOSIT_B, `${TX_PENDING}:1`),
+    utxo(OTHER_ADDR, `${TX_OTHER}:0`),
+  ]);
+  const { exitCode, lines } = await runLedger({ home, wallet });
+  assert.equal(statusOf(lines, LEDGER_CHECK), "FAIL");
+  assert.match(lineOf(lines, LEDGER_CHECK), / deposit-addresses=2 at-deposit=3 unledgered=1 outpoints=\[[0-9a-f]{64}:0\]$/);
+  assert.match(lineOf(lines, LEDGER_CHECK), new RegExp(TX_UNLEDGERED));
+  assert.equal(exitCode, 1);
+});
+
+// Loud failure: each case must be CANNOT-LOOK and exit 2, never a PASS or a zero.
+const assertLoud = ({ exitCode, lines }, reason) => {
+  assert.equal(statusOf(lines, LEDGER_CHECK), "CANNOT-LOOK");
+  assert.doesNotMatch(lineOf(lines, LEDGER_CHECK), /unledgered=/);
+  assert.match(lineOf(lines, LEDGER_CHECK), reason);
+  assert.equal(exitCode, 2);
+};
+const ONE_UNLEDGERED = utxosOut([utxo(DEPOSIT_A, `${TX_UNLEDGERED}:0`)]);
+
+test("(k) loud: no treasury DB at the slot's path is CANNOT-LOOK, not a zero", async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-ledger-"));
+  assertLoud(await runLedger({ home, wallet: ONE_UNLEDGERED }), /treasury db exited \d+: .*unable to open/);
+});
+
+test("(k) loud: a file that is not a database is CANNOT-LOOK", async () => {
+  const { home, db } = ledgerHome();
+  fs.writeFileSync(db, "this is not a database\n".repeat(200));
+  assertLoud(await runLedger({ home, wallet: ONE_UNLEDGERED }), /treasury db exited \d+: .*not a database/);
+});
+
+test("(k) loud: a DB with no subscription_pending_attribution table is CANNOT-LOOK", async () => {
+  const { home } = ledgerHome({ dropPending: true });
+  assertLoud(await runLedger({ home, wallet: ONE_UNLEDGERED }), /no such table: subscription_pending_attribution/);
+});
+
+test("(k) loud: sqlite3 that cannot run is CANNOT-LOOK", async () => {
+  const { home } = ledgerHome();
+  const sqlite = (args) => runCommand("/nonexistent/sqlite3", args);
+  assertLoud(await runLedger({ home, wallet: ONE_UNLEDGERED, sqlite }), /treasury db could not run/);
+});
+
+test("(k) loud: listunspent exiting non-zero is CANNOT-LOOK", async () => {
+  const { home } = ledgerHome();
+  assertLoud(await runLedger({ home, wallet: bad("rpc error: wallet locked") }), /listunspent exited 1: rpc error/);
+});
+
+test("(k) loud: listunspent that does not run is CANNOT-LOOK", async () => {
+  const { home } = ledgerHome();
+  assertLoud(await runLedger({ home, wallet: new Error("spawn docker ETIMEDOUT") }), /listunspent could not run/);
+});
+
+test("(k) loud: listunspent output with no utxos array, or a utxo with no outpoint, is CANNOT-LOOK", async () => {
+  const { home } = ledgerHome();
+  assertLoud(await runLedger({ home, wallet: ok("{}") }), /listunspent has no array utxos/);
+  assertLoud(await runLedger({ home, wallet: ok(JSON.stringify({ utxos: [{ address: DEPOSIT_A }] })) }),
+    /listunspent has no string outpoint/);
+});
+
+test("(k) Treasury not running: the check is CANNOT-LOOK blocked-by=containers and reads nothing", async () => {
+  const { home } = ledgerHome();
+  const responses = {
+    ...healthy(),
+    [K_UTXOS]: ONE_UNLEDGERED,
+    [K.inspect]: inspectOut(CONTAINERS, { "polar-n1-Treasury": { State: { Status: "exited" } } }),
+  };
+  const lines = [];
+  const calls = [];
+  const sqliteCalls = [];
+  await runPreflight({
+    docker: async (args) => { calls.push(args); return responses[args.join(" ")] ?? bad("unplanned"); },
+    ps: async () => ok(QUIET_PS), readCompose: async () => COMPOSE, sleep: async () => {},
+    print: (line) => lines.push(line), env: {}, home,
+    sqlite: async (args) => { sqliteCalls.push(args); return bad("must not be called"); },
+  });
+  assert.equal(statusOf(lines, LEDGER_CHECK), "CANNOT-LOOK");
+  assert.match(lineOf(lines, LEDGER_CHECK), /blocked-by=containers$/);
+  assert.deepEqual(sqliteCalls, []);
+  assert.ok(!calls.some((a) => a.includes("listunspent")));
+});
+
+test("(k) read-only: a write through the check's own open fails, and the row count is unchanged", async () => {
+  const { db } = ledgerHome();
+  const count = () => sqliteRun(db, "SELECT count(*) FROM subscription_pending_attribution;").trim();
+  assert.equal(count(), "1");
+  const insert = `INSERT INTO subscription_pending_attribution (txid, vout, amount_sats, member_pubkey, received_at, confirmed_at, reason)
+    VALUES ('${"55".repeat(32)}', 0, 1, '${PUB.Farmer1}', 0, 0, 'probe')`;
+  for (const walPresent of [false, true]) {
+    const r = await runCommand("sqlite3", preflight.sqliteReadArgs(db, insert, walPresent));
+    console.log(`walPresent=${walPresent} exit=${r.code} stderr=${r.stderr.trim()}`);
+    assert.notEqual(r.code, 0, `walPresent=${walPresent}: the write succeeded`);
+    assert.match(r.stderr, /readonly/, `walPresent=${walPresent}: failed for another reason`);
+  }
+  assert.equal(count(), "1");
+});
+
+test("(k) read-only: with no -wal the check creates no -wal or -shm and leaves the DB's bytes unchanged", async () => {
+  const { home, db } = ledgerHome();
+  const sha = () => crypto.createHash("sha256").update(fs.readFileSync(db)).digest("hex");
+  const before = sha();
+  assert.deepEqual(fs.readdirSync(path.dirname(db)), ["bitcorn.sqlite"]);
+  const plain = await runLedger({ home, wallet: ONE_UNLEDGERED });
+  const repaired = await runLedger({ home, wallet: ONE_UNLEDGERED, repair: true });
+  assert.equal(statusOf(plain.lines, LEDGER_CHECK), "FAIL");
+  assert.equal(statusOf(repaired.lines, LEDGER_CHECK), "FAIL");
+  assert.deepEqual(fs.readdirSync(path.dirname(db)), ["bitcorn.sqlite"]);
+  assert.equal(sha(), before);
+});
+
+test("(k) the open mode: immutable with no -wal, read-only through the WAL when one exists", () => {
+  const args = (walPresent) => preflight.sqliteReadArgs("/x/bitcorn.sqlite", "SELECT 1", walPresent);
+  assert.ok(args(false).includes("-readonly"));
+  assert.ok(args(false).includes("file:/x/bitcorn.sqlite?immutable=1"));
+  assert.ok(args(true).includes("-readonly"));
+  assert.ok(args(true).includes("file:/x/bitcorn.sqlite?mode=ro"));
+});
+
+test("(k) --repair adds no write: the check's only calls are listunspent and one read-only sqlite3", async () => {
+  const { home } = ledgerHome();
+  const sqliteCalls = [];
+  const sqlite = async (args) => { sqliteCalls.push(args); return runCommand("sqlite3", args); };
+  const responses = { ...healthy(), [K_UTXOS]: ONE_UNLEDGERED };
+  const calls = [];
+  const lines = [];
+  await runPreflight({
+    docker: async (args) => { calls.push(args); return responses[args.join(" ")] ?? bad("unplanned"); },
+    ps: async () => ok(QUIET_PS), readCompose: async () => COMPOSE, sleep: async () => {},
+    print: (line) => lines.push(line), env: {}, home, sqlite, repair: true,
+  });
+  assert.equal(statusOf(lines, LEDGER_CHECK), "FAIL");
+  const treasuryCalls = calls
+    .filter((a) => a[0] === "exec" && a[3] === "polar-n1-Treasury" && a[4] === "lncli")
+    .map((a) => a.slice(7).join(" "));
+  assert.deepEqual([...new Set(treasuryCalls)].sort(), ["getinfo", "listchannels --active_only", "listpeers", "listunspent"]);
+  assert.equal(sqliteCalls.length, 1);
+  assert.ok(sqliteCalls[0].includes("-readonly"));
+  assert.match(sqliteCalls[0].at(-1), /^SELECT json_object\(/);
 });

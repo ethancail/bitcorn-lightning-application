@@ -63,6 +63,19 @@
 //
 // LOGS: this script reads none.
 //
+// TREASURY DB (dev-safety R6): deposit-utxos-unledgered reads the slot's
+// treasury DB, dataDir(slot, "treasury")/db/bitcorn.sqlite, with the sqlite3
+// CLI, read-only, and never writes it, --repair included. With no -wal beside
+// it, it opens immutable=1, so SQLite creates no -wal or -shm (a plain
+// read-only open of a WAL-mode DB creates both). With a -wal present (an API
+// that was killed) it reads through it, read-only. It reports each Treasury
+// UTXO at a subscription deposit address whose (txid, vout) is in neither
+// subscription_payment nor subscription_pending_attribution: the detector's own
+// already-credited test (app/api/src/subscription/detector.ts, alreadyRecorded),
+// so each is one the API's next scan would credit. Any count above zero is FAIL.
+// A side it cannot read is CANNOT-LOOK, never a zero. The gate's teardown sweep
+// (docs/dev-setup.md § Teardown: sweep the deposit addresses) is what makes it 0.
+//
 // Spec and decision (vault): specs/2026-10-29-polar-gate-preflight-and-procedure-spec.md,
 // decisions/2026-10-29-polar-gate-procedure-preflight-and-stale-ip.md.
 // Tests: scripts/polar-preflight.test.mjs.
@@ -73,7 +86,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { BITCOIN_NODE, LND_NODE_NAMES, lockRefusal, parseSlot, resolveNetwork } from "./harness-slot.mjs";
+import { BITCOIN_NODE, LND_NODE_NAMES, dataDir, lockRefusal, parseSlot, resolveNetwork } from "./harness-slot.mjs";
 
 // The expected set for one Polar network, by its id. Container names embed the
 // id (polar-n<id>-<Node>); the node names are D16's five in every slot.
@@ -134,6 +147,7 @@ export function runCommand(file, args) {
 }
 
 const defaultDocker = (args) => runCommand("docker", args);
+const defaultSqlite = (args) => runCommand("sqlite3", args);
 const defaultPs = () => runCommand("ps", ["-ww", "-eo", "pid=,args="]);
 const defaultReadCompose = (file) => fs.promises.readFile(file, "utf8");
 const defaultReadNetworks = async () =>
@@ -262,6 +276,48 @@ async function readChannels(docker, t) {
   return list(output, "channels", what).map((c) => field(c, "remote_pubkey", "string", what));
 }
 
+// No arguments: every UTXO, confirmed or not (lncli's default min 0, max MaxInt32).
+// An unconfirmed one at a deposit address is credited once it confirms.
+async function readUtxos(docker, t) {
+  const what = "listunspent";
+  const output = await readJson(docker, lndArgs(t.treasuryNode, "listunspent"), what);
+  return list(output, "utxos", what).map((u) => ({
+    address: field(u, "address", "string", what),
+    outpoint: field(u, "outpoint", "string", what),
+  }));
+}
+
+export const treasuryDbPath = (slot, home) => path.join(dataDir(slot, "treasury", home), "db", "bitcorn.sqlite");
+
+// -readonly and a read-only URI both: a write through these arguments fails.
+// immutable=1 with no -wal, so SQLite creates no -wal or -shm; mode=ro with
+// one, so its un-checkpointed rows are read.
+export function sqliteReadArgs(file, sql, walPresent) {
+  const uri = `file:${file}?${walPresent ? "mode=ro" : "immutable=1"}`;
+  return ["-init", "/dev/null", "-readonly", "-batch", "-bail", "-noheader", uri, sql];
+}
+
+// One row, always: an empty or partial output cannot read as "no rows".
+const LEDGER_SQL = "SELECT json_object(" +
+  "'deposit_addresses', (SELECT json_group_array(deposit_address) FROM subscription), " +
+  "'payment', (SELECT json_group_array(txid || ':' || vout) FROM subscription_payment WHERE txid IS NOT NULL), " +
+  "'pending', (SELECT json_group_array(txid || ':' || vout) FROM subscription_pending_attribution))";
+
+async function readLedger(sqlite, file) {
+  const what = "treasury db";
+  const args = sqliteReadArgs(file, LEDGER_SQL, fs.existsSync(`${file}-wal`));
+  const ledger = parse(await read(() => sqlite(args), what), what);
+  const strings = (key) => {
+    const values = list(ledger, key, what);
+    if (values.some((v) => typeof v !== "string")) throw new CannotLook(`${what} ${key} holds a value that is not a string`);
+    return values;
+  };
+  return {
+    addresses: new Set(strings("deposit_addresses")),
+    ledgered: new Set([...strings("payment"), ...strings("pending")]),
+  };
+}
+
 // ─── decisions ────────────────────────────────────────────────────────────
 
 export function resolveExit(statuses) {
@@ -309,6 +365,8 @@ export async function runPreflight({
   env = process.env,
   repair = false,
   readNetworks = defaultReadNetworks,
+  sqlite = defaultSqlite,
+  home = os.homedir(),
 } = {}) {
   const statuses = [];
   const report = (status, name, value) => {
@@ -328,15 +386,16 @@ export async function runPreflight({
   const blocked = [
     "containers", "polar-not-running", "compose-restart-policy", "restart-counts-steady", "bitcoind",
     ...LND_NODE_NAMES.map((n) => `synced-to-chain:${n}`),
-    "treasury-peers", "treasury-channels",
+    "treasury-peers", "treasury-channels", "deposit-utxos-unledgered",
   ];
 
   // HARNESS_SLOT picks the Polar network (H10). Slot 1 is network 1 and reads
   // nothing, printing no slot line, so its output is today's. Slot N resolves
   // bitcorn-dev-N from networks.json; a slot that cannot resolve looks at nothing.
   let t;
+  let slot;
   try {
-    const slot = parseSlot(env.HARNESS_SLOT);
+    slot = parseSlot(env.HARNESS_SLOT);
     if (slot === 1) {
       t = SLOT1;
     } else {
@@ -366,6 +425,7 @@ export async function runPreflight({
   const nodes = await checkLnds({ docker, sleep, report, running, chain, repair, t });
   const peersRepaired = await checkPeers({ docker, report, running, nodes, repair, t });
   await checkChannels({ docker, sleep, report, running, nodes, peersRepaired, t });
+  await checkDepositUtxos({ docker, sqlite, report, running, t, slot, home });
   return finish();
 }
 
@@ -592,6 +652,30 @@ async function checkChannels({ docker, sleep, report, running, nodes, peersRepai
   if (channels.reason !== undefined) return report("CANNOT-LOOK", name, channels.reason);
   const result = compareSets(expected, channels.value);
   report(result.ok ? "PASS" : "FAIL", name, describeSets(result, others, channels.value));
+}
+
+// dev-safety R6: report-only, under --repair too. See TREASURY DB above.
+async function checkDepositUtxos({ docker, sqlite, report, running, t, slot, home }) {
+  const name = "deposit-utxos-unledgered";
+  if (!running.has(t.treasury)) return report("CANNOT-LOOK", name, "blocked-by=containers");
+  let file;
+  try {
+    file = treasuryDbPath(slot, home);
+  } catch (error) {
+    return report("CANNOT-LOOK", name, `treasury db path: ${oneLine(error.message)}`);
+  }
+  const ledger = await attempt(() => readLedger(sqlite, file));
+  if (ledger.reason !== undefined) return report("CANNOT-LOOK", name, ledger.reason);
+  const utxos = await attempt(() => readUtxos(docker, t));
+  if (utxos.reason !== undefined) return report("CANNOT-LOOK", name, utxos.reason);
+
+  const { addresses, ledgered } = ledger.value;
+  const atDeposit = utxos.value.filter((u) => addresses.has(u.address));
+  const unledgered = atDeposit.filter((u) => !ledgered.has(u.outpoint)).map((u) => u.outpoint);
+  const value =
+    `db=${file} deposit-addresses=${addresses.size} at-deposit=${atDeposit.length} ` +
+    `unledgered=${unledgered.length} outpoints=[${unledgered}]`;
+  report(unledgered.length > 0 ? "FAIL" : "PASS", name, value);
 }
 
 // ─── entry point ──────────────────────────────────────────────────────────
