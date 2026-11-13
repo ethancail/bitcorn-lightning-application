@@ -9,6 +9,8 @@ import {
   getChainBalance,
   getPendingChainBalance,
   getChainTransactions,
+  getBlockHeader,
+  getBlock,
   addPeer,
   openChannel,
   closeChannel,
@@ -32,6 +34,7 @@ import {
   withDeadline,
   LND_FAST_CALL_TIMEOUT_MS,
   LND_GOSSIP_CALL_TIMEOUT_MS,
+  LND_BLOCK_FETCH_TIMEOUT_MS,
 } from "./callDeadline";
 
 // LND_DIR / TLS_CERT_PATH live in ./lndPaths.ts so the expiry inspector shares
@@ -470,6 +473,61 @@ export async function getLndChainTransactions() {
     "getLndChainTransactions",
     () => getChainTransactions({ lnd }),
     LND_FAST_CALL_TIMEOUT_MS,
+  );
+}
+
+/**
+ * On-chain transactions confirmed ABOVE `afterHeight` (plus unconfirmed ones),
+ * a height window over the wallet history. Used by the subscription detector
+ * only as a txid → (confirming block hash, height) lookup — never for amounts
+ * or attribution, which stay with getUtxos (subscription/detector.ts header).
+ *
+ * A separate wrapper so GET /api/node/onchain-status keeps its whole-history
+ * getLndChainTransactions() unchanged.
+ *
+ * ⚠ `afterHeight < 1` ASKS FOR THE WHOLE HISTORY. ln-service sends a start
+ * height only when `after` is truthy (`start_height: !!after ? after + 1 :
+ * undefined`, lightning/lnd_methods/onchain/get_chain_transactions.js), so
+ * `after: 0` already means "from genesis". It is omitted here rather than
+ * passed, so that reading is explicit. A superset is still a correct lookup;
+ * it is only slower, and on any chain past its first few blocks it never
+ * happens.
+ */
+export async function getLndChainTransactionsAfter(afterHeight: number) {
+  const { lnd } = getLndClient();
+  const args = afterHeight >= 1 ? { lnd, after: afterHeight } : { lnd };
+  return withDeadline(
+    "getLndChainTransactionsAfter",
+    () => getChainTransactions(args),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
+}
+
+/**
+ * The raw 80-byte header (hex) of the block with this hash. chainrpc; per
+ * ln-service's own note, "not supported on LND 0.17.0 and below".
+ * The subscription detector reads the block's nTime from it.
+ */
+export async function getLndBlockHeader(blockHash: string): Promise<{ header: string }> {
+  const { lnd } = getLndClient();
+  return withDeadline(
+    "getLndBlockHeader",
+    () => getBlockHeader({ lnd, id: blockHash }),
+    LND_FAST_CALL_TIMEOUT_MS,
+  );
+}
+
+/**
+ * The raw block (hex) with this hash. The subscription detector's fallback
+ * when getLndBlockHeader fails: the header is the block's first 80 bytes.
+ * Its own, longer deadline — a whole block is not a 3s-class read.
+ */
+export async function getLndBlock(blockHash: string): Promise<{ block: string }> {
+  const { lnd } = getLndClient();
+  return withDeadline(
+    "getLndBlock",
+    () => getBlock({ lnd, id: blockHash }),
+    LND_BLOCK_FETCH_TIMEOUT_MS,
   );
 }
 

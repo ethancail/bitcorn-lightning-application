@@ -82,6 +82,21 @@ export const LND_FAST_CALL_TIMEOUT_MS = 3_000;
 export const LND_GOSSIP_CALL_TIMEOUT_MS = 10_000;
 
 /**
+ * Deadline for fetching one whole block (`getLndBlock`).
+ *
+ * ⚠ ARGUED, NOT DERIVED — the same status as LND_GOSSIP_CALL_TIMEOUT_MS. The
+ * call is the subscription detector's FALLBACK for reading a confirming
+ * block's time when the header call fails (recredit-check, ruling O2's
+ * amendment (1)). A mainnet block is up to ~4 MB, so it is slower than the
+ * 3s class of local state reads by an unmeasured margin; 10s keeps it inside
+ * the 15s sync period. It runs only for a NEW deposit output whose block time
+ * is not yet cached, so it is rare. Kept ≤ LND_GOSSIP_CALL_TIMEOUT_MS so the
+ * held-call behavioural control's "beyond the longest deadline" bound
+ * (lnd.deadlines.test.ts) still holds.
+ */
+export const LND_BLOCK_FETCH_TIMEOUT_MS = 10_000;
+
+/**
  * The calls that deliberately carry NO deadline.
  *
  * ⚠ THE PARTITION IS OUTCOME AMBIGUITY, NOT "IS IT A WRITE". A deadline does not
