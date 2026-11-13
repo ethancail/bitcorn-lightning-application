@@ -1,0 +1,5 @@
+{
+  "generated": "[SUBSCRIPTION_KEYPAIR_GENERATED] Ed25519 public key (JWK):\n<JWK>\nOperator action required:\n  cd cloudflare-worker\n  wrangler secret put SUBSCRIPTION_PUBLIC_KEY\n  # when prompted, paste exactly (no trailing newline):\n  <X>\n  wrangler deploy\n(The Worker stores the raw base64url `x` value; /treasury-info\n re-materializes the full JWK for member-side consumers. Do not\n use `<<<` here-strings or `echo` without -n: bash appends a\n trailing newline that wrangler will store, which breaks JWT\n validation in subtle ways.)",
+  "missing": "[SUBSCRIPTION_KEYPAIR_SYNC] Worker has no SUBSCRIPTION_PUBLIC_KEY set; member-side JWT validation will fail until you publish it. Run: cd cloudflare-worker && wrangler secret put SUBSCRIPTION_PUBLIC_KEY (paste <X> when prompted, no trailing newline) && wrangler deploy",
+  "differs": "[SUBSCRIPTION_KEYPAIR_SYNC] Worker SUBSCRIPTION_PUBLIC_KEY does not match local keypair. Likely cause: the local keypair was rotated but the Worker secret was not re-published. Run: cd cloudflare-worker && wrangler secret put SUBSCRIPTION_PUBLIC_KEY (paste <X> when prompted, no trailing newline) && wrangler deploy"
+}

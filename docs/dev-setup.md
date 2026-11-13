@@ -189,6 +189,8 @@ npm run dev:all
 
 This brings up six processes: three API instances on ports 3101/3102/3103, and three web instances on ports 5173/5174/5175. Output is interleaved with role prefixes (T, A, B, wT, etc.).
 
+**The APIs listen on `127.0.0.1` only**, not on every interface: the scripts inject `API_LISTEN_HOST=127.0.0.1` into every slot's API, slot 1 included, so a dev API cannot be reached from another machine. The API reads `API_LISTEN_HOST` in `app/api/src/config/ports.ts`: unset (as in production) it keeps its default bind; set, it must be an IP address, and an empty or non-IP value (`localhost`, say) stops it at boot. Do not set it in the `.env.dev.*` files; the injection is its one setting.
+
 Open three browser tabs:
 
 - `http://localhost:5173` — treasury perspective
@@ -219,7 +221,11 @@ The dev harness on a host is shared by every arc that gates on it, so the rule i
    ```
    It prints one line, `harness lock released: slot 1, holder <arc>, held <from> to <to> (<h>h<mm>m) on <host>; go "<go>"`. A release by anyone but the holder is refused and leaves the lock.
 
-`node scripts/harness-slot.mjs lock status` lists what is held. Every acquire, release and forced release appends a line to `~/.bitcorn-dev/locks/history.log`, which nothing rewrites.
+**How a lock is removed.** A release, a forced release and an acquire backing out of a lock it has just written never delete a lock they have not checked. Each renames the lock file to a tombstone private to it (`slot-N.lock.release.<pid>.<random>` in `locks/`), checks the tombstone, and only then deletes it; if the check fails it links the tombstone back into place and refuses. A release checks the holder; a forced release checks that the lock is byte for byte the one it read, so a lock released and re-acquired in between is put back, not freed; a back-out checks that the lock is still the one it wrote. Of several commands removing the same lock at once, exactly one wins the rename; the others find no lock. **The residual:** POSIX has no compare-and-delete, so on the refusal path the lock is absent from the rename until it is linked back. If another acquire takes the slot in that moment, the link back fails: the command says so loudly, names the newcomer, and keeps the lock it took out as its tombstone file, for you to inspect.
+
+**An unreadable lock file** (one that does not parse as a lock) is refused by every `dev:*` script, by the pre-flight and by a plain release, whatever `HARNESS_HOLDER` or `--holder` says, naming the file; it is freed only with `--force --reason`. An acquire against it is refused as `already locked by "(unreadable lock file)"`.
+
+`node scripts/harness-slot.mjs lock status` lists what is held. Every acquire, release and forced release appends a line to `~/.bitcorn-dev/locks/history.log`, which nothing rewrites. Status flags a lock **SUSPECT**, giving the reasons, when it was acquired over 24 hours ago, when its `host` is not this machine's hostname, or, for a slot lock, when nothing listens on any of the slot's ports (the ones `dev:kill` clears: API, web, loopd RPC and loopd REST; checked with `lsof`, which sees only your own user's processes; if `lsof` cannot answer, the line says the listener check could not run). SUSPECT frees nothing and is not a verdict: the holder is an arc, not a process, and an arc holds its lock across stretches when nothing of it runs. Check with the holder, then free it, if at all, with `--force --reason`.
 
 **A Polar setup window** (creating or changing a Polar network) takes the host-wide lock instead: `lock acquire --setup --holder <arc> --go "<text>"`, released with `lock release --setup --holder <arc>`. It is refused while any slot lock is held, and while it is held no slot lock can be taken and every slot's scripts refuse.
 
@@ -682,7 +688,7 @@ Polar's own node ports are not computed: they are read from `~/.polar/networks/n
 
    Optional, in any of the three: `COINBASE_WORKER_URL` and `BASE_RPC_URL`. Without `COINBASE_WORKER_URL` the onramp answers `coinbase_not_configured`; without `BASE_RPC_URL`, wallet binding uses the BASE chain's public RPC.
 
-   The scripts inject the rest for slot N, and the injected values win over the file: the computed `PORT`, `DB_DIR`, `SECRETS_DIR`, `LND_GRPC_HOST`, `LND_DIR`, `LOOP_GRPC_PORT`, `LOOP_TLS_CERT_PATH` and `LOOP_MACAROON_PATH`, plus `BITCOIN_NETWORK=regtest` and `LOOP_GRPC_HOST=127.0.0.1`, whose API defaults are production values. Slot 1 injects nothing: its `.env.dev.<role>` files stay authoritative.
+   The scripts inject the rest for slot N, and the injected values win over the file: the computed `PORT`, `DB_DIR`, `SECRETS_DIR`, `LND_GRPC_HOST`, `LND_DIR`, `LOOP_GRPC_PORT`, `LOOP_TLS_CERT_PATH` and `LOOP_MACAROON_PATH`, plus `BITCOIN_NETWORK=regtest` and `LOOP_GRPC_HOST=127.0.0.1`, whose API defaults are production values. Every slot, slot 1 included, also gets `API_LISTEN_HOST=127.0.0.1` (the loopback bind, above); apart from that, slot 1 injects nothing: its `.env.dev.<role>` files stay authoritative.
 3. Create the loopd directories: `mkdir -p ~/.bitcorn-dev/slot-N/{treasury,member-a,member-b}/loopd`.
 
 **Running slot N.** Take slot N's own lock ([The harness lock](#the-harness-lock)), then set the slot on each command:
