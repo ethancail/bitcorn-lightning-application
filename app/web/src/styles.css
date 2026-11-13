@@ -1923,28 +1923,51 @@ div:has(> .action-confirm-input) + .dialog-actions {
 [data-theme="light"] ::-webkit-scrollbar-thumb       { background: var(--border); }
 [data-theme="light"] ::-webkit-scrollbar-thumb:hover  { background: var(--border-hi); }
 
-/* ─── Theme toggle button ─────────────────────────────────────── */
-.theme-option {
+/* ─── Choice (components/Choice.tsx) ──────────────────────────────
+   One option-card control: native radios in label cards. Replaces
+   .theme-option (the role panel) and the inline-styled theme chips and
+   fee-speed cards. The selected option's border is the amber mark, with no
+   tint; its words stay --text. */
+.choice { border: 0; min-width: 0; }
+.choice-legend { padding: 0; margin-bottom: 6px; font-size: 0.75rem; color: var(--text-2); }
+.choice-options { display: flex; gap: 6px; }
+.choice-column .choice-options { flex-direction: column; gap: 8px; }
+.choice-option {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border-radius: var(--radius);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  background: transparent;
+  background: var(--bg-2);
   color: var(--text-2);
-  font-family: var(--mono);
-  font-size: 0.8125rem;
   cursor: pointer;
-  transition: border-color 0.15s, background-color 0.15s, color 0.15s;
-  width: 100%;
+  transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
 }
-.theme-option:hover { border-color: var(--border-hi); color: var(--text); }
-.theme-option.selected {
+.choice-row .choice-option { flex-direction: column; justify-content: center; gap: 2px; padding: 8px 6px; text-align: center; }
+.choice-option:hover:not(.disabled):not(.checked) { border-color: var(--border-hi); }
+.choice-option.checked {
   border-color: var(--amber);
-  background: var(--amber-glow);
+  box-shadow: inset 0 0 0 1px var(--amber);
   color: var(--text);
 }
+.choice-option.disabled { opacity: 0.55; cursor: default; }
+.choice:disabled .choice-option { cursor: progress; }
+.choice-option:has(.choice-input:focus-visible) { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+/* The radio itself is the keyboard and screen-reader control; the card shows its state. */
+.choice-input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; pointer-events: none; }
+.choice-icon { font-size: 1.25rem; line-height: 1; }
+.choice-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.choice-label { font-size: 0.8125rem; font-weight: 600; color: var(--text); }
+.choice-desc { font-size: 0.75rem; color: var(--text-2); }
+.choice-meta { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); }
+/* A cost on its own line that never splits: "~192 sats" stays whole. */
+.choice-cost { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); white-space: nowrap; }
+.choice-reason { font-size: 0.75rem; color: var(--text-2); }
+
 
 /* ─── Liquidity page overhaul ────────────────────────────────── */
 

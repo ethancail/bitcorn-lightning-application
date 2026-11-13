@@ -3,8 +3,10 @@
 // useConnectToHub.ts; its literals are connectToHubDescriptor.ts. Rendered by
 // MemberDashboard at its no-channel panel and its upgrade banner.
 
+import { useId } from "react";
 import { useNavigate } from "react-router-dom";
 import ActionConfirmModal from "../actionConfirm/ActionConfirmModal";
+import { Choice } from "../Choice";
 import TechnicalDetails, { TechRow } from "../TechnicalDetails";
 import {
   ACTIVATE_MEMBERSHIP_PATH,
@@ -18,6 +20,7 @@ export { HUB_PUBKEY } from "./connectToHubDescriptor";
 
 export default function ConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initialCapacity?: number }) {
   const s = useConnectToHub({ isPeered, initialCapacity });
+  const feeId = useId();
   const navigate = useNavigate();
 
   if (s.success) {
@@ -204,32 +207,15 @@ export default function ConnectToHub({ isPeered, initialCapacity }: { isPeered: 
 
         {/* Fee rate selector */}
         <div>
-          <label className="form-label">{COPY.confirmationSpeed}</label>
-          <div style={{ display: "flex", gap: 6 }}>
-            {FEE_SPEED_OPTIONS.map((opt) => (
-              <button
-                key={opt.label}
-                type="button"
-                onClick={() => s.setFeeRate(opt.rate)}
-                style={{
-                  flex: 1, padding: "8px 6px", borderRadius: 8, cursor: "pointer",
-                  border: `2px solid ${s.feeRate === opt.rate ? "var(--amber)" : "var(--border)"}`,
-                  background: s.feeRate === opt.rate ? "color-mix(in srgb, var(--amber) 10%, var(--bg-2))" : "var(--bg-2)",
-                  textAlign: "center",
-                }}
-              >
-                <div style={{ fontSize: "0.8125rem", fontWeight: 600, color: "var(--text)" }}>
-                  {opt.label}
-                </div>
-                <div style={{ fontSize: "0.6875rem", color: "var(--text-2)" }}>
-                  {opt.time}
-                </div>
-                <div style={{ fontSize: "0.6875rem", color: "var(--text-3)", fontFamily: "var(--mono)" }}>
-                  {opt.cost}
-                </div>
-              </button>
-            ))}
-          </div>
+          <div className="form-label" id={`${feeId}-label`}>{COPY.confirmationSpeed}</div>
+          {/* String keys mapped to rates; Economy's rate is undefined. */}
+          <Choice
+            name={`${feeId}-speed`}
+            labelledBy={`${feeId}-label`}
+            value={FEE_SPEED_OPTIONS.find((o) => o.rate === s.feeRate)?.key ?? null}
+            onChange={(key) => s.setFeeRate(FEE_SPEED_OPTIONS.find((o) => o.key === key)?.rate)}
+            options={FEE_SPEED_OPTIONS.map((opt) => ({ value: opt.key, label: opt.label, description: opt.time, meta: opt.cost }))}
+          />
         </div>
 
         <button

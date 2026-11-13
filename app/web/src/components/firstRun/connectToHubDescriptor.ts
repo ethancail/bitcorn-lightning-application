@@ -23,10 +23,12 @@ export const MIN_CAPACITY_WARNING_SATS = 100_000;
 /** The open button is disabled under this capacity. */
 export const MIN_CAPACITY_OPEN_SATS = 100_000;
 
+// `key` is the Choice value (lowercase, ruled 2026-11-13); it maps back to the
+// option's rate.
 export const FEE_SPEED_OPTIONS = ([
-  { label: "Economy", rate: undefined, desc: "cheapest", time: "1–3 hours", cost: "~155 sats" },
-  { label: "Normal", rate: 5, desc: "balanced", time: "~30 min", cost: "~770 sats" },
-  { label: "Priority", rate: 15, desc: "fastest", time: "~10 min", cost: "~2,300 sats" },
+  { key: "economy", label: "Economy", rate: undefined, desc: "cheapest", time: "1–3 hours", cost: "~155 sats" },
+  { key: "normal", label: "Normal", rate: 5, desc: "balanced", time: "~30 min", cost: "~770 sats" },
+  { key: "priority", label: "Priority", rate: 15, desc: "fastest", time: "~10 min", cost: "~2,300 sats" },
 ] as const);
 
 /** The form's own copy, one entry per occurrence in the old code. */

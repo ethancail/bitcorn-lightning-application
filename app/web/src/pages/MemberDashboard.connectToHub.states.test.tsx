@@ -11,6 +11,14 @@
 // component that contains ConnectToHub on both sides of the move, so this file
 // needs no edit between A and B.
 //
+// Choice (member-first-run-ui slice 1, ruled 2026-11-13): the fee-speed
+// picker is now a Choice of native radios, so these snapshots were rewritten on
+// purpose for it, feeCard() finds the radio's card, serialize() records each
+// radio's checked property, and React's useId values (":r3:", which count up
+// across every root in the file) are normalised so a snapshot doesn't depend on
+// which tests ran before it. Values, default and labels are pinned in
+// components/firstRun/ConnectToHub.feePins.test.tsx.
+//
 // Harness: MemberDashboard.namePrompt.test.tsx's (createRoot + act, vi.mock of
 // the API client).
 
@@ -85,10 +93,11 @@ function serialize(node: Node, depth = 0): string[] {
   if (node.nodeType !== Node.ELEMENT_NODE) return [];
   const el = node as Element;
   const attrs = [...el.attributes]
-    .map((a) => `${a.name}=${JSON.stringify(a.value)}`)
+    .map((a) => `${a.name}=${JSON.stringify(a.value.replace(/:r[0-9a-z]+:/g, ":r:"))}`)
     .sort();
   // A controlled input's live value is a property, not always the attribute.
   if (el instanceof HTMLInputElement) attrs.push(`prop:value=${JSON.stringify(el.value)}`);
+  if (el instanceof HTMLInputElement && el.type === "radio") attrs.push(`prop:checked=${el.checked}`);
   if (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) attrs.push(`prop:disabled=${el.disabled}`);
   const open = `${pad}<${el.tagName.toLowerCase()}${attrs.length ? " " + attrs.join(" ") : ""}>`;
   return [open, ...[...el.childNodes].flatMap((c) => serialize(c, depth + 1))];
@@ -174,8 +183,8 @@ const btn = (text: string): HTMLButtonElement | undefined =>
   [...document.body.querySelectorAll("button")].find((b) => b.textContent?.trim() === text) as HTMLButtonElement | undefined;
 
 /** A fee-speed card, found by its label line. */
-const feeCard = (label: string): HTMLButtonElement | undefined =>
-  [...host.querySelectorAll("button[type='button']")].find((b) => b.firstElementChild?.textContent === label) as HTMLButtonElement | undefined;
+const feeCard = (label: string): HTMLElement | undefined =>
+  [...host.querySelectorAll<HTMLElement>("label.choice-option")].find((o) => o.querySelector(".choice-label")?.textContent === label);
 
 async function click(el: Element): Promise<void> {
   await act(async () => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); });

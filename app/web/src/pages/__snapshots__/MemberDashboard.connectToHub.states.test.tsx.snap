@@ -41,30 +41,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <span>
             "Connected to hub — ready to open a channel"
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -128,30 +135,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 2
           <span>
             "Hub address available — will connect automatically when you open a channel"
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -211,30 +225,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 3
             "Recommended: 1M–10M sats. Minimum: 100,000 sats."
         <div class="loading-shimmer" style="height: 40px; border-radius: 6px;">
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -302,30 +323,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -393,30 +421,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -484,30 +519,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 5
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -575,30 +617,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -666,30 +715,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -757,30 +813,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -850,30 +913,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" disabled="" prop:disabled=true>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -941,30 +1011,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" disabled="" prop:disabled=true>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -1032,30 +1109,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option checked" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -1123,30 +1207,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option checked" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -1210,30 +1301,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
           <span>
             "Hub address available — will connect automatically when you open a channel"
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -1334,30 +1432,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -1458,30 +1563,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -1577,30 +1689,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" disabled="" prop:disabled=true>
           "Connecting…"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -1690,30 +1809,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option checked" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" disabled="" prop:disabled=true>
           "Connecting…"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -1804,30 +1930,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <span>
             "Hub address available — will connect automatically when you open a channel"
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option checked" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" disabled="" prop:disabled=true>
           "Connecting…"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -1928,30 +2061,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
             <div class="alert-msg">
               "insufficient on-chain funds"
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -2025,30 +2165,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
             <div class="alert-msg">
               "Failed to open channel"
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -2116,30 +2263,37 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <div style="font-size: 0.75rem; color: var(--text-3); margin-top: 4px;">
             "Enter the hub's address to connect, or leave blank if already connected."
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
@@ -2286,30 +2440,37 @@ exports[`ConnectToHub, the upgrade call site (MemberDashboard :982) > state 12 �
           <span>
             "Connected to hub — ready to open a channel"
         <div>
-          <label class="form-label">
+          <div class="form-label" id=":r:-label">
             "Confirmation Speed"
-          <div style="display: flex; gap: 6px;">
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--bg-2)); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Economy"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "1–3 hours"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~155 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Normal"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~30 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~770 sats"
-            <button style="flex: 1 1 0%; padding: 8px 6px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--bg-2); text-align: center;" type="button" prop:disabled=false>
-              <div style="font-size: 0.8125rem; font-weight: 600; color: var(--text);">
-                "Priority"
-              <div style="font-size: 0.6875rem; color: var(--text-2);">
-                "~10 min"
-              <div style="font-size: 0.6875rem; color: var(--text-3); font-family: var(--mono);">
-                "~2,300 sats"
+          <fieldset aria-labelledby=":r:-label" class="choice choice-row">
+            <div class="choice-options">
+              <label class="choice-option checked" data-value="economy">
+                <input checked="" class="choice-input" name=":r:-speed" type="radio" value="economy" prop:value="economy" prop:checked=true prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Economy"
+                  <span class="choice-desc">
+                    "1–3 hours"
+                  <span class="choice-meta">
+                    "~155 sats"
+              <label class="choice-option" data-value="normal">
+                <input class="choice-input" name=":r:-speed" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Normal"
+                  <span class="choice-desc">
+                    "~30 min"
+                  <span class="choice-meta">
+                    "~770 sats"
+              <label class="choice-option" data-value="priority">
+                <input class="choice-input" name=":r:-speed" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
+                <span class="choice-text">
+                  <span class="choice-label">
+                    "Priority"
+                  <span class="choice-desc">
+                    "~10 min"
+                  <span class="choice-meta">
+                    "~2,300 sats"
         <button class="btn btn-primary" prop:disabled=false>
           "Open Channel →"
       <div style="border-top: 1px solid var(--border); padding-top: 12px;">
