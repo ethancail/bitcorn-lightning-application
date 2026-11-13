@@ -80,9 +80,9 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `073_subscription_send_marker.sql` | Pay-from-node D2 (073, not 071: membership-gating takes 071 and 072): `subscription_send_marker` — one row per subscription payment, written and committed before broadcast by the manual route and auto-pay alike. Active while `cleared_at` is NULL: auto-pay refuses, a manual repeat needs `repeat_acknowledged`. Clears only on credit (status `last_payment_txid` = `txid`, or `paid_through` past `paid_through_at_write`). Member-local; empty on the treasury (`subscription/sendMarker.ts`) |
 
 | `074_member_transfer_settings.sql` | Drive-mode P3: `member_transfer_settings` (single row, `id = 1`, NOT seeded — a missing row or NULL column means the code default, `transfers/transferSettings.ts`) |
-| `075_member_transfer_settings_strategy.sql` | Drive-mode P3: `strategy` — `save` / `open` / `manual`; NULL = Save on fees |
-| `076_member_transfer_settings_fee_limit_pct.sql` | Drive-mode P3: `fee_limit_pct_bps` — the per-transfer fee limit's percentage (200 = 2%) |
-| `077_member_transfer_settings_fee_limit_usd.sql` | Drive-mode P3: `fee_limit_usd_cents` — its dollar cap (the limit is the lower) |
+| `075_member_transfer_settings_strategy.sql` | Drive-mode P3: `strategy` — `save` / `open`; NULL = `save`. A row may still hold `manual` (dropped by R59(4), no migration), which reads as `save` |
+| `076_member_transfer_settings_fee_limit_pct.sql` | Drive-mode P3: `fee_limit_pct_bps` — **UNREAD since R59(1)**: the percent limit was removed from the code and the API, and the column stays in the table, with no migration. A value stored here has no effect (`transfers/noFeePercent.test.ts`) |
+| `077_member_transfer_settings_fee_limit_usd.sql` | Drive-mode P3: `fee_limit_usd_cents` — the ONE per-transfer fee limit (R48); NULL = the role's default, $3 farmer / $5 merchant (R59(3)) |
 | `078_member_transfer_settings_daily_fee_budget.sql` | Drive-mode P3: `daily_fee_budget_usd_cents` |
 | `079_member_transfer_settings_max_moved_per_day.sql` | Drive-mode P3: `max_moved_per_day_usd_cents` |
 | `080_fee_estimate_samples.sql` | Drive-mode P3: `fee_estimate_samples` (`id`, `sampled_at`) — lnd's 6-block estimate, read-only, at most every 10 minutes off the sync tick, kept 8 days, for "calm" (`transfers/feeSamples.ts`) |
