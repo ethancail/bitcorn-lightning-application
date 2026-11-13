@@ -65,11 +65,14 @@
 // LOGS: this script reads none.
 //
 // TREASURY DB (dev-safety R6): deposit-utxos-unledgered reads the slot's
-// treasury DB, dataDir(slot, "treasury")/db/bitcorn.sqlite, with the sqlite3
-// CLI, read-only, and never writes it, --repair included. With no -wal beside
-// it, it opens immutable=1, so SQLite creates no -wal or -shm (a plain
-// read-only open of a WAL-mode DB creates both). With a -wal present (an API
-// that was killed) it reads through it, read-only. It reports each Treasury
+// treasury DB, dataDir(slot, "treasury")/db/bitcorn.sqlite, and never opens the
+// live files, --repair included: any SQLite open of a WAL-mode DB, read-only
+// too, can create or write its -shm. It copies bitcorn.sqlite and, if present,
+// its -wal (never the -shm, which SQLite rebuilds) into a fresh temp directory,
+// reads the copy with the sqlite3 CLI, read-only, and deletes the directory,
+// on failure too. The live files' size and mtime are compared before and after
+// the copy; a change means a writer was active, and the copy may be torn, so
+// that is CANNOT-LOOK, never a count. It reports each Treasury
 // UTXO at a subscription deposit address whose (txid, vout) is in neither
 // subscription_payment nor subscription_pending_attribution: the detector's own
 // already-credited test (app/api/src/subscription/detector.ts, alreadyRecorded),
@@ -293,12 +296,10 @@ async function readUtxos(docker, t) {
 
 export const treasuryDbPath = (slot, home) => path.join(dataDir(slot, "treasury", home), "db", "bitcorn.sqlite");
 
-// -readonly and a read-only URI both: a write through these arguments fails.
-// immutable=1 with no -wal, so SQLite creates no -wal or -shm; mode=ro with
-// one, so its un-checkpointed rows are read.
-export function sqliteReadArgs(file, sql, walPresent) {
-  const uri = `file:${file}?${walPresent ? "mode=ro" : "immutable=1"}`;
-  return ["-init", "/dev/null", "-readonly", "-batch", "-bail", "-noheader", uri, sql];
+// -readonly: a write through these arguments fails. `file` is always the
+// temporary copy, never a live path.
+export function sqliteReadArgs(file, sql) {
+  return ["-init", "/dev/null", "-readonly", "-batch", "-bail", "-noheader", file, sql];
 }
 
 // One row, always: an empty or partial output cannot read as "no rows".
@@ -307,10 +308,52 @@ const LEDGER_SQL = "SELECT json_object(" +
   "'payment', (SELECT json_group_array(txid || ':' || vout) FROM subscription_payment WHERE txid IS NOT NULL), " +
   "'pending', (SELECT json_group_array(txid || ':' || vout) FROM subscription_pending_attribution))";
 
-async function readLedger(sqlite, file) {
+// Size and nanosecond mtime of the live main file and -wal; "absent" for a
+// missing -wal. A missing main file is CANNOT-LOOK.
+function liveState(file) {
+  const one = (f, optional) => {
+    try {
+      const s = fs.statSync(f, { bigint: true });
+      return `${s.size}:${s.mtimeNs}`;
+    } catch (error) {
+      if (optional && error.code === "ENOENT") return "absent";
+      throw new CannotLook(`treasury db could not be read: ${oneLine(error.message)}`);
+    }
+  };
+  return { db: one(file, false), wal: one(`${file}-wal`, true) };
+}
+
+async function readLedger(sqlite, file, { copyFile, tmpdir }) {
   const what = "treasury db";
-  const args = sqliteReadArgs(file, LEDGER_SQL, fs.existsSync(`${file}-wal`));
-  const ledger = parse(await read(() => sqlite(args), what), what);
+  const before = liveState(file);
+  let dir;
+  try {
+    try {
+      dir = fs.mkdtempSync(path.join(tmpdir, "preflight-treasury-db-"));
+    } catch (error) {
+      throw new CannotLook(`${what} could not be copied: ${oneLine(error.message)}`);
+    }
+    const copy = path.join(dir, "bitcorn.sqlite");
+    try {
+      copyFile(file, copy);
+      if (before.wal !== "absent") copyFile(`${file}-wal`, `${copy}-wal`);
+    } catch (error) {
+      throw new CannotLook(`${what} could not be copied: ${oneLine(error.message)}`);
+    }
+    const after = liveState(file);
+    if (after.db !== before.db || after.wal !== before.wal) {
+      throw new CannotLook(
+        `${what} changed during the copy (db ${before.db} -> ${after.db}, wal ${before.wal} -> ${after.wal}): a writer is active`,
+      );
+    }
+    return parseLedger(parse(await read(() => sqlite(sqliteReadArgs(copy, LEDGER_SQL)), what), what));
+  } finally {
+    if (dir) fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function parseLedger(ledger) {
+  const what = "treasury db";
   const strings = (key) => {
     const values = list(ledger, key, what);
     if (values.some((v) => typeof v !== "string")) throw new CannotLook(`${what} ${key} holds a value that is not a string`);
@@ -371,6 +414,8 @@ export async function runPreflight({
   readNetworks = defaultReadNetworks,
   sqlite = defaultSqlite,
   home = os.homedir(),
+  copyFile = (src, dst) => fs.copyFileSync(src, dst),
+  tmpdir = os.tmpdir(),
 } = {}) {
   const statuses = [];
   const report = (status, name, value) => {
@@ -429,7 +474,7 @@ export async function runPreflight({
   const nodes = await checkLnds({ docker, sleep, report, running, chain, repair, t });
   const peersRepaired = await checkPeers({ docker, report, running, nodes, repair, t });
   await checkChannels({ docker, sleep, report, running, nodes, peersRepaired, t });
-  await checkDepositUtxos({ docker, sqlite, report, running, t, slot, home });
+  await checkDepositUtxos({ docker, sqlite, copyFile, tmpdir, report, running, t, slot, home });
   return finish();
 }
 
@@ -660,7 +705,7 @@ async function checkChannels({ docker, sleep, report, running, nodes, peersRepai
 
 // dev-safety R6: report-only, under --repair too, and non-blocking: a count is
 // WARN, which resolveExit ignores. See TREASURY DB above.
-async function checkDepositUtxos({ docker, sqlite, report, running, t, slot, home }) {
+async function checkDepositUtxos({ docker, sqlite, copyFile, tmpdir, report, running, t, slot, home }) {
   const name = "deposit-utxos-unledgered";
   if (!running.has(t.treasury)) return report("CANNOT-LOOK", name, "blocked-by=containers");
   let file;
@@ -669,7 +714,7 @@ async function checkDepositUtxos({ docker, sqlite, report, running, t, slot, hom
   } catch (error) {
     return report("CANNOT-LOOK", name, `treasury db path: ${oneLine(error.message)}`);
   }
-  const ledger = await attempt(() => readLedger(sqlite, file));
+  const ledger = await attempt(() => readLedger(sqlite, file, { copyFile, tmpdir }));
   if (ledger.reason !== undefined) return report("CANNOT-LOOK", name, ledger.reason);
   const utxos = await attempt(() => readUtxos(docker, t));
   if (utxos.reason !== undefined) return report("CANNOT-LOOK", name, utxos.reason);

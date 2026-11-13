@@ -106,6 +106,20 @@ const K = {
 // host's own ~/.bitcorn-dev DB. (k) runs the real sqlite3 on a fixture.
 const emptyLedger = async () => ok(JSON.stringify({ deposit_addresses: [], payment: [], pending: [] }));
 
+// The check copies the live DB before reading it, so every case outside (k)
+// runs against this HOME: placeholder files at the slot-1 and slot-2 treasury
+// DB paths, which the faked sqlite3 never parses. guardedCopy fails any copy
+// from outside it, so no case can reach this host's ~/.bitcorn-dev.
+const FAKE_HOME = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-fakehome-"));
+for (const dir of [".bitcorn-dev/treasury/db", ".bitcorn-dev/slot-2/treasury/db"]) {
+  fs.mkdirSync(path.join(FAKE_HOME, dir), { recursive: true });
+  fs.writeFileSync(path.join(FAKE_HOME, dir, "bitcorn.sqlite"), "placeholder");
+}
+const guardedCopy = (src, dst) => {
+  assert.ok(src.startsWith(`${FAKE_HOME}/`), `a case outside (k) copied ${src}`);
+  fs.copyFileSync(src, dst);
+};
+
 const healthy = () => ({
   [K.version]: ok('"29.9.1"\n'),
   [K.context]: ok("default\n"),
@@ -213,6 +227,8 @@ async function run(overrides = {}, options = {}) {
     env: options.env ?? {},
     repair: options.repair ?? false,
     sqlite: emptyLedger,
+    home: FAKE_HOME,
+    copyFile: guardedCopy,
   });
 
   assert.deepEqual(unplanned, [], "the script made a docker call the scenario did not plan");
@@ -874,6 +890,8 @@ async function runSlot(slot, { networks = SLOT_NETWORKS, psOut = ok(QUIET_PS) } 
     print: (line) => lines.push(line),
     env: { HARNESS_SLOT: slot },
     sqlite: emptyLedger,
+    home: FAKE_HOME,
+    copyFile: guardedCopy,
   });
   for (const args of calls) assert.ok(!FORBIDDEN_DOCKER_VERBS.has(args[0]), `forbidden docker verb: ${args.join(" ")}`);
   return { exitCode, lines, calls, unplanned, composeReads, networkReads };
@@ -1071,8 +1089,11 @@ const K_UTXOS = K.utxos;
 const LEDGER_CHECK = "deposit-utxos-unledgered";
 
 // The whole preflight, healthy apart from what a case sets, with the real
-// sqlite3 runner (runPreflight's default) and the fixture HOME.
-async function runLedger({ home, wallet, sqlite, repair = false }) {
+// sqlite3 runner (runPreflight's default) and the fixture HOME. Each run gets
+// its own temp root for the check's copy, which must be empty afterwards,
+// whatever the outcome: the copy is deleted on success and on failure.
+async function runLedger({ home, wallet, sqlite, copyFile, repair = false }) {
+  const tmpdir = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-tmproot-"));
   const responses = { ...healthy(), [K_UTXOS]: wallet };
   const calls = [];
   const lines = [];
@@ -1093,9 +1114,12 @@ async function runLedger({ home, wallet, sqlite, repair = false }) {
     env: {},
     repair,
     home,
+    tmpdir,
     ...(sqlite ? { sqlite } : {}),
+    ...(copyFile ? { copyFile } : {}),
   });
   console.log(lineOf(lines, LEDGER_CHECK) ?? "(no deposit-utxos-unledgered line)");
+  assert.deepEqual(fs.readdirSync(tmpdir), [], "the check left its temporary copy behind");
   return { exitCode, lines, calls };
 }
 
@@ -1167,7 +1191,7 @@ const ONE_UNLEDGERED = utxosOut([utxo(DEPOSIT_A, `${TX_UNLEDGERED}:0`)]);
 
 test("(k) loud: no treasury DB at the slot's path is CANNOT-LOOK, not a zero", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-ledger-"));
-  assertLoud(await runLedger({ home, wallet: ONE_UNLEDGERED }), /treasury db exited \d+: .*unable to open/);
+  assertLoud(await runLedger({ home, wallet: ONE_UNLEDGERED }), /treasury db could not be read: ENOENT/);
 });
 
 test("(k) loud: a file that is not a database is CANNOT-LOOK", async () => {
@@ -1232,12 +1256,10 @@ test("(k) read-only: a write through the check's own open fails, and the row cou
   assert.equal(count(), "1");
   const insert = `INSERT INTO subscription_pending_attribution (txid, vout, amount_sats, member_pubkey, received_at, confirmed_at, reason)
     VALUES ('${"55".repeat(32)}', 0, 1, '${PUB.Farmer1}', 0, 0, 'probe')`;
-  for (const walPresent of [false, true]) {
-    const r = await runCommand("sqlite3", preflight.sqliteReadArgs(db, insert, walPresent));
-    console.log(`walPresent=${walPresent} exit=${r.code} stderr=${r.stderr.trim()}`);
-    assert.notEqual(r.code, 0, `walPresent=${walPresent}: the write succeeded`);
-    assert.match(r.stderr, /readonly/, `walPresent=${walPresent}: failed for another reason`);
-  }
+  const r = await runCommand("sqlite3", preflight.sqliteReadArgs(db, insert));
+  console.log(`exit=${r.code} stderr=${r.stderr.trim()}`);
+  assert.notEqual(r.code, 0, "the write succeeded");
+  assert.match(r.stderr, /readonly/, "failed for another reason");
   assert.equal(count(), "1");
 });
 
@@ -1254,12 +1276,84 @@ test("(k) read-only: with no -wal the check creates no -wal or -shm and leaves t
   assert.equal(sha(), before);
 });
 
-test("(k) the open mode: immutable with no -wal, read-only through the WAL when one exists", () => {
-  const args = (walPresent) => preflight.sqliteReadArgs("/x/bitcorn.sqlite", "SELECT 1", walPresent);
-  assert.ok(args(false).includes("-readonly"));
-  assert.ok(args(false).includes("file:/x/bitcorn.sqlite?immutable=1"));
-  assert.ok(args(true).includes("-readonly"));
-  assert.ok(args(true).includes("file:/x/bitcorn.sqlite?mode=ro"));
+// ─── (k) copy-then-read: the check never opens the live files ─────────────
+
+const DEPOSIT_C = "bcrt1qdepositcccccccccccccccccccccccccccccc";
+const TX_WAL_ONLY = "66".repeat(32);
+
+// A live DB the way the restored baseline holds it: base rows in the main file,
+// one more subscription row (deposit address C) only in an un-checkpointed
+// -wal, and its -shm. Made by copying a source DB's three files while a sqlite3
+// session that wrote the row, with auto-checkpoint off, still has them open.
+function walHome() {
+  const src = ledgerHome();
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "preflight-walhome-"));
+  const dir = path.join(home, ".bitcorn-dev", "treasury", "db");
+  fs.mkdirSync(dir, { recursive: true });
+  sqliteRun(src.db, [
+    "PRAGMA wal_autocheckpoint=0;",
+    "INSERT INTO subscription (member_pubkey, deposit_address, derivation_path, paid_through, created_at, current_tier)" +
+      ` VALUES ('${PUB["External-Peer-1"]}', '${DEPOSIT_C}', 'label-c', 0, 0, 'prepay');`,
+    `.system cp ${src.db} ${src.db}-wal ${src.db}-shm ${dir}/`,
+    "",
+  ].join("\n"));
+  const db = path.join(dir, "bitcorn.sqlite");
+  // The fixture is what it claims: three files, and the main file alone has 2 rows.
+  assert.deepEqual(fs.readdirSync(dir).sort(), ["bitcorn.sqlite", "bitcorn.sqlite-shm", "bitcorn.sqlite-wal"]);
+  assert.equal(sqliteRun(`file:${db}?immutable=1`, "SELECT count(*) FROM subscription;").trim(), "2");
+  return { home, db };
+}
+
+// sha256 and nanosecond mtime of the live main file, -wal and -shm.
+const liveState = (db) => Object.fromEntries(["", "-wal", "-shm"].map((suffix) => {
+  const file = `${db}${suffix}`;
+  return [path.basename(file), {
+    sha256: crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex"),
+    mtimeNs: String(fs.statSync(file, { bigint: true }).mtimeNs),
+  }];
+}));
+
+test("(k) copy-then-read: a row only in the live -wal is seen, and the live db, -wal and -shm are unchanged", async () => {
+  const { home, db } = walHome();
+  const before = liveState(db);
+  const { exitCode, lines } = await runLedger({ home, wallet: utxosOut([utxo(DEPOSIT_C, `${TX_WAL_ONLY}:0`)]) });
+  assert.equal(statusOf(lines, LEDGER_CHECK), "WARN");
+  assert.match(lineOf(lines, LEDGER_CHECK), / deposit-addresses=3 at-deposit=1 unledgered=1 /);
+  assert.match(lineOf(lines, LEDGER_CHECK), new RegExp(`outpoints=\\[${TX_WAL_ONLY}:0\\]$`));
+  assert.equal(exitCode, 0);
+  const after = liveState(db);
+  console.log(JSON.stringify(after));
+  assert.deepEqual(after, before);
+});
+
+test("(k) copy-then-read: the live DB changing during the copy is CANNOT-LOOK, exit 2, never a count", async () => {
+  const { home, db } = ledgerHome();
+  // A writer between the copy's start and its end: the second row of a real
+  // sqlite3 write lands on the live file while the check copies it.
+  const copyFile = (src, dst) => {
+    fs.copyFileSync(src, dst);
+    if (src === db) sqliteRun(db, `INSERT INTO subscription_pending_attribution (txid, vout, amount_sats, member_pubkey, received_at, confirmed_at, reason) VALUES ('${"77".repeat(32)}', 0, 1, '${PUB.Farmer1}', 0, 0, 'writer');`);
+  };
+  assertLoud(await runLedger({ home, wallet: ONE_UNLEDGERED, copyFile }), /treasury db changed during the copy/);
+});
+
+test("(k) copy-then-read: a copy that fails is CANNOT-LOOK, and the temp directory is still removed", async () => {
+  const { home } = ledgerHome();
+  const copyFile = () => { throw new Error("ENOSPC: no space left on device"); };
+  assertLoud(await runLedger({ home, wallet: ONE_UNLEDGERED, copyFile }), /treasury db could not be copied: ENOSPC/);
+});
+
+test("(k) copy-then-read: sqlite3 is given the copy, never a live path", async () => {
+  const { home, db } = walHome();
+  const seen = [];
+  const sqlite = async (args) => { seen.push(args); return runCommand("sqlite3", args); };
+  await runLedger({ home, wallet: ONE_UNLEDGERED, sqlite });
+  assert.equal(seen.length, 1);
+  const target = seen[0].at(-2);
+  console.log(`sqlite3 read: ${target}`);
+  assert.ok(!target.startsWith(path.dirname(db)), `sqlite3 opened a live path: ${target}`);
+  assert.equal(path.basename(target), "bitcorn.sqlite");
+  assert.ok(seen[0].includes("-readonly"));
 });
 
 test("(k) --repair adds no write: the check's only calls are listunspent and one read-only sqlite3", async () => {

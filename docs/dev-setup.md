@@ -370,7 +370,7 @@ It refuses unless the slot's lock is held by `HARNESS_HOLDER` (see [The harness 
 
 It checks the five containers against the pinned set, that Polar is not running, that the compose file still gives `backend1` `restart: unless-stopped`, that restart counts hold steady across the window, that bitcoind answers with `blocks` equal to `headers`, that all four LNDs report `synced_to_chain: true`, and that Treasury's peers and active channels are exactly the three other nodes. Those last two compare sets as well as counts, so a right count made of the wrong members fails. It uses the active docker context or `DOCKER_HOST`.
 
-It also reads the slot's treasury DB (`~/.bitcorn-dev/treasury/db/bitcorn.sqlite`; slot N, `~/.bitcorn-dev/slot-N/treasury/db/bitcorn.sqlite`), read-only, with the `sqlite3` CLI, and Treasury's `listunspent`. Its `deposit-utxos-unledgered` line lists every UTXO at a subscription deposit address whose outpoint is in neither `subscription_payment` nor `subscription_pending_attribution`: one the API's next scan would credit. It is non-blocking: any is a WARN, with the count and the outpoints, and does not change the exit code. The WARN is expected in a gate that deliberately reproduces a restore replay; otherwise it means the teardown sweep was skipped ([Teardown: sweep the deposit addresses](#teardown-sweep-the-deposit-addresses)). A DB or wallet it cannot read is still CANNOT-LOOK, which fails the run, never a zero. It writes nothing, `--repair` included.
+It also reads the slot's treasury DB (`~/.bitcorn-dev/treasury/db/bitcorn.sqlite`; slot N, `~/.bitcorn-dev/slot-N/treasury/db/bitcorn.sqlite`) and Treasury's `listunspent`. It never opens the live DB files: any SQLite open of a WAL-mode DB, read-only included, can write its `-shm`, beside files the restore verifies by sha256. It copies `bitcorn.sqlite` and, if present, its `-wal` (not the `-shm`, which SQLite rebuilds) into a fresh temp directory, reads the copy read-only with the `sqlite3` CLI, and deletes the directory, on failure too. If the live files' size or mtime changed during the copy, a writer was active and the copy may be torn: that is CANNOT-LOOK, never a count. Its `deposit-utxos-unledgered` line lists every UTXO at a subscription deposit address whose outpoint is in neither `subscription_payment` nor `subscription_pending_attribution`: one the API's next scan would credit. It is non-blocking: any is a WARN, with the count and the outpoints, and does not change the exit code. The WARN is expected in a gate that deliberately reproduces a restore replay; otherwise it means the teardown sweep was skipped ([Teardown: sweep the deposit addresses](#teardown-sweep-the-deposit-addresses)). A DB or wallet it cannot read is still CANNOT-LOOK, which fails the run, never a zero. It writes nothing, `--repair` included.
 
 The check needs the `sqlite3` CLI on the host; without it, the check reports CANNOT-LOOK. ubuntu-pc has `3.45.1-1ubuntu2.8`. The OptiPlex had none: `3.45.1-1ubuntu2.9` was installed there on 2026-11-13 under the outside-code adoption rule, pinned to that host's own `libsqlite3-0` version. Check a host with `dpkg-query -W sqlite3 libsqlite3-0`.
 
@@ -401,9 +401,16 @@ As of 2026-10-28, `backend1` has `restart: unless-stopped` on the dev machine â€
 The sha256 restore puts back the app DBs, not Treasury's LND wallet. A payment made to a deposit address since the snapshot stays in the wallet as a UTXO, while the restored DB has no ledger row for it, so the API's first scan after the restore would credit it again. The teardown therefore spends every UTXO at a deposit address to a Treasury address that is not one (dev-safety R6). Do it after the restore is verified and before any API starts, with the slot's lock still held:
 
 ```bash
-# 1. The deposit addresses, from the restored treasury DB. immutable=1, so the read creates no
-#    -wal or -shm beside the files the restore just verified. (Slot N: ~/.bitcorn-dev/slot-N/treasury/db.)
-sqlite3 -readonly "file:$HOME/.bitcorn-dev/treasury/db/bitcorn.sqlite?immutable=1" "SELECT deposit_address FROM subscription"
+# 1. The deposit addresses, from a copy of the restored treasury DB, never the live files: an open
+#    of the live DB can write its -shm beside the files the restore just verified. Copy the main
+#    file and its -wal if present (not the -shm), and read the copy only if neither live file's
+#    size or mtime changed during the copy. (Slot N: D=~/.bitcorn-dev/slot-N/treasury/db.)
+D=~/.bitcorn-dev/treasury/db; T=$(mktemp -d)
+before=$(stat -c '%n %s %y' "$D/bitcorn.sqlite" "$D/bitcorn.sqlite-wal" 2>/dev/null)
+cp "$D/bitcorn.sqlite" "$T/"; if [ -e "$D/bitcorn.sqlite-wal" ]; then cp "$D/bitcorn.sqlite-wal" "$T/"; fi
+after=$(stat -c '%n %s %y' "$D/bitcorn.sqlite" "$D/bitcorn.sqlite-wal" 2>/dev/null)
+if [ "$before" = "$after" ]; then sqlite3 -readonly "$T/bitcorn.sqlite" "SELECT deposit_address FROM subscription"; else echo "the DB changed during the copy: is an API still running?"; fi
+rm -rf "$T"
 
 # 2. Treasury's UTXOs. Note the outpoint of each one whose address is in that list.
 docker exec -u lnd polar-n1-Treasury lncli --network regtest listunspent
