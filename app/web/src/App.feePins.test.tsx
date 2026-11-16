@@ -24,6 +24,13 @@
 // what shipped. The label and cost-line tests compare Economy against the
 // ruled text below, the others against the pins.
 //
+// Ethan's ruling "fix the five" (2026-11-16), display only: the close card's
+// Economy drops its rate "~1 sat/vB" (item 4), so CLOSE_ECONOMY_TEXT loses it;
+// and each figure is now "about $X" over "~N sats" (item 5). The pins hold as
+// they are because these tests read with the price still loading, when a
+// figure is "~N sats" alone, exactly the pinned text. The rulings' own tests
+// are at the end of this file. The pins are byte-identical.
+//
 // Harness: App.treasuryCapacity.test.tsx's (the REAL App, as the treasury).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -49,6 +56,7 @@ const stub = vi.hoisted(() => ({
   getDaybreakEdition: vi.fn(),
   getContacts: vi.fn(),
   getPendingChannels: vi.fn(),
+  getExchangeRate: vi.fn(),
   treasuryCloseChannel: vi.fn(),
   treasuryOpenChannel: vi.fn(),
 }));
@@ -85,7 +93,7 @@ const OPEN_PINNED = [
 
 /** Economy's card since "treasury too" (2026-11-16): the node sets its fee. */
 const ECONOMY_COST = "Fee set by your node";
-const CLOSE_ECONOMY_TEXT = "Economy~1 sat/vB1–3 hoursFee set by your node";
+const CLOSE_ECONOMY_TEXT = "Economy1–3 hoursFee set by your node";
 const OPEN_ECONOMY_TEXT = "Economy1–3 hoursFee set by your node";
 type Pin = { key: string; text: string; cost: string };
 const shownText = (pins: readonly Pin[], economy: string) => pins.map((p) => (p.key === "economy" ? economy : p.text));
@@ -110,6 +118,7 @@ beforeEach(() => {
   stub.getMemberLiquidityStatus.mockImplementation(never);
   stub.getContacts.mockResolvedValue(CONTACTS);
   stub.getPendingChannels.mockResolvedValue([]);
+  stub.getExchangeRate.mockImplementation(never); // the price still loading: figures in sats alone
   stub.treasuryCloseChannel.mockImplementation(never);
   stub.treasuryOpenChannel.mockImplementation(never);
   vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
@@ -293,8 +302,8 @@ describe("TreasuryOpenChannelPanel fee picker: values, default and labels unchan
 // ─── "treasury too" (2026-11-16): Economy shows no figure on either picker ──
 
 describe("ruling \"treasury too\" — Economy's fee is set by the node: no figure", () => {
-  // No "~N sats" and no dollars on Economy's card. The close card's
-  // description "~1 sat/vB" is a rate, not a fee figure, and the ruling left it.
+  // No "~N sats" and no dollars on Economy's card. (Its rate "~1 sat/vB" went
+  // too, with "fix the five" item 4: tested below.)
   const NO_FIGURE = /~[\d,]+ sats|\$/;
   const economy = (opts: HTMLElement[]) => opts.find((o) => labelOf(o) === "Economy")!;
 
@@ -321,4 +330,85 @@ describe("Choice's cost line", () => {
   it("is white-space: nowrap, so \"~192 sats\" never breaks across two lines", () => {
     expect(declsFor(".choice-cost")["white-space"]).toBe("nowrap");
   });
+});
+
+// ─── Ethan's ruling "fix the five" (2026-11-16), display only ────────────────
+// What each picker sends is pinned above, unchanged.
+
+describe("ruling \"fix the five\" — the treasury's two fee pickers", () => {
+  const FRESH = { usd: 60_000, source: "coinbase", fetched_at: 1_790_000_000_000, age_ms: 0, state: "fresh" };
+  const NONE = { usd: null, source: "coinbase", fetched_at: null, age_ms: null, state: "none" };
+  const card = (opts: HTMLElement[], label: string) => opts.find((o) => labelOf(o) === label)!;
+  /** A card's cost lines, "data-line:text", in order. */
+  const lines = (opts: HTMLElement[], label: string) =>
+    [...card(opts, label).querySelectorAll(".choice-cost [data-line]")].map((l) => `${l.getAttribute("data-line")}:${l.textContent}`);
+
+  it("1 — a worded cost may wrap, numbers stay on one line (the CSS)", () => {
+    expect(declsFor(".choice-cost")["white-space"]).toBe("nowrap");
+    expect(declsFor(".fee-cost-words")["white-space"]).toBe("normal");
+    // Wraps cleanly: balanced lines, which need a block to balance.
+    expect(declsFor(".fee-cost-words")["text-wrap"]).toBe("balance");
+    expect(declsFor(".fee-cost-words")["display"]).toBe("block");
+    expect(declsFor(".amount-figure")["white-space"]).toBe("nowrap");
+    expect(declsFor(".amount-sub")["white-space"]).toBe("nowrap");
+  });
+
+  for (const [name, show, opts] of [
+    ["the close dialog", openCloseDialog, closeOptions],
+    ["the open panel", showOpenForm, openOptions],
+  ] as const) {
+    it(`1 — ${name}: Economy's words are in .fee-cost-words; the figures are Amounts`, async () => {
+      stub.getExchangeRate.mockResolvedValue(FRESH);
+      await show();
+      expect(card(opts(), "Economy").querySelector(".choice-cost .fee-cost-words")?.textContent).toBe("Fee set by your node");
+      for (const label of ["Normal", "Priority"]) {
+        expect(card(opts(), label).querySelector(".choice-cost .fee-cost-words"), label).toBeNull();
+        expect(card(opts(), label).querySelector(".choice-cost .amount"), label).not.toBeNull();
+      }
+    });
+  }
+
+  it("4 — the close dialog: Economy shows no rate; Normal and Priority keep theirs", async () => {
+    await openCloseDialog();
+    const econ = card(closeOptions(), "Economy");
+    expect(econ.textContent).not.toContain("sat/vB");
+    expect(econ.querySelector(".choice-desc")).toBeNull();
+    expect(card(closeOptions(), "Normal").querySelector(".choice-desc")?.textContent).toBe("~5 sat/vB");
+    expect(card(closeOptions(), "Priority").querySelector(".choice-desc")?.textContent).toBe("~15 sat/vB");
+    expect(dialog().textContent).not.toContain("1 sat/vB");
+  });
+
+  it("5 — the close dialog: dollars over sats; Economy keeps its words", async () => {
+    stub.getExchangeRate.mockResolvedValue(FRESH);
+    await openCloseDialog();
+    expect(lines(closeOptions(), "Normal")).toEqual(["usd:about $0.58", "sats:~960 sats"]);
+    expect(lines(closeOptions(), "Priority")).toEqual(["usd:about $1.73", "sats:~2,885 sats"]);
+    expect(lines(closeOptions(), "Economy")).toEqual([]);
+    expect(card(closeOptions(), "Economy").querySelector(".choice-cost")?.textContent).toBe(ECONOMY_COST);
+  });
+
+  it("5 — the open panel: dollars over sats; Economy keeps its words", async () => {
+    stub.getExchangeRate.mockResolvedValue(FRESH);
+    await showOpenForm();
+    expect(lines(openOptions(), "Normal")).toEqual(["usd:about $0.46", "sats:~770 sats"]);
+    expect(lines(openOptions(), "Priority")).toEqual(["usd:about $1.38", "sats:~2,300 sats"]);
+    expect(lines(openOptions(), "Economy")).toEqual([]);
+    expect(card(openOptions(), "Economy").querySelector(".choice-cost")?.textContent).toBe(ECONOMY_COST);
+  });
+
+  for (const [why, setRate] of [
+    ["no price (state none)", () => stub.getExchangeRate.mockResolvedValue(NONE)],
+    ["a failed read", () => stub.getExchangeRate.mockRejectedValue(Object.assign(new Error("x"), { status: 500 }))],
+  ] as const) {
+    it(`5 — ${why}: sats only, on both pickers`, async () => {
+      setRate();
+      await openCloseDialog();
+      expect(lines(closeOptions(), "Normal")).toEqual(["sats:~960 sats"]);
+      expect(lines(closeOptions(), "Priority")).toEqual(["sats:~2,885 sats"]);
+      await click(buttons(dialog()).find((b) => b.textContent?.trim() === "Cancel")!);
+      await click(buttons(openPanel()).find((b) => b.textContent?.trim() === "New Channel")!);
+      expect(lines(openOptions(), "Normal")).toEqual(["sats:~770 sats"]);
+      expect(lines(openOptions(), "Priority")).toEqual(["sats:~2,300 sats"]);
+    });
+  }
 });

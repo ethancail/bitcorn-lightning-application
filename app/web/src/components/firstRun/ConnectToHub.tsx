@@ -8,15 +8,18 @@
 //   header — the heading, one lead line, and the reachability dot.
 //   two columns — "How big" (the joined size control, each size in dollars
 //     with sats under it; the box in sats with dollars under it; then the
-//     hint or the error) and "How fast" (slice 1's Choice: time and cost).
+//     hint or the error) and "How fast" (slice 1's Choice: time and cost;
+//     the cost is FeeCost's, "about $0.59" over "~770 sats", or Economy's
+//     "Fee set by your node").
 //   footer — Technical details on the left; on the right any error, the
 //     summary ("<sats> · network fee about <fee>", or with Economy "<sats> ·
 //     network fee set by your node") and the connect button.
 //
 // Locked (the treasury's verified verdict is false): the form is HIDDEN; the
 // locked line and the Activate/Renew membership button show instead.
-// Upgrade mode: the heading and the current size only, NO form, until Ethan
-// decides who pays. It makes no requests.
+// Upgrade mode: the heading, the current size on its own line (dollars over
+// sats), then one sentence; NO form, until Ethan decides who pays. It makes
+// no requests.
 // The card renders NO NoRateNote: the page shows the no-price sentence once.
 
 import { useId } from "react";
@@ -26,6 +29,7 @@ import ActionConfirmModal from "../actionConfirm/ActionConfirmModal";
 import { Choice } from "../Choice";
 import TechnicalDetails, { TechRow } from "../TechnicalDetails";
 import { Amount, usableUsd } from "../amount/Amount";
+import { FeeCost } from "../amount/FeeCost";
 import { formatSats, formatUsd } from "../amount/amountDescriptor";
 import {
   ACTIVATE_MEMBERSHIP_PATH,
@@ -76,9 +80,8 @@ function UpgradeCard({ currentSats, rate }: { currentSats: number; rate: Rate })
     <div className="connect-card">
       <div className="connect-head-text">
         <h2 className="connect-title">{COPY.upgradeHeading}</h2>
-        <p className="connect-lead">
-          {COPY.upgradeBefore} <Amount sats={currentSats} rate={rate} />{COPY.upgradeAfter}
-        </p>
+        <div className="connect-upgrade-size"><Amount sats={currentSats} rate={rate} /></div>
+        <p className="connect-lead">{COPY.upgradeBody}</p>
       </div>
     </div>
   );
@@ -179,7 +182,7 @@ function ConnectForm({ isPeered, initialCapacity, rate }: { isPeered: boolean; i
             labelledBy={`${id}-speed`}
             value={FEE_SPEED_OPTIONS.find((o) => o.rate === s.feeRate)?.key ?? null}
             onChange={(key) => s.setFeeRate(FEE_SPEED_OPTIONS.find((o) => o.key === key)?.rate)}
-            options={FEE_SPEED_OPTIONS.map((opt) => ({ value: opt.key, label: opt.label, description: opt.time, meta: opt.cost }))}
+            options={FEE_SPEED_OPTIONS.map((opt) => ({ value: opt.key, label: opt.label, description: opt.time, meta: <FeeCost sats={opt.feeSats} rate={rate} /> }))}
           />
         </section>
       </div>

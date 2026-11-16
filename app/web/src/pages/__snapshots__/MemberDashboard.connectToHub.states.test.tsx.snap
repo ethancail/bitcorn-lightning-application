@@ -70,7 +70,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -79,7 +80,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -88,7 +94,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -105,7 +116,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
         <div class="connect-foot-act">
           <div class="connect-summary">
             "1,000,000 sats"
@@ -187,7 +198,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 2
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -196,7 +208,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 2
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -205,7 +222,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 2
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -222,7 +244,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 2
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
         <div class="connect-foot-act">
           <div class="connect-summary">
             "1,000,000 sats"
@@ -304,7 +326,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 3
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -313,7 +336,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 3
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -322,7 +350,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 3
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -339,7 +372,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 3
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
         <div class="connect-foot-act">
           <div class="connect-summary">
             "1,000,000 sats"
@@ -421,7 +454,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -430,7 +464,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -439,7 +478,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -456,7 +500,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -547,7 +591,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -556,7 +601,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -565,7 +615,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -582,7 +637,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -673,7 +728,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 5
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -682,7 +738,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 5
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -691,7 +752,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 5
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -708,7 +774,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 5
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -799,7 +865,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -808,7 +875,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -817,7 +889,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -834,7 +911,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -925,7 +1002,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -934,7 +1012,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -943,7 +1026,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -960,7 +1048,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1051,7 +1139,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1060,7 +1149,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1069,7 +1163,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -1086,7 +1185,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1177,7 +1276,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1186,7 +1286,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1195,7 +1300,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -1212,7 +1322,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1301,7 +1411,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1310,7 +1421,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1319,7 +1435,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -1336,7 +1457,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1423,7 +1544,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option checked" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=true prop:disabled=false>
                 <span class="choice-text">
@@ -1432,7 +1554,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1441,7 +1568,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -1458,7 +1590,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1549,7 +1681,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1558,7 +1691,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option checked" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=true prop:disabled=false>
                 <span class="choice-text">
@@ -1567,7 +1705,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -1584,7 +1727,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1675,7 +1818,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1684,7 +1828,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1693,7 +1842,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -1710,7 +1864,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
         <div class="connect-foot-act">
           <div class="connect-summary">
             "1,000,000 sats"
@@ -1825,7 +1979,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1834,7 +1989,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1843,7 +2003,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -1860,7 +2025,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1984,7 +2149,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1993,7 +2159,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2002,7 +2173,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -2019,7 +2195,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2138,7 +2314,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2147,7 +2324,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2156,7 +2338,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -2173,7 +2360,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2286,7 +2473,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2295,7 +2483,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option checked" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=true prop:disabled=false>
                 <span class="choice-text">
@@ -2304,7 +2497,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -2321,7 +2519,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2439,7 +2637,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option checked" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=true prop:disabled=false>
                 <span class="choice-text">
@@ -2448,7 +2647,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2457,7 +2661,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -2474,7 +2683,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
         <div class="connect-foot-act">
           <div class="connect-summary">
             "1,000,000 sats"
@@ -2583,7 +2792,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2592,7 +2802,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2601,7 +2816,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -2618,7 +2838,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2711,7 +2931,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2720,7 +2941,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2729,7 +2955,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -2746,7 +2977,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2839,7 +3070,8 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "Fee set by your node"
+                    <span class="fee-cost-words">
+                      "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2848,7 +3080,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~30 min"
                   <span class="choice-meta">
-                    "~770 sats"
+                    <span class="amount amount-inline" data-sats="770">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$0.46"
+                      <span class="amount-sub" data-line="sats">
+                        "~770 sats"
               <label class="choice-option" data-value="priority">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="priority" prop:value="priority" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2857,7 +3094,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "~10 min"
                   <span class="choice-meta">
-                    "~2,300 sats"
+                    <span class="amount amount-inline" data-sats="2300">
+                      <span class="amount-figure" data-line="usd">
+                        "about "
+                        "$1.38"
+                      <span class="amount-sub" data-line="sats">
+                        "~2,300 sats"
       <footer class="connect-foot">
         <div class="connect-foot-tech">
           <details style="font-size: 0.75rem; color: var(--text-3);">
@@ -2874,7 +3116,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="flex-shrink: 0;">
                   "Fee rates"
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
-                  "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB"
+                  "Normal ~5 sat/vB · Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2965,15 +3207,14 @@ exports[`ConnectToHub, the upgrade call site (MemberDashboard :982) > state 12 �
       <div class="connect-head-text">
         <h2 class="connect-title">
           "Make your connection bigger"
-        <p class="connect-lead">
-          "Your connection holds"
-          " "
+        <div class="connect-upgrade-size">
           <span class="amount amount-inline" data-sats="1000000">
             <span class="amount-figure" data-line="usd">
               "$600.00"
             <span class="amount-sub" data-line="sats">
               "1,000,000 sats"
-          ". A bigger one lets you receive larger or more frequent payments before it fills up."
+        <p class="connect-lead">
+          "A bigger connection lets you receive larger or more frequent payments before it fills up."
 portals: 0
 calls: {"openMemberChannel":[],"getTreasuryInfo":0}"
 `;

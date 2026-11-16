@@ -29,6 +29,12 @@
 // the four rate states, and the wording check (no "channel" or "hub" in the
 // card's member text).
 //
+// Ethan's ruling "fix the five" (2026-11-16) rewrote the snapshots ON PURPOSE
+// again, display only: the fee cards' cost is FeeCost's (Normal "about $0.46"
+// over "~770 sats"; Economy's words in .fee-cost-words), Technical details
+// drops Economy's rate, and the upgrade card puts the size on its own line
+// before one sentence. Each fix has its own test at the end of this file.
+//
 // Harness: MemberDashboard.namePrompt.test.tsx's (createRoot + act, vi.mock of
 // the API client).
 
@@ -453,8 +459,8 @@ describe("slice 2 — upgrade mode has NO form", () => {
     expect(card, "the upgrade card renders").toBeDefined();
     expect(rest, "one card").toEqual([]);
     expect(card.textContent).toContain("Make your connection bigger");
-    expect(card.textContent).toContain(
-      "Your connection holds $600.001,000,000 sats. A bigger one lets you receive larger or more frequent payments before it fills up.",
+    expect(card.textContent).toBe(
+      "Make your connection bigger$600.001,000,000 satsA bigger connection lets you receive larger or more frequent payments before it fills up.",
     );
     expect(formParts(), "upgrade mode rendered form controls").toEqual({ inputs: 0, radios: 0, connect: 0 });
     expect(host.textContent).not.toContain("No hub channel");
@@ -544,9 +550,9 @@ describe("ruling \"a\" (2026-11-16) — Economy's fee is set by the node: no fig
     expect(econ.querySelector(".choice-meta")?.textContent).toBe("Fee set by your node");
     expect(econ.textContent).toBe("Economy1–3 hoursFee set by your node");
     expect(econ.textContent).not.toMatch(/[~$]/);
-    // Normal and Priority keep their figures.
-    expect(feeCard("Normal")!.querySelector(".choice-meta")?.textContent).toBe("~770 sats");
-    expect(feeCard("Priority")!.querySelector(".choice-meta")?.textContent).toBe("~2,300 sats");
+    // Normal and Priority keep their figures (in dollars over sats since "fix the five").
+    expect(feeCard("Normal")!.querySelector(".choice-meta")?.textContent).toBe("about $0.46~770 sats");
+    expect(feeCard("Priority")!.querySelector(".choice-meta")?.textContent).toBe("about $1.38~2,300 sats");
   });
 
   it("the footer: Economy (the default) reads \"<sats> sats · network fee set by your node\"; Normal gives the estimate; back to Economy", async () => {
@@ -607,4 +613,66 @@ describe("slice 2 — no \"channel\" or \"hub\" in the card's member text, in an
       expect(text.match(WORDS), `"${text.match(WORDS)?.[0]}" in: ${text}`).toBeNull();
     });
   }
+});
+
+// ─── Ethan's ruling "fix the five" (2026-11-16), display only ────────────────
+// What each option sends is pinned in ConnectToHub.feePins.test.tsx, unchanged.
+
+describe("ruling \"fix the five\" — the member card", () => {
+  const FRESH = { usd: 60_000, source: "coinbase", fetched_at: NOW, age_ms: 0, state: "fresh" };
+  const NONE = { usd: null, source: "coinbase", fetched_at: null, age_ms: null, state: "none" };
+  /** A card's cost lines, "data-line:text", in order. */
+  const costLines = (label: string) =>
+    [...feeCard(label)!.querySelectorAll(".choice-meta [data-line]")].map((l) => `${l.getAttribute("data-line")}:${l.textContent}`);
+
+  it("2 — Economy's worded cost may wrap: its words sit in .fee-cost-words, the figures in Amounts", async () => {
+    stub.getExchangeRate.mockResolvedValue(FRESH);
+    await renderDashboard();
+    const words = feeCard("Economy")!.querySelector(".choice-meta .fee-cost-words");
+    expect(words?.textContent).toBe("Fee set by your node");
+    for (const label of ["Normal", "Priority"]) {
+      expect(feeCard(label)!.querySelector(".choice-meta .fee-cost-words"), label).toBeNull();
+      expect(feeCard(label)!.querySelector(".choice-meta .amount"), label).not.toBeNull();
+    }
+  });
+
+  it("3 — upgrade: the size is its own line under the heading (dollars over sats), then the sentence; no amount in a sentence", async () => {
+    stub.getExchangeRate.mockResolvedValue(FRESH);
+    stub.getMemberStats.mockResolvedValue(WITH_CHANNEL);
+    await renderDashboard("/dashboard?upgrade_capacity=5000000");
+    const head = cards()[0].querySelector(".connect-head-text")!;
+    const kids = [...head.children];
+    expect(kids.map((k) => k.tagName)).toEqual(["H2", "DIV", "P"]);
+    expect(kids[0].textContent).toBe("Make your connection bigger");
+    const lines = [...kids[1].querySelectorAll("[data-line]")].map((l) => `${l.getAttribute("data-line")}:${l.textContent}`);
+    expect(lines).toEqual(["usd:$600.00", "sats:1,000,000 sats"]);
+    expect(kids[2].textContent).toBe("A bigger connection lets you receive larger or more frequent payments before it fills up.");
+    expect(cards()[0].querySelectorAll("p .amount").length, "an amount inside a sentence").toBe(0);
+  });
+
+  it("4 — Economy shows no rate: Technical details lists Normal's and Priority's only; no \"1 sat/vB\" in the card", async () => {
+    stub.getExchangeRate.mockResolvedValue(FRESH);
+    await renderDashboard();
+    const row = [...cards()[0].querySelectorAll("span")].find((e) => e.textContent === "Fee rates");
+    expect(row, "the Fee rates row renders").toBeDefined();
+    expect(row!.nextElementSibling?.textContent).toBe("Normal ~5 sat/vB · Priority ~15 sat/vB");
+    expect(cards()[0].textContent).not.toContain("1 sat/vB");
+  });
+
+  it("5 — the fee cards show dollars with the sats under them; Economy keeps its words", async () => {
+    stub.getExchangeRate.mockResolvedValue(FRESH);
+    await renderDashboard();
+    expect(costLines("Normal")).toEqual(["usd:about $0.46", "sats:~770 sats"]);
+    expect(costLines("Priority")).toEqual(["usd:about $1.38", "sats:~2,300 sats"]);
+    expect(costLines("Economy")).toEqual([]);
+    expect(feeCard("Economy")!.querySelector(".choice-meta")?.textContent).toBe("Fee set by your node");
+  });
+
+  it("5 — with no price, sats only", async () => {
+    stub.getExchangeRate.mockResolvedValue(NONE);
+    await renderDashboard();
+    expect(costLines("Normal")).toEqual(["sats:~770 sats"]);
+    expect(costLines("Priority")).toEqual(["sats:~2,300 sats"]);
+    expect(feeCard("Economy")!.querySelector(".choice-meta")?.textContent).toBe("Fee set by your node");
+  });
 });
