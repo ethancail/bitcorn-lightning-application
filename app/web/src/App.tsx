@@ -2013,13 +2013,9 @@ function ChannelsPage() {
                               <div style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
                                 Treasury channels carry all routed payments. Open a larger channel to increase routing capacity.
                               </div>
-                              <button
-                                className="btn btn-outline btn-sm"
-                                style={{ alignSelf: "flex-start", marginTop: 4 }}
-                                onClick={() => navigate(`/dashboard?upgrade_capacity=${upgradeSize}`)}
-                              >
-                                Upgrade Treasury Channel →
-                              </button>
+                              {/* member-first-run-ui slice 2: the upgrade form is
+                                  gone until Ethan decides who pays; the flag stays. */}
+                              <div>Making your connection bigger is coming soon.</div>
                             </>
                           )}
                         </div>

@@ -10,6 +10,10 @@
 //
 // Harness: ConnectToHub.activateMembership.test.tsx's, plus the confirm-modal
 // steps from MemberDashboard.connectToHub.states.test.tsx.
+//
+// Slice 2 (the Connect card, 2026-11-16) renamed the heading this file finds
+// the options by ("How fast") and the button it submits with ("Connect to
+// BitCorn →"). Only those two lookups changed: PINNED is byte-identical.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -69,7 +73,7 @@ async function render() {
         React.createElement(
           Routes,
           null,
-          React.createElement(Route, { path: "/dashboard", element: React.createElement(ConnectToHub, { isPeered: true }) }),
+          React.createElement(Route, { path: "/dashboard", element: React.createElement(ConnectToHub, { isPeered: true, rate: undefined }) }),
         ),
       ),
     );
@@ -77,10 +81,10 @@ async function render() {
   await flush();
 }
 
-/** The option cards: the element after the "Confirmation Speed" heading, its labels. */
+/** The option cards: the element after the "How fast" heading, its labels. */
 function feeOptions(): HTMLElement[] {
-  const head = [...host.querySelectorAll(".form-label")].find((e) => e.textContent === "Confirmation Speed");
-  expect(head, "the Confirmation Speed heading renders").toBeDefined();
+  const head = [...host.querySelectorAll(".form-label")].find((e) => e.textContent === "How fast");
+  expect(head, "the How fast heading renders").toBeDefined();
   return [...head!.nextElementSibling!.querySelectorAll<HTMLElement>("label")];
 }
 
@@ -103,7 +107,7 @@ const btn = (text: string) =>
 
 /** Open the confirm modal, satisfy its 1,000,000-sat challenge, confirm; return the request body. */
 async function submit(): Promise<Record<string, unknown>> {
-  await click(btn("Open Channel →")!);
+  await click(btn("Connect to BitCorn →")!);
   await type(document.body.querySelector("#action-confirm-challenge") as HTMLInputElement, "1000000");
   await click(btn("Open channel")!);
   expect(stub.openMemberChannel).toHaveBeenCalledTimes(1);

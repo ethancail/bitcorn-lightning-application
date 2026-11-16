@@ -44,9 +44,10 @@ import { bannerFor, bannerSeverityForTier, bannerSeverityForTierName, settingsBa
 import { tierToPill } from "./Pill";
 import { railGateNoticeFor } from "../stablecoin/railAccess";
 
-// R7's meaning, in S2's words (Ethan, 2026-11-05).
+// R7's meaning, in slice 2's words (member-first-run-ui, Ethan's ruling
+// relayed 2026-11-16; S2's were 2026-11-05): "BitCorn" and "connection".
 const R7_APP_CHECK =
-  "Your membership isn't paid, so the hub can't accept your channel. Pay your membership, then connect.";
+  "Your membership isn't paid, so BitCorn can't accept your connection. Pay your membership, then connect.";
 const DAY = 86_400_000;
 const NOW = 1_790_000_000_000;
 

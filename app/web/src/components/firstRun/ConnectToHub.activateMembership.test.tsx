@@ -7,6 +7,10 @@
 //
 // ⚠ THE PERMITTING CONTROL LEADS: the button is present on false. Every hidden
 // case is also what a ConnectToHub with no button at all would produce.
+//
+// Slice 2 (the Connect card, Ethan's ruling relayed 2026-11-16): when locked,
+// the FORM IS HIDDEN — the locked line and the button show instead. The
+// unlocked cases now look for the "Connect to BitCorn" button.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
@@ -32,6 +36,8 @@ import ConnectToHub from "./ConnectToHub";
 const LABEL = "Activate membership";
 const RENEW = "Renew membership";
 const URL = "/settings?focus=membership";
+const LOCKED_LINE =
+  "Your membership isn't paid, so BitCorn can't accept your connection. Pay your membership, then connect.";
 
 const PREPAY = {
   applicable: true,
@@ -82,7 +88,7 @@ async function render() {
           null,
           React.createElement(Route, {
             path: "/dashboard",
-            element: React.createElement(ConnectToHub, { isPeered: true }),
+            element: React.createElement(ConnectToHub, { isPeered: true, rate: undefined }),
           }),
           React.createElement(Route, { path: "/settings", element: React.createElement(SettingsProbe) }),
         ),
@@ -102,6 +108,15 @@ function activateButton(): HTMLButtonElement | undefined {
   ) as HTMLButtonElement | undefined;
 }
 
+/** The form's controls in the card: text inputs, radios, the connect button. */
+function formParts() {
+  return {
+    inputs: host.querySelectorAll("input[type='text']").length,
+    radios: host.querySelectorAll("input[type='radio']").length,
+    connect: [...host.querySelectorAll("button")].filter((b) => b.textContent === "Connect to BitCorn →").length,
+  };
+}
+
 describe("B1 — the Activate membership button follows the treasury's verdict", () => {
   it("PERMITTING: open_channel_allowed false → the button shows, as a primary button", async () => {
     stub.getSubscriptionStatus.mockResolvedValue({ ...PREPAY, open_channel_allowed: false });
@@ -110,6 +125,24 @@ describe("B1 — the Activate membership button follows the treasury's verdict",
     expect(b).toBeDefined();
     expect(b!.textContent).toBe(LABEL);
     expect(b!.className).toBe("btn btn-primary");
+  });
+
+  it("slice 2: locked HIDES the form — the locked line and the button only", async () => {
+    stub.getSubscriptionStatus.mockResolvedValue({ ...PREPAY, open_channel_allowed: false });
+    await render();
+    expect(host.textContent).toContain(LOCKED_LINE);
+    expect(activateButton()).toBeDefined();
+    expect(formParts(), "a locked card rendered form controls").toEqual({ inputs: 0, radios: 0, connect: 0 });
+  });
+
+  it("slice 2 control: unlocked, the same card renders the form", async () => {
+    stub.getSubscriptionStatus.mockResolvedValue({ ...PREPAY, current_tier: "current", open_channel_allowed: true });
+    await render();
+    expect(host.textContent).not.toContain(LOCKED_LINE);
+    const f = formParts();
+    expect(f.inputs).toBeGreaterThan(0);
+    expect(f.radios).toBe(6);
+    expect(f.connect).toBe(1);
   });
 
   it("clicking it navigates to exactly /settings?focus=membership, and opens no modal", async () => {
@@ -124,14 +157,14 @@ describe("B1 — the Activate membership button follows the treasury's verdict",
   it("hidden on true", async () => {
     stub.getSubscriptionStatus.mockResolvedValue({ ...PREPAY, current_tier: "current", open_channel_allowed: true });
     await render();
-    expect(host.textContent).toContain("Open Channel");
+    expect(host.textContent).toContain("Connect to BitCorn");
     expect(activateButton()).toBeUndefined();
   });
 
   it("hidden on null (the treasury couldn't evaluate)", async () => {
     stub.getSubscriptionStatus.mockResolvedValue({ ...PREPAY, open_channel_allowed: null });
     await render();
-    expect(host.textContent).toContain("Open Channel");
+    expect(host.textContent).toContain("Connect to BitCorn");
     expect(activateButton()).toBeUndefined();
   });
 
@@ -147,7 +180,7 @@ describe("B1 — the Activate membership button follows the treasury's verdict",
       stub.getSubscriptionStatus.mockResolvedValue({ ...PREPAY, open_channel_allowed: false, treasury_signature: label });
       await render();
       expect(activateButton(), "an unverified false locked the open").toBeUndefined();
-      expect(host.textContent).toContain("Open Channel");
+      expect(host.textContent).toContain("Connect to BitCorn");
 
       // Anti-vacuity, remounted: the same false, VERIFIED, shows the button.
       await act(async () => root.unmount());
@@ -161,7 +194,7 @@ describe("B1 — the Activate membership button follows the treasury's verdict",
   it("hidden when the status can't be fetched", async () => {
     stub.getSubscriptionStatus.mockRejectedValue(Object.assign(new Error("treasury_unreachable"), { status: 503 }));
     await render();
-    expect(host.textContent).toContain("Open Channel");
+    expect(host.textContent).toContain("Connect to BitCorn");
     expect(activateButton()).toBeUndefined();
   });
 
