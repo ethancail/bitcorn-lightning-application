@@ -30,8 +30,9 @@ import { fileURLToPath } from "node:url";
 export const WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
 export const REGISTRY_PREFIX = "https://registry.npmjs.org/";
 
-// Every package directory whose lock is checked (spec 2.1, P1 to P4).
-export const PACKAGE_DIRS = [".", "app/api", "app/web", "cloudflare-worker"];
+// Every package directory whose lock is checked (spec 2.1, P1 to P5).
+// app/web/runtime is serve's manifest for the web image's runtime stage.
+export const PACKAGE_DIRS = [".", "app/api", "app/web", "cloudflare-worker", "app/web/runtime"];
 
 // Tracked package.json files that are not packages, each with its reason.
 export const EXCLUDED_MANIFESTS = {
