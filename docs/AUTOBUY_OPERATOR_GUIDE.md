@@ -45,28 +45,19 @@ The address in the BitCorn card has to be on Coinbase's withdrawal allowlist. **
 6. **Coinbase holds new addresses 24–72h before the first withdrawal will succeed.** This activation hold runs in parallel with the rest of setup; nothing else blocks on it.
 7. Back in BitCorn → click **I've whitelisted this in Coinbase**. Card flips to "Connected & Whitelisted".
 
-## Step 4 — Configure Strategy & Caps
+## Step 4 — Configure Strategy
 
-Still on the Auto-Buy page, scroll to **DCA Strategy**:
+Still on the Auto-Buy page, open the **DCA Strategy** tab. The **Strategy** panel sets the pace of buying:
 
 - **Base unit (USD)** — amount per buy. Use `$2` for the first smoke test.
 - **Frequency** — `Daily` for testing.
+- **Zone Buy Multipliers** — how much the base unit is scaled in each valuation zone.
 
-For the first run, also lock down the safety caps. SSH into Umbrel and edit `/home/umbrel/umbrel/app-data/bitcorn-lightning-node/.env`:
+Click **Save Strategy**.
 
-```
-AUTOBUY_MAX_SINGLE_BUY_USD=3
-AUTOBUY_MAX_7D_USD=10
-AUTOBUY_MAX_30D_USD=30
-```
+**The safety caps are not configurable.** The single-buy, rolling 7-day and rolling 30-day caps are fixed code defaults in this release; `app/api/src/config/env.ts` is the source of truth for their values. They cannot be changed from the UI or from the Umbrel `.env` — the node's `docker-compose.yml` does not pass them into the API container, so a value set in `.env` has no effect. What you control is the pace above: base unit, frequency and zone multipliers. For a small first test, keep the base unit small.
 
-Then restart so the API picks up the new env:
-
-```bash
-sudo umbreld client apps.restart.mutate --appId bitcorn-lightning-node
-```
-
-Click **Save** in the Strategy panel.
+**To turn auto-buy off**, click **Pause** in the master control at the top of the DCA Strategy tab. That stops the scheduler from placing new buys until you click **Enable** again. Editing `.env` does not turn it off: `AUTOBUY_ENABLED` is set to the literal `"true"` in the node's `docker-compose.yml`, not read from `.env`.
 
 ## Step 5 — Enable & First Buy
 

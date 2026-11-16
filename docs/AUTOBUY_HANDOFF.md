@@ -165,13 +165,7 @@ The one thing not yet validated. Operator has to:
 
 1. **Create Coinbase CDP API key** at `portal.cdp.coinbase.com` with `View + Trade + Transfer` scopes
 2. **Fund Coinbase USD wallet** with ~$10 (minimum market order is $2; $10 gives buffer for multiple tests)
-3. **Optional safety**: add temporary low caps to `.env`:
-   ```
-   AUTOBUY_MAX_SINGLE_BUY_USD=3
-   AUTOBUY_MAX_7D_USD=10
-   AUTOBUY_MAX_30D_USD=30
-   ```
-   Restart app after edit.
+3. **Caps are not adjustable for the test**: the single-buy, 7d and 30d caps are fixed code defaults (`app/api/src/config/env.ts`). They cannot be set from the UI or `.env` — `docker-compose.yml` does not pass them into the API container. Keep the test small through the base unit instead (UI flow step 5 below).
 
 **Walk the UI flow:**
 1. `/auto-buy` → paste CDP JSON → "Save & Connect"
@@ -303,8 +297,7 @@ Operator workflow that works:
 Existing operator secrets in `.env`:
 - `VALUATION_SUBMIT_HMAC` — 64-char hex, matches the value set on the Worker. Used for signing manual valuation submissions.
 
-Potential future additions to `.env`:
-- `AUTOBUY_MAX_SINGLE_BUY_USD`, `AUTOBUY_MAX_7D_USD`, `AUTOBUY_MAX_30D_USD` — override defaults for Task #73 safety
+The auto-buy caps (`AUTOBUY_MAX_SINGLE_BUY_USD`, `AUTOBUY_MAX_7D_USD`, `AUTOBUY_MAX_30D_USD`) cannot be set here: a `.env` value reaches the API container only through a `${VAR:-}` line in `docker-compose.yml`, and there is none for them. They are fixed code defaults (`app/api/src/config/env.ts`).
 
 ---
 
