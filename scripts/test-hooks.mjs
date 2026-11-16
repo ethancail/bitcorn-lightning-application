@@ -413,6 +413,11 @@ try {
     [
       "#!/usr/bin/env bash",
       'printf \'%s\\n\' "$*" >> "$STUB_LOG"',
+      // verify-gate calls `npx --no-install <bin>` (lockfile arc), so a missing
+      // local bin errors instead of being fetched. Require it, then dispatch on
+      // the bin: a gate that dropped --no-install fails here, loudly.
+      '[ "$1" = "--no-install" ] || { echo "npx stub: expected --no-install first, got: $*" >&2; exit 97; }',
+      "shift",
       'case "$1" in',
       '  tsc)    [ -n "$STUB_TSC_OUT" ] && cat "$STUB_TSC_OUT"; exit "${STUB_TSC_EXIT:-0}" ;;',
       '  vitest) [ -n "$STUB_VITEST_OUT" ] && cat "$STUB_VITEST_OUT"; exit "${STUB_VITEST_EXIT:-0}" ;;',

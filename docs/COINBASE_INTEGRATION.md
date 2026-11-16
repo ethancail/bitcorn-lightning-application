@@ -112,7 +112,7 @@ After restart, the treasury-only `/valuation-input` page (sidebar link) works en
 
 ```bash
 cd cloudflare-worker
-npm install
+npm ci
 npx wrangler deploy          # redeploy code changes
 
 # Update secrets (paste value, then Ctrl-D):

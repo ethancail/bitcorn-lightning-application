@@ -63,10 +63,10 @@ Frontend deps: `react`, `react-dom`, `react-router-dom`, `recharts`, `date-fns`,
 
 **Verification stop-gate:** a committed Stop hook runs `scripts/verify-gate.mjs` at every turn end — with uncommitted `app/api`/`app/web` changes it runs that side's tsc + vitest and blocks completion on real failures (known-baseline tsc errors are allowlisted; a broken runner warns instead of blocking; clean/read-only sessions are never gated). Escape hatch: `VERIFY_GATE_SKIP=1`. Details in the script header.
 
-**Parallel sessions (worktrees):** `claude --worktree <name>` creates an isolated checkout at `.claude/worktrees/<name>/` on branch `worktree-<name>` — already gitignored by the existing `.claude/*` rule. `.worktreeinclude` copies in the gitignored files a fresh checkout can't regenerate (the four `.env.dev.*` files, `cloudflare-worker/.dev.vars`); dependencies are NOT copied — install per worktree, and note `better-sqlite3` compiles native bindings each time. The worktree guard refuses `bash <script>` and unverifiable compound commands; run CI checks as single commands. After a fresh `app/web` install, `npx vite optimize --force` before several Vite servers (else "Invalid hook call").
+**Parallel sessions (worktrees):** `claude --worktree <name>` creates an isolated checkout at `.claude/worktrees/<name>/` on branch `worktree-<name>` — already gitignored by the existing `.claude/*` rule. `.worktreeinclude` copies in the gitignored files a fresh checkout can't regenerate (the four `.env.dev.*` files, `cloudflare-worker/.dev.vars`); dependencies are NOT copied — run `npm ci` in each package directory you need (the root, `app/api`, `app/web`, `cloudflare-worker`), never `npm install`; to add or change a dependency, `npm run lock:refresh -- <dir> <name@version>` (`docs/dev-setup.md` § Step 2); note `better-sqlite3` compiles native bindings each time. The worktree guard refuses `bash <script>` and unverifiable compound commands; run CI checks as single commands. After a fresh `app/web` `npm ci`, `npx --no-install vite optimize --force` before several Vite servers (else "Invalid hook call").
 
 **This machine:**
-- Launch Claude Code with Node 20 first on PATH; Bash calls inherit it. The verify gate runs `npx` from PATH, so a Node 22 launch reports false reds.
+- Launch Claude Code with Node 20 first on PATH; Bash calls inherit it. The verify gate runs `npx --no-install` from PATH, so a Node 22 launch reports false reds.
 - 15 GB RAM, OOM-killed twice: one test suite at a time, none during a browser capture; one browser engine at a time; `free -h` first, stop under 3 GB.
 - Playwright MCP: one call per message — batched calls aren't ordered.
 
@@ -133,7 +133,7 @@ Do not take that from this paragraph — it is exactly the class of volatile fac
 
 **Version must match in two files.** Bump `umbrel-app.yml` AND `bitcorn-lightning-node/docker-compose.yml` image tags together. Drift → Umbrel pulls stale images.
 
-**If install fails (flips back to "Install" at 0%):** Docker images likely don't exist on ghcr.io yet. Check `gh run list` for a failed build. Common cause: transient npm 403 errors (e.g. `npm install -g serve` rate-limited). Re-run with `gh run rerun <run-id> --failed`. Always verify the build is green after a version bump.
+**If install fails (flips back to "Install" at 0%):** Docker images likely don't exist on ghcr.io yet. Check `gh run list` for a failed build. Common cause: transient npm 403 errors (e.g. the web image's `npm ci` of serve in `app/web/runtime` rate-limited). Re-run with `gh run rerun <run-id> --failed`. Always verify the build is green after a version bump.
 
 **If install reaches ~50% then resets:** Port conflict. Check `sudo journalctl -u umbreld -n 100` for "already allocated". Remove conflicting container (`sudo docker rm -f <name>`) and retry.
 
