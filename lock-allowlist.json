@@ -1,4 +1,16 @@
 {
   "schema": 1,
-  "entries": []
+  "entries": [
+    {
+      "name": "viem",
+      "version": "2.57.20",
+      "kind": "overrule",
+      "reason": "Production v1.18.39 runs viem 2.57.20, so locking it avoids a downgrade to 2.57.19. It ages past 3 days at 2026-11-18T08:19:05Z.",
+      "ethan": {
+        "words": "recs",
+        "date": "2026-11-16",
+        "record": "decisions/2026-11-16-lockfile-phase-2-rulings-and-viem-overrule.md"
+      }
+    }
+  ]
 }

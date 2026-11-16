@@ -18,7 +18,7 @@
     "better-sqlite3": "9.6.0",
     "jose": "5.10.0",
     "ln-service": "58.1.0",
-    "viem": "2.57.19"
+    "viem": "2.57.20"
   },
   "devDependencies": {
     "@types/better-sqlite3": "7.6.13",
