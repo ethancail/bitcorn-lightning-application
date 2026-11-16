@@ -154,7 +154,7 @@ export default function AutoPaySection({
           </p>
           <p style={{ margin: 0 }}>You can opt out at any time.</p>
           {cfg.enabled_at && (
-            <p style={{ margin: "6px 0 0", fontFamily: "var(--mono)", fontSize: "0.6875rem" }}>
+            <p style={{ margin: "6px 0 0", fontFamily: "var(--mono)", fontSize: "0.75rem" }}>
               Enabled {formatDistanceToNow(new Date(cfg.enabled_at * 1000), { addSuffix: true })}
             </p>
           )}
@@ -212,7 +212,7 @@ function AutoPayHistoryRow({ alert }: { alert: AutoPayAlert }) {
         display: "flex",
         justifyContent: "space-between",
         gap: 8,
-        fontSize: "0.6875rem",
+        fontSize: "0.75rem",
         fontFamily: "var(--mono)",
         color: "var(--text-3)",
       }}

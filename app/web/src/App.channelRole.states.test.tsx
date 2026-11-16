@@ -11,6 +11,12 @@
 // tests green under CI=1. Rendering goes through the real App at /settings, so
 // this file needs no edit between A and B.
 //
+// Choice (member-first-run-ui slice 1, ruled 2026-11-13): the panel is now a
+// Choice of native radios plus an explicit "Save role" button, so choosing a
+// role only changes the draft and Save writes it. The snapshots were rewritten
+// on purpose for that, and the save cases now choose then Save. Radios' checked
+// state is a property, not an attribute, so serialize() records it.
+//
 // Harness: App.declaredRole.test.tsx's (the REAL App, member shell; RailScope
 // mocked by the existing pass-through pattern).
 
@@ -69,6 +75,7 @@ function serialize(node: Node, depth = 0): string[] {
   const el = node as Element;
   const attrs = [...el.attributes].map((a) => `${a.name}=${JSON.stringify(a.value)}`).sort();
   if (el instanceof HTMLButtonElement) attrs.push(`prop:disabled=${el.disabled}`);
+  if (el instanceof HTMLInputElement) attrs.push(`prop:checked=${el.checked}`, `:disabled=${el.matches(":disabled")}`);
   const open = `${pad}<${el.tagName.toLowerCase()}${attrs.length ? " " + attrs.join(" ") : ""}>`;
   return [open, ...[...el.childNodes].flatMap((c) => serialize(c, depth + 1))];
 }
@@ -130,6 +137,22 @@ async function renderSettings() {
 const panelButton = (text: string) =>
   [...(panel()?.querySelectorAll("button") ?? [])].find((b) => (b.textContent ?? "").includes(text)) as HTMLButtonElement | undefined;
 
+/** A role's card (the label around its radio), by the role's label text. */
+const roleOption = (label: string) =>
+  [...(panel()?.querySelectorAll<HTMLElement>("label.choice-option") ?? [])]
+    .find((o) => o.querySelector(".choice-label")?.textContent === label);
+const roleRadio = (label: string) => roleOption(label)?.querySelector("input") as HTMLInputElement | undefined;
+
+/** The accessible name aria-labelledby gives: the labelling element's text, its aria-hidden parts left out. */
+function groupName(group: Element): string {
+  const by = group.getAttribute("aria-labelledby");
+  const labeller = by ? document.getElementById(by) : null;
+  if (!labeller) return "";
+  const copy = labeller.cloneNode(true) as Element;
+  copy.querySelectorAll('[aria-hidden="true"]').forEach((n) => n.remove());
+  return (copy.textContent ?? "").trim();
+}
+
 async function click(el: Element) {
   await act(async () => { el.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
   await settle();
@@ -182,18 +205,43 @@ describe("ChannelRolePanel — load", () => {
   });
 });
 
+describe("ChannelRolePanel — the group name", () => {
+  it('reads "Channel Role": the panel title\'s ◈ glyph is aria-hidden', async () => {
+    await renderSettings();
+    const group = roleRadio("Merchant")?.closest("fieldset");
+    expect(group, "the role radios sit in a fieldset").toBeTruthy();
+    expect(groupName(group!)).toBe("Channel Role");
+  });
+});
+
 describe("ChannelRolePanel — save", () => {
+  it("choosing a role alone never saves; Save role is off until the choice differs", async () => {
+    stub.getMemberLiquidityStatus.mockResolvedValue(statusWithRole("merchant"));
+    await renderSettings();
+    expect(panelButton("Save role")!.disabled).toBe(true);
+    await click(roleOption("Farmer")!);
+    expect(roleRadio("Farmer")!.checked).toBe(true);
+    expect(stub.setChannelRole).not.toHaveBeenCalled();
+    expect(roleChangedEvents).toBe(0);
+    expect(panelButton("Save role")!.disabled).toBe(false);
+  });
+
   it("saving: the write is pending → every option disabled", async () => {
     await renderSettings();
-    await click(panelButton("Merchant")!);
-    expect(panelButton("Farmer")!.disabled).toBe(true);
+    await click(roleOption("Merchant")!);
+    await click(panelButton("Save role")!);
+    expect(stub.setChannelRole).toHaveBeenCalledWith("merchant");
+    expect(roleRadio("Farmer")!.matches(":disabled")).toBe(true);
+    expect(roleRadio("Merchant")!.matches(":disabled")).toBe(true);
     expect(capture()).toMatchSnapshot();
   });
 
   it("save succeeds → the new role is shown and role-changed fires once", async () => {
     stub.setChannelRole.mockResolvedValue(undefined);
     await renderSettings();
-    await click(panelButton("Farmer")!);
+    await click(roleOption("Farmer")!);
+    await click(panelButton("Save role")!);
+    expect(stub.setChannelRole).toHaveBeenCalledWith("farmer");
     expect(roleChangedEvents).toBe(1);
     expect(capture()).toMatchSnapshot();
   });
@@ -202,9 +250,10 @@ describe("ChannelRolePanel — save", () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(statusWithRole("merchant"));
     stub.setChannelRole.mockRejectedValue(new Error("refused"));
     await renderSettings();
-    await click(panelButton("Farmer")!);
+    await click(roleOption("Farmer")!);
+    await click(panelButton("Save role")!);
     expect(roleChangedEvents).toBe(0);
-    expect(panelButton("Farmer")!.disabled).toBe(false);
+    expect(roleRadio("Farmer")!.matches(":disabled")).toBe(false);
     expect(capture()).toMatchSnapshot();
   });
 

@@ -60,7 +60,7 @@ function Amount({ sats, usd }: { sats: number; usd: number | null }) {
   return (
     <span data-testid="amount" data-sats={sats} style={{ display: "inline-flex", flexDirection: "column", verticalAlign: "top", lineHeight: 1.2 }}>
       <span style={{ fontWeight: 600 }}>{dollars}</span>
-      <span style={{ fontSize: "0.6875rem", color: "var(--text-3)" }}>{sats.toLocaleString()} sats</span>
+      <span style={{ fontSize: "0.75rem", color: "var(--text-3)" }}>{sats.toLocaleString()} sats</span>
     </span>
   );
 }

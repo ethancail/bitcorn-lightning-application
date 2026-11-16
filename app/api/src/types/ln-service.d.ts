@@ -190,6 +190,20 @@ declare module "ln-service" {
     before?: number;
   }): Promise<{ transactions: ChainTransaction[] }>;
 
+  /** chainrpc. Raw 80-byte header as hex. Not supported on LND 0.17.0 and below. */
+  export function getBlockHeader(options: {
+    lnd: any;
+    height?: number;
+    id?: string;
+  }): Promise<{ header: string }>;
+
+  /** chainrpc. Raw block as hex. Not supported on LND 0.15.5 and below. */
+  export function getBlock(options: {
+    lnd: any;
+    height?: number;
+    id?: string;
+  }): Promise<{ block: string }>;
+
   export interface ChainUtxo {
     address: string;
     address_format: string;

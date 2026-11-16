@@ -345,7 +345,7 @@ function RequestPaymentForm({
           background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
           padding: "10px 14px", marginBottom: 10,
         }}>
-          <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
+          <div style={{ fontSize: "0.75rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
             Room to receive
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -368,7 +368,7 @@ function RequestPaymentForm({
           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
         }}>
           <div>
-            <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+            <div style={{ fontSize: "0.75rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
               Receive capacity
             </div>
             <div style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--green)", lineHeight: 1.2 }}>
@@ -426,7 +426,7 @@ function RequestPaymentForm({
       {projectedReceivePct != null && !isOverHard && (
         <div style={{
           background: "var(--bg-2)", borderLeft: "2px solid var(--green)",
-          padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 12,
+          padding: 8, fontSize: "0.75rem", color: "var(--text-2)", marginBottom: 12,
         }}>
           After receive: <strong style={{ color: "var(--green)" }}>
             {currentReceivePct}% → {projectedReceivePct}% room to receive
@@ -652,7 +652,7 @@ function PayInvoiceForm({
           background: "var(--bg-2)", border: "1px solid var(--border)", borderRadius: 8,
           padding: "10px 14px", marginBottom: 10,
         }}>
-          <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
+          <div style={{ fontSize: "0.75rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 4 }}>
             Current channel
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -676,7 +676,7 @@ function PayInvoiceForm({
           display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12,
         }}>
           <div>
-            <div style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
+            <div style={{ fontSize: "0.75rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)" }}>
               Send capacity
             </div>
             <div data-testid="capacity-text" style={{ fontFamily: "var(--mono)", fontSize: "1.125rem", fontWeight: 600, color: "var(--text)", lineHeight: 1.2 }}>
@@ -738,7 +738,7 @@ function PayInvoiceForm({
           )}
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>To</span>
-            <span className="td-mono ident" style={{ fontSize: "0.8rem" }}>
+            <span className="td-mono ident" style={{ fontSize: "0.8125rem" }}>
               {resolveContactName(decoded.destination, contacts)}
             </span>
           </div>
@@ -768,7 +768,7 @@ function PayInvoiceForm({
       {decoded && projectedLocalPct != null && !isOverHard && (
         <div style={{
           background: "var(--bg-2)", borderLeft: "2px solid var(--amber)",
-          padding: 8, fontSize: "0.65rem", color: "var(--text-2)", marginBottom: 12,
+          padding: 8, fontSize: "0.75rem", color: "var(--text-2)", marginBottom: 12,
         }}>
           After send: <strong data-testid="capacity-text" style={{ color: "var(--text)" }}>
             {currentLocalPct}% → {projectedLocalPct}% available to send
@@ -913,7 +913,7 @@ function PaymentDetail({
         {p.counterparty_pubkey && (
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
             <span>{p.direction === "send" ? "To" : "From"}</span>
-            <span className="td-mono ident" style={{ fontSize: "0.8rem" }}>
+            <span className="td-mono ident" style={{ fontSize: "0.8125rem" }}>
               {resolveContactName(p.counterparty_pubkey, contacts)}
             </span>
           </div>
@@ -1028,7 +1028,7 @@ function PaymentRow({
       <td data-label="Fee" className="td-num">{feeText(p)}</td>
       {/* A card cell keeps its value on one line (styles.css PHONE TABLES);
           a name or memo has no length limit, so these two may wrap. */}
-      <td data-label="With" className="td-mono ident" style={{ fontSize: "0.8rem" }}>
+      <td data-label="With" className="td-mono ident" style={{ fontSize: "0.8125rem" }}>
         <span style={FREE_TEXT}>
           {p.counterparty_pubkey
             ? resolveContactName(p.counterparty_pubkey, contacts)

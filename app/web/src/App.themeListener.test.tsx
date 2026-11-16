@@ -97,10 +97,23 @@ async function renderAppAt(path: string) {
   return host;
 }
 
+// The theme chips are a Choice (member-first-run-ui slice 1, ruled 2026-11-13):
+// native radios in the "settings-theme" group, not buttons.
 async function choose(el: HTMLElement, label: "Dark" | "Light" | "System") {
-  const btn = [...el.querySelectorAll("button")].find((b) => b.textContent?.trim() === label);
-  if (!btn) throw new Error(`no ${label} theme button`);
-  await act(async () => { btn.click(); });
+  const radio = [...el.querySelectorAll<HTMLInputElement>('input[type="radio"][name="settings-theme"]')]
+    .find((r) => r.closest("label")?.querySelector(".choice-label")?.textContent?.trim() === label);
+  if (!radio) throw new Error(`no ${label} theme radio`);
+  await act(async () => { radio.click(); });
+}
+
+/** The accessible name aria-labelledby gives: the labelling element's text, its aria-hidden parts left out. */
+function groupName(group: Element): string {
+  const by = group.getAttribute("aria-labelledby");
+  const labeller = by ? document.getElementById(by) : null;
+  if (!labeller) return "";
+  const copy = labeller.cloneNode(true) as Element;
+  copy.querySelectorAll('[aria-hidden="true"]').forEach((n) => n.remove());
+  return (copy.textContent ?? "").trim();
 }
 
 describe("System theme follows the device live", () => {
@@ -145,5 +158,14 @@ describe("System theme follows the device live", () => {
     await choose(el, "System");
     await choose(el, "System");
     expect(device.listeners.size).toBe(1);
+  });
+});
+
+describe("the theme chips' group name", () => {
+  it('reads "Appearance": the panel title\'s ◐ glyph is aria-hidden', async () => {
+    const el = await renderAppAt("/settings");
+    const group = el.querySelector('input[name="settings-theme"]')?.closest("fieldset");
+    expect(group, "the theme radios sit in a fieldset").toBeTruthy();
+    expect(groupName(group!)).toBe("Appearance");
   });
 });

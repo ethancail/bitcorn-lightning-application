@@ -177,7 +177,7 @@ Computed on read — nothing is persisted. Each entry is
 
 `heading` is the plain-language title the Dashboard prints (e.g. "Daily loss limit
 reached"). The API sets it where each alert is created — `treasury-alerts.ts`,
-`channelDataStaleness.ts`, `lndFaultAlerts.ts` — and the Dashboard falls back to
+`channelDataStaleness.ts`, `lndFaultAlerts.ts`, `subscription/creditWaitAlert.ts` — and the Dashboard falls back to
 "Treasury alert" without it; it never derives a heading from `type`.
 
 Types: `ROTATION_CANDIDATES_PRESENT` · `DAILY_LOSS_CAP_EXCEEDED` ·
@@ -185,7 +185,17 @@ Types: `ROTATION_CANDIDATES_PRESENT` · `DAILY_LOSS_CAP_EXCEEDED` ·
 `ONCHAIN_RESERVE_BREACHED` · `ONCHAIN_RESERVE_NEAR` · `SCHEDULER_SIMULATION_MODE` ·
 `LOOP_OUT_AVAILABLE` · `LOOP_NOT_INSTALLED` ·
 `VALUATION_MANUAL_STALE` · `CHANNEL_DATA_STALE` · `CHANNEL_PEERS_UNCLASSIFIED` ·
-**`LND_FAULT`** · **`ONCHAIN_RESERVE_CHECK_SKIPPED`**
+**`LND_FAULT`** · **`ONCHAIN_RESERVE_CHECK_SKIPPED`** · `SUBSCRIPTION_PAYMENT_UNCREDITED`
+
+**`SUBSCRIPTION_PAYMENT_UNCREDITED`** ("Subscription payments not credited yet") —
+a subscription deposit output with ≥6 confirmations that is in neither
+`subscription_payment` nor `subscription_pending_attribution`, whatever the cause:
+`warning` at ≥6, `critical` at ≥144. `data.outputs[]` names each output, its
+confirmations and its `cause` (`time_unavailable`, `credit_threw`, `held_behind`,
+`unknown`). Built from the detector's in-memory snapshot, so it is absent until the
+first scan after an API start, and silent until the subscription first-run gate is
+acknowledged (member nodes never are). The wait is in confirmations, so a restart
+does not reset it. recredit-check, spec §4.4 (G3).
 
 The last two are emitted when the on-chain reserve check cannot complete. Before they
 existed, an LND fault made `ONCHAIN_RESERVE_BREACHED` / `_NEAR` silently vanish,
