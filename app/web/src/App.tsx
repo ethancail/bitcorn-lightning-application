@@ -2011,7 +2011,7 @@ function ChannelsPage() {
                           {isTreasury && (
                             <>
                               <div style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
-                                Treasury channels carry all routed payments. Open a larger channel to increase routing capacity.
+                                Treasury channels carry all routed payments.
                               </div>
                               {/* member-first-run-ui slice 2: the upgrade form is
                                   gone until Ethan decides who pays; the flag stays. */}
