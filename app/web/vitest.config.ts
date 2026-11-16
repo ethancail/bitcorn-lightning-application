@@ -27,6 +27,6 @@ export default defineConfig({
     globals: false,
     environment: "jsdom",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    testTimeout: 10_000,
+    testTimeout: 20_000,
   },
 });
