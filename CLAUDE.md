@@ -233,7 +233,8 @@ See `docs/LOOP_SETUP.md` for the full gotcha list. Highlights that bite regularl
 
 - **Clear KV cache after changing API keys:**
   ```bash
-  npx wrangler kv key delete commodity_prices --namespace-id=62c68c41830141cc8b0b6e7cdb193461
+  cd cloudflare-worker && npm ci   # the locked wrangler; --no-install never fetches one
+  npx --no-install wrangler kv key delete commodity_prices --namespace-id=62c68c41830141cc8b0b6e7cdb193461
   ```
 - **Secret format:** paste the raw key / raw PEM from the CDP JSON — do NOT wrap in quotes when piping to `wrangler secret put`.
 

@@ -291,7 +291,40 @@ if (Array.isArray(deny)) {
     // matcher against `@latest delete`, `@latest delete --name x` and
     // `@3.114.17 delete`: zero matches for all three. The bare spelling used here
     // is the working half of that pair; the starred sibling carries the coverage.
+    // ---- `npx --no-install wrangler` mirror (lockfile spec §7.2) ------------
+    // The docs now prescribe `npx --no-install wrangler …` so npx can never
+    // fetch an unlocked wrangler. Every rule above is anchored on the literal
+    // "npx wrangler", so the flag between `npx` and `wrangler` slipped past ALL
+    // of them: measured with this file's matcher, each string below was
+    // NOT BLOCKED before the mirror rules were added. One case per mirror rule,
+    // in the deny list's order. The bare `<verb>` rules are subsumed by their
+    // `<verb>:*` siblings exactly as in the blocks above (kept for symmetry);
+    // the argument-form cases are what keep each `:*` / `*` rule load-bearing.
+    "npx --no-install wrangler deploy",
+    "npx --no-install wrangler deploy --env production",
+    "npx --no-install wrangler publish",
+    "npx --no-install wrangler publish --env production",
+    "npx --no-install wrangler secret put COINBASE_KEY",
+    "npx --no-install wrangler versions upload",
+    "npx --no-install wrangler versions upload --tag canary",
+    "npx --no-install wrangler versions deploy",
+    "npx --no-install wrangler versions deploy -y",
+    "npx --no-install wrangler versions rollback",
+    "npx --no-install wrangler versions rollback -y",
+    "npx --no-install wrangler rollback",
+    "npx --no-install wrangler rollback -y",
+    "npx --no-install wrangler delete",
+    "npx --no-install wrangler delete --name bitcorn-commodity-prices",
+    "npx --no-install wrangler@3.114.17 deploy",
+    "npx --no-install wrangler@latest rollback -y",
+    "npx --no-install wrangler@3.114.17 secret put X",
+    "npx --no-install wrangler@latest delete",
+    "npx --no-install wrangler@latest delete --name bitcorn-commodity-prices",
+    "npx --no-install wrangler@3.114.17 publish",
+    "npx --no-install wrangler@3.114.17 publish --env production",
+    "npx --no-install wrangler@latest versions upload --tag canary",
     "npm run deploy",
+    "cd cloudflare-worker && npx --no-install wrangler deploy", // the documented form, compound
     "cd cloudflare-worker && npx wrangler deploy", // guardrail bypass via compound
     "cd cloudflare-worker && npx wrangler rollback -y", // same bypass, rollback
     "cd cloudflare-worker && npx wrangler@latest delete", // same bypass, @spec delete
@@ -359,6 +392,13 @@ if (Array.isArray(deny)) {
     // recoverable by dropping the version pin; under-block deletes a Worker
     // silently. Cost is bounded — nothing instructs an agent to pin a version.
     "npx wrangler kv key delete commodity_prices --namespace-id=x", // documented maintenance op
+    // The `--no-install` mirror must not over-block the read-only commands the
+    // docs prescribe in that form (§7.2 converts every doc line to it).
+    "npx --no-install wrangler kv key delete commodity_prices --namespace-id=x",
+    "npx --no-install wrangler tail",
+    "npx --no-install wrangler dev",
+    "npx --no-install wrangler deployments list",
+    "npx --no-install wrangler versions list",
     "npx tsc --noEmit",
     "npx vitest run",
   ];

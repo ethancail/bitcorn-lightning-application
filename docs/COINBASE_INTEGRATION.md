@@ -58,8 +58,8 @@ Fund Node button (browser)
 - `CDP_KEY_NAME`
 - `CDP_PRIVATE_KEY` — SEC1 format (`-----BEGIN EC PRIVATE KEY-----`); Worker converts to PKCS#8 for the Web Crypto API via `sec1ToPkcs8Pem()`
 - `USDA_NASS_KEY`
-- `DAYBREAK_DRAFT_SECRET` — bearer secret for `POST /daybreak/draft`, held by Radar (the Daybreak drafting agent) in Hyperagent locked to this Worker's host. **Worker-only:** it is never on a member node, and no app, compose or `.env` configuration carries it. Set with `npx wrangler secret put DAYBREAK_DRAFT_SECRET`; unset → the route returns 503 `daybreak_draft_not_configured`
-- `DAYBREAK_EDITOR_SECRET` — bearer secret for the three CMS editor routes (`GET /daybreak/editor`, `POST /daybreak/editor/save`, `POST /daybreak/editor/publish`). The SAME value is held server-side by the **treasury** API, which proxies Kevin's editor to these routes; it never reaches the browser and is never handed to a member node. Distinct from `DAYBREAK_DRAFT_SECRET`: neither opens the other's routes. Set with `npx wrangler secret put DAYBREAK_EDITOR_SECRET`; unset → each editor route returns 503 `daybreak_editor_not_configured`
+- `DAYBREAK_DRAFT_SECRET` — bearer secret for `POST /daybreak/draft`, held by Radar (the Daybreak drafting agent) in Hyperagent locked to this Worker's host. **Worker-only:** it is never on a member node, and no app, compose or `.env` configuration carries it. Set with `npx --no-install wrangler secret put DAYBREAK_DRAFT_SECRET` in `cloudflare-worker`, after `npm ci` there; unset → the route returns 503 `daybreak_draft_not_configured`
+- `DAYBREAK_EDITOR_SECRET` — bearer secret for the three CMS editor routes (`GET /daybreak/editor`, `POST /daybreak/editor/save`, `POST /daybreak/editor/publish`). The SAME value is held server-side by the **treasury** API, which proxies Kevin's editor to these routes; it never reaches the browser and is never handed to a member node. Distinct from `DAYBREAK_DRAFT_SECRET`: neither opens the other's routes. Set with `npx --no-install wrangler secret put DAYBREAK_EDITOR_SECRET` in `cloudflare-worker`, after `npm ci` there; unset → each editor route returns 503 `daybreak_editor_not_configured`
 
 ### Price Sources
 
@@ -81,7 +81,7 @@ Required in the API container (`docker-compose.yml`):
 - `COINBASE_WORKER_URL` — URL of the Cloudflare Worker (e.g. `https://bitcorn-onramp.ethancail.workers.dev`). If unset, returns 503.
 - `VALUATION_SUBMIT_HMAC` — shared HMAC secret between the treasury API and the Worker for the `POST /valuation/manual` endpoint. **Sensitive** — never commit. Set via `bitcorn-lightning-node/.env` (see `.env.example` in that directory). If unset, `POST /api/valuation/manual` returns 503.
 - `VALUATION_WORKER_URL` — optional override; defaults to `COINBASE_WORKER_URL` (both endpoints live on the same Worker today).
-- `DAYBREAK_EDITOR_SECRET` — **treasury only.** The bearer secret the treasury API's three proxies (`GET /api/daybreak/editor`, `POST /api/daybreak/editor/save`, `POST /api/daybreak/editor/publish`) send to the Worker's `/daybreak/editor*` routes, at `COINBASE_WORKER_URL`; the SAME value as the Worker's `DAYBREAK_EDITOR_SECRET` above. **Sensitive** — never commit. Set in the treasury's `bitcorn-lightning-node/.env` exactly as `VALUATION_SUBMIT_HMAC` is below (`openssl rand -hex 32`, then `npx wrangler secret put DAYBREAK_EDITOR_SECRET` with the same value, then restart the app). The compose line ships empty to every node; it is never set on a member node. If unset, each proxy returns 503 `editor_not_configured`.
+- `DAYBREAK_EDITOR_SECRET` — **treasury only.** The bearer secret the treasury API's three proxies (`GET /api/daybreak/editor`, `POST /api/daybreak/editor/save`, `POST /api/daybreak/editor/publish`) send to the Worker's `/daybreak/editor*` routes, at `COINBASE_WORKER_URL`; the SAME value as the Worker's `DAYBREAK_EDITOR_SECRET` above. **Sensitive** — never commit. Set in the treasury's `bitcorn-lightning-node/.env` exactly as `VALUATION_SUBMIT_HMAC` is below (`openssl rand -hex 32`, then `npx --no-install wrangler secret put DAYBREAK_EDITOR_SECRET` with the same value, then restart the app). The compose line ships empty to every node; it is never set on a member node. If unset, each proxy returns 503 `editor_not_configured`.
 
 ### Setting the operator secret (Umbrel install)
 
@@ -98,9 +98,10 @@ sudo nano /home/umbrel/umbrel/app-data/bitcorn-lightning-node/.env
 
 # 3. Put the SAME value on the Worker
 cd cloudflare-worker
-npx wrangler secret put VALUATION_SUBMIT_HMAC
+npm ci
+npx --no-install wrangler secret put VALUATION_SUBMIT_HMAC
 # paste the hex, Ctrl-D
-npx wrangler deploy
+npx --no-install wrangler deploy
 
 # 4. Restart the app so the api container picks up the new env
 sudo umbreld client apps.restart.mutate --appId bitcorn-lightning-node
@@ -113,15 +114,15 @@ After restart, the treasury-only `/valuation-input` page (sidebar link) works en
 ```bash
 cd cloudflare-worker
 npm ci
-npx wrangler deploy          # redeploy code changes
+npx --no-install wrangler deploy          # redeploy code changes
 
 # Update secrets (paste value, then Ctrl-D):
-npx wrangler secret put CDP_KEY_NAME
-npx wrangler secret put CDP_PRIVATE_KEY
-npx wrangler secret put USDA_NASS_KEY
+npx --no-install wrangler secret put CDP_KEY_NAME
+npx --no-install wrangler secret put CDP_PRIVATE_KEY
+npx --no-install wrangler secret put USDA_NASS_KEY
 
 # Live Worker logs:
-npx wrangler tail
+npx --no-install wrangler tail
 ```
 
 **Secret format:** paste the raw key name / raw PEM from the CDP JSON file — do **not** wrap in quotes.
@@ -131,7 +132,8 @@ npx wrangler tail
 After changing API keys or forcing a refresh:
 
 ```bash
-npx wrangler kv key delete commodity_prices --namespace-id=62c68c41830141cc8b0b6e7cdb193461
+cd cloudflare-worker && npm ci
+npx --no-install wrangler kv key delete commodity_prices --namespace-id=62c68c41830141cc8b0b6e7cdb193461
 ```
 
 ## UI Integration

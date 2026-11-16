@@ -338,7 +338,7 @@ A: Check in order:
 A: Yes but tread carefully — it places real-money orders. The spec-and-quality review process that shipped v1.11.0 caught 2 critical + 3 important issues. Any scheduler change should go through the same two-stage review. Invoke `superpowers:subagent-driven-development` if in doubt.
 
 **Q: What's the Worker's deploy process?**
-A: `cd cloudflare-worker && npx wrangler deploy`. Independent of the Umbrel app. Use when changing Worker-side code only (engine, zones, adapters). No GHA builds for Worker — ships direct via wrangler.
+A: `cd cloudflare-worker && npm ci && npx --no-install wrangler deploy`. Independent of the Umbrel app. Use when changing Worker-side code only (engine, zones, adapters). No GHA builds for Worker — ships direct via wrangler.
 
 ---
 
