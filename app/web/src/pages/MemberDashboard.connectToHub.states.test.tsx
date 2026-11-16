@@ -485,7 +485,9 @@ describe("slice 2 — the rate's four states", () => {
     stub.getExchangeRate.mockImplementation(never);
     await renderDashboard();
     expect(sizeLines()[0]).toBe("sats:1,000,000 sats");
-    expect(summary()).toBe("1,000,000 sats · network fee about 155 sats");
+    expect(summary()).toBe("1,000,000 sats · network fee set by your node");
+    await click(feeCard("Normal")!);
+    expect(summary()).toBe("1,000,000 sats · network fee about 770 sats");
     expect(count(host.textContent ?? "", SENTENCE)).toBe(0);
   });
 
@@ -493,7 +495,9 @@ describe("slice 2 — the rate's four states", () => {
     stub.getExchangeRate.mockRejectedValue(Object.assign(new Error("x"), { status: 500 }));
     await renderDashboard();
     expect(sizeLines()[0]).toBe("sats:1,000,000 sats");
-    expect(summary()).toBe("1,000,000 sats · network fee about 155 sats");
+    expect(summary()).toBe("1,000,000 sats · network fee set by your node");
+    await click(feeCard("Normal")!);
+    expect(summary()).toBe("1,000,000 sats · network fee about 770 sats");
     expect(count(host.textContent ?? "", SENTENCE)).toBe(1);
     expect(cards()[0].textContent).not.toContain(SENTENCE);
   });
@@ -502,7 +506,9 @@ describe("slice 2 — the rate's four states", () => {
     stub.getExchangeRate.mockResolvedValue({ usd: null, source: "coinbase", fetched_at: null, age_ms: null, state: "none" });
     await renderDashboard();
     expect(sizeLines()[0]).toBe("sats:1,000,000 sats");
-    expect(summary()).toBe("1,000,000 sats · network fee about 155 sats");
+    expect(summary()).toBe("1,000,000 sats · network fee set by your node");
+    await click(feeCard("Normal")!);
+    expect(summary()).toBe("1,000,000 sats · network fee about 770 sats");
     expect(count(host.textContent ?? "", SENTENCE)).toBe(1);
     expect(cards()[0].textContent).not.toContain(SENTENCE);
   });
@@ -516,8 +522,42 @@ describe("slice 2 — the rate's four states", () => {
       "usd:$6,000.00 / sats:10,000,000 sats",
     ]);
     expect(host.querySelector(".connect-box-usd")?.textContent).toBe("$600.00");
-    expect(summary()).toBe("1,000,000 sats · network fee about $0.09");
+    expect(summary()).toBe("1,000,000 sats · network fee set by your node");
+    await click(feeCard("Normal")!);
+    expect(summary()).toBe("1,000,000 sats · network fee about $0.46");
     expect(count(host.textContent ?? "", SENTENCE)).toBe(0);
+  });
+});
+
+describe("ruling \"a\" (2026-11-16) — Economy's fee is set by the node: no figure", () => {
+  // Economy sends no fee_rate (ConnectToHub.feePins.test.tsx pins that), so
+  // nothing computes a figure for it: no "~", no dollars, on its card or in
+  // the footer. Normal still gives its estimate.
+  const summary = () => host.querySelector(".connect-summary")?.textContent;
+  const FRESH = { usd: 60_000, source: "coinbase", fetched_at: NOW, age_ms: 0, state: "fresh" };
+
+  it("Economy's card: \"Fee set by your node\", and no \"~\" or \"$\" figure (fresh rate)", async () => {
+    stub.getExchangeRate.mockResolvedValue(FRESH);
+    await renderDashboard();
+    const econ = feeCard("Economy")!;
+    expect(econ, "the Economy card renders").toBeDefined();
+    expect(econ.querySelector(".choice-meta")?.textContent).toBe("Fee set by your node");
+    expect(econ.textContent).toBe("Economy1–3 hoursFee set by your node");
+    expect(econ.textContent).not.toMatch(/[~$]/);
+    // Normal and Priority keep their figures.
+    expect(feeCard("Normal")!.querySelector(".choice-meta")?.textContent).toBe("~770 sats");
+    expect(feeCard("Priority")!.querySelector(".choice-meta")?.textContent).toBe("~2,300 sats");
+  });
+
+  it("the footer: Economy (the default) reads \"<sats> sats · network fee set by your node\"; Normal gives the estimate; back to Economy", async () => {
+    stub.getExchangeRate.mockResolvedValue(FRESH);
+    await renderDashboard();
+    expect(summary()).toBe("1,000,000 sats · network fee set by your node");
+    expect(summary()).not.toMatch(/[~$]/);
+    await click(feeCard("Normal")!);
+    expect(summary()).toBe("1,000,000 sats · network fee about $0.46");
+    await click(feeCard("Economy")!);
+    expect(summary()).toBe("1,000,000 sats · network fee set by your node");
   });
 });
 

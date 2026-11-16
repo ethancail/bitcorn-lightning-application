@@ -9,7 +9,8 @@
 // "How fast") and a footer. The two 100k checks stay two constants.
 //
 // Carried as they are, NOT fixed: the Economy option sends no fee rate (its
-// rate is left unset), and each option's fee is a fixed estimate, not a quote.
+// rate is left unset), and Normal's and Priority's fees are fixed estimates,
+// not quotes. Economy shows no figure (ruling "a", 2026-11-16).
 // The open-channel confirm dialog keeps its own words until slice 5.
 
 export const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
@@ -29,8 +30,11 @@ export const MIN_CAPACITY_OPEN_SATS = 100_000;
 // `key` is the Choice value (lowercase, ruled 2026-11-13); it maps back to the
 // option's rate. `feeSats` is the number behind `cost`, for the footer's
 // "network fee about …" (slice 2); the two must say the same amount.
+// Economy sends no fee rate, so the node picks it and nothing computes a figure:
+// its card and the footer say the node sets the fee, with no number (Ethan's
+// ruling "a", 2026-11-16). What it sends is unchanged.
 export const FEE_SPEED_OPTIONS = ([
-  { key: "economy", label: "Economy", rate: undefined, desc: "cheapest", time: "1–3 hours", cost: "~155 sats", feeSats: 155 },
+  { key: "economy", label: "Economy", rate: undefined, desc: "cheapest", time: "1–3 hours", cost: "Fee set by your node", feeSats: null },
   { key: "normal", label: "Normal", rate: 5, desc: "balanced", time: "~30 min", cost: "~770 sats", feeSats: 770 },
   { key: "priority", label: "Priority", rate: 15, desc: "fastest", time: "~10 min", cost: "~2,300 sats", feeSats: 2_300 },
 ] as const);
@@ -55,6 +59,8 @@ export const CONNECT_TO_HUB_COPY = {
 
   /** The footer summary, before the fee: "<sats> · network fee about <fee>". */
   networkFeeAbout: "network fee about",
+  /** The footer summary with Economy: "<sats> · network fee set by your node". */
+  networkFeeSetByNode: "network fee set by your node",
   connecting: "Connecting…",
   connect: "Connect to BitCorn →",
   openFailed: "Couldn't connect to BitCorn",

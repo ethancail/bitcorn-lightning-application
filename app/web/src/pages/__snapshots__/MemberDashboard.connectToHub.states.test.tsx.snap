@@ -70,7 +70,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -110,9 +110,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -189,7 +187,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 2
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -229,9 +227,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 2
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -308,7 +304,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 3
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -348,9 +344,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 3
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -427,7 +421,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -476,9 +470,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -555,7 +547,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -604,9 +596,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -683,7 +673,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 5
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -732,9 +722,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 5
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -811,7 +799,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -860,9 +848,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
           <div class="connect-summary">
             "5,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -939,7 +925,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -988,9 +974,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
           <div class="connect-summary">
             "10,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -1067,7 +1051,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1116,9 +1100,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
           <div class="connect-summary">
             "2,500,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -1195,7 +1177,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1244,9 +1226,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
           <div class="connect-summary">
             "50,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" disabled="" prop:disabled=true>
             "Connect to BitCorn →"
 portals: 0
@@ -1321,7 +1301,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1443,7 +1423,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option checked" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=true prop:disabled=false>
                 <span class="choice-text">
@@ -1492,9 +1472,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.46"
+            "network fee about $0.46"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -1571,7 +1549,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1620,9 +1598,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$1.38"
+            "network fee about $1.38"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -1699,7 +1675,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1739,9 +1715,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 1
@@ -1851,7 +1825,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -1900,9 +1874,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 1
@@ -2012,7 +1984,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2061,9 +2033,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 1
@@ -2168,7 +2138,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2217,9 +2187,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" disabled="" prop:disabled=true>
             "Connecting…"
 portals: 1
@@ -2318,7 +2286,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2367,9 +2335,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$1.38"
+            "network fee about $1.38"
           <button class="btn btn-primary" disabled="" prop:disabled=true>
             "Connecting…"
 portals: 1
@@ -2473,7 +2439,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option checked" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=true prop:disabled=false>
                 <span class="choice-text">
@@ -2513,9 +2479,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.46"
+            "network fee about $0.46"
           <button class="btn btn-primary" disabled="" prop:disabled=true>
             "Connecting…"
 portals: 1
@@ -2619,7 +2583,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2670,9 +2634,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -2749,7 +2711,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2800,9 +2762,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 0
@@ -2879,7 +2839,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                   <span class="choice-desc">
                     "1–3 hours"
                   <span class="choice-meta">
-                    "~155 sats"
+                    "Fee set by your node"
               <label class="choice-option" data-value="normal">
                 <input class="choice-input" name=":r:-speed-choice" type="radio" value="normal" prop:value="normal" prop:checked=false prop:disabled=false>
                 <span class="choice-text">
@@ -2928,9 +2888,7 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <div class="connect-summary">
             "1,000,000 sats"
             " · "
-            "network fee about"
-            " "
-            "$0.09"
+            "network fee set by your node"
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 1

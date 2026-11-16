@@ -10,7 +10,8 @@
 //     with sats under it; the box in sats with dollars under it; then the
 //     hint or the error) and "How fast" (slice 1's Choice: time and cost).
 //   footer — Technical details on the left; on the right any error, the
-//     summary ("<sats> · network fee about <fee>") and the connect button.
+//     summary ("<sats> · network fee about <fee>", or with Economy "<sats> ·
+//     network fee set by your node") and the connect button.
 //
 // Locked (the treasury's verified verdict is false): the form is HIDDEN; the
 // locked line and the Activate/Renew membership button show instead.
@@ -127,7 +128,8 @@ function ConnectForm({ isPeered, initialCapacity, rate }: { isPeered: boolean; i
   const usd = usableUsd(rate);
   const preset = CAPACITY_PRESETS.find((p) => p.value === s.capacity);
   const fee = FEE_SPEED_OPTIONS.find((o) => o.rate === s.feeRate) ?? FEE_SPEED_OPTIONS[0];
-  const feeText = usd != null ? formatUsd(fee.feeSats, usd).text : formatSats(fee.feeSats);
+  // Economy has no figure: the node sets its fee (ruling "a", 2026-11-16).
+  const feeText = fee.feeSats == null ? null : usd != null ? formatUsd(fee.feeSats, usd).text : formatSats(fee.feeSats);
 
   return (
     <div className="connect-card">
@@ -208,7 +210,9 @@ function ConnectForm({ isPeered, initialCapacity, rate }: { isPeered: boolean; i
         <div className="connect-foot-act">
           {s.error && <div className="connect-error">{s.error}</div>}
           {s.capacity != null && (
-            <div className="connect-summary">{formatSats(s.capacity)} · {COPY.networkFeeAbout} {feeText}</div>
+            <div className="connect-summary">
+              {formatSats(s.capacity)} · {feeText == null ? COPY.networkFeeSetByNode : `${COPY.networkFeeAbout} ${feeText}`}
+            </div>
           )}
           <button className="btn btn-primary" onClick={s.openChannelConfirm} disabled={s.openDisabled}>
             {s.submitting ? COPY.connecting : COPY.connect}
