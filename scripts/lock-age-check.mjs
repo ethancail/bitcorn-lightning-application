@@ -327,7 +327,7 @@ function baseManifest(root, ref, rel) {
   return JSON.parse(git(root, ["show", `${ref}:${rel}`]));
 }
 
-async function fetchPackument(name) {
+export async function fetchPackument(name) {
   const url = REGISTRY_PREFIX + name.replace("/", "%2f");
   let last;
   for (let attempt = 1; attempt <= 3; attempt++) {
