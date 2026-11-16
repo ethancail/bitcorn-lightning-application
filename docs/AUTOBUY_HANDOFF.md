@@ -122,7 +122,7 @@ Failure states (terminal but countable toward consecutive-failures threshold): `
 | `app/api/src/autoBuy/caps.ts` | 7 exported check functions, CapResult discriminated union, safeCap helper for empty-string env defense |
 | `app/api/src/autoBuy/valuationClient.ts` | Proxies Worker /valuation/* with 60-min cache + stale fallback |
 | `app/api/src/db/migrations/034_coinbase_autobuy.sql` | `coinbase_credentials`, `autobuy_config`, `autobuy_runs`, `autobuy_sweeps` tables |
-| `app/api/src/config/env.ts` | 7 `AUTOBUY_*` env vars declared here (lines ~113-134) |
+| `app/api/src/config/env.ts` | 7 `AUTOBUY_*` env vars declared in the auto-buy block (`// --- Coinbase Auto-Buy Executor ---`); find it with `grep -n AUTOBUY_ app/api/src/config/env.ts` |
 | `app/api/src/index.ts` | 12 `/api/autobuy/*` + `/api/valuation/*` routes. Search `"/api/autobuy"` to find |
 
 ### Frontend (React)
