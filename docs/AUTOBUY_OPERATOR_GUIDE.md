@@ -62,7 +62,7 @@ Click **Save Strategy**.
 ## Step 5 — Enable & First Buy
 
 1. **Wait for the activation hold from Step 3.6 to clear** (24–72h). Don't trigger Execute Now before this — the buy will succeed but the eventual sweep at T+72h will be rejected by Coinbase.
-2. Flip the master **Enable** toggle.
+2. Click the **Enable** button in the master control at the top of the DCA Strategy tab.
 3. Click **Execute Now** and confirm.
 4. Watch the Purchase History row walk through the states:
 

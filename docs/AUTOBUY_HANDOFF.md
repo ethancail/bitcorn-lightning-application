@@ -84,15 +84,19 @@ On-chain BTC → operator's LND wallet (via createLndChainAddress)
 
 ### Key safety rails
 
-| Cap | Default | Env var | Effect |
-|---|---|---|---|
-| Single buy | $1000 | `AUTOBUY_MAX_SINGLE_BUY_USD` | `skipped_cap_hit` if intended > this |
-| Rolling 7d | $2000 | `AUTOBUY_MAX_7D_USD` | sums `filled_usd` across counted states |
-| Rolling 30d | $5000 | `AUTOBUY_MAX_30D_USD` | same |
-| Base unit config max | $500 | `AUTOBUY_BASE_UNIT_MAX_USD` | UI PATCH /config rejects higher |
-| Valuation freshness | 48h | `AUTOBUY_STALE_DATA_MAX_HOURS` | `skipped_stale_data` if older |
-| Consecutive failures | 3 | `AUTOBUY_FAILURE_PAUSE_THRESHOLD` | auto-pauses, requires operator re-enable |
-| Kill switch | off | `AUTOBUY_ENABLED` | scheduler refuses to schedule if false |
+The first six rails are **code defaults, not configurable on a node**. `app/api/src/config/env.ts` is the source of truth for their values. `bitcorn-lightning-node/docker-compose.yml` has no `${VAR:-}` line for any of them, so a value set in the Umbrel `.env` never reaches the API container. The variable names are listed only so you can find each one in `env.ts`.
+
+| Rail | Name in `env.ts` | Effect |
+|---|---|---|
+| Single buy | `AUTOBUY_MAX_SINGLE_BUY_USD` | `skipped_cap_hit` if intended > this |
+| Rolling 7d | `AUTOBUY_MAX_7D_USD` | sums `filled_usd` across counted states |
+| Rolling 30d | `AUTOBUY_MAX_30D_USD` | same |
+| Base unit config max | `AUTOBUY_BASE_UNIT_MAX_USD` | UI PATCH /config rejects higher |
+| Valuation freshness | `AUTOBUY_STALE_DATA_MAX_HOURS` | `skipped_stale_data` if older |
+| Consecutive failures | `AUTOBUY_FAILURE_PAUSE_THRESHOLD` | auto-pauses, requires operator re-enable |
+| Kill switch | `AUTOBUY_ENABLED` | scheduler refuses to schedule if false |
+
+**Kill switch: shipped ON, and `.env` cannot change it.** `bitcorn-lightning-node/docker-compose.yml` sets `AUTOBUY_ENABLED: "true"` as a literal, not a `${VAR:-}` interpolation, so the env-level gate is always open on a node, and editing `.env` neither turns it off nor on. What decides whether the scheduler buys is the in-app flag: **Enable** and **Pause** in the master control on the Auto-Buy page's DCA Strategy tab.
 
 Counted states (for rolling cap SUM): `buy_filled`, `awaiting_withdraw_hold`, `sweep_assigned`, `withdraw_placed`, `withdraw_confirmed`. **`buy_placed` is NOT counted** — known limitation noted in [I3 from the scheduler review](docs/superpowers/plans/2026-04-20-coinbase-autobuy-plan-2a-executor-backend.md), a stranded buy_placed row represents real Coinbase spend that slips past caps.
 
