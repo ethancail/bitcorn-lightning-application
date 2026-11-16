@@ -24,14 +24,16 @@
 // allowlisted versions applied, not to now. Allowlisted versions a manifest
 // already requires are re-applied the same way on every normal run.
 //
-// At the end it runs scripts/lock-age-check.mjs over every directory it wrote,
-// and exits with that check's result. On an npm failure it restores the
-// directory's package.json and lock and writes nothing.
+// npm runs in a temporary directory, never against the worktree's node_modules
+// (see refreshDir). At the end it runs scripts/lock-age-check.mjs over every
+// directory it wrote, and exits with that check's result. On an npm failure
+// it writes nothing.
 //
 // Spec: bitcorn-research specs/2026-11-16-lockfile-spec.md, section 3.
 
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -155,18 +157,20 @@ const writeJson = (file, obj) => fs.writeFileSync(file, `${JSON.stringify(obj, n
 
 class Stop extends Error {}
 
+// npm runs in a fresh temporary directory holding only the package.json (and,
+// for name@version, the current lock), never in the package directory itself.
+// With no lock present, `npm install --package-lock-only` in a directory that
+// has node_modules seeds its tree from node_modules/.package-lock.json and the
+// installed packages: most entries then lose resolved and integrity, and
+// other-platform optional packages drop out. Measured 2026-11-16: app/api's
+// lock came out with 13 of 192 entries resolved. The temporary directory has
+// no node_modules, so every regeneration really starts from scratch. It also
+// means a failure writes nothing: the real files are replaced only on success.
 async function refreshDir(root, dir, C, entries, opts) {
-  const dirAbs = path.join(root, dir);
   const pjFile = path.join(root, manifestPathOf(dir));
   const lockFile = path.join(root, lockPathOf(dir));
   const pjText = fs.readFileSync(pjFile, "utf8");
-  const lockText = fs.existsSync(lockFile) ? fs.readFileSync(lockFile, "utf8") : null;
   const manifest = JSON.parse(pjText);
-  const restore = () => {
-    fs.writeFileSync(pjFile, pjText);
-    if (lockText === null) fs.rmSync(lockFile, { force: true });
-    else fs.writeFileSync(lockFile, lockText);
-  };
   const base = ["install", "--package-lock-only", "--ignore-scripts", "--save-exact"];
   const { spec, exception, override } = opts;
 
@@ -182,51 +186,53 @@ async function refreshDir(root, dir, C, entries, opts) {
   for (const a of applied) times[a.name] = (await fetchPackument(a.name)).time || {};
   const young = applied.filter((a) => Date.parse(times[a.name][a.version]) > Date.parse(C));
 
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), "lock-refresh-"));
+  const wPj = path.join(work, "package.json");
+  const wLock = path.join(work, "package-lock.json");
   try {
+    fs.writeFileSync(wPj, pjText);
     if (young.length === 0) {
-      // Normal mode. With no name@version, regenerate the lock from scratch.
-      if (!spec) fs.rmSync(lockFile, { force: true });
+      // Normal mode. With no name@version the lock is regenerated from scratch
+      // (none is copied in); with one, npm changes that dependency in the current lock.
+      if (spec && fs.existsSync(lockFile)) fs.copyFileSync(lockFile, wLock);
       const args = [...base, `--before=${C}`, ...nonExactDirectSpecs(manifest, new Set(spec ? [spec.name] : [])), ...(spec && !override ? [`${spec.name}@${spec.version}`] : [])];
-      if (override) {
-        manifest.overrides = { ...(manifest.overrides || {}), [spec.name]: spec.version };
-        writeJson(pjFile, manifest);
-      }
-      const r = npm(dirAbs, args);
+      if (override) writeJson(wPj, { ...manifest, overrides: { ...(manifest.overrides || {}), [spec.name]: spec.version } });
+      const r = npm(work, args);
       if (r.status !== 0) {
         if (NO_MATCH.test(r.out)) {
           throw new Stop(`npm found no version at or before ${C} for a requirement in ${dir}. A version younger than 3 days needs an allowlist entry: an overrule entry carries Ethan's words, their date and the vault record; a security-fix entry carries its reason, the advisory and the date. Then re-run with --exception.`);
         }
         throw new Stop(`npm exited ${r.status} in ${dir}`);
       }
-      return;
+    } else {
+      // Step A: lock under C with the young allowlisted requirements stripped.
+      const { manifest: strippedManifest, stripped } = stripManifest(manifest, young);
+      console.log(`  Step A: stripped ${stripped.map((s) => `${s.field}.${s.name}@${s.version}`).join(", ") || "nothing"}; locking under C=${C}`);
+      writeJson(wPj, strippedManifest);
+      const strippedNames = new Set(stripped.map((s) => s.name));
+      if (spec) strippedNames.add(spec.name);
+      const a = npm(work, [...base, `--before=${C}`, ...nonExactDirectSpecs(strippedManifest, strippedNames)]);
+      if (a.status !== 0) throw new Stop(`Step A: npm exited ${a.status} in ${dir}${NO_MATCH.test(a.out) ? " (no version at or before C)" : ""}`);
+
+      // Step B: restore the real manifest with the requirement written in, lift to L.
+      const L = computeL(young, times);
+      console.log(`  Step B: restoring ${manifestPathOf(dir)}; lifting the cut-off to L=${L}`);
+      fs.writeFileSync(wPj, pjText);
+      const extra = [];
+      if (spec && override) writeJson(wPj, { ...manifest, overrides: { ...(manifest.overrides || {}), [spec.name]: spec.version } });
+      else if (spec) extra.push(`${spec.name}@${spec.version}`);
+      const b = npm(work, [...base, `--before=${L}`, ...extra]);
+      if (b.status !== 0) throw new Stop(`Step B: npm exited ${b.status} in ${dir}`);
     }
-
-    // Step A: lock under C with the young allowlisted requirements stripped.
-    const { manifest: strippedManifest, stripped } = stripManifest(manifest, young);
-    console.log(`  Step A: stripped ${stripped.map((s) => `${s.field}.${s.name}@${s.version}`).join(", ") || "nothing"}; locking under C=${C}`);
-    writeJson(pjFile, strippedManifest);
-    fs.rmSync(lockFile, { force: true });
-    const strippedNames = new Set(stripped.map((s) => s.name));
-    if (spec) strippedNames.add(spec.name);
-    const a = npm(dirAbs, [...base, `--before=${C}`, ...nonExactDirectSpecs(strippedManifest, strippedNames)]);
-    if (a.status !== 0) throw new Stop(`Step A: npm exited ${a.status} in ${dir}${NO_MATCH.test(a.out) ? " (no version at or before C)" : ""}`);
-
-    // Step B: restore the real manifest with the requirement written in, lift to L.
-    const L = computeL(young, times);
-    console.log(`  Step B: restoring ${manifestPathOf(dir)}; lifting the cut-off to L=${L}`);
-    fs.writeFileSync(pjFile, pjText);
-    const real = JSON.parse(pjText);
-    const extra = [];
-    if (spec && override) {
-      real.overrides = { ...(real.overrides || {}), [spec.name]: spec.version };
-      writeJson(pjFile, real);
-    } else if (spec) extra.push(`${spec.name}@${spec.version}`);
-    const b = npm(dirAbs, [...base, `--before=${L}`, ...extra]);
-    if (b.status !== 0) throw new Stop(`Step B: npm exited ${b.status} in ${dir}`);
+    if (!fs.existsSync(wLock)) throw new Stop(`npm wrote no package-lock.json for ${dir}`);
+    fs.copyFileSync(wPj, pjFile);
+    fs.copyFileSync(wLock, lockFile);
+    console.log(`  wrote ${manifestPathOf(dir)} and ${lockPathOf(dir)}`);
   } catch (err) {
-    restore();
-    console.log(`  restored ${manifestPathOf(dir)} and ${lockPathOf(dir)}; nothing written`);
+    if (err instanceof Stop) console.log(`  ${manifestPathOf(dir)} and ${lockPathOf(dir)} left as they were; nothing written`);
     throw err;
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
   }
 }
 
