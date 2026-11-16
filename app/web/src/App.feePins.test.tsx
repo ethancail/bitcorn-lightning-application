@@ -15,6 +15,15 @@
 // what is actually sent. Economy differs between the two on develop and stays
 // so: the close sends `fee_rate: undefined`, the open leaves fee_rate out.
 //
+// Ethan's ruling "treasury too" (2026-11-16), the member card's ruling "a"
+// applied here: Economy sends no rate, so the node sets its fee and nothing
+// computes "~192 sats" or "~155 sats"; on both pickers Economy's cost line now
+// reads "Fee set by your node". CLOSE_PINNED and OPEN_PINNED are still
+// byte-identical — every key, rate and default they pin is what is sent,
+// unchanged — and their Economy `text`/`cost` stay develop's, as the record of
+// what shipped. The label and cost-line tests compare Economy against the
+// ruled text below, the others against the pins.
+//
 // Harness: App.treasuryCapacity.test.tsx's (the REAL App, as the treasury).
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -73,6 +82,14 @@ const OPEN_PINNED = [
   { label: "Normal", text: "Normal~30 min~770 sats", cost: "~770 sats", key: "normal", rate: 5 },
   { label: "Priority", text: "Priority~10 min~2,300 sats", cost: "~2,300 sats", key: "priority", rate: 15 },
 ] as const;
+
+/** Economy's card since "treasury too" (2026-11-16): the node sets its fee. */
+const ECONOMY_COST = "Fee set by your node";
+const CLOSE_ECONOMY_TEXT = "Economy~1 sat/vB1–3 hoursFee set by your node";
+const OPEN_ECONOMY_TEXT = "Economy1–3 hoursFee set by your node";
+type Pin = { key: string; text: string; cost: string };
+const shownText = (pins: readonly Pin[], economy: string) => pins.map((p) => (p.key === "economy" ? economy : p.text));
+const shownCost = (pins: readonly Pin[]) => pins.map((p) => [p.key === "economy" ? ECONOMY_COST : p.cost]);
 
 /** Each card's cost line: exactly one .choice-cost (the line that never splits), holding the cost alone. */
 const costLines = (opts: HTMLElement[]) =>
@@ -179,14 +196,14 @@ async function confirmClose(): Promise<Record<string, unknown>> {
 }
 
 describe("ChannelsPage close-channel fee picker: values, default and labels unchanged", () => {
-  it("label: three options, each with develop's exact text, in order", async () => {
+  it("label: three options, each with develop's exact text (Economy's as ruled), in order", async () => {
     await openCloseDialog();
-    expect(closeOptions().map((o) => o.textContent)).toEqual(CLOSE_PINNED.map((p) => p.text));
+    expect(closeOptions().map((o) => o.textContent)).toEqual(shownText(CLOSE_PINNED, CLOSE_ECONOMY_TEXT));
   });
 
   it("the cost is its own line: one .choice-cost per card, the cost alone", async () => {
     await openCloseDialog();
-    expect(costLines(closeOptions())).toEqual(CLOSE_PINNED.map((p) => [p.cost]));
+    expect(costLines(closeOptions())).toEqual(shownCost(CLOSE_PINNED));
   });
 
   it("the radios carry the ruled string keys", async () => {
@@ -237,14 +254,14 @@ async function confirmOpen(): Promise<Record<string, unknown>> {
 }
 
 describe("TreasuryOpenChannelPanel fee picker: values, default and labels unchanged", () => {
-  it("label: three options, each with develop's exact text, in order", async () => {
+  it("label: three options, each with develop's exact text (Economy's as ruled), in order", async () => {
     await showOpenForm();
-    expect(openOptions().map((o) => o.textContent)).toEqual(OPEN_PINNED.map((p) => p.text));
+    expect(openOptions().map((o) => o.textContent)).toEqual(shownText(OPEN_PINNED, OPEN_ECONOMY_TEXT));
   });
 
   it("the cost is its own line: one .choice-cost per card, the cost alone", async () => {
     await showOpenForm();
-    expect(costLines(openOptions())).toEqual(OPEN_PINNED.map((p) => [p.cost]));
+    expect(costLines(openOptions())).toEqual(shownCost(OPEN_PINNED));
   });
 
   it("the radios carry the ruled string keys", async () => {
@@ -271,6 +288,31 @@ describe("TreasuryOpenChannelPanel fee picker: values, default and labels unchan
       expect(body.fee_rate).toBe(p.rate);
     });
   }
+});
+
+// ─── "treasury too" (2026-11-16): Economy shows no figure on either picker ──
+
+describe("ruling \"treasury too\" — Economy's fee is set by the node: no figure", () => {
+  // No "~N sats" and no dollars on Economy's card. The close card's
+  // description "~1 sat/vB" is a rate, not a fee figure, and the ruling left it.
+  const NO_FIGURE = /~[\d,]+ sats|\$/;
+  const economy = (opts: HTMLElement[]) => opts.find((o) => labelOf(o) === "Economy")!;
+
+  it("the close dialog: Economy's cost line reads \"Fee set by your node\", no ~N sats or $", async () => {
+    await openCloseDialog();
+    const card = economy(closeOptions());
+    expect(card.querySelector(".choice-cost")?.textContent).toBe(ECONOMY_COST);
+    expect(card.textContent).not.toMatch(NO_FIGURE);
+    expect(card.textContent).not.toContain("~192 sats");
+  });
+
+  it("the open panel: Economy's cost line reads \"Fee set by your node\", no ~ or $", async () => {
+    await showOpenForm();
+    const card = economy(openOptions());
+    expect(card.querySelector(".choice-cost")?.textContent).toBe(ECONOMY_COST);
+    expect(card.textContent).not.toMatch(/[~$]/);
+    expect(card.textContent).not.toContain("~155 sats");
+  });
 });
 
 // ─── The cost line never splits (3b) ──────────────────────────────────────

@@ -1396,10 +1396,12 @@ function ChannelsPage() {
                 On-chain fee rate
               </div>
               {/* String keys mapped to rates; Economy's rate is undefined. The
-                  cost is its own line, so "~192 sats" never splits. */}
+                  cost is its own line, so "~960 sats" never splits. Economy
+                  sends no rate, so the node sets its fee and no figure is
+                  shown (Ethan's ruling "treasury too", 2026-11-16). */}
               {(() => {
                 const CLOSE_FEE = ([
-                  { key: "economy", label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~192 sats" },
+                  { key: "economy", label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "Fee set by your node" },
                   { key: "normal", label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~960 sats" },
                   { key: "priority", label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,885 sats" },
                 ] as const);
@@ -2360,10 +2362,12 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
           <div>
             <div className="form-label" id="treasury-open-fee-label">Confirmation Speed</div>
             {/* String keys mapped to rates; Economy's rate is undefined. The
-                cost is its own line, so "~2,300 sats" never splits. */}
+                cost is its own line, so "~2,300 sats" never splits. Economy
+                sends no rate, so the node sets its fee and no figure is shown
+                (Ethan's ruling "treasury too", 2026-11-16). */}
             {(() => {
               const OPEN_FEE = ([
-                { key: "economy", label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~155 sats" },
+                { key: "economy", label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "Fee set by your node" },
                 { key: "normal", label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~770 sats" },
                 { key: "priority", label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,300 sats" },
               ] as const);
