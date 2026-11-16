@@ -121,6 +121,21 @@ node scripts/test-hooks.mjs --gate-src <path>  # alternate gate script (break-de
 Read-only toward real state: fixtures live under the OS temp dir and are removed
 on exit; the real repo, settings, and git state are never touched.
 
+## treasury-read.sh — subscription ledger read (treasury, read-only)
+
+Run by hand on the treasury Umbrel node, as the umbrel user: `bash treasury-read.sh`.
+It opens the API's database read-only inside the running api container
+(`readonly: true` plus `PRAGMA query_only`) and prints counts and anomalies only — no
+pubkeys, addresses or txids. Checks: duplicate credits, days over what an amount
+buys, **check 3** (each member's `paid_through` against a replay of the ledger in id
+order, on-chain rows from `confirmed_at`), **3b** (`confirmed_at` at most 2 h after
+`received_at`) and **3c** (no on-chain row without `confirmed_at`), and multi-credit
+scans. Each check prints synthetic controls beside it.
+
+No CI job runs `scripts/`, so check 3's replay rule is pinned from
+`app/api/src/subscription/treasuryReadReplay.test.ts`, which reads the rule from this
+file between its `REPLAY RULE` markers and checks it against `computeNewPaidThrough`.
+
 ## polar-preflight.mjs — Polar regtest gate pre-flight
 
 Checks the local Polar harness immediately before and after a gate run. The

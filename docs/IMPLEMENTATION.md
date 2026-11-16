@@ -30,6 +30,8 @@ Where things live. For architecture and data flow, see `ARCHITECTURE.md`.
 | `src/transfers/feeSamples.ts` | Drive-mode P3: the read-only 6-block fee sampler (≤ every 10 min off the sync tick, 8 days kept) and `calmReading` (calm = estimate ≤ the 7-day median; `unknown` until 7 days of samples) |
 | `src/api/nodeBalances.ts` | `GET /api/node/balances`' Lightning side: active-only `lightning_sats` plus `lightning_inactive_sats` (drive-mode P3) |
 | `src/api/member-costs.ts` | `GET /api/member/costs`: payment and swap fees over the last 30 days, read-only |
+| `src/subscription/confirmationTime.ts` | recredit-check: a deposit output's confirmation time (confirming block's header nTime) via tip → windowed `getChainTransactions` → header by hash (`getBlock` fallback), cached by hash; the detector credits from it, never the wall clock |
+| `src/subscription/creditWaitAlert.ts` | recredit-check: the detector's uncredited-output snapshot and the pure `SUBSCRIPTION_PAYMENT_UNCREDITED` producer `getTreasuryAlerts()` calls |
 | `src/subscription/pendingPayment.ts` | Drive-mode R45: `GET /api/subscription/pay-from-node/pending` — the newest active pay-from-node send marker (migration 073) or null; reads this node's database only, never fetches the treasury, never clears a marker |
 | `src/api/treasury.ts` | Aggregate treasury metrics |
 | `src/api/treasury-liquidity-health.ts` | Per-channel liquidity assessment |

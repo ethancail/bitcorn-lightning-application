@@ -10,10 +10,22 @@
 // classify it (credit vs pending-attribution), and write the ledger
 // rows.
 //
-// `getUtxos` is preferred over `getChainTransactions` here because
-// chain-transactions returns net per-tx amounts, not per-output —
-// which can't disambiguate when one tx pays two members. UTXOs give
-// per-output amounts cleanly. Once a UTXO is later swept by an admin
+// `getUtxos` is the ONLY source of which outputs exist, their amounts and
+// their addresses — not `getChainTransactions`, because chain-transactions
+// returns net per-tx amounts, not per-output, which can't disambiguate when
+// one tx pays two members. UTXOs give per-output amounts cleanly.
+// `getChainTransactions` IS used, but only as a txid → (confirming block,
+// height) lookup for each candidate (confirmationTime.ts). A confirmation
+// time is a property of a transaction, not an output, and no amount or
+// attribution is read from that call, so the per-output problem does not
+// return.
+//
+// Every credit computes from the deposit output's CONFIRMATION TIME (the
+// confirming block's header nTime), never the wall clock — recredit-check,
+// bitcorn-research specs/2026-11-13-recredit-check-credit-from-confirmation-
+// time-spec.md. With a member's outputs folded in ascending confirmation
+// height, a DB restore that replays still-unspent outputs reproduces the
+// original paid_through exactly (spec §5). Once a UTXO is later swept by an admin
 // action, it disappears from `getUtxos`, but by then the credit row
 // is durable in `subscription_payment`. The 15-second sync cadence
 // vs weeks-apart manual sweeps makes the race window negligible.
@@ -34,9 +46,15 @@ import { attributePayment, computeNewPaidThrough } from "./paymentMath";
 import { fetchBtcUsdSpotCents, satsToUsdCents } from "./btcUsdSpot";
 import { isInSubscriptionScope } from "./lanePurpose";
 import { recomputeAllTiers } from "./tierDispatch";
+import { resolveConfirmationTimes, type ConfirmationTime } from "./confirmationTime";
+import {
+  setUncreditedSnapshot,
+  type UncreditedCause,
+  type UncreditedEntry,
+} from "./creditWaitAlert";
 
 export interface ScanSummary {
-  skipped_reason?: "first_run_not_acknowledged" | "lnd_unavailable";
+  skipped_reason?: "first_run_not_acknowledged" | "lnd_unavailable" | "scan_in_flight";
   new_members_allocated: number;
   utxos_scanned: number;
   credits_written: number;
@@ -61,13 +79,77 @@ const ZERO_SUMMARY: Omit<ScanSummary, "skipped_reason"> = {
  *
  * Never throws — errors are collected in `summary.errors` so a single
  * bad UTXO doesn't kill the whole pass. The caller is expected to
- * `.catch()` on the promise as a final safety net.
+ * `.catch()` on the promise as a final safety net. ⚠ Both callers
+ * (index.ts) discard the summary, so anything that must be VISIBLE is
+ * logged directly (warnUncredited) and surfaced as a treasury alert
+ * (creditWaitAlert.ts), not only pushed into `summary.errors`.
+ *
+ * ⚠ IN-FLIGHT GUARD. The 15 s tick can outlast its period (callDeadline.ts
+ * header), so a tick that finds the previous scan still running is skipped.
+ * Within a scan, every confirmation-time lookup completes before any write,
+ * and each member's paid_through is read and written with no await between.
  */
+let scanInFlight = false;
+
 export async function scanSubscriptionDeposits(): Promise<ScanSummary> {
   if (!isFirstRunAcknowledged()) {
     return { ...ZERO_SUMMARY, skipped_reason: "first_run_not_acknowledged" };
   }
+  if (scanInFlight) {
+    return { ...ZERO_SUMMARY, skipped_reason: "scan_in_flight" };
+  }
+  scanInFlight = true;
+  try {
+    return await runScan();
+  } finally {
+    scanInFlight = false;
+  }
+}
 
+/** Skip warnings: at the first skip, then at most once an hour per outpoint. */
+const UNCREDITED_WARN_INTERVAL_MS = 60 * 60 * 1000;
+const uncreditedWarnLog = new Map<string, { firstSeenMs: number; lastWarnMs: number }>();
+
+function warnUncredited(
+  outpoint: string,
+  memberPubkey: string,
+  cause: "time_unavailable" | "credit_threw",
+  detail: string,
+  confirmations: number,
+  heldCount: number,
+): void {
+  const now = Date.now();
+  const seen = uncreditedWarnLog.get(outpoint);
+  if (seen && now - seen.lastWarnMs < UNCREDITED_WARN_INTERVAL_MS) return;
+  const firstSeenMs = seen?.firstSeenMs ?? now;
+  uncreditedWarnLog.set(outpoint, { firstSeenMs, lastWarnMs: now });
+  const what = cause === "time_unavailable" ? "its confirmation time is unavailable" : "its credit threw";
+  const waitedMin = Math.round((now - firstSeenMs) / 60_000);
+  console.warn(
+    `[subscription] payment ${outpoint} for ${memberPubkey.slice(0, 16)}… not credited this scan: ${what}: ${detail}. ` +
+      `Waiting ${waitedMin} min since first skipped; ${confirmations} confirmation(s).` +
+      (heldCount > 0 ? ` Holding ${heldCount} other output(s) of this member behind it.` : "") +
+      " Retried every scan.",
+  );
+}
+
+type Utxo = Awaited<ReturnType<typeof getLndUtxos>>["utxos"][number];
+
+const outpointOf = (u: Utxo) => `${u.transaction_id}:${u.transaction_vout}`;
+
+/** Spec §5 step 4: height ascending, then txid (bytewise, lowercase hex), then vout. */
+function compareForCredit(
+  a: { u: Utxo; height: number },
+  b: { u: Utxo; height: number },
+): number {
+  if (a.height !== b.height) return a.height - b.height;
+  const ta = a.u.transaction_id.toLowerCase();
+  const tb = b.u.transaction_id.toLowerCase();
+  if (ta !== tb) return ta < tb ? -1 : 1;
+  return a.u.transaction_vout - b.u.transaction_vout;
+}
+
+async function runScan(): Promise<ScanSummary> {
   const summary: ScanSummary = { ...ZERO_SUMMARY };
 
   // Step 1: discover new members (peers with channels that don't yet
@@ -105,25 +187,117 @@ export async function scanSubscriptionDeposits(): Promise<ScanSummary> {
     addressToMember.set(row.deposit_address, row.member_pubkey);
   }
 
-  // Step 4: process each candidate UTXO.
+  // Step 4: the candidates — confirmed, at a deposit address, in neither
+  // table. getUtxos order is never relied on.
   const policy = getSubscriptionPolicy();
-  for (const utxo of utxos) {
-    if ((utxo.confirmation_count ?? 0) < 1) continue;
-    const memberPubkey = addressToMember.get(utxo.address);
-    if (!memberPubkey) continue;
+  const deposits = utxos.filter(
+    (u) => (u.confirmation_count ?? 0) >= 1 && addressToMember.has(u.address),
+  );
+  const candidates = deposits.filter(
+    (u) => !alreadyRecorded(u.transaction_id, u.transaction_vout),
+  );
 
-    if (alreadyRecorded(utxo.transaction_id, utxo.transaction_vout)) continue;
+  // Step 5: every confirmation-time lookup for the tick, before any write.
+  // A tick with no candidate makes no extra LND call.
+  const times: Map<string, ConfirmationTime> =
+    candidates.length > 0
+      ? await resolveConfirmationTimes(
+          candidates.map((u) => ({ txid: u.transaction_id, confirmation_count: u.confirmation_count })),
+        )
+      : new Map();
 
-    try {
-      const result = await processConfirmedUtxo(utxo, memberPubkey, policy);
-      if (result === "credited") summary.credits_written++;
-      else if (result === "pending") summary.pending_attribution_written++;
-    } catch (err: any) {
-      summary.errors.push({
-        context: `utxo ${utxo.transaction_id}:${utxo.transaction_vout}`,
-        error: err?.message ?? String(err),
-      });
+  // Step 6: per member, in member_pubkey order; within a member, ascending
+  // confirmation height (spec §5). Any failure stops that member for the tick.
+  const left = new Map<string, { cause: UncreditedCause; detail: string | null; held_behind: string | null }>();
+  const byMember = new Map<string, Utxo[]>();
+  for (const u of candidates) {
+    const member = addressToMember.get(u.address)!;
+    const list = byMember.get(member) ?? [];
+    list.push(u);
+    byMember.set(member, list);
+  }
+
+  for (const memberPubkey of [...byMember.keys()].sort()) {
+    const outputs = byMember.get(memberPubkey)!;
+
+    // ⚠ An output with no time has no place in the order (its height may be
+    // unknown too), so ANY untimed output holds ALL of the member's
+    // candidates this tick. Crediting the others could fold out of order,
+    // which a later replay would not reproduce (spec §5, proof condition 1).
+    const untimed = outputs
+      .filter((u) => !times.get(u.transaction_id)?.ok)
+      .sort((a, b) => (outpointOf(a) < outpointOf(b) ? -1 : 1));
+    if (untimed.length > 0) {
+      const root = outpointOf(untimed[0]);
+      for (const u of untimed) {
+        const t = times.get(u.transaction_id);
+        const detail = t && !t.ok ? t.cause : "no confirmation-time lookup result";
+        left.set(outpointOf(u), { cause: "time_unavailable", detail, held_behind: null });
+        summary.errors.push({ context: `utxo ${outpointOf(u)}`, error: `confirmation time unavailable: ${detail}` });
+        warnUncredited(
+          outpointOf(u),
+          memberPubkey,
+          "time_unavailable",
+          detail,
+          u.confirmation_count,
+          outpointOf(u) === root ? outputs.length - untimed.length : 0,
+        );
+      }
+      for (const u of outputs) {
+        if (!left.has(outpointOf(u))) {
+          left.set(outpointOf(u), { cause: "held_behind", detail: null, held_behind: root });
+        }
+      }
+      continue;
     }
+
+    const ordered = outputs
+      .map((u) => {
+        const t = times.get(u.transaction_id) as Extract<ConfirmationTime, { ok: true }>;
+        return { u, height: t.height, timeMs: t.timeMs };
+      })
+      .sort(compareForCredit);
+
+    for (let i = 0; i < ordered.length; i++) {
+      const { u, timeMs } = ordered[i];
+      try {
+        const result = await processConfirmedUtxo(u, memberPubkey, policy, timeMs);
+        if (result === "credited") summary.credits_written++;
+        else if (result === "pending") summary.pending_attribution_written++;
+      } catch (err: any) {
+        const detail = err?.message ?? String(err);
+        const rest = ordered.slice(i + 1);
+        left.set(outpointOf(u), { cause: "credit_threw", detail, held_behind: null });
+        for (const r of rest) {
+          left.set(outpointOf(r.u), { cause: "held_behind", detail: null, held_behind: outpointOf(u) });
+        }
+        summary.errors.push({ context: `utxo ${outpointOf(u)}`, error: detail });
+        warnUncredited(outpointOf(u), memberPubkey, "credit_threw", detail, u.confirmation_count, rest.length);
+        break;
+      }
+    }
+  }
+
+  // Step 6b: the alert's snapshot (creditWaitAlert.ts), after the last
+  // credit. Cause-agnostic: every deposit output still in neither table is an
+  // entry — the test is re-run here, not reused from step 4.
+  const entries: UncreditedEntry[] = [];
+  for (const u of deposits) {
+    if (alreadyRecorded(u.transaction_id, u.transaction_vout)) continue;
+    const why = left.get(outpointOf(u));
+    entries.push({
+      outpoint: outpointOf(u),
+      member_pubkey: addressToMember.get(u.address)!,
+      confirmations: u.confirmation_count,
+      cause: why?.cause ?? "unknown",
+      detail: why?.detail ?? null,
+      held_behind: why?.held_behind ?? null,
+    });
+  }
+  setUncreditedSnapshot({ as_of: Date.now(), entries });
+  for (const outpoint of [...uncreditedWarnLog.keys()]) {
+    const why = left.get(outpoint);
+    if (!why || why.cause === "held_behind") uncreditedWarnLog.delete(outpoint);
   }
 
   // Step 5: recompute current_tier for every subscription row per §5.
@@ -203,13 +377,24 @@ function alreadyRecorded(txid: string, vout: number): boolean {
   return Boolean(inPending);
 }
 
+/**
+ * Writes one output's ledger row (or pending row) and advances paid_through.
+ *
+ * `confirmedAtMs` is the output's confirmation time (T_conf). It is the time
+ * basis of the credit (computeNewPaidThrough's creditTimeMs) and is stored in
+ * `confirmed_at` and `last_payment_at` (ruling O4 (c) with (c1)); no
+ * migration — the column already exists in both tables. `received_at` stays
+ * the DETECTION time, so a replayed row shows the replay moment in
+ * received_at beside its original confirmed_at.
+ */
 async function processConfirmedUtxo(
   utxo: { transaction_id: string; transaction_vout: number; tokens: number },
   memberPubkey: string,
   policy: ReturnType<typeof getSubscriptionPolicy>,
+  confirmedAtMs: number,
 ): Promise<"credited" | "pending"> {
   const outcome = attributePayment(utxo.tokens, policy);
-  const now = Date.now();
+  const detectedAt = Date.now();
 
   if (outcome.kind === "pending_attribution") {
     db.prepare(
@@ -222,8 +407,8 @@ async function processConfirmedUtxo(
       utxo.transaction_vout,
       utxo.tokens,
       memberPubkey,
-      now,
-      now,
+      detectedAt,
+      confirmedAtMs,
       outcome.reason,
     );
     return "pending";
@@ -241,6 +426,9 @@ async function processConfirmedUtxo(
     );
   }
 
+  // ⚠ NO AWAIT BETWEEN HERE AND writeCredit() BELOW. The paid_through read,
+  // the computation and the write must be one synchronous run, so nothing
+  // can interleave a credit for the same member between them.
   const member = db
     .prepare(
       "SELECT paid_through FROM subscription WHERE member_pubkey = ?",
@@ -255,7 +443,7 @@ async function processConfirmedUtxo(
   const newPaidThrough = computeNewPaidThrough(
     member.paid_through,
     outcome.period_extension_days,
-    now,
+    confirmedAtMs,
   );
 
   const writeCredit = db.transaction(() => {
@@ -272,15 +460,28 @@ async function processConfirmedUtxo(
       utxo.transaction_vout,
       utxo.tokens,
       usdCentsOfPayment,
-      now,
-      now,
+      detectedAt,
+      confirmedAtMs,
       outcome.period_extension_days,
     );
+    // last_payment_at keeps the later of the stored value and this T_conf, so
+    // the rescan residual (spec §5 (1)) cannot move it backwards; the txid
+    // moves only with it, so the pair stays coherent. SQLite evaluates every
+    // SET expression against the row as it was before this UPDATE.
     db.prepare(
       `UPDATE subscription
-       SET last_payment_txid = ?, last_payment_at = ?, paid_through = ?
+       SET last_payment_txid = CASE WHEN last_payment_at IS NULL OR last_payment_at <= ? THEN ? ELSE last_payment_txid END,
+           last_payment_at   = CASE WHEN last_payment_at IS NULL OR last_payment_at <= ? THEN ? ELSE last_payment_at END,
+           paid_through = ?
        WHERE member_pubkey = ?`,
-    ).run(utxo.transaction_id, now, newPaidThrough, memberPubkey);
+    ).run(
+      confirmedAtMs,
+      utxo.transaction_id,
+      confirmedAtMs,
+      confirmedAtMs,
+      newPaidThrough,
+      memberPubkey,
+    );
   });
   writeCredit();
   return "credited";

@@ -420,7 +420,7 @@ docker exec -u lnd polar-n1-Treasury lncli --network regtest listunspent
 docker exec -u lnd polar-n1-Treasury lncli --network regtest newaddress p2tr
 
 # 4. The sweep: every outpoint from step 2, one --utxo each, all of it to the step-3 address.
-docker exec -u lnd polar-n1-Treasury lncli --network regtest sendcoins --sweepall --addr <p2tr address> --utxo <txid:vout> --utxo <txid:vout> --label "gate teardown: deposit sweep"
+docker exec -u lnd polar-n1-Treasury lncli --network regtest sendcoins --sweepall --addr <p2tr address> --utxo <txid:vout> --utxo <txid:vout> --label "gate teardown: deposit sweep" --force
 
 # 5. Confirm it.
 docker exec -u bitcoin polar-n1-backend1 bitcoin-cli -regtest generatetodescriptor 1 "raw(6a)"

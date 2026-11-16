@@ -30,11 +30,14 @@ const rpc = vi.hoisted(() => ({
   /** Milliseconds a stubbed RPC takes to resolve when not wedged. */
   latencyMs: 0,
   calls: [] as string[],
+  /** The argument object of each stubbed RPC call, by name (latest wins). */
+  args: {} as Record<string, unknown>,
 }));
 
 function stub<T>(name: string, value: T) {
-  return async (_args?: unknown): Promise<T> => {
+  return async (args?: unknown): Promise<T> => {
     rpc.calls.push(name);
+    rpc.args[name] = args;
     if (rpc.wedged) return new Promise<T>(() => {});
     if (rpc.latencyMs > 0) {
       await new Promise((r) => setTimeout(r, rpc.latencyMs));
@@ -62,6 +65,8 @@ vi.mock("ln-service", () => ({
   getPendingChannels: stub("getPendingChannels", { pending_channels: [] }),
   getPendingChainBalance: stub("getPendingChainBalance", { pending_chain_balance: 0 }),
   getChainTransactions: stub("getChainTransactions", { transactions: [] }),
+  getBlockHeader: stub("getBlockHeader", { header: "00".repeat(80) }),
+  getBlock: stub("getBlock", { block: "00".repeat(81) }),
   createChainAddress: stub("createChainAddress", { address: "bcrt1qx" }),
   createInvoice: stub("createInvoice", { request: "lnbcrt1", id: "ff" }),
   getChainFeeRate: stub("getChainFeeRate", { tokens_per_vbyte: 3 }),
@@ -94,12 +99,17 @@ vi.mock("fs", async () => {
 });
 
 import * as lnd from "./lnd";
-import { LND_FAST_CALL_TIMEOUT_MS, LND_GOSSIP_CALL_TIMEOUT_MS } from "./callDeadline";
+import {
+  LND_FAST_CALL_TIMEOUT_MS,
+  LND_GOSSIP_CALL_TIMEOUT_MS,
+  LND_BLOCK_FETCH_TIMEOUT_MS,
+} from "./callDeadline";
 
 beforeEach(() => {
   rpc.wedged = false;
   rpc.latencyMs = 0;
   rpc.calls = [];
+  rpc.args = {};
   lnd.invalidateLndClient();
 });
 
@@ -129,6 +139,8 @@ const FAST_CASES: ReadonlyArray<[string, () => Promise<unknown>]> = [
   ["getLndPendingChannels", () => lnd.getLndPendingChannels()],
   ["getLndPendingChainBalance", () => lnd.getLndPendingChainBalance()],
   ["getLndChainTransactions", () => lnd.getLndChainTransactions()],
+  ["getLndChainTransactionsAfter", () => lnd.getLndChainTransactionsAfter(100)],
+  ["getLndBlockHeader", () => lnd.getLndBlockHeader("00".repeat(32))],
   ["getLndInvoices", () => lnd.getLndInvoices()],
   ["getLndForwards", () => lnd.getLndForwards()],
   ["getLndUtxos", () => lnd.getLndUtxos()],
@@ -151,6 +163,69 @@ describe("CONTROL 1 — a wedged LND makes bounded calls reject at the fast dead
     });
   }
 
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// getLndBlock — its OWN deadline (recredit-check, O2's getBlock fallback).
+// Not in FAST_CASES: a whole block is not a 3s-class read, so the proof is
+// both halves — still pending past the fast deadline, rejected at its own.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("getLndBlock — bounded at LND_BLOCK_FETCH_TIMEOUT_MS, not the fast deadline", () => {
+  it("its deadline is longer than the fast one and no longer than the longest the held control assumes", () => {
+    expect(LND_BLOCK_FETCH_TIMEOUT_MS).toBeGreaterThan(LND_FAST_CALL_TIMEOUT_MS);
+    expect(LND_BLOCK_FETCH_TIMEOUT_MS).toBeLessThanOrEqual(LND_GOSSIP_CALL_TIMEOUT_MS);
+  });
+
+  it("under a wedge it is still pending just past the fast deadline", async () => {
+    // A settled flag, not a race against Promise.resolve() — that race is
+    // won by the resolved promise whatever the call does.
+    vi.useFakeTimers();
+    rpc.wedged = true;
+    let settled = false;
+    const p = lnd.getLndBlock("00".repeat(32)).then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await vi.advanceTimersByTimeAsync(LND_FAST_CALL_TIMEOUT_MS + 10);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(LND_BLOCK_FETCH_TIMEOUT_MS);
+    await p;
+    expect(settled).toBe(true);
+  });
+
+  it("under a wedge it rejects with ETIMEDOUT at its own deadline", async () => {
+    const outcome = await underWedge(
+      () => lnd.getLndBlock("00".repeat(32)),
+      LND_BLOCK_FETCH_TIMEOUT_MS + 10,
+    );
+    expect(outcome).toBeInstanceOf(Error);
+    expect((outcome as Error).message).toMatch(/^ETIMEDOUT: getLndBlock exceeded 10000ms/);
+  });
+
+  it("a healthy call returns the block, fetched by hash", async () => {
+    await expect(lnd.getLndBlock("ab".repeat(32))).resolves.toEqual({ block: "00".repeat(81) });
+    expect(rpc.args.getBlock).toMatchObject({ id: "ab".repeat(32) });
+  });
+});
+
+describe("getLndChainTransactionsAfter — the height window", () => {
+  it("passes `after` for a height ≥ 1", async () => {
+    await lnd.getLndChainTransactionsAfter(5);
+    expect(rpc.args.getChainTransactions).toMatchObject({ after: 5 });
+  });
+
+  it("⚠ omits `after` below 1: ln-service reads `after: 0` as 'from genesis' anyway (`!!after`)", async () => {
+    await lnd.getLndChainTransactionsAfter(0);
+    expect(rpc.args.getChainTransactions).not.toHaveProperty("after");
+    await lnd.getLndChainTransactionsAfter(-3);
+    expect(rpc.args.getChainTransactions).not.toHaveProperty("after");
+  });
+
+  it("getLndBlockHeader asks by hash", async () => {
+    await expect(lnd.getLndBlockHeader("cd".repeat(32))).resolves.toEqual({ header: "00".repeat(80) });
+    expect(rpc.args.getBlockHeader).toMatchObject({ id: "cd".repeat(32) });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

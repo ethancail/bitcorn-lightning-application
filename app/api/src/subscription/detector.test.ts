@@ -25,11 +25,48 @@ const lndState = vi.hoisted(() => ({ utxos: [] as any[] }));
 // Partial-mock LND: real module (no gRPC at load), getLndUtxos returns
 // our controlled set. createLndChainAddress et al. stay real but are
 // never called (lnd_channels is empty → no member discovery).
+//
+// recredit-check: the detector also reads each candidate's confirmation time
+// (tip → windowed chain transactions → header by hash). The spread above would
+// otherwise reach the REAL wrappers, fail at getLndClient(), and skip every
+// credit. The time source below confirms each txid, on first sight, in its own
+// block stamped at the current wall clock (whole seconds), so T_conf sits
+// within a second of the Date.now() these cases assert against — the only
+// change these cases needed (spec §9).
 vi.mock("../lightning/lnd", async (importActual) => {
   const actual = await importActual<typeof import("../lightning/lnd")>();
+  const { makeBlock, wholeSecond } = await import("./__fixtures__/fakeChain");
+  const blocks = new Map<string, ReturnType<typeof makeBlock>>();
+  const headers = new Map<string, string>();
+  const blockFor = (txid: string) => {
+    let b = blocks.get(txid);
+    if (!b) {
+      b = makeBlock(900 + blocks.size, wholeSecond(Date.now()));
+      blocks.set(txid, b);
+      headers.set(b.hash, b.header);
+    }
+    return b;
+  };
   return {
     ...actual,
     getLndUtxos: vi.fn(async () => ({ utxos: lndState.utxos })),
+    getLndInfo: vi.fn(async () => ({ block_height: 1_000, synced_to_chain: true })),
+    getLndChainTransactionsAfter: vi.fn(async () => ({
+      transactions: lndState.utxos.map((u: any) => {
+        const b = blockFor(u.transaction_id);
+        return {
+          id: u.transaction_id,
+          block_id: b.hash,
+          confirmation_height: b.height,
+          is_confirmed: true,
+          is_outgoing: false,
+          created_at: new Date(0).toISOString(),
+          output_addresses: [],
+          tokens: 0,
+        };
+      }),
+    })),
+    getLndBlockHeader: vi.fn(async (hash: string) => ({ header: headers.get(hash)! })),
   };
 });
 
