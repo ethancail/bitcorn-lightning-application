@@ -130,3 +130,23 @@ describe("the treasury's branch is unchanged", () => {
     expect(stub.getTransferSettings).not.toHaveBeenCalled();
   });
 });
+
+// member-first-run-ui slice 2 (rulings relayed 2026-11-16): the upgrade form is
+// gone from My Channels until Ethan decides who pays. A too-small hub channel
+// keeps its flag; the expanded hint says the bigger connection is coming soon,
+// with no button and no "open a larger channel" advice.
+describe("slice 2 — My Channels: no upgrade button, \"coming soon\" instead", () => {
+  it("a too-small member channel, hint expanded: the line shows, the button and the old advice don't", async () => {
+    await channelsPage("member", [{ peer: TREASURY, capacity: 400_000 }]);
+    expect(text()).toContain("Too small");
+    const hint = [...host!.querySelectorAll("span")].find((s) => s.textContent?.startsWith("Upgrade recommended"));
+    expect(hint, "the upgrade hint renders").toBeDefined();
+    await act(async () => { hint!.parentElement!.click(); });
+    // Expanded: the panel's own row proves the click landed.
+    expect(text()).toContain("Recommended: 406,055 sats");
+    expect(text()).toContain("Making your connection bigger is coming soon.");
+    const buttons = [...host!.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim());
+    expect(buttons.filter((b) => /Upgrade Treasury Channel/.test(b))).toEqual([]);
+    expect(text()).not.toContain("Open a larger channel");
+  });
+});

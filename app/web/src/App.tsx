@@ -4,7 +4,7 @@ import "./font.css"; // Z4: the font faces and tokens, self-hosted; before style
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
 import bitcornLogoLight from "./assets/bitcorn-logo-light.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type PendingChannel, type AutoBuyAlertBadge, findContact, resolveContactName } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type PendingChannel, type AutoBuyAlertBadge, type ExchangeRate, findContact, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -35,6 +35,7 @@ import ProfilePanel from "./components/ProfilePanel";
 import BitcornNamePanel from "./components/BitcornNamePanel";
 import ChannelRolePanel from "./components/firstRun/ChannelRolePanel";
 import { Choice } from "./components/Choice";
+import { FeeCost } from "./components/amount/FeeCost";
 import LoadingSplash from "./components/shell/LoadingSplash";
 import ApiUnreachableScreen from "./components/shell/ApiUnreachableScreen";
 import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
@@ -1319,6 +1320,15 @@ function ChannelsPage() {
   // fixed 2,000,000 with 5,000,000 recommended. The treasury's branch is
   // unchanged. null: no figure (no rate yet) — no size claim.
   const [memberMinimum, setMemberMinimum] = useState<number | null>(null);
+  // The treasury's fee pickers show each fee in dollars over sats (Ethan's
+  // ruling "fix the five" item 5, 2026-11-16). undefined while it loads; null
+  // when the read failed — both show sats alone. Display only.
+  const [feeRateInfo, setFeeRateInfo] = useState<ExchangeRate | null | undefined>(undefined);
+  useEffect(() => {
+    if (nodeRole !== "treasury") return;
+    api.getExchangeRate().then(setFeeRateInfo).catch(() => setFeeRateInfo(null));
+  }, [nodeRole]);
+
   useEffect(() => {
     if (nodeRole !== "member") return;
     transfersApi.getTransferSettings()
@@ -1396,12 +1406,15 @@ function ChannelsPage() {
                 On-chain fee rate
               </div>
               {/* String keys mapped to rates; Economy's rate is undefined. The
-                  cost is its own line, so "~192 sats" never splits. */}
+                  cost is its own line: "about $0.74" over "~960 sats", each
+                  line whole (FeeCost). Economy sends no rate, so the node sets
+                  its fee: no figure and no rate, just "Fee set by your node"
+                  (Ethan's rulings "treasury too" and "fix the five", 2026-11-16). */}
               {(() => {
                 const CLOSE_FEE = ([
-                  { key: "economy", label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~192 sats" },
-                  { key: "normal", label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~960 sats" },
-                  { key: "priority", label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,885 sats" },
+                  { key: "economy", label: "Economy", rate: undefined, desc: undefined, time: "1–3 hours", feeSats: null },
+                  { key: "normal", label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", feeSats: 960 },
+                  { key: "priority", label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", feeSats: 2_885 },
                 ] as const);
                 return (
                   <Choice
@@ -1409,7 +1422,7 @@ function ChannelsPage() {
                     labelledBy="close-fee-rate-label"
                     value={CLOSE_FEE.find((o) => o.rate === closeFeeRate)?.key ?? null}
                     onChange={(key) => setCloseFeeRate(CLOSE_FEE.find((o) => o.key === key)?.rate)}
-                    options={CLOSE_FEE.map((opt) => ({ value: opt.key, label: opt.label, description: opt.desc, meta: opt.time, cost: opt.cost }))}
+                    options={CLOSE_FEE.map((opt) => ({ value: opt.key, label: opt.label, description: opt.desc, meta: opt.time, cost: <FeeCost sats={opt.feeSats} rate={feeRateInfo} /> }))}
                   />
                 );
               })()}
@@ -2011,15 +2024,11 @@ function ChannelsPage() {
                           {isTreasury && (
                             <>
                               <div style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
-                                Treasury channels carry all routed payments. Open a larger channel to increase routing capacity.
+                                Treasury channels carry all routed payments.
                               </div>
-                              <button
-                                className="btn btn-outline btn-sm"
-                                style={{ alignSelf: "flex-start", marginTop: 4 }}
-                                onClick={() => navigate(`/dashboard?upgrade_capacity=${upgradeSize}`)}
-                              >
-                                Upgrade Treasury Channel →
-                              </button>
+                              {/* member-first-run-ui slice 2: the upgrade form is
+                                  gone until Ethan decides who pays; the flag stays. */}
+                              <div>Making your connection bigger is coming soon.</div>
                             </>
                           )}
                         </div>
@@ -2035,7 +2044,7 @@ function ChannelsPage() {
       )}
 
       {/* Treasury: Open Channel panel */}
-      {nodeRole === "treasury" && <TreasuryOpenChannelPanel contacts={contacts} onChannelOpened={() => {
+      {nodeRole === "treasury" && <TreasuryOpenChannelPanel contacts={contacts} rate={feeRateInfo} onChannelOpened={() => {
         // Refresh channel list after opening
         Promise.all([
           fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
@@ -2053,7 +2062,12 @@ function ChannelsPage() {
 
 const TREASURY_CHANNEL_PRESETS = [1_000_000, 5_000_000, 10_000_000];
 
-function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Contact[]; onChannelOpened: () => void }) {
+function TreasuryOpenChannelPanel({ contacts, rate, onChannelOpened }: {
+  contacts: Contact[];
+  /** For the fee cards' dollars; undefined while loading, null when the read failed. */
+  rate: ExchangeRate | null | undefined;
+  onChannelOpened: () => void;
+}) {
   const [selectedPubkey, setSelectedPubkey] = useState("");
   const [manualPubkey, setManualPubkey] = useState("");
   const [useManual, setUseManual] = useState(false);
@@ -2364,12 +2378,15 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
           <div>
             <div className="form-label" id="treasury-open-fee-label">Confirmation Speed</div>
             {/* String keys mapped to rates; Economy's rate is undefined. The
-                cost is its own line, so "~2,300 sats" never splits. */}
+                cost is its own line: "about $0.59" over "~770 sats", each line
+                whole (FeeCost). Economy sends no rate, so the node sets its
+                fee: no figure, just "Fee set by your node" (Ethan's rulings
+                "treasury too" and "fix the five", 2026-11-16). */}
             {(() => {
               const OPEN_FEE = ([
-                { key: "economy", label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~155 sats" },
-                { key: "normal", label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~770 sats" },
-                { key: "priority", label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,300 sats" },
+                { key: "economy", label: "Economy", rate: undefined, time: "1–3 hours", feeSats: null },
+                { key: "normal", label: "Normal", rate: 5, time: "~30 min", feeSats: 770 },
+                { key: "priority", label: "Priority", rate: 15, time: "~10 min", feeSats: 2_300 },
               ] as const);
               return (
                 <Choice
@@ -2377,7 +2394,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
                   labelledBy="treasury-open-fee-label"
                   value={OPEN_FEE.find((o) => o.rate === feeRate)?.key ?? null}
                   onChange={(key) => setFeeRate(OPEN_FEE.find((o) => o.key === key)?.rate)}
-                  options={OPEN_FEE.map((opt) => ({ value: opt.key, label: opt.label, description: opt.time, cost: opt.cost }))}
+                  options={OPEN_FEE.map((opt) => ({ value: opt.key, label: opt.label, description: opt.time, cost: <FeeCost sats={opt.feeSats} rate={rate} /> }))}
                 />
               );
             })()}

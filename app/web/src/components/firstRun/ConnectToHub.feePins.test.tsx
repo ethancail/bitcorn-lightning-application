@@ -10,6 +10,18 @@
 //
 // Harness: ConnectToHub.activateMembership.test.tsx's, plus the confirm-modal
 // steps from MemberDashboard.connectToHub.states.test.tsx.
+//
+// Slice 2 (the Connect card, 2026-11-16) renamed the heading this file finds
+// the options by ("How fast") and the button it submits with ("Connect to
+// BitCorn →"). Only those two lookups changed: PINNED is byte-identical.
+//
+// Ethan's ruling "a" (2026-11-16) changed ONE displayed text: Economy sends no
+// fee_rate, so the node picks the rate and nothing computes "~155 sats"; its
+// card now reads "Fee set by your node". PINNED is still byte-identical — every
+// key, rate and default it pins is what is sent, unchanged — and its Economy
+// `text` stays develop's, as the record of what shipped. The label test
+// compares Economy against ECONOMY_TEXT (the ruled text) and the others
+// against PINNED.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -36,6 +48,10 @@ const PINNED = [
   { label: "Normal", text: "Normal~30 min~770 sats", key: "normal", rate: 5 },
   { label: "Priority", text: "Priority~10 min~2,300 sats", key: "priority", rate: 15 },
 ] as const;
+
+/** Economy's card text since ruling "a" (2026-11-16): the node sets its fee. */
+const ECONOMY_TEXT = "Economy1–3 hoursFee set by your node";
+const shown = PINNED.map((p) => (p.key === "economy" ? ECONOMY_TEXT : p.text));
 
 let host: HTMLDivElement;
 let root: Root;
@@ -69,7 +85,7 @@ async function render() {
         React.createElement(
           Routes,
           null,
-          React.createElement(Route, { path: "/dashboard", element: React.createElement(ConnectToHub, { isPeered: true }) }),
+          React.createElement(Route, { path: "/dashboard", element: React.createElement(ConnectToHub, { isPeered: true, rate: undefined }) }),
         ),
       ),
     );
@@ -77,10 +93,10 @@ async function render() {
   await flush();
 }
 
-/** The option cards: the element after the "Confirmation Speed" heading, its labels. */
+/** The option cards: the element after the "How fast" heading, its labels. */
 function feeOptions(): HTMLElement[] {
-  const head = [...host.querySelectorAll(".form-label")].find((e) => e.textContent === "Confirmation Speed");
-  expect(head, "the Confirmation Speed heading renders").toBeDefined();
+  const head = [...host.querySelectorAll(".form-label")].find((e) => e.textContent === "How fast");
+  expect(head, "the How fast heading renders").toBeDefined();
   return [...head!.nextElementSibling!.querySelectorAll<HTMLElement>("label")];
 }
 
@@ -103,7 +119,7 @@ const btn = (text: string) =>
 
 /** Open the confirm modal, satisfy its 1,000,000-sat challenge, confirm; return the request body. */
 async function submit(): Promise<Record<string, unknown>> {
-  await click(btn("Open Channel →")!);
+  await click(btn("Connect to BitCorn →")!);
   await type(document.body.querySelector("#action-confirm-challenge") as HTMLInputElement, "1000000");
   await click(btn("Open channel")!);
   expect(stub.openMemberChannel).toHaveBeenCalledTimes(1);
@@ -111,9 +127,9 @@ async function submit(): Promise<Record<string, unknown>> {
 }
 
 describe("ConnectToHub's fee-speed picker: values, default and labels unchanged", () => {
-  it("label: three options, each with develop's exact text, in order", async () => {
+  it("label: three options, each with develop's exact text (Economy's as ruled), in order", async () => {
     await render();
-    expect(feeOptions().map((o) => o.textContent)).toEqual(PINNED.map((p) => p.text));
+    expect(feeOptions().map((o) => o.textContent)).toEqual(shown);
   });
 
   it("the radios carry the ruled string keys", async () => {

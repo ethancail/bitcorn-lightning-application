@@ -13,6 +13,10 @@
 // Sizes: "hero" is --t-3xl over --t-lg (31.5px over 17.5px at text 1.0);
 // "inline" takes its figure from the surrounding text, with the sats under it
 // at --t-xs.
+//
+// approx: an estimate, not an amount (the fee-speed cards' fees, Ethan's
+// ruling "fix the five" item 5, 2026-11-16): "about $0.59" over "~770 sats",
+// or "~770 sats" alone with no price.
 
 import type { ExchangeRate } from "../../api/client";
 import { UNKNOWN_AMOUNT, formatSats, formatUsd } from "./amountDescriptor";
@@ -26,11 +30,13 @@ export function usableUsd(rate: ExchangeRate | null | undefined): number | null 
 }
 
 export function Amount({
-  sats, rate, size = "inline",
+  sats, rate, size = "inline", approx = false,
 }: {
   sats: number | null;
   rate: ExchangeRate | null | undefined;
   size?: AmountSize;
+  /** An estimate: "about" before the dollars, "~" before the sats. */
+  approx?: boolean;
 }) {
   const cls = `amount amount-${size}`;
 
@@ -43,7 +49,7 @@ export function Amount({
     );
   }
 
-  const satsText = formatSats(sats);
+  const satsText = `${approx ? "~" : ""}${formatSats(sats)}`;
   const usd = usableUsd(rate);
 
   if (usd == null) {
@@ -56,7 +62,7 @@ export function Amount({
 
   return (
     <span className={cls} data-sats={sats}>
-      <span className="amount-figure" data-line="usd">{formatUsd(sats, usd).text}</span>
+      <span className="amount-figure" data-line="usd">{approx ? "about " : ""}{formatUsd(sats, usd).text}</span>
       <span className="amount-sub" data-line="sats">{satsText}</span>
     </span>
   );

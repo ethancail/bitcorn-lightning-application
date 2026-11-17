@@ -3,7 +3,9 @@
 // (member-first-run-ui separation slice, B.1). The move changed no behaviour.
 // Since then handleOpen maps the API's `membership_not_paid` to its own message
 // (membership-gating M1/M2 item 1), and it reads the treasury's verdict for
-// the "Activate membership" button (B1); everything else is as moved.
+// the "Activate membership" button (B1). Slice 2 (2026-11-16): the capacity
+// can be EMPTY (null) — clearing the box no longer forces 0 — and nothing is
+// sent or confirmed without a capacity.
 
 import { useEffect, useState } from "react";
 import { api, type TreasuryInfo } from "../../api/client";
@@ -19,7 +21,7 @@ import {
 } from "./connectToHubDescriptor";
 
 export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initialCapacity?: number }) {
-  const [capacity, setCapacity] = useState(initialCapacity ?? 1_000_000);
+  const [capacity, setCapacity] = useState<number | null>(initialCapacity ?? 1_000_000);
   const [feeRate, setFeeRate] = useState<number | undefined>(undefined);
   const [socket, setSocket] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -70,6 +72,7 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
   const confirm = useActionConfirm();
 
   function openChannelConfirm() {
+    if (capacity == null) return;
     const partnerSocket = hasAutoSocket && !isPeered ? hubSocket : socket.trim() || undefined;
     confirm.open(
       summarizeOpenMemberChannel({
@@ -83,6 +86,7 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
   }
 
   async function handleOpen() {
+    if (capacity == null) return;
     setSubmitting(true);
     setError(null);
     try {
@@ -107,11 +111,10 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
     }
   }
 
-  /** The capacity field's onChange, as it was: digits only, empty → 0. */
+  /** The capacity field's onChange: digits only; empty stays empty (null). */
   function setCapacityFromInput(value: string) {
     const raw = value.replace(/[^0-9]/g, "");
-    if (raw === "") { setCapacity(0); return; }
-    setCapacity(Number(raw));
+    setCapacity(raw === "" ? null : Number(raw));
   }
 
   return {
@@ -133,7 +136,7 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
     handleOpen,
     membershipLocked,
     membershipLabel,
-    belowMinimum: capacity > 0 && capacity < MIN_CAPACITY_WARNING_SATS,
-    openDisabled: submitting || capacity < MIN_CAPACITY_OPEN_SATS,
+    belowMinimum: capacity != null && capacity > 0 && capacity < MIN_CAPACITY_WARNING_SATS,
+    openDisabled: submitting || capacity == null || capacity < MIN_CAPACITY_OPEN_SATS,
   };
 }

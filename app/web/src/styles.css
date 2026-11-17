@@ -1966,6 +1966,11 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .choice-meta { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); }
 /* A cost on its own line that never splits: "~192 sats" stays whole. */
 .choice-cost { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); white-space: nowrap; }
+/* ...but a WORDED cost ("Fee set by your node") may wrap, balanced so it
+   breaks cleanly (Ethan's ruling "fix the five" items 1 and 2, 2026-11-16).
+   Figures are Amounts, whose lines are nowrap on their own. A block, because
+   balance evens out the lines of a block, not of an inline span. */
+.fee-cost-words { display: block; white-space: normal; text-wrap: balance; }
 .choice-reason { font-size: 0.75rem; color: var(--text-2); }
 
 /* ─── Amount (components/amount/Amount.tsx, NoRateNote.tsx) ───────
@@ -1980,6 +1985,58 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .amount-hero .amount-figure { font-size: 2.25rem; line-height: 1.1; letter-spacing: -0.02em; }
 .amount-hero .amount-sub { font-size: 1.25rem; color: var(--text-2); }
 .amount-page-note { margin: 0; font-size: 0.8125rem; color: var(--text-2); }
+
+/* ─── Connect card (components/firstRun/ConnectToHub.tsx) ─────────
+   Member-first-run-ui slice 2. ONE container (the panel): no nested
+   callouts, no coloured left border, no eyebrow. Header, two columns that
+   stack at phone width, footer. Amber marks the dot only, never words. */
+.connect-card { display: flex; flex-direction: column; gap: 20px; }
+.connect-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.connect-head-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.connect-title { margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--text); }
+.connect-lead { margin: 0; font-size: 0.875rem; color: var(--text-2); }
+.connect-reach { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-2); }
+.connect-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-3); }
+.connect-reach-reachable .connect-dot { background: var(--green); }
+.connect-reach-addressKnown .connect-dot { background: var(--amber); }
+.connect-locked { margin: 0; font-size: 0.875rem; color: var(--text); }
+.connect-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.connect-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* The size control: one joined row of options, not separate cards. */
+.connect-sizes .choice-options { gap: 0; }
+.connect-sizes .choice-option { border-radius: 0; }
+.connect-sizes .choice-option + .choice-option { margin-left: -1px; }
+.connect-sizes .choice-option:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.connect-sizes .choice-option:last-child { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.connect-sizes .choice-option.checked { z-index: 1; }
+.connect-box { display: flex; flex-direction: column; gap: 2px; }
+.connect-input { position: relative; }
+.connect-input .form-input { padding-right: 42px; }
+.connect-unit {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;
+}
+.connect-box-usd { font-size: 0.75rem; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.connect-hint { font-size: 0.75rem; color: var(--text-3); }
+.connect-error { font-size: 0.75rem; color: var(--red); }
+.connect-foot {
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap;
+  border-top: 1px solid var(--border); padding-top: 12px;
+}
+.connect-foot-tech { flex: 1 1 240px; min-width: 0; }
+.connect-foot-act { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; text-align: right; }
+.connect-summary { font-size: 0.8125rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.connect-address { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.connect-optional { color: var(--text-3); font-weight: 400; }
+.connect-label { font-size: 0.75rem; color: var(--text-3); margin-bottom: 6px; }
+.connect-txid {
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 12px; font-size: 0.75rem; word-break: break-all; color: var(--text-1);
+}
+@media (max-width: 640px) {
+  .connect-cols { grid-template-columns: 1fr; }
+  .connect-foot-act { align-items: stretch; text-align: left; }
+}
 
 /* ─── Liquidity page overhaul ────────────────────────────────── */
 
