@@ -7,6 +7,8 @@ yarn.lock
 dist/
 build/
 *.tsbuildinfo
+# Vite's dependency pre-bundle cache, at any depth.
+.vite/
 
 # Environment variables
 .env
