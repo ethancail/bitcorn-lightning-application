@@ -427,14 +427,26 @@ describe("R6 — the rate's states", () => {
 });
 
 // ─── Member text ────────────────────────────────────────────────────────────
+// Each text node joined with a space: textContent glues neighbours ("…the
+// channel" + "Why not…" reads "channelWhy"), which a \b guard can't see — the
+// negative control caught exactly that.
+function spacedText(): string {
+  const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+  const parts: string[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) parts.push(n.nodeValue ?? "");
+  return norm(parts.join(" "));
+}
+
 describe("member text: no 'channel' or 'hub'; 'BitCorn'", () => {
   for (const state of ["ok", "over", "noPrice", "warn", "belowMin", "down", "daily", "noAddress", "historyRows", "historyFailed"] as const) {
     it(state, async () => {
       await STATES[state].setup();
       await mount();
       for (const d of rows()) d.open = true;
-      expect(text()).not.toMatch(/\bchannels?\b|\bhubs?\b/i);
-      expect(text()).not.toContain("Bitcorn");
+      const words = spacedText();
+      expect(words, "the scan reads the page").toContain("Goes to:");
+      expect(words).not.toMatch(/\bchannels?\b|\bhubs?\b/i);
+      expect(words).not.toContain("Bitcorn");
     });
   }
 });

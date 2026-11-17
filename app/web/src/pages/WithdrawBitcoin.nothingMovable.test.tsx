@@ -196,8 +196,14 @@ describe("R7 — below the minimum", () => {
       [stats(false), limits({ availableNow: 0, alwaysStays: null }), blockedOptions("connection_down", null)],
     ] as const) {
       await mount(s, l, o);
-      expect(text()).not.toMatch(/\bchannel\b|\bhub\b/i);
-      expect(text()).not.toContain("Bitcorn");
+      // Text nodes joined with spaces: textContent glues neighbours ("channelWhy"), which \b misses.
+      const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+      const parts: string[] = [];
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) parts.push(n.nodeValue ?? "");
+      const words = parts.join(" ");
+      expect(words, "the scan reads the page").toContain("Nothing to withdraw yet");
+      expect(words).not.toMatch(/\bchannels?\b|\bhubs?\b/i);
+      expect(words).not.toContain("Bitcorn");
       await act(async () => { root.unmount(); });
       root = createRoot(host);
     }
