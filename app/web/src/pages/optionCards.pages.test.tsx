@@ -8,6 +8,9 @@
 //   D3.2  a card starts nothing: "Use …" pre-fills the amount; no quote,
 //         no execute
 //
+// Since member-first-run-ui slice 3, Withdraw shows no cards (R2–R5; see
+// "Withdraw's options, simplified"); Top Up's still pin OptionCards.
+//
 // Harness: WithdrawBitcoin.presets.test.tsx's, with transfersApi stubbed.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -110,19 +113,34 @@ async function mount(C: React.ComponentType) {
   for (let i = 0; i < 8; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 }
 
-describe("Withdraw's cards", () => {
-  it("two cards, exactly one recommended, with its reason", async () => {
+// Re-pinned for member-first-run-ui slice 3 (Ethan's "recs", 2026-11-17):
+// Withdraw renders no cards. R2 drops the wait card and the badge; their
+// message is the tip "Waiting costs less" (R3). The "now" card is the closed
+// row "Withdraw the most now", with R25's sentence (R4); R5 drops Max.
+// OptionCards itself is unchanged, and Top Up's cards below still pin it.
+const mostRow = () => host.querySelector('[data-testid="row-most-now"]') as HTMLDetailsElement | null;
+const upTo = () => host.querySelector("[data-testid='withdraw-answer'] [data-sats]")?.getAttribute("data-sats") ?? null;
+
+describe("Withdraw's options, simplified", () => {
+  it("no cards and no badge; the server recommends waiting, so the tip says so with its reason", async () => {
     stub.getSwapOptions.mockResolvedValue(OUT());
     await mount(WithdrawBitcoin);
-    expect(host.querySelectorAll('[data-testid^="option-card-"]').length).toBe(2);
-    expect(recommendedCards()).toEqual(["option-card-wait_bigger"]);
-    expect(host.querySelectorAll('[data-testid="recommended-badge"]').length).toBe(1);
-    expect(host.querySelector('[data-testid="recommended-reason"]')?.textContent).toBe("A later, bigger transfer costs a smaller share.");
-    expect(text()).toContain("Move it all now");
-    expect(text()).toContain("Wait for a bigger transfer");
+    expect(host.querySelectorAll('[data-testid^="option-card-"]').length).toBe(0);
+    expect(host.querySelector('[data-testid="recommended-badge"]')).toBeNull();
+    expect(recommendedCards()).toEqual([]);
+    const tip = host.querySelector('[data-testid="withdraw-tip"]')!;
+    expect(tip.textContent).toBe(
+      "Waiting costs less" +
+      "A later, bigger transfer costs a smaller share." +
+      "Worth more once room to receive has dropped to $70.00 (70,000 sats)." +
+      "A later transfer could move about $850.00 (850,000 sats).",
+    );
+    expect(text()).not.toContain("Move it all now");
+    expect(text()).not.toContain("Wait for a bigger transfer");
+    expect(mostRow()!.querySelector("summary")!.textContent).toBe("Withdraw the most now");
   });
 
-  it("'Use the most' pre-fills the quote-based Max and starts nothing", async () => {
+  it("'Use the most' pre-fills the quote-based maximum and starts nothing", async () => {
     stub.getSwapOptions.mockResolvedValue(OUT());
     await mount(WithdrawBitcoin);
     await act(async () => { button("Use the most")!.click(); });
@@ -132,29 +150,39 @@ describe("Withdraw's cards", () => {
     expect(stub.initiateSwapLoopIn).not.toHaveBeenCalled();
   });
 
-  it("R25: Max is the quote-based maximum, with the revised sentence", async () => {
+  it("R25: the big amount is the quote-based maximum; the row has the revised sentence", async () => {
     stub.getSwapOptions.mockResolvedValue(OUT());
     await mount(WithdrawBitcoin);
-    const max = [...host.querySelectorAll("button")].find((b) => b.textContent === "Max")!;
-    expect(max.getAttribute("title")).toBe("531,600 sats");
-    expect(host.querySelector('[data-testid="max-fee-note"]')?.textContent)
+    expect(upTo()).toBe("531600");
+    expect(mostRow()!.querySelector('[data-testid="max-fee-note"]')?.textContent)
       .toBe("This allows for today's fees; if they rise before you confirm, the quote will say so.");
+    expect(button("Max")).toBeUndefined();
   });
 
-  it("R25: loopd can't quote — Max falls back to today's figure and keeps the original sentence", async () => {
+  it("R25: loopd can't quote — the maximum falls back to today's figure and the row keeps the original sentence", async () => {
     stub.getSwapOptions.mockResolvedValue(OUT({ quote: "unavailable" }));
     await mount(WithdrawBitcoin);
-    const max = [...host.querySelectorAll("button")].find((b) => b.textContent === "Max")!;
-    expect(max.getAttribute("title")).toBe("540,000 sats");
-    expect(host.querySelector('[data-testid="max-fee-note"]')?.textContent)
+    expect(upTo()).toBe("540000");
+    expect(mostRow()!.querySelector('[data-testid="max-fee-note"]')?.textContent)
       .toBe("The swap's fees come out of this, so the exact amount you can withdraw is set when you get a quote.");
   });
 
-  it("before the quote arrives: 'Checking today's fees…' and no Max yet", async () => {
+  it("before the quote arrives: 'Checking today's fees…', no figure, and no 'Withdraw the most now' yet", async () => {
     stub.getSwapOptions.mockImplementation(() => new Promise(() => {}));
     await mount(WithdrawBitcoin);
     expect(text()).toContain("Checking today's fees…");
-    expect([...host.querySelectorAll("button")].some((b) => b.textContent === "Max")).toBe(false);
+    expect(host.querySelector("[data-testid='withdraw-answer']")?.textContent).toBe("—");
+    expect(mostRow()).toBeNull();
+  });
+
+  it("the server recommends now: no tip; the reason is in 'Withdraw the most now'", async () => {
+    stub.getSwapOptions.mockResolvedValue({
+      ...OUT(), reason: "fees_low",
+      cards: OUT().cards.map((c) => ({ ...c, recommended: c.key === "now" })),
+    });
+    await mount(WithdrawBitcoin);
+    expect(host.querySelector('[data-testid="withdraw-tip"]')).toBeNull();
+    expect(mostRow()!.querySelector('[data-testid="recommended-reason"]')?.textContent).toBe("Fees are low today.");
   });
 
   it("over the fee limit: says so, and 'Use the most' waits for 'Allow it this once'", async () => {
@@ -167,11 +195,13 @@ describe("Withdraw's cards", () => {
     expect(button("Use the most")!.disabled).toBe(false);
   });
 
-  it("no cards when nothing can move", async () => {
+  it("nothing can move: no cards, no tip, no row", async () => {
     stub.getSwapOptions.mockResolvedValue({ ...OUT(), state: "nothing_movable", cards: [] });
     stub.getSwapLimits.mockResolvedValue({ ...LIMITS, loop_out: { ...LIMITS.loop_out, available_now_sats: 100_000 } });
     await mount(WithdrawBitcoin);
     expect(host.querySelector('[data-testid="option-cards"]')).toBeNull();
+    expect(host.querySelector('[data-testid="withdraw-tip"]')).toBeNull();
+    expect(mostRow()).toBeNull();
   });
 });
 

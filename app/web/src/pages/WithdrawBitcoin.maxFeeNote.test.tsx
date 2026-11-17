@@ -5,6 +5,11 @@
 // shown, one sentence under the Max control says the fees come out of it and
 // the exact amount is set by the quote. (The quote-based maximum is P3.)
 //
+// RE-POINTED for member-first-run-ui slice 3, R4 (Ethan's "recs", 2026-11-17):
+// the sentence moves into the "Withdraw the most now" row, and R5 drops the
+// Max control. The rule it pins stands: whenever a maximum is offered, the
+// sentence is with it; with no maximum, neither the row nor the sentence.
+//
 // Harness: WithdrawBitcoin.presets.test.tsx's.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -76,21 +81,21 @@ async function mount(availableNow: number) {
   for (let i = 0; i < 6; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 }
 
-const maxButton = () => [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").trim() === "Max");
+const mostRow = () => host.querySelector("[data-testid='row-most-now']") as HTMLDetailsElement | null;
 const text = () => host.textContent ?? "";
 
-describe("R25 — whenever a maximum is shown, the page says the fees come out of it", () => {
+describe("R25 (R4) — whenever a maximum is offered, its row says the fees come out of it", () => {
   for (const availableNow of [250_000, 700_000, 2_000_000]) {
-    it(`maximum ${availableNow.toLocaleString()}: Max shown, and the sentence with it`, async () => {
+    it(`maximum ${availableNow.toLocaleString()}: "Withdraw the most now", with the sentence in it`, async () => {
       await mount(availableNow);
-      expect(maxButton(), "a maximum is shown").toBeDefined();
-      expect(text()).toContain(SENTENCE);
+      expect(mostRow(), "the maximum is offered").not.toBeNull();
+      expect(mostRow()!.querySelector("[data-testid='max-fee-note']")?.textContent).toBe(SENTENCE);
     });
   }
 
-  it("no maximum (less than the minimum possible): no Max, no sentence", async () => {
+  it("no maximum (less than the minimum possible): no row, no sentence", async () => {
     await mount(200_000);
-    expect(maxButton()).toBeUndefined();
+    expect(mostRow()).toBeNull();
     expect(text()).not.toContain(SENTENCE);
   });
 });
