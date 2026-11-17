@@ -258,6 +258,11 @@ export default function WithdrawBitcoin() {
   // 7), is one line under the big amount, only when it applies.
   const toneWord = capacityRoomWord(role, tone);
 
+  // The default amount the page set, and whether the over-limit check has run
+  // on it once (R5 edge, Ethan's "recs" 2026-11-17).
+  const defaultAmountRef = useRef<number | null>(null);
+  const defaultCheckedRef = useRef(false);
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -290,9 +295,11 @@ export default function WithdrawBitcoin() {
         // offered only if the policy would accept it now; otherwise none.
         const min = l?.loop_out?.min_sats;
         const now = l?.loop_out?.available_now_sats;
-        setAmount((a) =>
-          min == null || now == null || now < min ? 0 : a >= min && a <= now ? a : min,
-        );
+        setAmount((a) => {
+          const next = min == null || now == null || now < min ? 0 : a >= min && a <= now ? a : min;
+          defaultAmountRef.current = next;
+          return next;
+        });
       })
       .catch(() => {});
     loadAdvisor();
@@ -332,6 +339,19 @@ export default function WithdrawBitcoin() {
   const recommended = options?.state === "ok" ? options.cards.find((c) => c.recommended) ?? null : null;
   const waitCard = options?.state === "ok" ? options.cards.find((c) => c.key !== "now") ?? null : null;
   const waitRecommended = recommended != null && recommended.key !== "now" && options?.reason != null;
+
+  // R5's edge (Ethan's "recs", 2026-11-17): when even the minimum is over the
+  // fee limit — the over-limit most is at or below the default amount — the box
+  // starts EMPTY, so the only path to an over-limit amount is "Withdraw the most
+  // now" with its tick. Runs once, when both the default and the options are
+  // in, and only on the page's own default (an amount the member chose stays).
+  useEffect(() => {
+    if (defaultCheckedRef.current || defaultAmountRef.current == null || !optionsDone) return;
+    defaultCheckedRef.current = true;
+    const most = overLimit ? maxWithdrawable : null;
+    const dflt = defaultAmountRef.current;
+    if (most != null && dflt > 0 && dflt >= most) setAmount((a) => (a === dflt ? 0 : a));
+  }, [limits, optionsDone, overLimit, maxWithdrawable]);
 
   // ─── Pending swap detection ───────────────────────────────────────────
   useEffect(() => {

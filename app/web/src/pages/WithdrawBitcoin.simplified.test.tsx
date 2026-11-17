@@ -493,6 +493,43 @@ describe("R5 — no control sets the over-limit amount without 'Allow it this on
     expect(amountValue()).toBe("500000");
   });
 
+  // The edge (Ethan's "recs", 2026-11-17): even the minimum is over the fee
+  // limit — the over-limit most IS the minimum — so the default (the minimum)
+  // would set it with no tick. The box starts empty instead.
+  it("even the minimum over the limit: the box starts empty; only 'Withdraw the most now', ticked, reaches it", async () => {
+    stub.getSwapOptions.mockResolvedValue(OUT({ over: true, nowAmount: 250_000 }));
+    await remount();
+    expect(amountValue(), "no default amount").toBe("");
+    expect(host.querySelectorAll(".withdraw-presets input").length, "no preset reaches it").toBe(0);
+    expect(button("Use the most")!.disabled).toBe(true);
+    await act(async () => { (host.querySelector("[data-testid='row-most-now'] input[type='checkbox']") as HTMLInputElement).click(); });
+    await act(async () => { button("Use the most")!.click(); });
+    expect(amountValue()).toBe("250000");
+  });
+
+  it("the advisor's ?amount= at the over-limit most is not kept as a default either", async () => {
+    stub.getSwapOptions.mockResolvedValue(OUT({ over: true, nowAmount: 500_000 }));
+    await act(async () => { root.unmount(); });
+    root = createRoot(host);
+    await act(async () => {
+      root.render(React.createElement(MemoryRouter, { initialEntries: ["/withdraw?amount=500000"] }, React.createElement(WithdrawBitcoin)));
+    });
+    for (let i = 0; i < 8; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(amountValue()).toBe("");
+  });
+
+  it("over the limit, but the minimum is below the most: the minimum stays the default", async () => {
+    // beforeEach: the most is 500,000, over the limit; the minimum 250,000 is not it.
+    await mount();
+    expect(amountValue()).toBe("250000");
+  });
+
+  it("not over the limit, the most at the minimum: the minimum stays the default", async () => {
+    stub.getSwapOptions.mockResolvedValue(OUT({ nowAmount: 250_000 }));
+    await remount();
+    expect(amountValue()).toBe("250000");
+  });
+
   it("not over the limit: the preset at the most is offered", async () => {
     stub.getSwapOptions.mockResolvedValue(OUT({ nowAmount: 500_000 }));
     await remount();
