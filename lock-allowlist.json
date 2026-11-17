@@ -11,6 +11,16 @@
         "date": "2026-11-16",
         "record": "decisions/2026-11-16-lockfile-phase-2-rulings-and-viem-overrule.md"
       }
+    },
+    {
+      "name": "serve",
+      "kind": "new-dependency",
+      "reason": "app/web/runtime/package.json locks serve, which the web image runs as /app/runtime/node_modules/.bin/serve in place of a global install.",
+      "ethan": {
+        "words": "yes",
+        "date": "2026-11-17",
+        "record": "decisions/2026-11-16-lockfile-phase-2-rulings-and-viem-overrule.md"
+      }
     }
   ]
 }
