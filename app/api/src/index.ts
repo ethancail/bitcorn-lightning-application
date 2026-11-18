@@ -194,6 +194,7 @@ import {
   refreshLocalToken,
 } from "./subscription/tokenRefresh";
 import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
+import { readFeeEstimates, WORKER_FEES_TIMEOUT_MS } from "./fees/feeEstimates";
 import { lookupNodeAlias } from "./lightning/nodeAlias";
 import {
   listPublicAliases,
@@ -2124,6 +2125,22 @@ async function dispatchRequest(
       res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "commodity_prices_unavailable" }));
     }
+    return;
+  }
+
+  // fee-estimates (spec §4, P22): the one fee-estimate source for the three
+  // confirmation-speed cards. The Worker's public /fees first (mainnet only,
+  // P11), LND's curve at targets 2/3/6 as the fallback, unavailable when the
+  // Worker is stale and LND is flat at 25 or errors (O7, P6). Read-only; it
+  // moves nothing. Always 200: "unavailable" is an answer, not a failure.
+  if (req.method === "GET" && req.url === "/api/fee-estimates") {
+    const estimates = await readFeeEstimates({
+      fetchWorkerFees: () =>
+        workerFetch("/fees", { signal: AbortSignal.timeout(WORKER_FEES_TIMEOUT_MS) }),
+      getChainFeeRate: (target) => getLndChainFeeRate(target),
+    });
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(estimates));
     return;
   }
 
