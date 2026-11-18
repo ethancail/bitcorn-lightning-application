@@ -20,13 +20,14 @@ COPY tsconfig.json ./
 COPY src ./src
 
 RUN npm run build
+RUN npm prune --omit=dev
 
 # ---- Runtime stage ----
 FROM node:20-slim
 
 WORKDIR /app
 
-ENV NODE_ENV=development
+ENV NODE_ENV=production
 
 RUN mkdir -p /scripts /data
 
