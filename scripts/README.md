@@ -99,11 +99,11 @@ own pins. Nothing outside the sandbox and that cache is written.
 Tests the two agent-safety mechanisms so a future edit (or Claude Code update)
 that weakens them is caught mechanically:
 
-- **verify-gate.mjs (Stop hook):** 13 behavioral cases from its decision table,
+- **verify-gate.mjs (Stop hook):** 14 behavioral cases from its decision table,
   driven against a throwaway fixture git repo in a temp dir with a stub `npx`
   on `PATH` — no real tsc/vitest runs, so the whole suite takes seconds. Exit
   codes are read from `spawnSync().status` directly (no pipes to mask them).
-  Cases 9–13 cover the heavy lock (A4), in a scratch lock home
+  Cases 9–14 cover the heavy lock (A4), in a scratch lock home
   (`HARNESS_HEAVY_TEST_HOME`), never the account's real `heavy.lock`.
 - **permissions.deny (.claude/settings.json):** parses the deny array and
   pattern-matches it against tables of commands that must be blocked

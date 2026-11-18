@@ -25,16 +25,21 @@
 //                                                     block loops; guard, not a trap
 //   VERIFY_GATE_SKIP=1 in the environment ........... exit 0 (documented escape hatch)
 //   changes + heavy lock still held after 5 min ..... exit 2 ONCE: "verification not run:
-//     (or this account refused the heavy lock)        heavy lock held by <holder> since
-//                                                     <time>; run it when the lock frees"
-//   ... and stop_hook_active=true ................... exit 0 + that warning, NOT VERIFIED
+//     (or this account refused the heavy lock,        heavy lock held by <holder> since
+//     or taking it failed)                            <time>; run it when the lock frees"
+//   ... and stop_hook_active=true ................... waits at most 10 s for the lock;
+//                                                     still held: exit 0 + that warning,
+//                                                     NOT VERIFIED
 //
-// THE HEAVY LOCK (A4, Ethan 2026-11-18): tsc and vitest are heavy jobs, so the
-// checks run only under scripts/harness-slot.mjs's heavy lock, taken here in
-// process before the first check and released after the last, waiting up to
-// HEAVY_WAIT_S. It is never reported as a pass when its checks did not run.
-// The Stop hook's timeout in .claude/settings.json (960 s) covers that wait
-// plus the four 150 s checks; lower it and the hook is killed mid-wait.
+// THE HEAVY LOCK (A4, Ethan 2026-11-18; on flock, 2026-11-19): tsc and vitest
+// are heavy jobs, so the checks run only under scripts/harness-slot.mjs's heavy
+// lock, a kernel flock taken here in process before the first check, waiting up
+// to HEAVY_WAIT_S (SECOND_TRY_WAIT_S on the second try). Each check is handed
+// the locked descriptor as its fd 9, so a gate killed mid-check leaves the lock
+// with that check until it exits; there are no signal handlers here. It is
+// never reported as a pass when its checks did not run. The Stop hook's timeout
+// in .claude/settings.json (960 s) covers the wait plus the four 150 s checks;
+// lower it and the hook is killed mid-wait.
 // Test-only: VERIFY_GATE_HEAVY_WAIT_S shortens the wait, announced when set.
 //
 // WHAT RUNS (scoped to the side that changed, for speed):
@@ -54,12 +59,17 @@
 // Documented in CLAUDE.md § Build & Dev.
 
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CMD_TIMEOUT_MS = 150_000;
 const HEAVY_WAIT_S = 300;
+const SECOND_TRY_WAIT_S = 10;
+// While the checks run under the heavy lock: their stdio, the locked
+// descriptor as fd 9 (harness-slot.mjs heavyStdio). null otherwise.
+let checkStdio = null;
 
 // The only paths this gate watches. Single source of truth on purpose: the
 // `git status` pathspec below and the nothing-to-verify message both read from
@@ -95,6 +105,7 @@ function run(cmd, args, cwd) {
     timeout: CMD_TIMEOUT_MS,
     env: process.env,
     maxBuffer: 16 * 1024 * 1024,
+    ...(checkStdio === null ? {} : { stdio: checkStdio }),
   });
 }
 
@@ -170,7 +181,7 @@ const main = async () => {
     process.exit(0);
   }
 
-  const hold = await takeHeavy();
+  const hold = await takeHeavy(hook);
   if (!hold.ok) {
     // A4: blocks once; stop_hook_active lets the session end with the warning. Never a pass.
     if (hook.stop_hook_active) {
@@ -191,8 +202,9 @@ const main = async () => {
 
 // A4: the heavy lock, or why the checks will not run. { ok: true, release() }
 // or { ok: false, notRun }. A held lock and a refused account both take the
-// not-run path (ruling 3), as does a lock module that cannot load.
-async function takeHeavy() {
+// not-run path (ruling 3), as do a lock module that cannot load and an error
+// taking the lock.
+async function takeHeavy(hook) {
   let heavy;
   try {
     heavy = await import("./harness-slot.mjs");
@@ -206,53 +218,64 @@ async function takeHeavy() {
     return { ok: false, notRun: `verification not run: ${error.message}` };
   }
   for (const note of ctx.notes) console.error(`[verify-gate] ${note}`);
-  const current = heavy.readLock(ctx.home, "heavy");
-  if (heavy.heldByThisJob(current, { host: ctx.host })) {
-    console.error(`[verify-gate] the heavy lock is this job's own (${JSON.stringify(current.holder)}); checking under it`);
-    return { ok: true, release: () => {} };
-  }
-  let waitS = HEAVY_WAIT_S;
-  if (process.env.VERIFY_GATE_HEAVY_WAIT_S !== undefined) {
-    waitS = Number(process.env.VERIFY_GATE_HEAVY_WAIT_S);
-    if (!(waitS >= 0)) waitS = HEAVY_WAIT_S; // NaN would wait forever
-    console.error(`[verify-gate] TEST wait: ${waitS}s for the heavy lock (VERIFY_GATE_HEAVY_WAIT_S), not ${HEAVY_WAIT_S}s`);
-  }
-  // The gate's checks are spawnSync children in the gate's own process group:
-  // if the gate is killed, they hold the lock until they end (provablyDead).
-  const pgid = heavy.procStat(process.pid).pgrp;
-  const r = await heavy.acquireHeavy({
-    home: ctx.home,
-    holder: `${ctx.account}@${ctx.host}:node scripts/verify-gate.mjs (${path.basename(ROOT)})`,
-    host: ctx.host,
-    pid: process.pid,
-    pidStart: heavy.procStart(process.pid),
-    pgid: pgid > 1 ? pgid : undefined,
-    waitMs: waitS * 1000,
-    pollMs: Math.min(5000, waitS * 1000),
-    say: (m) => console.error(`[verify-gate] ${m}`),
-  });
-  if (!r.acquired) {
-    return {
-      ok: false,
-      notRun: `verification not run: heavy lock held by ${JSON.stringify(r.held.holder)} since ${r.held.acquired_at ?? "?"}; ` +
-        "run it when the lock frees",
-    };
-  }
-  const release = () => {
-    try {
-      console.error(`[verify-gate] ${heavy.releaseOwnHeavy(ctx.home, r.text)}`);
-    } catch (error) {
-      console.error(`[verify-gate] WARN: the heavy lock was not released: ${error.message}`);
+  // #7: an error taking the lock is "not run" too, never a crash that lets the stop through.
+  try {
+    if (heavy.heldByThisJob(ctx.home)) {
+      const info = heavy.readHeavyInfo(ctx.home);
+      console.error(`[verify-gate] the heavy lock is this job's own (${JSON.stringify(info?.holder ?? "(unrecorded)")}); checking under it`);
+      return { ok: true, release: () => {} };
     }
-  };
-  // A signal (the hook's timeout) still releases. spawnSync defers it until the running check returns.
-  for (const s of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-    process.on(s, () => {
-      release();
-      process.exit(1);
+    let waitS = HEAVY_WAIT_S;
+    if (process.env.VERIFY_GATE_HEAVY_WAIT_S !== undefined) {
+      waitS = Number(process.env.VERIFY_GATE_HEAVY_WAIT_S);
+      if (!(waitS >= 0)) waitS = HEAVY_WAIT_S; // NaN would wait forever
+      console.error(`[verify-gate] TEST wait: ${waitS}s for the heavy lock (VERIFY_GATE_HEAVY_WAIT_S), not ${HEAVY_WAIT_S}s`);
+    }
+    // #8: the first try already said the lock is held; the second only looks again.
+    if (hook.stop_hook_active && waitS > SECOND_TRY_WAIT_S) {
+      waitS = SECOND_TRY_WAIT_S;
+      console.error(`[verify-gate] second try: waiting at most ${SECOND_TRY_WAIT_S}s for the heavy lock`);
+    }
+    const r = await heavy.lockHeavy({
+      home: ctx.home,
+      waitMs: waitS * 1000,
+      pollMs: Math.max(1000, Math.min(5000, waitS * 1000)),
+      say: (m) => console.error(`[verify-gate] ${m}`),
     });
+    if (r.fd === null) {
+      return {
+        ok: false,
+        notRun: `verification not run: heavy lock held by ${JSON.stringify(r.info?.holder ?? "(unrecorded)")} ` +
+          `since ${r.info?.acquired_at ?? "?"}; run it when the lock frees`,
+      };
+    }
+    let rec;
+    try {
+      rec = heavy.recordHeavy(ctx.home, r.fd, {
+        holder: `${ctx.account}@${ctx.host}:node scripts/verify-gate.mjs (${path.basename(ROOT)})`,
+        host: ctx.host,
+        kind: "gate",
+        pid: process.pid,
+      });
+    } catch (error) {
+      fs.closeSync(r.fd);
+      throw error;
+    }
+    checkStdio = heavy.heavyStdio(["pipe", "pipe", "pipe"], r.fd);
+    return {
+      ok: true,
+      release: () => {
+        checkStdio = null;
+        try {
+          console.error(`[verify-gate] ${rec.release()}`);
+        } catch (error) {
+          console.error(`[verify-gate] WARN: the heavy lock's record was not cleared: ${error.message}`);
+        }
+      },
+    };
+  } catch (error) {
+    return { ok: false, notRun: `verification not run: the heavy lock could not be taken (${error.message})` };
   }
-  return { ok: true, release };
 }
 
 // The checks themselves, unchanged in substance: prints the verdict and returns the exit code.

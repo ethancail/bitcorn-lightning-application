@@ -61,7 +61,7 @@ docker compose up -d --build
 
 Frontend deps: `react`, `react-dom`, `react-router-dom`, `recharts`, `date-fns`, `qrcode`.
 
-**Verification stop-gate:** a committed Stop hook runs `scripts/verify-gate.mjs` at every turn end — with uncommitted `app/api`/`app/web` changes it runs that side's tsc + vitest and blocks completion on real failures (known-baseline tsc errors are allowlisted; a broken runner warns instead of blocking; clean/read-only sessions are never gated). Its checks run under the machine's heavy lock, waiting up to 5 minutes; if still held it blocks once with "verification not run", then lets the stop through unverified — never as a pass (hook timeout 960 s). Escape hatch: `VERIFY_GATE_SKIP=1`. Details in the script header.
+**Verification stop-gate:** a committed Stop hook runs `scripts/verify-gate.mjs` at every turn end — with uncommitted `app/api`/`app/web` changes it runs that side's tsc + vitest and blocks completion on real failures (known-baseline tsc errors are allowlisted; a broken runner warns instead of blocking; clean/read-only sessions are never gated). Its checks run under the machine's heavy lock, waiting up to 5 minutes; if still held it blocks once with "verification not run", then (after at most 10 s more) lets the stop through unverified — never as a pass (hook timeout 960 s). Escape hatch: `VERIFY_GATE_SKIP=1`. Details in the script header.
 
 **Heavy jobs** (full suites, mutation/negative-control batches, Polar gates and captures) run one per machine: `node scripts/harness-slot.mjs heavy run -- <command>`. See `docs/dev-setup.md` § The heavy lock.
 
