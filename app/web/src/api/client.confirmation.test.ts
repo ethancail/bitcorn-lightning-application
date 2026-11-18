@@ -89,10 +89,10 @@ describe("every capital route the UI can reach sends a confirmation the server a
           price_acknowledged: true,
         }),
     ],
-    ["member/open-channel", () => api.openMemberChannel({ capacity_sats: 1_000_000 })],
+    ["member/open-channel", () => api.openMemberChannel({ capacity_sats: 1_000_000, fee_rate: 3 })],
     [
       "member/open-channel + socket",
-      () => api.openMemberChannel({ capacity_sats: 2_000_000, partner_socket: "1.2.3.4:9735" }),
+      () => api.openMemberChannel({ capacity_sats: 2_000_000, fee_rate: 3, partner_socket: "1.2.3.4:9735" }),
     ],
     ["network/pay", () => api.payNetworkInvoice("lnbc1pjxyzqqdq")],
     [
@@ -111,9 +111,11 @@ describe("every capital route the UI can reach sends a confirmation the server a
       "treasury/rotation/execute (force)",
       () => api.treasuryCloseChannel({ channel_id: "842391119757312", is_force_close: true }),
     ],
+    // Rewritten for fee-estimates (O5): fee_rate IS hashed now, on a cooperative
+    // close; a force close carries none (the route refuses one, F1).
     [
-      "treasury/rotation/execute (force + fee_rate, which is NOT hashed)",
-      () => api.treasuryCloseChannel({ channel_id: "842391119757312", is_force_close: true, fee_rate: 12 }),
+      "treasury/rotation/execute (coop + fee_rate, which IS hashed)",
+      () => api.treasuryCloseChannel({ channel_id: "842391119757312", fee_rate: 12 }),
     ],
     [
       "swaps/loop-out",
@@ -220,7 +222,7 @@ describe("what must stay untouched", () => {
       return realFetch(u, { ...i, headers: h });
     });
 
-    await api.openMemberChannel({ capacity_sats: 1_000_000 });
+    await api.openMemberChannel({ capacity_sats: 1_000_000, fee_rate: 3 });
     const c = captured[0]!;
     expect(c.headers["x-caller-supplied"]).toBe("kept");
     expect(c.headers["content-type"]).toBe("application/json");

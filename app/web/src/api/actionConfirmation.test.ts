@@ -97,11 +97,11 @@ describe("the client hashes the SERIALIZED body it is about to send", () => {
 describe("the server accepts what the client computes", () => {
   const CASES: Array<[label: string, url: string, body: Record<string, unknown>]> = [
     ["network/pay", "/api/network/pay", { payment_request: "lnbc1pjxyzqqdq" }],
-    ["member/open-channel", "/api/member/open-channel", { capacity_sats: 1_000_000 }],
+    ["member/open-channel", "/api/member/open-channel", { capacity_sats: 1_000_000, fee_rate: 3 }],
     [
       "member/open-channel + socket",
       "/api/member/open-channel",
-      { capacity_sats: 1_000_000, partner_socket: "1.2.3.4:9735" },
+      { capacity_sats: 1_000_000, fee_rate: 3, partner_socket: "1.2.3.4:9735" },
     ],
     [
       "expansion/execute",
@@ -234,9 +234,9 @@ describe("optional fields: absent and present-false are different requests", () 
   it("optional partner_socket: absent, empty and set are three distinct values", () => {
     const u = "/api/member/open-channel";
     const vals = [
-      { capacity_sats: 1_000_000 },
-      { capacity_sats: 1_000_000, partner_socket: "" },
-      { capacity_sats: 1_000_000, partner_socket: "1.2.3.4:9735" },
+      { capacity_sats: 1_000_000, fee_rate: 3 },
+      { capacity_sats: 1_000_000, fee_rate: 3, partner_socket: "" },
+      { capacity_sats: 1_000_000, fee_rate: 3, partner_socket: "1.2.3.4:9735" },
     ].map((b) => {
       const d = derive(u, b);
       return d.ok ? d.value : "refused";
@@ -287,7 +287,7 @@ describe("works with crypto.subtle DELETED (the tailnet case)", () => {
     deleteSubtle();
     const cases: Array<[string, Record<string, unknown>]> = [
       ["/api/network/pay", { payment_request: "lnbc1pjxyzqqdq" }],
-      ["/api/member/open-channel", { capacity_sats: 1_000_000 }],
+      ["/api/member/open-channel", { capacity_sats: 1_000_000, fee_rate: 3 }],
       ["/api/treasury/rotation/execute", { channel_id: "842391119757312", is_force_close: true }],
       ["/api/swaps/loop-in", { swap_request_id: "swap-def", ...LI_CEILINGS }],
     ];
@@ -305,7 +305,7 @@ describe("works with crypto.subtle DELETED (the tailnet case)", () => {
   it("multi-byte UTF-8 survives without subtle (TextEncoder, not charCodeAt)", () => {
     deleteSubtle();
     const url = "/api/member/open-channel";
-    const body = { capacity_sats: 1_000_000, partner_socket: "café-node:9735" };
+    const body = { capacity_sats: 1_000_000, fee_rate: 3, partner_socket: "café-node:9735" };
     const d = derive(url, body);
     expect(d.ok).toBe(true);
     if (!d.ok) return;

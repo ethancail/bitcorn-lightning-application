@@ -25,7 +25,7 @@ Role is derived from identity + treasury channel state — not bearer tokens.
 | GET | `/api/channels/pending` | Pending channel opens (for ConnectToHub reload persistence) |
 | GET | `/api/member/stats` | Hub pubkey, membership, role, is_peered_to_hub, treasury_channel, forwarded_fees (24h/30d/all-time), keysend_enabled, `lifetime_received_sats` (SUM of `payments_inbound.tokens`: every settled inbound invoice the sync loop has recorded; the farmer dashboard's "Received, lifetime"). `treasury_channel` is **the hub channel** (`lightning/hubChannel.ts`): the largest active channel to the treasury, the lowest short channel ID in numeric order between equal sizes; with none active, the largest inactive one for display only (`is_active: false`). It carries both capacity figures and their parts: `room_to_send_sats` (local − local reserve; for a member who opened the channel, also minus lnd's fee headroom for adding an HTLC — never above what lnd will send, R23(i), `capacity.ts`), `room_to_receive_sats` (remote − remote reserve), `local_reserve_sats`, `remote_reserve_sats`, `pending_outgoing_sats` / `pending_incoming_sats` (in-flight HTLCs, reported, not subtracted) and `commit_fee_sats` (reported only) |
 | GET | `/api/member/costs` | Fees this node paid over the last 30 days (`api/member-costs.ts`), read-only: `{ since_ms, payment_fees_sat, withdraw_fees_sat, topup_fees_sat, total_sat }`. Payment fees are succeeded sends settled in the window (`network_payments`; failed, expired and pending sends pay none); swap fees are this node's swaps completed in the window, `actual_fee_sat` per direction. No subscription line and no treasury call. The dashboard's "Costs, last 30 days" |
-| POST | `/api/member/open-channel` | Open channel to hub (`{ capacity_sats, partner_socket? }`, min 100k). **Membership gate:** before any funding step it reads the treasury's `open_channel_allowed` (see `GET /api/subscription/status` below); `false` → **403 `{"error":"membership_not_paid"}`** and nothing goes on chain. An unknown verdict (field absent from an older treasury, `null`, a failed status fetch, or a status the node could not verify as the treasury's) lets the open through, and the treasury's channel acceptor decides; if the acceptor refuses, the route answers the same 403 (it reads LND's text from ln-service's array error, `err[2].err`). Other failures are unchanged: 500 `{ error: <message> }` or `failed_to_open_channel`. ConnectToHub shows the 403 as "Your membership isn't paid yet, so the hub can't accept your channel. Pay your membership, then connect." |
+| POST | `/api/member/open-channel` | Open channel to hub (`{ capacity_sats, fee_rate, partner_socket? }`, min 100k). `fee_rate` (sat/vB) is required and confirmed: a positive JSON integer up to 200, else 400 `invalid_fee_rate` / `fee_rate_above_ceiling` (absent, null or non-numeric: 400 `confirmation_required` from the gate); it is the rate passed to LND. **Membership gate:** before any funding step it reads the treasury's `open_channel_allowed` (see `GET /api/subscription/status` below); `false` → **403 `{"error":"membership_not_paid"}`** and nothing goes on chain. An unknown verdict (field absent from an older treasury, `null`, a failed status fetch, or a status the node could not verify as the treasury's) lets the open through, and the treasury's channel acceptor decides; if the acceptor refuses, the route answers the same 403 (it reads LND's text from ln-service's array error, `err[2].err`). Other failures are unchanged: 500 `{ error: <message> }` or `failed_to_open_channel`. ConnectToHub shows the 403 as "Your membership isn't paid yet, so the hub can't accept your channel. Pay your membership, then connect." |
 | GET | `/api/contacts` | List contacts |
 | POST | `/api/contacts` | Create contact |
 | PATCH | `/api/contacts/:pubkey` | Update contact |
@@ -573,16 +573,29 @@ treats them.
 
 ```bash
 # POST /api/treasury/rotation/execute
-#   fields: channel_id, is_force_close (optional boolean), dry_run (optional boolean)
+#   fields: channel_id, is_force_close (optional boolean), fee_rate (optional
+#   number in the table; see below), dry_run (optional boolean)
 # is_force_close is in the hash because it changes WHAT HAPPENS, not just the
 # cost: a force close pays on-chain fees now and timelocks the balance.
-BODY='{"channel_id":"842391119757312","is_force_close":true}'
+# fee_rate (sat/vB, the rate PROPOSED to the peer) is in the hash so a confirmed
+# rate is the rate sent. The table marks it optional because the rule is
+# conditional, and the ROUTE enforces it: required on a cooperative close,
+# refused on a force close (400 fee_rate_not_allowed), not required on dry_run.
+# A positive JSON integer up to 200, else 400 (invalid_fee_rate,
+# fee_rate_required, fee_rate_above_ceiling).
+BODY='{"channel_id":"842391119757312","fee_rate":3}'
 CONFIRM=$(jq -rj '"channel_id=" + .channel_id
                 + (if .is_force_close == null then ""
                    else "&is_force_close=" + (if .is_force_close == true then "true" else "false" end) end)
+                + (if .fee_rate == null then ""
+                   else "&fee_rate=" + (.fee_rate|tostring) end)
                 + (if .dry_run == null then ""
                    else "&dry_run=" + (if .dry_run == true then "true" else "false" end) end)' \
           <<<"$BODY" | sha256sum | cut -d' ' -f1)
+# fee_rate:3 (a cooperative close) -> fcf9fc7ae8a762277a5eada82e669a566432eaab370118d38c5d67b3c33a8696
+# fee_rate:3 + dry_run:true        -> 6e47a50e6be0e0b1ac82c5ee828e8a2be189bbd861554843be3952be03604d7c
+# The values below clear the GATE; without fee_rate the route then refuses a
+# cooperative close (fee_rate_required). Force close and dry_run proceed.
 # both absent                    -> 0dafc2024c1ae41d5a774d5b660d7dfb91bd1abf6507c4e5aa205d6b366c7a59
 # is_force_close:true            -> 24857f591516de3f6b6ee5bac4e1b1477acee42ca29b042d001488afbccf1115
 # is_force_close:false           -> c18ba191fb7e4cdcebc8b59d66e33a6ec00f6280769fd093f8d41ce8e5f7816f
@@ -592,15 +605,39 @@ CONFIRM=$(jq -rj '"channel_id=" + .channel_id
 
 ```bash
 # POST /api/treasury/expansion/execute
-#   fields: peer_pubkey, capacity_sats, dry_run (optional boolean)
-BODY='{"peer_pubkey":"02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca","capacity_sats":2000000}'
+#   fields: peer_pubkey, capacity_sats, fee_rate (optional number in the table),
+#   dry_run (optional boolean)
+# fee_rate is optional in the table only because a dry_run preview sends
+# nothing to LND and does not require it; the ROUTE requires it on every real
+# open (400 fee_rate_required), a positive JSON integer up to 200.
+BODY='{"peer_pubkey":"02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca","capacity_sats":2000000,"fee_rate":3}'
 CONFIRM=$(jq -rj '"peer_pubkey=" + .peer_pubkey
                 + "&capacity_sats=" + (.capacity_sats|tostring)
+                + (if .fee_rate == null then ""
+                   else "&fee_rate=" + (.fee_rate|tostring) end)
                 + (if .dry_run == null then ""
                    else "&dry_run=" + (if .dry_run == true then "true" else "false" end) end)' \
           <<<"$BODY" | sha256sum | cut -d' ' -f1)
+# fee_rate:3     -> 24f1f9010819378f0a4c284387a6353ef8b92d905d6907c8003130ffb0cff700
+# The two below clear the GATE; without fee_rate the route refuses a real open.
 # dry_run absent -> 08fd5898f57826759cb81ecb19b3b5b52395f4b0b4323e24e03e7d34a1696aec
 # dry_run:true   -> 9de7c20a804ed9c62070bc17aa96791c3a20c31b7f9e7140bc4588b5fb254618
+```
+
+```bash
+# POST /api/member/open-channel
+#   fields: capacity_sats, fee_rate (REQUIRED number), partner_socket (optional text)
+# The gate refuses an absent or null fee_rate; the route refuses anything but a
+# positive JSON integer up to 200.
+BODY='{"capacity_sats":1000000,"fee_rate":3}'
+CONFIRM=$(jq -rj '"capacity_sats=" + (.capacity_sats|tostring)
+                + "&fee_rate=" + (.fee_rate|tostring)
+                + (if .partner_socket == null then ""
+                   else "&partner_socket=" + .partner_socket end)' \
+          <<<"$BODY" | sha256sum | cut -d' ' -f1)
+# fee_rate:3                      -> 14ab162e1b0b2fe77bb8a4c9a04ac2566361c7e4116314294aac48f50bd022f7
+# fee_rate:3, partner_socket set  -> 0775b005a2423c261322873c38de1f4e7d5cabd5ff689ba17172f6bc174c2b0b
+#   (partner_socket "1.2.3.4:9735")
 ```
 
 ```bash
@@ -613,10 +650,9 @@ CONFIRM=$(jq -rj '"channel_id=" + .channel_id
 ```
 
 Only the fields a route's entry declares are hashed. `max_swap_fee_sats` above
-is **not** one of them, and neither is `fee_rate` on any open/close route — a
-cost modifier on a spend already bounded by `capacity_sats`, and the field most
-likely to be omitted on purpose. Sending extra body fields is fine and does not
-change the value.
+is **not** one of them. `fee_rate` **is** hashed on all three open/close routes
+(fee-estimates O5), so a confirmed rate is the rate sent. Sending extra body
+fields is fine and does not change the value.
 
 The hex values commented above are produced by these exact recipes and are
 pinned as tests (`action-confirmation.route.test.ts`), so this documentation

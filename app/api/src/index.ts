@@ -195,6 +195,7 @@ import {
 } from "./subscription/tokenRefresh";
 import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
 import { readFeeEstimates, WORKER_FEES_TIMEOUT_MS } from "./fees/feeEstimates";
+import { checkFeeRate } from "./fees/feeRateRule";
 import { lookupNodeAlias } from "./lightning/nodeAlias";
 import {
   listPublicAliases,
@@ -2699,7 +2700,13 @@ async function dispatchRequest(
           const capacitySats = Number(parsed.capacity_sats);
           const isPrivate = parsed.is_private ?? false;
           const isDryRun = parsed.dry_run === true;
-          const feeRate = parsed.fee_rate ? Number(parsed.fee_rate) : undefined; // sat/vB
+          const feeCheck = checkFeeRate(parsed.fee_rate, isDryRun ? "optional" : "required");
+          if (!feeCheck.ok) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: feeCheck.error, detail: feeCheck.detail }));
+            return;
+          }
+          const feeRate = feeCheck.rate; // sat/vB — sent = shown (fee-estimates O2, O5; D4: not required on dry_run)
 
           if (!peerPubkey || typeof peerPubkey !== "string") {
             res.writeHead(400, { "Content-Type": "application/json" });
@@ -2855,7 +2862,13 @@ async function dispatchRequest(
           const channelId = parsed.channel_id;
           const isForceClose = parsed.is_force_close === true;
           const isDryRun = parsed.dry_run === true;
-          const feeRate = parsed.fee_rate ? Number(parsed.fee_rate) : undefined; // sat/vB — optional override for LND's fee estimator
+          const feeCheck = checkFeeRate(parsed.fee_rate, isForceClose ? "forbidden" : isDryRun ? "optional" : "required");
+          if (!feeCheck.ok) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: feeCheck.error, detail: feeCheck.detail }));
+            return;
+          }
+          const feeRate = feeCheck.rate; // sat/vB — proposed to the peer (fee-estimates R2; F1, D1, D4)
 
           if (!channelId || typeof channelId !== "string") {
             res.writeHead(400, { "Content-Type": "application/json" });
@@ -3619,7 +3632,13 @@ async function dispatchRequest(
       try {
         const parsed = JSON.parse(body || "{}");
         const capacitySats = Number(parsed.capacity_sats);
-        const feeRate = parsed.fee_rate ? Number(parsed.fee_rate) : undefined;
+        const feeCheck = checkFeeRate(parsed.fee_rate, "required");
+        if (!feeCheck.ok) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: feeCheck.error, detail: feeCheck.detail }));
+          return;
+        }
+        const feeRate = feeCheck.rate; // sat/vB — sent = shown (fee-estimates O2, O5, P16)
         const partnerSocket: string | undefined =
           parsed.partner_socket && typeof parsed.partner_socket === "string"
             ? parsed.partner_socket.trim() || undefined
