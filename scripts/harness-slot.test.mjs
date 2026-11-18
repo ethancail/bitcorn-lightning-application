@@ -14,7 +14,8 @@
 // the literal scripts at 523e6ab, read from git. A git that cannot run fails the
 // pin; it never passes it.
 //
-// No CI job runs this, and the Stop hook does not watch scripts/. Run it by hand.
+// No CI job runs this, and the Stop hook does not watch scripts/. Run it by hand,
+// under the heavy lock: node scripts/harness-slot.mjs heavy run -- <node20> --test …
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
@@ -551,7 +552,11 @@ function sandbox() {
     fs.rmSync(log, { force: true });
     const r = spawnSync(process.execPath, [MODULE, ...args], {
       cwd: ROOT, encoding: "utf8", timeout: 20_000,
-      env: { PATH: bin, HOME: home, STUB_LOG: log, ...extra },
+      // HARNESS_HEAVY_TEST_HOME: this suite is itself a heavy job (H3), so it runs
+      // under the REAL heavy lock, and the slot CLI would rightly see its own
+      // ancestor holding heavy (A3) and refuse in the no-wait wording. The sandbox
+      // home has no heavy.lock, so the slot locks behave as they do outside heavy.
+      env: { PATH: bin, HOME: home, STUB_LOG: log, HARNESS_HEAVY_TEST_HOME: home, ...extra },
     });
     const ran = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
     return { status: r.status, stdout: r.stdout, stderr: r.stderr, ran };

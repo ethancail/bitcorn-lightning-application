@@ -24,6 +24,18 @@
 //                                                     failing — prevents infinite
 //                                                     block loops; guard, not a trap
 //   VERIFY_GATE_SKIP=1 in the environment ........... exit 0 (documented escape hatch)
+//   changes + heavy lock still held after 5 min ..... exit 2 ONCE: "verification not run:
+//     (or this account refused the heavy lock)        heavy lock held by <holder> since
+//                                                     <time>; run it when the lock frees"
+//   ... and stop_hook_active=true ................... exit 0 + that warning, NOT VERIFIED
+//
+// THE HEAVY LOCK (A4, Ethan 2026-11-18): tsc and vitest are heavy jobs, so the
+// checks run only under scripts/harness-slot.mjs's heavy lock, taken here in
+// process before the first check and released after the last, waiting up to
+// HEAVY_WAIT_S. It is never reported as a pass when its checks did not run.
+// The Stop hook's timeout in .claude/settings.json (960 s) covers that wait
+// plus the four 150 s checks; lower it and the hook is killed mid-wait.
+// Test-only: VERIFY_GATE_HEAVY_WAIT_S shortens the wait, announced when set.
 //
 // WHAT RUNS (scoped to the side that changed, for speed):
 //   app/api dirty → npx tsc --noEmit && npx vitest run   (in app/api)
@@ -47,6 +59,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CMD_TIMEOUT_MS = 150_000;
+const HEAVY_WAIT_S = 300;
 
 // The only paths this gate watches. Single source of truth on purpose: the
 // `git status` pathspec below and the nothing-to-verify message both read from
@@ -157,6 +170,93 @@ const main = async () => {
     process.exit(0);
   }
 
+  const hold = await takeHeavy();
+  if (!hold.ok) {
+    // A4: blocks once; stop_hook_active lets the session end with the warning. Never a pass.
+    if (hook.stop_hook_active) {
+      console.error(`[verify-gate] WARN: ${hold.notRun} — allowing stop on the second try. NOT VERIFIED.`);
+      process.exit(0);
+    }
+    console.error(`[verify-gate] ${hold.notRun}`);
+    process.exit(2);
+  }
+  let code;
+  try {
+    code = runChecks(apiDirty, webDirty, hook);
+  } finally {
+    hold.release();
+  }
+  process.exit(code);
+};
+
+// A4: the heavy lock, or why the checks will not run. { ok: true, release() }
+// or { ok: false, notRun }. A held lock and a refused account both take the
+// not-run path (ruling 3), as does a lock module that cannot load.
+async function takeHeavy() {
+  let heavy;
+  try {
+    heavy = await import("./harness-slot.mjs");
+  } catch (error) {
+    return { ok: false, notRun: `verification not run: the heavy lock's module could not load (${error.message})` };
+  }
+  let ctx;
+  try {
+    ctx = heavy.heavyContext(process.env);
+  } catch (error) {
+    return { ok: false, notRun: `verification not run: ${error.message}` };
+  }
+  for (const note of ctx.notes) console.error(`[verify-gate] ${note}`);
+  const current = heavy.readLock(ctx.home, "heavy");
+  if (heavy.heldByThisJob(current, { host: ctx.host })) {
+    console.error(`[verify-gate] the heavy lock is this job's own (${JSON.stringify(current.holder)}); checking under it`);
+    return { ok: true, release: () => {} };
+  }
+  let waitS = HEAVY_WAIT_S;
+  if (process.env.VERIFY_GATE_HEAVY_WAIT_S !== undefined) {
+    waitS = Number(process.env.VERIFY_GATE_HEAVY_WAIT_S);
+    if (!(waitS >= 0)) waitS = HEAVY_WAIT_S; // NaN would wait forever
+    console.error(`[verify-gate] TEST wait: ${waitS}s for the heavy lock (VERIFY_GATE_HEAVY_WAIT_S), not ${HEAVY_WAIT_S}s`);
+  }
+  // The gate's checks are spawnSync children in the gate's own process group:
+  // if the gate is killed, they hold the lock until they end (provablyDead).
+  const pgid = heavy.procStat(process.pid).pgrp;
+  const r = await heavy.acquireHeavy({
+    home: ctx.home,
+    holder: `${ctx.account}@${ctx.host}:node scripts/verify-gate.mjs (${path.basename(ROOT)})`,
+    host: ctx.host,
+    pid: process.pid,
+    pidStart: heavy.procStart(process.pid),
+    pgid: pgid > 1 ? pgid : undefined,
+    waitMs: waitS * 1000,
+    pollMs: Math.min(5000, waitS * 1000),
+    say: (m) => console.error(`[verify-gate] ${m}`),
+  });
+  if (!r.acquired) {
+    return {
+      ok: false,
+      notRun: `verification not run: heavy lock held by ${JSON.stringify(r.held.holder)} since ${r.held.acquired_at ?? "?"}; ` +
+        "run it when the lock frees",
+    };
+  }
+  const release = () => {
+    try {
+      console.error(`[verify-gate] ${heavy.releaseOwnHeavy(ctx.home, r.text)}`);
+    } catch (error) {
+      console.error(`[verify-gate] WARN: the heavy lock was not released: ${error.message}`);
+    }
+  };
+  // A signal (the hook's timeout) still releases. spawnSync defers it until the running check returns.
+  for (const s of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.on(s, () => {
+      release();
+      process.exit(1);
+    });
+  }
+  return { ok: true, release };
+}
+
+// The checks themselves, unchanged in substance: prints the verdict and returns the exit code.
+function runChecks(apiDirty, webDirty, hook) {
   const t0 = Date.now();
   const results = [];
   if (apiDirty) {
@@ -178,12 +278,12 @@ const main = async () => {
       console.error(
         `[verify-gate] STILL FAILING after a previous block (${secs}s) — allowing stop to avoid a block loop. FIX BEFORE PUSHING:\n${report}`,
       );
-      process.exit(0);
+      return 0;
     }
     console.error(
       `[verify-gate] BLOCKED (${secs}s): uncommitted changes fail verification. Fix (or ask the user to set VERIFY_GATE_SKIP=1 to bypass knowingly):\n${report}`,
     );
-    process.exit(2);
+    return 2;
   }
 
   if (unavailable.length > 0) {
@@ -191,12 +291,12 @@ const main = async () => {
     console.error(
       `[verify-gate] WARN (${secs}s): could not run some checks — allowing stop (a broken env must not trap the session). NOT VERIFIED:\n${report}`,
     );
-    process.exit(0);
+    return 0;
   }
 
   console.log(`[verify-gate] PASS (${secs}s): ${results.map(([n]) => n).join(", ")}.`);
-  process.exit(0);
-};
+  return 0;
+}
 
 main().catch((err) => {
   console.error(`[verify-gate] WARN: gate itself crashed (${err?.message}) — allowing stop.`);

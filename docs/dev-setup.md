@@ -233,6 +233,24 @@ The dev harness on a host is shared by every arc that gates on it, so the rule i
 
 For slot N, use `--slot N` and the same `HARNESS_SLOT` as the scripts: slot 1's lock does not cover slot 2.
 
+### The heavy lock: one heavy job per machine
+
+Full test suites (vitest, `node --test`), mutation and negative-control batches, and Polar gates and captures are **heavy**, and only one runs on a machine at a time (vault: `decisions/2026-11-18-workflow-app-heavy-lock-and-rulings-…`, H1–H7, amended by Ethan's A1–A4). Wrap the job:
+
+```bash
+node scripts/harness-slot.mjs heavy run -- <command> [args…]          # waits while another heavy job runs
+node scripts/harness-slot.mjs heavy run --wait 600 -- <command> …     # gives up after 600 s, the command not run
+node scripts/harness-slot.mjs heavy status                            # where the lock is, and who holds it
+```
+
+The wrapper holds the lock for exactly the command's life and releases it when the command ends, however it ends; the wrapper's exit code is the command's. Callers in other repos run the main checkout's copy, `<home>/Documents/BitCorn/bitcorn-lightning-application/scripts/harness-slot.mjs`, under Node 20, with an argument list.
+
+- **One account per machine.** The lock is `heavy.lock` in the `locks/` directory of the machine's heavy-job account: `user` on ubuntu-pc, `harnessagent` on the OptiPlex (`bitcorn-harness`). That home comes from the password database, never `$HOME`, so a scratch `HOME` does not move it. A heavy job started as any other account (`arcagent`, `vaultagent`, …), or on a host not in the table, is refused.
+- **A dead holder.** The lock records the wrapper's pid and start time, the boot id, and the command's process group. A later acquirer that finds the holder **provably dead** (same host; and either a reboot since, or no process with that pid and start time *and* no process left in that group) takes the lock over and writes a `take-over` line to `history.log`. Anything short of proof (another host, no pid, a wrapper killed while its command still runs) is waited on, and the waiter names the holder.
+- **Heavy holders never wait for a slot.** Inside a heavy job, a busy slot (or a held setup lock) is refused at once in words `browser-slot.py` does not wait on, so that part fails loudly and the heavy lock is released. A slot holder may wait for heavy. Setup and heavy are independent.
+- **Callers that cannot wrap** (a Polar gate driven across many separate commands): `heavy acquire --holder <h> [--pid <pid>] [--wait <s>]` and `heavy release --holder <h>`. Without `--pid`, nothing can prove the holder dead: only `heavy release`, or `heavy release --force --reason "<why>"`, frees it.
+- **The Stop hook** (`scripts/verify-gate.mjs`) takes the heavy lock for its tsc and vitest, waiting up to 5 minutes. If it is still held, the hook blocks once with `verification not run: heavy lock held by <holder> since <time>; run it when the lock frees`, then lets the session end on the second try, unverified. It never reports a pass for checks that did not run.
+
 ## Troubleshooting
 
 **"External/degraded" view in a member tab.** The member instance can't see a channel to `TREASURY_PUBKEY`. Check that (a) the pubkey in `.env.dev.member-*` matches the actual treasury Polar node pubkey exactly, (b) channels are open between treasury and that member node in Polar, and (c) you've mined 6 blocks since opening the channel so it's confirmed.
