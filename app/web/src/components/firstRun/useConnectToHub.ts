@@ -15,7 +15,8 @@
 // 200 ceiling, blocks submit (O7, P15).
 
 import { useEffect, useRef, useState } from "react";
-import { api, type FeeEstimateOption, type FeeOptionKey, type TreasuryInfo } from "../../api/client";
+import { api, type ExchangeRate, type FeeEstimateOption, type FeeOptionKey, type TreasuryInfo } from "../../api/client";
+import { usableUsd } from "../amount/Amount";
 import { RESHOWN, useActionConfirm } from "../actionConfirm/ActionConfirmModal";
 import { summarizeOpenMemberChannel } from "../actionConfirm/confirmAction";
 import {
@@ -35,7 +36,12 @@ import {
   RENEW_MEMBERSHIP_TIERS,
 } from "./connectToHubDescriptor";
 
-export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initialCapacity?: number }) {
+export function useConnectToHub({ isPeered, initialCapacity, rate }: {
+  isPeered: boolean;
+  initialCapacity?: number;
+  /** The card's price, for the reshow's "about $X (N sats)". */
+  rate?: ExchangeRate | null;
+}) {
   const [capacity, setCapacity] = useState<number | null>(initialCapacity ?? 1_000_000);
   const [feeKey, setFeeKey] = useState<FeeOptionKey>(DEFAULT_FEE_OPTION);
   const fees = useFeeEstimates({ enabled: true });
@@ -135,7 +141,11 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
         return RESHOWN;
       }
       shownFee.current = { key: shown.key, rate: fresh.rate, fetchedAtMs: next.fetchedAtMs };
-      confirm.dispatch({ t: "reshow", summary: summaryFor(capacity, fresh), notice: FEE_COPY.refreshed });
+      confirm.dispatch({
+        t: "reshow",
+        summary: summaryFor(capacity, fresh),
+        notice: FEE_COPY.memberReshow(fresh.cost_sats.open, usableUsd(rate)),
+      });
       return RESHOWN;
     }
 

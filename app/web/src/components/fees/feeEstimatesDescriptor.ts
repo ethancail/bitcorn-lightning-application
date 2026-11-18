@@ -7,6 +7,7 @@
 // member-first-run-ui reviews every string below before merge (spec §15).
 
 import type { FeeEstimateOption, FeeEstimates, FeeOptionKey } from "../../api/client";
+import { formatSats, formatUsd } from "../amount/amountDescriptor";
 
 /** The cards' order, and the reset target (F3: state holds the KEY; reset is to Economy). */
 export const FEE_OPTION_ORDER: readonly FeeOptionKey[] = ["economy", "normal", "priority"];
@@ -34,8 +35,16 @@ export const FEE_COPY = {
   tooLowForNetwork: "This rate is too low for the network right now — choose a faster option.",
   /** P18: shown beside the figures when the data is 10 min old or more. */
   dataAge: (minutes: number) => `Rates from ${minutes} min ago`,
-  /** O6: the estimate was refreshed at confirm; nothing was sent. */
+  /** O6: the estimate was refreshed at confirm; nothing was sent. The treasury's modals. */
   refreshed: "The fee estimate was refreshed — check the new rate and confirm again.",
+  /** O6, member-facing (Ethan, "recs" via member-first-run-ui, 2026-11-18): the
+   *  new fee in FeeCost's format, "about $X (N sats)"; sats alone with no price. */
+  memberReshow: (sats: number, usdPerBtc: number | null) => ({
+    heading: "Fee updated",
+    body: `Network fees changed while this was open. The new fee is ${
+      usdPerBtc != null ? `about ${formatUsd(sats, usdPerBtc).text} (${formatSats(sats)})` : `about ${formatSats(sats)}`
+    }. Type the amount again to confirm.`,
+  }),
   /** R2: a cooperative close's rate is an offer to the peer. */
   closeRateHeading: "Fee rate proposed to the peer",
   /** D3 / R2: the close cost's qualifier, after FeeCost's figure. */

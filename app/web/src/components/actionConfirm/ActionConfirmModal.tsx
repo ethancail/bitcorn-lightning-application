@@ -138,9 +138,14 @@ export default function ActionConfirmModal({
           )}
         </div>
 
-        {state.step === "confirm" && state.notice && (
+        {state.step === "confirm" && state.notice && (typeof state.notice === "string" ? (
           <p role="status" className="action-confirm-notice" style={{ marginTop: 12, marginBottom: 0 }}>{state.notice}</p>
-        )}
+        ) : (
+          <div role="status" className="action-confirm-notice" style={{ marginTop: 12 }}>
+            <strong className="action-confirm-notice-heading">{state.notice.heading}</strong>
+            <p className="action-confirm-notice-body" style={{ margin: "4px 0 0" }}>{state.notice.body}</p>
+          </div>
+        ))}
 
         {/* ── Typed challenge ── */}
         {state.step === "confirm" && (

@@ -20,9 +20,12 @@
 import type { ActionSummary } from "./confirmAction";
 import type { ConfirmErrorView } from "./confirmErrors";
 
+/** A reshow's notice: one line, or a heading over a body (the member's, "recs" 2026-11-18). */
+export type ConfirmNotice = string | { heading: string; body: string };
+
 export type ConfirmState =
   | { step: "closed" }
-  | { step: "confirm"; summary: ActionSummary; typed: string; notice?: string }
+  | { step: "confirm"; summary: ActionSummary; typed: string; notice?: ConfirmNotice }
   | { step: "sending"; summary: ActionSummary }
   | { step: "failed"; summary: ActionSummary; error: ConfirmErrorView | null; message: string };
 
@@ -33,7 +36,7 @@ export type ConfirmEvent =
   | { t: "done" }
   | { t: "failed"; error: ConfirmErrorView | null; message: string }
   | { t: "retry" }
-  | { t: "reshow"; summary: ActionSummary; notice: string }
+  | { t: "reshow"; summary: ActionSummary; notice: ConfirmNotice }
   | { t: "cancel" };
 
 export const INITIAL_CONFIRM_STATE: ConfirmState = { step: "closed" };

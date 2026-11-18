@@ -28,7 +28,7 @@ import { MemoryRouter, Routes, Route } from "react-router-dom";
 import type { FeeEstimates } from "../../api/client";
 import { feeEstimatesStub, UNAVAILABLE } from "../fees/feeEstimates.testutil";
 import { FEE_COPY, timeText } from "../fees/feeEstimatesDescriptor";
-import { formatSats } from "../amount/amountDescriptor";
+import { formatSats, formatUsd } from "../amount/amountDescriptor";
 import { confirmationFor, findUiConfirmedRoute } from "../../api/actionConfirmation";
 
 const stub = vi.hoisted(() => ({
@@ -82,7 +82,7 @@ async function flush() {
   for (let i = 0; i < 5; i++) await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 }
 
-async function render() {
+async function render(rate: unknown = undefined) {
   await act(async () => {
     root.render(
       React.createElement(
@@ -91,7 +91,7 @@ async function render() {
         React.createElement(
           Routes,
           null,
-          React.createElement(Route, { path: "/dashboard", element: React.createElement(ConnectToHub, { isPeered: true, rate: undefined }) }),
+          React.createElement(Route, { path: "/dashboard", element: React.createElement(ConnectToHub, { isPeered: true, rate: rate as any }) }),
         ),
       ),
     );
@@ -261,11 +261,73 @@ describe("H3 — the 10-min bound at confirm (O6, P18)", () => {
     // Nothing sent; the modal is back at the challenge with the new figure.
     expect(stub.openMemberChannel).not.toHaveBeenCalled();
     expect(speedRow()).toBe(`Economy (about ${LATER.options!.economy.rate} sat/vB)`);
-    expect(document.body.textContent).toContain(FEE_COPY.refreshed);
+    expect(noticeHeading()).toBe("Fee updated");
     expect((document.body.querySelector("#action-confirm-challenge") as HTMLInputElement).value).toBe("");
 
     // Confirming again sends the new, shown rate.
     await confirmModal();
+    expect(stub.openMemberChannel).toHaveBeenCalledTimes(1);
+    expect(stub.openMemberChannel.mock.calls[0][0].fee_rate).toBe(LATER.options!.economy.rate);
+  });
+});
+
+// The member's reshow wording (Ethan, "recs" via member-first-run-ui,
+// 2026-11-18): heading "Fee updated", the new fee in FeeCost's format, and the
+// type-to-confirm box cleared and required again. The treasury's modals keep
+// their own line (App.feePins).
+const noticeHeading = () => document.body.querySelector(".action-confirm-notice-heading")?.textContent;
+const noticeBody = () => document.body.querySelector(".action-confirm-notice-body")?.textContent;
+const challengeBox = () => document.body.querySelector("#action-confirm-challenge") as HTMLInputElement;
+
+describe("the member's 10-min reshow: \"Fee updated\", the new fee, the box cleared and required again", () => {
+  const T0 = Date.parse("2026-11-18T12:00:00.000Z");
+  const LATER = feeEstimatesStub({ economy: 3, normal: 6, priority: 12 });
+  const FRESH = { usd: 60_000, source: "coinbase", fetched_at: 1_790_000_000_000, age_ms: 0, state: "fresh" };
+  const NONE = { usd: null, source: "coinbase", fetched_at: null, age_ms: null, state: "none" };
+
+  async function reshow(rate: unknown) {
+    const now = vi.spyOn(Date, "now").mockReturnValue(T0);
+    await render(rate);
+    await openModal();
+    stub.getFeeEstimates.mockResolvedValue(LATER);
+    now.mockReturnValue(T0 + 11 * 60_000);
+    await confirmModal();
+    expect(stub.openMemberChannel).not.toHaveBeenCalled();
+  }
+
+  it("with a price: \"The new fee is about $X (N sats).\"", async () => {
+    await reshow(FRESH);
+    const sats = LATER.options!.economy.cost_sats.open;
+    expect(noticeHeading()).toBe("Fee updated");
+    expect(noticeBody()).toBe(
+      `Network fees changed while this was open. The new fee is about ${formatUsd(sats, 60_000).text} (${formatSats(sats)}). Type the amount again to confirm.`,
+    );
+    expect(document.body.textContent).not.toContain(FEE_COPY.refreshed);
+  });
+
+  for (const [why, rate] of [["no price (state none)", NONE], ["the price still loading", undefined]] as const) {
+    it(`${why}: sats alone, "The new fee is about N sats."`, async () => {
+      await reshow(rate);
+      const sats = LATER.options!.economy.cost_sats.open;
+      expect(noticeHeading()).toBe("Fee updated");
+      expect(noticeBody()).toBe(
+        `Network fees changed while this was open. The new fee is about ${formatSats(sats)}. Type the amount again to confirm.`,
+      );
+      expect(noticeBody()).not.toContain("$");
+    });
+  }
+
+  it("the type-to-confirm box is cleared, and confirming is blocked until the amount is typed again", async () => {
+    await reshow(FRESH);
+    expect(challengeBox().value).toBe("");
+    expect(btn("Open channel")!.disabled).toBe(true);
+    await click(btn("Open channel")!);
+    expect(stub.openMemberChannel).not.toHaveBeenCalled();
+    await type(challengeBox(), "999999");
+    expect(btn("Open channel")!.disabled).toBe(true);
+    await type(challengeBox(), "1000000");
+    expect(btn("Open channel")!.disabled).toBe(false);
+    await click(btn("Open channel")!);
     expect(stub.openMemberChannel).toHaveBeenCalledTimes(1);
     expect(stub.openMemberChannel.mock.calls[0][0].fee_rate).toBe(LATER.options!.economy.rate);
   });

@@ -104,7 +104,7 @@ function UpgradeCard({ currentSats, rate }: { currentSats: number; rate: Rate })
 type Reach = "reachable" | "addressKnown" | "checking" | "notReachable";
 
 function ConnectForm({ isPeered, initialCapacity, rate }: { isPeered: boolean; initialCapacity?: number; rate: Rate }) {
-  const s = useConnectToHub({ isPeered, initialCapacity });
+  const s = useConnectToHub({ isPeered, initialCapacity, rate });
   const id = useId();
   const navigate = useNavigate();
 
