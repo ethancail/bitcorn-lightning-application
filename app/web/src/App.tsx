@@ -1413,6 +1413,9 @@ function ChannelsPage() {
       // A 409 here means this dashboard and the API disagree about the action;
       // classifyConfirmError supplies wording that does not invite a retry.
       const cf = classifyConfirmError(e);
+      // LND refused the proposed rate as below this node's relay floor (D6
+      // ruling, extended to the close by Ethan, 2026-11-18).
+      if (!cf && e?.code === "fee_rate_below_network_minimum") { setCloseError(FEE_COPY.tooLowForNetwork); return; }
       setCloseError(cf ? cf.title + " \u2014 " + cf.detail : (e.message ?? "Failed to close channel"));
     } finally {
       setClosingChannel(null);

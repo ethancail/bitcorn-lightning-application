@@ -65,13 +65,23 @@ export function checkFeeRate(raw: unknown, requirement: FeeRateRequirement): Fee
 // (sweep/sweeper.go:28), formatted "fee preference too low: got …, minimum is …".
 // ln-service passes it through as [503, 'FailedToOpenChannel', { err: details }]
 // (lightning open_channel.js:284). Nothing is broadcast.
+//
+// A cooperative close reaches the same check (rpcserver.go:2945 →
+// lnrpc/rpc_utils.go:260 → walletsweep.go:135-138) before anything is
+// proposed to the peer. ln-service passes that one through differently:
+// [503, 'UnexpectedCloseChannelError', { err }] where err is the gRPC stream's
+// Error object, LND's text in its .details (lightning close_channel.js:204).
 
 export const FEE_RATE_BELOW_NETWORK_MINIMUM = "fee_rate_below_network_minimum";
 const LND_FEE_TOO_LOW_TEXT = "fee preference too low";
 
 export function isFeeRateTooLowRefusal(err: unknown): boolean {
-  const text = Array.isArray(err)
-    ? (err[2] as { err?: unknown } | undefined)?.err
-    : (err as { message?: unknown } | null)?.message;
+  let text: unknown;
+  if (Array.isArray(err)) {
+    const inner = (err[2] as { err?: unknown } | undefined)?.err;
+    text = typeof inner === "string" ? inner : (inner as { details?: unknown } | null)?.details;
+  } else {
+    text = (err as { message?: unknown } | null)?.message;
+  }
   return typeof text === "string" && text.includes(LND_FEE_TOO_LOW_TEXT);
 }

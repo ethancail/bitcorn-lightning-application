@@ -2979,6 +2979,14 @@ async function dispatchRequest(
             }));
           } catch (closeErr: any) {
             updateRotationExecution(execId, "failed", null, String(closeErr?.message ?? closeErr));
+            // LND refused the proposed rate as below this node's relay floor,
+            // before anything reached the peer (D6 ruling, extended to the close).
+            // A force close sends no rate, so it cannot get this refusal.
+            if (!isForceClose && isFeeRateTooLowRefusal(closeErr)) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: FEE_RATE_BELOW_NETWORK_MINIMUM }));
+              return;
+            }
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: String(closeErr?.message ?? closeErr) }));
           }

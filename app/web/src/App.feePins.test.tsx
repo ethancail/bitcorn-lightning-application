@@ -21,7 +21,7 @@
 // Also here: H2, H3 (the 10-min bound at confirm), H4, H6 (unavailable), the
 // option key with tied rates and its reset (F3), the 200 ceiling (P15), the
 // confirm summaries' rate rows equal to the hashed rate (CONFIRM-RULING), the
-// D6 "too low" copy, and the depth copy (F5).
+// D6 "too low" copy on both cards, and the depth copy (F5).
 //
 // Harness: App.treasuryCapacity.test.tsx's (the REAL App, as the treasury).
 
@@ -508,6 +508,28 @@ describe("P15 — above the 200 ceiling: the figure, blocked, with the reason", 
 });
 
 // ─── D6 ruling and F5 copy ───────────────────────────────────────────────────
+
+describe("the close dialog's messages", () => {
+  // Ethan, 2026-11-18: the D6 mapping extends to the cooperative close.
+  it("D6: LND refusing the proposed rate as too low shows the ruled sentence", async () => {
+    stub.treasuryCloseChannel.mockRejectedValue(
+      Object.assign(new Error("fee_rate_below_network_minimum"), { status: 400, code: "fee_rate_below_network_minimum" }),
+    );
+    await openCloseDialog();
+    await confirmClose();
+    await flush();
+    expect(document.body.textContent).toContain(FEE_COPY.tooLowForNetwork);
+  });
+
+  it("any other close failure keeps its own message", async () => {
+    stub.treasuryCloseChannel.mockRejectedValue(Object.assign(new Error("peer offline"), { status: 500, code: "internal" }));
+    await openCloseDialog();
+    await confirmClose();
+    await flush();
+    expect(document.body.textContent).toContain("peer offline");
+    expect(document.body.textContent).not.toContain(FEE_COPY.tooLowForNetwork);
+  });
+});
 
 describe("the open panel's messages", () => {
   it("D6: LND refusing the rate as too low shows the ruled sentence", async () => {

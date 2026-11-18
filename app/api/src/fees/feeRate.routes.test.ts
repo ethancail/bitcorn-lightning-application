@@ -32,6 +32,7 @@ const m = vi.hoisted(() => ({
   opens: [] as Array<{ peer: string; capacity: number; opts: any }>,
   closes: [] as Array<{ txid: string; vout: number; opts: any }>,
   openRejectsWith: null as unknown,
+  closeRejectsWith: null as unknown,
 }));
 
 vi.mock("../api/read", async (importOriginal) => {
@@ -65,6 +66,7 @@ vi.mock("../lightning/lnd", async (importOriginal) => {
     },
     closeTreasuryChannel: async (txid: string, vout: number, opts: any) => {
       m.closes.push({ txid, vout, opts });
+      if (m.closeRejectsWith !== null) throw m.closeRejectsWith;
       return { transaction_id: "ef".repeat(32) };
     },
   };
@@ -93,6 +95,7 @@ beforeEach(() => {
   m.opens = [];
   m.closes = [];
   m.openRejectsWith = null;
+  m.closeRejectsWith = null;
 });
 
 const sha = (s: string) => crypto.createHash("sha256").update(s, "utf8").digest("hex");
@@ -343,4 +346,48 @@ describe("D6 ruling — LND refusing the rate as below the node's relay floor ge
       expect(r.body?.error).not.toBe("fee_rate_below_network_minimum");
     });
   }
+});
+
+describe("D6 ruling, extended to the cooperative close (Ethan, 2026-11-18)", () => {
+  // The real shape: the close stream's gRPC error, wrapped by ln-service as
+  // [503, 'UnexpectedCloseChannelError', { err }] (lightning close_channel.js:204);
+  // LND's text is in err.details (rpcserver.go:2945 → walletsweep.go:135-138).
+  function grpcError(details: string) {
+    const e = new Error(`2 UNKNOWN: ${details}`) as Error & { code: number; details: string };
+    e.code = 2;
+    e.details = details;
+    return e;
+  }
+  const TOO_LOW_CLOSE = [
+    503,
+    "UnexpectedCloseChannelError",
+    { err: grpcError("fee preference too low: got 253 sat/kw, minimum is 1000 sat/kw") },
+  ];
+  const OTHER_CLOSE = [
+    503,
+    "UnexpectedCloseChannelError",
+    { err: grpcError("unable to gracefully close channel while peer is offline (try force closing it instead)") },
+  ];
+
+  it(`${ROTATION}: LND's "fee preference too low" → 400 fee_rate_below_network_minimum`, async () => {
+    m.closeRejectsWith = TOO_LOW_CLOSE;
+    const r = await post(ROTATION, rawBody(ROTATION, 1));
+    expect(m.closes).toHaveLength(1);
+    expect(m.closes[0].opts.chainFeeTokensPerVbyte).toBe(1);
+    expect(r.status).toBe(400);
+    expect(r.body).toEqual({ error: "fee_rate_below_network_minimum" });
+  });
+
+  it(`${ROTATION}: any other close refusal keeps its 500`, async () => {
+    m.closeRejectsWith = OTHER_CLOSE;
+    const r = await post(ROTATION, rawBody(ROTATION, 1));
+    expect(r.status).toBe(500);
+    expect(r.body?.error).not.toBe("fee_rate_below_network_minimum");
+  });
+
+  it(`${ROTATION}: a force close is never mapped — it sends no rate`, async () => {
+    m.closeRejectsWith = TOO_LOW_CLOSE;
+    const r = await post(ROTATION, rawBody(ROTATION, ABSENT, { is_force_close: true }));
+    expect(r.status).toBe(500);
+  });
 });
