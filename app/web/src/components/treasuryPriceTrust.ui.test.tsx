@@ -104,8 +104,9 @@ async function remount(el: React.ReactElement) {
   await flush();
 }
 const panel = () => React.createElement(MemoryRouter, null, React.createElement(SubscriptionPanel));
+// Slice 4 (R1): the panel's one pay button, "Renew from your node" (was "I have BTC — …").
 const payButton = () =>
-  [...host.querySelectorAll("button")].find((b) => b.textContent?.startsWith("I have BTC")) as HTMLButtonElement | undefined;
+  (host.querySelector(".membership-button") as HTMLButtonElement | null) ?? undefined;
 const notice = () => host.querySelector("[data-trust-state]");
 
 describe("the Settings panel (spec §8)", () => {
