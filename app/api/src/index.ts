@@ -195,7 +195,7 @@ import {
 } from "./subscription/tokenRefresh";
 import { workerFetch, WorkerFetchError } from "./lib/workerFetch";
 import { readFeeEstimates, WORKER_FEES_TIMEOUT_MS } from "./fees/feeEstimates";
-import { checkFeeRate } from "./fees/feeRateRule";
+import { checkFeeRate, isFeeRateTooLowRefusal, FEE_RATE_BELOW_NETWORK_MINIMUM } from "./fees/feeRateRule";
 import { lookupNodeAlias } from "./lightning/nodeAlias";
 import {
   listPublicAliases,
@@ -2788,6 +2788,12 @@ async function dispatchRequest(
           } catch (openErr: any) {
             // Update execution as failed
             updateExpansionExecution(execId, "failed", null, String(openErr?.message ?? openErr));
+            // LND refused the rate as below this node's relay floor (D6 ruling).
+            if (isFeeRateTooLowRefusal(openErr)) {
+              res.writeHead(400, { "Content-Type": "application/json" });
+              res.end(JSON.stringify({ error: FEE_RATE_BELOW_NETWORK_MINIMUM }));
+              return;
+            }
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: String(openErr?.message ?? openErr) }));
           }
@@ -3690,6 +3696,12 @@ async function dispatchRequest(
         if (isAcceptorRefusal(err)) {
           res.writeHead(403, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "membership_not_paid" }));
+          return;
+        }
+        // LND refused the rate as below this node's relay floor (D6 ruling).
+        if (isFeeRateTooLowRefusal(err)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: FEE_RATE_BELOW_NETWORK_MINIMUM }));
           return;
         }
         res.writeHead(500, { "Content-Type": "application/json" });

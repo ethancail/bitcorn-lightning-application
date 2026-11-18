@@ -55,3 +55,23 @@ export function checkFeeRate(raw: unknown, requirement: FeeRateRequirement): Fee
 
   return { ok: true, rate: raw };
 }
+
+// ── LND's refusal of a rate below the node's relay floor (Ethan, D6 ruling) ──
+//
+// LND v0.21.8 lifts a manual 1 sat/vB to 253 sat/kw, then refuses the rate if
+// it is still below the backend's relay fee — bitcoind's minimum (relay or
+// mempool), or peers' median feefilter (sweep/walletsweep.go:118-124, :135-138).
+// Its text is ErrFeePreferenceTooLow, "fee preference too low"
+// (sweep/sweeper.go:28), formatted "fee preference too low: got …, minimum is …".
+// ln-service passes it through as [503, 'FailedToOpenChannel', { err: details }]
+// (lightning open_channel.js:284). Nothing is broadcast.
+
+export const FEE_RATE_BELOW_NETWORK_MINIMUM = "fee_rate_below_network_minimum";
+const LND_FEE_TOO_LOW_TEXT = "fee preference too low";
+
+export function isFeeRateTooLowRefusal(err: unknown): boolean {
+  const text = Array.isArray(err)
+    ? (err[2] as { err?: unknown } | undefined)?.err
+    : (err as { message?: unknown } | null)?.message;
+  return typeof text === "string" && text.includes(LND_FEE_TOO_LOW_TEXT);
+}

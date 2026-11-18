@@ -31,6 +31,7 @@ const CHANNEL_ID = "842391119757312";
 const m = vi.hoisted(() => ({
   opens: [] as Array<{ peer: string; capacity: number; opts: any }>,
   closes: [] as Array<{ txid: string; vout: number; opts: any }>,
+  openRejectsWith: null as unknown,
 }));
 
 vi.mock("../api/read", async (importOriginal) => {
@@ -59,6 +60,7 @@ vi.mock("../lightning/lnd", async (importOriginal) => {
     }),
     openTreasuryChannel: async (peer: string, capacity: number, opts: any) => {
       m.opens.push({ peer, capacity, opts });
+      if (m.openRejectsWith !== null) throw m.openRejectsWith;
       return { transaction_id: "ab".repeat(32), transaction_vout: 0 };
     },
     closeTreasuryChannel: async (txid: string, vout: number, opts: any) => {
@@ -90,6 +92,7 @@ beforeAll(async () => {
 beforeEach(() => {
   m.opens = [];
   m.closes = [];
+  m.openRejectsWith = null;
 });
 
 const sha = (s: string) => crypto.createHash("sha256").update(s, "utf8").digest("hex");
@@ -302,6 +305,42 @@ describe("fee_rate is confirmed: the hash differs when only fee_rate differs (§
       });
       expect(status).toBe(409);
       expect(lndCalls()).toBe(0);
+    });
+  }
+});
+
+describe("D6 ruling — LND refusing the rate as below the node's relay floor gets a named error", () => {
+  // The real shape: ln-service's array error with LND's details string
+  // (lightning open_channel.js:284; LND v0.21.8 sweep/walletsweep.go:135-138,
+  // ErrFeePreferenceTooLow = "fee preference too low", sweep/sweeper.go:28).
+  const TOO_LOW = [
+    503,
+    "FailedToOpenChannel",
+    { err: "fee preference too low: got 253 sat/kw, minimum is 1000 sat/kw" },
+  ];
+  const OTHER = [503, "FailedToOpenChannel", { err: "insufficient funds available to construct transaction" }];
+
+  for (const url of [MEMBER_OPEN, EXPANSION]) {
+    it(`${url}: LND's "fee preference too low" → 400 fee_rate_below_network_minimum`, async () => {
+      m.openRejectsWith = TOO_LOW;
+      const r = await post(url, rawBody(url, 1));
+      expect(m.opens).toHaveLength(1);
+      expect(r.status).toBe(400);
+      expect(r.body).toEqual({ error: "fee_rate_below_network_minimum" });
+    });
+
+    it(`${url}: the same refusal as an Error message is named too`, async () => {
+      m.openRejectsWith = new Error("fee preference too low: got 253 sat/kw, minimum is 1000 sat/kw");
+      const r = await post(url, rawBody(url, 1));
+      expect(r.status).toBe(400);
+      expect(r.body?.error).toBe("fee_rate_below_network_minimum");
+    });
+
+    it(`${url}: any other LND refusal keeps its 500`, async () => {
+      m.openRejectsWith = OTHER;
+      const r = await post(url, rawBody(url, 1));
+      expect(r.status).toBe(500);
+      expect(r.body?.error).not.toBe("fee_rate_below_network_minimum");
     });
   }
 });
