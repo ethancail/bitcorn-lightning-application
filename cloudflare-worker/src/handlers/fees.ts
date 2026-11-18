@@ -16,6 +16,10 @@ export const MEMPOOL_BLOCKS_URL = "https://mempool.space/api/v1/fees/mempool-blo
 
 export const FEES_KV_KEY = "fees_mempool_blocks";
 export const FEES_LAST_GOOD_KV_KEY = "fees_mempool_blocks_last_good";
+// Set for one cache window after a failed or invalid upstream fetch, so the
+// Worker still fetches at most once per window when mempool.space is down
+// (spec §3), instead of once per request.
+export const FEES_BACKOFF_KV_KEY = "fees_mempool_blocks_backoff";
 // P2: 5 min — about 288 upstream fetches a day.
 export const FEES_CACHE_TTL = 300;
 // P3 = P10: 30 min. The API treats Worker data older than 30 min as stale, so
@@ -77,16 +81,20 @@ export async function handleFees(env: Env): Promise<Response> {
   const cached = await env.PRICES_CACHE.get(FEES_KV_KEY);
   if (cached) return respond(cached, "cache");
 
-  // 2. Fetch live. Only a valid response is cached — an invalid one never
-  //    overwrites the last-good value.
-  const data = await fetchMempoolBlocks();
-  if (isValidMempoolBlocks(data)) {
-    const body = JSON.stringify({ fetched_at: new Date().toISOString(), blocks: data });
-    await env.PRICES_CACHE.put(FEES_KV_KEY, body, { expirationTtl: FEES_CACHE_TTL });
-    await env.PRICES_CACHE.put(FEES_LAST_GOOD_KV_KEY, body, { expirationTtl: FEES_LAST_GOOD_TTL });
-    return respond(body, "live");
+  // 2. Fetch live, unless a fetch already failed inside this window. Only a
+  //    valid response is cached — an invalid one never overwrites last-good.
+  const backingOff = await env.PRICES_CACHE.get(FEES_BACKOFF_KV_KEY);
+  if (!backingOff) {
+    const data = await fetchMempoolBlocks();
+    if (isValidMempoolBlocks(data)) {
+      const body = JSON.stringify({ fetched_at: new Date().toISOString(), blocks: data });
+      await env.PRICES_CACHE.put(FEES_KV_KEY, body, { expirationTtl: FEES_CACHE_TTL });
+      await env.PRICES_CACHE.put(FEES_LAST_GOOD_KV_KEY, body, { expirationTtl: FEES_LAST_GOOD_TTL });
+      return respond(body, "live");
+    }
+    if (data !== undefined) console.error("[fees] mempool.space response failed validation");
+    await env.PRICES_CACHE.put(FEES_BACKOFF_KV_KEY, "1", { expirationTtl: FEES_CACHE_TTL });
   }
-  if (data !== undefined) console.error("[fees] mempool.space response failed validation");
 
   // 3. Upstream failed or invalid: last-good, if any.
   const lastGood = await env.PRICES_CACHE.get(FEES_LAST_GOOD_KV_KEY);

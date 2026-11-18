@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../../src/index";
 import {
+  FEES_BACKOFF_KV_KEY,
   FEES_CACHE_TTL,
   FEES_KV_KEY,
   FEES_LAST_GOOD_KV_KEY,
@@ -127,17 +128,56 @@ describe("/fees — an invalid upstream response never overwrites last-good", ()
   ];
 
   for (const [label, payload] of INVALID) {
-    it(`${label} → fallback, and neither key is written`, async () => {
+    it(`${label} → fallback; neither the cache nor last-good is written`, async () => {
       upstreamReturns(payload);
       const kv = mockKV({ [FEES_LAST_GOOD_KV_KEY]: LAST_GOOD_BODY });
       const res = await handleFees(envWith(kv));
 
       expect(res.headers.get("X-Fee-Source")).toBe("fallback");
       expect(await res.text()).toBe(LAST_GOOD_BODY);
-      expect(kv.puts).toEqual([]);
+      expect(kv.puts.map((p) => p.key)).toEqual([FEES_BACKOFF_KV_KEY]);
       expect(kv.store.get(FEES_LAST_GOOD_KV_KEY)).toBe(LAST_GOOD_BODY);
     });
   }
+});
+
+describe("/fees — at most one upstream fetch per cache window, failures included (spec §3)", () => {
+  it("after a failed fetch, requests inside the window do not fetch again", async () => {
+    upstreamReturns({ error: "down" }, 503);
+    const kv = mockKV({ [FEES_LAST_GOOD_KV_KEY]: LAST_GOOD_BODY });
+    const first = await handleFees(envWith(kv));
+    const second = await handleFees(envWith(kv));
+    const third = await handleFees(envWith(kv));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    for (const r of [first, second, third]) {
+      expect(r.headers.get("X-Fee-Source")).toBe("fallback");
+      expect(await r.text()).toBe(LAST_GOOD_BODY);
+    }
+    expect(kv.puts).toEqual([{ key: FEES_BACKOFF_KV_KEY, value: "1", ttl: FEES_CACHE_TTL }]);
+  });
+
+  it("after an invalid response with no last-good, requests inside the window serve none without fetching", async () => {
+    upstreamReturns([{ medianFee: 0 }]);
+    const kv = mockKV();
+    await handleFees(envWith(kv));
+    const second = await handleFees(envWith(kv));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(second.headers.get("X-Fee-Source")).toBe("none");
+  });
+
+  it("once the backoff expires, the next request fetches again", async () => {
+    upstreamReturns({ error: "down" }, 503);
+    const kv = mockKV();
+    await handleFees(envWith(kv));
+    kv.store.delete(FEES_BACKOFF_KV_KEY); // the KV TTL elapsing
+    upstreamReturns(FIXTURE);
+    const res = await handleFees(envWith(kv));
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(res.headers.get("X-Fee-Source")).toBe("live");
+  });
 });
 
 describe("/fees — the body carries fetched_at, the original fetch time", () => {
