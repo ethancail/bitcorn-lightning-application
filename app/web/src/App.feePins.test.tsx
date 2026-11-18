@@ -21,7 +21,8 @@
 // Also here: H2, H3 (the 10-min bound at confirm), H4, H6 (unavailable), the
 // option key with tied rates and its reset (F3), the 200 ceiling (P15), the
 // confirm summaries' rate rows equal to the hashed rate (CONFIRM-RULING), the
-// D6 "too low" copy on both cards, and the depth copy (F5).
+// D6 "too low" copy on both cards, the depth copy (F5), and the close
+// dialog's frozen figure (Ethan, 2026-11-18).
 //
 // Harness: App.treasuryCapacity.test.tsx's (the REAL App, as the treasury).
 
@@ -32,7 +33,7 @@ import React from "react";
 import { declsFor } from "./styleRules.testutil";
 import type { FeeEstimates } from "./api/client";
 import { feeEstimatesStub, UNAVAILABLE } from "./components/fees/feeEstimates.testutil";
-import { FEE_COPY, timeText } from "./components/fees/feeEstimatesDescriptor";
+import { FEE_COPY, REFRESH_INTERVAL_MS, timeText } from "./components/fees/feeEstimatesDescriptor";
 import { formatSats, formatUsd } from "./components/amount/amountDescriptor";
 import { confirmationFor, findUiConfirmedRoute } from "./api/actionConfirmation";
 
@@ -639,4 +640,60 @@ describe("FeeCost on the treasury's two fee pickers", () => {
       }
     });
   }
+});
+
+// ─── The close dialog's figure is frozen when it opens (Ethan, 2026-11-18) ──
+// Like the modal's summary: the 5-min refresh does not move it. The 10-min
+// rule at confirm still applies (H3 above: refresh, re-show, ask again).
+
+/** Capture the estimate hooks' 5-min refresh ticks, to fire them by hand. */
+function captureRefreshTicks() {
+  const ticks: Array<() => void> = [];
+  const real = globalThis.setInterval;
+  vi.spyOn(globalThis, "setInterval").mockImplementation(((fn: () => void, ms?: number, ...rest: unknown[]) => {
+    if (ms === REFRESH_INTERVAL_MS) { ticks.push(fn); return 0 as unknown as ReturnType<typeof setInterval>; }
+    return real(fn, ms, ...rest);
+  }) as typeof setInterval);
+  return async () => {
+    expect(ticks.length, "a 5-min refresh is scheduled").toBeGreaterThan(0);
+    for (const t of ticks) await act(async () => { t(); });
+    await flush();
+  };
+}
+
+describe("the close dialog's figure is frozen when it opens, like the modal's", () => {
+  const T0 = Date.parse("2026-11-18T12:00:00.000Z");
+  const LATER = feeEstimatesStub({ economy: 3, normal: 6, priority: 12 });
+
+  it("the 5-min refresh runs but does not move the shown figure; the frozen rate is proposed", async () => {
+    const tick = captureRefreshTicks();
+    const now = vi.spyOn(Date, "now").mockReturnValue(T0);
+    await openCloseDialog();
+    const calls = stub.getFeeEstimates.mock.calls.length;
+    stub.getFeeEstimates.mockResolvedValue(LATER);
+    now.mockReturnValue(T0 + 5 * 60_000);
+    await tick();
+    expect(stub.getFeeEstimates.mock.calls.length, "the refresh fetched").toBeGreaterThan(calls);
+    expect(closeOptions().map((o) => o.textContent)).toEqual([0, 1, 2].map((i) => closeText(STUB, i)));
+    expect(closeSummaryLine()).toBe(`Fee rate proposed: Economy, ~${STUB.options!.economy.rate} sat/vB`);
+    now.mockReturnValue(T0 + 9 * 60_000);
+    const body = await confirmClose();
+    expect(body.fee_rate).toBe(STUB.options!.economy.rate);
+  });
+
+  it("a reopened dialog freezes a fresh answer, never the last opening's figure", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(T0);
+    await openCloseDialog();
+    await click(buttons(dialog()).find((b) => b.textContent?.trim() === "Cancel")!);
+    let answer!: (v: FeeEstimates) => void;
+    stub.getFeeEstimates.mockImplementation(() => new Promise<FeeEstimates>((r) => { answer = r; }));
+    now.mockReturnValue(T0 + 60_000);
+    await click(buttons(host!).find((b) => b.textContent?.trim() === "Close")!);
+    // The fresh answer has not arrived: no figure yet, and none from before.
+    expect(dialog().textContent).not.toContain(`~${STUB.options!.economy.rate} sat/vB`);
+    expect(closeButton().disabled).toBe(true);
+    await act(async () => { answer(LATER); });
+    await flush();
+    expect(closeOptions().map((o) => o.textContent)).toEqual([0, 1, 2].map((i) => closeText(LATER, i)));
+  });
 });

@@ -4,7 +4,7 @@ import "./font.css"; // Z4: the font faces and tokens, self-hosted; before style
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
 import bitcornLogoLight from "./assets/bitcorn-logo-light.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type PendingChannel, type AutoBuyAlertBadge, type ExchangeRate, type FeeOptionKey, findContact, resolveContactName } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type PendingChannel, type AutoBuyAlertBadge, type ExchangeRate, type FeeEstimates, type FeeOptionKey, findContact, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -1310,7 +1310,8 @@ function ChannelsPage() {
   const [expandedHint, setExpandedHint] = useState<string | null>(null);
   const [nodeRole, setNodeRole] = useState<string | null>(null);
   const [closingChannel, setClosingChannel] = useState<string | null>(null);
-  const [closeConfirm, setCloseConfirm] = useState<{ channelId: string; peerName: string; capacity: number } | null>(null);
+  // openedAtMs: when the dialog opened, so only an answer fetched since is frozen.
+  const [closeConfirm, setCloseConfirm] = useState<{ channelId: string; peerName: string; capacity: number; openedAtMs: number } | null>(null);
   // Typed challenge for the close. The existing dialog already carries the peer,
   // capacity and fee-rate picker, so only this gate was missing — and the
   // challenge logic is shared with the generic modal rather than re-derived.
@@ -1320,15 +1321,32 @@ function ChannelsPage() {
   const [closeFeeKey, setCloseFeeKey] = useState<FeeOptionKey>(DEFAULT_FEE_OPTION);
   const [closeNotice, setCloseNotice] = useState<string | null>(null);
   const closeFees = useFeeEstimates({ enabled: closeConfirm != null });
-  const closeOptions = feeOptions(closeFees.estimates);
+  // The figure is FROZEN when the dialog opens, like the modal's summary (Ethan,
+  // 2026-11-18): the 5-min refresh does not move it; only the 10-min rule at
+  // confirm replaces it (refresh, re-show, ask again). What is frozen is the
+  // first answer fetched since this opening, never a previous opening's. With
+  // no figure (unavailable) there is nothing to freeze: the dialog follows the
+  // live read, so a later answer can still arrive.
+  const [closeFrozen, setCloseFrozen] = useState<{ estimates: FeeEstimates; fetchedAtMs: number } | null>(null);
+  const closeFresh = closeConfirm != null && closeFees.fetchedAtMs != null && closeFees.fetchedAtMs >= closeConfirm.openedAtMs;
+  const closeShown = closeFrozen
+    ?? (closeFresh && closeFees.status === "ready" && closeFees.estimates
+      ? { estimates: closeFees.estimates, fetchedAtMs: closeFees.fetchedAtMs! }
+      : null);
+  useEffect(() => {
+    if (closeConfirm && !closeFrozen && closeShown) setCloseFrozen(closeShown);
+  }, [closeConfirm, closeFrozen, closeShown]);
+  const closeStatus = closeShown ? "ready" : closeFresh ? closeFees.status : "loading";
+  const closeOptions = feeOptions(closeShown?.estimates ?? null);
   const closeSelected = closeOptions?.find((o) => o.key === closeFeeKey) ?? null;
   const closeFeeBlocked: string | null =
-    closeFees.status === "loading" ? null
-    : !closeSelected || !closeFees.estimates ? FEE_COPY.unavailable
-    : isAboveCeiling(closeFees.estimates, closeSelected) ? FEE_COPY.aboveCeiling(closeFees.estimates.ceiling_sat_per_vbyte)
+    closeStatus === "loading" ? null
+    : !closeSelected || !closeShown ? FEE_COPY.unavailable
+    : isAboveCeiling(closeShown.estimates, closeSelected) ? FEE_COPY.aboveCeiling(closeShown.estimates.ceiling_sat_per_vbyte)
     : null;
   function resetCloseDialog() {
     setCloseConfirm(null);
+    setCloseFrozen(null);
     setCloseFeeKey(DEFAULT_FEE_OPTION); // F3: the reset is to Economy, the key
     setCloseTyped("");
     setCloseNotice(null);
@@ -1394,8 +1412,9 @@ function ChannelsPage() {
     if (!closeConfirm || !closeSelected || closeFeeBlocked) return;
     // O6 / P18: the shown estimate is over 10 min old (since the dialog fetched
     // it). Refresh, re-show, ask again: clear the typed word, send nothing.
-    if (isStaleAtConfirm(closeFees.fetchedAtMs, Date.now())) {
-      await closeFees.refresh();
+    if (isStaleAtConfirm(closeShown!.fetchedAtMs, Date.now())) {
+      const next = await closeFees.refresh();
+      setCloseFrozen(next.estimates ? { estimates: next.estimates, fetchedAtMs: next.fetchedAtMs } : null);
       setCloseTyped("");
       setCloseNotice(FEE_COPY.refreshed);
       return;
@@ -1442,7 +1461,7 @@ function ChannelsPage() {
                   "about $X, if accepted" over "~N sats" (D3), rate × 192 vB
                   (P14). No estimate → no figure, Close blocked (O7); above
                   200 sat/vB → the figure, disabled, with the reason (P15). */}
-              {closeOptions && closeFees.estimates ? (
+              {closeOptions && closeShown ? (
                 <Choice<FeeOptionKey>
                   name="close-fee-rate"
                   labelledBy="close-fee-rate-label"
@@ -1454,15 +1473,15 @@ function ChannelsPage() {
                     description: `~${opt.rate} sat/vB`,
                     meta: timeText(opt),
                     cost: <FeeCost sats={opt.cost_sats.close} rate={feeRateInfo} qualifier={FEE_COPY.ifAccepted} />,
-                    disabled: isAboveCeiling(closeFees.estimates!, opt),
-                    disabledReason: FEE_COPY.aboveCeiling(closeFees.estimates!.ceiling_sat_per_vbyte),
+                    disabled: isAboveCeiling(closeShown.estimates, opt),
+                    disabledReason: FEE_COPY.aboveCeiling(closeShown.estimates.ceiling_sat_per_vbyte),
                   }))}
                 />
-              ) : closeFees.status === "unavailable" ? (
+              ) : closeStatus === "unavailable" ? (
                 <div className="fee-unavailable" style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{FEE_COPY.unavailable}</div>
               ) : null}
               {(() => {
-                const age = shownDataAgeMinutes(closeFees.estimates, closeFees.fetchedAtMs, Date.now());
+                const age = shownDataAgeMinutes(closeShown?.estimates ?? null, closeShown?.fetchedAtMs ?? null, Date.now());
                 return age != null ? <div className="fee-data-age" style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>{FEE_COPY.dataAge(age)}</div> : null;
               })()}
               {closeSelected && (
@@ -1499,7 +1518,7 @@ function ChannelsPage() {
                 className="btn btn-danger"
                 disabled={
                   !challengeSatisfied(summarizeCloseChannel({ channelId: closeConfirm.channelId }).challenge, closeTyped) ||
-                  closeFees.status === "loading" || closeFeeBlocked != null
+                  closeStatus === "loading" || closeFeeBlocked != null
                 }
                 onClick={() => { void handleCloseChannel(); }}
               >
@@ -1653,7 +1672,7 @@ function ChannelsPage() {
             {c.active === 1 && closingChannel !== c.channel_id && closeResult?.channelId !== c.channel_id && (
               <button
                 className="btn btn-outline btn-sm"
-                onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}
+                onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat, openedAtMs: Date.now() })}
               >
                 {label ?? "Close"}
               </button>
