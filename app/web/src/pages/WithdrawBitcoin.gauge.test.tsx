@@ -1,9 +1,11 @@
 // drive-mode P2 on Withdraw:
-//   item 15 (R26(8), R27(6)) — the gauge keeps its bar at local / capacity but
-//     no longer claims that share is available to withdraw: it reads "In your
-//     connection · N% of your connection". The withdrawable figure is the
-//     server's "Most you can withdraw". D1.9's own figures: 114,535 sats in the
-//     connection and nothing withdrawable.
+//   item 15 (R26(8), R27(6)) — the share in the connection makes no claim that
+//     it is available to withdraw. The withdrawable figure is the server's.
+//     D1.9's own figures: 114,535 sats in the connection, nothing withdrawable.
+//     Re-pinned for member-first-run-ui slice 3, R1 (Ethan's "recs",
+//     2026-11-17): the fill bar is dropped; the share is "of $X (N sats) in
+//     your connection", and the percentages are the note line, "Your
+//     connection goes from X% to Y% full." (still local / capacity).
 //   item 16 (R11(4), R27(7)) — "Always stays to keep you connected", under
 //     "Why not all of it?", from the server's always_stays, on Withdraw only.
 //
@@ -97,25 +99,24 @@ describe("item 15: Withdraw's gauge makes no withdrawable claim", () => {
     stub.getSwapLimits.mockResolvedValue(limits(0));
     await mount(WithdrawBitcoin);
     expect(text()).not.toContain("available to withdraw");
-    expect(text()).toContain("In your connection");
-    expect(text()).toContain("11% of your connection");
+    expect(host.querySelector("[data-testid='in-connection']")?.textContent).toBe("of $68.72 (114,535 sats) in your connection");
     expect(text()).not.toContain("Current channel");
     expect(text()).not.toContain("In your channel");
   });
 
-  it("the bar is still local / capacity", async () => {
+  it("R1: no fill bar; the note's first share is still local / capacity", async () => {
     stub.getMemberStats.mockResolvedValue({ treasury_channel: channel(640_000) });
     stub.getSwapLimits.mockResolvedValue(limits(580_000));
     await mount(WithdrawBitcoin);
-    const bar = host.querySelector("[data-testid='capacity-bar']") as HTMLElement;
-    expect(bar.style.width).toBe("64%");
+    expect(host.querySelector("[data-testid='capacity-bar']")).toBeNull();
+    expect(text()).toContain("Your connection goes from 64% to");
   });
 
   it("after an amount, the projection is a share of the connection, not of what is withdrawable", async () => {
     stub.getMemberStats.mockResolvedValue({ treasury_channel: channel(640_000) });
     stub.getSwapLimits.mockResolvedValue(limits(580_000));
     await mount(WithdrawBitcoin);
-    expect(text()).toContain("After withdrawal: 64% → 39% of your connection");
+    expect(text()).toContain("Your connection goes from 64% to 39% full.");
   });
 });
 

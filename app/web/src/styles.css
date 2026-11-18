@@ -2002,13 +2002,14 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .connect-locked { margin: 0; font-size: 0.875rem; color: var(--text); }
 .connect-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .connect-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-/* The size control: one joined row of options, not separate cards. */
-.connect-sizes .choice-options { gap: 0; }
-.connect-sizes .choice-option { border-radius: 0; }
-.connect-sizes .choice-option + .choice-option { margin-left: -1px; }
-.connect-sizes .choice-option:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
-.connect-sizes .choice-option:last-child { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
-.connect-sizes .choice-option.checked { z-index: 1; }
+/* The size control: one joined row of options, not separate cards. Withdraw's
+   presets share it (member-first-run-ui slice 3). */
+.connect-sizes .choice-options, .withdraw-presets .choice-options { gap: 0; }
+.connect-sizes .choice-option, .withdraw-presets .choice-option { border-radius: 0; }
+.connect-sizes .choice-option + .choice-option, .withdraw-presets .choice-option + .choice-option { margin-left: -1px; }
+.connect-sizes .choice-option:first-child, .withdraw-presets .choice-option:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.connect-sizes .choice-option:last-child, .withdraw-presets .choice-option:last-child { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.connect-sizes .choice-option.checked, .withdraw-presets .choice-option.checked { z-index: 1; }
 .connect-box { display: flex; flex-direction: column; gap: 2px; }
 .connect-input { position: relative; }
 .connect-input .form-input { padding-right: 42px; }
@@ -2036,6 +2037,52 @@ div:has(> .action-confirm-input) + .dialog-actions {
 @media (max-width: 640px) {
   .connect-cols { grid-template-columns: 1fr; }
   .connect-foot-act { align-items: stretch; text-align: left; }
+}
+
+/* ─── The simplified Withdraw (member-first-run-ui slice 3) ─────────────── */
+/* Always visible: the answer, how much, where it goes, the one button. Only
+   when it applies: the warning word, the tip, the errors. One tap away: the
+   closed rows below the panel. */
+.withdraw-form { display: flex; flex-direction: column; gap: 16px; }
+.withdraw-answer { display: flex; flex-direction: column; gap: 4px; }
+.withdraw-answer-label { font-size: 0.875rem; color: var(--text-2); }
+.withdraw-answer-big { font-size: 1.5rem; font-weight: 600; color: var(--text); line-height: 1.2; }
+.withdraw-answer-sub { font-size: 0.8125rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.withdraw-answer-why { margin: 4px 0 0; font-size: 0.875rem; color: var(--text); }
+.withdraw-warning { font-size: 0.8125rem; color: var(--text); }
+/* "Waiting costs less": one plain line with the clock icon, no box (ruled
+   2026-11-18, like the confirm dialog's "Can't be undone" line). */
+.withdraw-tip { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-size: 0.875rem; color: var(--text); }
+.withdraw-tip-icon { flex: none; margin-top: 2px; color: var(--text-2); }
+.withdraw-why-wait { display: flex; flex-direction: column; gap: 4px; }
+.withdraw-how { display: flex; flex-direction: column; gap: 8px; }
+.withdraw-presets .choice-option:only-child { border-radius: var(--radius-md); }
+.withdraw-box { display: flex; flex-direction: column; gap: 2px; }
+.withdraw-input { position: relative; }
+.withdraw-input .form-input { padding-right: 42px; }
+.withdraw-unit {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;
+}
+.withdraw-box-usd { font-size: 0.75rem; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.withdraw-note { margin: 0; font-size: 0.8125rem; color: var(--text-2); }
+.withdraw-error { font-size: 0.8125rem; color: var(--red); }
+.withdraw-goes { font-size: 0.875rem; color: var(--text); }
+.withdraw-act { display: flex; flex-direction: column; gap: 8px; }
+.withdraw-review-line { margin: 0; font-size: 0.75rem; color: var(--text-3); text-align: center; }
+.withdraw-rows { display: flex; flex-direction: column; margin-top: 12px; border-top: 1px solid var(--border); }
+.withdraw-row { border-bottom: 1px solid var(--border); }
+.withdraw-row > summary { cursor: pointer; user-select: none; padding: 12px 4px; font-size: 0.875rem; color: var(--text); }
+.withdraw-row-body { display: flex; flex-direction: column; gap: 8px; padding: 0 4px 14px; font-size: 0.8125rem; color: var(--text-2); }
+.withdraw-most-figures { display: flex; gap: 16px; flex-wrap: wrap; }
+.withdraw-allow { display: flex; gap: 6px; align-items: center; font-size: 0.8125rem; }
+.withdraw-address {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px;
+}
+.withdraw-address-text {
+  flex: 1; min-width: 0; font-family: var(--font-id); font-size: 0.75rem; color: var(--text-2);
+  word-break: break-all; line-height: 1.5;
 }
 
 /* ─── Liquidity page overhaul ────────────────────────────────── */

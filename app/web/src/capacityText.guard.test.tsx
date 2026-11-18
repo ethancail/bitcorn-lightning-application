@@ -222,9 +222,16 @@ describe("PR3-7: no capacity text element uses --amber", () => {
   it("Cash Out, farmer in warning", async () => {
     stub.getMemberStats.mockResolvedValue(stats(900_000));
     stub.getMemberLiquidityStatus.mockResolvedValue(warnStatus("farmer"));
-    const r = checkCapacityTexts(await mount(page(WithdrawBitcoin)));
+    const el = await mount(page(WithdrawBitcoin));
+    const r = checkCapacityTexts(el);
     expect(r.offenders).toEqual([]);
-    expect(r.count).toBe(2); // N% available to withdraw, after withdrawal
+    // Slice 3, R1 (Ethan's "recs", 2026-11-17): no bar, so one figure — the
+    // note line "Your connection goes from X% to Y% full." The warning word is
+    // its own line, and is held to the same rule.
+    expect(r.count).toBe(1);
+    const warn = el.querySelector('[data-testid="capacity-warning"]');
+    expect(warn, "the farmer in warning gets the warning line").not.toBeNull();
+    expect(effectiveColor(warn!) ?? "").not.toMatch(/amber/);
   });
 
   it("Payments send view, a decoded invoice (PR 4)", async () => {

@@ -194,21 +194,29 @@ describe("V11 — Top Up", () => {
   });
 });
 
+// Re-pinned DELIBERATELY for member-first-run-ui slice 3, R1 (Ethan's "recs",
+// 2026-11-17): Withdraw drops the fill bar. The advisor's warning word (R33
+// finding 7: it names the room) is one line under the big amount, ONLY when
+// it applies, in --text; the percentages are the note line. Still never red,
+// and amber never on text (PR3-7).
+const warning = () => host.querySelector('[data-testid="capacity-warning"]');
+
 describe("V11 — Cash Out", () => {
-  it("a farmer at 50% the advisor calls send_heavy → amber bar, \"Room to receive getting low\", text in --text", async () => {
+  it("a farmer at 50% the advisor calls send_heavy → no bar; one line, \"Room to receive getting low\", never amber or red", async () => {
     setup(500_000, "farmer", "send_heavy");
     await render(WithdrawBitcoin);
-    expect(bar()).toContain("var(--amber)");
-    // drive-mode P2 item 15: a share of the connection, not of what is withdrawable.
-    // R33 finding 7: the bar is the share in the connection, so the word names the room.
-    expect(host.textContent).toContain("Room to receive getting low · 50% of your connection");
+    expect(host.querySelector('[data-testid="capacity-bar"]')).toBeNull();
+    expect(warning()?.textContent).toBe("Room to receive getting low");
+    expect(style(warning()!)).not.toMatch(/amber|red/);
     expect(texts().map(style).join("|")).not.toMatch(/amber|red/);
+    expect(host.innerHTML).not.toContain("var(--red)");
   });
 
-  it("PERMITTING: a farmer at 5% the advisor calls healthy → green bar, never red", async () => {
+  it("PERMITTING: a farmer at 5% the advisor calls healthy → no warning line, never red", async () => {
     setup(50_000, "farmer", "healthy");
     await render(WithdrawBitcoin);
-    expect(bar()).toContain("var(--green)");
+    expect(host.querySelector('[data-testid="capacity-bar"]')).toBeNull();
+    expect(warning()).toBeNull();
     expect(host.innerHTML).not.toContain("var(--red)");
   });
 });
