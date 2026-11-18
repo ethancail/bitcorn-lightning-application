@@ -580,20 +580,44 @@ describe("FeeCost on the treasury's two fee pickers", () => {
     expect(declsFor(".fee-cost-qualifier")["white-space"]).toBe("normal");
   });
 
-  for (const [name, show, opts] of [
-    ["the close dialog", openCloseDialog, closeOptions],
-    ["the open panel", showOpenForm, openOptions],
-  ] as const) {
-    it(`1 — ${name}: every card's cost is a figure; no worded cost, no "set by your node"`, async () => {
-      stub.getExchangeRate.mockResolvedValue(FRESH);
-      await show();
-      for (const label of LABELS) {
-        expect(card(opts(), label).querySelector(".choice-cost .fee-cost-words"), label).toBeNull();
-        expect(card(opts(), label).querySelector(".choice-cost .amount"), label).not.toBeNull();
+  // MFRUI's capture ask: a worded cost wraps through .fee-cost-words — a
+  // block, balanced (balance evens the lines of a block, not of an inline span).
+  it("1 — .fee-cost-words is the balanced block a worded cost wraps through", () => {
+    const d = declsFor(".fee-cost-words");
+    expect(d.display).toBe("block");
+    expect(d["white-space"]).toBe("normal");
+    expect(d["text-wrap"]).toBe("balance");
+  });
+
+  for (const [why, rate] of [["a price", FRESH], ["no price", NONE]] as const) {
+    it(`1 — the close dialog, ${why}: the worded cost wraps through .fee-cost-words; the figure keeps its nowrap span`, async () => {
+      stub.getExchangeRate.mockResolvedValue(rate);
+      await openCloseDialog();
+      for (const [i, key] of KEYS.entries()) {
+        const sats = STUB.options![key].cost_sats.close;
+        const words = card(closeOptions(), LABELS[i]).querySelectorAll(".choice-cost .fee-cost-words");
+        expect(words, LABELS[i]).toHaveLength(1);
+        const figure = words[0].querySelector(":scope > .amount-figure")?.textContent;
+        expect(figure).toBe(rate === FRESH ? `about ${formatUsd(sats, 60_000).text}` : `~${formatSats(sats)}`);
+        expect(words[0].querySelector(":scope > .fee-cost-qualifier")?.textContent).toBe(`, ${FEE_COPY.ifAccepted}`);
       }
-      expect(document.body.textContent).not.toContain("set by your node");
     });
   }
+
+  it(`1 — the open panel: every card's cost is a figure; no worded cost, no "set by your node"`, async () => {
+    stub.getExchangeRate.mockResolvedValue(FRESH);
+    await showOpenForm();
+    for (const label of LABELS) {
+      expect(card(openOptions(), label).querySelector(".choice-cost .fee-cost-words"), label).toBeNull();
+      expect(card(openOptions(), label).querySelector(".choice-cost .amount"), label).not.toBeNull();
+    }
+    expect(document.body.textContent).not.toContain("set by your node");
+  });
+
+  it(`1 — the close dialog: no "set by your node"`, async () => {
+    await openCloseDialog();
+    expect(document.body.textContent).not.toContain("set by your node");
+  });
 
   it("4 — the close dialog: every option shows its live rate, Economy included", async () => {
     await openCloseDialog();
