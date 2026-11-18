@@ -7,7 +7,8 @@
 //     the minimum, "Nothing to withdraw yet"), what is in the connection, "How
 //     much", "Goes to", and the one button with its line;
 //   only when it applies — the advisor's warning word (R1), "Waiting costs
-//     less" (R3), the errors, and the address failure;
+//     less" (R3; one plain line, ruled 2026-11-18), the errors, and the
+//     address failure;
 //   one tap away, as closed rows — "Why not all of it?", "Withdraw the most
 //     now", "Limits and address", "Recent withdrawals (N)".
 //
@@ -46,11 +47,17 @@ export const WITHDRAW_COPY = {
   reviewing: "Getting the fee…",
   reviewLine: "You'll see the exact fee before anything moves.",
 
-  // R3: the tip, whenever the server recommends waiting.
-  tipTitle: "Waiting costs less",
-  /** The wait card's line (R2), drive-mode's wording. */
+  // R3: the tip, whenever the server recommends waiting. Ruled 2026-11-18: one
+  // plain line with the clock icon, no box; $X and N are the server's bigger
+  // amount (the wait_bigger card's amount_sats).
+  tip: (bigger: string) => `Waiting costs less: once you have ${bigger} to move, the fee is a smaller share.`,
+  /** NOT RULED: the server sends no bigger amount (no price, so no floor). */
+  tipNoAmount: "Waiting costs less: a later, bigger transfer costs a smaller share.",
+  /** The wait card's line (R2), drive-mode's wording. Ruled 2026-11-18: in
+   *  "Why not all of it?". */
   tipWorthMore: (floor: string) => `Worth more once room to receive has dropped to ${floor}.`,
-  /** The wait card's amount (R2). NOT RULED: this slice's wording. */
+  /** The wait card's amount (R2). NOT RULED: this slice's wording. Ruled
+   *  2026-11-18: in "Why not all of it?". */
   tipLater: (amount: string) => `A later transfer could move ${amount}.`,
 
   // R7: below the minimum. The connection-down and daily-limit sentences are

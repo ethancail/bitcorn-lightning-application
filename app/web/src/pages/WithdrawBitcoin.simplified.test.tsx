@@ -5,7 +5,12 @@
 //                  four rows, each CLOSED by default
 //   R3             the tip "Waiting costs less" exactly when the server
 //                  recommends waiting (fees_high, bigger_share, over the fee
-//                  limit), with that case's reason; none when it recommends now
+//                  limit); none when it recommends now. Ruled 2026-11-18: one
+//                  plain line with the clock icon, no box; that case's reason
+//                  and the wait card's sentences are in "Why not all of it?"
+//   empty box      ruled 2026-11-18: no "goes from" note while the box is
+//                  empty (any state); no placeholder when even the minimum is
+//                  over the fee limit
 //   inventory      every fact of the page before slice 3 is still reachable,
 //                  in the state that shows it (the canvas inventory's claim)
 //   R6             the rate: loading → no sentence, sats only; failed, none or
@@ -47,6 +52,7 @@ vi.mock("../api/client", async (importOriginal) => {
 
 import WithdrawBitcoin from "./WithdrawBitcoin";
 import { NO_RATE_NOTE } from "../components/amount/amountDescriptor";
+import { cssRules } from "../styleRules.testutil";
 
 const channel = (local = 600_000, isActive = true) => ({
   channel_id: "1", local_sats: local, remote_sats: 1_000_000 - local, capacity_sats: 1_000_000, is_active: isActive,
@@ -217,17 +223,66 @@ describe("R3 — 'Waiting costs less' whenever the server recommends waiting", (
     over_fee_limit: "Today's fee is over your fee limit, and a later, bigger transfer costs a smaller share.",
     room_low: "", fees_low: "", keep_room_open: "",
   };
+  // Ruled 2026-11-18: ONE sentence with the server's bigger amount (the
+  // wait_bigger card's 850,000); its reason and the wait card's two sentences
+  // are in "Why not all of it?".
+  const TIP = "Waiting costs less: once you have about $850.00 (850,000 sats) to move, the fee is a smaller share.";
   for (const reason of WAIT_REASONS) {
-    it(`${reason}: the tip, with that reason`, async () => {
+    it(`${reason}: the tip, one sentence; that reason is in 'Why not all of it?'`, async () => {
       stub.getSwapOptions.mockResolvedValue(OUT({ reason, over: reason === "over_fee_limit" }));
       await mount();
       const tip = host.querySelector("[data-testid='withdraw-tip']")!;
       expect(tip, "the tip shows").not.toBeNull();
       expect(tip.closest("details"), "the tip is not behind a tap").toBeNull();
-      expect(tip.querySelector(".withdraw-tip-title")?.textContent).toBe("Waiting costs less");
-      expect(tip.querySelector("[data-testid='recommended-reason']")?.textContent).toBe(REASON_TEXT[reason]);
+      expect(norm(tip.textContent)).toBe(TIP);
+      expect(tip.querySelector("[data-testid='recommended-reason']"), "no reason in the tip").toBeNull();
+      const why = host.querySelector("[data-testid='row-why-not']")!;
+      expect(why.querySelector("[data-testid='recommended-reason']")?.textContent).toBe(REASON_TEXT[reason]);
     });
   }
+
+  it("a plain line: the clock icon (decorative) and one sentence, no title, no box", async () => {
+    await mount();
+    const tip = host.querySelector("[data-testid='withdraw-tip']") as HTMLElement;
+    expect(tip.tagName).toBe("P");
+    const icon = tip.querySelector("svg.withdraw-tip-icon");
+    expect(icon, "the clock icon").not.toBeNull();
+    expect(icon!.getAttribute("aria-hidden")).toBe("true");
+    expect(tip.children.length, "the icon and one sentence").toBe(2);
+    expect(tip.querySelector(".withdraw-tip-title")).toBeNull();
+    // No box: no rule for .withdraw-tip, in any @media, draws one.
+    const tipRules = cssRules().filter((r) => r.selectors.includes(".withdraw-tip"));
+    expect(tipRules.length, "the scan reads the tip's rule").toBeGreaterThan(0);
+    const boxy = tipRules.flatMap((r) => Object.keys(r.decls).filter((p) => /^(border|background|box-shadow|outline|padding)/.test(p)).map((p) => `${p}: ${r.decls[p]} (line ${r.line})`));
+    expect(boxy).toEqual([]);
+  });
+
+  it("the wait card's two sentences are one tap away in 'Why not all of it?', not on the page", async () => {
+    await mount();
+    const why = host.querySelector("[data-testid='row-why-not']") as HTMLDetailsElement;
+    expect(why.open).toBe(false);
+    const body = norm(why.textContent);
+    expect(body).toContain("Worth more once room to receive has dropped to $70.00 (70,000 sats).");
+    expect(body).toContain("A later transfer could move about $850.00 (850,000 sats).");
+    const out = outsideDetails();
+    expect(out).not.toContain("Worth more once");
+    expect(out).not.toContain("A later transfer could move");
+  });
+
+  it("not ruled: the server sends no bigger amount (no price, so no floor) — the line without a figure", async () => {
+    stub.getSwapOptions.mockResolvedValue({ ...OUT(), floor_sats: null, cards: OUT().cards.map((c) => (c.key === "wait_bigger" ? { ...c, amount_sats: null } : c)) });
+    await mount();
+    expect(norm(host.querySelector("[data-testid='withdraw-tip']")?.textContent)).toBe("Waiting costs less: a later, bigger transfer costs a smaller share.");
+  });
+
+  it("no always_stays: 'Why not all of it?' still holds the wait's facts", async () => {
+    stub.getSwapLimits.mockResolvedValue({ ...limits(), loop_out: { ...limits().loop_out, always_stays: null } });
+    await mount();
+    const why = host.querySelector("[data-testid='row-why-not']");
+    expect(why, "the row").not.toBeNull();
+    expect(norm(why!.textContent)).toContain("A later, bigger transfer costs a smaller share.");
+    expect(why!.querySelectorAll("[data-testid='always-stays-row']").length).toBe(0);
+  });
   for (const reason of NOW_REASONS) {
     it(`${reason} (the server recommends now): no tip`, async () => {
       stub.getSwapOptions.mockResolvedValue(OUT({ reason }));
@@ -331,8 +386,8 @@ const FACTS: Array<[fact: string, state: keyof typeof STATES, shown: string]> = 
   ["the fee limit can't be checked", "noPrice", "Can't check this against your fee limit right now: the bitcoin price isn't available."],
   ["the reason when now is recommended", "nowRecommended", "Fees are low today."],
   ["use the most", "ok", "Use the most"],
-  // the wait card + badge → the tip
-  ["the tip", "ok", "Waiting costs less"],
+  // the wait card + badge → the tip (one line), and "Why not all of it?" (2026-11-18)
+  ["the tip", "ok", "Waiting costs less: once you have about $850.00 (850,000 sats) to move, the fee is a smaller share."],
   ["the wait reason", "ok", "A later, bigger transfer costs a smaller share."],
   ["the wait card's line", "ok", "Worth more once room to receive has dropped to $70.00 (70,000 sats)."],
   ["the wait card's amount", "ok", "A later transfer could move about $850.00 (850,000 sats)."],
@@ -534,5 +589,44 @@ describe("R5 — no control sets the over-limit amount without 'Allow it this on
     stub.getSwapOptions.mockResolvedValue(OUT({ nowAmount: 500_000 }));
     await remount();
     expect(host.querySelector('.withdraw-presets input[value="500000"]')).not.toBeNull();
+  });
+});
+
+// ─── The empty box (Ethan's "recs", 2026-11-18) ─────────────────────────────
+describe("the empty box: no placeholder at the over-limit minimum; no note while empty", () => {
+  const box = () => host.querySelector('input[aria-label="Amount"]') as HTMLInputElement;
+  const note = () => host.querySelector("[data-testid='capacity-text']");
+
+  it("even the minimum over the limit: the box is empty, with no placeholder and no note", async () => {
+    stub.getSwapOptions.mockResolvedValue(OUT({ over: true, nowAmount: 250_000 }));
+    await mount();
+    expect(box().value).toBe("");
+    expect(box().hasAttribute("placeholder"), "no placeholder").toBe(false);
+    expect(note(), "no note").toBeNull();
+    expect(text()).not.toContain("Your connection goes from");
+  });
+
+  it("there, once the ticked 'Use the most' fills it, the note is back", async () => {
+    stub.getSwapOptions.mockResolvedValue(OUT({ over: true, nowAmount: 250_000 }));
+    await mount();
+    await act(async () => { (host.querySelector("[data-testid='row-most-now'] input[type='checkbox']") as HTMLInputElement).click(); });
+    await act(async () => { button("Use the most")!.click(); });
+    expect(norm(note()?.textContent)).toBe("Your connection goes from 60% to 35% full.");
+  });
+
+  it("any state: emptying the box takes the note away; an amount brings it back", async () => {
+    await mount();
+    expect(norm(note()?.textContent)).toBe("Your connection goes from 60% to 35% full.");
+    await typeAmount("");
+    expect(box().value).toBe("");
+    expect(note(), "no note while empty").toBeNull();
+    await typeAmount("300000");
+    expect(norm(note()?.textContent)).toBe("Your connection goes from 60% to 30% full.");
+  });
+
+  it("not at the over-limit minimum: the placeholder stays", async () => {
+    stub.getSwapOptions.mockResolvedValue(OUT({ over: true, nowAmount: 500_000 }));
+    await mount();
+    expect(box().getAttribute("placeholder")).toBe("250,000");
   });
 });

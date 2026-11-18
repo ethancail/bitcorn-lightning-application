@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { api, fmtSats, swapExecuteBody, transfersApi, type SwapOptions } from "../api/client";
 import { NO_PRICE_LIMIT_SENTENCE, OVER_LIMIT_SENTENCE, reasonText } from "../components/OptionCards";
+import { ClockIcon } from "../components/withdraw/ClockIcon";
 import { rateNote } from "../api/rate";
 import type { ExchangeRate, SwapLimits } from "../api/client";
 import type { SwapRequest, SwapQuoteResponse, MemberLiquidityStatusResponse, SwapReceipt } from "../api/client";
@@ -331,6 +332,9 @@ export default function WithdrawBitcoin() {
   // now" after its tick — so no preset may reach it (the Max button that
   // bypassed the tick is gone).
   const overLimit = nowCard?.over_fee_limit === true && maxWithdrawable != null;
+  // Even the minimum is over the fee limit: the over-limit most is the minimum.
+  // The box starts empty (below) and, ruled 2026-11-18, shows no placeholder.
+  const minOverLimit = overLimit && minW != null && maxWithdrawable! <= minW;
   // Presets the policy would accept now (D1.9); none when nothing can be withdrawn.
   const presets = canWithdraw
     ? AMOUNT_PRESETS.filter((p) => p >= minW! && p <= (maxWithdrawable ?? availableNow!) && !(overLimit && p >= maxWithdrawable!))
@@ -638,19 +642,19 @@ export default function WithdrawBitcoin() {
               )}
             </section>
 
-            {/* R2/R3: the tip, whenever the server recommends waiting, with
-                that case's reason sentence and the wait card's line. */}
+            {/* R2/R3: the tip, whenever the server recommends waiting. Ruled
+                2026-11-18: one plain line with the clock icon, no box, and the
+                server's bigger amount. Its reason and the wait card's two
+                sentences are in "Why not all of it?". */}
             {waitRecommended && (
-              <div className="withdraw-tip" data-testid="withdraw-tip">
-                <div className="withdraw-tip-title">{COPY.tipTitle}</div>
-                <div data-testid="recommended-reason">{reasonText(options!.reason!, true)}</div>
-                {waitCard?.key === "wait_bigger" && options!.floor_sats != null && (
-                  <div>{COPY.tipWorthMore(inlineAmount(options!.floor_sats, usd))}</div>
-                )}
-                {waitCard?.amount_sats != null && (
-                  <div>{COPY.tipLater(inlineAmount(waitCard.amount_sats, usd, true))}</div>
-                )}
-              </div>
+              <p className="withdraw-tip" data-testid="withdraw-tip">
+                <ClockIcon />
+                <span>
+                  {waitCard?.amount_sats != null
+                    ? COPY.tip(inlineAmount(waitCard.amount_sats, usd, true))
+                    : COPY.tipNoAmount}
+                </span>
+              </p>
             )}
 
             {/* How much: presets (dollars over sats), the box (sats, dollars
@@ -682,14 +686,15 @@ export default function WithdrawBitcoin() {
                         if (raw === "") { setAmount(0); return; }
                         setAmount(Number(raw));
                       }}
-                      placeholder="250,000"
+                      placeholder={minOverLimit ? undefined : "250,000"}
                     />
                     <span className="withdraw-unit">{COPY.satsUnit}</span>
                   </div>
                   {usd != null && amount > 0 && <div className="withdraw-box-usd">{formatUsd(amount, usd).text}</div>}
                 </div>
-                {/* R1: the percentages, a share of the connection. */}
-                {channelLocal != null && channelCapacity != null && channelCapacity > 0 && channelLocalPct != null && (
+                {/* R1: the percentages, a share of the connection. Ruled
+                    2026-11-18: none while the box is empty, in any state. */}
+                {amount > 0 && channelLocal != null && channelCapacity != null && channelCapacity > 0 && channelLocalPct != null && (
                   <p className="withdraw-note" data-testid="capacity-text">
                     {COPY.note(channelLocalPct, Math.max(0, Math.round(((channelLocal - amount) / channelCapacity) * 100)))}
                   </p>
@@ -914,18 +919,32 @@ export default function WithdrawBitcoin() {
             "Why not all of it?" (R27(7)). The figures are the server's (GET
             /api/swaps/limits loop_out.always_stays); its parts sum to its
             total. Text unchanged. */}
-        {formStage && limits?.loop_out?.always_stays && (() => {
-          const a = limits.loop_out.always_stays;
-          const rows: Array<[string, number]> = [
+        {/* Ruled 2026-11-18: the wait's reason and the wait card's two
+            sentences moved here from the tip, so the row shows whenever they
+            apply, with or without what always stays. */}
+        {formStage && (limits?.loop_out?.always_stays || waitRecommended) && (() => {
+          const a = limits?.loop_out?.always_stays ?? null;
+          const rows: Array<[string, number]> = a ? [
             ["Always stays to keep you connected", a.total_sats],
             ["Connection reserve", a.reserve_sats],
             ["Lightning fee headroom", a.fee_headroom_sats],
             ["Swap buffer", a.swap_buffer_sats],
-          ];
+          ] : [];
           return (
             <details className="withdraw-row" data-testid="row-why-not">
               <summary>{COPY.rowWhyNot}</summary>
               <div className="withdraw-row-body">
+                {waitRecommended && (
+                  <div className="withdraw-why-wait" data-testid="why-wait">
+                    <div data-testid="recommended-reason">{reasonText(options!.reason!, true)}</div>
+                    {waitCard?.key === "wait_bigger" && options!.floor_sats != null && (
+                      <div>{COPY.tipWorthMore(inlineAmount(options!.floor_sats, usd))}</div>
+                    )}
+                    {waitCard?.amount_sats != null && (
+                      <div>{COPY.tipLater(inlineAmount(waitCard.amount_sats, usd, true))}</div>
+                    )}
+                  </div>
+                )}
                 {rows.map(([label, sats], i) => (
                   <div key={label} data-testid="always-stays-row" style={{ display: "flex", justifyContent: "space-between", gap: 12, fontWeight: i === 0 ? 600 : 400 }}>
                     <span>{label}</span>

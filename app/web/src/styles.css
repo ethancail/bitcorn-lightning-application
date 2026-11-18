@@ -2050,12 +2050,11 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .withdraw-answer-sub { font-size: 0.8125rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
 .withdraw-answer-why { margin: 4px 0 0; font-size: 0.875rem; color: var(--text); }
 .withdraw-warning { font-size: 0.8125rem; color: var(--text); }
-.withdraw-tip {
-  display: flex; flex-direction: column; gap: 4px; padding: 10px 14px;
-  background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius-md);
-  font-size: 0.8125rem; color: var(--text-2);
-}
-.withdraw-tip-title { font-weight: 600; color: var(--text); }
+/* "Waiting costs less": one plain line with the clock icon, no box (ruled
+   2026-11-18, like the confirm dialog's "Can't be undone" line). */
+.withdraw-tip { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-size: 0.875rem; color: var(--text); }
+.withdraw-tip-icon { flex: none; margin-top: 2px; color: var(--text-2); }
+.withdraw-why-wait { display: flex; flex-direction: column; gap: 4px; }
 .withdraw-how { display: flex; flex-direction: column; gap: 8px; }
 .withdraw-presets .choice-option:only-child { border-radius: var(--radius-md); }
 .withdraw-box { display: flex; flex-direction: column; gap: 2px; }

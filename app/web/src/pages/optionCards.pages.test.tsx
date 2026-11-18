@@ -115,26 +115,30 @@ async function mount(C: React.ComponentType) {
 
 // Re-pinned for member-first-run-ui slice 3 (Ethan's "recs", 2026-11-17):
 // Withdraw renders no cards. R2 drops the wait card and the badge; their
-// message is the tip "Waiting costs less" (R3). The "now" card is the closed
+// message is the tip "Waiting costs less" (R3; one plain line, ruled
+// 2026-11-18, its reason and the wait card's sentences in "Why not all of
+// it?"). The "now" card is the closed
 // row "Withdraw the most now", with R25's sentence (R4); R5 drops Max.
 // OptionCards itself is unchanged, and Top Up's cards below still pin it.
 const mostRow = () => host.querySelector('[data-testid="row-most-now"]') as HTMLDetailsElement | null;
 const upTo = () => host.querySelector("[data-testid='withdraw-answer'] [data-sats]")?.getAttribute("data-sats") ?? null;
 
 describe("Withdraw's options, simplified", () => {
-  it("no cards and no badge; the server recommends waiting, so the tip says so with its reason", async () => {
+  it("no cards and no badge; the server recommends waiting, so the tip says so; its reason is one tap away", async () => {
     stub.getSwapOptions.mockResolvedValue(OUT());
     await mount(WithdrawBitcoin);
     expect(host.querySelectorAll('[data-testid^="option-card-"]').length).toBe(0);
     expect(host.querySelector('[data-testid="recommended-badge"]')).toBeNull();
     expect(recommendedCards()).toEqual([]);
+    // Ruled 2026-11-18: one plain line, the server's bigger amount.
     const tip = host.querySelector('[data-testid="withdraw-tip"]')!;
-    expect(tip.textContent).toBe(
-      "Waiting costs less" +
+    expect(tip.textContent).toBe("Waiting costs less: once you have about $850.00 (850,000 sats) to move, the fee is a smaller share.");
+    expect(host.querySelector('[data-testid="why-wait"]')!.textContent).toBe(
       "A later, bigger transfer costs a smaller share." +
       "Worth more once room to receive has dropped to $70.00 (70,000 sats)." +
       "A later transfer could move about $850.00 (850,000 sats).",
     );
+    expect(host.querySelector('[data-testid="why-wait"]')!.closest('[data-testid="row-why-not"]')).not.toBeNull();
     expect(text()).not.toContain("Move it all now");
     expect(text()).not.toContain("Wait for a bigger transfer");
     expect(mostRow()!.querySelector("summary")!.textContent).toBe("Withdraw the most now");
