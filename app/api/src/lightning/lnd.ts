@@ -29,6 +29,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { ENV } from "../config/env";
+import { FEE_RATE_CEILING_SAT_PER_VBYTE } from "../fees/feeEstimates";
 import { LND_DIR, TLS_CERT_PATH } from "./lndPaths";
 import {
   withDeadline,
@@ -398,12 +399,21 @@ export async function closeTreasuryChannel(
   options?: { isForce?: boolean; chainFeeTokensPerVbyte?: number }
 ): Promise<{ transaction_id?: string }> {
   const { lnd } = getLndClient();
+  const isForce = options?.isForce ?? false;
   return closeChannel({
     lnd,
     transaction_id: transactionId,
     transaction_vout: transactionVout,
-    is_force_close: options?.isForce ?? false,
-    tokens_per_vbyte: options?.chainFeeTokensPerVbyte,
+    is_force_close: isForce,
+    // A force close pays the fee already in the commitment transaction, and
+    // ln-service refuses any fee setting on one (close_channel.js:80-81), so
+    // neither the rate nor the maximum goes out on it (fee-estimates F1).
+    // On a cooperative close the rate is a proposal to the peer (R2).
+    tokens_per_vbyte: isForce ? undefined : options?.chainFeeTokensPerVbyte,
+    // P17 (a): a cooperative close fails rather than pay above the 200 sat/vB
+    // ceiling. ln-service ignores it on peer-initiated channels
+    // (close_channel.js:19), which is most member channels (F2).
+    max_tokens_per_vbyte: isForce ? undefined : FEE_RATE_CEILING_SAT_PER_VBYTE,
   });
 }
 
