@@ -132,6 +132,31 @@ jobs:
           esac
           echo "VITE_BASE_CHAIN_ID=$TRIMMED"
 
+      # ── RELEASE PRECONDITION: EVERY LOCK ENTRY IS 3 DAYS OLD ─────────────
+      # The images install with `npm ci` from the committed locks, so the locks
+      # ARE what ships. This re-runs pr-checks.yml's `Lockfile age (hard gate)`
+      # check on the release commit: a lock entry younger than the 3-day npm
+      # adoption window that lock-allowlist.json does not cover, an entry with
+      # no registry publish time, a registry it cannot read, or a package
+      # directory with no lock fails it. Here, next to the chain guard and
+      # ahead of BOTH tag steps, for the chain guard's reason: a trip means
+      # fix-and-rerun with no pushed tag to undo, and build-api and build-web
+      # never start.
+      #
+      # --release skips rule 6 (a new direct dependency needs a new-dependency
+      # entry). A push to main has no PR base to compare with, and the PR
+      # that brought the change already ran it. The fixture tests are not
+      # re-run here: they ran at PR time on the same code.
+      #
+      # NO `if:` CONDITION, for the reason the RELEASE TAG note below gives.
+      - name: Set up Node for the lockfile age check
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+
+      - name: Every lock entry is 3 days old or allowlisted
+        run: node scripts/lock-age-check.mjs --release
+
       - name: Read version from umbrel-app.yml
         id: version
         run: |
