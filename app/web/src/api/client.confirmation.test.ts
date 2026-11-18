@@ -247,7 +247,7 @@ describe("outage does not produce a wrong confirmation", () => {
   it("a body missing a hashed field sends NO header rather than a guess", async () => {
     // capacity_sats is required by the route's field list. Cast past the client
     // types deliberately: this is the runtime shape a half-filled form produces.
-    await api.openMemberChannel({} as unknown as { capacity_sats: number });
+    await api.openMemberChannel({} as unknown as { capacity_sats: number; fee_rate: number });
     const c = captured[0]!;
     expect(c.headers[CONFIRMATION_HEADER]).toBeUndefined();
     // And the server would answer 400, not 409 — an absent header is
@@ -259,14 +259,15 @@ describe("outage does not produce a wrong confirmation", () => {
   });
 
   it("an empty required numeric field also sends no header", async () => {
-    await api.openMemberChannel({ capacity_sats: "" as unknown as number });
+    // fee_rate present, so the empty capacity is the only missing field.
+    await api.openMemberChannel({ capacity_sats: "" as unknown as number, fee_rate: 3 });
     expect(captured[0]!.headers[CONFIRMATION_HEADER]).toBeUndefined();
   });
 
   it("the request is still SENT — the client does not swallow it locally", async () => {
     // Deliberate: the server owns the refusal and names the reason. A
     // client-side block would invent its own error text for the same condition.
-    await api.openMemberChannel({} as unknown as { capacity_sats: number });
+    await api.openMemberChannel({} as unknown as { capacity_sats: number; fee_rate: number });
     expect(captured).toHaveLength(1);
   });
 });

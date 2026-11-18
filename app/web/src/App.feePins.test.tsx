@@ -1,35 +1,27 @@
 // The treasury's two fee pickers decide what the treasury pays: the close-channel
-// dialog's on-chain fee rate (ChannelsPage) and the open-channel panel's
-// confirmation speed (TreasuryOpenChannelPanel). Orchestrator addendum 1,
-// 2026-11-13: converting them to Choice must change NO option's value, default
-// or label, so this file pins all three, with the values develop (0536e70)
-// shipped:
-//   - label: each option's whole text, in order;
-//   - default: Economy is the checked option, and an untouched form sends Economy's rate;
-//   - value: choosing each option sends exactly its rate.
-// develop 156b0e3 ships the same values as 0536e70 (App.tsx is unchanged between).
-// One deliberate text change, ruled 2026-11-13 (3b): on both cards the cost
-// is its own line, so the close dialog's "1–3 hours · ~192 sats" is now two
-// lines and its " · " joiner is gone; every label, value and default stays.
-// The rate is read off the treasuryCloseChannel / treasuryOpenChannel call —
-// what is actually sent. Economy differs between the two on develop and stays
-// so: the close sends `fee_rate: undefined`, the open leaves fee_rate out.
+// dialog's fee rate (ChannelsPage) and the open-channel panel's confirmation
+// speed (TreasuryOpenChannelPanel). This file pins each one's labels, keys,
+// default, value sent and cost line (orchestrator addendum 1, 2026-11-13).
 //
-// Ethan's ruling "treasury too" (2026-11-16), the member card's ruling "a"
-// applied here: Economy sends no rate, so the node sets its fee and nothing
-// computes "~192 sats" or "~155 sats"; on both pickers Economy's cost line now
-// reads "Fee set by your node". CLOSE_PINNED and OPEN_PINNED are still
-// byte-identical — every key, rate and default they pin is what is sent,
-// unchanged — and their Economy `text`/`cost` stay develop's, as the record of
-// what shipped. The label and cost-line tests compare Economy against the
-// ruled text below, the others against the pins.
+// REWRITTEN DELIBERATELY for fee-estimates (spec §13 items 2, 8 and 9;
+// MFRUI-ASKS (2)), never deleted. Until 2026-11-18 it pinned develop 0536e70's
+// FIXED options in CLOSE_PINNED and OPEN_PINNED — Economy sending no rate
+// (`fee_rate: undefined` on the close, the key left out on the open), Normal 5,
+// Priority 15 — and "Fee set by your node" on Economy (rulings "treasury too"
+// and "fix the five", 2026-11-16). Under O2 those pins go red, correctly:
+// every option, Economy included, now sends the live integer it shows. The
+// subjects are kept (label, key, default, value sent, cost line; Choice's
+// nowrap cost line; FeeCost's dollars-over-sats), and every expectation is
+// DERIVED FROM THE STUBBED /api/fee-estimates answer (H1).
 //
-// Ethan's ruling "fix the five" (2026-11-16), display only: the close card's
-// Economy drops its rate "~1 sat/vB" (item 4), so CLOSE_ECONOMY_TEXT loses it;
-// and each figure is now "about $X" over "~N sats" (item 5). The pins hold as
-// they are because these tests read with the price still loading, when a
-// figure is "~N sats" alone, exactly the pinned text. The rulings' own tests
-// are at the end of this file. The pins are byte-identical.
+// Opens and closes pin different things (§13 item 9, R2): sent = shown for the
+// open panel; PROPOSED = shown for the close dialog, whose rate is an offer to
+// the peer — labelled "proposed to the peer", its cost "about $X, if accepted".
+//
+// Also here: H2, H3 (the 10-min bound at confirm), H4, H6 (unavailable), the
+// option key with tied rates and its reset (F3), the 200 ceiling (P15), the
+// confirm summaries' rate rows equal to the hashed rate (CONFIRM-RULING), the
+// D6 "too low" copy, and the depth copy (F5).
 //
 // Harness: App.treasuryCapacity.test.tsx's (the REAL App, as the treasury).
 
@@ -38,6 +30,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import React from "react";
 import { declsFor } from "./styleRules.testutil";
+import type { FeeEstimates } from "./api/client";
+import { feeEstimatesStub, UNAVAILABLE } from "./components/fees/feeEstimates.testutil";
+import { FEE_COPY, timeText } from "./components/fees/feeEstimatesDescriptor";
+import { formatSats, formatUsd } from "./components/amount/amountDescriptor";
+import { confirmationFor, findUiConfirmedRoute } from "./api/actionConfirmation";
 
 vi.hoisted(() => {
   localStorage.setItem("bitcorn_theme", "dark");
@@ -57,6 +54,7 @@ const stub = vi.hoisted(() => ({
   getContacts: vi.fn(),
   getPendingChannels: vi.fn(),
   getExchangeRate: vi.fn(),
+  getFeeEstimates: vi.fn(),
   treasuryCloseChannel: vi.fn(),
   treasuryOpenChannel: vi.fn(),
 }));
@@ -77,29 +75,23 @@ const CHANNELS = [
 ];
 const CONTACTS = [{ pubkey: MERCHANT, name: "Merchant1", tags: ["merchant"] }];
 
-/** develop's close-dialog options, in order; the cost on its own line (3b). */
-const CLOSE_PINNED = [
-  { label: "Economy", text: "Economy~1 sat/vB1–3 hours~192 sats", cost: "~192 sats", key: "economy", rate: undefined },
-  { label: "Normal", text: "Normal~5 sat/vB~30 min~960 sats", cost: "~960 sats", key: "normal", rate: 5 },
-  { label: "Priority", text: "Priority~15 sat/vB~10 min~2,885 sats", cost: "~2,885 sats", key: "priority", rate: 15 },
-] as const;
+/** The stub every pin derives from. Distinct rates, so each option is told apart. */
+const STUB = feeEstimatesStub({ economy: 2, normal: 4, priority: 9 });
+const KEYS = ["economy", "normal", "priority"] as const;
+const LABELS = ["Economy", "Normal", "Priority"] as const;
 
-/** develop's open-panel options, in order; the cost on its own line (3b). */
-const OPEN_PINNED = [
-  { label: "Economy", text: "Economy1–3 hours~155 sats", cost: "~155 sats", key: "economy", rate: undefined },
-  { label: "Normal", text: "Normal~30 min~770 sats", cost: "~770 sats", key: "normal", rate: 5 },
-  { label: "Priority", text: "Priority~10 min~2,300 sats", cost: "~2,300 sats", key: "priority", rate: 15 },
-] as const;
+/** Close card text, price still loading: label, rate, time, "~N sats, if accepted". */
+const closeText = (est: FeeEstimates, i: number) => {
+  const o = est.options![KEYS[i]];
+  return `${LABELS[i]}~${o.rate} sat/vB${timeText(o)}~${formatSats(o.cost_sats.close)}, ${FEE_COPY.ifAccepted}`;
+};
+/** Open card text, price still loading: label, time, "~N sats". */
+const openText = (est: FeeEstimates, i: number) => {
+  const o = est.options![KEYS[i]];
+  return `${LABELS[i]}${timeText(o)}~${formatSats(o.cost_sats.open)}`;
+};
 
-/** Economy's card since "treasury too" (2026-11-16): the node sets its fee. */
-const ECONOMY_COST = "Fee set by your node";
-const CLOSE_ECONOMY_TEXT = "Economy1–3 hoursFee set by your node";
-const OPEN_ECONOMY_TEXT = "Economy1–3 hoursFee set by your node";
-type Pin = { key: string; text: string; cost: string };
-const shownText = (pins: readonly Pin[], economy: string) => pins.map((p) => (p.key === "economy" ? economy : p.text));
-const shownCost = (pins: readonly Pin[]) => pins.map((p) => [p.key === "economy" ? ECONOMY_COST : p.cost]);
-
-/** Each card's cost line: exactly one .choice-cost (the line that never splits), holding the cost alone. */
+/** Each card's cost line: exactly one .choice-cost (the line that never splits). */
 const costLines = (opts: HTMLElement[]) =>
   opts.map((o) => [...o.querySelectorAll(".choice-cost")].map((c) => c.textContent));
 
@@ -119,6 +111,7 @@ beforeEach(() => {
   stub.getContacts.mockResolvedValue(CONTACTS);
   stub.getPendingChannels.mockResolvedValue([]);
   stub.getExchangeRate.mockImplementation(never); // the price still loading: figures in sats alone
+  stub.getFeeEstimates.mockResolvedValue(STUB);
   stub.treasuryCloseChannel.mockImplementation(never);
   stub.treasuryOpenChannel.mockImplementation(never);
   vi.stubGlobal("fetch", vi.fn(async (url: string) => ({
@@ -135,6 +128,7 @@ afterEach(async () => {
   root = null;
   for (const c of [...document.body.children]) c.remove();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 async function flush() {
@@ -185,7 +179,9 @@ async function choose(opts: () => HTMLElement[], label: string) {
 // ─── ChannelsPage: the close-channel dialog ────────────────────────────────
 
 const dialog = () => document.body.querySelector(".dialog-card") as HTMLElement;
-const closeOptions = () => optionsAfter(dialog(), "On-chain fee rate");
+const closeOptions = () => optionsAfter(dialog(), FEE_COPY.closeRateHeading);
+const closeButton = () => buttons(dialog()).find((b) => b.textContent?.trim() === "Close Channel" && b.className.includes("btn-danger"))!;
+const closeSummaryLine = () => dialog().querySelector(".close-fee-summary")?.textContent;
 
 async function openCloseDialog() {
   const el = await renderChannels();
@@ -195,50 +191,85 @@ async function openCloseDialog() {
   expect(dialog(), "the close dialog opens").not.toBeNull();
 }
 
-async function confirmClose(): Promise<Record<string, unknown>> {
+async function clickClose() {
   await type(dialog().querySelector("#close-channel-challenge") as HTMLInputElement, "CLOSE");
-  const confirm = buttons(dialog()).find((b) => b.textContent?.trim() === "Close Channel" && b.className.includes("btn-danger"));
-  expect(confirm!.disabled).toBe(false);
-  await click(confirm!);
+  expect(closeButton().disabled).toBe(false);
+  await click(closeButton());
+}
+
+async function confirmClose(): Promise<Record<string, unknown>> {
+  await clickClose();
   expect(stub.treasuryCloseChannel).toHaveBeenCalledTimes(1);
   return stub.treasuryCloseChannel.mock.calls[0][0];
 }
 
-describe("ChannelsPage close-channel fee picker: values, default and labels unchanged", () => {
-  it("label: three options, each with develop's exact text (Economy's as ruled), in order", async () => {
+describe("ChannelsPage close dialog: live labels, keys, default and proposed rates (H1, H2, H4; R2)", () => {
+  it("the heading says the rate is proposed to the peer (R2)", async () => {
     await openCloseDialog();
-    expect(closeOptions().map((o) => o.textContent)).toEqual(shownText(CLOSE_PINNED, CLOSE_ECONOMY_TEXT));
+    expect(closeOptions()).toHaveLength(3);
   });
 
-  it("the cost is its own line: one .choice-cost per card, the cost alone", async () => {
+  it("label (H1): three options, each card's text derived from the stub, in order", async () => {
     await openCloseDialog();
-    expect(costLines(closeOptions())).toEqual(shownCost(CLOSE_PINNED));
+    expect(closeOptions().map((o) => o.textContent)).toEqual([0, 1, 2].map((i) => closeText(STUB, i)));
+  });
+
+  it("the cost is its own line: one .choice-cost per card, \"~N sats, if accepted\"", async () => {
+    await openCloseDialog();
+    expect(costLines(closeOptions())).toEqual(
+      KEYS.map((k) => [`~${formatSats(STUB.options![k].cost_sats.close)}, ${FEE_COPY.ifAccepted}`]),
+    );
   });
 
   it("the radios carry the ruled string keys", async () => {
     await openCloseDialog();
-    expect(closeOptions().map((o) => o.querySelector("input")?.value)).toEqual(CLOSE_PINNED.map((p) => p.key));
+    expect(closeOptions().map((o) => o.querySelector("input")?.value)).toEqual([...KEYS]);
   });
 
-  it("default: Economy is the one checked option, and an untouched dialog sends fee_rate undefined", async () => {
+  it("default (H4): Economy is checked, and an untouched dialog proposes Economy's shown rate", async () => {
     await openCloseDialog();
     expect(checkedLabels(closeOptions())).toEqual(["Economy"]);
     const body = await confirmClose();
-    expect(body).toHaveProperty("fee_rate", undefined);
+    expect(body.fee_rate).toBe(STUB.options!.economy.rate);
     expect(body.channel_id).toBe("1");
+    expect(body).not.toHaveProperty("is_force_close");
   });
 
-  for (const p of CLOSE_PINNED) {
-    it(`value: choosing ${p.label} sends fee_rate ${String(p.rate)}`, async () => {
+  KEYS.forEach((key, i) => {
+    it(`value (H2, proposed = shown): choosing ${LABELS[i]} proposes its shown rate`, async () => {
       await openCloseDialog();
-      const other = CLOSE_PINNED.find((q) => q.label !== p.label)!;
-      await choose(closeOptions, other.label);
-      await choose(closeOptions, p.label);
-      expect(checkedLabels(closeOptions())).toEqual([p.label]);
+      await choose(closeOptions, LABELS[(i + 1) % 3]);
+      await choose(closeOptions, LABELS[i]);
+      expect(checkedLabels(closeOptions())).toEqual([LABELS[i]]);
+      const card = closeOptions().find((o) => labelOf(o) === LABELS[i])!;
+      expect(card.querySelector(".choice-desc")?.textContent).toBe(`~${STUB.options![key].rate} sat/vB`);
       const body = await confirmClose();
-      expect(body.fee_rate).toBe(p.rate);
+      expect(body.fee_rate).toBe(STUB.options![key].rate);
     });
-  }
+  });
+
+  it("states who pays (R3, interim): \"paid by whoever opened the channel\"", async () => {
+    await openCloseDialog();
+    expect(dialog().textContent).toContain(FEE_COPY.closePayer);
+  });
+});
+
+describe("the close dialog's \"Fee rate proposed\" row equals the hashed rate (CONFIRM-RULING)", () => {
+  KEYS.forEach((key, i) => {
+    it(`${LABELS[i]}: the row shows the rate the request carries and the confirmation hashes`, async () => {
+      await openCloseDialog();
+      await choose(closeOptions, LABELS[(i + 1) % 3]);
+      await choose(closeOptions, LABELS[i]);
+      expect(closeSummaryLine()).toBe(`Fee rate proposed: ${LABELS[i]}, ~${STUB.options![key].rate} sat/vB`);
+      const rowRate = Number(/~(\d+) sat\/vB/.exec(closeSummaryLine()!)![1]);
+      const body = await confirmClose();
+      const url = "/api/treasury/rotation/execute";
+      const d = confirmationFor(findUiConfirmedRoute("POST", url)!, url, JSON.stringify(body));
+      expect(d.ok).toBe(true);
+      expect(body.fee_rate).toBe(rowRate);
+      if (d.ok) expect(d.canonical).toContain(`fee_rate=${rowRate}`);
+    });
+  });
 });
 
 // ─── TreasuryOpenChannelPanel ──────────────────────────────────────────────
@@ -246,6 +277,13 @@ describe("ChannelsPage close-channel fee picker: values, default and labels unch
 const openPanel = () =>
   [...document.body.querySelectorAll(".panel")].find((p) => p.querySelector(".panel-title")?.textContent?.includes("Open Channel")) as HTMLElement;
 const openOptions = () => optionsAfter(openPanel(), "Confirmation Speed");
+const openSubmit = () => buttons(openPanel()).find((b) => b.textContent?.startsWith("Open 5,000,000 sat channel"))!;
+
+/** The confirm modal's "Fee rate" row value. */
+function feeRateRow(): string | undefined {
+  const dts = [...document.body.querySelectorAll(".dialog-card dt")];
+  return dts.find((d) => d.textContent === "Fee rate")?.nextElementSibling?.textContent ?? undefined;
+}
 
 async function showOpenForm() {
   await renderChannels();
@@ -254,73 +292,241 @@ async function showOpenForm() {
   await click(buttons(openPanel()).find((b) => b.textContent?.includes("Merchant1"))!);
 }
 
-async function confirmOpen(): Promise<Record<string, unknown>> {
-  await click(buttons(openPanel()).find((b) => b.textContent?.startsWith("Open 5,000,000 sat channel"))!);
+async function openOpenModal() {
+  await click(openSubmit());
+}
+
+async function confirmOpenModal() {
   await type(document.body.querySelector("#action-confirm-challenge") as HTMLInputElement, "5000000");
   await click(buttons().find((b) => b.textContent?.trim() === "Open channel")!);
+}
+
+async function confirmOpen(): Promise<Record<string, unknown>> {
+  await openOpenModal();
+  await confirmOpenModal();
   expect(stub.treasuryOpenChannel).toHaveBeenCalledTimes(1);
   return stub.treasuryOpenChannel.mock.calls[0][0];
 }
 
-describe("TreasuryOpenChannelPanel fee picker: values, default and labels unchanged", () => {
-  it("label: three options, each with develop's exact text (Economy's as ruled), in order", async () => {
+describe("TreasuryOpenChannelPanel: live labels, keys, default and values (H1, H2, H4)", () => {
+  it("label (H1): three options, each card's text derived from the stub, in order", async () => {
     await showOpenForm();
-    expect(openOptions().map((o) => o.textContent)).toEqual(shownText(OPEN_PINNED, OPEN_ECONOMY_TEXT));
+    expect(openOptions().map((o) => o.textContent)).toEqual([0, 1, 2].map((i) => openText(STUB, i)));
   });
 
   it("the cost is its own line: one .choice-cost per card, the cost alone", async () => {
     await showOpenForm();
-    expect(costLines(openOptions())).toEqual(shownCost(OPEN_PINNED));
+    expect(costLines(openOptions())).toEqual(KEYS.map((k) => [`~${formatSats(STUB.options![k].cost_sats.open)}`]));
   });
 
   it("the radios carry the ruled string keys", async () => {
     await showOpenForm();
-    expect(openOptions().map((o) => o.querySelector("input")?.value)).toEqual(OPEN_PINNED.map((p) => p.key));
+    expect(openOptions().map((o) => o.querySelector("input")?.value)).toEqual([...KEYS]);
   });
 
-  it("default: Economy is the one checked option, and an untouched form sends no fee_rate", async () => {
+  it("default (H4): Economy is checked, and an untouched form sends Economy's shown rate", async () => {
     await showOpenForm();
     expect(checkedLabels(openOptions())).toEqual(["Economy"]);
     const body = await confirmOpen();
-    expect(body).not.toHaveProperty("fee_rate");
+    expect(body.fee_rate).toBe(STUB.options!.economy.rate);
     expect(body).toMatchObject({ peer_pubkey: MERCHANT, capacity_sats: 5_000_000 });
   });
 
-  for (const p of OPEN_PINNED) {
-    it(`value: choosing ${p.label} sends fee_rate ${String(p.rate)}`, async () => {
+  KEYS.forEach((key, i) => {
+    it(`value (H2, sent = shown): choosing ${LABELS[i]} sends its shown rate`, async () => {
       await showOpenForm();
-      const other = OPEN_PINNED.find((q) => q.label !== p.label)!;
-      await choose(openOptions, other.label);
-      await choose(openOptions, p.label);
-      expect(checkedLabels(openOptions())).toEqual([p.label]);
+      await choose(openOptions, LABELS[(i + 1) % 3]);
+      await choose(openOptions, LABELS[i]);
+      expect(checkedLabels(openOptions())).toEqual([LABELS[i]]);
       const body = await confirmOpen();
-      expect(body.fee_rate).toBe(p.rate);
+      expect(body.fee_rate).toBe(STUB.options![key].rate);
+    });
+  });
+});
+
+describe("the open summary's \"Fee rate\" row equals the hashed rate (CONFIRM-RULING)", () => {
+  KEYS.forEach((key, i) => {
+    it(`${LABELS[i]}: the row shows the rate the request carries and the confirmation hashes`, async () => {
+      await showOpenForm();
+      await choose(openOptions, LABELS[(i + 1) % 3]);
+      await choose(openOptions, LABELS[i]);
+      await openOpenModal();
+      expect(feeRateRow()).toBe(`${LABELS[i]}, ~${STUB.options![key].rate} sat/vB`);
+      const rowRate = Number(/~(\d+) sat\/vB/.exec(feeRateRow()!)![1]);
+      await confirmOpenModal();
+      const body = stub.treasuryOpenChannel.mock.calls[0][0];
+      const url = "/api/treasury/expansion/execute";
+      const d = confirmationFor(findUiConfirmedRoute("POST", url)!, url, JSON.stringify(body));
+      expect(d.ok).toBe(true);
+      expect(body.fee_rate).toBe(rowRate);
+      if (d.ok) expect(d.canonical).toContain(`fee_rate=${rowRate}`);
+    });
+  });
+});
+
+// ─── H3: the 10-min bound at confirm (O6, P18) ──────────────────────────────
+
+describe("H3 — the 10-min bound at confirm, on both treasury cards", () => {
+  const T0 = Date.parse("2026-11-18T12:00:00.000Z");
+  const LATER = feeEstimatesStub({ economy: 3, normal: 6, priority: 12 });
+
+  it("close, under the bound: the shown rate is proposed", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(T0);
+    await openCloseDialog();
+    stub.getFeeEstimates.mockResolvedValue(LATER);
+    now.mockReturnValue(T0 + 9 * 60_000);
+    const body = await confirmClose();
+    expect(body.fee_rate).toBe(STUB.options!.economy.rate);
+  });
+
+  it("close, over the bound: refreshed, re-shown, the word cleared, NOTHING sent until confirmed again", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(T0);
+    await openCloseDialog();
+    stub.getFeeEstimates.mockResolvedValue(LATER);
+    now.mockReturnValue(T0 + 11 * 60_000);
+    await clickClose();
+    expect(stub.treasuryCloseChannel).not.toHaveBeenCalled();
+    expect(dialog().textContent).toContain(FEE_COPY.refreshed);
+    expect((dialog().querySelector("#close-channel-challenge") as HTMLInputElement).value).toBe("");
+    expect(closeSummaryLine()).toBe(`Fee rate proposed: Economy, ~${LATER.options!.economy.rate} sat/vB`);
+    const body = await confirmClose();
+    expect(body.fee_rate).toBe(LATER.options!.economy.rate);
+  });
+
+  it("open, under the bound: the shown rate is sent", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(T0);
+    await showOpenForm();
+    await openOpenModal();
+    stub.getFeeEstimates.mockResolvedValue(LATER);
+    now.mockReturnValue(T0 + 9 * 60_000);
+    await confirmOpenModal();
+    expect(stub.treasuryOpenChannel.mock.calls[0][0].fee_rate).toBe(STUB.options!.economy.rate);
+  });
+
+  it("open, over the bound: refreshed, re-shown, NOTHING sent until the new figure is confirmed", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(T0);
+    await showOpenForm();
+    await openOpenModal();
+    stub.getFeeEstimates.mockResolvedValue(LATER);
+    now.mockReturnValue(T0 + 11 * 60_000);
+    await confirmOpenModal();
+    expect(stub.treasuryOpenChannel).not.toHaveBeenCalled();
+    expect(feeRateRow()).toBe(`Economy, ~${LATER.options!.economy.rate} sat/vB`);
+    expect(document.body.textContent).toContain(FEE_COPY.refreshed);
+    await confirmOpenModal();
+    expect(stub.treasuryOpenChannel).toHaveBeenCalledTimes(1);
+    expect(stub.treasuryOpenChannel.mock.calls[0][0].fee_rate).toBe(LATER.options!.economy.rate);
+  });
+});
+
+// ─── H6: unavailable (O7) ────────────────────────────────────────────────────
+
+describe("H6 — unavailable: no number, nothing sent", () => {
+  for (const [why, setUp] of [
+    ["the API answers unavailable", () => stub.getFeeEstimates.mockResolvedValue(UNAVAILABLE)],
+    ["the read fails", () => stub.getFeeEstimates.mockRejectedValue(Object.assign(new Error("x"), { status: 500 }))],
+  ] as const) {
+    it(`close dialog, ${why}: "Fee estimate unavailable", no figure, Close blocked`, async () => {
+      setUp();
+      await openCloseDialog();
+      const area = dialog().querySelector("#close-fee-rate-label")!.parentElement!;
+      expect(area.textContent).toContain(FEE_COPY.unavailable);
+      expect(area.textContent).not.toMatch(/sat\/vB|~|\$/);
+      expect(area.querySelectorAll("input[type=radio]")).toHaveLength(0);
+      await type(dialog().querySelector("#close-channel-challenge") as HTMLInputElement, "CLOSE");
+      expect(closeButton().disabled).toBe(true);
+      await click(closeButton());
+      expect(stub.treasuryCloseChannel).not.toHaveBeenCalled();
+    });
+
+    it(`open panel, ${why}: "Fee estimate unavailable", no figure, submit blocked`, async () => {
+      setUp();
+      await showOpenForm();
+      expect(openPanel().textContent).toContain(FEE_COPY.unavailable);
+      expect(openPanel().querySelectorAll('input[name="treasury-open-fee"]')).toHaveLength(0);
+      expect(openSubmit().disabled).toBe(true);
+      await click(openSubmit());
+      expect(document.body.querySelector("#action-confirm-challenge")).toBeNull();
+      expect(stub.treasuryOpenChannel).not.toHaveBeenCalled();
     });
   }
 });
 
-// ─── "treasury too" (2026-11-16): Economy shows no figure on either picker ──
+// ─── F3: the option key ──────────────────────────────────────────────────────
 
-describe("ruling \"treasury too\" — Economy's fee is set by the node: no figure", () => {
-  // No "~N sats" and no dollars on Economy's card. (Its rate "~1 sat/vB" went
-  // too, with "fix the five" item 4: tested below.)
-  const NO_FIGURE = /~[\d,]+ sats|\$/;
-  const economy = (opts: HTMLElement[]) => opts.find((o) => labelOf(o) === "Economy")!;
+describe("F3 — the option key: tied rates, and the reset is to Economy", () => {
+  const TIED = feeEstimatesStub({ economy: 1, normal: 1, priority: 2 });
 
-  it("the close dialog: Economy's cost line reads \"Fee set by your node\", no ~N sats or $", async () => {
+  it("close: Normal and Economy tie; choosing Normal keeps Normal checked and proposes its rate", async () => {
+    stub.getFeeEstimates.mockResolvedValue(TIED);
     await openCloseDialog();
-    const card = economy(closeOptions());
-    expect(card.querySelector(".choice-cost")?.textContent).toBe(ECONOMY_COST);
-    expect(card.textContent).not.toMatch(NO_FIGURE);
-    expect(card.textContent).not.toContain("~192 sats");
+    await choose(closeOptions, "Normal");
+    expect(checkedLabels(closeOptions())).toEqual(["Normal"]);
+    expect(closeSummaryLine()).toBe(`Fee rate proposed: Normal, ~${TIED.options!.normal.rate} sat/vB`);
+    const body = await confirmClose();
+    expect(body.fee_rate).toBe(TIED.options!.normal.rate);
   });
 
-  it("the open panel: Economy's cost line reads \"Fee set by your node\", no ~ or $", async () => {
+  it("open: Normal and Economy tie; choosing Normal keeps Normal checked and sends its rate", async () => {
+    stub.getFeeEstimates.mockResolvedValue(TIED);
     await showOpenForm();
-    const card = economy(openOptions());
-    expect(card.querySelector(".choice-cost")?.textContent).toBe(ECONOMY_COST);
-    expect(card.textContent).not.toMatch(/[~$]/);
-    expect(card.textContent).not.toContain("~155 sats");
+    await choose(openOptions, "Normal");
+    expect(checkedLabels(openOptions())).toEqual(["Normal"]);
+    await openOpenModal();
+    expect(feeRateRow()).toBe(`Normal, ~${TIED.options!.normal.rate} sat/vB`);
+  });
+
+  it("close: Cancel resets the choice to Economy", async () => {
+    await openCloseDialog();
+    await choose(closeOptions, "Priority");
+    await click(buttons(dialog()).find((b) => b.textContent?.trim() === "Cancel")!);
+    await click(buttons(host!).find((b) => b.textContent?.trim() === "Close")!);
+    expect(checkedLabels(closeOptions())).toEqual(["Economy"]);
+  });
+});
+
+// ─── P15: the 200 ceiling ────────────────────────────────────────────────────
+
+describe("P15 — above the 200 ceiling: the figure, blocked, with the reason", () => {
+  const SPIKE = feeEstimatesStub({ economy: 120, normal: 180, priority: 250 });
+
+  it("close: Priority at 250 shows its figure, disabled, with the reason", async () => {
+    stub.getFeeEstimates.mockResolvedValue(SPIKE);
+    await openCloseDialog();
+    const prio = closeOptions().find((o) => labelOf(o) === "Priority")!;
+    expect(prio.querySelector(".choice-desc")?.textContent).toBe("~250 sat/vB");
+    expect(prio.querySelector("input")!.disabled).toBe(true);
+    expect(prio.querySelector(".choice-reason")?.textContent).toBe(FEE_COPY.aboveCeiling(200));
+  });
+
+  it("open: every option above 200 → submit blocked with the reason", async () => {
+    stub.getFeeEstimates.mockResolvedValue(feeEstimatesStub({ economy: 210, normal: 230, priority: 260 }));
+    await showOpenForm();
+    expect(openSubmit().disabled).toBe(true);
+    expect(openPanel().textContent).toContain(FEE_COPY.aboveCeiling(200));
+  });
+});
+
+// ─── D6 ruling and F5 copy ───────────────────────────────────────────────────
+
+describe("the open panel's messages", () => {
+  it("D6: LND refusing the rate as too low shows the ruled sentence", async () => {
+    stub.treasuryOpenChannel.mockRejectedValue(
+      Object.assign(new Error("fee_rate_below_network_minimum"), { status: 400, code: "fee_rate_below_network_minimum" }),
+    );
+    await showOpenForm();
+    await confirmOpen();
+    await flush();
+    expect(openPanel().textContent).toContain(FEE_COPY.tooLowForNetwork);
+  });
+
+  it("F5: the submitted copy states the peer's depth, \"2 on most member nodes\"", async () => {
+    stub.treasuryOpenChannel.mockResolvedValue({ ok: true, funding_txid: "ab".repeat(32) });
+    await showOpenForm();
+    await confirmOpen();
+    await flush();
+    expect(openPanel().textContent).toContain("Channel is usable once the peer confirms it — 2 on most member nodes.");
+    expect(openPanel().textContent).not.toContain("1–3 on-chain confirmations");
   });
 });
 
@@ -332,10 +538,11 @@ describe("Choice's cost line", () => {
   });
 });
 
-// ─── Ethan's ruling "fix the five" (2026-11-16), display only ────────────────
-// What each picker sends is pinned above, unchanged.
+// ─── "fix the five" (2026-11-16), rewritten for live figures ───────────────
+// Economy's worded cost ("Fee set by your node") is retired: every option has
+// a figure now (MFRUI-ASKS (1)). The display rules stand.
 
-describe("ruling \"fix the five\" — the treasury's two fee pickers", () => {
+describe("FeeCost on the treasury's two fee pickers", () => {
   const FRESH = { usd: 60_000, source: "coinbase", fetched_at: 1_790_000_000_000, age_ms: 0, state: "fresh" };
   const NONE = { usd: null, source: "coinbase", fetched_at: null, age_ms: null, state: "none" };
   const card = (opts: HTMLElement[], label: string) => opts.find((o) => labelOf(o) === label)!;
@@ -343,57 +550,54 @@ describe("ruling \"fix the five\" — the treasury's two fee pickers", () => {
   const lines = (opts: HTMLElement[], label: string) =>
     [...card(opts, label).querySelectorAll(".choice-cost [data-line]")].map((l) => `${l.getAttribute("data-line")}:${l.textContent}`);
 
-  it("1 — a worded cost may wrap, numbers stay on one line (the CSS)", () => {
+  it("1 — numbers stay on one line; the close card's \"if accepted\" may wrap (the CSS)", () => {
     expect(declsFor(".choice-cost")["white-space"]).toBe("nowrap");
-    expect(declsFor(".fee-cost-words")["white-space"]).toBe("normal");
-    // Wraps cleanly: balanced lines, which need a block to balance.
-    expect(declsFor(".fee-cost-words")["text-wrap"]).toBe("balance");
-    expect(declsFor(".fee-cost-words")["display"]).toBe("block");
     expect(declsFor(".amount-figure")["white-space"]).toBe("nowrap");
     expect(declsFor(".amount-sub")["white-space"]).toBe("nowrap");
+    expect(declsFor(".fee-cost-qualifier")["white-space"]).toBe("normal");
   });
 
   for (const [name, show, opts] of [
     ["the close dialog", openCloseDialog, closeOptions],
     ["the open panel", showOpenForm, openOptions],
   ] as const) {
-    it(`1 — ${name}: Economy's words are in .fee-cost-words; the figures are Amounts`, async () => {
+    it(`1 — ${name}: every card's cost is a figure; no worded cost, no "set by your node"`, async () => {
       stub.getExchangeRate.mockResolvedValue(FRESH);
       await show();
-      expect(card(opts(), "Economy").querySelector(".choice-cost .fee-cost-words")?.textContent).toBe("Fee set by your node");
-      for (const label of ["Normal", "Priority"]) {
+      for (const label of LABELS) {
         expect(card(opts(), label).querySelector(".choice-cost .fee-cost-words"), label).toBeNull();
         expect(card(opts(), label).querySelector(".choice-cost .amount"), label).not.toBeNull();
       }
+      expect(document.body.textContent).not.toContain("set by your node");
     });
   }
 
-  it("4 — the close dialog: Economy shows no rate; Normal and Priority keep theirs", async () => {
+  it("4 — the close dialog: every option shows its live rate, Economy included", async () => {
     await openCloseDialog();
-    const econ = card(closeOptions(), "Economy");
-    expect(econ.textContent).not.toContain("sat/vB");
-    expect(econ.querySelector(".choice-desc")).toBeNull();
-    expect(card(closeOptions(), "Normal").querySelector(".choice-desc")?.textContent).toBe("~5 sat/vB");
-    expect(card(closeOptions(), "Priority").querySelector(".choice-desc")?.textContent).toBe("~15 sat/vB");
-    expect(dialog().textContent).not.toContain("1 sat/vB");
+    for (const [i, key] of KEYS.entries()) {
+      expect(card(closeOptions(), LABELS[i]).querySelector(".choice-desc")?.textContent).toBe(`~${STUB.options![key].rate} sat/vB`);
+    }
   });
 
-  it("5 — the close dialog: dollars over sats; Economy keeps its words", async () => {
+  it("5 — the close dialog: \"about $X, if accepted\" over \"~N sats\" (D3)", async () => {
     stub.getExchangeRate.mockResolvedValue(FRESH);
     await openCloseDialog();
-    expect(lines(closeOptions(), "Normal")).toEqual(["usd:about $0.58", "sats:~960 sats"]);
-    expect(lines(closeOptions(), "Priority")).toEqual(["usd:about $1.73", "sats:~2,885 sats"]);
-    expect(lines(closeOptions(), "Economy")).toEqual([]);
-    expect(card(closeOptions(), "Economy").querySelector(".choice-cost")?.textContent).toBe(ECONOMY_COST);
+    for (const [i, key] of KEYS.entries()) {
+      const sats = STUB.options![key].cost_sats.close;
+      expect(lines(closeOptions(), LABELS[i])).toEqual([
+        `usd:about ${formatUsd(sats, 60_000).text}, ${FEE_COPY.ifAccepted}`,
+        `sats:~${formatSats(sats)}`,
+      ]);
+    }
   });
 
-  it("5 — the open panel: dollars over sats; Economy keeps its words", async () => {
+  it("5 — the open panel: dollars over sats", async () => {
     stub.getExchangeRate.mockResolvedValue(FRESH);
     await showOpenForm();
-    expect(lines(openOptions(), "Normal")).toEqual(["usd:about $0.46", "sats:~770 sats"]);
-    expect(lines(openOptions(), "Priority")).toEqual(["usd:about $1.38", "sats:~2,300 sats"]);
-    expect(lines(openOptions(), "Economy")).toEqual([]);
-    expect(card(openOptions(), "Economy").querySelector(".choice-cost")?.textContent).toBe(ECONOMY_COST);
+    for (const [i, key] of KEYS.entries()) {
+      const sats = STUB.options![key].cost_sats.open;
+      expect(lines(openOptions(), LABELS[i])).toEqual([`usd:about ${formatUsd(sats, 60_000).text}`, `sats:~${formatSats(sats)}`]);
+    }
   });
 
   for (const [why, setRate] of [
@@ -403,12 +607,14 @@ describe("ruling \"fix the five\" — the treasury's two fee pickers", () => {
     it(`5 — ${why}: sats only, on both pickers`, async () => {
       setRate();
       await openCloseDialog();
-      expect(lines(closeOptions(), "Normal")).toEqual(["sats:~960 sats"]);
-      expect(lines(closeOptions(), "Priority")).toEqual(["sats:~2,885 sats"]);
+      for (const [i, key] of KEYS.entries()) {
+        expect(lines(closeOptions(), LABELS[i])).toEqual([`sats:~${formatSats(STUB.options![key].cost_sats.close)}, ${FEE_COPY.ifAccepted}`]);
+      }
       await click(buttons(dialog()).find((b) => b.textContent?.trim() === "Cancel")!);
       await click(buttons(openPanel()).find((b) => b.textContent?.trim() === "New Channel")!);
-      expect(lines(openOptions(), "Normal")).toEqual(["sats:~770 sats"]);
-      expect(lines(openOptions(), "Priority")).toEqual(["sats:~2,300 sats"]);
+      for (const [i, key] of KEYS.entries()) {
+        expect(lines(openOptions(), LABELS[i])).toEqual([`sats:~${formatSats(STUB.options![key].cost_sats.open)}`]);
+      }
     });
   }
 });

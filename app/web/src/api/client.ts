@@ -179,7 +179,8 @@ export const api = {
   getTreasuryInfo: () => apiFetch<TreasuryInfo>("/api/treasury-info"),
   getMemberStats: () => apiFetch<MemberStats>("/api/member/stats"),
   getNodePreflight: () => apiFetch<PreflightResult>("/api/node/preflight"),
-  openMemberChannel: (body: { capacity_sats: number; partner_socket?: string; fee_rate?: number }) =>
+  // fee_rate is required on member open (fee-estimates O2, P16): every option sends one.
+  openMemberChannel: (body: { capacity_sats: number; partner_socket?: string; fee_rate: number }) =>
     apiFetch<{ ok: boolean; funding_txid: string | null }>("/api/member/open-channel", {
       method: "POST",
       body: JSON.stringify(body),
@@ -242,6 +243,7 @@ export const api = {
     }),
   // Network Payments
   getExchangeRate: () => apiFetch<ExchangeRate>("/api/exchange-rate"),
+  getFeeEstimates: () => apiFetch<FeeEstimates>("/api/fee-estimates"),
   getNetworkPayments: (params?: { direction?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams();
     if (params?.direction) qs.set("direction", params.direction);
@@ -1241,6 +1243,30 @@ export type ExchangeRate = {
   fetched_at: number | null;
   age_ms: number | null;
   state: "fresh" | "stale" | "none";
+};
+
+/** GET /api/fee-estimates (fee-estimates spec §4, P22): one answer for the three fee cards. */
+export type FeeOptionKey = "economy" | "normal" | "priority";
+export type FeeEstimateOption = {
+  key: FeeOptionKey;
+  /** The integer sat/vB the card shows and sends. */
+  rate: number;
+  block: number | null;
+  target: number | null;
+  time_minutes: { min: number; max: number };
+  /** True under the LND fallback: the time is shown as an estimate. */
+  estimate: boolean;
+  cost_sats: { open: number; close: number };
+};
+export type FeeEstimates = {
+  source: "worker" | "lnd" | "unavailable";
+  worker_source: string | null;
+  data_fetched_at: string | null;
+  data_age_seconds: number | null;
+  unavailable_reason: "lnd_flat_25" | "lnd_error" | null;
+  ceiling_sat_per_vbyte: number;
+  sizes_vb: { open: number; close: number };
+  options: Record<FeeOptionKey, FeeEstimateOption> | null;
 };
 
 // ─── Member Liquidity Advisor types (member node) ────────────────────────

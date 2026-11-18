@@ -1971,6 +1971,9 @@ div:has(> .action-confirm-input) + .dialog-actions {
    Figures are Amounts, whose lines are nowrap on their own. A block, because
    balance evens out the lines of a block, not of an inline span. */
 .fee-cost-words { display: block; white-space: normal; text-wrap: balance; }
+/* fee-estimates D3: "about $X, if accepted" — the figure keeps its line
+   (.amount-figure is nowrap); the qualifier after it may wrap. */
+.fee-cost-qualifier { white-space: normal; }
 .choice-reason { font-size: 0.75rem; color: var(--text-2); }
 
 /* ─── Amount (components/amount/Amount.tsx, NoRateNote.tsx) ───────

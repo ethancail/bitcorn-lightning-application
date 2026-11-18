@@ -35,6 +35,13 @@ import {
 } from "./confirmMachine";
 import { classifyConfirmError, MISMATCH_NEXT_STEP } from "./confirmErrors";
 
+/**
+ * Returned by an onConfirm that sent nothing because it re-showed the modal
+ * (fee-estimates O6: a stale estimate was refreshed). `run` then leaves the
+ * modal as the action set it, instead of closing it as done.
+ */
+export const RESHOWN = Symbol("reshown");
+
 export interface ActionConfirmController {
   state: ConfirmState;
   /** Show the modal for an action. */
@@ -56,7 +63,8 @@ export function useActionConfirm(): ActionConfirmController {
   async function run(perform: () => Promise<unknown>): Promise<void> {
     dispatch({ t: "submit" });
     try {
-      await perform();
+      const result = await perform();
+      if (result === RESHOWN) return;
       dispatch({ t: "done" });
     } catch (e: unknown) {
       const err = e as { message?: string };
@@ -129,6 +137,10 @@ export default function ActionConfirmModal({
             <p style={{ marginTop: 12, marginBottom: 0, opacity: 0.85 }}>{summary.irreversible}</p>
           )}
         </div>
+
+        {state.step === "confirm" && state.notice && (
+          <p role="status" className="action-confirm-notice" style={{ marginTop: 12, marginBottom: 0 }}>{state.notice}</p>
+        )}
 
         {/* ── Typed challenge ── */}
         {state.step === "confirm" && (
