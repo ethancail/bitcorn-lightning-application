@@ -3,6 +3,7 @@ import worker from "../../src/index";
 import {
   FEES_BACKOFF_KV_KEY,
   FEES_CACHE_TTL,
+  FEES_FETCH_TIMEOUT_MS,
   FEES_KV_KEY,
   FEES_LAST_GOOD_KV_KEY,
   FEES_LAST_GOOD_TTL,
@@ -178,6 +179,33 @@ describe("/fees — at most one upstream fetch per cache window, failures includ
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(res.headers.get("X-Fee-Source")).toBe("live");
   });
+});
+
+describe("/fees — a stalled upstream fetch times out", () => {
+  it(
+    "an upstream that never answers is abandoned after FEES_FETCH_TIMEOUT_MS; last-good is served",
+    async () => {
+      expect(FEES_FETCH_TIMEOUT_MS).toBe(4_000);
+      // Hangs forever unless the request's own signal aborts it.
+      fetchSpy.mockImplementation(
+        (_url: unknown, init?: RequestInit) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () => reject(init.signal!.reason));
+          }),
+      );
+      const kv = mockKV({ [FEES_LAST_GOOD_KV_KEY]: LAST_GOOD_BODY });
+      const started = Date.now();
+      const res = await handleFees(envWith(kv));
+      const elapsed = Date.now() - started;
+
+      expect(res.headers.get("X-Fee-Source")).toBe("fallback");
+      expect(await res.text()).toBe(LAST_GOOD_BODY);
+      expect(elapsed).toBeGreaterThanOrEqual(FEES_FETCH_TIMEOUT_MS - 50);
+      expect(elapsed).toBeLessThan(FEES_FETCH_TIMEOUT_MS + 3_000);
+      expect(kv.store.get(FEES_BACKOFF_KV_KEY)).toBe("1");
+    },
+    15_000,
+  );
 });
 
 describe("/fees — the body carries fetched_at, the original fetch time", () => {

@@ -25,6 +25,10 @@ export const FEES_CACHE_TTL = 300;
 // P3 = P10: 30 min. The API treats Worker data older than 30 min as stale, so
 // a last-good value kept longer could only ever trigger the API's fallback.
 export const FEES_LAST_GOOD_TTL = 1800;
+// How long one mempool.space fetch may take before it counts as failed (then
+// last-good is served and the backoff starts). Shorter than the API's own 5 s
+// wait for /fees, so a stalled upstream still yields an answer in time.
+export const FEES_FETCH_TIMEOUT_MS = 4_000;
 
 // The blocks the API reads: Priority projected block 1, Normal 3, Economy 6
 // (indexes 0, 2, 5). A missing block takes the last present one (P9 (a)).
@@ -64,7 +68,10 @@ function respond(body: string, source: "live" | "cache" | "fallback" | "none"): 
 
 async function fetchMempoolBlocks(): Promise<unknown> {
   try {
-    const res = await fetch(MEMPOOL_BLOCKS_URL, { headers: { Accept: "application/json" } });
+    const res = await fetch(MEMPOOL_BLOCKS_URL, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(FEES_FETCH_TIMEOUT_MS),
+    });
     if (!res.ok) {
       console.error(`[fees] mempool.space returned HTTP ${res.status}`);
       return undefined;
