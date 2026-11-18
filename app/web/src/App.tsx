@@ -54,7 +54,6 @@ import AdminMembers from "./pages/AdminMembers";
 import Liquidity from "./pages/Liquidity";
 import Daybreak from "./pages/Daybreak";
 import { DAYBREAK_NAV_LABEL } from "./daybreak/daybreakCopy";
-import { SHOW_DAYBREAK_IN_MEMBER_NAV } from "./daybreak/launch";
 import DaybreakEditor from "./pages/DaybreakEditor";
 import AutomaticTransfers from "./pages/AutomaticTransfers";
 import { transfersApi } from "./api/client";
@@ -504,10 +503,7 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
     { to: "/charts", icon: "⟠", label: "Charts" },
     // Flat on purpose — no "Insights" group until it has a second entry
     // (member-screen Ruling 2, 2026-09-25). Member shell only for now.
-    // LAUNCHED 2026-10-12 — the entry is shown (daybreak/launch.ts). Before
-    // launch it was hidden with the Stablecoin entry's "hide the entry, keep
-    // the door" pattern above.
-    ...(SHOW_DAYBREAK_IN_MEMBER_NAV ? [{ to: "/daybreak", icon: "☀", label: DAYBREAK_NAV_LABEL }] : []),
+    { to: "/daybreak", icon: "☀", label: DAYBREAK_NAV_LABEL },
     { to: "/contacts", icon: "☰", label: "Contacts" },
     { to: "/channels", icon: "◈", label: "My Channels" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
@@ -600,8 +596,6 @@ function MemberShell() {
           <Routes>
             <Route path="/dashboard" element={<MemberDashboard />} />
             <Route path="/charts" element={<Charts />} />
-            {/* Its nav entry is launched as of 2026-10-12 (daybreak/launch.ts);
-                the route does not depend on that flag. */}
             <Route path="/daybreak" element={<Daybreak />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/channels" element={<ChannelsPage />} />
