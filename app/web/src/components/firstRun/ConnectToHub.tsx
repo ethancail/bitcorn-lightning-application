@@ -16,8 +16,9 @@
 // fee-estimates (2026-11-18): the "How fast" options are live
 // (components/fees): each option's time is the rounded first-confirmation
 // range (P12, "· estimate" under the LND fallback), its cost the live rate ×
-// 155 vB (P14), and the checked option is held by key (F3). No estimate → "Fee
-// estimate unavailable", no figure, submit blocked (O7); an option above 200
+// 155 vB (P14), and the checked option is held by key (F3). No estimate → one
+// plain line (COPY.feeUnavailable, not red), no figure, the footer "<sats>
+// sats" alone, submit blocked (O7; Ethan's "recs", 2026-11-18); above 200
 // sat/vB shows its figure, disabled, with the ceiling as the reason (P15).
 // From 10 min old, the data's age shows beside the figures (P18).
 //
@@ -209,7 +210,7 @@ function ConnectForm({ isPeered, initialCapacity, rate }: { isPeered: boolean; i
               }))}
             />
           ) : s.fees.status === "unavailable" ? (
-            <div className="connect-error fee-unavailable">{FEE_COPY.unavailable}</div>
+            <p className="connect-fee-unavailable fee-unavailable">{COPY.feeUnavailable}</p>
           ) : null}
           {dataAge != null && <div className="connect-hint fee-data-age">{FEE_COPY.dataAge(dataAge)}</div>}
         </section>
@@ -245,7 +246,7 @@ function ConnectForm({ isPeered, initialCapacity, rate }: { isPeered: boolean; i
           )}
           {s.capacity != null && s.fees.status !== "loading" && (
             <div className="connect-summary">
-              {formatSats(s.capacity)} · {feeText == null ? COPY.networkFeeUnavailable : `${COPY.networkFeeAbout} ${feeText}`}
+              {formatSats(s.capacity)}{feeText != null && ` · ${COPY.networkFeeAbout} ${feeText}`}
             </div>
           )}
           <button className="btn btn-primary" onClick={s.openChannelConfirm} disabled={s.openDisabled}>

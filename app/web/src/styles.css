@@ -2006,6 +2006,9 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .connect-reach-reachable .connect-dot { background: var(--green); }
 .connect-reach-addressKnown .connect-dot { background: var(--amber); }
 .connect-locked { margin: 0; font-size: 0.875rem; color: var(--text); }
+/* O7, the member's "no fee estimate" line: plain, the normal text colour, not
+   red — not an error the member caused (Ethan's "recs", 2026-11-18). */
+.connect-fee-unavailable { margin: 0; font-size: 0.8125rem; color: var(--text); }
 .connect-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .connect-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 /* The size control: one joined row of options, not separate cards. */

@@ -56,8 +56,13 @@ export const CONNECT_TO_HUB_COPY = {
 
   /** The footer summary, before the fee: "<sats> · network fee about <fee>". */
   networkFeeAbout: "network fee about",
-  /** The footer summary with no estimate: "<sats> · Fee estimate unavailable" (O7). */
-  networkFeeUnavailable: "Fee estimate unavailable",
+  /**
+   * O7, the member's wording (Ethan, "recs" via member-first-run-ui's review,
+   * 2026-11-18): one plain line under "How fast", in the normal text colour,
+   * not red — the member caused nothing. The footer then shows the size alone,
+   * "<sats> sats", without repeating this line.
+   */
+  feeUnavailable: "Fee estimates aren't available right now, so you can't connect yet. Try again in a few minutes.",
   connecting: "Connecting…",
   connect: "Connect to BitCorn →",
   openFailed: "Couldn't connect to BitCorn",

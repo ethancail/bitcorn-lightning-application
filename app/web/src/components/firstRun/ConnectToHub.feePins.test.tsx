@@ -30,6 +30,7 @@ import { feeEstimatesStub, UNAVAILABLE } from "../fees/feeEstimates.testutil";
 import { FEE_COPY, timeText } from "../fees/feeEstimatesDescriptor";
 import { formatSats, formatUsd } from "../amount/amountDescriptor";
 import { confirmationFor, findUiConfirmedRoute } from "../../api/actionConfirmation";
+import { declsFor } from "../../styleRules.testutil";
 
 const stub = vi.hoisted(() => ({
   getTreasuryInfo: vi.fn(),
@@ -333,25 +334,46 @@ describe("the member's 10-min reshow: \"Fee updated\", the new fee, the box clea
   });
 });
 
+// REWRITTEN DELIBERATELY (Ethan's "recs" via member-first-run-ui's review,
+// relayed 2026-11-18, ruling 1), never deleted. Until then this pinned a red
+// "Fee estimate unavailable" (.connect-error) under "How fast" and the footer
+// "1,000,000 sats · Fee estimate unavailable". Now: one plain line under "How
+// fast", the normal text colour, and the footer the size alone. The subjects
+// stand: no number, no radios, nothing sent.
+const MEMBER_UNAVAILABLE =
+  "Fee estimates aren't available right now, so you can't connect yet. Try again in a few minutes.";
+
 describe("H6 — the unavailable state shows no number and sends nothing (O7)", () => {
   for (const [why, setUp] of [
     ["the API answers unavailable", () => stub.getFeeEstimates.mockResolvedValue(UNAVAILABLE)],
     ["the read fails", () => stub.getFeeEstimates.mockRejectedValue(Object.assign(new Error("x"), { status: 500 }))],
   ] as const) {
-    it(`${why}: "Fee estimate unavailable", no figure, submit blocked`, async () => {
+    it(`${why}: one plain line, no figure, the footer the size alone, submit blocked`, async () => {
       setUp();
       await render();
       const section = speedSection();
-      expect(section.textContent).toContain(FEE_COPY.unavailable);
+      const lines = section.querySelectorAll(".connect-fee-unavailable");
+      expect(lines, "exactly one unavailable line under How fast").toHaveLength(1);
+      expect(lines[0].textContent).toBe(MEMBER_UNAVAILABLE);
+      expect(lines[0].classList.contains("connect-error"), "not the red error class").toBe(false);
+      expect(section.querySelectorAll(".connect-error")).toHaveLength(0);
+      expect(section.textContent).not.toContain(FEE_COPY.unavailable);
       expect(section.textContent).not.toMatch(/sat|~|\$/);
       expect(section.querySelectorAll("input[type=radio]")).toHaveLength(0);
-      expect(host.querySelector(".connect-summary")?.textContent).toBe(`1,000,000 sats · ${FEE_COPY.unavailable}`);
+      expect(host.querySelector(".connect-summary")?.textContent).toBe("1,000,000 sats");
+      expect(host.querySelector(".connect-foot-act")?.textContent).not.toMatch(/unavailable|aren't available/);
       expect(btn("Connect to BitCorn →")!.disabled).toBe(true);
       await click(btn("Connect to BitCorn →")!);
       expect(document.body.querySelector("#action-confirm-challenge")).toBeNull();
       expect(stub.openMemberChannel).not.toHaveBeenCalled();
     });
   }
+
+  it("the line is the normal text colour, not red (the CSS)", () => {
+    const d = declsFor(".connect-fee-unavailable");
+    expect(d.color).toBe("var(--text)");
+    expect(d.color).not.toBe(declsFor(".connect-error").color);
+  });
 });
 
 describe("F3 — the option key: tied rates show honestly, the chosen option stays checked", () => {
