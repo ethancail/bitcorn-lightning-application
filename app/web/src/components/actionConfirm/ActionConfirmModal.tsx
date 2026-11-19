@@ -141,8 +141,11 @@ export default function ActionConfirmModal({
         {state.step === "confirm" && state.notice && (typeof state.notice === "string" ? (
           <p role="status" className="action-confirm-notice" style={{ marginTop: 12, marginBottom: 0 }}>{state.notice}</p>
         ) : (
-          <div role="status" className="action-confirm-notice" style={{ marginTop: 12 }}>
-            <strong className="action-confirm-notice-heading">{state.notice.heading}</strong>
+          // The member's "Fee updated" block (ruling 5 of member-first-run-ui's
+          // review, 2026-11-18): the dialog's body size and its heading
+          // weight, so it reads as part of the dialog (styles.css).
+          <div role="status" className="action-confirm-notice action-confirm-notice-block" style={{ marginTop: 12 }}>
+            <div className="action-confirm-notice-heading">{state.notice.heading}</div>
             <p className="action-confirm-notice-body" style={{ margin: "4px 0 0" }}>{state.notice.body}</p>
           </div>
         ))}

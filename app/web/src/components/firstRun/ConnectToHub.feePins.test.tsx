@@ -306,6 +306,24 @@ describe("the member's 10-min reshow: \"Fee updated\", the new fee, the box clea
     expect(document.body.textContent).not.toContain(FEE_COPY.refreshed);
   });
 
+  // Ruling 5 of member-first-run-ui's review (2026-11-18): the block reads as
+  // part of the dialog — .dialog-body's text size, and "Fee updated" in
+  // .dialog-title's weight, not a bold <strong>. Until then the heading was a
+  // <strong> (700) at the inherited size; no pin covered it.
+  it("the block wears the dialog's body size, and \"Fee updated\" the dialog's heading weight", async () => {
+    await reshow(FRESH);
+    const block = document.body.querySelector(".action-confirm-notice-block");
+    expect(block, "the reshow block carries .action-confirm-notice-block").not.toBeNull();
+    const heading = block!.querySelector(".action-confirm-notice-heading")!;
+    expect(heading.textContent).toBe("Fee updated");
+    expect(heading.tagName, "no <strong>/<b>: the weight is the CSS's").not.toMatch(/^(STRONG|B)$/);
+    expect(block!.querySelector(".action-confirm-notice-body")?.parentElement).toBe(block);
+    expect(declsFor(".action-confirm-notice-block")["font-size"]).toBe(declsFor(".dialog-body")["font-size"]);
+    expect(declsFor(".dialog-body")["font-size"]).toBe("0.875rem");
+    expect(declsFor(".action-confirm-notice-heading")["font-weight"]).toBe(declsFor(".dialog-title")["font-weight"]);
+    expect(declsFor(".dialog-title")["font-weight"]).toBe("600");
+  });
+
   for (const [why, rate] of [["no price (state none)", NONE], ["the price still loading", undefined]] as const) {
     it(`${why}: sats alone, "The new fee is about N sats."`, async () => {
       await reshow(rate);

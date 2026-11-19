@@ -1440,6 +1440,12 @@ div:has(> .action-confirm-input) + .dialog-actions {
   line-height: 1.6;
 }
 
+/* The member's "Fee updated" reshow block (ActionConfirmModal; ruling 5 of
+   member-first-run-ui's review, 2026-11-18): .dialog-body's size, and
+   .dialog-title's weight for its heading, so it reads as part of the dialog. */
+.action-confirm-notice-block { font-size: 0.875rem; }
+.action-confirm-notice-heading { font-weight: 600; }
+
 .dialog-actions {
   display: flex;
   gap: 10px;
