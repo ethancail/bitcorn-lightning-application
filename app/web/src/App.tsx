@@ -2490,8 +2490,10 @@ function TreasuryOpenChannelPanel({ contacts, rate, onChannelOpened }: {
           {/* Fee rate selector */}
           <div>
             <div className="form-label" id="treasury-open-fee-label">Confirmation Speed</div>
-            {/* fee-estimates: live options, held by key (F3); the cost is the
-                live rate × 155 vB (P14), "about $0.59" over "~770 sats"
+            {/* fee-estimates: live options, held by key (F3). Each card shows
+                its rate, "~N sat/vB", then its time, as the close dialog's do
+                (member-first-run-ui's review, ruling 2, 2026-11-18); the cost
+                is the live rate × 155 vB (P14), "about $0.59" over "~770 sats"
                 (FeeCost). No estimate → no figure, submit blocked (O7); above
                 200 sat/vB → the figure, disabled, with the reason (P15). */}
             {openOptions && fees.estimates ? (
@@ -2503,7 +2505,8 @@ function TreasuryOpenChannelPanel({ contacts, rate, onChannelOpened }: {
                 options={openOptions.map((opt) => ({
                   value: opt.key,
                   label: FEE_OPTION_LABEL[opt.key],
-                  description: timeText(opt),
+                  description: `~${opt.rate} sat/vB`,
+                  meta: timeText(opt),
                   cost: <FeeCost sats={opt.cost_sats.open} rate={rate} />,
                   disabled: isAboveCeiling(fees.estimates!, opt),
                   disabledReason: FEE_COPY.aboveCeiling(fees.estimates!.ceiling_sat_per_vbyte),

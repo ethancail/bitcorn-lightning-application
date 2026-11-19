@@ -86,10 +86,13 @@ const closeText = (est: FeeEstimates, i: number) => {
   const o = est.options![KEYS[i]];
   return `${LABELS[i]}~${o.rate} sat/vB${timeText(o)}~${formatSats(o.cost_sats.close)}, ${FEE_COPY.ifAccepted}`;
 };
-/** Open card text, price still loading: label, time, "~N sats". */
+/** Open card text, price still loading: label, rate, time, "~N sats".
+ *  REWRITTEN DELIBERATELY (member-first-run-ui's review, ruling 2, relayed
+ *  2026-11-18): until then the open card read label, time, cost, with no
+ *  rate; it now shows the rate as the close card does. */
 const openText = (est: FeeEstimates, i: number) => {
   const o = est.options![KEYS[i]];
-  return `${LABELS[i]}${timeText(o)}~${formatSats(o.cost_sats.open)}`;
+  return `${LABELS[i]}~${o.rate} sat/vB${timeText(o)}~${formatSats(o.cost_sats.open)}`;
 };
 
 /** Each card's cost line: exactly one .choice-cost (the line that never splits). */
@@ -313,6 +316,21 @@ describe("TreasuryOpenChannelPanel: live labels, keys, default and values (H1, H
   it("label (H1): three options, each card's text derived from the stub, in order", async () => {
     await showOpenForm();
     expect(openOptions().map((o) => o.textContent)).toEqual([0, 1, 2].map((i) => openText(STUB, i)));
+  });
+
+  // Ruling 2 (2026-11-18): the open card shows its sat/vB rate, matching the
+  // close dialog — the rate the card sends, in the same slots (.choice-desc
+  // the rate, .choice-meta the time).
+  it("each card shows its rate, \"~N sat/vB\", then its time — the close dialog's layout", async () => {
+    const slots = (opts: HTMLElement[]) =>
+      opts.map((o) => [o.querySelector(".choice-desc")?.textContent, o.querySelector(".choice-meta")?.textContent]);
+    const expected = KEYS.map((k) => [`~${STUB.options![k].rate} sat/vB`, timeText(STUB.options![k])]);
+    await openCloseDialog();
+    expect(slots(closeOptions()), "the close dialog: rate, then time").toEqual(expected);
+    await click(buttons(dialog()).find((b) => b.textContent?.trim() === "Cancel")!);
+    await click(buttons(openPanel()).find((b) => b.textContent?.trim() === "New Channel")!);
+    await click(buttons(openPanel()).find((b) => b.textContent?.includes("Merchant1"))!);
+    expect(slots(openOptions()), "the open panel: the same rate, then time").toEqual(expected);
   });
 
   it("the cost is its own line: one .choice-cost per card, the cost alone", async () => {
