@@ -427,6 +427,8 @@ try {
       'if [ -n "$STUB_HEAVY_LOCK" ]; then',
       '  /usr/bin/flock -n -E 200 "$STUB_HEAVY_LOCK" true; case $? in 0) echo heavy=free;; 200) echo heavy=held;; *) echo heavy=error;; esac >> "$STUB_LOG"',
       '  if [ "$(readlink /proc/$$/fd/9)" = "$STUB_HEAVY_LOCK" ]; then echo fd9=lock; else echo fd9=none; fi >> "$STUB_LOG"',
+      // ... and the job token it was handed (F2: the gate's checks belong to its job by token).
+      '  echo "job=$HARNESS_HEAVY_JOB" >> "$STUB_LOG"',
       "fi",
       // A check that takes a while, for killing the gate mid-check.
       'if [ -n "$STUB_SLEEP" ]; then sleep "$STUB_SLEEP"; echo "end $1" >> "$STUB_LOG"; fi',
@@ -626,6 +628,8 @@ try {
     check("gate 11: tsc and vitest both ran under the lock, each holding it as fd 9",
       (ran.match(/^heavy=held$/gm) || []).length === 2 && (ran.match(/^fd9=lock$/gm) || []).length === 2 &&
         !ran.includes("heavy=free") && !ran.includes("fd9=none"), ran);
+    check("gate 11: each check was handed the gate's job token",
+      (ran.match(/^job=[^\n]*verify-gate\.mjs[^\n]*:\d+$/gm) || []).length === 2, ran);
     check("gate 11: the lock is free afterwards, its record gone", lockState() === "free" && !fs.existsSync(HEAVY_INFO));
     const hist = fs.existsSync(HEAVY_HISTORY) ? fs.readFileSync(HEAVY_HISTORY, "utf8") : "";
     check("gate 11: history.log has the gate's acquire then release",

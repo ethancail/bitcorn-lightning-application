@@ -27,6 +27,10 @@
 //   - "not provable is waited on: another host, no pid, an unreadable lock" —
 //      now: the info file is display only, held or not is the kernel's.
 //   - "provablyDead, case by case" — the function is gone.
+// The reused-pid property survives in two guards, both tested below (the
+// second review's F4): heavy release signals only a holder process that has the
+// lock's file open, and a job token counts only while its record's process has
+// it open. Ancestry no longer decides who is in the job (F2): the token does.
 //
 // Linux only (/proc, /usr/bin/flock). The account check passes on ubuntu-pc as
 // user and on the OptiPlex as harnessagent; anywhere else the CLI controls are
@@ -43,7 +47,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { HEAVY_ACCOUNTS, heavyAccountRefusal, heavyContext, procStart } from "./harness-slot.mjs";
+import { HEAVY_ACCOUNTS, heavyAccountRefusal, heavyContext, heavyLocked, heldByThisJob, procStart } from "./harness-slot.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = path.join(ROOT, "scripts", "harness-slot.mjs");
@@ -74,10 +78,8 @@ function lockState(home) {
 }
 
 // The CLI under Node 20, its environment built from scratch: no inherited $HOME.
-function start(args, { home, env = {}, slotHome, viaSh = false } = {}) {
-  // viaSh: run the CLI as a child of a /bin/sh (not exec-ed), so its parent is not this file.
-  const [cmd, argv] = viaSh ? ["/bin/sh", ["-c", "\"$0\" \"$@\"; exit $?", NODE, SCRIPT, ...args]] : [NODE, [SCRIPT, ...args]];
-  const child = spawn(cmd, argv, {
+function start(args, { home, env = {}, slotHome } = {}) {
+  const child = spawn(NODE, [SCRIPT, ...args], {
     env: { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: slotHome ?? scratch(), HARNESS_HEAVY_TEST_HOME: home, ...env },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -114,6 +116,28 @@ async function bareHolder(home, secs = 30) {
   await until(() => lockState(home) === "held", "the bare holder");
   return { pid: p.pid, kill: () => { try { process.kill(-p.pid, "SIGKILL"); } catch {} } };
 }
+// F7: stops every holder process (`heavy __hold`) that has this home's lock file
+// open, recorded or not, so a failed assertion cannot leave one running. A
+// holder without --pid never exits by itself.
+function stopHolders(home) {
+  for (const pid of fs.readdirSync("/proc").filter((n) => /^[0-9]+$/.test(n))) {
+    let cmdline;
+    let fds;
+    try {
+      cmdline = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8");
+      fds = fs.readdirSync(`/proc/${pid}/fd`);
+    } catch {
+      continue;
+    }
+    if (!cmdline.includes("\0__hold\0")) continue;
+    const open = fds.some((n) => {
+      try { return fs.readlinkSync(`/proc/${pid}/fd/${n}`) === lockPath(home); } catch { return false; }
+    });
+    if (open) try { process.kill(Number(pid), "SIGKILL"); } catch {}
+  }
+}
+// The token line heavy acquire prints, unquoted (these tests use plain holder names).
+const tokenOf = (stdout) => stdout.match(/^HARNESS_HEAVY_JOB=(.*)$/m)?.[1];
 // A command that logs "start <name> <ms>" and, after `ms`, "end <name> <ms>".
 const loggedJob = (log, name, ms) => [NODE, "-e",
   `const fs=require("fs");fs.appendFileSync(${JSON.stringify(log)},"start ${name} "+Date.now()+"\\n");` +
@@ -298,6 +322,41 @@ ttest("SIGKILL of the wrapper ALONE: its command still runs and keeps the lock u
   assert.ok(gone(info.command_pid));
 });
 
+// ─── F1: nothing the command leaves behind keeps the lock unseen ──────────
+
+ttest("F1: what the command leaves running in its group is ended, and only then is the lock released", async () => {
+  const home = scratch();
+  // The control (e1abb82): the background sleep kept the lock after "released".
+  const r = await cli(["heavy", "run", "--", "sh", "-c", "sleep 30 & exit 0"], { home });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stderr, /harness lock released: heavy/);
+  assert.equal(lockState(home), "free", "the background child must not hold the lock past the release");
+  const pgid = Number(history(home).match(/acquire lock="heavy" .* pgid=(\d+)/)?.[1]);
+  assert.ok(pgid > 0, history(home));
+  assert.throws(() => process.kill(-pgid, 0), { code: "ESRCH" }, "the command's process group is empty");
+});
+
+ttest("F1: a process that left the group with fd 9 is named: NOT released, no release logged, exit 2", async () => {
+  const home = scratch();
+  let escapee = null;
+  try {
+    // setsid: its own session, out of the group the wrapper ends; it keeps fd 9.
+    const r = await cli(["heavy", "run", "--holder", "leaky", "--", "sh", "-c", "setsid sleep 30 & sleep 0.3; exit 0"], { home });
+    escapee = Number(r.stderr.match(/NOT released: pid (\d+) \(sleep\) still holds fd 9; the lock frees when it exits/)?.[1]);
+    assert.ok(escapee > 0, r.stderr);
+    assert.equal(r.code, 2, "a succeeding command whose lock is not released exits 2");
+    assert.doesNotMatch(r.stderr, /harness lock released/);
+    assert.doesNotMatch(history(home), /release lock="heavy"/, "no release line while it is held");
+    assert.equal(lockState(home), "held");
+    assert.equal(readInfo(home).holder, "leaky", "the record stays, naming the job");
+    process.kill(escapee, "SIGKILL");
+    await until(() => gone(escapee), "the escapee to go");
+    assert.equal(lockState(home), "free", "it frees when that process exits");
+  } finally {
+    if (escapee > 0) try { process.kill(escapee, "SIGKILL"); } catch {}
+  }
+});
+
 // ─── A2: who holds it is the kernel's to say ───────────────────────────────
 
 ttest("a holder outside this job (a bare flock(1)) is waited on and reported, never taken", async () => {
@@ -404,7 +463,7 @@ ttest("A3: under the heavy lock, a busy slot is refused at once in words browser
   assert.doesNotMatch(setupRefusal, WORKFLOW_WAIT);
 });
 
-ttest("A3: a Node grandchild of the command, which holds no descriptor, still counts as this job (an ancestor holds it)", async () => {
+ttest("A3: a Node grandchild of the command, which holds no descriptor, still counts as this job (its token is inherited)", async () => {
   const home = scratch();
   const slotHome = scratch();
   assert.equal((await cli(["lock", "acquire", "--slot", "1", "--holder", "other-arc", "--go", "test"], { home, slotHome })).code, 0);
@@ -424,28 +483,104 @@ ttest("A3: under the heavy lock, a free slot is taken as usual", async () => {
   assert.match(r.stdout, /acquired slot 1 for me/);
 });
 
-ttest("A3: after heavy acquire without --pid, the process that ran it never waits for a slot either", async () => {
+// F2: separate shells, as separate Claude Code Bash calls are (each its own
+// short-lived bash, so no process of the first is an ancestor of the next).
+ttest("A3 (F2): after heavy acquire, a later separate command carrying its token never waits for a slot; one without it does", async () => {
   const home = scratch();
   const slotHome = scratch();
-  assert.equal((await cli(["lock", "acquire", "--slot", "1", "--holder", "other-arc", "--go", "test"], { home, slotHome })).code, 0);
-  // One shell: acquire, ask for the busy slot, release. Its children descend from it, the acquire's owner.
+  const env = { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: slotHome, HARNESS_HEAVY_TEST_HOME: home };
   const q = (s) => `'${s.replace(/'/g, "'\\''")}'`;
-  const script = [
-    `${q(NODE)} ${q(SCRIPT)} heavy acquire --holder shell-arc`,
-    `${q(NODE)} ${q(SCRIPT)} lock acquire --slot 1 --holder shell-arc --go test; echo "slot-exit=$?" >&2`,
-    `${q(NODE)} ${q(SCRIPT)} heavy release --holder shell-arc`,
-  ].join("\n");
-  const sh = spawnSync("sh", ["-c", script], {
-    encoding: "utf8", timeout: 30_000,
-    env: { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: slotHome, HARNESS_HEAVY_TEST_HOME: home },
-  });
-  assert.match(sh.stdout, /acquired heavy for shell-arc: .*\(held by pid \d+ for pid \d+; freed by heavy release/, sh.stderr);
-  const refusal = sh.stderr.split("\n").find((l) => l.includes("slot 1"));
-  assert.match(refusal, /slot 1 refused: this job holds the heavy lock, and a heavy-lock holder never waits for a slot/);
-  assert.doesNotMatch(refusal, WORKFLOW_WAIT);
-  assert.match(sh.stderr, /slot-exit=2/);
-  assert.match(sh.stdout, /harness lock released: heavy, holder shell-arc/);
+  const shell = (line, extra = {}) => spawnSync("sh", ["-c", line], { encoding: "utf8", timeout: 30_000, env: { ...env, ...extra } });
+  try {
+    assert.equal((await cli(["lock", "acquire", "--slot", "1", "--holder", "other-arc", "--go", "test"], { home, slotHome })).code, 0);
+    const a = shell(`${q(NODE)} ${q(SCRIPT)} heavy acquire --holder shell-arc`);
+    assert.equal(a.status, 0, a.stderr);
+    assert.match(a.stdout, /acquired heavy for shell-arc: .*\(held by pid (\d+); freed by heavy release/);
+    const token = tokenOf(a.stdout);
+    assert.equal(token, `shell-arc:${readInfo(home).pid}`, a.stdout);
+    assert.equal(readInfo(home).job, token, "the record carries the token");
+    const slot = `${q(NODE)} ${q(SCRIPT)} lock acquire --slot 1 --holder shell-arc --go test`;
+
+    // The control (e1abb82 refused with the waited-on phrase here): no token, outside the job.
+    const without = shell(slot);
+    assert.equal(without.status, 2);
+    assert.match(without.stderr, WORKFLOW_WAIT, "without the token it is outside the job, and may wait");
+
+    const withToken = shell(slot, { HARNESS_HEAVY_JOB: token });
+    assert.equal(withToken.status, 2);
+    const refusal = withToken.stderr.split("\n").find((l) => l.includes("slot 1"));
+    assert.match(refusal, /slot 1 refused: this job holds the heavy lock, and a heavy-lock holder never waits for a slot/);
+    assert.doesNotMatch(refusal, WORKFLOW_WAIT);
+
+    // A token naming another job does not count.
+    const stale = shell(slot, { HARNESS_HEAVY_JOB: `shell-arc:${deadPid()}` });
+    assert.match(stale.stderr, WORKFLOW_WAIT);
+
+    const rel = shell(`${q(NODE)} ${q(SCRIPT)} heavy release --holder shell-arc`);
+    assert.match(rel.stdout, /harness lock released: heavy, holder shell-arc/, rel.stderr);
+    assert.equal(lockState(home), "free");
+  } finally {
+    stopHolders(home);
+  }
+});
+
+// F2: ancestry no longer joins processes to the job. At e1abb82 both runs below
+// descended from the --pid owner, counted as "already held by this job", and
+// ran at once.
+ttest("F2: two heavy runs that descend from a --pid owner, without its token, wait and run one at a time", async () => {
+  const home = scratch();
+  const log = path.join(home, "jobs.log");
+  const q = (s) => `'${s.replace(/'/g, "'\\''")}'`;
+  const run = (name) => [NODE, SCRIPT, "heavy", "run", "--", ...loggedJob(log, name, 700)].map(q).join(" ");
+  const out = path.join(home, "runs.err");
+  try {
+    // The owner starts both runs, lives 1.5 s, and exits; its holder then lets go.
+    const sh = spawn("sh", ["-c",
+      `${q(NODE)} ${q(SCRIPT)} heavy acquire --holder session --pid $$ >/dev/null; ` +
+      `(${run("a")}) 2>>${q(out)} & (${run("b")}) 2>>${q(out)} & sleep 1.5; exit 0`], {
+      env: { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: scratch(), HARNESS_HEAVY_TEST_HOME: home }, stdio: "ignore",
+    });
+    await once(sh, "exit");
+    await until(() => fs.existsSync(log) && (fs.readFileSync(log, "utf8").match(/^end /gm) ?? []).length === 2, "both runs", 20_000);
+    const spans = intervals(log);
+    assertNoOverlap(spans);
+    assert.doesNotMatch(fs.readFileSync(out, "utf8"), /already held by this job/);
+    await until(() => lockState(home) === "free", "the lock to free");
+  } finally {
+    stopHolders(home);
+  }
+});
+
+// F2: ancestry plays no part, even the descriptor's. A child of the holder that
+// has fd 9 but not the token is outside the job, so it waits (here, bounded).
+ttest("F2: a child of the holder without the token is outside the job, even holding fd 9", async () => {
+  const home = scratch();
+  const r = await cli(["heavy", "run", "--holder", "parent", "--",
+    "env", "-u", "HARNESS_HEAVY_JOB", NODE, SCRIPT, "heavy", "run", "--wait", "1", "--", "true"], { home });
+  assert.equal(r.code, 2, r.stderr);
+  assert.doesNotMatch(r.stderr, /already held by this job/);
+  assert.match(r.stderr, /heavy is already locked by "parent"/);
   assert.equal(lockState(home), "free");
+});
+
+ttest("F2: inside one token, concurrency is the caller's: two heavy runs with the same token both run, at once", async () => {
+  const home = scratch();
+  const log = path.join(home, "jobs.log");
+  try {
+    const a = await cli(["heavy", "acquire", "--holder", "shared"], { home });
+    const token = tokenOf(a.stdout);
+    assert.ok(token, a.stdout);
+    const rs = await Promise.all(["a", "b"].map((n) =>
+      cli(["heavy", "run", "--", ...loggedJob(log, n, 1000)], { home, env: { HARNESS_HEAVY_JOB: token } })));
+    for (const r of rs) {
+      assert.equal(r.code, 0, r.stderr);
+      assert.match(r.stderr, /already held by this job \("shared"\); running without acquiring again/);
+    }
+    const [x, y] = intervals(log);
+    assert.ok(y.s < x.e, "they overlap: the token makes them one job");
+  } finally {
+    stopHolders(home);
+  }
 });
 
 ttest("a slot holder may wait for heavy: holding a slot does not stop a heavy acquire", async () => {
@@ -467,97 +602,219 @@ ttest("a heavy run inside a heavy run does not wait on itself", async () => {
   assert.ok(Date.now() - t0 < 3000, "it must not have waited");
 });
 
+// F3. The control (e1abb82): the inner acquire's holder waited on "outer" until --wait ran out.
+ttest("F3: a heavy acquire inside a job that holds heavy refuses at once, and acquires nothing", async () => {
+  const home = scratch();
+  try {
+    const t0 = Date.now();
+    const r = await cli(["heavy", "run", "--holder", "outer", "--", NODE, SCRIPT, "heavy", "acquire", "--holder", "inner", "--wait", "5"], { home });
+    assert.ok(Date.now() - t0 < 4000, `it must not wait (took ${Date.now() - t0} ms)`);
+    assert.equal(r.code, 2, r.stderr);
+    assert.match(r.stderr, /harness-slot heavy: already held by this job \("outer"\); nothing acquired/);
+    assert.doesNotMatch(r.stderr, /waiting/);
+    assert.doesNotMatch(history(home), /holder="inner"/);
+    // The same from a command carrying an acquire's token.
+    const a = await cli(["heavy", "acquire", "--holder", "first"], { home });
+    const again = await cli(["heavy", "acquire", "--holder", "second", "--wait", "5"], { home, env: { HARNESS_HEAVY_JOB: tokenOf(a.stdout) } });
+    assert.equal(again.code, 2, again.stderr);
+    assert.match(again.stderr, /already held by this job \("first"\); nothing acquired/);
+    assert.equal(readInfo(home).holder, "first");
+  } finally {
+    stopHolders(home);
+  }
+});
+
 ttest("heavy acquire / release: a holder process keeps the lock, so there is no pid-less acquire; release refuses another's", async () => {
   const home = scratch();
-  // Acquired from a short-lived sh (which forks the CLI rather than exec-ing it), so the
-  // owner is that sh, not this test process: the blocked run below is another job's, not
-  // a nested one. (From the owner itself, a heavy run is "already held by this job".)
-  const a = await cli(["heavy", "acquire", "--holder", "polar-gate"], { home, viaSh: true });
-  assert.equal(a.code, 0, a.stderr);
-  const info = readInfo(home);
-  assert.equal(info.kind, "acquire");
-  assert.ok(Number.isInteger(info.owner_pid) && info.owner_pid !== process.pid, "owned by the sh, not this test");
-  assert.ok(Number.isInteger(info.pid) && !gone(info.pid), "the holder process runs");
-  assert.ok(fs.readdirSync(`/proc/${info.pid}/fd`).some((n) => {
-    try { return fs.readlinkSync(`/proc/${info.pid}/fd/${n}`) === lockPath(home); } catch { return false; }
-  }), "and has the lock's file open");
-  assert.match(a.stdout, new RegExp(`held by pid ${info.pid} for pid \\d+; freed by heavy release, or --force --reason`));
-  assert.equal(lockState(home), "held");
-  const blocked = await cli(["heavy", "run", "--wait", "1", "--", "true"], { home });
-  assert.equal(blocked.code, 2);
-  assert.match(blocked.stderr, new RegExp(`"polar-gate" since \\S+ on \\S+, pid ${info.pid} running`));
-  const wrong = await cli(["heavy", "release", "--holder", "someone-else"], { home });
-  assert.equal(wrong.code, 2);
-  assert.match(wrong.stderr, /heavy is held by "polar-gate", not "someone-else"/);
-  assert.equal(lockState(home), "held", "a refused release stops nothing");
-  const rel = await cli(["heavy", "release", "--holder", "polar-gate"], { home });
-  assert.equal(rel.code, 0, rel.stderr);
-  assert.match(rel.stdout, /^harness lock released: heavy, holder polar-gate, held .* on \S+$/m);
-  assert.ok(gone(info.pid), "release stops the holder process");
-  assert.equal(lockState(home), "free");
-  assert.equal((await cli(["heavy", "release", "--holder", "polar-gate"], { home })).code, 2, "nothing left to release");
+  try {
+    const a = await cli(["heavy", "acquire", "--holder", "polar-gate"], { home });
+    assert.equal(a.code, 0, a.stderr);
+    const info = readInfo(home);
+    assert.equal(info.kind, "acquire");
+    assert.equal(info.job, `polar-gate:${info.pid}`);
+    assert.equal(tokenOf(a.stdout), info.job, "the token is printed");
+    assert.ok(info.owner_pid === undefined, "without --pid, no owner is recorded");
+    assert.ok(Number.isInteger(info.pid) && !gone(info.pid), "the holder process runs");
+    assert.ok(fs.readdirSync(`/proc/${info.pid}/fd`).some((n) => {
+      try { return fs.readlinkSync(`/proc/${info.pid}/fd/${n}`) === lockPath(home); } catch { return false; }
+    }), "and has the lock's file open");
+    assert.match(a.stdout, new RegExp(`held by pid ${info.pid}; freed by heavy release, or --force --reason`));
+    assert.equal(lockState(home), "held");
+    // This test process ran the acquire, but carries no token: outside the job, it waits.
+    const blocked = await cli(["heavy", "run", "--wait", "1", "--", "true"], { home });
+    assert.equal(blocked.code, 2);
+    assert.match(blocked.stderr, new RegExp(`"polar-gate" since \\S+ on \\S+, pid ${info.pid} running`));
+    const wrong = await cli(["heavy", "release", "--holder", "someone-else"], { home });
+    assert.equal(wrong.code, 2);
+    assert.match(wrong.stderr, /heavy is held by "polar-gate", not "someone-else"/);
+    assert.equal(lockState(home), "held", "a refused release stops nothing");
+    const rel = await cli(["heavy", "release", "--holder", "polar-gate"], { home });
+    assert.equal(rel.code, 0, rel.stderr);
+    assert.match(rel.stdout, /^harness lock released: heavy, holder polar-gate, held .* on \S+$/m);
+    assert.ok(gone(info.pid), "release stops the holder process");
+    assert.equal(lockState(home), "free");
+    assert.equal((await cli(["heavy", "release", "--holder", "polar-gate"], { home })).code, 2, "nothing left to release");
 
-  const dead = await cli(["heavy", "acquire", "--holder", "x", "--pid", String(deadPid())], { home });
-  assert.equal(dead.code, 2);
-  assert.match(dead.stderr, /no such running process/);
+    const dead = await cli(["heavy", "acquire", "--holder", "x", "--pid", String(deadPid())], { home });
+    assert.equal(dead.code, 2);
+    assert.match(dead.stderr, /no such running process/);
+  } finally {
+    stopHolders(home);
+  }
 });
 
 ttest("heavy release --force stops an acquire's holder process, and refuses a running heavy job", async () => {
   const home = scratch();
-  assert.equal((await cli(["heavy", "acquire", "--holder", "stuck"], { home })).code, 0);
-  const { pid } = readInfo(home);
-  const forced = await cli(["heavy", "release", "--force", "--reason", "test"], { home });
-  assert.equal(forced.code, 0, forced.stderr);
-  assert.match(forced.stdout, /harness lock FORCE-released: heavy, was held by stuck since \S+; reason "test"/);
-  assert.match(history(home), /force-release lock="heavy" holder="stuck" acquired_at="\S+" reason="test"/);
-  assert.ok(gone(pid));
-  assert.equal(lockState(home), "free");
-
-  const run = start(["heavy", "run", "--holder", "busy", "--", "sleep", "30"], { home });
   try {
-    await until(() => run.err().includes("acquired the heavy lock"), "the lock");
-    const refused = await cli(["heavy", "release", "--force", "--reason", "test"], { home });
-    assert.equal(refused.code, 2, refused.stderr);
-    assert.match(refused.stderr, /not by a heavy acquire holder process: the kernel frees it when that job ends/);
-    assert.equal(lockState(home), "held");
-    assert.equal((await cli(["heavy", "release", "--holder", "busy"], { home })).code, 2, "nor by name");
+    assert.equal((await cli(["heavy", "acquire", "--holder", "stuck"], { home })).code, 0);
+    const { pid } = readInfo(home);
+    const forced = await cli(["heavy", "release", "--force", "--reason", "test"], { home });
+    assert.equal(forced.code, 0, forced.stderr);
+    assert.match(forced.stdout, /harness lock FORCE-released: heavy, was held by stuck since \S+; reason "test"/);
+    assert.match(history(home), /force-release lock="heavy" holder="stuck" acquired_at="\S+" reason="test"/);
+    assert.ok(gone(pid));
+    assert.equal(lockState(home), "free");
+
+    const run = start(["heavy", "run", "--holder", "busy", "--", "sleep", "30"], { home });
+    try {
+      await until(() => run.err().includes("acquired the heavy lock"), "the lock");
+      const refused = await cli(["heavy", "release", "--force", "--reason", "test"], { home });
+      assert.equal(refused.code, 2, refused.stderr);
+      assert.match(refused.stderr, /not by a heavy acquire holder process: the kernel frees it when that job ends/);
+      assert.equal(lockState(home), "held");
+      assert.equal((await cli(["heavy", "release", "--holder", "busy"], { home })).code, 2, "nor by name");
+    } finally {
+      run.child.kill("SIGTERM");
+      await run.done;
+    }
   } finally {
-    run.child.kill("SIGTERM");
-    await run.done;
+    stopHolders(home);
   }
+});
+
+// F4 (1): the reused-pid property, in release's kill target. The mutant (no
+// hasOpen in heavyRelease's holderProcess) SIGKILLed the unrelated process and
+// reported FORCE-released while the lock stayed held.
+ttest("F4: heavy release never signals a process its record names unless that process has the lock open", async () => {
+  const home = scratch();
+  const bare = await bareHolder(home);
+  const victim = liveSleeper();
+  try {
+    // A stale or forged record: an acquire holder, a live pid that is not the holder.
+    fs.writeFileSync(infoPath(home), JSON.stringify({
+      holder: "ghost", acquired_at: "2026-11-19T12:00:00Z", host: HOST, slot: "heavy", kind: "acquire",
+      pid: victim.pid, job: `ghost:${victim.pid}`,
+    }));
+    for (const args of [["--force", "--reason", "test"], ["--holder", "ghost"]]) {
+      const r = await cli(["heavy", "release", ...args], { home });
+      assert.equal(r.code, 2, r.stderr);
+      assert.match(r.stderr, /not by a heavy acquire holder process/);
+      assert.ok(!gone(victim.pid), `release ${args.join(" ")} must not signal pid ${victim.pid}`);
+      assert.equal(lockState(home), "held");
+    }
+    assert.doesNotMatch(history(home), /force-release|release lock="heavy"/);
+  } finally {
+    victim.kill();
+    bare.kill();
+  }
+  // The positive control: a genuine holder process is released by both.
+  const home2 = scratch();
+  try {
+    for (const args of [["--force", "--reason", "test"], ["--holder", "real"]]) {
+      assert.equal((await cli(["heavy", "acquire", "--holder", "real"], { home: home2 })).code, 0);
+      const { pid } = readInfo(home2);
+      const r = await cli(["heavy", "release", ...args], { home: home2 });
+      assert.equal(r.code, 0, r.stderr);
+      assert.ok(gone(pid));
+      assert.equal(lockState(home2), "free");
+    }
+  } finally {
+    stopHolders(home2);
+  }
+});
+
+// F4 (2): the reused-pid property, in the job token. The mutant (no hasOpen in
+// heldByThisJob) counted a token whose record's pid was alive but not the holder.
+ttest("F4: a job token counts only while its record's process has the lock's file open", async () => {
+  const home = scratch();
+  const bare = await bareHolder(home); // flock(1): has heavy.lock open
+  const other = liveSleeper(); // alive, has it not open: a dead holder's reused pid
+  try {
+    const put = (pid) => fs.writeFileSync(infoPath(home), JSON.stringify({
+      holder: "h", acquired_at: "2026-11-19T12:00:00Z", host: HOST, slot: "heavy", kind: "acquire", pid, job: `h:${pid}`,
+    }));
+    put(bare.pid);
+    assert.equal(heldByThisJob(home, { env: { HARNESS_HEAVY_JOB: `h:${bare.pid}` } }), true, "the positive control");
+    assert.equal(heldByThisJob(home, { env: { HARNESS_HEAVY_JOB: `h:${other.pid}` } }), false, "a token not the record's");
+    assert.equal(heldByThisJob(home, { env: {} }), false, "no token");
+    put(other.pid);
+    assert.equal(heldByThisJob(home, { env: { HARNESS_HEAVY_JOB: `h:${other.pid}` } }), false,
+      "the record's pid is alive but does not have the lock open");
+  } finally {
+    other.kill();
+    bare.kill();
+  }
+});
+
+// F6: /proc/locks prints the device its own way, so a line is matched on the
+// inode alone; another filesystem's flocked file with the same inode number
+// must not read as heavy held. The mutant (no open-file check) read it as held.
+ttest("F6: heavyLocked needs a process with heavy.lock itself open, not just its inode number in /proc/locks", async () => {
+  const home = scratch();
+  fs.mkdirSync(locksDir(home), { recursive: true });
+  fs.writeFileSync(lockPath(home), "");
+  const ino = fs.statSync(lockPath(home)).ino;
+  const foreign = () => `1: FLOCK  ADVISORY  WRITE 4242 00:4f:${ino} 0 EOF\n`;
+  assert.equal(heavyLocked(home, { procLocks: foreign }), false, "same inode number, nobody has heavy.lock open");
+  assert.equal(heavyLocked(home, { procLocks: () => "" }), false);
+  const bare = await bareHolder(home);
+  try {
+    assert.equal(heavyLocked(home), true, "the positive control: really held");
+    assert.equal(heavyLocked(home, { procLocks: foreign }), true, "listed, and heavy.lock is open");
+  } finally {
+    bare.kill();
+  }
+  await until(() => lockState(home) === "free", "the bare holder to go");
+  assert.equal(heavyLocked(home), false);
 });
 
 ttest("heavy acquire --pid: the named process is the holder's owner, and its death frees the lock to the next acquirer", async () => {
   const home = scratch();
   const p = liveSleeper();
-  let holderPid;
   try {
     const a = await cli(["heavy", "acquire", "--holder", "session", "--pid", String(p.pid)], { home });
     assert.equal(a.code, 0, a.stderr);
     assert.match(a.stdout, new RegExp(`for pid ${p.pid}, freed when it exits\\)`));
-    holderPid = readInfo(home).pid;
+    const holderPid = readInfo(home).pid;
     assert.equal((await cli(["heavy", "run", "--wait", "1", "--", "true"], { home })).code, 2);
+    p.kill();
+    const r = await cli(["heavy", "run", "--wait", "10", "--", "true"], { home });
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(gone(holderPid), "the holder let go and ended");
+    assert.match(history(home), /release lock="heavy" holder="session" acquired_at="\S+" held="\S+"/);
   } finally {
     p.kill();
+    stopHolders(home);
   }
-  const r = await cli(["heavy", "run", "--wait", "10", "--", "true"], { home });
-  assert.equal(r.code, 0, r.stderr);
-  assert.ok(gone(holderPid), "the holder let go and ended");
-  assert.match(history(home), /release lock="heavy" holder="session" acquired_at="\S+" held="\S+"/);
 });
 
 ttest("heavy acquire stopped while it waits: its holder process gives up, and never takes the lock for nobody", async () => {
   const home = scratch();
   const bare = await bareHolder(home);
-  const acq = start(["heavy", "acquire", "--holder", "late"], { home });
-  await until(() => acq.err().includes("waiting"), "the acquire to wait");
-  acq.child.kill("SIGKILL"); // no handler runs: the holder sees its IPC channel close
-  await acq.done;
-  bare.kill();
-  await until(() => lockState(home) === "free", "the bare holder to go");
-  await sleep(1500);
-  assert.equal(lockState(home), "free", "the abandoned holder must not have taken it");
-  assert.ok(!fs.existsSync(infoPath(home)));
+  try {
+    const acq = start(["heavy", "acquire", "--holder", "late"], { home });
+    await until(() => acq.err().includes("waiting"), "the acquire to wait");
+    acq.child.kill("SIGKILL"); // no handler runs: the holder sees its IPC channel close
+    await acq.done;
+    bare.kill();
+    await until(() => lockState(home) === "free", "the bare holder to go");
+    await sleep(1500);
+    assert.equal(lockState(home), "free", "the abandoned holder must not have taken it");
+    assert.ok(!fs.existsSync(infoPath(home)));
+  } finally {
+    bare.kill();
+    stopHolders(home);
+  }
 });
 
 // ─── exit codes (review findings #3, #4) ───────────────────────────────────

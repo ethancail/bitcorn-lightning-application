@@ -693,15 +693,17 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
 // found free, and a dead job's lock is never found held.
 //
 // What carries the descriptor: a heavy run's command gets it as its fd 9 (so do
-// the Stop hook's checks), and a shell or any other non-Node program passes it
-// on to the children it starts. A NODE PROCESS DOES NOT: Node marks every
-// descriptor it inherits close-on-exec at startup (02000000 in
-// /proc/<pid>/fdinfo/9), so a Node command holds the lock itself and its own
-// children do not. A job whose top process is SIGKILLed alone while Node
-// children of it run on therefore frees the lock early. A job that ends any
-// other way (it exits, a signal it is forwarded, its whole tree killed) frees
-// it exactly when its top process is gone, and that process waits for its
-// children.
+// the Stop hook's checks), and a shell passes it on to the children it starts.
+// A NODE OR PYTHON PROCESS DOES NOT: Node marks every descriptor it inherits
+// close-on-exec at startup (02000000 in /proc/<pid>/fdinfo/9), and Python's
+// subprocess closes every descriptor above 2 in its children unless named in
+// pass_fds. Such a command holds the lock itself and its own children do not,
+// so a job whose top process is SIGKILLed alone while those children run on
+// frees the lock early. When a heavy run's top process exits, the wrapper ends
+// the rest of its process group (SIGTERM, then SIGKILL after RUN_GRACE_MS), and
+// reports the lock released only if no other process still holds the
+// descriptor; one that left the group with it is named instead ("NOT
+// released").
 //
 // heavy.lock is never written, truncated, replaced or removed: a removed lock
 // file would let the next job lock a new file while a job holds the old one (an
@@ -722,15 +724,22 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
 //      stops only a holder process that has the lock open, under the name it
 //      was acquired for. With --pid, the holder also lets go when that process
 //      exits.
+// THE JOB TOKEN (Ethan's ruling on the second review's F2, 2026-11-19): which
+//      processes belong to the job holding heavy is carried by the environment,
+//      never by process ancestry. HARNESS_HEAVY_JOB=<holder>:<holder pid> is
+//      recorded in heavy.info.json as `job`; heavy acquire prints it, heavy run
+//      and the Stop hook set it for what they start. A process belongs to the
+//      job (heldByThisJob) when its HARNESS_HEAVY_JOB equals the live record's
+//      job and a process of that record (its pid, or a run's command) has the
+//      lock's file open. Concurrency inside one token is the caller's job: two
+//      heavy runs started with the same token both run, at once.
 // A3 — a job holding the heavy lock never waits for a slot (heavyNoWait,
-//      above). "This job holds heavy" (heldByThisJob): this process or an
-//      ancestor has the lock's file open, or this process descends from the
-//      process a heavy acquire was made for (--pid, else the process that ran
-//      heavy acquire) while that acquire's holder still has it open. Slot
-//      holders may wait for heavy: with no heavy holder ever waiting, the two
-//      cannot deadlock.
+//      above), decided by heldByThisJob. Slot holders may wait for heavy: with
+//      no heavy holder ever waiting, the two cannot deadlock. Inside its own
+//      job, heavy run runs its command without acquiring again and heavy
+//      acquire refuses at once.
 // A4 — scripts/verify-gate.mjs takes it in process (lockHeavy, recordHeavy)
-//      and hands the descriptor to its checks as their fd 9.
+//      and hands the descriptor to its checks as their fd 9, with its token.
 // Setup and heavy are independent (ruling 5). Heavy has no go (ruling 7); the
 // default holder is <account>@<host>:<command>.
 
@@ -779,7 +788,7 @@ export function procStat(pid) {
 }
 
 // The start time of a RUNNING process, or null: none, or a zombie. The lock does
-// not use it; it identifies the process a heavy acquire was made for (A3, --pid).
+// not use it; it identifies the process a heavy acquire --pid was made for.
 export function procStart(pid) {
   const stat = procStat(pid);
   return stat === null || stat.state === "Z" || stat.state === "X" ? null : stat.start;
@@ -801,32 +810,60 @@ function fileKey(file) {
 // Whether process `pid` has open the file `key` (fileKey) names. A process that
 // cannot be read (gone, another account's) has not.
 export function hasOpen(pid, key) {
+  return openFds(pid, key).length > 0;
+}
+
+// The descriptor numbers on which process `pid` has open the file `key` names.
+function openFds(pid, key) {
   let fds;
   try {
     fds = fs.readdirSync(`/proc/${pid}/fd`);
   } catch {
-    return false;
+    return [];
   }
-  for (const n of fds) {
+  return fds.filter((n) => {
     try {
       const s = fs.statSync(`/proc/${pid}/fd/${n}`);
-      if (`${s.dev}:${s.ino}` === key) return true;
-    } catch {}
-  }
-  return false;
+      return `${s.dev}:${s.ino}` === key;
+    } catch {
+      return false;
+    }
+  });
 }
 
+const allPids = () => fs.readdirSync("/proc").filter((n) => /^[0-9]+$/.test(n)).map(Number);
+
+// The processes that hold the flock on the file `key` names, read from
+// /proc/<pid>/fdinfo: a descriptor whose open file holds a flock lists it as a
+// "lock:" line there, and every process sharing that open file shows it. A
+// waiter's own open of the file shows none, so it is not counted.
+export function lockHolders(key) {
+  return allPids().filter((pid) => openFds(pid, key).some((n) => {
+    try {
+      return /^lock:\s.*\bFLOCK\b/m.test(fs.readFileSync(`/proc/${pid}/fdinfo/${n}`, "utf8"));
+    } catch {
+      return false;
+    }
+  }));
+}
+
+const readProcLocks = () => fs.readFileSync("/proc/locks", "utf8");
+
 // Whether the kernel holds a lock on heavy.lock, read from /proc/locks, which
-// takes nothing. Matched on the inode: /proc/locks prints the device its own way.
-export function heavyLocked(home) {
+// takes nothing. /proc/locks prints the device its own way, so a line is matched
+// on the inode, and (F6) the lock counts only while some process has heavy.lock
+// itself open by dev:ino, so another filesystem's file with the same inode
+// number is not mistaken for it. procLocks is a test seam.
+export function heavyLocked(home, { procLocks = readProcLocks } = {}) {
   const key = fileKey(lockFile(home, "heavy"));
   if (key === null) return false;
   const ino = key.split(":")[1];
-  return fs.readFileSync("/proc/locks", "utf8").split("\n").some((line) => {
+  const listed = procLocks().split("\n").some((line) => {
     // "1: FLOCK  ADVISORY  WRITE 1234 fc:00:3576783 0 EOF"; a waiter's line reads "1: -> FLOCK …".
     const f = line.trim().split(/\s+/);
     return f[1] === "FLOCK" && f[5]?.split(":")[2] === ino;
   });
+  return listed && allPids().some((pid) => hasOpen(pid, key));
 }
 
 function readInfoText(home) {
@@ -863,8 +900,13 @@ export function describeHeavy(info) {
   return `${who}, pid ${info.pid} gone: a process that inherited the lock still holds it`;
 }
 
-// A3: whether this process belongs to the job holding heavy (see the header).
-export function heldByThisJob(home, { pid = process.pid, stat = procStat } = {}) {
+// A3 and nesting: whether the caller (its environment, `env`) belongs to the job
+// holding heavy — its HARNESS_HEAVY_JOB is the live record's job, and a process
+// of that record has the lock's file open (see THE JOB TOKEN, above). Ancestry
+// plays no part.
+export function heldByThisJob(home, { env = process.env } = {}) {
+  const token = env.HARNESS_HEAVY_JOB;
+  if (typeof token !== "string" || token === "") return false;
   let key;
   let info;
   try {
@@ -873,18 +915,11 @@ export function heldByThisJob(home, { pid = process.pid, stat = procStat } = {})
   } catch {
     return false;
   }
-  if (key === null) return false;
-  const owner = info && !info.unreadable && Number.isInteger(info.owner_pid) && typeof info.owner_start === "string" ? info : null;
-  for (let p = pid, hops = 0; p > 1 && hops < 4096; hops++) {
-    // Open but not locked happens only while waiting, and a waiter's one child is flock(1).
-    if (hasOpen(p, key)) return true;
-    const s = stat(p);
-    if (s === null) return false;
-    if (owner && p === owner.owner_pid && s.start === owner.owner_start && hasOpen(owner.pid, key)) return true;
-    p = s.ppid;
-  }
-  return false;
+  if (info === null || info.unreadable || info.job !== token) return false;
+  return [info.pid, info.command_pid].some((p) => Number.isInteger(p) && p > 0 && hasOpen(p, key));
 }
+
+export const jobToken = (holder, pid) => `${holder}:${pid}`;
 
 // A1: null when `account` is this host's heavy account, else the refusal.
 export function heavyAccountRefusal(host, account) {
@@ -1013,30 +1048,47 @@ export async function lockHeavy({ home, waitMs = Infinity, pollMs = 5000, say = 
 
 // Once the lock is held: write heavy.info.json and history.log's acquire line.
 // fields: holder, host, kind ("run", "acquire" or "gate"), pid (the process
-// holding the descriptor), and what the kind adds. Returns { info, text,
-// release(at) }; release removes the info file and writes the release line
-// while still holding, then closes `fd`, and returns the release line.
-export function recordHeavy(home, fd, { holder, host, ...rest }, now = new Date()) {
+// holding the descriptor), job (its token), and what the kind adds. Returns
+// { info, text, logged, log(extra), release(at) }. With deferLog, the acquire
+// line waits for log(extra), which first adds `extra` to the record (heavy run:
+// the record is written before its command starts, the command's pid after).
+// release removes the info file and, if the acquire was logged, writes the
+// release line while still holding, then closes `fd`; it returns the release
+// line, or null when nothing was logged.
+export function recordHeavy(home, fd, { holder, host, ...rest }, now = new Date(), { deferLog = false } = {}) {
   const info = { holder, acquired_at: utc(now), host, slot: "heavy", ...rest };
-  const text = `${JSON.stringify(info, null, 2)}\n`;
   const file = heavyInfoFile(home);
-  const tmp = privateName(file, "tmp");
-  fs.writeFileSync(tmp, text, { flag: "wx" });
-  fs.renameSync(tmp, file);
-  appendHistory(home, `${info.acquired_at} acquire ${field("lock", "heavy")} ${field("holder", holder)} ` +
-    `${field("host", host)} ${field("pid", info.pid ?? null)} ${field("pgid", info.pgid ?? null)}`);
-  return {
+  const write = () => {
+    const text = `${JSON.stringify(info, null, 2)}\n`;
+    const tmp = privateName(file, "tmp");
+    fs.writeFileSync(tmp, text, { flag: "wx" });
+    fs.renameSync(tmp, file);
+    return text;
+  };
+  const rec = {
     info,
-    text,
+    text: write(),
+    logged: false,
+    log: (extra = {}) => {
+      if (Object.keys(extra).length > 0) {
+        Object.assign(info, extra);
+        rec.text = write();
+      }
+      appendHistory(home, `${info.acquired_at} acquire ${field("lock", "heavy")} ${field("holder", holder)} ` +
+        `${field("host", host)} ${field("pid", info.pid ?? null)} ${field("pgid", info.pgid ?? null)}`);
+      rec.logged = true;
+    },
     release: (at = new Date()) => {
       try {
-        dropInfo(home, text);
-        return releasedLine(home, "heavy", holder, info, utc(at));
+        dropInfo(home, rec.text);
+        return rec.logged ? releasedLine(home, "heavy", holder, info, utc(at)) : null;
       } finally {
         closeQuietly(fd);
       }
     },
   };
+  if (!deferLog) rec.log();
+  return rec;
 }
 
 export function heavyStatus(home) {
@@ -1083,14 +1135,45 @@ function reraise(signal) {
   process.kill(process.pid, signal);
 }
 
+// F1: how long what is left of a heavy run's process group has, after its top
+// process exits, between SIGTERM and SIGKILL.
+export const RUN_GRACE_MS = 2000;
+
+// Ends process group `pgid`: SIGTERM, then SIGKILL after RUN_GRACE_MS. Resolves
+// once the group is empty, or a second after the SIGKILL.
+async function endGroup(pgid) {
+  const alive = () => {
+    try {
+      process.kill(-pgid, 0);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!alive()) return;
+  try { process.kill(-pgid, "SIGTERM"); } catch {}
+  for (const t0 = Date.now(); alive() && Date.now() - t0 < RUN_GRACE_MS;) await sleep(25);
+  if (!alive()) return;
+  try { process.kill(-pgid, "SIGKILL"); } catch {}
+  for (const t0 = Date.now(); alive() && Date.now() - t0 < 1000;) await sleep(25);
+}
+
+const procComm = (pid) => {
+  try {
+    return fs.readFileSync(`/proc/${pid}/comm`, "utf8").trim();
+  } catch {
+    return "?";
+  }
+};
+
 // `heavy run`: resolves to the exit code to leave with, or null when the
 // command ended on a signal that has been re-raised on this process.
 function heavyRun(opts, command, env, ctx, { err }) {
   const say = (m) => err(`harness-slot heavy: ${m}`);
   const holder = opts.holder ?? `${ctx.account}@${ctx.host}:${command.join(" ")}`;
   requireText("--holder", holder);
-  if (heldByThisJob(ctx.home)) {
-    // Nested inside this job's own hold: waiting would wait on itself.
+  if (heldByThisJob(ctx.home, { env })) {
+    // Nested inside this job's own hold (its token): waiting would wait on itself.
     const held = readHeavyInfo(ctx.home);
     say(`already held by this job (${JSON.stringify(held?.holder ?? "(unrecorded)")}); running without acquiring again`);
     return new Promise((resolve) => {
@@ -1116,15 +1199,30 @@ function heavyRun(opts, command, env, ctx, { err }) {
       }
     };
     for (const s of signals) process.on(s, onSignal);
-    // Runs once: lets go of the lock if this job holds it, then leaves.
-    const finish = (code, signal) => {
+    // Runs once: ends what is left of the command's process group, lets go of
+    // the lock if this job holds it, then leaves. F1: a process that still
+    // holds the descriptor (it left the group with fd 9) means the lock is NOT
+    // released: it is named, the record stays, and no release line is written.
+    const finish = async (code, signal) => {
       if (done) return;
       done = true;
       for (const s of signals) process.removeListener(s, onSignal);
+      if (child !== null && child.pid !== undefined) await endGroup(child.pid);
       if (rec !== null) {
         try {
-          say(rec.release());
+          const locked = fs.fstatSync(fd);
+          const others = lockHolders(`${locked.dev}:${locked.ino}`).filter((p) => p !== process.pid);
+          if (others.length > 0) {
+            closeQuietly(fd);
+            say(`NOT released: ${others.map((p) => `pid ${p} (${procComm(p)})`).join(", ")} still ` +
+              `${others.length === 1 ? "holds" : "hold"} fd 9; the lock frees when ${others.length === 1 ? "it exits" : "they exit"}`);
+            if (!signal && code === 0) code = 2;
+          } else {
+            const line = rec.release();
+            if (line !== null) say(line);
+          }
         } catch (error) {
+          closeQuietly(fd);
           say(`RELEASE FAILED: ${error.message}`);
           if (!signal && code === 0) code = 2;
         }
@@ -1146,8 +1244,21 @@ function heavyRun(opts, command, env, ctx, { err }) {
       }
       fd = r.fd;
       if (stopping !== null) return finish(null, stopping);
+      // The record (and its job token) is written before the command starts, so
+      // nothing the command runs can look for it too early. Without it the token
+      // names nothing and a nested call would wait on this job: not run.
+      const job = jobToken(holder, process.pid);
+      try {
+        rec = recordHeavy(ctx.home, fd, { holder, host: ctx.host, kind: "run", pid: process.pid, job, argv: command },
+          new Date(), { deferLog: true });
+      } catch (error) {
+        say(`heavy.info.json could not be written (${error.message}), so this job's token would name nothing; the command was not run`);
+        return finish(2, null);
+      }
       // detached: its own process group, so a forwarded signal reaches all of it.
-      child = spawn(command[0], command.slice(1), { stdio: heavyStdio(["inherit", "inherit", "inherit"], fd), detached: true, env });
+      child = spawn(command[0], command.slice(1), {
+        stdio: heavyStdio(["inherit", "inherit", "inherit"], fd), detached: true, env: { ...env, HARNESS_HEAVY_JOB: job },
+      });
       if (child.pid === undefined) {
         // It never started: "error" follows, and there is nothing to wait for.
         child.on("error", (error) => {
@@ -1158,12 +1269,10 @@ function heavyRun(opts, command, env, ctx, { err }) {
       }
       child.on("exit", (code, signal) => finish(code ?? 1, signal));
       try {
-        rec = recordHeavy(ctx.home, fd, {
-          holder, host: ctx.host, kind: "run", pid: process.pid, command_pid: child.pid, pgid: child.pid, argv: command,
-        });
+        rec.log({ command_pid: child.pid, pgid: child.pid });
         say(`acquired the heavy lock for ${JSON.stringify(holder)}: pid ${process.pid}, process group ${child.pid}`);
       } catch (error) {
-        say(`the heavy lock is held, but heavy.info.json could not be written: ${error.message}`);
+        say(`the heavy lock is held, but heavy.info.json could not be updated: ${error.message}`);
       }
     }, (error) => {
       say(error.message);
@@ -1204,8 +1313,8 @@ async function heavyHold(specText, ctx) {
   let rec;
   try {
     rec = recordHeavy(ctx.home, r.fd, {
-      holder: spec.holder, host: ctx.host, kind: "acquire", pid: process.pid,
-      owner_pid: spec.ownerPid, owner_start: spec.ownerStart, owner_watched: spec.watch,
+      holder: spec.holder, host: ctx.host, kind: "acquire", pid: process.pid, job: jobToken(spec.holder, process.pid),
+      ...(spec.watch ? { owner_pid: spec.ownerPid, owner_start: spec.ownerStart } : {}),
     });
   } catch (error) {
     closeQuietly(r.fd); // unrecorded, release could not find it: let go rather than hold it unnamed
@@ -1216,7 +1325,7 @@ async function heavyHold(specText, ctx) {
     closeQuietly(r.fd);
     process.exit(0);
   });
-  send({ acquired: true, pid: process.pid });
+  send({ acquired: true, pid: process.pid, job: rec.info.job });
   return new Promise(() => {
     setInterval(() => {
       if (!spec.watch || procStart(spec.ownerPid) === spec.ownerStart) return;
@@ -1229,13 +1338,20 @@ async function heavyHold(specText, ctx) {
   });
 }
 
-// `heavy acquire`: starts the holder process and reports what it did.
-function heavyAcquire(opts, ctx, { out, err }) {
+// `heavy acquire`: starts the holder process and reports what it did, ending
+// with the job token as a line `HARNESS_HEAVY_JOB=<token>` (shell-quoted) for
+// the caller to set in every command of its job. F3: inside a job that already
+// holds heavy it refuses at once: the new holder would wait on this job.
+function heavyAcquire(opts, ctx, env, { out, err }) {
   requireText("--holder", opts.holder);
+  if (heldByThisJob(ctx.home, { env })) {
+    const held = readHeavyInfo(ctx.home);
+    throw new Error(`already held by this job (${JSON.stringify(held?.holder ?? "(unrecorded)")}); nothing acquired`);
+  }
   const watch = opts.pid !== undefined;
-  const ownerPid = watch ? Number(opts.pid) : process.ppid;
-  const ownerStart = procStart(ownerPid);
-  if (ownerStart === null) throw new Error(`--pid ${ownerPid}: no such running process`);
+  const ownerPid = watch ? Number(opts.pid) : null;
+  const ownerStart = watch ? procStart(ownerPid) : null;
+  if (watch && ownerStart === null) throw new Error(`--pid ${ownerPid}: no such running process`);
   const spec = { holder: opts.holder, waitMs: opts.wait === undefined ? null : Number(opts.wait) * 1000, ownerPid, ownerStart, watch };
   const holder = spawn(process.execPath, [SELF, "heavy", "__hold", JSON.stringify(spec)], {
     detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"],
@@ -1266,8 +1382,9 @@ function heavyAcquire(opts, ctx, { out, err }) {
       if (typeof m?.say === "string") {
         err(`harness-slot heavy: ${m.say}`);
       } else if (m?.acquired) {
-        out(`acquired heavy for ${opts.holder}: ${lockFile(ctx.home, "heavy")} (held by pid ${m.pid} for pid ${ownerPid}` +
-          (watch ? ", freed when it exits)" : "; freed by heavy release, or --force --reason)"));
+        out(`acquired heavy for ${opts.holder}: ${lockFile(ctx.home, "heavy")} (held by pid ${m.pid}` +
+          (watch ? ` for pid ${ownerPid}, freed when it exits)` : "; freed by heavy release, or --force --reason)"));
+        out(`HARNESS_HEAVY_JOB=${quote(m.job)}`);
         settle(0, null);
       } else if (typeof m?.failed === "string") {
         err(`harness-slot heavy: ${m.failed}`);
@@ -1364,7 +1481,7 @@ export async function heavyMain(args, env, { out = console.log, err = console.er
     if (command !== null) throw new Error(`heavy ${action} takes no command\n${HEAVY_USAGE}`);
     if (action === "acquire") {
       if (opts.force || opts.reason !== undefined) throw new Error("--force and --reason belong to heavy release");
-      return await heavyAcquire(opts, ctx, { out, err });
+      return await heavyAcquire(opts, ctx, env, { out, err });
     }
     if (opts.wait !== undefined || opts.pid !== undefined) throw new Error("--wait and --pid belong to heavy acquire");
     if (!opts.force && opts.reason !== undefined) throw new Error("--reason needs --force");
@@ -1403,7 +1520,7 @@ function spawnShell(command) {
 // "no": the slot lock then behaves exactly as it did before the heavy lock existed.
 function thisJobHoldsHeavy(env) {
   try {
-    return heldByThisJob(heavyHome(env));
+    return heldByThisJob(heavyHome(env), { env });
   } catch {
     return false;
   }

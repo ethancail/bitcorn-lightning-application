@@ -35,7 +35,10 @@
 // are heavy jobs, so the checks run only under scripts/harness-slot.mjs's heavy
 // lock, a kernel flock taken here in process before the first check, waiting up
 // to HEAVY_WAIT_S (SECOND_TRY_WAIT_S on the second try). Each check is handed
-// the locked descriptor as its fd 9, so a gate killed mid-check leaves the lock
+// the locked descriptor as its fd 9 and the gate's job token as
+// HARNESS_HEAVY_JOB (harness-slot.mjs, THE JOB TOKEN); a gate whose own
+// environment carries the live holder's token checks under that hold instead.
+// A gate killed mid-check leaves the lock
 // with that check until it exits; there are no signal handlers here. It is
 // never reported as a pass when its checks did not run. The Stop hook's timeout
 // in .claude/settings.json (960 s) covers the wait plus the four 150 s checks;
@@ -68,8 +71,10 @@ const CMD_TIMEOUT_MS = 150_000;
 const HEAVY_WAIT_S = 300;
 const SECOND_TRY_WAIT_S = 10;
 // While the checks run under the heavy lock: their stdio, the locked
-// descriptor as fd 9 (harness-slot.mjs heavyStdio). null otherwise.
+// descriptor as fd 9 (harness-slot.mjs heavyStdio), and their environment,
+// carrying the gate's job token (HARNESS_HEAVY_JOB). null otherwise.
 let checkStdio = null;
+let checkEnv = null;
 
 // The only paths this gate watches. Single source of truth on purpose: the
 // `git status` pathspec below and the nothing-to-verify message both read from
@@ -103,7 +108,7 @@ function run(cmd, args, cwd) {
     cwd,
     encoding: "utf8",
     timeout: CMD_TIMEOUT_MS,
-    env: process.env,
+    env: checkEnv ?? process.env,
     maxBuffer: 16 * 1024 * 1024,
     ...(checkStdio === null ? {} : { stdio: checkStdio }),
   });
@@ -250,22 +255,21 @@ async function takeHeavy(hook) {
       };
     }
     let rec;
+    const holder = `${ctx.account}@${ctx.host}:node scripts/verify-gate.mjs (${path.basename(ROOT)})`;
+    const job = heavy.jobToken(holder, process.pid);
     try {
-      rec = heavy.recordHeavy(ctx.home, r.fd, {
-        holder: `${ctx.account}@${ctx.host}:node scripts/verify-gate.mjs (${path.basename(ROOT)})`,
-        host: ctx.host,
-        kind: "gate",
-        pid: process.pid,
-      });
+      rec = heavy.recordHeavy(ctx.home, r.fd, { holder, host: ctx.host, kind: "gate", pid: process.pid, job });
     } catch (error) {
       fs.closeSync(r.fd);
       throw error;
     }
     checkStdio = heavy.heavyStdio(["pipe", "pipe", "pipe"], r.fd);
+    checkEnv = { ...process.env, HARNESS_HEAVY_JOB: job };
     return {
       ok: true,
       release: () => {
         checkStdio = null;
+        checkEnv = null;
         try {
           console.error(`[verify-gate] ${rec.release()}`);
         } catch (error) {
