@@ -1458,7 +1458,8 @@ function ChannelsPage() {
               </div>
               {/* fee-estimates: live options, held by key (F3). A cooperative
                   close's rate is a PROPOSAL to the peer (R2), so its cost reads
-                  "about $X, if accepted" over "~N sats" (D3), rate × 192 vB
+                  "about $X proposed — the final fee is often higher" over
+                  "~N sats" (D3; ruling 4, 2026-11-18), rate × 192 vB
                   (P14). No estimate → no figure, Close blocked (O7); above
                   200 sat/vB → the figure, disabled, with the reason (P15). */}
               {closeOptions && closeShown ? (
@@ -1472,7 +1473,7 @@ function ChannelsPage() {
                     label: FEE_OPTION_LABEL[opt.key],
                     description: `~${opt.rate} sat/vB`,
                     meta: timeText(opt),
-                    cost: <FeeCost sats={opt.cost_sats.close} rate={feeRateInfo} qualifier={FEE_COPY.ifAccepted} />,
+                    cost: <FeeCost sats={opt.cost_sats.close} rate={feeRateInfo} qualifier={FEE_COPY.closeCostQualifier} />,
                     disabled: isAboveCeiling(closeShown.estimates, opt),
                     disabledReason: FEE_COPY.aboveCeiling(closeShown.estimates.ceiling_sat_per_vbyte),
                   }))}

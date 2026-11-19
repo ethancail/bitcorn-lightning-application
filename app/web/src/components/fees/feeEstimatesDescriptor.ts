@@ -47,8 +47,11 @@ export const FEE_COPY = {
   }),
   /** R2: a cooperative close's rate is an offer to the peer. */
   closeRateHeading: "Fee rate proposed to the peer",
-  /** D3 / R2: the close cost's qualifier, after FeeCost's figure. */
-  ifAccepted: "if accepted",
+  /** D3 / R2: the close cost's qualifier, after FeeCost's figure: "about $X
+   *  proposed — the final fee is often higher" (ruling 4 of member-first-run-ui's
+   *  review, 2026-11-18; it replaced "about $X, if accepted"). With no price,
+   *  FeeCost's sats fallback: "~N sats proposed — the final fee is often higher". */
+  closeCostQualifier: "proposed — the final fee is often higher",
   /** R3: interim payer wording until Q8's config half is read. */
   closePayer: "The fee is paid by whoever opened the channel.",
 };

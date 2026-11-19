@@ -1968,11 +1968,12 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .choice-cost { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); white-space: nowrap; }
 /* ...but a WORDED cost may wrap, balanced so it breaks cleanly (Ethan's ruling
    "fix the five" items 1 and 2, 2026-11-16). "Fee set by your node" is retired;
-   the worded cost now is the close card's "about $X, if accepted" (FeeCost).
+   the worded cost now is the close card's "about $X proposed — the final fee
+   is often higher" (FeeCost).
    Figures are Amounts, whose lines are nowrap on their own. A block, because
    balance evens out the lines of a block, not of an inline span. */
 .fee-cost-words { display: block; white-space: normal; text-wrap: balance; }
-/* fee-estimates D3: the close card's "about $X, if accepted" is a worded cost,
+/* fee-estimates D3: the close card's "about $X proposed — …" is a worded cost,
    so its line is a .fee-cost-words block; the figure inside keeps its line
    (.amount-figure is nowrap) and the qualifier after it may wrap. The
    qualifier wears the figure's weight and colour, as it did inline. */

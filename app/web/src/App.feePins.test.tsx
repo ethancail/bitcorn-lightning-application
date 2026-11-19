@@ -16,7 +16,12 @@
 //
 // Opens and closes pin different things (§13 item 9, R2): sent = shown for the
 // open panel; PROPOSED = shown for the close dialog, whose rate is an offer to
-// the peer — labelled "proposed to the peer", its cost "about $X, if accepted".
+// the peer — labelled "proposed to the peer", its cost "about $X proposed — the
+// final fee is often higher" (ruling 4 of member-first-run-ui's review,
+// 2026-11-18). REWRITTEN DELIBERATELY: until then every close-cost pin below
+// read "about $X, if accepted" / "~N sats, if accepted". The ruled words are
+// pinned as a literal (PROPOSED), not read back from FEE_COPY, so a copy edit
+// goes red here.
 //
 // Also here: H2, H3 (the 10-min bound at confirm), H4, H6 (unavailable), the
 // option key with tied rates and its reset (F3), the 200 ceiling (P15), the
@@ -81,10 +86,12 @@ const STUB = feeEstimatesStub({ economy: 2, normal: 4, priority: 9 });
 const KEYS = ["economy", "normal", "priority"] as const;
 const LABELS = ["Economy", "Normal", "Priority"] as const;
 
-/** Close card text, price still loading: label, rate, time, "~N sats, if accepted". */
+/** The close cost's qualifier, as ruled (ruling 4, 2026-11-18). */
+const PROPOSED = "proposed — the final fee is often higher";
+/** Close card text, price still loading: label, rate, time, "~N sats proposed — …". */
 const closeText = (est: FeeEstimates, i: number) => {
   const o = est.options![KEYS[i]];
-  return `${LABELS[i]}~${o.rate} sat/vB${timeText(o)}~${formatSats(o.cost_sats.close)}, ${FEE_COPY.ifAccepted}`;
+  return `${LABELS[i]}~${o.rate} sat/vB${timeText(o)}~${formatSats(o.cost_sats.close)} ${PROPOSED}`;
 };
 /** Open card text, price still loading: label, rate, time, "~N sats".
  *  REWRITTEN DELIBERATELY (member-first-run-ui's review, ruling 2, relayed
@@ -218,11 +225,12 @@ describe("ChannelsPage close dialog: live labels, keys, default and proposed rat
     expect(closeOptions().map((o) => o.textContent)).toEqual([0, 1, 2].map((i) => closeText(STUB, i)));
   });
 
-  it("the cost is its own line: one .choice-cost per card, \"~N sats, if accepted\"", async () => {
+  it("the cost is its own line: one .choice-cost per card, \"~N sats proposed — the final fee is often higher\"", async () => {
     await openCloseDialog();
     expect(costLines(closeOptions())).toEqual(
-      KEYS.map((k) => [`~${formatSats(STUB.options![k].cost_sats.close)}, ${FEE_COPY.ifAccepted}`]),
+      KEYS.map((k) => [`~${formatSats(STUB.options![k].cost_sats.close)} ${PROPOSED}`]),
     );
+    expect(dialog().textContent).not.toContain("if accepted");
   });
 
   it("the radios carry the ruled string keys", async () => {
@@ -591,7 +599,7 @@ describe("FeeCost on the treasury's two fee pickers", () => {
   const lines = (opts: HTMLElement[], label: string) =>
     [...card(opts, label).querySelectorAll(".choice-cost [data-line]")].map((l) => `${l.getAttribute("data-line")}:${l.textContent}`);
 
-  it("1 — numbers stay on one line; the close card's \"if accepted\" may wrap (the CSS)", () => {
+  it("1 — numbers stay on one line; the close card's qualifier may wrap (the CSS)", () => {
     expect(declsFor(".choice-cost")["white-space"]).toBe("nowrap");
     expect(declsFor(".amount-figure")["white-space"]).toBe("nowrap");
     expect(declsFor(".amount-sub")["white-space"]).toBe("nowrap");
@@ -617,7 +625,7 @@ describe("FeeCost on the treasury's two fee pickers", () => {
         expect(words, LABELS[i]).toHaveLength(1);
         const figure = words[0].querySelector(":scope > .amount-figure")?.textContent;
         expect(figure).toBe(rate === FRESH ? `about ${formatUsd(sats, 60_000).text}` : `~${formatSats(sats)}`);
-        expect(words[0].querySelector(":scope > .fee-cost-qualifier")?.textContent).toBe(`, ${FEE_COPY.ifAccepted}`);
+        expect(words[0].querySelector(":scope > .fee-cost-qualifier")?.textContent).toBe(` ${PROPOSED}`);
       }
     });
   }
@@ -644,13 +652,13 @@ describe("FeeCost on the treasury's two fee pickers", () => {
     }
   });
 
-  it("5 — the close dialog: \"about $X, if accepted\" over \"~N sats\" (D3)", async () => {
+  it("5 — the close dialog: \"about $X proposed — the final fee is often higher\" over \"~N sats\" (D3; ruling 4)", async () => {
     stub.getExchangeRate.mockResolvedValue(FRESH);
     await openCloseDialog();
     for (const [i, key] of KEYS.entries()) {
       const sats = STUB.options![key].cost_sats.close;
       expect(lines(closeOptions(), LABELS[i])).toEqual([
-        `usd:about ${formatUsd(sats, 60_000).text}, ${FEE_COPY.ifAccepted}`,
+        `usd:about ${formatUsd(sats, 60_000).text} ${PROPOSED}`,
         `sats:~${formatSats(sats)}`,
       ]);
     }
@@ -673,7 +681,8 @@ describe("FeeCost on the treasury's two fee pickers", () => {
       setRate();
       await openCloseDialog();
       for (const [i, key] of KEYS.entries()) {
-        expect(lines(closeOptions(), LABELS[i])).toEqual([`sats:~${formatSats(STUB.options![key].cost_sats.close)}, ${FEE_COPY.ifAccepted}`]);
+        // FeeCost's sats fallback: the sats take the dollars' place, qualifier and all.
+        expect(lines(closeOptions(), LABELS[i])).toEqual([`sats:~${formatSats(STUB.options![key].cost_sats.close)} ${PROPOSED}`]);
       }
       await click(buttons(dialog()).find((b) => b.textContent?.trim() === "Cancel")!);
       await click(buttons(openPanel()).find((b) => b.textContent?.trim() === "New Channel")!);
