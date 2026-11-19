@@ -4,7 +4,7 @@
 // Usage (after `wrangler deploy` has shipped the Worker code):
 //
 //   # Start a local dev instance with production KV bindings wired through:
-//   npx wrangler dev --test-scheduled --remote
+//   npx --no-install wrangler dev --test-scheduled --remote
 //
 //   # In another terminal, trigger the scheduled handler manually:
 //   curl "http://localhost:8787/__scheduled?cron=*+*+*+*+*"

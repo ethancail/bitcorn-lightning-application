@@ -1,5 +1,5 @@
 // Drive-mode P1 item 7 (spec P1 item 7; D1.9): Withdraw offers no preset,
-// default amount or Max that the policy would refuse. The ceiling is the
+// default amount or maximum that the policy would refuse. The ceiling is the
 // server's /api/swaps/limits → loop_out.available_now_sats (the pre-quote
 // policy's acceptance point); the floor is loop_out.min_sats.
 //
@@ -75,25 +75,29 @@ async function mount(availableNow: number) {
 }
 
 const buttons = () => [...host.querySelectorAll("button")].map((b) => (b.textContent ?? "").trim());
-const PRESET_LABELS = ["250k", "500k", "1M", "2M"];
-const amountValue = () => (host.querySelector('input[inputmode="numeric"], input[type="text"]') as HTMLInputElement)?.value ?? "";
+// Slice 3: the presets are Choice radios keyed by sats (dollars over sats).
+const presetValues = () => [...host.querySelectorAll('.withdraw-presets input[type="radio"]')].map((r) => (r as HTMLInputElement).value);
+const amountValue = () => (host.querySelector('input[aria-label="Amount"]') as HTMLInputElement | null)?.value ?? "";
+const upTo = () => host.querySelector("[data-testid='withdraw-answer'] [data-sats]")?.getAttribute("data-sats") ?? null;
 
-describe("D1.9 — no preset, default or Max beyond what is possible now", () => {
-  it("700,000 possible: presets 250k and 500k only; Max is 700,000", async () => {
+// Re-pinned for member-first-run-ui slice 3 (Ethan's "recs", 2026-11-17): R5
+// drops the Max button; the maximum is "You can withdraw up to", and "Withdraw
+// the most now" sets it. R7 hides the presets, box and button below the minimum.
+describe("D1.9 — no preset, default or maximum beyond what is possible now", () => {
+  it("700,000 possible: presets 250,000 and 500,000 only; the most is 700,000", async () => {
     await mount(700_000);
-    const shown = buttons().filter((b) => PRESET_LABELS.includes(b));
-    expect(shown).toEqual(["250k", "500k"]);
-    const max = [...host.querySelectorAll("button")].find((b) => b.getAttribute("title") === "700,000 sats");
-    expect(max, "a Max button worth exactly available_now").toBeDefined();
+    expect(presetValues()).toEqual(["250000", "500000"]);
+    expect(upTo(), "the big amount is exactly available_now").toBe("700000");
+    expect(buttons()).not.toContain("Max");
   });
 
-  it("less than the minimum possible: no preset, no Max, no default amount, and Get Quote disabled", async () => {
+  it("less than the minimum possible: no preset, no maximum, no default amount, and no Review button", async () => {
     await mount(200_000);
-    expect(buttons().filter((b) => PRESET_LABELS.includes(b))).toEqual([]);
-    expect([...host.querySelectorAll("button")].some((b) => (b.getAttribute("title") ?? "").endsWith(" sats"))).toBe(false);
+    expect(presetValues()).toEqual([]);
+    expect(upTo()).toBeNull();
+    expect(buttons()).not.toContain("Use the most");
     expect(amountValue().replace(/[^0-9]/g, "")).toBe("");
-    const getQuote = [...host.querySelectorAll("button")].find((b) => /Get Quote/.test(b.textContent ?? "")) as HTMLButtonElement;
-    expect(getQuote.disabled).toBe(true);
+    expect(buttons().some((b) => /Review withdrawal|Get Quote/.test(b))).toBe(false);
     expect(stub.getSwapLoopOutQuote).not.toHaveBeenCalled();
   });
 });

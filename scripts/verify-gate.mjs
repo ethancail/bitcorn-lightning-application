@@ -26,8 +26,8 @@
 //   VERIFY_GATE_SKIP=1 in the environment ........... exit 0 (documented escape hatch)
 //
 // WHAT RUNS (scoped to the side that changed, for speed):
-//   app/api dirty → npx tsc --noEmit && npx vitest run   (in app/api)
-//   app/web dirty → npx tsc --noEmit && npx vitest run   (in app/web)
+//   app/api dirty → npx --no-install tsc --noEmit && npx --no-install vitest run   (in app/api)
+//   app/web dirty → npx --no-install tsc --noEmit && npx --no-install vitest run   (in app/web)
 //   `vite build` is deliberately NOT run here (adds ~5-20s per Stop and
 //   tsc catches the type breakage) — the full build stays a release check.
 //
@@ -87,7 +87,7 @@ function run(cmd, args, cwd) {
 
 // → {state: "ok" | "fail" | "unavailable", detail}
 function checkTsc(pkgDir, baseline) {
-  const res = run("npx", ["tsc", "--noEmit"], path.join(ROOT, pkgDir));
+  const res = run("npx", ["--no-install", "tsc", "--noEmit"], path.join(ROOT, pkgDir));
   if (res.error) return { state: "unavailable", detail: `tsc could not run: ${res.error.message}` };
   if (res.status === 0) return { state: "ok", detail: "tsc clean" };
   const out = (res.stdout || "") + (res.stderr || "");
@@ -112,7 +112,7 @@ function checkTsc(pkgDir, baseline) {
 }
 
 function checkVitest(pkgDir) {
-  const res = run("npx", ["vitest", "run"], path.join(ROOT, pkgDir));
+  const res = run("npx", ["--no-install", "vitest", "run"], path.join(ROOT, pkgDir));
   if (res.error) return { state: "unavailable", detail: `vitest could not run: ${res.error.message}` };
   const out = (res.stdout || "") + (res.stderr || "");
   const ran = out.includes("Test Files");

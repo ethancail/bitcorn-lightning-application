@@ -11,8 +11,10 @@ WORKDIR /app
 # better-sqlite3 needs python3, make, g++ for native compilation
 RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
 
-COPY package.json ./
-RUN npm install
+# Install exactly the committed lock. npm ci never resolves or writes a lock,
+# and fails if package.json and package-lock.json disagree.
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY tsconfig.json ./
 COPY src ./src
