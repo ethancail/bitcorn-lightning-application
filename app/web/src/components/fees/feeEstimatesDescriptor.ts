@@ -73,11 +73,16 @@ export function isAboveCeiling(est: FeeEstimates, o: FeeEstimateOption): boolean
   return o.rate > est.ceiling_sat_per_vbyte;
 }
 
-/** P19: the Technical Details row — the live integer rates from the same answer. */
-export function ratesDetail(est: FeeEstimates | null): string {
+/**
+ * P19: the Technical Details row — the live integer rates from the same answer,
+ * one token per option ("Economy ~2 sat/vB"). Tokens, not one string: the card
+ * shows each in its own nowrap span, joined by " · ", because TechRow's value
+ * is break-all (for long hex) and split "sat/vB" at 390 px.
+ */
+export function ratesDetail(est: FeeEstimates | null): string[] {
   const opts = feeOptions(est);
-  if (!opts) return FEE_COPY.unavailable;
-  return opts.map((o) => `${FEE_OPTION_LABEL[o.key]} ~${o.rate} sat/vB`).join(" · ");
+  if (!opts) return [FEE_COPY.unavailable];
+  return opts.map((o) => `${FEE_OPTION_LABEL[o.key]} ~${o.rate} sat/vB`);
 }
 
 /**

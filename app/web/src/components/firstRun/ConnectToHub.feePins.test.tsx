@@ -207,6 +207,24 @@ describe("ConnectToHub's fee-speed picker: live labels, keys, default and values
     expect(host.textContent).toContain("Economy ~2 sat/vB · Normal ~4 sat/vB · Priority ~9 sat/vB");
   });
 
+  // REWRITTEN DELIBERATELY (ours, with member-first-run-ui's review,
+  // 2026-11-18): the row was one string inside TechRow's break-all value,
+  // which split "sat/vB" at 390 px. The text above is unchanged; each rate
+  // token is now its own nowrap span, so the row breaks only at " · ".
+  // jsdom does no layout: this pins the structure and the rule, not a render.
+  it("Technical details: each rate token is one nowrap span; \"sat/vB\" never sits outside one", async () => {
+    await render();
+    const row = [...host.querySelectorAll("details span")].find((e) => e.textContent === "Fee rates")?.parentElement;
+    expect(row, "the Fee rates row renders").toBeDefined();
+    const value = row!.children[1] as HTMLElement;
+    const tokens = [...value.querySelectorAll(":scope > .fee-rate-token")].map((t) => t.textContent);
+    expect(tokens).toEqual(["Economy ~2 sat/vB", "Normal ~4 sat/vB", "Priority ~9 sat/vB"]);
+    // Every text node outside a token is the separator alone.
+    const loose = [...value.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent);
+    expect(loose).toEqual([" · ", " · "]);
+    expect(declsFor(".fee-rate-token")["white-space"]).toBe("nowrap");
+  });
+
   it("under the LND fallback the time is labelled estimate (O1)", async () => {
     stub.getFeeEstimates.mockResolvedValue(feeEstimatesStub({ economy: 2, normal: 4, priority: 9 }, { source: "lnd" }));
     await render();

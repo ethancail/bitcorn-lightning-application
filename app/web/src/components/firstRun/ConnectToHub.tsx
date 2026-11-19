@@ -29,7 +29,7 @@
 // no requests.
 // The card renders NO NoRateNote: the page shows the no-price sentence once.
 
-import { useId } from "react";
+import { Fragment, useId } from "react";
 import { useNavigate } from "react-router-dom";
 import type { ExchangeRate } from "../../api/client";
 import ActionConfirmModal from "../actionConfirm/ActionConfirmModal";
@@ -220,7 +220,17 @@ function ConnectForm({ isPeered, initialCapacity, rate }: { isPeered: boolean; i
         <div className="connect-foot-tech">
           <TechnicalDetails>
             <TechRow label={COPY.nodeId}><span className="ident">{s.hubPubkey}</span></TechRow>
-            <TechRow label={COPY.feeRates}>{ratesDetail(est)}</TechRow>
+            {/* Each rate token stays whole (.fee-rate-token, nowrap): TechRow's
+                value is break-all, which split "sat/vB" at 390 px. The row
+                breaks only between tokens, at " · ". */}
+            <TechRow label={COPY.feeRates}>
+              {ratesDetail(est).map((token, i) => (
+                <Fragment key={token}>
+                  {i > 0 && " · "}
+                  <span className="fee-rate-token">{token}</span>
+                </Fragment>
+              ))}
+            </TechRow>
             {reach === "notReachable" && (
               <div className="connect-address">
                 <label className="form-label">
