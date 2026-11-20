@@ -6,8 +6,12 @@
 //   1. THIS FILE RUNS UNDER NODE — `document` and `window` are absent at
 //      runtime. It is a `.test.ts` outside the exception list, so it is its own
 //      anti-vacuity case: if the node glob stops applying (deleted, misspelt,
-//      shadowed), this file lands on jsdom and turns red here, from inside the
-//      real runner rather than from a model of it.
+//      shadowed), this file lands on jsdom and turns red, from inside the real
+//      runner rather than from a model of it. In practice it goes red at import,
+//      before this check runs: importing vitest.config under jsdom loads esbuild,
+//      whose `TextEncoder().encode("") instanceof Uint8Array` invariant fails in
+//      jsdom's realm (negative control NC2, 2026-11-20: "Tests no tests",
+//      environment 1.56s). The runtime check is the backstop if that stops throwing.
 //   2. Every test file in src resolves to the environment the rule says, using
 //      vitest 2.1.9's precedence (resolveConfig groupFilesByEnv): a docblock in
 //      the file text first, then the first matching environmentMatchGlobs entry,
