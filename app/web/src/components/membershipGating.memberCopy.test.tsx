@@ -31,6 +31,8 @@ const stub = vi.hoisted(() => ({
   getAutoPayHistory: vi.fn(),
   getTreasuryInfo: vi.fn(),
   openMemberChannel: vi.fn(),
+  // fee-estimates: the open sends the live rate the summary showed.
+  getFeeEstimates: vi.fn(),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -40,6 +42,7 @@ vi.mock("../api/client", async (importOriginal) => {
 
 import SubscriptionPanel from "./SubscriptionPanel";
 import { useConnectToHub } from "./firstRun/useConnectToHub";
+import { feeEstimatesStub } from "./fees/feeEstimates.testutil";
 import { bannerFor, bannerSeverityForTier, bannerSeverityForTierName, settingsBadgeFor } from "./subscriptionBanner";
 import { tierToPill } from "./Pill";
 import { railGateNoticeFor } from "../stablecoin/railAccess";
@@ -407,8 +410,12 @@ describe("DW6 / M2 item 1 — ConnectToHub shows R7's app-check message on a mem
 
   async function openWith(err: unknown) {
     stub.openMemberChannel.mockRejectedValue(err);
+    stub.getFeeEstimates.mockResolvedValue(feeEstimatesStub({ economy: 1, normal: 3, priority: 6 }));
     await act(async () => { root.render(React.createElement(Probe)); });
     await settle();
+    // fee-estimates: the open sends the rate its summary showed, so the
+    // summary is shown first (sent = shown), then confirmed.
+    await act(async () => { probe.s!.openChannelConfirm(); });
     await act(async () => { await probe.s!.handleOpen(); });
     return host.textContent ?? "";
   }

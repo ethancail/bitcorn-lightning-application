@@ -24,6 +24,9 @@ const stub = vi.hoisted(() => ({
   getTreasuryInfo: vi.fn(),
   getSubscriptionStatus: vi.fn(),
   openMemberChannel: vi.fn(),
+  // fee-estimates: the card's "How fast" options are live; without an
+  // estimate they do not render (O7). Stubbed so the form renders whole.
+  getFeeEstimates: vi.fn(),
 }));
 
 vi.mock("../../api/client", async (importOriginal) => {
@@ -32,6 +35,7 @@ vi.mock("../../api/client", async (importOriginal) => {
 });
 
 import ConnectToHub from "./ConnectToHub";
+import { feeEstimatesStub } from "../fees/feeEstimates.testutil";
 
 const LABEL = "Activate membership";
 const RENEW = "Renew membership";
@@ -67,6 +71,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   stub.getTreasuryInfo.mockResolvedValue(null);
   stub.openMemberChannel.mockImplementation(() => new Promise(() => {}));
+  stub.getFeeEstimates.mockResolvedValue(feeEstimatesStub({ economy: 1, normal: 3, priority: 6 }));
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);

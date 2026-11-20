@@ -8,11 +8,13 @@
 // never "channel" or "hub"; the card has one header, two columns ("How big",
 // "How fast") and a footer. The two 100k checks stay two constants.
 //
-// Carried as they are, NOT fixed: the Economy option sends no fee rate (its
-// rate is left unset), and Normal's and Priority's fees are fixed estimates,
-// not quotes. Economy shows no figure and no rate (rulings "a" and "fix the
-// five", 2026-11-16).
-// The open-channel confirm dialog keeps its own words until slice 5.
+// fee-estimates (2026-11-17/18): the fee options are LIVE. Rates, times and
+// costs come from GET /api/fee-estimates through components/fees; every
+// option, Economy included, sends the integer rate it shows. The fixed
+// FEE_SPEED_OPTIONS (Economy sending nothing, "~770 sats") are gone, and with
+// them "Fee set by your node" (MFRUI-ASKS (1)).
+// The open-channel confirm dialog keeps its own words until slice 5, except
+// its live-rate row (CONFIRM-RULING), which ships with fee-estimates.
 
 export const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
 
@@ -28,18 +30,11 @@ export const MIN_CAPACITY_WARNING_SATS = 100_000;
 /** The connect button is disabled under this capacity. */
 export const MIN_CAPACITY_OPEN_SATS = 100_000;
 
-// `key` is the Choice value (lowercase, ruled 2026-11-13); it maps back to the
-// option's rate. `feeSats` is the estimate both the card (FeeCost: "about
-// $0.59" over "~770 sats", ruling "fix the five" item 5) and the footer's
-// "network fee about …" show, so the two always say the same amount.
-// Economy sends no fee rate, so the node picks it and nothing computes a figure:
-// its card and the footer say the node sets the fee, with no number (Ethan's
-// ruling "a", 2026-11-16). What it sends is unchanged.
-export const FEE_SPEED_OPTIONS = ([
-  { key: "economy", label: "Economy", rate: undefined, desc: "cheapest", time: "1–3 hours", feeSats: null },
-  { key: "normal", label: "Normal", rate: 5, desc: "balanced", time: "~30 min", feeSats: 770 },
-  { key: "priority", label: "Priority", rate: 15, desc: "fastest", time: "~10 min", feeSats: 2_300 },
-] as const);
+// The fee options' keys, labels and order are components/fees'
+// (FEE_OPTION_ORDER, FEE_OPTION_LABEL); the card's state holds the KEY (F3).
+// Each option's figure is its live open cost (rate × 155 vB, P14), shown by
+// both the card (FeeCost: "about $0.59" over "~770 sats") and the footer's
+// "network fee about …", so the two always say the same amount.
 
 /** The card's own copy. */
 export const CONNECT_TO_HUB_COPY = {
@@ -61,23 +56,30 @@ export const CONNECT_TO_HUB_COPY = {
 
   /** The footer summary, before the fee: "<sats> · network fee about <fee>". */
   networkFeeAbout: "network fee about",
-  /** The footer summary with Economy: "<sats> · network fee set by your node". */
-  networkFeeSetByNode: "network fee set by your node",
+  /**
+   * O7, the member's wording (Ethan, "recs" via member-first-run-ui's review,
+   * 2026-11-18): one plain line under "How fast", in the normal text colour,
+   * not red — the member caused nothing. The footer then shows the size alone,
+   * "<sats> sats", without repeating this line.
+   */
+  feeUnavailable: "Fee estimates aren't available right now, so you can't connect yet. Try again in a few minutes.",
   connecting: "Connecting…",
   connect: "Connect to BitCorn →",
   openFailed: "Couldn't connect to BitCorn",
 
   submittedTitle: "Connection submitted",
+  // F5: the treasury requires 2 confirmations of member channels
+  // (bitcoin.defaultchanconfs=2, Q6). The card itself shows the
+  // first-confirmation range (P13 (a)).
   submittedMessage:
-    "Your connection to BitCorn is being set up. It's ready after 1–3 on-chain " +
+    "Your connection to BitCorn is being set up. It's usable after 2 " +
     "confirmations. This page updates on its own.",
   fundingTransaction: "Funding Transaction",
 
   // Technical details.
   nodeId: "BitCorn's node ID",
   feeRates: "Fee rates",
-  // Economy shows no rate: it sends none (ruling "fix the five" item 4).
-  feeRatesDetail: "Normal ~5 sat/vB · Priority ~15 sat/vB",
+  // P19 (a): the row shows the live integer rates (components/fees ratesDetail).
   addressLabel: "BitCorn's address",
   optional: "(optional)",
   addressPlaceholder: "e.g. 203.0.113.5:9735 — ask your operator",

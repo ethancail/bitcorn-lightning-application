@@ -1440,6 +1440,15 @@ div:has(> .action-confirm-input) + .dialog-actions {
   line-height: 1.6;
 }
 
+/* The member's "Fee updated" reshow block (ActionConfirmModal; ruling 5 of
+   member-first-run-ui's review, 2026-11-18): .dialog-body's size, and
+   .dialog-title's weight for its heading, so it reads as part of the dialog.
+   The heading stays --text; the sentence takes .dialog-body's prose colour
+   (--text-2), matching the paragraph above (relayed ruling (a), 2026-11-19). */
+.action-confirm-notice-block { font-size: 0.875rem; }
+.action-confirm-notice-heading { font-weight: 600; color: var(--text); }
+.action-confirm-notice-body { color: var(--text-2); }
+
 .dialog-actions {
   display: flex;
   gap: 10px;
@@ -1966,11 +1975,18 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .choice-meta { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); }
 /* A cost on its own line that never splits: "~192 sats" stays whole. */
 .choice-cost { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); white-space: nowrap; }
-/* ...but a WORDED cost ("Fee set by your node") may wrap, balanced so it
-   breaks cleanly (Ethan's ruling "fix the five" items 1 and 2, 2026-11-16).
+/* ...but a WORDED cost may wrap, balanced so it breaks cleanly (Ethan's ruling
+   "fix the five" items 1 and 2, 2026-11-16). "Fee set by your node" is retired;
+   the worded cost now is the close card's "about $X proposed — the final fee
+   is often higher" (FeeCost).
    Figures are Amounts, whose lines are nowrap on their own. A block, because
    balance evens out the lines of a block, not of an inline span. */
 .fee-cost-words { display: block; white-space: normal; text-wrap: balance; }
+/* fee-estimates D3: the close card's "about $X proposed — …" is a worded cost,
+   so its line is a .fee-cost-words block; the figure inside keeps its line
+   (.amount-figure is nowrap) and the qualifier after it may wrap. The
+   qualifier wears the figure's weight and colour, as it did inline. */
+.fee-cost-qualifier { white-space: normal; font-weight: 600; color: var(--text); }
 .choice-reason { font-size: 0.75rem; color: var(--text-2); }
 
 /* ─── Amount (components/amount/Amount.tsx, NoRateNote.tsx) ───────
@@ -2000,6 +2016,13 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .connect-reach-reachable .connect-dot { background: var(--green); }
 .connect-reach-addressKnown .connect-dot { background: var(--amber); }
 .connect-locked { margin: 0; font-size: 0.875rem; color: var(--text); }
+/* O7, the member's "no fee estimate" line: plain, the normal text colour, not
+   red — not an error the member caused (Ethan's "recs", 2026-11-18). */
+.connect-fee-unavailable { margin: 0; font-size: 0.8125rem; color: var(--text); }
+/* Technical details' "Fee rates" row: each unit stays whole inside TechRow's
+   break-all value. A separator rides with the item after it ("· Normal ~4
+   sat/vB"), so a wrap starts a line with "·" and never ends one on it. */
+.fee-rate-token { white-space: nowrap; }
 .connect-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .connect-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 /* The size control: one joined row of options, not separate cards. Withdraw's

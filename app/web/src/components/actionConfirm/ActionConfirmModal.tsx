@@ -35,6 +35,13 @@ import {
 } from "./confirmMachine";
 import { classifyConfirmError, MISMATCH_NEXT_STEP } from "./confirmErrors";
 
+/**
+ * Returned by an onConfirm that sent nothing because it re-showed the modal
+ * (fee-estimates O6: a stale estimate was refreshed). `run` then leaves the
+ * modal as the action set it, instead of closing it as done.
+ */
+export const RESHOWN = Symbol("reshown");
+
 export interface ActionConfirmController {
   state: ConfirmState;
   /** Show the modal for an action. */
@@ -56,7 +63,8 @@ export function useActionConfirm(): ActionConfirmController {
   async function run(perform: () => Promise<unknown>): Promise<void> {
     dispatch({ t: "submit" });
     try {
-      await perform();
+      const result = await perform();
+      if (result === RESHOWN) return;
       dispatch({ t: "done" });
     } catch (e: unknown) {
       const err = e as { message?: string };
@@ -129,6 +137,18 @@ export default function ActionConfirmModal({
             <p style={{ marginTop: 12, marginBottom: 0, opacity: 0.85 }}>{summary.irreversible}</p>
           )}
         </div>
+
+        {state.step === "confirm" && state.notice && (typeof state.notice === "string" ? (
+          <p role="status" className="action-confirm-notice" style={{ marginTop: 12, marginBottom: 0 }}>{state.notice}</p>
+        ) : (
+          // The member's "Fee updated" block (ruling 5 of member-first-run-ui's
+          // review, 2026-11-18): the dialog's body size and its heading
+          // weight, so it reads as part of the dialog (styles.css).
+          <div role="status" className="action-confirm-notice action-confirm-notice-block" style={{ marginTop: 12 }}>
+            <div className="action-confirm-notice-heading">{state.notice.heading}</div>
+            <p className="action-confirm-notice-body" style={{ margin: "4px 0 0" }}>{state.notice.body}</p>
+          </div>
+        ))}
 
         {/* ── Typed challenge ── */}
         {state.step === "confirm" && (

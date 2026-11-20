@@ -142,6 +142,25 @@ describe("error classification", () => {
     expect(classifyConfirmError({ status: 400, code: "capacity_sats must be at least 100,000" })).toBeNull();
   });
 
+  // fee-estimates O6: a stale estimate is refreshed at confirm and re-shown;
+  // nothing is sent until the operator confirms the new figure.
+  it("reshow from sending → back to the challenge, new summary, empty input, with the notice", () => {
+    const S2 = summarizePayInvoice({ amountSats: 30_000 });
+    const sending = reduceConfirm(open(), { t: "submit" });
+    const s = reduceConfirm(sending, { t: "reshow", summary: S2, notice: "refreshed" });
+    expect(s).toEqual({ step: "confirm", summary: S2, typed: "", notice: "refreshed" });
+  });
+
+  it("reshow applies only from sending: from confirm, failed or closed it changes nothing", () => {
+    const S2 = summarizePayInvoice({ amountSats: 30_000 });
+    const ev = { t: "reshow" as const, summary: S2, notice: "refreshed" };
+    const confirm = open();
+    expect(reduceConfirm(confirm, ev)).toBe(confirm);
+    expect(reduceConfirm(INITIAL_CONFIRM_STATE, ev)).toBe(INITIAL_CONFIRM_STATE);
+    const failed = reduceConfirm(reduceConfirm(open(), { t: "submit" }), { t: "failed", error: null, message: "x" });
+    expect(reduceConfirm(failed, ev)).toBe(failed);
+  });
+
   it("no confirmation copy tells the operator to ask an operator", () => {
     const texts = [
       classifyConfirmError({ status: 400, code: "confirmation_required" })!,
