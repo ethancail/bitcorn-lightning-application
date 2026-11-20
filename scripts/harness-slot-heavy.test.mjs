@@ -49,7 +49,9 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { HEAVY_HOSTS, heavyAccountRefusal, heavyContext, heavyLocked, heavySettings, heldByThisJob, procStart } from "./harness-slot.mjs";
+import {
+  HEAVY_HOSTS, acquireLock, heavyAccountRefusal, heavyContext, heavyLocked, heavySettings, heldByThisJob, procStart, releaseLock,
+} from "./harness-slot.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SCRIPT = path.join(ROOT, "scripts", "harness-slot.mjs");
@@ -449,89 +451,216 @@ ttest("heavy status says free or held as the kernel does, and names the holder",
   assert.equal(await status(), "free");
 });
 
-// ─── A3: a heavy holder never waits for a slot ────────────────────────────
+// ─── the lock order: heavy first, then the slot (2026-11-20; reverses A3) ──
+//
+// lock acquire --slot N with no token of its own takes heavy, exclusive, by a
+// holder process of kind "slot", then the slot; lock release releases the slot,
+// then that heavy. A heavy holder (by token) just takes the slot, and may wait
+// for it. Here the slot locks live in slotHome (the CLI's HOME) and heavy in
+// home (HARNESS_HEAVY_TEST_HOME), unless a test passes one home for both. A
+// plain slot holder (no heavy) is made with acquireLock directly: a holder from
+// before the order, or one that took its slot under a token.
 
-ttest("A3: under the heavy lock, a busy slot is refused at once in words browser-slot.py does not wait on, and heavy is released", async () => {
+const takeSlot = (holder, extra = []) => ["lock", "acquire", "--slot", "1", "--holder", holder, "--go", "test", ...extra];
+const slotLockPath = (slotHome, slot = 1) => path.join(locksDir(slotHome), `slot-${slot}.lock`);
+const plainSlot = (slotHome, holder, slot = 1) => acquireLock({ home: slotHome, target: slot, holder, go: "test" });
+// history.log's lines as "<verb> <lock>", in order (heavy's and the slot's share it when both homes are one).
+const events = (home) => history(home).trim().split("\n").filter(Boolean)
+  .map((l) => l.match(/ (acquire|release|force-release) lock="([^"]+)"/)).filter(Boolean).map((m) => `${m[1]} ${m[2]}`);
+
+ttest("order: a slot acquire with no token holds heavy before the slot, and its release releases both, the slot first", async () => {
   const home = scratch();
-  const slotHome = scratch();
-  const take = (holder, extra = {}) => cli(["lock", "acquire", "--slot", "1", "--holder", holder, "--go", "test"], { home, slotHome, ...extra });
-  assert.equal((await take("other-arc")).code, 0);
+  try {
+    // One home for both, so history.log orders heavy's lines and the slot's together.
+    const a = await cli(takeSlot("arc"), { home, slotHome: home });
+    assert.equal(a.code, 0, a.stderr);
+    assert.deepEqual(events(home), ["acquire heavy", "acquire slot 1"], "heavy before the slot");
+    assert.match(a.stdout, /^acquired slot 1 for arc: /m);
+    assert.match(a.stdout, /with the heavy lock, exclusive \(heavy\), taken first, held by pid \d+: released with the slot/);
+    const info = readInfo(home);
+    assert.equal(info.kind, "slot");
+    assert.equal(info.for_slot, 1);
+    assert.equal(info.exclusive, true);
+    assert.equal(tokenOf(a.stdout), info.job, "it prints the holder's token, for the arc's own heavy jobs");
+    assert.deepEqual(JSON.parse(fs.readFileSync(slotLockPath(home), "utf8")).heavy, { pid: info.pid, job: info.job },
+      "the slot lock records the heavy it was taken with");
+    assert.equal(lockState(home), "held");
 
-  // The control: outside the heavy lock the refusal IS the one browser-slot.py waits on.
-  const plain = await take("me");
-  assert.equal(plain.code, 2);
-  assert.match(plain.stderr, WORKFLOW_WAIT);
+    // That heavy goes with its slot, not on its own.
+    const h = await cli(["heavy", "release", "--holder", "slot-1/arc"], { home, slotHome: home });
+    assert.equal(h.code, 2);
+    assert.match(h.stderr, /heavy is held for slot 1's lock; release that slot \(lock release --slot 1 --holder <arc>\)/);
+    assert.equal(lockState(home), "held");
 
-  const r = await cli(["heavy", "run", "--", NODE, SCRIPT, "lock", "acquire", "--slot", "1", "--holder", "me", "--go", "test"], { home, slotHome });
-  assert.equal(r.code, 2, r.stderr);
-  assert.match(r.stderr, /slot 1 refused: this job holds the heavy lock, and a heavy-lock holder never waits for a slot; slot 1 is held by "other-arc" since \S+/);
-  const refusal = r.stderr.split("\n").find((l) => l.includes("slot 1 refused"));
-  assert.doesNotMatch(refusal, WORKFLOW_WAIT);
-  assert.match(r.stderr, /harness lock released: heavy/);
-  assert.equal(lockState(home), "free", "heavy is released when its slot part fails");
-
-  // The same under a Polar setup window.
-  assert.equal((await cli(["lock", "release", "--slot", "1", "--holder", "other-arc"], { home, slotHome })).code, 0);
-  assert.equal((await cli(["lock", "acquire", "--setup", "--holder", "polar", "--go", "test"], { home, slotHome })).code, 0);
-  const s = await cli(["heavy", "run", "--", NODE, SCRIPT, "lock", "acquire", "--slot", "1", "--holder", "me", "--go", "test"], { home, slotHome });
-  assert.equal(s.code, 2, s.stderr);
-  const setupRefusal = s.stderr.split("\n").find((l) => l.includes("slot 1 refused"));
-  assert.match(setupRefusal, /never waits for a slot; a Polar setup window holds setup\.lock \(holder "polar"\)/);
-  assert.doesNotMatch(setupRefusal, WORKFLOW_WAIT);
+    const r = await cli(["lock", "release", "--slot", "1", "--holder", "arc"], { home, slotHome: home });
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /^harness lock released: slot 1, holder arc, held .*\nharness lock released: heavy, holder slot-1\/arc, held /);
+    assert.equal(lockState(home), "free", "heavy is released with the slot");
+    assert.ok(!fs.existsSync(slotLockPath(home)));
+    await until(() => gone(info.pid), "the holder process to end");
+    assert.deepEqual(events(home), ["acquire heavy", "acquire slot 1", "release slot 1", "release heavy"]);
+  } finally {
+    stopHolders(home);
+  }
 });
 
-ttest("A3: a Node grandchild of the command, which holds no descriptor, still counts as this job (its token is inherited)", async () => {
+ttest("order: while one slot holder runs, a second slot acquire waits on heavy, not on the slot", async () => {
   const home = scratch();
   const slotHome = scratch();
-  assert.equal((await cli(["lock", "acquire", "--slot", "1", "--holder", "other-arc", "--go", "test"], { home, slotHome })).code, 0);
-  // node → node: the inner node gets no fd 9 (Node marks inherited fds close-on-exec).
-  const inner = `const r=require("child_process").spawnSync(${JSON.stringify(NODE)},[${JSON.stringify(SCRIPT)},"lock","acquire","--slot","1","--holder","me","--go","test"],{encoding:"utf8"});` +
+  try {
+    assert.equal((await cli(takeSlot("first"), { home, slotHome })).code, 0);
+    // Bounded: it gives up on heavy, in words browser-slot.py waits on, and never reached any slot.
+    for (const slot of ["1", "2"]) {
+      const t0 = Date.now();
+      const b = await cli(["lock", "acquire", "--slot", slot, "--holder", "second", "--go", "test", "--wait", "2"], { home, slotHome });
+      assert.equal(b.code, 2, b.stderr);
+      assert.ok(Date.now() - t0 >= 1900, `slot ${slot}: it waited (${Date.now() - t0} ms)`);
+      const refusal = b.stderr.split("\n").find((l) => l.includes("already locked")) ?? "";
+      assert.match(refusal, /^harness-slot lock: heavy is already locked by "slot-1\/first" \(exclusive\)/);
+      assert.match(refusal.replace("harness-slot lock: ", ""), WORKFLOW_WAIT);
+      assert.doesNotMatch(b.stderr, /slot \d is already locked/, `slot ${slot}: it never reached the slot`);
+    }
+    assert.ok(!fs.existsSync(slotLockPath(slotHome, 2)));
+    // Unbounded: it waits, holding no slot, and gets heavy then its slot once the first lets go.
+    const w = start(["lock", "acquire", "--slot", "2", "--holder", "second", "--go", "test"], { home, slotHome });
+    await until(() => w.err().includes("waiting"), "the second to wait on heavy");
+    await sleep(1500);
+    assert.equal(w.child.exitCode, null, "still waiting");
+    assert.ok(!fs.existsSync(slotLockPath(slotHome, 2)), "a waiter holds no slot while it waits on heavy");
+    assert.equal((await cli(["lock", "release", "--slot", "1", "--holder", "first"], { home, slotHome })).code, 0);
+    const done = await w.done;
+    assert.equal(done.code, 0, done.stderr);
+    assert.match(done.stdout, /^acquired slot 2 for second: /m);
+    assert.equal(readInfo(home).holder, "slot-2/second");
+    assert.equal((await cli(["lock", "release", "--slot", "2", "--holder", "second"], { home, slotHome })).code, 0);
+    assert.equal(lockState(home), "free");
+  } finally {
+    stopHolders(home);
+  }
+});
+
+ttest("order: a heavy holder may wait for a busy slot, and takes it once it frees", async () => {
+  const home = scratch();
+  const slotHome = scratch();
+  plainSlot(slotHome, "other-arc");
+  // Inside heavy run (its token), poll the slot as browser-slot.py does, logging each refusal.
+  const log = path.join(home, "polls.log");
+  const q = (s) => `'${s.replace(/'/g, "'\\''")}'`;
+  const poll = `until ${q(NODE)} ${q(SCRIPT)} lock acquire --slot 1 --holder me --go test 2>>${q(log)}; do sleep 0.2; done`;
+  const run = start(["heavy", "run", "--holder", "job", "--", "sh", "-c", poll], { home, slotHome });
+  try {
+    const polls = () => (fs.existsSync(log) ? fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean) : []);
+    await until(() => polls().length >= 3, "three polls");
+    assert.equal(run.child.exitCode, null, "it is still waiting for the slot");
+    assert.equal(lockState(home), "held", "holding heavy while it waits");
+    for (const line of polls()) {
+      assert.match(line, /^harness-slot lock: slot 1 is already locked by "other-arc"/);
+      assert.match(line.replace("harness-slot lock: ", ""), WORKFLOW_WAIT, "in the words a waiter waits on");
+    }
+    releaseLock({ home: slotHome, target: 1, holder: "other-arc" });
+    const r = await run.done;
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /^acquired slot 1 for me: /m);
+    assert.match(r.stdout, /heavy: already held by this job \(HARNESS_HEAVY_JOB\), so not taken again/);
+    const lock = JSON.parse(fs.readFileSync(slotLockPath(slotHome), "utf8"));
+    assert.equal(lock.holder, "me");
+    assert.equal(lock.heavy, undefined, "taken under the job's heavy, so the slot records none of its own");
+    assert.equal(lockState(home), "free", "the job's heavy ended with the job");
+  } finally {
+    run.child.kill("SIGKILL");
+    stopHolders(home);
+  }
+});
+
+ttest("order: a crash of the slot holder (its --pid) frees both, the slot first", async () => {
+  const home = scratch();
+  const owner = liveSleeper();
+  try {
+    const a = await cli(takeSlot("arc", ["--pid", String(owner.pid)]), { home, slotHome: home });
+    assert.equal(a.code, 0, a.stderr);
+    assert.match(a.stdout, new RegExp(`released with the slot, or when pid ${owner.pid} exits`));
+    const holder = readInfo(home).pid;
+    assert.equal(lockState(home), "held");
+    assert.ok(fs.existsSync(slotLockPath(home)));
+    owner.kill(); // SIGKILL: nothing of it runs a finally
+    await until(() => !fs.existsSync(slotLockPath(home)) && lockState(home) === "free", "both to be freed");
+    await until(() => gone(holder), "the holder process to end");
+    assert.deepEqual(events(home), ["acquire heavy", "acquire slot 1", "release slot 1", "release heavy"]);
+    // And the next acquire gets both at once.
+    const b = await cli(takeSlot("next", ["--wait", "2"]), { home, slotHome: home });
+    assert.equal(b.code, 0, b.stderr);
+    assert.equal((await cli(["lock", "release", "--slot", "1", "--holder", "next"], { home, slotHome: home })).code, 0);
+  } finally {
+    owner.kill();
+    stopHolders(home);
+  }
+});
+
+ttest("order: a slot that cannot be had lets heavy go again, and its refusal is the slot's own", async () => {
+  const home = scratch();
+  const slotHome = scratch();
+  plainSlot(slotHome, "other-arc");
+  const r = await cli(takeSlot("me"), { home, slotHome });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /harness-slot lock: heavy \(heavy\) let go again: slot 1 was not taken/);
+  assert.match(r.stderr, /harness-slot lock: slot 1 is already locked by "other-arc"/);
+  assert.equal(lockState(home), "free");
+  assert.deepEqual(events(home), ["acquire heavy", "release heavy"]);
+  // Under a Polar setup window, the same.
+  releaseLock({ home: slotHome, target: 1, holder: "other-arc" });
+  acquireLock({ home: slotHome, target: "setup", holder: "polar", go: "test" });
+  const s = await cli(takeSlot("me"), { home, slotHome });
+  assert.equal(s.code, 2);
+  const refusal = s.stderr.split("\n").find((l) => l.includes("refused")) ?? "";
+  assert.match(refusal.replace("harness-slot lock: ", ""), WORKFLOW_WAIT);
+  assert.equal(lockState(home), "free");
+});
+
+ttest("order: a Node grandchild of a heavy command, which holds no descriptor, still counts as the job (its token is inherited)", async () => {
+  const home = scratch();
+  const slotHome = scratch();
+  plainSlot(slotHome, "other-arc");
+  // node → node: the inner node gets no fd 9 (Node marks inherited fds close-on-exec). Outside the job it
+  // would wait on the run's heavy until --wait ran out; inside it, it reaches the slot at once.
+  const inner = `const r=require("child_process").spawnSync(${JSON.stringify(NODE)},[${JSON.stringify(SCRIPT)},"lock","acquire","--slot","1","--holder","me","--go","test","--wait","3"],{encoding:"utf8"});` +
     "process.stderr.write(r.stderr);process.exit(r.status)";
   const r = await cli(["heavy", "run", "--", NODE, "-e", inner], { home, slotHome });
   assert.equal(r.code, 2, r.stderr);
-  assert.match(r.stderr, /slot 1 refused: this job holds the heavy lock/);
-});
-
-ttest("A3: under the heavy lock, a free slot is taken as usual", async () => {
-  const home = scratch();
-  const slotHome = scratch();
-  const r = await cli(["heavy", "run", "--", NODE, SCRIPT, "lock", "acquire", "--slot", "1", "--holder", "me", "--go", "test"], { home, slotHome });
-  assert.equal(r.code, 0, r.stderr);
-  assert.match(r.stdout, /acquired slot 1 for me/);
+  assert.match(r.stderr, /harness-slot lock: slot 1 is already locked by "other-arc"/);
+  assert.doesNotMatch(r.stderr, /heavy is already locked/);
 });
 
 // F2: separate shells, as separate Claude Code Bash calls are (each its own
 // short-lived bash, so no process of the first is an ancestor of the next).
-ttest("A3 (F2): after heavy acquire, a later separate command carrying its token never waits for a slot; one without it does", async () => {
+ttest("order (F2): after heavy acquire, a later separate command carrying its token reaches the slot; one without it waits on heavy", async () => {
   const home = scratch();
   const slotHome = scratch();
   const env = { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: slotHome, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", HARNESS_HEAVY_TEST_MEMINFO: PLENTY };
   const q = (s) => `'${s.replace(/'/g, "'\\''")}'`;
   const shell = (line, extra = {}) => spawnSync("sh", ["-c", line], { encoding: "utf8", timeout: 30_000, env: { ...env, ...extra } });
   try {
-    assert.equal((await cli(["lock", "acquire", "--slot", "1", "--holder", "other-arc", "--go", "test"], { home, slotHome })).code, 0);
+    plainSlot(slotHome, "other-arc");
     const a = shell(`${q(NODE)} ${q(SCRIPT)} heavy acquire --holder shell-arc`);
     assert.equal(a.status, 0, a.stderr);
-    assert.match(a.stdout, /acquired heavy for shell-arc: .*\(held by pid (\d+); freed by heavy release/);
     const token = tokenOf(a.stdout);
     assert.equal(token, `shell-arc:${readInfo(home).pid}`, a.stdout);
-    assert.equal(readInfo(home).job, token, "the record carries the token");
-    const slot = `${q(NODE)} ${q(SCRIPT)} lock acquire --slot 1 --holder shell-arc --go test`;
+    const slot = `${q(NODE)} ${q(SCRIPT)} lock acquire --slot 1 --holder shell-arc --go test --wait 1`;
 
-    // The control (e1abb82 refused with the waited-on phrase here): no token, outside the job.
+    // No token: outside the job, so heavy comes first, and it waits there.
     const without = shell(slot);
     assert.equal(without.status, 2);
-    assert.match(without.stderr, WORKFLOW_WAIT, "without the token it is outside the job, and may wait");
+    assert.match(without.stderr, /heavy is already locked by "shell-arc"/);
+    assert.doesNotMatch(without.stderr, /slot 1 is already locked/);
 
+    // The token: inside the job, so straight to the slot, which is busy: the refusal a waiter waits on.
     const withToken = shell(slot, { HARNESS_HEAVY_JOB: token });
     assert.equal(withToken.status, 2);
-    const refusal = withToken.stderr.split("\n").find((l) => l.includes("slot 1"));
-    assert.match(refusal, /slot 1 refused: this job holds the heavy lock, and a heavy-lock holder never waits for a slot/);
-    assert.doesNotMatch(refusal, WORKFLOW_WAIT);
+    assert.match(withToken.stderr, /harness-slot lock: slot 1 is already locked by "other-arc"/);
+    assert.equal(lockState(home), "held", "the job keeps its heavy");
 
     // A token naming another job does not count.
     const stale = shell(slot, { HARNESS_HEAVY_JOB: `shell-arc:${deadPid()}` });
-    assert.match(stale.stderr, WORKFLOW_WAIT);
+    assert.match(stale.stderr, /heavy is already locked by "shell-arc"/);
 
     const rel = shell(`${q(NODE)} ${q(SCRIPT)} heavy release --holder shell-arc`);
     assert.match(rel.stdout, /harness lock released: heavy, holder shell-arc/, rel.stderr);
@@ -600,12 +729,22 @@ ttest("F2: inside one token, concurrency is the caller's: two heavy runs with th
   }
 });
 
-ttest("a slot holder may wait for heavy: holding a slot does not stop a heavy acquire", async () => {
+ttest("order: a slot's holder runs its heavy jobs inside the slot's token; without it they wait on heavy", async () => {
   const home = scratch();
   const slotHome = scratch();
-  assert.equal((await cli(["lock", "acquire", "--slot", "1", "--holder", "arc", "--go", "test"], { home, slotHome })).code, 0);
-  const r = await cli(["heavy", "run", "--", "true"], { home, slotHome });
-  assert.equal(r.code, 0, r.stderr);
+  try {
+    const a = await cli(["lock", "acquire", "--slot", "1", "--holder", "arc", "--go", "test"], { home, slotHome });
+    assert.equal(a.code, 0, a.stderr);
+    const inside = await cli(["heavy", "run", "--", "true"], { home, slotHome, env: { HARNESS_HEAVY_JOB: tokenOf(a.stdout) } });
+    assert.equal(inside.code, 0, inside.stderr);
+    assert.match(inside.stderr, /already held by this job \("slot-1\/arc"\); running without acquiring again/);
+    const outside = await cli(["heavy", "run", "--wait", "1", "--", "true"], { home, slotHome });
+    assert.equal(outside.code, 2);
+    assert.match(outside.stderr, /heavy is already locked by "slot-1\/arc"/);
+    assert.equal((await cli(["lock", "release", "--slot", "1", "--holder", "arc"], { home, slotHome })).code, 0);
+  } finally {
+    stopHolders(home);
+  }
 });
 
 // ─── nesting, and the commands for callers that cannot wrap ───────────────

@@ -552,11 +552,10 @@ function sandbox() {
     fs.rmSync(log, { force: true });
     const r = spawnSync(process.execPath, [MODULE, ...args], {
       cwd: ROOT, encoding: "utf8", timeout: 20_000,
-      // HARNESS_HEAVY_TEST_HOME: this suite is itself a heavy job (H3), so it runs
-      // under the REAL heavy lock, and the slot CLI would rightly see its own
-      // ancestor holding heavy (A3) and refuse in the no-wait wording. The sandbox
-      // home has no heavy.lock, so the slot locks behave as they do outside heavy.
-      env: { PATH: bin, HOME: home, STUB_LOG: log, HARNESS_HEAVY_TEST_HOME: home, ...extra },
+      // HARNESS_HEAVY_TEST_HOME: `lock acquire --slot` takes heavy first (the lock
+      // order), so the sandbox is its heavy home too, never the account's real
+      // heavy.lock; at one heavy slot, so its history is the same on any host.
+      env: { PATH: bin, HOME: home, STUB_LOG: log, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", ...extra },
     });
     const ran = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
     return { status: r.status, stdout: r.stdout, stderr: r.stderr, ran };
@@ -654,15 +653,18 @@ test("H14 cli: lock acquire, status and release through the entry point; a refus
   const first = run(["lock", "acquire", "--slot", "1", "--holder", "harness-host", ...go]);
   assert.equal(first.status, 0, first.stderr);
   assert.match(first.stdout, /^acquired slot 1 for harness-host: /);
-  const second = run(["lock", "acquire", "--slot", "1", "--holder", "drive-mode", ...go]);
+  // The lock order: the second waits on the heavy the first took with its slot, never reaching the slot.
+  const second = run(["lock", "acquire", "--slot", "1", "--holder", "drive-mode", ...go, "--wait", "1"]);
   assert.equal(second.status, 2);
-  assert.match(second.stderr, /harness-slot lock: slot 1 is already locked by "harness-host"/);
+  assert.match(second.stderr, /harness-slot lock: heavy is already locked by "slot-1\/harness-host"/);
   assert.equal(run(["lock", "acquire", "--slot", "1", "--setup", "--holder", "x", ...go]).status, 2, "--slot and --setup together");
   assert.equal(run(["lock", "acquire", "--slot", "0", "--holder", "x", ...go]).status, 2, "slot 0");
+  assert.equal(run(["lock", "acquire", "--setup", "--holder", "x", ...go, "--wait", "1"]).status, 2, "--wait with --setup");
   const release = run(["lock", "release", "--slot", "1", "--holder", "harness-host"]);
   assert.equal(release.status, 0, release.stderr);
-  assert.match(release.stdout, /^harness lock released: slot 1, holder harness-host, held /);
-  assert.equal(history(home).length, 2);
+  assert.match(release.stdout, /^harness lock released: slot 1, holder harness-host, held .*\nharness lock released: heavy, holder slot-1\/harness-host, /);
+  assert.deepEqual(history(home).map((l) => l.match(/ (acquire|release) lock="([^"]+)"/).slice(1).join(" ")),
+    ["acquire heavy", "acquire slot 1", "release slot 1", "release heavy"], "heavy first, then the slot; released in reverse");
 });
 
 // ─── dev-safety R3–R5: the lock's corrections ─────────────────────────────

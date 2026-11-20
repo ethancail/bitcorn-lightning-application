@@ -111,7 +111,12 @@ that weakens them is caught mechanically:
   jobs (2 on ubuntu-pc, 1 on the OptiPlex), a second admitted only with
   MemAvailable ≥ 4096 MB (`HARNESS_HEAVY_MIN_FREE_MB`), `--exclusive` for
   every slot — is documented in `docs/dev-setup.md` § The heavy lock and
-  tested by `scripts/harness-slot-heavy.test.mjs`.
+  tested by `scripts/harness-slot-heavy.test.mjs`. So is the lock order,
+  heavy first, then the slot (`docs/dev-setup.md` § The lock order):
+  `lock acquire --slot N` from a command whose job holds no heavy takes heavy,
+  exclusive, before the slot, and `lock release --slot N` lets go of the slot
+  and then that heavy; a heavy holder (by its `HARNESS_HEAVY_JOB` token) just
+  takes the slot, and may wait for it.
 - **permissions.deny (.claude/settings.json):** parses the deny array and
   pattern-matches it against tables of commands that must be blocked
   (push/PR/broadcast/deploy, incl. compound and `-C`/`-c` bypass forms) and

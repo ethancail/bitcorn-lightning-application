@@ -463,26 +463,24 @@ function heldFor(from, to) {
   return Number.isNaN(minutes) ? "?" : `${Math.floor(minutes / 60)}h${String(minutes % 60).padStart(2, "0")}m`;
 }
 
-// A3: a job holding the heavy lock never waits for a slot. Its refusal must not
-// contain the two phrases bitcorn-workflow's tests/browser-slot.py waits on,
-// "is already locked by " and "refused: setup.lock is held by ", so that
-// caller fails at once, its command fails, and the heavy wrapper releases.
-const heavyNoWait = (target, what) =>
-  `${lockName(target)} refused: this job holds the heavy lock, and a heavy-lock holder never waits for a slot; ${what}`;
-
-function slotRefusalUnderHeavy(home, target) {
-  const setup = readLock(home, "setup");
-  return setup === null ? null : heavyNoWait(target, `a Polar setup window holds setup.lock (holder ${JSON.stringify(setup.holder)})`);
+// THE LOCK ORDER (2026-11-20, after member-first-run-ui's capture held slot 1
+// for 1h24m while it waited on heavy): heavy first, then the slot, everywhere.
+// acquireLock takes only the slot; the CLI's `lock acquire --slot N` (lockCli)
+// first takes heavy, exclusive, for the slot, unless the caller's job already
+// holds heavy by its token. So a slot holder never waits on heavy, and a heavy
+// holder may wait for a slot. `heavy` is that hold, recorded in the slot lock.
+export function acquireLock(args) {
+  return takeSlotLock(args).message;
 }
 
-// heavyHeld: this process descends from the heavy lock's holder (heldByThisJob), so A3 applies.
-export function acquireLock({ home, target, holder, go, now = new Date(), host = os.hostname(), race = {}, heavyHeld = false }) {
+// acquireLock, returning also the lock's text, byte for byte as written.
+function takeSlotLock({ home, target, holder, go, now = new Date(), host = os.hostname(), race = {}, heavy }) {
   requireText("--holder", holder);
   requireText("--go", go);
   const before = exclusionConflict(home, target);
-  if (before) throw new Error(heavyHeld && target !== "setup" ? slotRefusalUnderHeavy(home, target) ?? before : before);
+  if (before) throw new Error(before);
   fs.mkdirSync(lockDir(home), { recursive: true });
-  const lock = { holder, go, acquired_at: utc(now), host, slot: target };
+  const lock = { holder, go, acquired_at: utc(now), host, slot: target, ...(heavy ? { heavy } : {}) };
   const text = `${JSON.stringify(lock, null, 2)}\n`;
   // R3: written whole to a temp file, then linked into place, which fails with
   // EEXIST if the lock exists: the lock path never holds a partial file.
@@ -493,10 +491,6 @@ export function acquireLock({ home, target, holder, go, now = new Date(), host =
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
     const held = readLock(home, target);
-    if (heavyHeld && target !== "setup") {
-      throw new Error(heavyNoWait(target, `${lockName(target)} is held by ${JSON.stringify(held?.holder)}` +
-        (held?.acquired_at ? ` since ${held.acquired_at}` : "")));
-    }
     // workflow-app waits on "is already locked by" (bitcorn-workflow tests/browser-slot.py): keep it.
     throw new Error(`${lockName(target)} is already locked by ${JSON.stringify(held?.holder)}` +
       (held?.acquired_at ? ` since ${held.acquired_at}, go ${JSON.stringify(held.go)}` : "") +
@@ -511,13 +505,16 @@ export function acquireLock({ home, target, holder, go, now = new Date(), host =
     removeLock(home, target, (held, heldText) => (heldText === text ? null :
       `${after}; and ${lockName(target)} is no longer this acquire's lock (now held by ` +
       `${JSON.stringify(held.holder)}), so it was left in place`), race);
-    throw new Error(heavyHeld && target !== "setup" ? slotRefusalUnderHeavy(home, target) ?? after : after);
+    throw new Error(after);
   }
   appendHistory(home, `${utc(now)} acquire ${field("lock", lockName(target))} ${field("holder", holder)} ${field("go", go)} ${field("host", host)}`);
-  return `acquired ${lockName(target)} for ${holder}: ${lockFile(home, target)}`;
+  return { message: `acquired ${lockName(target)} for ${holder}: ${lockFile(home, target)}`, text };
 }
 
-export function releaseLock({ home, target, holder, now = new Date(), race = {} }) {
+export const releaseLock = (args) => releaseSlotLock(args).line;
+
+// releaseLock, returning also the lock it removed (its `heavy`, if any, is the CLI's to release next).
+function releaseSlotLock({ home, target, holder, now = new Date(), race = {} }) {
   requireText("--holder", holder);
   const noLock = `${lockName(target)}: no lock to release`;
   // R3: an unreadable lock is refused on its flag, whatever --holder says.
@@ -530,7 +527,7 @@ export function releaseLock({ home, target, holder, now = new Date(), race = {} 
   if (refusal(seen) !== null) throw new Error(refusal(seen));
   const lock = removeLock(home, target, refusal, race);
   if (lock === null) throw new Error(`${noLock} (it was removed after it was read)`);
-  return releasedLine(home, target, holder, lock, utc(now));
+  return { line: releasedLine(home, target, holder, lock, utc(now)), lock };
 }
 
 // The history line and the release line. The heavy lock has no go (ruling 7),
@@ -542,7 +539,9 @@ function releasedLine(home, target, holder, lock, at) {
     `(${heldFor(lock.acquired_at, at)}) on ${lock.host}` + (lock.go === undefined ? "" : `; go ${JSON.stringify(lock.go)}`);
 }
 
-export function forceReleaseLock({ home, target, reason, now = new Date(), race = {} }) {
+export const forceReleaseLock = (args) => forceReleaseSlotLock(args).line;
+
+function forceReleaseSlotLock({ home, target, reason, now = new Date(), race = {} }) {
   requireText("--reason", reason);
   const noLock = `${lockName(target)}: no lock to release`;
   // R4: force frees the lock it read, whoever holds it, and only that lock: if
@@ -556,8 +555,11 @@ export function forceReleaseLock({ home, target, reason, now = new Date(), race 
   const at = utc(now);
   appendHistory(home, `${at} force-release ${field("lock", lockName(target))} ${field("holder", lock.holder)} ` +
     `${field("acquired_at", lock.acquired_at ?? null)} ${field("reason", reason)}`);
-  return `harness lock FORCE-released: ${lockName(target)}, was held by ${lock.holder} since ${lock.acquired_at ?? "?"}; ` +
-    `reason ${JSON.stringify(reason)}`;
+  return {
+    line: `harness lock FORCE-released: ${lockName(target)}, was held by ${lock.holder} since ${lock.acquired_at ?? "?"}; ` +
+      `reason ${JSON.stringify(reason)}`,
+    lock,
+  };
 }
 
 // R5: whether anything listens on these TCP ports, by the selection dev:kill
@@ -629,14 +631,17 @@ export function lockRefusal(slot, harnessHolder, home) {
 }
 
 const LOCK_USAGE =
-  "usage: harness-slot.mjs lock acquire (--slot N | --setup) --holder <arc> --go \"<text>\"\n" +
+  "usage: harness-slot.mjs lock acquire --slot N --holder <arc> --go \"<text>\" [--wait <seconds>] [--pid <pid>]\n" +
+  "       harness-slot.mjs lock acquire --setup --holder <arc> --go \"<text>\"\n" +
   "       harness-slot.mjs lock release (--slot N | --setup) --holder <arc>\n" +
   "       harness-slot.mjs lock release (--slot N | --setup) --force --reason \"<text>\"\n" +
-  "       harness-slot.mjs lock status";
+  "       harness-slot.mjs lock status\n" +
+  "The order is heavy first, then the slot: lock acquire --slot takes the heavy lock (exclusive) before the slot,\n" +
+  "unless HARNESS_HEAVY_JOB says this job holds it already, and lock release --slot releases that heavy after the slot.";
 
 function parseLockArgs(args) {
   const opts = {};
-  const valued = { "--slot": "slot", "--holder": "holder", "--go": "go", "--reason": "reason" };
+  const valued = { "--slot": "slot", "--holder": "holder", "--go": "go", "--reason": "reason", "--wait": "wait", "--pid": "pid" };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg in valued) {
@@ -658,16 +663,19 @@ function lockTarget(opts) {
   return Number(opts.slot);
 }
 
-export function lockMain(args, { home = os.homedir(), now = new Date(), host = os.hostname(), listening = portsListening, heavyHeld = false } = {}) {
+// The slot lock alone, synchronously: it never takes heavy (lockCli does that
+// for the CLI). --wait and --pid, which only that heavy uses, are lockCli's.
+export function lockMain(args, { home = os.homedir(), now = new Date(), host = os.hostname(), listening = portsListening } = {}) {
   const [action, ...rest] = args;
   const opts = parseLockArgs(rest);
+  if (opts.wait !== undefined || opts.pid !== undefined) throw new Error("--wait and --pid belong to lock acquire --slot, through the CLI");
   if (action === "status") {
     if (Object.keys(opts).length > 0) throw new Error("lock status takes no arguments");
     return lockStatus(home, { now, host, listening });
   }
   if (action === "acquire") {
     if (opts.force || opts.reason !== undefined) throw new Error("--force and --reason belong to lock release");
-    return acquireLock({ home, target: lockTarget(opts), holder: opts.holder, go: opts.go, now, host, heavyHeld });
+    return acquireLock({ home, target: lockTarget(opts), holder: opts.holder, go: opts.go, now, host });
   }
   if (action === "release") {
     if (opts.go !== undefined) throw new Error("--go belongs to lock acquire");
@@ -710,11 +718,12 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
 // HARNESS_HEAVY_MIN_FREE_MB (default 4096), and no exclusive job is waiting;
 // otherwise it waits, polling, as when every slot is held. The memory figure is
 // a snapshot at admission, nothing more: it is sized to leave room for the
-// first job's measured peak (app/web's full vitest, ~1.84 GB at its default 7
-// workers); app/api's peak is not yet measured. A job that took its slot while
-// another was held gets VITEST_MAX_WORKERS=<HARNESS_HEAVY_SHARED_WORKERS,
-// default 3> in its command's environment; a job that starts alone gets none.
-// The variable does nothing until the vitest configs read it.
+// first job's measured peak (app/web's full vitest, ~1,900 MB at vitest's default
+// workers, ~1,052 MB at VITEST_MAX_WORKERS=2; code-audit-2, 2026-11-20); app/api's
+// peak is not yet measured. A job that took its slot while another was held gets
+// VITEST_MAX_WORKERS=<HARNESS_HEAVY_SHARED_WORKERS, default 3> in its command's
+// environment; a job that starts alone gets none. The cap takes effect once
+// code-audit-2's VITEST_MAX_WORKERS change (app/web/vitest.config.ts) merges to develop.
 //
 // EXCLUSIVE (--exclusive, for Polar gates, captures and measurement runs):
 // takes every slot, in order, holding each while it waits for the next. Slots
@@ -739,7 +748,7 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
 // file would let the next job lock a new file while a job holds the old one (an
 // acquirer re-checks that the path still names the file it locked). Beside
 // each, its info file (heavy.info.json, heavy-K.info.json) says who holds it: written by the holder once it has
-// the slot, removed by it before it lets go. It is for display, A3 and
+// the slot, removed by it before it lets go. It is for display, the job token and
 // admission's exclusive-waiting check only; it is never the lock.
 //
 // A1 — the account is this host's entry in HEAVY_HOSTS; its home comes from
@@ -765,9 +774,16 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
 //      if exclusive): inside it, heavy run runs its command without acquiring
 //      again, never taking a second slot, and heavy acquire refuses at once.
 //      Concurrency inside one token is the caller's job.
-// A3 — a job holding a heavy slot never waits for a harness slot (heavyNoWait,
-//      above), decided by heldByThisJob. Harness-slot holders may wait for
-//      heavy: with no heavy holder ever waiting, the two cannot deadlock.
+// THE LOCK ORDER (2026-11-20; reverses A3): heavy first, then the slot. `lock
+//      acquire --slot N` from a caller whose job holds no heavy (heldByThisJob)
+//      first takes heavy, exclusive, by a holder process of kind "slot" (heavy
+//      __hold, as heavy acquire's), waiting as heavy waits (--wait), then the
+//      slot; the slot lock records that holder (pid, job), `lock release` lets
+//      go of the slot and then of it, and with --pid the holder lets go of both
+//      when that process exits. A caller whose job holds heavy just takes the
+//      slot. So a slot holder never waits on heavy, and a heavy holder MAY wait
+//      for a slot (A3's refuse-instead is gone): with every waiter waiting in
+//      that one order, no two can deadlock.
 // A4 — scripts/verify-gate.mjs takes a slot in process (lockHeavy), never
 //      exclusive, and hands the descriptor to its checks as their fd 9, with its
 //      token.
@@ -938,7 +954,7 @@ function readInfoText(home, k) {
 }
 
 // Who holds slot k, as its holder recorded it: null when nothing is recorded,
-// { unreadable: true } when the file does not parse. Display, A3 and admission only.
+// { unreadable: true } when the file does not parse. Display, the job token and admission only.
 export function readHeavyInfo(home, k) {
   const text = readInfoText(home, k);
   return text === null ? null : parseLock(text);
@@ -967,7 +983,7 @@ const holdersText = (busy, { short = false } = {}) => busy.map(({ slot, info }) 
   (short ? `${JSON.stringify(info?.holder ?? "(unrecorded)")} since ${info?.acquired_at ?? "?"}` : describeHeavy(info)) +
   ` (${heavySlot(slot)})`).join(" and ");
 
-// A3 and nesting: whether the caller (its environment, `env`) belongs to a job
+// The lock order and nesting: whether the caller (its environment, `env`) belongs to a job
 // holding heavy — its HARNESS_HEAVY_JOB is some slot's live record's job, and a
 // process of that record has that slot's file open (see THE JOB TOKEN, above).
 // Ancestry plays no part.
@@ -1510,6 +1526,12 @@ function heavyRun(opts, command, env, ctx, { err }) {
 // acquiring CLI over IPC, and keeps it until heavy release stops it (SIGTERM;
 // the release lines are already written) or, with --pid, until that process
 // exits. If the acquiring CLI goes away while this still waits, it stops waiting.
+// With spec.slot ({ target, home }: lock acquire --slot's heavy, kind "slot"),
+// it holds heavy for that slot lock: the CLI takes the slot once this has heavy
+// and sends its text ({ slotTaken }), or { abandon } when the slot could not be
+// had; if the CLI goes away before either, this lets go of heavy. With --pid,
+// when that process exits it removes the slot lock (only if it is still the
+// one taken, byte for byte), then lets go of heavy: the reverse of the order.
 async function heavyHold(specText, ctx) {
   const spec = JSON.parse(specText);
   const send = (m) => {
@@ -1528,7 +1550,9 @@ async function heavyHold(specText, ctx) {
       ...admission(ctx), exclusive: Boolean(spec.exclusive), waitMs: spec.waitMs ?? Infinity,
       say: (m) => send({ say: m }), signal: waiting.signal,
       record: {
-        holder: spec.holder, host: ctx.host, kind: "acquire", pid: process.pid, job: jobToken(spec.holder, process.pid),
+        holder: spec.holder, host: ctx.host, kind: spec.slot ? "slot" : "acquire", pid: process.pid,
+        job: jobToken(spec.holder, process.pid),
+        ...(spec.slot ? { for_slot: spec.slot.target } : {}),
         ...(spec.watch ? { owner_pid: spec.ownerPid, owner_start: spec.ownerStart } : {}),
       },
     });
@@ -1553,17 +1577,38 @@ async function heavyHold(specText, ctx) {
     for (const fd of hold.fds) closeQuietly(fd);
     process.exit(0);
   });
+  // Let go, logged as a release, unless a release has already taken the record.
+  const letGo = () => {
+    for (const { slot, fd, rec } of hold.entries) {
+      if (readInfoText(ctx.home, slot) === rec.text) rec.release();
+      else closeQuietly(fd);
+    }
+    process.exit(0);
+  };
+  let slotText = null; // the slot lock's text, once the CLI has taken it
+  if (spec.slot) {
+    process.on("message", (m) => {
+      if (typeof m?.slotTaken === "string") slotText = m.slotTaken;
+      else if (m?.abandon) letGo();
+    });
+    process.on("disconnect", () => {
+      if (slotText === null) letGo();
+    });
+  }
   send({ acquired: true, pid: process.pid, job: hold.entries[0].rec.info.job, slots: hold.slots, shared: hold.shared });
   return new Promise(() => {
     setInterval(() => {
       if (!spec.watch || procStart(spec.ownerPid) === spec.ownerStart) return;
-      // The process this lock was taken for has exited: let go, logged as a
-      // release, unless a release has already taken the record.
-      for (const { slot, fd, rec } of hold.entries) {
-        if (readInfoText(ctx.home, slot) === rec.text) rec.release();
-        else closeQuietly(fd);
+      // The process this lock was taken for has exited: the slot first, then heavy.
+      if (slotText !== null) {
+        const { target, home } = spec.slot;
+        try {
+          const lock = removeLock(home, target, (_, text) => (text === slotText ? null :
+            `${lockName(target)} is no longer the lock taken with this heavy`));
+          if (lock !== null) releasedLine(home, target, lock.holder, lock, utc(new Date()));
+        } catch {} // not this hold's lock any more: left in place
       }
-      process.exit(0);
+      letGo();
     }, 1000);
   });
 }
@@ -1670,8 +1715,8 @@ async function heavyRelease(opts, ctx) {
       const text = readInfoText(home, k);
       const info = text === null ? null : parseLock(text);
       const key = fileKey(lockFile(home, heavySlot(k)));
-      const holderProcess = info !== null && !info.unreadable && info.kind === "acquire" && Number.isInteger(info.pid) &&
-        key !== null && hasOpen(info.pid, key);
+      const holderProcess = info !== null && !info.unreadable && (info.kind === "acquire" || info.kind === "slot") &&
+        Number.isInteger(info.pid) && key !== null && hasOpen(info.pid, key);
       return { slot: k, text, info, holderProcess };
     });
   if (held.length === 0) throw new Error("heavy: no lock to release");
@@ -1693,6 +1738,12 @@ async function heavyRelease(opts, ctx) {
     }
     targets = named.filter((h) => h.holderProcess);
     if (targets.length === 0) throw new Error(notAHolder(named));
+    // The lock order: a slot lock's heavy goes with its slot, after it.
+    const forSlot = targets.find((h) => h.info.kind === "slot");
+    if (forSlot) {
+      throw new Error(`heavy is held for ${lockName(forSlot.info.for_slot)}'s lock; release that slot (lock release ` +
+        `${lockFlag(forSlot.info.for_slot)} --holder <arc>), which releases its heavy after it`);
+    }
   }
   const pids = [...new Set(targets.map((h) => h.info.pid))];
   if (pids.length > 1) {
@@ -1780,9 +1831,9 @@ function spawnShell(command) {
   return null;
 }
 
-// A3's test: does this process belong to the job holding heavy (heldByThisJob)?
-// Read from the account's home (heavyHome), never $HOME. Any failure to tell is
-// "no": the slot lock then behaves exactly as it did before the heavy lock existed.
+// The lock order's test: does this process belong to a job holding heavy
+// (heldByThisJob)? Read from the account's home (heavyHome), never $HOME. Any
+// failure to tell is "no": the slot acquire then takes heavy itself.
 function thisJobHoldsHeavy(env) {
   try {
     return heldByThisJob(heavyHome(env), { env });
@@ -1791,19 +1842,173 @@ function thisJobHoldsHeavy(env) {
   }
 }
 
+// The heavy holder's name for slot `target`'s lock, held by `holder`.
+const slotHeavyHolder = (target, holder) => `slot-${target}/${holder}`;
+
+// `lock acquire --slot N` with no heavy of this job's: heavy (exclusive) by a
+// holder process of kind "slot", then the slot, recorded with it. If the slot
+// cannot be had, heavy is let go again and the slot's refusal thrown as it is
+// (so "is already locked by" still reaches browser-slot.py). A heavy wait that
+// runs out throws lockHeavy's "heavy is already locked by …".
+function acquireSlotWithHeavy({ home, target, holder, go, wait, pid }, ctx, env, { out, err }) {
+  const watch = pid !== undefined;
+  const ownerPid = watch ? Number(pid) : null;
+  const ownerStart = watch ? procStart(ownerPid) : null;
+  if (watch && ownerStart === null) throw new Error(`--pid ${ownerPid}: no such running process`);
+  const spec = {
+    holder: slotHeavyHolder(target, holder), waitMs: wait === undefined ? null : Number(wait) * 1000,
+    ownerPid, ownerStart, watch, exclusive: true, slot: { target, home },
+  };
+  const child = spawn(process.execPath, [SELF, "heavy", "__hold", JSON.stringify(spec)], {
+    detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"], env,
+  });
+  return new Promise((resolve, reject) => {
+    let state = "waiting"; // → "abandoning" | "done"
+    const signals = ["SIGINT", "SIGTERM", "SIGHUP"];
+    const settle = (fn) => {
+      if (state === "done") return;
+      state = "done";
+      for (const s of signals) process.removeListener(s, onSignal);
+      if (child.connected) child.disconnect();
+      child.unref();
+      fn();
+    };
+    // Stopped while the holder waits: it must not take heavy for nobody.
+    const onSignal = (signal) => {
+      try { child.kill("SIGKILL"); } catch {}
+      settle(() => {
+        reraise(signal);
+        resolve(null);
+      });
+    };
+    for (const s of signals) process.on(s, onSignal);
+    child.on("message", (m) => {
+      if (typeof m?.say === "string") {
+        err(`harness-slot lock: ${m.say}`);
+      } else if (m?.acquired && state === "waiting") {
+        let taken;
+        try {
+          taken = takeSlotLock({ home, target, holder, go, heavy: { pid: m.pid, job: m.job } });
+        } catch (error) {
+          // The slot could not be had: heavy goes back, and the slot's own refusal is the answer.
+          state = "abandoning";
+          child.once("exit", () => settle(() => {
+            err(`harness-slot lock: heavy (${m.slots.map(heavySlot).join(", ")}) let go again: ${lockName(target)} was not taken`);
+            reject(error);
+          }));
+          child.send({ abandon: true });
+          return;
+        }
+        child.send({ slotTaken: taken.text }, () => settle(() => {
+          out(taken.message);
+          out(`with the heavy lock, exclusive (${m.slots.map(heavySlot).join(", ")}), taken first, held by pid ${m.pid}: ` +
+            `released with the slot${watch ? `, or when pid ${ownerPid} exits` : ""}`);
+          out(`HARNESS_HEAVY_JOB=${quote(m.job)}`);
+          resolve(0);
+        }));
+      } else if (typeof m?.failed === "string") {
+        settle(() => reject(new Error(m.failed)));
+      }
+    });
+    child.on("error", (error) => settle(() => reject(new Error(`could not start the heavy holder process: ${error.message}`))));
+    child.on("exit", (code, signal) => {
+      if (state === "waiting") settle(() => reject(new Error(`the heavy holder process ended (${signal ?? `exit ${code}`}) before it took heavy`)));
+    });
+  });
+}
+
+// After a slot lock is released (or force-released): its heavy, if it had one,
+// whose holder process is checked (its record, by pid and job, and the slot's
+// file open: F4) before it is stopped. Returns the lines to print.
+async function releaseSlotHeavy(heavy, env, { reason } = {}) {
+  const home = heavyHome(env);
+  const held = heavySlotsOnDisk(home, ".info.json").map((k) => ({ slot: k, text: readInfoText(home, k) }))
+    .map((h) => ({ ...h, info: h.text === null ? null : parseLock(h.text) }))
+    .filter(({ slot, info }) => {
+      const key = fileKey(lockFile(home, heavySlot(slot)));
+      return info !== null && !info.unreadable && info.kind === "slot" && info.pid === heavy.pid && info.job === heavy.job &&
+        key !== null && hasOpen(heavy.pid, key);
+    });
+  if (held.length === 0) return [`its heavy (holder pid ${heavy.pid}) had already been let go`];
+  const at = utc(new Date());
+  const lines = held.map(({ slot, text, info }) => {
+    let line;
+    if (reason === undefined) {
+      line = releasedLine(home, heavySlot(slot), info.holder, info, at);
+    } else {
+      appendHistory(home, `${at} force-release ${field("lock", heavySlot(slot))} ${field("holder", info.holder)} ` +
+        `${field("acquired_at", info.acquired_at ?? null)} ${field("reason", reason)}`);
+      line = `harness lock FORCE-released: ${heavySlot(slot)}, was held by ${info.holder} since ${info.acquired_at ?? "?"}; ` +
+        `reason ${JSON.stringify(reason)}`;
+    }
+    dropInfo(home, slot, text);
+    return line;
+  });
+  await stopHolder(heavy.pid, reason === undefined ? "SIGTERM" : "SIGKILL");
+  return lines;
+}
+
+// `lock …` from the CLI: lockMain, with the lock order around it for slots.
+// Resolves to an exit code (null after a re-raised signal).
+async function lockCli(args, env, { home, out, err }) {
+  const [action, ...rest] = args;
+  if (action !== "acquire" && action !== "release") {
+    out(lockMain(args, { home }));
+    return 0;
+  }
+  const opts = parseLockArgs(rest);
+  const target = lockTarget(opts);
+  if (action === "release") {
+    if (opts.go !== undefined) throw new Error("--go belongs to lock acquire");
+    if (opts.wait !== undefined || opts.pid !== undefined) throw new Error("--wait and --pid belong to lock acquire --slot");
+    if (!opts.force && opts.reason !== undefined) throw new Error("--reason needs --force");
+    // The slot first, then its heavy: the reverse of the order.
+    const { line, lock } = opts.force ? forceReleaseSlotLock({ home, target, reason: opts.reason }) :
+      releaseSlotLock({ home, target, holder: opts.holder });
+    out(line);
+    if (lock.heavy) {
+      try {
+        for (const l of await releaseSlotHeavy(lock.heavy, env, opts.force ? { reason: opts.reason } : {})) out(l);
+      } catch (error) {
+        err(`harness-slot lock: ${lockName(target)} was released, but its heavy (holder pid ${lock.heavy.pid}) was NOT: ${error.message}`);
+        return 2;
+      }
+    }
+    return 0;
+  }
+  if (opts.force || opts.reason !== undefined) throw new Error("--force and --reason belong to lock release");
+  if (opts.wait !== undefined && !/^[0-9]+(\.[0-9]+)?$/.test(opts.wait)) throw new Error(`--wait takes a number of seconds, got ${JSON.stringify(opts.wait)}`);
+  if (opts.pid !== undefined && !/^[1-9][0-9]*$/.test(opts.pid)) throw new Error(`--pid takes a pid, got ${JSON.stringify(opts.pid)}`);
+  if (target === "setup") {
+    if (opts.wait !== undefined || opts.pid !== undefined) throw new Error("--wait and --pid belong to lock acquire --slot");
+    out(acquireLock({ home, target, holder: opts.holder, go: opts.go }));
+    return 0;
+  }
+  requireText("--holder", opts.holder);
+  requireText("--go", opts.go);
+  if (thisJobHoldsHeavy(env)) {
+    // This job holds heavy already (its token): just the slot.
+    if (opts.wait !== undefined || opts.pid !== undefined) err("harness-slot lock: this job holds heavy already, so --wait and --pid have nothing to do");
+    out(acquireLock({ home, target, holder: opts.holder, go: opts.go }));
+    out("heavy: already held by this job (HARNESS_HEAVY_JOB), so not taken again; the slot's release leaves it");
+    return 0;
+  }
+  const ctx = heavyContext(env);
+  for (const note of ctx.notes) err(`harness-slot lock: ${note}`);
+  return acquireSlotWithHeavy({ home, target, holder: opts.holder, go: opts.go, wait: opts.wait, pid: opts.pid }, ctx, env, { out, err });
+}
+
 // Returns an exit code, or null once `run` has handed over to the shell; for
-// `heavy`, a Promise of either.
+// `heavy` and `lock`, a Promise of either.
 export function main(argv, env, { home = os.homedir(), shell = spawnShell, out = console.log, err = console.error } = {}) {
   const [sub, ...rest] = argv;
   if (sub === "heavy") return heavyMain(rest, env, { out, err }); // a Promise
   if (sub === "lock") {
-    try {
-      out(lockMain(rest, { home, heavyHeld: rest[0] === "acquire" && thisJobHoldsHeavy(env) }));
-      return 0;
-    } catch (error) {
+    // A Promise: lock acquire --slot may wait for heavy, and lock release may stop its holder.
+    return lockCli(rest, env, { home, out, err }).catch((error) => {
       err(`harness-slot lock: ${error.message}`);
       return 2;
-    }
+    });
   }
   if (sub !== "command" && sub !== "run") {
     err("usage: harness-slot.mjs command|run <npm-script> [args]\n       harness-slot.mjs lock acquire|release|status ...\n" +
