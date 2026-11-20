@@ -124,8 +124,8 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PROJECT_DIR:-.}/scripts/verify-gate.mjs\"",
-            "timeout": 300,
-            "statusMessage": "verify-gate: verifying uncommitted app changes"
+            "timeout": 960,
+            "statusMessage": "verify-gate: verifying uncommitted app changes (waits up to 5 min for the heavy lock)"
           }
         ]
       }

@@ -24,6 +24,26 @@
 //                                                     failing — prevents infinite
 //                                                     block loops; guard, not a trap
 //   VERIFY_GATE_SKIP=1 in the environment ........... exit 0 (documented escape hatch)
+//   changes + heavy lock still held after 5 min ..... exit 2 ONCE: "verification not run:
+//     (or this account refused the heavy lock,        heavy lock held by <holder> since
+//     or taking it failed)                            <time>; run it when the lock frees"
+//   ... and stop_hook_active=true ................... waits at most 10 s for the lock;
+//                                                     still held: exit 0 + that warning,
+//                                                     NOT VERIFIED
+//
+// THE HEAVY LOCK (A4, Ethan 2026-11-18; on flock, 2026-11-19): tsc and vitest
+// are heavy jobs, so the checks run only under scripts/harness-slot.mjs's heavy
+// lock, a kernel flock taken here in process before the first check, waiting up
+// to HEAVY_WAIT_S (SECOND_TRY_WAIT_S on the second try). Each check is handed
+// the locked descriptor as its fd 9 and the gate's job token as
+// HARNESS_HEAVY_JOB (harness-slot.mjs, THE JOB TOKEN); a gate whose own
+// environment carries the live holder's token checks under that hold instead.
+// A gate killed mid-check leaves the lock
+// with that check until it exits; there are no signal handlers here. It is
+// never reported as a pass when its checks did not run. The Stop hook's timeout
+// in .claude/settings.json (960 s) covers the wait plus the four 150 s checks;
+// lower it and the hook is killed mid-wait.
+// Test-only: VERIFY_GATE_HEAVY_WAIT_S shortens the wait, announced when set.
 //
 // WHAT RUNS (scoped to the side that changed, for speed):
 //   app/api dirty → npx --no-install tsc --noEmit && npx --no-install vitest run   (in app/api)
@@ -42,11 +62,19 @@
 // Documented in CLAUDE.md § Build & Dev.
 
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const CMD_TIMEOUT_MS = 150_000;
+const HEAVY_WAIT_S = 300;
+const SECOND_TRY_WAIT_S = 10;
+// While the checks run under the heavy lock: their stdio, the locked
+// descriptor as fd 9 (harness-slot.mjs heavyStdio), and their environment,
+// carrying the gate's job token (HARNESS_HEAVY_JOB). null otherwise.
+let checkStdio = null;
+let checkEnv = null;
 
 // The only paths this gate watches. Single source of truth on purpose: the
 // `git status` pathspec below and the nothing-to-verify message both read from
@@ -80,8 +108,9 @@ function run(cmd, args, cwd) {
     cwd,
     encoding: "utf8",
     timeout: CMD_TIMEOUT_MS,
-    env: process.env,
+    env: checkEnv ?? process.env,
     maxBuffer: 16 * 1024 * 1024,
+    ...(checkStdio === null ? {} : { stdio: checkStdio }),
   });
 }
 
@@ -157,6 +186,104 @@ const main = async () => {
     process.exit(0);
   }
 
+  const hold = await takeHeavy(hook);
+  if (!hold.ok) {
+    // A4: blocks once; stop_hook_active lets the session end with the warning. Never a pass.
+    if (hook.stop_hook_active) {
+      console.error(`[verify-gate] WARN: ${hold.notRun} — allowing stop on the second try. NOT VERIFIED.`);
+      process.exit(0);
+    }
+    console.error(`[verify-gate] ${hold.notRun}`);
+    process.exit(2);
+  }
+  let code;
+  try {
+    code = runChecks(apiDirty, webDirty, hook);
+  } finally {
+    hold.release();
+  }
+  process.exit(code);
+};
+
+// A4: the heavy lock, or why the checks will not run. { ok: true, release() }
+// or { ok: false, notRun }. A held lock and a refused account both take the
+// not-run path (ruling 3), as do a lock module that cannot load and an error
+// taking the lock.
+async function takeHeavy(hook) {
+  let heavy;
+  try {
+    heavy = await import("./harness-slot.mjs");
+  } catch (error) {
+    return { ok: false, notRun: `verification not run: the heavy lock's module could not load (${error.message})` };
+  }
+  let ctx;
+  try {
+    ctx = heavy.heavyContext(process.env);
+  } catch (error) {
+    return { ok: false, notRun: `verification not run: ${error.message}` };
+  }
+  for (const note of ctx.notes) console.error(`[verify-gate] ${note}`);
+  // #7: an error taking the lock is "not run" too, never a crash that lets the stop through.
+  try {
+    if (heavy.heldByThisJob(ctx.home)) {
+      const info = heavy.readHeavyInfo(ctx.home);
+      console.error(`[verify-gate] the heavy lock is this job's own (${JSON.stringify(info?.holder ?? "(unrecorded)")}); checking under it`);
+      return { ok: true, release: () => {} };
+    }
+    let waitS = HEAVY_WAIT_S;
+    if (process.env.VERIFY_GATE_HEAVY_WAIT_S !== undefined) {
+      waitS = Number(process.env.VERIFY_GATE_HEAVY_WAIT_S);
+      if (!(waitS >= 0)) waitS = HEAVY_WAIT_S; // NaN would wait forever
+      console.error(`[verify-gate] TEST wait: ${waitS}s for the heavy lock (VERIFY_GATE_HEAVY_WAIT_S), not ${HEAVY_WAIT_S}s`);
+    }
+    // #8: the first try already said the lock is held; the second only looks again.
+    if (hook.stop_hook_active && waitS > SECOND_TRY_WAIT_S) {
+      waitS = SECOND_TRY_WAIT_S;
+      console.error(`[verify-gate] second try: waiting at most ${SECOND_TRY_WAIT_S}s for the heavy lock`);
+    }
+    const r = await heavy.lockHeavy({
+      home: ctx.home,
+      waitMs: waitS * 1000,
+      pollMs: Math.max(1000, Math.min(5000, waitS * 1000)),
+      say: (m) => console.error(`[verify-gate] ${m}`),
+    });
+    if (r.fd === null) {
+      return {
+        ok: false,
+        notRun: `verification not run: heavy lock held by ${JSON.stringify(r.info?.holder ?? "(unrecorded)")} ` +
+          `since ${r.info?.acquired_at ?? "?"}; run it when the lock frees`,
+      };
+    }
+    let rec;
+    const holder = `${ctx.account}@${ctx.host}:node scripts/verify-gate.mjs (${path.basename(ROOT)})`;
+    const job = heavy.jobToken(holder, process.pid);
+    try {
+      rec = heavy.recordHeavy(ctx.home, r.fd, { holder, host: ctx.host, kind: "gate", pid: process.pid, job });
+    } catch (error) {
+      fs.closeSync(r.fd);
+      throw error;
+    }
+    checkStdio = heavy.heavyStdio(["pipe", "pipe", "pipe"], r.fd);
+    checkEnv = { ...process.env, HARNESS_HEAVY_JOB: job };
+    return {
+      ok: true,
+      release: () => {
+        checkStdio = null;
+        checkEnv = null;
+        try {
+          console.error(`[verify-gate] ${rec.release()}`);
+        } catch (error) {
+          console.error(`[verify-gate] WARN: the heavy lock's record was not cleared: ${error.message}`);
+        }
+      },
+    };
+  } catch (error) {
+    return { ok: false, notRun: `verification not run: the heavy lock could not be taken (${error.message})` };
+  }
+}
+
+// The checks themselves, unchanged in substance: prints the verdict and returns the exit code.
+function runChecks(apiDirty, webDirty, hook) {
   const t0 = Date.now();
   const results = [];
   if (apiDirty) {
@@ -178,12 +305,12 @@ const main = async () => {
       console.error(
         `[verify-gate] STILL FAILING after a previous block (${secs}s) — allowing stop to avoid a block loop. FIX BEFORE PUSHING:\n${report}`,
       );
-      process.exit(0);
+      return 0;
     }
     console.error(
       `[verify-gate] BLOCKED (${secs}s): uncommitted changes fail verification. Fix (or ask the user to set VERIFY_GATE_SKIP=1 to bypass knowingly):\n${report}`,
     );
-    process.exit(2);
+    return 2;
   }
 
   if (unavailable.length > 0) {
@@ -191,12 +318,12 @@ const main = async () => {
     console.error(
       `[verify-gate] WARN (${secs}s): could not run some checks — allowing stop (a broken env must not trap the session). NOT VERIFIED:\n${report}`,
     );
-    process.exit(0);
+    return 0;
   }
 
   console.log(`[verify-gate] PASS (${secs}s): ${results.map(([n]) => n).join(", ")}.`);
-  process.exit(0);
-};
+  return 0;
+}
 
 main().catch((err) => {
   console.error(`[verify-gate] WARN: gate itself crashed (${err?.message}) — allowing stop.`);
