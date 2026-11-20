@@ -21,12 +21,16 @@ import react from "@vitejs/plugin-react";
 // `react-dom/test-utils` and assert against the real DOM the component
 // produced. That approach was proven on this repo before it was adopted — the
 // R3 fallback probe rendered the unmodified HistoryTable this way.
+//
+// setupFiles: the test-network guard. Every test file runs it before anything
+// else loads, so no test reaches the network — see its header for the rules.
 export default defineConfig({
   plugins: [react()],
   test: {
     globals: false,
     environment: "jsdom",
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
-    testTimeout: 10_000,
+    setupFiles: ["src/testSetup/networkGuard.ts"],
+    testTimeout: 20_000,
   },
 });

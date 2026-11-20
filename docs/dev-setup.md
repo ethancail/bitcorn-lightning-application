@@ -86,7 +86,9 @@ In `app/api/package.json`, add to `scripts`:
 "dev": "tsx watch src/index.ts"
 ```
 
-And add `tsx` to `devDependencies` (`npm install --save-dev tsx` from `app/api/`). `tsx` provides instant restart on file changes without the rebuild-then-run friction of the production build path.
+`tsx` is already a devDependency of `app/api`, so `npm ci` there installs it. `tsx` provides instant restart on file changes without the rebuild-then-run friction of the production build path.
+
+**Installing and changing dependencies.** Every package directory (the root, `app/api`, `app/web`, `cloudflare-worker`, `app/web/runtime`) has a committed `package-lock.json`. Install with `npm ci` in the directory, never `npm install`. To add or change a dependency, run `npm run lock:refresh -- <dir> <name@version>` from the repo root: it is the only thing that writes a lock, under the 3-day npm adoption window. A new direct dependency needs a `new-dependency` entry in `lock-allowlist.json`, carrying Ethan's words, their date and the vault record that logs them. A version younger than 3 days needs an allowlist entry too: an `overrule` entry carries Ethan's words; a `security-fix` entry carries its reason, the advisory and the date. `scripts/lock-age-check.mjs` enforces all of it, in CI and before every release.
 
 ## Step 3: Configure environment files
 
@@ -141,10 +143,10 @@ The exact `LND_DIR` paths depend on your Polar install. Verify with `ls ~/.polar
 
 ## Step 4: Add root-level dev orchestration
 
-At the repo root:
+At the repo root (`concurrently` and `dotenv-cli` are already declared in the root `package.json`):
 
 ```bash
-npm install --save-dev concurrently dotenv-cli
+npm ci
 ```
 
 In the root `package.json`, add:

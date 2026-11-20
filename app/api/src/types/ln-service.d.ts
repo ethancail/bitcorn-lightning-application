@@ -152,6 +152,9 @@ declare module "ln-service" {
     transaction_vout: number;
     is_force_close?: boolean;
     tokens_per_vbyte?: number; // chain fee rate for cooperative close
+    // Fail a cooperative close above this rate (LND max_fee_per_vbyte); ignored
+    // when closing a peer-initiated channel (lightning close_channel.js:19, :34).
+    max_tokens_per_vbyte?: number;
   }): Promise<{ transaction_id?: string }>;
 
   export function updateRoutingFees(args: {

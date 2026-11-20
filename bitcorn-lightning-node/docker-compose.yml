@@ -1,6 +1,6 @@
 services:
   api:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.18.39
+    image: ghcr.io/ethancail/bitcorn-lightning-application/api:1.18.40
     restart: unless-stopped
     ports:
       - "3101:3101"
@@ -44,7 +44,7 @@ services:
       # fresh secret per install with:
       #   openssl rand -hex 32
       # Put the SAME value on the Worker via:
-      #   cd cloudflare-worker && npx wrangler secret put VALUATION_SUBMIT_HMAC
+      #   cd cloudflare-worker && npm ci && npx --no-install wrangler secret put VALUATION_SUBMIT_HMAC
       # If unset, POST /api/valuation/manual returns 503 valuation_worker_not_configured.
       # See .env.example in this directory for the template.
       VALUATION_SUBMIT_HMAC: "${VALUATION_SUBMIT_HMAC:-}"
@@ -53,7 +53,7 @@ services:
       # same mechanism as VALUATION_SUBMIT_HMAC above; generate with
       #   openssl rand -hex 32
       # and put the SAME value on the Worker via:
-      #   cd cloudflare-worker && npx wrangler secret put DAYBREAK_EDITOR_SECRET
+      #   cd cloudflare-worker && npm ci && npx --no-install wrangler secret put DAYBREAK_EDITOR_SECRET
       # ⚠ There is ONE api service for every node, so this line ships EMPTY to
       # member nodes too — treasury-only by configuration, not by construction.
       # Never hand the value to a member node. If unset, the /api/daybreak/editor*
@@ -161,7 +161,7 @@ services:
   # The asymmetry favours the current copy meanwhile: a needless restart costs
   # a minute, a missing instruction leaves a farmer with dead Loop.
   loopd:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/loopd:1.18.39
+    image: ghcr.io/ethancail/bitcorn-lightning-application/loopd:1.18.40
     restart: unless-stopped
     volumes:
       - ${APP_LIGHTNING_NODE_DATA_DIR}:/lnd:ro
@@ -204,7 +204,7 @@ services:
       - umbrel
 
   web:
-    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.18.39
+    image: ghcr.io/ethancail/bitcorn-lightning-application/web:1.18.40
     restart: unless-stopped
     ports:
       - "3200:3200"

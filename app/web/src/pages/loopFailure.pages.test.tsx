@@ -69,12 +69,17 @@ async function mount(C: React.ComponentType) {
 }
 
 const text = () => (host.textContent ?? "").replace(/\s+/g, " ");
+// Since member-first-run-ui slice 3, Withdraw's history is itself a closed row
+// (details.withdraw-row, "Recent withdrawals (N)"). The rule here is about
+// Technical details — the raw code one tap down from the sentence — so the
+// page's rows are not counted as Technical details.
+const techDetails = () => [...host.querySelectorAll("details")].filter((d) => !d.classList.contains("withdraw-row"));
 /** The text inside closed <details> (Technical details). */
-const detailsText = () => [...host.querySelectorAll("details")].map((d) => d.textContent ?? "").join(" | ");
-/** The text outside every <details>. */
+const detailsText = () => techDetails().map((d) => d.textContent ?? "").join(" | ");
+/** The text outside every Technical details. */
 function outsideDetails(): string {
   const clone = host.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll("details").forEach((d) => d.remove());
+  clone.querySelectorAll("details:not(.withdraw-row)").forEach((d) => d.remove());
   return (clone.textContent ?? "").replace(/\s+/g, " ");
 }
 
@@ -155,7 +160,13 @@ describe("R33 finding 9: a temporary failure reads \"Not finished\"", () => {
       stub.getSwapHistory.mockResolvedValue({ swaps: [swap(type, "failed", "FAILURE_REASON_TEMPORARY")] });
       stub.getSwap.mockResolvedValue({ swap_request: swap(type, "failed", "FAILURE_REASON_TEMPORARY"), execution: null, events: [] });
       await mount(Page);
-      expect(badges()).toEqual(["1", "Not finished"]);
+      // Withdraw's count is in its row's title since slice 3; Top Up keeps the badge.
+      if (Page === WithdrawBitcoin) {
+        expect(badges()).toEqual(["Not finished"]);
+        expect(host.querySelector("[data-testid='row-history'] summary")?.textContent).toBe("Recent withdrawals (1)");
+      } else {
+        expect(badges()).toEqual(["1", "Not finished"]);
+      }
       const row = [...host.querySelectorAll("tbody tr")][0];
       await act(async () => { row.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
       await flush();
@@ -194,5 +205,6 @@ describe("a Withdraw history row's sentence follows its own swap's direction", (
 it("sanity: the pages render", async () => {
   stub.getSwapHistory.mockResolvedValue({ swaps: [] });
   await mount(WithdrawBitcoin);
-  expect(text()).toContain("Withdraw Bitcoin");
+  // Slice 3: the title is "Withdraw".
+  expect(host.querySelector("h1")?.textContent).toBe("Withdraw");
 });

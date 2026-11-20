@@ -13,10 +13,14 @@ name: PR checks
 # clean, so it would no-op on every PR forever. CI must invoke tsc/vitest
 # directly, as below.
 #
-# ⚠ npm install, NOT npm ci. package-lock.json is gitignored (.gitignore:3), so
-# no lockfile exists on any branch and `npm ci` fails outright. Consequence
-# worth knowing: CI is not reproducible — a dependency publishing a breaking
-# patch inside a declared range can turn this red with no repo change.
+# npm ci, from the committed locks. Every package directory has a
+# package-lock.json written by `npm run lock:refresh` (scripts/lock-refresh.mjs)
+# under the 3-day npm adoption window; `npm ci` installs exactly that tree and
+# never resolves. The `Lockfile age (hard gate)` job below fails any lock entry
+# younger than 3 days that lock-allowlist.json does not cover. Every npx call
+# is `npx --no-install`, so a missing local bin errors instead of fetching.
+# (Until the lockfile arc this read "npm install, NOT npm ci": the locks were
+# gitignored, so CI resolved floating ranges and was not reproducible.)
 #
 # No push trigger on purpose. This is a PR gate; image publishing is
 # docker-publish.yml's job and stays separate.
@@ -47,10 +51,10 @@ jobs:
           node-version-file: .nvmrc
       - name: Install
         working-directory: app/api
-        run: npm install
+        run: npm ci
       - name: Typecheck
         working-directory: app/api
-        run: npx tsc --noEmit
+        run: npx --no-install tsc --noEmit
       - name: Tests (collection floor)
         working-directory: app/api
         # ⚠ FLOOR, NOT A CEILING. This suite must pass at ZERO failures, and the
@@ -87,7 +91,7 @@ jobs:
           # Exit code NOT discarded: a failing test fails this job here and now,
           # before the floor is ever consulted. The JSON report is read only for
           # the collection count.
-          npx vitest run --reporter=json --outputFile=/tmp/api-vitest.json
+          npx --no-install vitest run --reporter=json --outputFile=/tmp/api-vitest.json
 
           # COULD-NOT-RUN IS A FAILURE, NOT A PASS. If vitest exited 0 but wrote
           # no parseable report, a missing file must not read as "0 collected"
@@ -124,13 +128,13 @@ jobs:
           node-version-file: .nvmrc
       - name: Install
         working-directory: app/web
-        run: npm install
+        run: npm ci
       - name: Build
         working-directory: app/web
         # VITE_BASE_CHAIN_ID is deliberately NOT set here. This proves the
         # bundle builds without it; docker-publish.yml is where its absence
         # must fail a release, and it has its own guard for that.
-        run: npx vite build
+        run: npx --no-install vite build
 
   web-typecheck:
     name: Web — typecheck (hard gate, error ceiling)
@@ -142,7 +146,7 @@ jobs:
           node-version-file: .nvmrc
       - name: Install
         working-directory: app/web
-        run: npm install
+        run: npm ci
       - name: Typecheck (error ceiling)
         working-directory: app/web
         # ⚠ CEILING, NOT A PASS — though the ceiling is now 0, so on this tree
@@ -176,7 +180,7 @@ jobs:
         # main now carries the vitest devDependency, vitest.config.ts, the
         # recharts annotations and b818779 — all 11 main-only errors gone with
         # them. Verified on the converged tree rather than assumed:
-        #   cd app/web && npx tsc --noEmit 2>&1 | grep -c "error TS"   → 0
+        #   cd app/web && npx --no-install tsc --noEmit 2>&1 | grep -c "error TS"   → 0
         # Re-measure with that command; do not trust this number.
         env:
           TSC_CEILING: "0"
@@ -185,7 +189,7 @@ jobs:
           # exits non-zero for "your code has type errors" AND for "I could not
           # run at all", and those must not be conflated.
           set +e
-          npx tsc --noEmit >/tmp/web-tsc.log 2>&1
+          npx --no-install tsc --noEmit >/tmp/web-tsc.log 2>&1
           TSC_EXIT=$?
           set -e
           cat /tmp/web-tsc.log
@@ -239,7 +243,7 @@ jobs:
           node-version-file: .nvmrc
       - name: Install
         working-directory: cloudflare-worker
-        run: npm install
+        run: npm ci
 
       - name: Typecheck
         working-directory: cloudflare-worker
@@ -280,7 +284,7 @@ jobs:
         # with `files: []` all satisfy the probe and exit 0 with nothing checked.
         # Closing that needs an assertion that tsc actually ran and looked at
         # files — a different mechanism from an existence probe, deliberately not
-        # attempted here. Note that app/api and app/web call `npx tsc --noEmit`
+        # attempted here. Note that app/api and app/web call `npx --no-install tsc --noEmit`
         # directly; this step is the only typecheck in the repo behind an npm
         # script, and that indirection is exactly what hides the no-op case.
         run: |
@@ -310,7 +314,7 @@ jobs:
         # converged develop→main on 2026-08-05 and has held through v1.18.1, so
         # main now carries the fixture fixes. Verified on the converged tree
         # rather than assumed:
-        #   cd cloudflare-worker && npx vitest run   → 0 failed of 216
+        #   cd cloudflare-worker && npx --no-install vitest run   → 0 failed of 216
         #
         # ─── HISTORY: THE 9 STALE FIXTURES ──────────────────────────────
         #
@@ -405,7 +409,7 @@ jobs:
           # the lowest common denominator both trees could clear. v1.18.0
           # converged them on 2026-08-05 and both are now 216, so the floor rises
           # to where it was always headed. Verified before raising, not assumed:
-          #   cd cloudflare-worker && npx vitest run   → 216 collected
+          #   cd cloudflare-worker && npx --no-install vitest run   → 216 collected
           #
           # 200 against 216 leaves 16 tests of headroom — deliberately tight,
           # since the point is to catch dropped collection. Removing 17+ Worker
@@ -419,7 +423,7 @@ jobs:
           rm -f /tmp/worker-vitest.json
           # vitest exits non-zero when tests fail, which is expected here — so
           # the exit code is deliberately not the signal. The JSON report is.
-          npx vitest run --reporter=json --outputFile=/tmp/worker-vitest.json || true
+          npx --no-install vitest run --reporter=json --outputFile=/tmp/worker-vitest.json || true
 
           # COULD-NOT-RUN IS A FAILURE, NOT A PASS. If vitest crashed before
           # writing a parseable report, treat it as a hard failure rather than
@@ -469,6 +473,47 @@ jobs:
   # ASSERTIONS — pure git/YAML. No toolchain, so these are unaffected by
   # whichever tree the PR is based on.
   # ─────────────────────────────────────────────────────────────────────
+
+  lockfile-age:
+    name: Lockfile age (hard gate)
+    runs-on: ubuntu-24.04
+    # No `npm install` and no `needs:`. scripts/lock-age-check.mjs uses Node
+    # built-ins only and reads the registry itself, so it runs on a bare
+    # checkout. It is the enforcement of the 3-day npm adoption window:
+    # `npm ci` does not apply --before to versions a lock already pins, so
+    # nothing else stops a young version that reached a lock.
+    #
+    # It fails when any entry of any committed lock (root, app/api, app/web,
+    # cloudflare-worker, app/web/runtime) was published less than 3 days ago,
+    # has no registry publish time, or cannot be looked up, unless
+    # lock-allowlist.json covers it; when a package directory has no lock;
+    # when the allowlist is malformed; and when a package.json adds a direct
+    # dependency absent on the PR's base that no new-dependency entry names.
+    # A registry outage fails it too: re-run. A check that cannot look does
+    # not pass.
+    #
+    # ⚠ THE JOB `name:` ABOVE IS A RULESET-PINNED REQUIRED CONTEXT, added to
+    # ruleset 20756755 with release v1.18.40. The ruleset pins its required
+    # checks by EXACT STRING, so renaming this job is a TWO-PART change: this
+    # file AND the ruleset, together. A renamed job against an unedited
+    # ruleset produces a required context that never appears. Confirm it is
+    # listed rather than trusting this comment:
+    #   gh api repos/ethancail/bitcorn-lightning-application/rulesets/20756755
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Rule 6 compares each package.json with the PR's base branch, read
+          # as origin/<base>, so the checkout needs that ref.
+          fetch-depth: 0
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+      - name: Fixture tests (the check and lock:refresh's pure parts)
+        run: node --test scripts/lock-age-check.test.mjs scripts/lock-refresh.test.mjs
+      - name: Every lock entry is 3 days old or allowlisted
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: node scripts/lock-age-check.mjs --base "origin/$BASE_REF"
 
   version-triplet:
     name: Version triplet agrees
@@ -921,7 +966,7 @@ jobs:
           node-version-file: .nvmrc
       - name: Install
         working-directory: app/web
-        run: npm install
+        run: npm ci
       - name: Tests
         working-directory: app/web
         # TWO GUARDS DOING DIFFERENT JOBS. The config assert catches "the test
@@ -998,7 +1043,7 @@ jobs:
         # NOT carried forward from a prior report. Corroborated independently by
         # CI run 31732161503 (2026-08-13), which logged the same 20/257.
         # Re-measure rather than trusting this number:
-        #   cd app/web && npx vitest run
+        #   cd app/web && npx --no-install vitest run
         #
         # HEADROOM: 27 tests. At the measured distribution (min 3, max 28,
         # median 11, mean 12.85 tests/file) that is 4 whole files taking the
@@ -1058,7 +1103,7 @@ jobs:
           # before the floor is ever consulted. The JSON report is read only for
           # the collection count. (worker discards its exit code with `|| true`
           # solely to apply a failure ceiling; this step, like api's, does not.)
-          npx vitest run --reporter=json --outputFile=/tmp/web-vitest.json
+          npx --no-install vitest run --reporter=json --outputFile=/tmp/web-vitest.json
 
           # COULD-NOT-RUN IS A FAILURE, NOT A PASS. If vitest exited 0 but wrote
           # no parseable report, a missing file must not read as "0 collected"

@@ -326,28 +326,29 @@ describe("absent vs present-and-empty", () => {
     const r = route("POST", "/api/member/open-channel");
 
     it("ABSENT contributes NO TOKEN — exact string", () => {
-      expect(canonicalOf(r, { capacity_sats: 1_000_000 })).toBe("capacity_sats=1000000");
+      // fee_rate is required on member open since fee-estimates (O5, P16).
+      expect(canonicalOf(r, { capacity_sats: 1_000_000, fee_rate: 3 })).toBe("capacity_sats=1000000&fee_rate=3");
     });
 
     it("PRESENT-and-EMPTY contributes a BARE token — exact string", () => {
       // Text may legitimately be empty, so unlike a number it is hashed rather
       // than refused — as the empty token, distinct from absent.
-      expect(canonicalOf(r, { capacity_sats: 1_000_000, partner_socket: "" })).toBe(
-        "capacity_sats=1000000&partner_socket="
+      expect(canonicalOf(r, { capacity_sats: 1_000_000, fee_rate: 3, partner_socket: "" })).toBe(
+        "capacity_sats=1000000&fee_rate=3&partner_socket="
       );
     });
 
     it("PRESENT with a value — exact string", () => {
-      expect(canonicalOf(r, { capacity_sats: 1_000_000, partner_socket: "1.2.3.4:9735" })).toBe(
-        "capacity_sats=1000000&partner_socket=1.2.3.4:9735"
+      expect(canonicalOf(r, { capacity_sats: 1_000_000, fee_rate: 3, partner_socket: "1.2.3.4:9735" })).toBe(
+        "capacity_sats=1000000&fee_rate=3&partner_socket=1.2.3.4:9735"
       );
     });
 
     it("all three cases hash to three DIFFERENT values", () => {
       const vals = [
-        { capacity_sats: 1_000_000 },
-        { capacity_sats: 1_000_000, partner_socket: "" },
-        { capacity_sats: 1_000_000, partner_socket: "1.2.3.4:9735" },
+        { capacity_sats: 1_000_000, fee_rate: 3 },
+        { capacity_sats: 1_000_000, fee_rate: 3, partner_socket: "" },
+        { capacity_sats: 1_000_000, fee_rate: 3, partner_socket: "1.2.3.4:9735" },
       ].map((b) => {
         const d = deriveConfirmation(r, { url: "/api/member/open-channel", body: b });
         return d.ok ? d.value : "refused";

@@ -17,10 +17,11 @@
     "dev:loopd-T": "node scripts/harness-slot.mjs run dev:loopd-T",
     "dev:loopd-A": "node scripts/harness-slot.mjs run dev:loopd-A",
     "dev:loopd-B": "node scripts/harness-slot.mjs run dev:loopd-B",
-    "dev:loopserver-stop": "node scripts/harness-slot.mjs run dev:loopserver-stop"
+    "dev:loopserver-stop": "node scripts/harness-slot.mjs run dev:loopserver-stop",
+    "lock:refresh": "node scripts/lock-refresh.mjs"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1",
-    "dotenv-cli": "^11.0.0"
+    "concurrently": "9.2.5",
+    "dotenv-cli": "11.1.0"
   }
 }

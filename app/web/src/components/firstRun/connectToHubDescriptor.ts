@@ -1,74 +1,105 @@
-// ConnectToHub's descriptor — the literals the form shows and checks, moved
-// unchanged out of pages/MemberDashboard.tsx (member-first-run-ui separation
-// slice, B.1). Nothing here was new at the move: each value was the old code's,
-// and each literal occurred exactly as many times as it did there (D1). Entries
-// added since: membershipNotPaid (membership-gating M2); activateMembership,
-// renewMembership and RENEW_MEMBERSHIP_TIERS (membership-gating B1, L1). The two
-// 100k checks stay two constants; merging them is out of the slice (D1).
+// ConnectToHub's descriptor — the words the card shows and the values it checks.
+// Moved out of pages/MemberDashboard.tsx in the separation slice (B.1);
+// membershipNotPaid came with membership-gating M2, activateMembership,
+// renewMembership and RENEW_MEMBERSHIP_TIERS with membership-gating B1 and L1.
 //
-// Carried as they are, NOT fixed (B): the Economy option sends no fee rate
-// (its rate is left unset); the submitting label on an on-chain open; the
-// operator copy. Comments here never repeat a literal, so D1's counts hold.
+// Rewritten for member-first-run-ui slice 2, the Connect card (Ethan's
+// rulings, relayed 2026-11-16): member text says "connection" and "BitCorn",
+// never "channel" or "hub"; the card has one header, two columns ("How big",
+// "How fast") and a footer. The two 100k checks stay two constants.
+//
+// fee-estimates (2026-11-17/18): the fee options are LIVE. Rates, times and
+// costs come from GET /api/fee-estimates through components/fees; every
+// option, Economy included, sends the integer rate it shows. The fixed
+// FEE_SPEED_OPTIONS (Economy sending nothing, "~770 sats") are gone, and with
+// them "Fee set by your node" (MFRUI-ASKS (1)).
+// The open-channel confirm dialog keeps its own words until slice 5, except
+// its live-rate row (CONFIRM-RULING), which ships with fee-estimates.
 
 export const HUB_PUBKEY = "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca";
 
+/** The "How big" sizes. `key` is the Choice value; `value` is sats. */
 export const CAPACITY_PRESETS = [
-  { label: "1M", value: 1_000_000 },
-  { label: "5M", value: 5_000_000 },
-  { label: "10M", value: 10_000_000 },
-];
+  { key: "1m", label: "1M", value: 1_000_000 },
+  { key: "5m", label: "5M", value: 5_000_000 },
+  { key: "10m", label: "10M", value: 10_000_000 },
+] as const;
 
 /** The below-minimum warning shows under this capacity. */
 export const MIN_CAPACITY_WARNING_SATS = 100_000;
-/** The open button is disabled under this capacity. */
+/** The connect button is disabled under this capacity. */
 export const MIN_CAPACITY_OPEN_SATS = 100_000;
 
-// `key` is the Choice value (lowercase, ruled 2026-11-13); it maps back to the
-// option's rate.
-export const FEE_SPEED_OPTIONS = ([
-  { key: "economy", label: "Economy", rate: undefined, desc: "cheapest", time: "1–3 hours", cost: "~155 sats" },
-  { key: "normal", label: "Normal", rate: 5, desc: "balanced", time: "~30 min", cost: "~770 sats" },
-  { key: "priority", label: "Priority", rate: 15, desc: "fastest", time: "~10 min", cost: "~2,300 sats" },
-] as const);
+// The fee options' keys, labels and order are components/fees'
+// (FEE_OPTION_ORDER, FEE_OPTION_LABEL); the card's state holds the KEY (F3).
+// Each option's figure is its live open cost (rate × 155 vB, P14), shown by
+// both the card (FeeCost: "about $0.59" over "~770 sats") and the footer's
+// "network fee about …", so the two always say the same amount.
 
-/** The form's own copy, one entry per occurrence in the old code. */
+/** The card's own copy. */
 export const CONNECT_TO_HUB_COPY = {
-  submittedTitle: "Channel opening submitted",
-  submittedMessage:
-    "Your channel to the hub is being broadcast. It will become active after " +
-    "1–3 on-chain confirmations. This page will update automatically.",
-  fundingTransaction: "Funding Transaction",
-  noHubTitle: "No hub channel",
-  noHubMessage: "Open a channel to the hub to start sending and receiving Lightning payments.",
-  capacityLabel: "Channel Capacity",
-  capacityAriaLabel: "Channel Capacity",
+  heading: "Connect to BitCorn",
+  lead: "One connection to BitCorn carries all your Lightning payments. It's paid for from your node's bitcoin.",
+
+  // The reachability dot, by what the node knows about BitCorn.
+  reachable: "BitCorn reachable",
+  addressKnown: "BitCorn's address is known — it connects when you do",
+  checking: "Checking BitCorn…",
+  notReachable: "BitCorn isn't reachable yet — add BitCorn's address under Technical details",
+
+  howBig: "How big",
+  sizeAriaLabel: "Connection size in sats",
   satsUnit: "sats",
   capacityHint: "Recommended: 1M–10M sats. Minimum: 100,000 sats.",
-  capacityBelowMinimum: "Channel capacity must be at least 100,000 sats.",
-  peered: "Connected to hub — ready to open a channel",
-  autoSocket: "Hub address available — will connect automatically when you open a channel",
-  hubAddressLabel: "Hub Address",
-  optional: "(optional)",
-  hubAddressAriaLabel: "Hub Address",
-  hubAddressPlaceholder: "e.g. 203.0.113.5:9735 — ask your operator",
-  hubAddressHint: "Enter the hub's address to connect, or leave blank if already connected.",
-  confirmationSpeed: "Confirmation Speed",
-  connecting: "Connecting…",
-  openChannel: "Open Channel →",
-  hubNodeId: "Hub node ID",
-  feeRates: "Fee rates",
-  feeRatesDetail: "Economy ~1 sat/vB · Normal ~5 sat/vB · Priority ~15 sat/vB",
-  openFailed: "Failed to open channel",
+  capacityBelowMinimum: "A connection must be at least 100,000 sats.",
+  howFast: "How fast",
+
+  /** The footer summary, before the fee: "<sats> · network fee about <fee>". */
+  networkFeeAbout: "network fee about",
   /**
-   * The hub refused because this node's membership isn't paid (membership-
-   * gating M2 item 1, ruling R7): the API's `membership_not_paid`, from its
-   * app check or from the hub's channel acceptor. Not from the old code — a
-   * new literal. member-first-run-ui owns this surface and may restyle the
-   * words; their meaning is fixed by R7. Reworded by Ethan's ruling S2
-   * (2026-11-05); the acceptor's own refusal text is unchanged.
+   * O7, the member's wording (Ethan, "recs" via member-first-run-ui's review,
+   * 2026-11-18): one plain line under "How fast", in the normal text colour,
+   * not red — the member caused nothing. The footer then shows the size alone,
+   * "<sats> sats", without repeating this line.
+   */
+  feeUnavailable: "Fee estimates aren't available right now, so you can't connect yet. Try again in a few minutes.",
+  connecting: "Connecting…",
+  connect: "Connect to BitCorn →",
+  openFailed: "Couldn't connect to BitCorn",
+
+  submittedTitle: "Connection submitted",
+  // F5: the treasury requires 2 confirmations of member channels
+  // (bitcoin.defaultchanconfs=2, Q6). The card itself shows the
+  // first-confirmation range (P13 (a)).
+  submittedMessage:
+    "Your connection to BitCorn is being set up. It's usable after 2 " +
+    "confirmations. This page updates on its own.",
+  fundingTransaction: "Funding Transaction",
+
+  // Technical details.
+  nodeId: "BitCorn's node ID",
+  feeRates: "Fee rates",
+  // P19 (a): the row shows the live integer rates (components/fees ratesDetail).
+  addressLabel: "BitCorn's address",
+  optional: "(optional)",
+  addressPlaceholder: "e.g. 203.0.113.5:9735 — ask your operator",
+  addressHint: "Enter BitCorn's address to connect, or leave it blank if you're already connected.",
+
+  // Upgrade mode (no form until Ethan decides who pays). The current size is
+  // its own line under the heading, never inside a sentence (ruling "fix the
+  // five" item 3, 2026-11-16); this sentence follows it.
+  upgradeHeading: "Make your connection bigger",
+  upgradeBody: "A bigger connection lets you receive larger or more frequent payments before it fills up.",
+
+  /**
+   * The locked line: shown in place of the form when the treasury's verified
+   * verdict is false, and as the error when an open is refused for an unpaid
+   * membership (membership-gating M2 item 1, ruling R7: the API's
+   * `membership_not_paid`, from its app check or the hub's channel acceptor).
+   * R7 fixes the meaning; these words are slice 2's (2026-11-16).
    */
   membershipNotPaid:
-    "Your membership isn't paid, so the hub can't accept your channel. Pay your membership, then connect.",
+    "Your membership isn't paid, so BitCorn can't accept your connection. Pay your membership, then connect.",
   /**
    * The button shown when the treasury's verdict is false (membership-gating
    * B1, Ethan's ruling (a), 2026-11-06). It goes to the Settings membership

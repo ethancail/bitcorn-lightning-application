@@ -31,6 +31,8 @@ const stub = vi.hoisted(() => ({
   getAutoPayHistory: vi.fn(),
   getTreasuryInfo: vi.fn(),
   openMemberChannel: vi.fn(),
+  // fee-estimates: the open sends the live rate the summary showed.
+  getFeeEstimates: vi.fn(),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -40,13 +42,15 @@ vi.mock("../api/client", async (importOriginal) => {
 
 import SubscriptionPanel from "./SubscriptionPanel";
 import { useConnectToHub } from "./firstRun/useConnectToHub";
+import { feeEstimatesStub } from "./fees/feeEstimates.testutil";
 import { bannerFor, bannerSeverityForTier, bannerSeverityForTierName, settingsBadgeFor } from "./subscriptionBanner";
 import { tierToPill } from "./Pill";
 import { railGateNoticeFor } from "../stablecoin/railAccess";
 
-// R7's meaning, in S2's words (Ethan, 2026-11-05).
+// R7's meaning, in slice 2's words (member-first-run-ui, Ethan's ruling
+// relayed 2026-11-16; S2's were 2026-11-05): "BitCorn" and "connection".
 const R7_APP_CHECK =
-  "Your membership isn't paid, so the hub can't accept your channel. Pay your membership, then connect.";
+  "Your membership isn't paid, so BitCorn can't accept your connection. Pay your membership, then connect.";
 const DAY = 86_400_000;
 const NOW = 1_790_000_000_000;
 
@@ -406,8 +410,12 @@ describe("DW6 / M2 item 1 — ConnectToHub shows R7's app-check message on a mem
 
   async function openWith(err: unknown) {
     stub.openMemberChannel.mockRejectedValue(err);
+    stub.getFeeEstimates.mockResolvedValue(feeEstimatesStub({ economy: 1, normal: 3, priority: 6 }));
     await act(async () => { root.render(React.createElement(Probe)); });
     await settle();
+    // fee-estimates: the open sends the rate its summary showed, so the
+    // summary is shown first (sent = shown), then confirmed.
+    await act(async () => { probe.s!.openChannelConfirm(); });
     await act(async () => { await probe.s!.handleOpen(); });
     return host.textContent ?? "";
   }

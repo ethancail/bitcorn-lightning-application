@@ -68,7 +68,11 @@ describe("P6-2: alert headings are written in sentence case", () => {
   }
 
   it("the scan finds the literal headings (it is not vacuous)", () => {
-    expect(headings.length).toBeGreaterThanOrEqual(6);
+    // 6 until member-first-run-ui slice 2 (2026-11-16), which removed two
+    // literal alert headings from MemberDashboard by ruling: the pending panel's
+    // and the upgrade banner's. The Connect card's headings come from its
+    // descriptor, not an alert.
+    expect(headings.length).toBeGreaterThanOrEqual(4);
   });
 
   it("no word after the first is capitalised, proper names aside", () => {

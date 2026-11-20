@@ -239,7 +239,7 @@ Every build job must be `completed / success`. If a job failed:
 ```bash
 gh run rerun <run-id> --failed
 ```
-The common cause is a transient npm 403 (e.g. `npm install -g serve` rate-limited)
+The common cause is a transient npm 403 (e.g. the web image's `npm ci` of serve in `app/web/runtime` rate-limited)
 — a rerun usually clears it.
 
 Then confirm the tags are actually pullable, which is the real check rather than a
@@ -888,8 +888,8 @@ git diff origin/main origin/develop -- .github/workflows/pr-checks.yml   # empty
 
 Tests exist and are worth running — locally, before you open the PR:
 ```bash
-cd app/api && npx tsc --noEmit && npx vitest run
-cd app/web && npx tsc --noEmit && npx vite build && npx vitest run
+cd app/api && npx --no-install tsc --noEmit && npx --no-install vitest run
+cd app/web && npx --no-install tsc --noEmit && npx --no-install vite build && npx --no-install vitest run
 cd cloudflare-worker && npm run typecheck && npm test
 ```
 
@@ -907,10 +907,10 @@ number, once as a per-tree table. It no longer records any. **Get the current
 figures:**
 
 ```bash
-cd cloudflare-worker && npx vitest run 2>&1 | grep -E "Test Files|Tests "
-cd app/api          && npx vitest run 2>&1 | grep -E "Test Files|Tests "
-cd app/web          && npx vitest run 2>&1 | grep -E "Test Files|Tests "
-cd app/web          && npx tsc --noEmit  2>&1 | grep -c "error TS"
+cd cloudflare-worker && npx --no-install vitest run 2>&1 | grep -E "Test Files|Tests "
+cd app/api          && npx --no-install vitest run 2>&1 | grep -E "Test Files|Tests "
+cd app/web          && npx --no-install vitest run 2>&1 | grep -E "Test Files|Tests "
+cd app/web          && npx --no-install tsc --noEmit  2>&1 | grep -c "error TS"
 ```
 
 The instruction is now simply **"must be clean"**. The older "compare against *that

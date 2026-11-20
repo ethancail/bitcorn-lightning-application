@@ -1,0 +1,9 @@
+{
+  "name": "bitcorn-web-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The web image's runtime stage: serve, installed with npm ci from this directory's lock. Not the app; the app is app/web. Change it with npm run lock:refresh -- app/web/runtime serve@<version>.",
+  "dependencies": {
+    "serve": "14.2.8"
+  }
+}

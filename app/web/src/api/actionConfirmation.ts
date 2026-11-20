@@ -122,6 +122,7 @@ export const UI_CONFIRMED_ROUTES: ConfirmedRoute[] = [
     fields: [
       { name: "peer_pubkey", from: "body", kind: "text" },
       { name: "capacity_sats", from: "body", kind: "number" },
+      { name: "fee_rate", from: "body", kind: "number", optional: true },
       { name: "dry_run", from: "body", kind: "boolean", optional: true },
     ],
   },
@@ -131,6 +132,7 @@ export const UI_CONFIRMED_ROUTES: ConfirmedRoute[] = [
     fields: [
       { name: "channel_id", from: "body", kind: "text" },
       { name: "is_force_close", from: "body", kind: "boolean", optional: true },
+      { name: "fee_rate", from: "body", kind: "number", optional: true },
       { name: "dry_run", from: "body", kind: "boolean", optional: true },
     ],
   },
@@ -139,6 +141,7 @@ export const UI_CONFIRMED_ROUTES: ConfirmedRoute[] = [
     match: { kind: "exact", url: "/api/member/open-channel" },
     fields: [
       { name: "capacity_sats", from: "body", kind: "number" },
+      { name: "fee_rate", from: "body", kind: "number" },
       { name: "partner_socket", from: "body", kind: "text", optional: true },
     ],
   },

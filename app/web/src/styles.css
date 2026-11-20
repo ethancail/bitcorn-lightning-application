@@ -1440,6 +1440,15 @@ div:has(> .action-confirm-input) + .dialog-actions {
   line-height: 1.6;
 }
 
+/* The member's "Fee updated" reshow block (ActionConfirmModal; ruling 5 of
+   member-first-run-ui's review, 2026-11-18): .dialog-body's size, and
+   .dialog-title's weight for its heading, so it reads as part of the dialog.
+   The heading stays --text; the sentence takes .dialog-body's prose colour
+   (--text-2), matching the paragraph above (relayed ruling (a), 2026-11-19). */
+.action-confirm-notice-block { font-size: 0.875rem; }
+.action-confirm-notice-heading { font-weight: 600; color: var(--text); }
+.action-confirm-notice-body { color: var(--text-2); }
+
 .dialog-actions {
   display: flex;
   gap: 10px;
@@ -1966,6 +1975,18 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .choice-meta { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); }
 /* A cost on its own line that never splits: "~192 sats" stays whole. */
 .choice-cost { font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); white-space: nowrap; }
+/* ...but a WORDED cost may wrap, balanced so it breaks cleanly (Ethan's ruling
+   "fix the five" items 1 and 2, 2026-11-16). "Fee set by your node" is retired;
+   the worded cost now is the close card's "about $X proposed — the final fee
+   is often higher" (FeeCost).
+   Figures are Amounts, whose lines are nowrap on their own. A block, because
+   balance evens out the lines of a block, not of an inline span. */
+.fee-cost-words { display: block; white-space: normal; text-wrap: balance; }
+/* fee-estimates D3: the close card's "about $X proposed — …" is a worded cost,
+   so its line is a .fee-cost-words block; the figure inside keeps its line
+   (.amount-figure is nowrap) and the qualifier after it may wrap. The
+   qualifier wears the figure's weight and colour, as it did inline. */
+.fee-cost-qualifier { white-space: normal; font-weight: 600; color: var(--text); }
 .choice-reason { font-size: 0.75rem; color: var(--text-2); }
 
 /* ─── Amount (components/amount/Amount.tsx, NoRateNote.tsx) ───────
@@ -1980,6 +2001,112 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .amount-hero .amount-figure { font-size: 2.25rem; line-height: 1.1; letter-spacing: -0.02em; }
 .amount-hero .amount-sub { font-size: 1.25rem; color: var(--text-2); }
 .amount-page-note { margin: 0; font-size: 0.8125rem; color: var(--text-2); }
+
+/* ─── Connect card (components/firstRun/ConnectToHub.tsx) ─────────
+   Member-first-run-ui slice 2. ONE container (the panel): no nested
+   callouts, no coloured left border, no eyebrow. Header, two columns that
+   stack at phone width, footer. Amber marks the dot only, never words. */
+.connect-card { display: flex; flex-direction: column; gap: 20px; }
+.connect-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.connect-head-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.connect-title { margin: 0; font-size: 1.25rem; font-weight: 600; color: var(--text); }
+.connect-lead { margin: 0; font-size: 0.875rem; color: var(--text-2); }
+.connect-reach { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-2); }
+.connect-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-3); }
+.connect-reach-reachable .connect-dot { background: var(--green); }
+.connect-reach-addressKnown .connect-dot { background: var(--amber); }
+.connect-locked { margin: 0; font-size: 0.875rem; color: var(--text); }
+/* O7, the member's "no fee estimate" line: plain, the normal text colour, not
+   red — not an error the member caused (Ethan's "recs", 2026-11-18). */
+.connect-fee-unavailable { margin: 0; font-size: 0.8125rem; color: var(--text); }
+/* Technical details' "Fee rates" row: each unit stays whole inside TechRow's
+   break-all value. A separator rides with the item after it ("· Normal ~4
+   sat/vB"), so a wrap starts a line with "·" and never ends one on it. */
+.fee-rate-token { white-space: nowrap; }
+.connect-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.connect-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* The size control: one joined row of options, not separate cards. Withdraw's
+   presets share it (member-first-run-ui slice 3). */
+.connect-sizes .choice-options, .withdraw-presets .choice-options { gap: 0; }
+.connect-sizes .choice-option, .withdraw-presets .choice-option { border-radius: 0; }
+.connect-sizes .choice-option + .choice-option, .withdraw-presets .choice-option + .choice-option { margin-left: -1px; }
+.connect-sizes .choice-option:first-child, .withdraw-presets .choice-option:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.connect-sizes .choice-option:last-child, .withdraw-presets .choice-option:last-child { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.connect-sizes .choice-option.checked, .withdraw-presets .choice-option.checked { z-index: 1; }
+.connect-box { display: flex; flex-direction: column; gap: 2px; }
+.connect-input { position: relative; }
+.connect-input .form-input { padding-right: 42px; }
+.connect-unit {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;
+}
+.connect-box-usd { font-size: 0.75rem; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.connect-hint { font-size: 0.75rem; color: var(--text-3); }
+.connect-error { font-size: 0.75rem; color: var(--red); }
+.connect-foot {
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap;
+  border-top: 1px solid var(--border); padding-top: 12px;
+}
+.connect-foot-tech { flex: 1 1 240px; min-width: 0; }
+.connect-foot-act { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; text-align: right; }
+.connect-summary { font-size: 0.8125rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.connect-address { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.connect-optional { color: var(--text-3); font-weight: 400; }
+.connect-label { font-size: 0.75rem; color: var(--text-3); margin-bottom: 6px; }
+.connect-txid {
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 12px; font-size: 0.75rem; word-break: break-all; color: var(--text-1);
+}
+@media (max-width: 640px) {
+  .connect-cols { grid-template-columns: 1fr; }
+  .connect-foot-act { align-items: stretch; text-align: left; }
+}
+
+/* ─── The simplified Withdraw (member-first-run-ui slice 3) ─────────────── */
+/* Always visible: the answer, how much, where it goes, the one button. Only
+   when it applies: the warning word, the tip, the errors. One tap away: the
+   closed rows below the panel. */
+.withdraw-form { display: flex; flex-direction: column; gap: 16px; }
+.withdraw-answer { display: flex; flex-direction: column; gap: 4px; }
+.withdraw-answer-label { font-size: 0.875rem; color: var(--text-2); }
+.withdraw-answer-big { font-size: 1.5rem; font-weight: 600; color: var(--text); line-height: 1.2; }
+.withdraw-answer-sub { font-size: 0.8125rem; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.withdraw-answer-why { margin: 4px 0 0; font-size: 0.875rem; color: var(--text); }
+.withdraw-warning { font-size: 0.8125rem; color: var(--text); }
+/* "Waiting costs less": one plain line with the clock icon, no box (ruled
+   2026-11-18, like the confirm dialog's "Can't be undone" line). */
+.withdraw-tip { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-size: 0.875rem; color: var(--text); }
+.withdraw-tip-icon { flex: none; margin-top: 2px; color: var(--text-2); }
+.withdraw-why-wait { display: flex; flex-direction: column; gap: 4px; }
+.withdraw-how { display: flex; flex-direction: column; gap: 8px; }
+.withdraw-presets .choice-option:only-child { border-radius: var(--radius-md); }
+.withdraw-box { display: flex; flex-direction: column; gap: 2px; }
+.withdraw-input { position: relative; }
+.withdraw-input .form-input { padding-right: 42px; }
+.withdraw-unit {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;
+}
+.withdraw-box-usd { font-size: 0.75rem; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.withdraw-note { margin: 0; font-size: 0.8125rem; color: var(--text-2); }
+.withdraw-error { font-size: 0.8125rem; color: var(--red); }
+.withdraw-goes { font-size: 0.875rem; color: var(--text); }
+.withdraw-act { display: flex; flex-direction: column; gap: 8px; }
+.withdraw-review-line { margin: 0; font-size: 0.75rem; color: var(--text-3); text-align: center; }
+.withdraw-rows { display: flex; flex-direction: column; margin-top: 12px; border-top: 1px solid var(--border); }
+.withdraw-row { border-bottom: 1px solid var(--border); }
+.withdraw-row > summary { cursor: pointer; user-select: none; padding: 12px 4px; font-size: 0.875rem; color: var(--text); }
+.withdraw-row-body { display: flex; flex-direction: column; gap: 8px; padding: 0 4px 14px; font-size: 0.8125rem; color: var(--text-2); }
+.withdraw-most-figures { display: flex; gap: 16px; flex-wrap: wrap; }
+.withdraw-allow { display: flex; gap: 6px; align-items: center; font-size: 0.8125rem; }
+.withdraw-address {
+  display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+  background: var(--bg-3); border: 1px solid var(--border); border-radius: 6px;
+}
+.withdraw-address-text {
+  flex: 1; min-width: 0; font-family: var(--font-id); font-size: 0.75rem; color: var(--text-2);
+  word-break: break-all; line-height: 1.5;
+}
 
 /* ─── Liquidity page overhaul ────────────────────────────────── */
 

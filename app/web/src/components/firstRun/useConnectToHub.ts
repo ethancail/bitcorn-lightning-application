@@ -3,12 +3,30 @@
 // (member-first-run-ui separation slice, B.1). The move changed no behaviour.
 // Since then handleOpen maps the API's `membership_not_paid` to its own message
 // (membership-gating M1/M2 item 1), and it reads the treasury's verdict for
-// the "Activate membership" button (B1); everything else is as moved.
+// the "Activate membership" button (B1). Slice 2 (2026-11-16): the capacity
+// can be EMPTY (null) — clearing the box no longer forces 0 — and nothing is
+// sent or confirmed without a capacity.
+//
+// fee-estimates (2026-11-18): the fee option is held by KEY (F3) and its rate
+// is live (components/fees). What is sent is the rate the confirm summary
+// showed — never a rate swapped in after it: if the card fetched that
+// estimate over 10 min before confirm, it is refreshed, re-shown and confirmed
+// again, and nothing is sent (O6, P18). No estimate, or an option above the
+// 200 ceiling, blocks submit (O7, P15).
 
-import { useEffect, useState } from "react";
-import { api, type TreasuryInfo } from "../../api/client";
-import { useActionConfirm } from "../actionConfirm/ActionConfirmModal";
+import { useEffect, useRef, useState } from "react";
+import { api, type ExchangeRate, type FeeEstimateOption, type FeeOptionKey, type TreasuryInfo } from "../../api/client";
+import { usableUsd } from "../amount/Amount";
+import { RESHOWN, useActionConfirm } from "../actionConfirm/ActionConfirmModal";
 import { summarizeOpenMemberChannel } from "../actionConfirm/confirmAction";
+import {
+  DEFAULT_FEE_OPTION,
+  FEE_COPY,
+  FEE_OPTION_LABEL,
+  feeOptions,
+  isAboveCeiling,
+} from "../fees/feeEstimatesDescriptor";
+import { isStaleAtConfirm, useFeeEstimates } from "../fees/useFeeEstimates";
 import { classifyConfirmError } from "../actionConfirm/confirmErrors";
 import {
   CONNECT_TO_HUB_COPY,
@@ -18,9 +36,17 @@ import {
   RENEW_MEMBERSHIP_TIERS,
 } from "./connectToHubDescriptor";
 
-export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boolean; initialCapacity?: number }) {
-  const [capacity, setCapacity] = useState(initialCapacity ?? 1_000_000);
-  const [feeRate, setFeeRate] = useState<number | undefined>(undefined);
+export function useConnectToHub({ isPeered, initialCapacity, rate }: {
+  isPeered: boolean;
+  initialCapacity?: number;
+  /** The card's price, for the reshow's "about $X (N sats)". */
+  rate?: ExchangeRate | null;
+}) {
+  const [capacity, setCapacity] = useState<number | null>(initialCapacity ?? 1_000_000);
+  const [feeKey, setFeeKey] = useState<FeeOptionKey>(DEFAULT_FEE_OPTION);
+  const fees = useFeeEstimates({ enabled: true });
+  // The option the open summary showed, its rate, and when the card fetched it.
+  const shownFee = useRef<{ key: FeeOptionKey; rate: number; fetchedAtMs: number | null } | null>(null);
   const [socket, setSocket] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
@@ -69,28 +95,67 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
   // x-bitcorn-confirm from the serialized body; nothing is hashed here.
   const confirm = useActionConfirm();
 
+  const options = feeOptions(fees.estimates);
+  const selected = options?.find((o) => o.key === feeKey) ?? null;
+  /** Why submit is blocked by the fee, or null (O7: no estimate; P15: above the ceiling). */
+  const feeBlocked: string | null =
+    fees.status === "loading" ? null
+    : !selected || !fees.estimates ? FEE_COPY.unavailable
+    : isAboveCeiling(fees.estimates, selected) ? FEE_COPY.aboveCeiling(fees.estimates.ceiling_sat_per_vbyte)
+    : null;
+
+  function partnerSocketNow() {
+    return (hasAutoSocket && !isPeered ? hubSocket : socket.trim() || undefined) || undefined;
+  }
+
+  function summaryFor(capacitySats: number, opt: Pick<FeeEstimateOption, "key" | "rate">) {
+    return summarizeOpenMemberChannel({
+      capacitySats,
+      partnerSocket: partnerSocketNow(),
+      // TreasuryInfo carries pubkey + socket only, no alias — the summary's
+      // default label ("Bitcorn treasury hub") is the honest name here.
+      hubLabel: undefined,
+      fee: { label: FEE_OPTION_LABEL[opt.key], rate: opt.rate },
+    });
+  }
+
   function openChannelConfirm() {
-    const partnerSocket = hasAutoSocket && !isPeered ? hubSocket : socket.trim() || undefined;
-    confirm.open(
-      summarizeOpenMemberChannel({
-        capacitySats: capacity,
-        partnerSocket: partnerSocket || undefined,
-        // TreasuryInfo carries pubkey + socket only, no alias — the summary's
-        // default label ("Bitcorn treasury hub") is the honest name here.
-        hubLabel: undefined,
-      }),
-    );
+    if (capacity == null || !selected || feeBlocked) return;
+    shownFee.current = { key: selected.key, rate: selected.rate, fetchedAtMs: fees.fetchedAtMs };
+    confirm.open(summaryFor(capacity, selected));
   }
 
   async function handleOpen() {
+    const shown = shownFee.current;
+    if (capacity == null || !shown) return;
+
+    // O6 / P18: the shown estimate is over 10 min old (since the card fetched
+    // it). Refresh, re-show, ask again; send nothing now.
+    if (isStaleAtConfirm(shown.fetchedAtMs, Date.now())) {
+      const next = await fees.refresh();
+      const fresh = feeOptions(next.estimates)?.find((o) => o.key === shown.key);
+      if (!fresh || isAboveCeiling(next.estimates!, fresh)) {
+        // No figure to confirm now: close the modal; the card shows why.
+        shownFee.current = null;
+        confirm.dispatch({ t: "done" });
+        return RESHOWN;
+      }
+      shownFee.current = { key: shown.key, rate: fresh.rate, fetchedAtMs: next.fetchedAtMs };
+      confirm.dispatch({
+        t: "reshow",
+        summary: summaryFor(capacity, fresh),
+        notice: FEE_COPY.memberReshow(fresh.cost_sats.open, usableUsd(rate)),
+      });
+      return RESHOWN;
+    }
+
     setSubmitting(true);
     setError(null);
     try {
-      const partnerSocket = hasAutoSocket && !isPeered ? hubSocket : socket.trim() || undefined;
       const res = await api.openMemberChannel({
         capacity_sats: capacity,
-        partner_socket: partnerSocket || undefined,
-        ...(feeRate ? { fee_rate: feeRate } : {}),
+        partner_socket: partnerSocketNow(),
+        fee_rate: shown.rate,
       });
       setSuccess(res.funding_txid ?? "submitted");
     } catch (e: any) {
@@ -101,25 +166,33 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
         setError(CONNECT_TO_HUB_COPY.membershipNotPaid);
         return;
       }
+      // LND refused the rate as below this node's relay floor (D6 ruling).
+      if (e?.code === "fee_rate_below_network_minimum") {
+        setError(FEE_COPY.tooLowForNetwork);
+        return;
+      }
       setError(e.message ?? CONNECT_TO_HUB_COPY.openFailed);
     } finally {
       setSubmitting(false);
     }
   }
 
-  /** The capacity field's onChange, as it was: digits only, empty → 0. */
+  /** The capacity field's onChange: digits only; empty stays empty (null). */
   function setCapacityFromInput(value: string) {
     const raw = value.replace(/[^0-9]/g, "");
-    if (raw === "") { setCapacity(0); return; }
-    setCapacity(Number(raw));
+    setCapacity(raw === "" ? null : Number(raw));
   }
 
   return {
     capacity,
     setCapacity,
     setCapacityFromInput,
-    feeRate,
-    setFeeRate,
+    feeKey,
+    setFeeKey,
+    fees,
+    feeOptions: options,
+    selectedFee: selected,
+    feeBlocked,
     socket,
     setSocket,
     submitting,
@@ -133,7 +206,9 @@ export function useConnectToHub({ isPeered, initialCapacity }: { isPeered: boole
     handleOpen,
     membershipLocked,
     membershipLabel,
-    belowMinimum: capacity > 0 && capacity < MIN_CAPACITY_WARNING_SATS,
-    openDisabled: submitting || capacity < MIN_CAPACITY_OPEN_SATS,
+    belowMinimum: capacity != null && capacity > 0 && capacity < MIN_CAPACITY_WARNING_SATS,
+    openDisabled:
+      submitting || capacity == null || capacity < MIN_CAPACITY_OPEN_SATS ||
+      fees.status === "loading" || feeBlocked != null,
   };
 }

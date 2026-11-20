@@ -89,10 +89,10 @@ describe("every capital route the UI can reach sends a confirmation the server a
           price_acknowledged: true,
         }),
     ],
-    ["member/open-channel", () => api.openMemberChannel({ capacity_sats: 1_000_000 })],
+    ["member/open-channel", () => api.openMemberChannel({ capacity_sats: 1_000_000, fee_rate: 3 })],
     [
       "member/open-channel + socket",
-      () => api.openMemberChannel({ capacity_sats: 2_000_000, partner_socket: "1.2.3.4:9735" }),
+      () => api.openMemberChannel({ capacity_sats: 2_000_000, fee_rate: 3, partner_socket: "1.2.3.4:9735" }),
     ],
     ["network/pay", () => api.payNetworkInvoice("lnbc1pjxyzqqdq")],
     [
@@ -111,9 +111,11 @@ describe("every capital route the UI can reach sends a confirmation the server a
       "treasury/rotation/execute (force)",
       () => api.treasuryCloseChannel({ channel_id: "842391119757312", is_force_close: true }),
     ],
+    // Rewritten for fee-estimates (O5): fee_rate IS hashed now, on a cooperative
+    // close; a force close carries none (the route refuses one, F1).
     [
-      "treasury/rotation/execute (force + fee_rate, which is NOT hashed)",
-      () => api.treasuryCloseChannel({ channel_id: "842391119757312", is_force_close: true, fee_rate: 12 }),
+      "treasury/rotation/execute (coop + fee_rate, which IS hashed)",
+      () => api.treasuryCloseChannel({ channel_id: "842391119757312", fee_rate: 12 }),
     ],
     [
       "swaps/loop-out",
@@ -220,7 +222,7 @@ describe("what must stay untouched", () => {
       return realFetch(u, { ...i, headers: h });
     });
 
-    await api.openMemberChannel({ capacity_sats: 1_000_000 });
+    await api.openMemberChannel({ capacity_sats: 1_000_000, fee_rate: 3 });
     const c = captured[0]!;
     expect(c.headers["x-caller-supplied"]).toBe("kept");
     expect(c.headers["content-type"]).toBe("application/json");
@@ -245,7 +247,7 @@ describe("outage does not produce a wrong confirmation", () => {
   it("a body missing a hashed field sends NO header rather than a guess", async () => {
     // capacity_sats is required by the route's field list. Cast past the client
     // types deliberately: this is the runtime shape a half-filled form produces.
-    await api.openMemberChannel({} as unknown as { capacity_sats: number });
+    await api.openMemberChannel({} as unknown as { capacity_sats: number; fee_rate: number });
     const c = captured[0]!;
     expect(c.headers[CONFIRMATION_HEADER]).toBeUndefined();
     // And the server would answer 400, not 409 — an absent header is
@@ -257,14 +259,15 @@ describe("outage does not produce a wrong confirmation", () => {
   });
 
   it("an empty required numeric field also sends no header", async () => {
-    await api.openMemberChannel({ capacity_sats: "" as unknown as number });
+    // fee_rate present, so the empty capacity is the only missing field.
+    await api.openMemberChannel({ capacity_sats: "" as unknown as number, fee_rate: 3 });
     expect(captured[0]!.headers[CONFIRMATION_HEADER]).toBeUndefined();
   });
 
   it("the request is still SENT — the client does not swallow it locally", async () => {
     // Deliberate: the server owns the refusal and names the reason. A
     // client-side block would invent its own error text for the same condition.
-    await api.openMemberChannel({} as unknown as { capacity_sats: number });
+    await api.openMemberChannel({} as unknown as { capacity_sats: number; fee_rate: number });
     expect(captured).toHaveLength(1);
   });
 });

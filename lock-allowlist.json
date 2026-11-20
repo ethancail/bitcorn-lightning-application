@@ -1,0 +1,42 @@
+{
+  "schema": 1,
+  "entries": [
+    {
+      "name": "viem",
+      "version": "2.57.20",
+      "kind": "overrule",
+      "reason": "Production v1.18.39 runs viem 2.57.20, so locking it avoids a downgrade to 2.57.19. It ages past 3 days at 2026-11-18T08:19:05Z.",
+      "ethan": {
+        "words": "recs",
+        "date": "2026-11-16",
+        "record": "decisions/2026-11-16-lockfile-phase-2-rulings-and-viem-overrule.md"
+      }
+    },
+    {
+      "name": "serve",
+      "kind": "new-dependency",
+      "reason": "app/web/runtime/package.json locks serve, which the web image runs as /app/runtime/node_modules/.bin/serve in place of a global install.",
+      "ethan": {
+        "words": "yes",
+        "date": "2026-11-17",
+        "record": "decisions/2026-11-16-lockfile-phase-2-rulings-and-viem-overrule.md"
+      }
+    },
+    {
+      "name": "bitcoinjs-lib",
+      "version": "6.1.8",
+      "kind": "security-fix",
+      "reason": "app/api overrides bitcoinjs-lib to 6.1.8 because its parents pin the vulnerable 6.1.7 exactly (invoices@5.0.2 and psbt@5.0.0), and ln-service's fixed releases (59+) require Node 22.",
+      "advisory": "GHSA-8vv3-6qpc-gpw6",
+      "date": "2026-11-18"
+    },
+    {
+      "name": "@grpc/grpc-js",
+      "version": "1.14.7",
+      "kind": "security-fix",
+      "reason": "app/api overrides @grpc/grpc-js to 1.14.7 because its parent pins the vulnerable 1.14.3 exactly (lightning@11.1.0), and ln-service's fixed releases (59+) require Node 22.",
+      "advisory": "GHSA-5375-pq7m-f5r2, GHSA-99f4-grh7-6pcq, GHSA-m9gg-hp2v-232j, GHSA-f596-whhp-79r4",
+      "date": "2026-11-18"
+    }
+  ]
+}

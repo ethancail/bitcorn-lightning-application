@@ -347,7 +347,6 @@ function LoopOutTab({
   }
 
   if (phase === "form" || phase === "quoting") {
-    const selectedChannel = channels.find((c) => c.channel_id === channelId);
     return (
       <div className="panel fade-in">
         <div className="panel-header">
