@@ -492,11 +492,12 @@ jobs:
     # A registry outage fails it too: re-run. A check that cannot look does
     # not pass.
     #
-    # ⚠ THE JOB `name:` ABOVE IS MEANT TO BECOME A RULESET-PINNED REQUIRED
-    # CONTEXT. Ruleset 20756755 pins its required checks by EXACT STRING, so
-    # once it is added there, renaming this job is a TWO-PART change: this
+    # ⚠ THE JOB `name:` ABOVE IS A RULESET-PINNED REQUIRED CONTEXT, added to
+    # ruleset 20756755 with release v1.18.40. The ruleset pins its required
+    # checks by EXACT STRING, so renaming this job is a TWO-PART change: this
     # file AND the ruleset, together. A renamed job against an unedited
-    # ruleset produces a required context that never appears.
+    # ruleset produces a required context that never appears. Confirm it is
+    # listed rather than trusting this comment:
     #   gh api repos/ethancail/bitcorn-lightning-application/rulesets/20756755
     steps:
       - uses: actions/checkout@v5
