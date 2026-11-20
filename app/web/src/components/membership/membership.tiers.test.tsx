@@ -473,3 +473,43 @@ describe("slice 4, R8 fixes", () => {
     expect(norm(line!.textContent)).toContain("The subscription price, $54.00 (90,000 sats), is above the limit");
   });
 });
+
+// ─── Rulings, 2026-11-20 ("recs", after the slice 4 capture) ─────────────
+
+describe("ruled 2026-11-20 — the button's weight, and the never-paid lead", () => {
+  const button = () => host.querySelector(".membership-button") as HTMLButtonElement | null;
+  const SHAPES: { name: string; s: () => unknown; primary: boolean }[] = [
+    { name: "routing_lapsed (overdue)", s: () => status("routing_lapsed", VERIFIED), primary: true },
+    { name: "close_due (overdue)", s: () => status("close_due", VERIFIED), primary: true },
+    { name: "worker_lapsed (services paused)", s: () => status("worker_lapsed", VERIFIED), primary: true },
+    { name: "current, due soon", s: () => status("current", VERIFIED, { paid_through: NOW - 2 * DAY, worker_until: NOW + 40 * DAY }), primary: true },
+    { name: "prepay (never paid)", s: () => status("prepay", VERIFIED, { last: null }), primary: true },
+    { name: "current, paid up", s: () => status("current", VERIFIED, { paid_through: NOW + 10 * DAY, worker_until: NOW + 40 * DAY }), primary: false },
+  ];
+
+  it("1: the dark primary button (Withdraw's) where renewing is due; paid up keeps the outline", async () => {
+    for (const sh of SHAPES) {
+      await panel(sh.s());
+      const b = button();
+      expect(b, `${sh.name}: the button renders (setup)`).not.toBeNull();
+      expect(b!.classList.contains("btn-primary"), `${sh.name}: primary`).toBe(sh.primary);
+      expect(b!.classList.contains("btn"), `${sh.name}: .btn with the primary`).toBe(sh.primary);
+      expect(b!.classList.contains("sub-btn"), `${sh.name}: the outline`).toBe(!sh.primary);
+    }
+  });
+
+  it("2: the never-paid lead, \"$X (N sats)\" with the live price; the ask hidden while blocked", async () => {
+    await panel(status("prepay", VERIFIED, { last: null }));
+    const lead = host.querySelector(".membership-lead");
+    expect(norm(lead?.textContent)).toBe("Your membership isn't active yet. Pay $25.20 (42,000 sats) to start it.");
+    expect(lead?.closest("details"), "always visible").toBeNull();
+    // The live price, not a constant: a different rate, a different dollar figure.
+    stub.getExchangeRate.mockResolvedValue({ usd: 120_000, source: "coinbase", fetched_at: NOW - 60_000, age_ms: 60_000, state: "fresh" });
+    await panel(status("prepay", VERIFIED, { last: null }));
+    expect(norm(host.querySelector(".membership-lead")?.textContent)).toBe("Your membership isn't active yet. Pay $50.40 (42,000 sats) to start it.");
+    for (const labels of [UNSIGNED, CHANGED]) {
+      await panel(status("prepay", labels, { last: null }));
+      expect(norm(host.querySelector(".membership-lead")?.textContent)).toBe("Your membership isn't active yet.");
+    }
+  });
+});

@@ -166,7 +166,8 @@ describe("R45 A2 / slice 4 — the panel's amounts, dollars first", () => {
   it("prepay, fresh rate: 'Activate for', the lead's ask, 'Pay from your node'", async () => {
     await show(status("prepay"));
     expect(big()).toEqual({ usd: "$25.20", sats: "42,000 sats", label: "Activate for" });
-    expect(text()).toContain("Send $25.20 (42,000 sats) to activate full membership.");
+    // Ruled 2026-11-20 ("recs", 2): the never-paid lead, verbatim.
+    expect(text()).toContain("Your membership isn't active yet. Pay $25.20 (42,000 sats) to start it.");
     expect(text()).toContain("Send exactly 42,000 sats to activate.");
     expect(button()?.textContent).toBe("Pay from your node");
     expect(bareSats()).toBe(0);

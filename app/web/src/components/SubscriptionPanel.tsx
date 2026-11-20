@@ -522,7 +522,14 @@ function ApplicablePanel({
 
       <PendingNotice />
       <div className="membership-action">
-        <button className="sub-btn membership-button" onClick={handlers.onRenew} disabled={blocked}>
+        {/* Ruled 2026-11-20 ("recs", 1): the dark primary button (Withdraw's
+            "Review withdrawal") wherever renewing is due; paid up keeps the
+            outline, since renewing early is optional. */}
+        <button
+          className={`${shape === "paidUp" ? "sub-btn" : "btn btn-primary"} membership-button`}
+          onClick={handlers.onRenew}
+          disabled={blocked}
+        >
           {shape === "prepay" ? COPY.payButton : COPY.renewButton}
         </button>
         {!blocked && (

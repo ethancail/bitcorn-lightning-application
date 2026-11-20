@@ -47,8 +47,10 @@ export const MEMBERSHIP_COPY = {
   /** The pre-pause sentence, and its ask (hidden while payments are blocked). */
   dueLead: (date: string) => `Hosted services pause on ${date}.`,
   dueAsk: "Renew before then to keep them running.",
-  prepayLead: "You have payment access until your first payment.",
-  prepayAsk: (amount: string) => `Send ${amount} to activate full membership.`,
+  /** Ruled 2026-11-20 ("recs", 2): the never-paid lead, and its ask (hidden
+   *  while payments are blocked, G3). */
+  prepayLead: "Your membership isn't active yet.",
+  prepayAsk: (amount: string) => `Pay ${amount} to start it.`,
 
   renewFor: "Renew for",
   renewsFor: "Renews for",

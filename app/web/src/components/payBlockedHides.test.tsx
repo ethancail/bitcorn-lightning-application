@@ -371,13 +371,13 @@ describe("G3 extension — the Settings panel invites no payment from another wa
   // worker_lapsed has the overdue layout (R6), whose "If you renew" row never
   // had the other-wallet sentence; its site is gone with the sentence.
   const SITES = [
-    { tier: "prepay" as Tier, where: "prepay lead", ask: "until your first payment. Send 42,000 sats to activate full membership.",
-      blockedText: "You have payment access until your first payment." },
+    { tier: "prepay" as Tier, where: "prepay lead", ask: "isn't active yet. Pay 42,000 sats to start it.",
+      blockedText: "Your membership isn't active yet." },
     { tier: "prepay" as Tier, where: "prepay \"Available now\" bullet",
       ask: "Available now — Coinbase Onramp for buying BTC, BTC/USD price reads, and the address below for receiving your first payment.",
       blockedText: "Activates on first payment" },
   ];
-  const ANY = /wallet you already have|to activate full membership|address below for receiving your first payment/;
+  const ANY = /wallet you already have|to start it\.|address below for receiving your first payment/;
   const button = () => host.querySelector(".membership-button") as HTMLButtonElement | null;
 
   it("each site is absent under unsigned and S6, and present under verified and unrefused", async () => {
