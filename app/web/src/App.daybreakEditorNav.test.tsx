@@ -8,6 +8,11 @@
 // call the shells and the page make), RailScope (a pass-through), and the theme
 // key, because App.tsx's initTheme() reads window.matchMedia at import, which
 // jsdom does not provide. Same harness as App.daybreakNav.test.tsx.
+//
+// Also stubbed: BitcoinPriceGraph, which the member dashboard renders (the two
+// FORBIDS cases land there) and which fetches api.coinbase.com directly — an
+// outbound request the test-network guard (src/testSetup/networkGuard.ts)
+// fails. Nothing here asserts on the graph.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -38,6 +43,8 @@ vi.mock("./api/client", async (importOriginal) => {
 vi.mock("./stablecoin/RailScope", () => ({
   RailScope: ({ children }: { children: React.ReactNode }) => children,
 }));
+
+vi.mock("./components/BitcoinPriceGraph", () => ({ default: () => null }));
 
 let host: HTMLDivElement | null = null;
 let root: Root | null = null;
