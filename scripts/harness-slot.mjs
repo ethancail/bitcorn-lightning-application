@@ -351,8 +351,8 @@ export function scriptCommand(script, slot, ctx, args = []) {
 // between this one's steps. Nothing outside the tests passes it.
 
 export const lockDir = (home) => path.join(home, ".bitcorn-dev", "locks");
-// A heavy slot's target is "heavy-K" (K from 0); its file is heavy-K.lock.
-const isHeavy = (target) => typeof target === "string" && target.startsWith("heavy-");
+// A heavy slot's target is "heavy" (slot 0) or "heavy-K" (K from 1); its file is <target>.lock.
+const isHeavy = (target) => target === "heavy" || (typeof target === "string" && target.startsWith("heavy-"));
 const lockFile = (home, target) =>
   path.join(lockDir(home), target === "setup" ? "setup.lock" : isHeavy(target) ? `${target}.lock` : `slot-${target}.lock`);
 const historyFile = (home) => path.join(lockDir(home), "history.log");
@@ -686,7 +686,9 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
 // Heavy (H3): full test suites (vitest, node --test), mutation and
 // negative-control batches, Polar gates and captures.
 //
-// THE SLOTS ARE THE KERNEL'S: `limit` files, locks/heavy-0.lock …
+// THE SLOTS ARE THE KERNEL'S: `limit` files, locks/heavy.lock (slot 0, named
+// "heavy": the single lock's own file, so a checkout from before the slots and
+// one after exclude each other on it while this rolls out), heavy-1.lock, …
 // heavy-{limit-1}.lock, in ONE account's home, each locked by an exclusive
 // flock(2) taken by util-linux flock(1) (/usr/bin/flock; 2.39.3 on ubuntu-pc
 // and on the OptiPlex) on a descriptor this process opened. A job holds one
@@ -736,7 +738,7 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
 // The slot files are never written, truncated, replaced or removed: a removed
 // file would let the next job lock a new file while a job holds the old one (an
 // acquirer re-checks that the path still names the file it locked). Beside
-// each, heavy-K.info.json says who holds it: written by the holder once it has
+// each, its info file (heavy.info.json, heavy-K.info.json) says who holds it: written by the holder once it has
 // the slot, removed by it before it lets go. It is for display, A3 and
 // admission's exclusive-waiting check only; it is never the lock.
 //
@@ -785,7 +787,10 @@ const FLOCK = "/usr/bin/flock"; // by path: browser-slot.py calls this CLI with 
 const FLOCK_BUSY = 200; // flock(1)'s exit code for "held" (-E): -n refused, or -w ran out
 export const HEAVY_FD = 9; // the (first) locked descriptor's number in a command or check that holds heavy
 const SELF = fileURLToPath(import.meta.url);
-export const heavySlot = (k) => `heavy-${k}`;
+// Slot 0 keeps the single lock's own names (heavy.lock, heavy.info.json, lock="heavy" in
+// history.log), so code from before the slots and after exclude each other on it while the
+// change rolls out (Ethan, 2026-11-20). Slot k >= 1 is heavy-k.
+export const heavySlot = (k) => (k === 0 ? "heavy" : `heavy-${k}`);
 const heavyInfoFile = (home, k) => path.join(lockDir(home), `${heavySlot(k)}.info.json`);
 const admitFile = (home) => path.join(lockDir(home), "heavy-admit.lock");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -918,8 +923,9 @@ function heavySlotsOnDisk(home, suffix) {
     if (error.code === "ENOENT") return [];
     throw error;
   }
-  const re = new RegExp(`^heavy-(0|[1-9][0-9]*)${suffix.replace(/\./g, "\\.")}$`);
-  return names.map((n) => n.match(re)?.[1]).filter((k) => k !== undefined).map(Number).sort((a, b) => a - b);
+  // Slot 0 is "heavy" (heavy.lock), slot k >= 1 is "heavy-k"; heavy-admit.lock is neither.
+  const re = new RegExp(`^heavy(?:-([1-9][0-9]*))?${suffix.replace(/\./g, "\\.")}$`);
+  return names.map((n) => n.match(re)).filter(Boolean).map((m) => (m[1] === undefined ? 0 : Number(m[1]))).sort((a, b) => a - b);
 }
 
 function readInfoText(home, k) {
@@ -956,7 +962,7 @@ export function describeHeavy(info) {
   return `${who}, pid ${info.pid} gone: a process that inherited the lock still holds it`;
 }
 
-// [{ slot, info }] → "<holder description> (heavy-0) and … (heavy-1)"; short: holder and time only.
+// [{ slot, info }] → "<holder description> (heavy) and … (heavy-1)"; short: holder and time only.
 const holdersText = (busy, { short = false } = {}) => busy.map(({ slot, info }) =>
   (short ? `${JSON.stringify(info?.holder ?? "(unrecorded)")} since ${info?.acquired_at ?? "?"}` : describeHeavy(info)) +
   ` (${heavySlot(slot)})`).join(" and ");

@@ -107,7 +107,7 @@ that weakens them is caught mechanically:
   run"; one slot held → the gate takes the other with `VITEST_MAX_WORKERS=3`
   (11b) — in a scratch lock home (`HARNESS_HEAVY_TEST_HOME`) with a fake
   meminfo (`HARNESS_HEAVY_TEST_MEMINFO`), never the account's real
-  `heavy-<k>.lock` files. The lock itself — at most the host's limit of heavy
+  `heavy.lock` and `heavy-<k>.lock` files. The lock itself — at most the host's limit of heavy
   jobs (2 on ubuntu-pc, 1 on the OptiPlex), a second admitted only with
   MemAvailable ≥ 4096 MB (`HARNESS_HEAVY_MIN_FREE_MB`), `--exclusive` for
   every slot — is documented in `docs/dev-setup.md` § The heavy lock and

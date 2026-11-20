@@ -61,8 +61,10 @@ const WORKFLOW_WAIT = /is already locked by |refused: setup\.lock is held by /;
 
 const scratch = () => fs.mkdtempSync(path.join(os.tmpdir(), "heavy-test-"));
 const locksDir = (home) => path.join(home, ".bitcorn-dev", "locks");
-const lockPath = (home, k = 0) => path.join(locksDir(home), `heavy-${k}.lock`);
-const infoPath = (home, k = 0) => path.join(locksDir(home), `heavy-${k}.info.json`);
+// Slot 0 keeps the single lock's names (heavy.lock, heavy.info.json); slot k >= 1 is heavy-k.
+const slotName = (k) => (k === 0 ? "heavy" : `heavy-${k}`);
+const lockPath = (home, k = 0) => path.join(locksDir(home), `${slotName(k)}.lock`);
+const infoPath = (home, k = 0) => path.join(locksDir(home), `${slotName(k)}.info.json`);
 const historyPath = (home) => path.join(locksDir(home), "history.log");
 const history = (home) => (fs.existsSync(historyPath(home)) ? fs.readFileSync(historyPath(home), "utf8") : "");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -146,7 +148,7 @@ function stopHolders(home) {
     }
     if (!cmdline.includes("\0__hold\0")) continue;
     const open = fds.some((n) => {
-      try { return /^heavy-[0-9]+\.lock$/.test(path.relative(locksDir(home), fs.readlinkSync(`/proc/${pid}/fd/${n}`))); } catch { return false; }
+      try { return /^heavy(-[0-9]+)?\.lock$/.test(path.relative(locksDir(home), fs.readlinkSync(`/proc/${pid}/fd/${n}`))); } catch { return false; }
     });
     if (open) try { process.kill(Number(pid), "SIGKILL"); } catch {}
   }
@@ -218,7 +220,7 @@ ttest("A1: a scratch $HOME does not move the lock (read-only: heavy status takes
   assert.notEqual(passwdHome, fakeHome);
   const r = await cli(["heavy", "status"], { home: undefined, slotHome: fakeHome, env: { HARNESS_HEAVY_TEST_HOME: "" } });
   assert.equal(r.code, 0, r.stderr);
-  assert.ok(r.stdout.startsWith(`heavy-0 ${path.join(passwdHome, ".bitcorn-dev", "locks", "heavy-0.lock")}: `), r.stdout);
+  assert.ok(r.stdout.startsWith(`heavy ${path.join(passwdHome, ".bitcorn-dev", "locks", "heavy.lock")}: `), r.stdout);
   assert.ok(!r.stdout.includes(fakeHome), r.stdout);
 });
 
@@ -238,12 +240,12 @@ ttest("two heavy jobs started together never overlap: the second waits, then run
   assertNoOverlap(spans);
   const waiter = spans[0].name === "a" ? b : a;
   // The holder is JSON-quoted and may itself hold escaped quotes, so match loosely.
-  assert.match(waiter.stderr, /heavy lock held by ".*" since \S+ on \S+, pid \d+ running \(heavy-0\); waiting/);
+  assert.match(waiter.stderr, /heavy lock held by ".*" since \S+ on \S+, pid \d+ running \(heavy\); waiting/);
   const kinds = history(home).trim().split("\n").map((l) => l.split(" ")[1]);
   assert.deepEqual(kinds, ["acquire", "release", "acquire", "release"]);
   assert.equal(lockState(home), "free");
   assert.ok(!fs.existsSync(infoPath(home)), "the info file goes with the last holder");
-  assert.ok(fs.existsSync(lockPath(home)), "heavy-0.lock itself is never removed");
+  assert.ok(fs.existsSync(lockPath(home)), "heavy.lock itself is never removed");
 });
 
 // The review's three-way take-over race (race3.mjs) needed a dead holder that
@@ -275,11 +277,11 @@ ttest("released on success and on failure; the command's exit code is the wrappe
   for (const code of [0, 7]) {
     const r = await cli(["heavy", "run", "--", NODE, "-e", `process.exit(${code})`], { home });
     assert.equal(r.code, code, r.stderr);
-    assert.match(r.stderr, /harness lock released: heavy-0, holder [^,]+, held .* on \S+$/m);
+    assert.match(r.stderr, /harness lock released: heavy, holder [^,]+, held .* on \S+$/m);
     assert.doesNotMatch(r.stderr, /; go /, "heavy has no go");
     assert.equal(lockState(home), "free");
   }
-  assert.match(history(home), new RegExp(`acquire lock="heavy-0" holder="${os.userInfo().username}@${HOST}:${NODE.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")} -e`));
+  assert.match(history(home), new RegExp(`acquire lock="heavy" holder="${os.userInfo().username}@${HOST}:${NODE.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")} -e`));
 });
 
 ttest("the command holds the lock as its fd 9, and nothing else is passed to it", async () => {
@@ -346,7 +348,7 @@ ttest("F1: what the command leaves running in its group is ended, and only then 
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stderr, /harness lock released: heavy/);
   assert.equal(lockState(home), "free", "the background child must not hold the lock past the release");
-  const pgid = Number(history(home).match(/acquire lock="heavy-0" .* pgid=(\d+)/)?.[1]);
+  const pgid = Number(history(home).match(/acquire lock="heavy" .* pgid=(\d+)/)?.[1]);
   assert.ok(pgid > 0, history(home));
   assert.throws(() => process.kill(-pgid, 0), { code: "ESRCH" }, "the command's process group is empty");
 });
@@ -357,11 +359,11 @@ ttest("F1: a process that left the group with fd 9 is named: NOT released, no re
   try {
     // setsid: its own session, out of the group the wrapper ends; it keeps fd 9.
     const r = await cli(["heavy", "run", "--holder", "leaky", "--", "sh", "-c", "setsid sleep 30 & sleep 0.3; exit 0"], { home });
-    escapee = Number(r.stderr.match(/heavy-0 NOT released: pid (\d+) \(sleep\) still holds its descriptor; it frees when it exits/)?.[1]);
+    escapee = Number(r.stderr.match(/heavy NOT released: pid (\d+) \(sleep\) still holds its descriptor; it frees when it exits/)?.[1]);
     assert.ok(escapee > 0, r.stderr);
     assert.equal(r.code, 2, "a succeeding command whose lock is not released exits 2");
     assert.doesNotMatch(r.stderr, /harness lock released/);
-    assert.doesNotMatch(history(home), /release lock="heavy-0"/, "no release line while it is held");
+    assert.doesNotMatch(history(home), /release lock="heavy"/, "no release line while it is held");
     assert.equal(lockState(home), "held");
     assert.equal(readInfo(home).holder, "leaky", "the record stays, naming the job");
     process.kill(escapee, "SIGKILL");
@@ -381,7 +383,7 @@ ttest("a holder outside this job (a bare flock(1)) is waited on and reported, ne
     const marker = path.join(home, "ran");
     const r = await cli(["heavy", "run", "--wait", "1", "--", NODE, "-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "x")`], { home });
     assert.equal(r.code, 2, r.stderr);
-    assert.match(r.stderr, /heavy is already locked by a holder that names none \(no heavy info file: just starting, outside these tools, or an inheritor\) \(heavy-0\); waited 1s/);
+    assert.match(r.stderr, /heavy is already locked by a holder that names none \(no heavy info file: just starting, outside these tools, or an inheritor\) \(heavy\); waited 1s/);
     assert.ok(!fs.existsSync(marker), "the command must not run");
     assert.equal(lockState(home), "held");
   } finally {
@@ -401,14 +403,14 @@ ttest("a waiter whose first look lands before the holder has recorded itself sti
     fs.writeFileSync(infoPath(home), JSON.stringify({ holder: "late-writer", acquired_at: "2026-11-18T12:00:00Z", host: HOST, slot: "heavy", kind: "run", pid: bare.pid }));
     const r = await waiter.done;
     assert.equal(r.code, 2, r.stderr);
-    assert.match(r.stderr, /heavy lock held by "late-writer" since \S+ on \S+, pid \d+ running \(heavy-0\); waiting/);
+    assert.match(r.stderr, /heavy lock held by "late-writer" since \S+ on \S+, pid \d+ running \(heavy\); waiting/);
     assert.doesNotMatch(r.stderr, /names none/);
   } finally {
     bare.kill();
   }
 });
 
-ttest("heavy-0.info.json is display only: without the lock it blocks nothing, and with the lock its absence frees nothing", async () => {
+ttest("heavy.info.json is display only: without the lock it blocks nothing, and with the lock its absence frees nothing", async () => {
   const home = scratch();
   fs.mkdirSync(locksDir(home), { recursive: true });
   // A stale or fabricated record, a live pid in it, no lock held.
@@ -434,7 +436,7 @@ ttest("heavy-0.info.json is display only: without the lock it blocks nothing, an
 
 ttest("heavy status says free or held as the kernel does, and names the holder", async () => {
   const home = scratch();
-  const status = async () => (await cli(["heavy", "status"], { home })).stdout.trim().replace(/^heavy-0 \S+: /, "");
+  const status = async () => (await cli(["heavy", "status"], { home })).stdout.trim().replace(/^heavy \S+: /, "");
   assert.equal(await status(), "free");
   const run = start(["heavy", "run", "--holder", "shown", "--", "sleep", "30"], { home });
   try {
@@ -532,7 +534,7 @@ ttest("A3 (F2): after heavy acquire, a later separate command carrying its token
     assert.match(stale.stderr, WORKFLOW_WAIT);
 
     const rel = shell(`${q(NODE)} ${q(SCRIPT)} heavy release --holder shell-arc`);
-    assert.match(rel.stdout, /harness lock released: heavy-0, holder shell-arc/, rel.stderr);
+    assert.match(rel.stdout, /harness lock released: heavy, holder shell-arc/, rel.stderr);
     assert.equal(lockState(home), "free");
   } finally {
     stopHolders(home);
@@ -661,11 +663,11 @@ ttest("heavy acquire / release: a holder process keeps the lock, so there is no 
     assert.match(blocked.stderr, new RegExp(`"polar-gate" since \\S+ on \\S+, pid ${info.pid} running`));
     const wrong = await cli(["heavy", "release", "--holder", "someone-else"], { home });
     assert.equal(wrong.code, 2);
-    assert.match(wrong.stderr, /heavy is held by "polar-gate" since \S+ \(heavy-0\), not "someone-else"/);
+    assert.match(wrong.stderr, /heavy is held by "polar-gate" since \S+ \(heavy\), not "someone-else"/);
     assert.equal(lockState(home), "held", "a refused release stops nothing");
     const rel = await cli(["heavy", "release", "--holder", "polar-gate"], { home });
     assert.equal(rel.code, 0, rel.stderr);
-    assert.match(rel.stdout, /^harness lock released: heavy-0, holder polar-gate, held .* on \S+$/m);
+    assert.match(rel.stdout, /^harness lock released: heavy, holder polar-gate, held .* on \S+$/m);
     assert.ok(gone(info.pid), "release stops the holder process");
     assert.equal(lockState(home), "free");
     assert.equal((await cli(["heavy", "release", "--holder", "polar-gate"], { home })).code, 2, "nothing left to release");
@@ -685,8 +687,8 @@ ttest("heavy release --force stops an acquire's holder process, and refuses a ru
     const { pid } = readInfo(home);
     const forced = await cli(["heavy", "release", "--force", "--reason", "test"], { home });
     assert.equal(forced.code, 0, forced.stderr);
-    assert.match(forced.stdout, /harness lock FORCE-released: heavy-0, was held by stuck since \S+; reason "test"/);
-    assert.match(history(home), /force-release lock="heavy-0" holder="stuck" acquired_at="\S+" reason="test"/);
+    assert.match(forced.stdout, /harness lock FORCE-released: heavy, was held by stuck since \S+; reason "test"/);
+    assert.match(history(home), /force-release lock="heavy" holder="stuck" acquired_at="\S+" reason="test"/);
     assert.ok(gone(pid));
     assert.equal(lockState(home), "free");
 
@@ -727,7 +729,7 @@ ttest("F4: heavy release never signals a process its record names unless that pr
       assert.ok(!gone(victim.pid), `release ${args.join(" ")} must not signal pid ${victim.pid}`);
       assert.equal(lockState(home), "held");
     }
-    assert.doesNotMatch(history(home), /force-release|release lock="heavy-0"/);
+    assert.doesNotMatch(history(home), /force-release|release lock="heavy"/);
   } finally {
     victim.kill();
     bare.kill();
@@ -806,7 +808,7 @@ ttest("heavy acquire --pid: the named process is the holder's owner, and its dea
     const r = await cli(["heavy", "run", "--wait", "10", "--", "true"], { home });
     assert.equal(r.code, 0, r.stderr);
     assert.ok(gone(holderPid), "the holder let go and ended");
-    assert.match(history(home), /release lock="heavy-0" holder="session" acquired_at="\S+" held="\S+"/);
+    assert.match(history(home), /release lock="heavy" holder="session" acquired_at="\S+" held="\S+"/);
   } finally {
     p.kill();
     stopHolders(home);
@@ -874,8 +876,8 @@ ttest("limit 2: two heavy jobs started together run at once, each in its own slo
   assert.ok(y.s < x.e, `they overlap: ${x.name} ${x.s}–${x.e}, ${y.name} ${y.s}–${y.e}`);
   const h = history(home);
   for (const k of [0, 1]) {
-    assert.match(h, new RegExp(`acquire lock="heavy-${k}" holder="[ab]"`), h);
-    assert.match(h, new RegExp(`release lock="heavy-${k}" holder="[ab]"`), h);
+    assert.match(h, new RegExp(`acquire lock="${slotName(k)}" holder="[ab]"`), h);
+    assert.match(h, new RegExp(`release lock="${slotName(k)}" holder="[ab]"`), h);
   }
   assert.deepEqual([lockState(home, 0), lockState(home, 1)], ["free", "free"]);
 });
@@ -892,7 +894,7 @@ ttest("limit 2: three started together — at most two run at once, and the thir
   const [first, second, third] = spans;
   assert.ok(third.s >= Math.min(first.e, second.e), `the third (${third.name}) started at ${third.s}, before either of the first two ended`);
   const waiter = rs[["a", "b", "c"].indexOf(third.name)];
-  assert.match(waiter.stderr, /heavy lock held by ".*" since .* \(heavy-[01]\) and ".*" since .* \(heavy-[01]\); waiting/);
+  assert.match(waiter.stderr, /heavy lock held by ".*" since .* \(heavy(?:-1)?\) and ".*" since .* \(heavy(?:-1)?\); waiting/);
 });
 
 ttest("memory: a second job waits while MemAvailable is under 4096 MB, and starts when it rises; the first, alone, is never checked", async () => {
@@ -935,9 +937,9 @@ ttest("a crash of either job frees exactly its own slot", async () => {
       runs[victim].child.kill("SIGKILL");
       process.kill(-info.pgid, "SIGKILL"); // the OOM killer's view: no finally runs
       await runs[victim].done;
-      await until(() => lockState(home, victim) === "free", `heavy-${victim} to free`);
+      await until(() => lockState(home, victim) === "free", `${slotName(victim)} to free`);
       const other = 1 - victim;
-      assert.equal(lockState(home, other), "held", `heavy-${other} stays with its live job`);
+      assert.equal(lockState(home, other), "held", `${slotName(other)} stays with its live job`);
       assert.equal(readInfo(home, other).holder, ["a", "b"][other]);
     } finally {
       for (const run of runs) run.child.kill("SIGTERM");
@@ -951,7 +953,7 @@ ttest("a token holds one slot: a heavy run nested under it never takes the secon
   const r = await cli(["heavy", "run", "--holder", "outer", "--", NODE, SCRIPT, "heavy", "run", "--", ...probeSlots(home)], { home, env: TWO });
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stderr, /already held by this job \("outer"\); running without acquiring again/);
-  assert.match(r.stdout, /^slot0=200\nslot1=0$/m, "heavy-0 is the outer job's, heavy-1 stays free");
+  assert.match(r.stdout, /^slot0=200\nslot1=0$/m, "heavy is the outer job's, heavy-1 stays free");
   assert.equal((history(home).match(/ acquire /g) ?? []).length, 1, history(home));
   assert.doesNotMatch(history(home), /heavy-1/);
 });
@@ -963,7 +965,7 @@ ttest("on a host with limit 1 the second job waits, with the second slot never t
     await until(() => first.err().includes("acquired the heavy lock"), "the first job");
     const r = await cli(["heavy", "run", "--wait", "1", "--", "true"], { home, env: { HARNESS_HEAVY_LIMIT: "1" } });
     assert.equal(r.code, 2, r.stderr);
-    assert.match(r.stderr, /heavy is already locked by "first" since .* \(heavy-0\); waited 1s; the command was not run/);
+    assert.match(r.stderr, /heavy is already locked by "first" since .* \(heavy\); waited 1s; the command was not run/);
     assert.ok(!fs.existsSync(lockPath(home, 1)), "no heavy-1.lock under limit 1");
   } finally {
     first.child.kill("SIGTERM");
@@ -985,14 +987,14 @@ ttest("exclusive: waits while one slot is held, lets go of what it took if the w
     assert.ok(!fs.existsSync(infoPath(home, 0)), "and its record with it");
     const ex = start(["heavy", "run", "--exclusive", "--holder", "ex", "--", ...probeSlots(home)], { home, env: TWO });
     await until(() => ex.err().includes("for every slot (exclusive)"), "the exclusive job to wait");
-    assert.equal(lockState(home, 0), "held", "it holds heavy-0 while it waits for heavy-1");
+    assert.equal(lockState(home, 0), "held", "it holds heavy while it waits for heavy-1");
     bare.kill();
     const done = await ex.done;
     assert.equal(done.code, 0, done.stderr);
     assert.match(done.stdout, /slot0=200\nslot1=200/, "its command holds both slots");
-    assert.match(done.stderr, /acquired the heavy lock \(heavy-0, heavy-1\) for "ex"/);
+    assert.match(done.stderr, /acquired the heavy lock \(heavy, heavy-1\) for "ex"/);
     const h = history(home);
-    for (const k of [0, 1]) assert.match(h, new RegExp(`acquire lock="heavy-${k}" holder="ex" .* exclusive=true`), h);
+    for (const k of [0, 1]) assert.match(h, new RegExp(`acquire lock="${slotName(k)}" holder="ex" .* exclusive=true`), h);
     assert.deepEqual([lockState(home, 0), lockState(home, 1)], ["free", "free"]);
   } finally {
     bare.kill();
@@ -1007,7 +1009,7 @@ ttest("exclusive: a normal job waits while an exclusive job holds every slot; he
     assert.deepEqual([lockState(home, 0), lockState(home, 1)], ["held", "held"], "it holds both slots");
     const r = await cli(["heavy", "run", "--wait", "1", "--", "true"], { home, env: TWO });
     assert.equal(r.code, 2, r.stderr);
-    assert.match(r.stderr, /heavy is already locked by "ex" \(exclusive\) since .* \(heavy-0\) and "ex" \(exclusive\) since .* \(heavy-1\)/);
+    assert.match(r.stderr, /heavy is already locked by "ex" \(exclusive\) since .* \(heavy\) and "ex" \(exclusive\) since .* \(heavy-1\)/);
   } finally {
     ex.child.kill("SIGTERM");
     await ex.done;
@@ -1015,11 +1017,11 @@ ttest("exclusive: a normal job waits while an exclusive job holds every slot; he
   try {
     const a = await cli(["heavy", "acquire", "--exclusive", "--holder", "gate"], { home, env: TWO });
     assert.equal(a.code, 0, a.stderr);
-    assert.match(a.stdout, /acquired heavy for gate: \S+heavy-0\.lock, \S+heavy-1\.lock \(held by pid \d+/);
+    assert.match(a.stdout, /acquired heavy for gate: \S+heavy\.lock, \S+heavy-1\.lock \(held by pid \d+/);
     assert.deepEqual([lockState(home, 0), lockState(home, 1)], ["held", "held"]);
     const rel = await cli(["heavy", "release", "--holder", "gate"], { home, env: TWO });
     assert.equal(rel.code, 0, rel.stderr);
-    assert.match(rel.stdout, /^harness lock released: heavy-0, holder gate,.*\nharness lock released: heavy-1, holder gate,/m);
+    assert.match(rel.stdout, /^harness lock released: heavy, holder gate,.*\nharness lock released: heavy-1, holder gate,/m);
     assert.deepEqual([lockState(home, 0), lockState(home, 1)], ["free", "free"]);
   } finally {
     stopHolders(home);
@@ -1055,16 +1057,16 @@ ttest("two holders: status lists each slot; release frees only the named holder'
   try {
     for (const n of ["a", "b"]) assert.equal((await cli(["heavy", "acquire", "--holder", n], { home, env: TWO })).code, 0);
     const status = (await cli(["heavy", "status"], { home, env: TWO })).stdout;
-    assert.match(status, /^heavy-0 \S+heavy-0\.lock: held by "a" since \S+ on \S+, pid \d+ running\nheavy-1 \S+heavy-1\.lock: held by "b" since/, status);
+    assert.match(status, /^heavy \S+heavy\.lock: held by "a" since \S+ on \S+, pid \d+ running\nheavy-1 \S+heavy-1\.lock: held by "b" since/, status);
     const wrong = await cli(["heavy", "release", "--holder", "c"], { home, env: TWO });
     assert.equal(wrong.code, 2);
-    assert.match(wrong.stderr, /heavy is held by "a" since \S+ \(heavy-0\) and "b" since \S+ \(heavy-1\), not "c"/);
+    assert.match(wrong.stderr, /heavy is held by "a" since \S+ \(heavy\) and "b" since \S+ \(heavy-1\), not "c"/);
     const rel = await cli(["heavy", "release", "--holder", "b"], { home, env: TWO });
     assert.equal(rel.code, 0, rel.stderr);
     assert.deepEqual([lockState(home, 0), lockState(home, 1)], ["held", "free"], "only b's slot");
     const forced = await cli(["heavy", "release", "--force", "--reason", "test", "--slot", "0"], { home, env: TWO });
     assert.equal(forced.code, 0, forced.stderr);
-    assert.match(forced.stdout, /FORCE-released: heavy-0, was held by a/);
+    assert.match(forced.stdout, /FORCE-released: heavy, was held by a/);
     assert.equal(lockState(home, 0), "free");
   } finally {
     stopHolders(home);

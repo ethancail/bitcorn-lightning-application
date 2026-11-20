@@ -474,8 +474,8 @@ try {
   // The gate imports the heavy lock from its sibling (A4).
   fs.copyFileSync(path.join(ROOT, "scripts", "harness-slot.mjs"), path.join(FX, "scripts", "harness-slot.mjs"));
   const HEAVY_HOME = path.join(TMP, "heavy-home");
-  // ubuntu-pc's limit is 2: slots heavy-0 and heavy-1.
-  const HEAVY_LOCK = path.join(HEAVY_HOME, ".bitcorn-dev", "locks", "heavy-0.lock");
+  // ubuntu-pc's limit is 2: slots heavy and heavy-1.
+  const HEAVY_LOCK = path.join(HEAVY_HOME, ".bitcorn-dev", "locks", "heavy.lock");
   const HEAVY_LOCK_1 = path.join(HEAVY_HOME, ".bitcorn-dev", "locks", "heavy-1.lock");
   // Plenty of memory, so the gate's admission never depends on this machine's MemAvailable.
   const PLENTY_MEM = path.join(TMP, "meminfo");
@@ -591,7 +591,7 @@ try {
   const waitFor = (cond, what, ms = 10_000) => {
     for (const t0 = Date.now(); !cond(); sleepMs(25)) if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${what}`);
   };
-  const HEAVY_INFO = path.join(path.dirname(HEAVY_LOCK), "heavy-0.info.json");
+  const HEAVY_INFO = path.join(path.dirname(HEAVY_LOCK), "heavy.info.json");
   const HEAVY_INFO_1 = path.join(path.dirname(HEAVY_LOCK), "heavy-1.info.json");
   fs.mkdirSync(path.dirname(HEAVY_LOCK), { recursive: true });
   // Both slots held, each by its own holder outside the gate.
@@ -602,11 +602,11 @@ try {
     const infoOf = (holder, slot, pid) => `${JSON.stringify({
       holder, acquired_at: "2026-11-18T12:00:00Z", host: os.hostname(), slot, kind: "run", pid,
     }, null, 2)}\n`;
-    const infoText = infoOf("fixture-holder", "heavy-0", holderProc.pid);
+    const infoText = infoOf("fixture-holder", "heavy", holderProc.pid);
     const infoText1 = infoOf("fixture-holder-2", "heavy-1", holderProc1.pid);
     fs.writeFileSync(HEAVY_INFO, infoText);
     fs.writeFileSync(HEAVY_INFO_1, infoText1);
-    const NOT_RUN = 'verification not run: heavy lock held by "fixture-holder" since 2026-11-18T12:00:00Z (heavy-0) and ' +
+    const NOT_RUN = 'verification not run: heavy lock held by "fixture-holder" since 2026-11-18T12:00:00Z (heavy) and ' +
       '"fixture-holder-2" since 2026-11-18T12:00:00Z (heavy-1); run it when the lock frees';
 
     // 9. held past the wait → blocks once, the A4 message, no check run, the holder untouched
@@ -638,7 +638,7 @@ try {
     check("gate 10: no check ran", !fs.existsSync(STUB_LOG));
 
     // 11b. one slot freed → the gate takes it, sharing the machine: its checks hold heavy-1 as
-    //      fd 9 and get VITEST_MAX_WORKERS=3, while heavy-0's holder keeps its slot
+    //      fd 9 and get VITEST_MAX_WORKERS=3, while heavy's holder keeps its slot
     process.kill(-holderProc1.pid, "SIGKILL");
     waitFor(() => lockState(HEAVY_LOCK_1) === "free", "the second fixture holder to go");
     fs.rmSync(HEAVY_INFO_1, { force: true });
@@ -648,7 +648,7 @@ try {
     check("gate 11b: both checks ran holding heavy-1 as fd 9",
       (ran.match(/^heavy=held$/gm) || []).length === 2 && (ran.match(/^fd9=lock$/gm) || []).length === 2, ran);
     check("gate 11b: sharing the machine, each check got VITEST_MAX_WORKERS=3", (ran.match(/^workers=3$/gm) || []).length === 2, ran);
-    check("gate 11b: heavy-0's holder kept its slot, heavy-1 is free after",
+    check("gate 11b: heavy's holder kept its slot, heavy-1 is free after",
       lockState() === "held" && lockState(HEAVY_LOCK_1) === "free" && !fs.existsSync(HEAVY_INFO_1));
 
     // 11. lock free → both checks run HOLDING the lock (their fd 9), which is free after
@@ -668,7 +668,7 @@ try {
     check("gate 11: the lock is free afterwards, its record gone", lockState() === "free" && !fs.existsSync(HEAVY_INFO));
     const hist = fs.existsSync(HEAVY_HISTORY) ? fs.readFileSync(HEAVY_HISTORY, "utf8") : "";
     check("gate 11: history.log has the gate's acquire then release",
-      /acquire lock="heavy-0" holder="[^"]*verify-gate[^"]*"[^\n]*\n[^\n]*release lock="heavy-0"/.test(hist), hist);
+      /acquire lock="heavy" holder="[^"]*verify-gate[^"]*"[^\n]*\n[^\n]*release lock="heavy"/.test(hist), hist);
 
     // 12. an account other than this host's heavy account → the not-run path (ruling 3)
     r = runGate({ dirty: "api", env: { HARNESS_HEAVY_TEST_ACCOUNT: "arcagent", STUB_VITEST_OUT: OUT.vitestGreen } });
