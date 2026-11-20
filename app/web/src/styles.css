@@ -1442,9 +1442,12 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 /* The member's "Fee updated" reshow block (ActionConfirmModal; ruling 5 of
    member-first-run-ui's review, 2026-11-18): .dialog-body's size, and
-   .dialog-title's weight for its heading, so it reads as part of the dialog. */
+   .dialog-title's weight for its heading, so it reads as part of the dialog.
+   The heading stays --text; the sentence takes .dialog-body's prose colour
+   (--text-2), matching the paragraph above (relayed ruling (a), 2026-11-19). */
 .action-confirm-notice-block { font-size: 0.875rem; }
-.action-confirm-notice-heading { font-weight: 600; }
+.action-confirm-notice-heading { font-weight: 600; color: var(--text); }
+.action-confirm-notice-body { color: var(--text-2); }
 
 .dialog-actions {
   display: flex;
@@ -2016,8 +2019,9 @@ div:has(> .action-confirm-input) + .dialog-actions {
 /* O7, the member's "no fee estimate" line: plain, the normal text colour, not
    red — not an error the member caused (Ethan's "recs", 2026-11-18). */
 .connect-fee-unavailable { margin: 0; font-size: 0.8125rem; color: var(--text); }
-/* Technical details' "Fee rates" row: each "Economy ~2 sat/vB" token stays
-   whole inside TechRow's break-all value; the row breaks only at " · ". */
+/* Technical details' "Fee rates" row: each unit stays whole inside TechRow's
+   break-all value. A separator rides with the item after it ("· Normal ~4
+   sat/vB"), so a wrap starts a line with "·" and never ends one on it. */
 .fee-rate-token { white-space: nowrap; }
 .connect-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
 .connect-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }

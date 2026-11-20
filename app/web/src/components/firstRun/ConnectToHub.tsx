@@ -220,14 +220,17 @@ function ConnectForm({ isPeered, initialCapacity, rate }: { isPeered: boolean; i
         <div className="connect-foot-tech">
           <TechnicalDetails>
             <TechRow label={COPY.nodeId}><span className="ident">{s.hubPubkey}</span></TechRow>
-            {/* Each rate token stays whole (.fee-rate-token, nowrap): TechRow's
-                value is break-all, which split "sat/vB" at 390 px. The row
-                breaks only between tokens, at " · ". */}
+            {/* Each unit stays whole (.fee-rate-token, nowrap): TechRow's value
+                is break-all, which split "sat/vB" at 390 px. Each "·" is bound
+                to the item AFTER it ("· Normal ~4 sat/vB"; the first item
+                bare), so the row breaks only at the plain space between units
+                and no line ends on a dangling "·" (relayed ruling (b),
+                2026-11-19). */}
             <TechRow label={COPY.feeRates}>
               {ratesDetail(est).map((token, i) => (
                 <Fragment key={token}>
-                  {i > 0 && " · "}
-                  <span className="fee-rate-token">{token}</span>
+                  {i > 0 && " "}
+                  <span className="fee-rate-token">{i > 0 ? `· ${token}` : token}</span>
                 </Fragment>
               ))}
             </TechRow>

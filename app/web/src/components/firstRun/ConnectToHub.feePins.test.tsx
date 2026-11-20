@@ -212,16 +212,27 @@ describe("ConnectToHub's fee-speed picker: live labels, keys, default and values
   // which split "sat/vB" at 390 px. The text above is unchanged; each rate
   // token is now its own nowrap span, so the row breaks only at " · ".
   // jsdom does no layout: this pins the structure and the rule, not a render.
-  it("Technical details: each rate token is one nowrap span; \"sat/vB\" never sits outside one", async () => {
+  // REWRITTEN AGAIN (relayed ruling (b), 2026-11-19): the separators sat loose
+  // between units, so a wrap could end a line on "·". Each "·" is now inside
+  // the FOLLOWING item's unit ("· Normal ~4 sat/vB"), the first item bare, and
+  // only a plain space sits between units.
+  it("Technical details: each unit is one nowrap span; every \"·\" leads the following item's unit, none ends one", async () => {
     await render();
     const row = [...host.querySelectorAll("details span")].find((e) => e.textContent === "Fee rates")?.parentElement;
     expect(row, "the Fee rates row renders").toBeDefined();
     const value = row!.children[1] as HTMLElement;
-    const tokens = [...value.querySelectorAll(":scope > .fee-rate-token")].map((t) => t.textContent);
-    expect(tokens).toEqual(["Economy ~2 sat/vB", "Normal ~4 sat/vB", "Priority ~9 sat/vB"]);
-    // Every text node outside a token is the separator alone.
+    const units = [...value.querySelectorAll(":scope > .fee-rate-token")].map((t) => t.textContent!);
+    expect(units).toEqual(["Economy ~2 sat/vB", "· Normal ~4 sat/vB", "· Priority ~9 sat/vB"]);
+    expect(units[0], "the first item is bare").not.toContain("·");
+    for (const u of units.slice(1)) expect(u, `"${u}" opens with its separator`).toMatch(/^· /);
+    for (const u of units) {
+      expect(u.trimEnd(), `"${u}" ends on its item, not a dangling "·"`).not.toMatch(/·$/);
+      expect(u.match(/·/g)?.length ?? 0, `"${u}" carries at most one separator`).toBeLessThanOrEqual(1);
+    }
+    // Outside the units: plain spaces only — no separator, no "sat/vB".
     const loose = [...value.childNodes].filter((n) => n.nodeType === Node.TEXT_NODE).map((n) => n.textContent);
-    expect(loose).toEqual([" · ", " · "]);
+    expect(loose).toEqual([" ", " "]);
+    expect(value.childNodes.length, "only units and the spaces between them").toBe(units.length + loose.length);
     expect(declsFor(".fee-rate-token")["white-space"]).toBe("nowrap");
   });
 
@@ -340,6 +351,22 @@ describe("the member's 10-min reshow: \"Fee updated\", the new fee, the box clea
     expect(declsFor(".dialog-body")["font-size"]).toBe("0.875rem");
     expect(declsFor(".action-confirm-notice-heading")["font-weight"]).toBe(declsFor(".dialog-title")["font-weight"]);
     expect(declsFor(".dialog-title")["font-weight"]).toBe("600");
+  });
+
+  // Relayed ruling (a), 2026-11-19: the heading stays --text; the sentence
+  // takes the prose colour of the paragraph above (.dialog-body's variable,
+  // not a literal), so the block reads as that paragraph's continuation.
+  it("\"Fee updated\" stays --text; its sentence takes .dialog-body's prose colour", async () => {
+    await reshow(FRESH);
+    const block = document.body.querySelector(".action-confirm-notice-block")!;
+    expect(block.querySelector(".action-confirm-notice-heading")?.textContent).toBe("Fee updated");
+    expect(block.querySelector(".action-confirm-notice-body")?.textContent).toMatch(/^Network fees changed/);
+    expect(declsFor(".dialog-body").color).toBe("var(--text-2)");
+    expect(declsFor(".action-confirm-notice-body").color, "the sentence wears the prose colour").toBe(declsFor(".dialog-body").color);
+    expect(declsFor(".action-confirm-notice-heading").color, "the heading stays --text").toBe("var(--text)");
+    // Neither colour may come from a wrapper: the block itself sets none.
+    expect(declsFor(".action-confirm-notice-block").color).toBeUndefined();
+    expect(declsFor(".action-confirm-notice").color).toBeUndefined();
   });
 
   for (const [why, rate] of [["no price (state none)", NONE], ["the price still loading", undefined]] as const) {

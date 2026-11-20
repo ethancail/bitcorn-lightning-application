@@ -122,12 +122,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
         <div class="connect-foot-act">
           <div class="connect-summary">
             "1,000,000 sats"
@@ -260,12 +260,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 2
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
         <div class="connect-foot-act">
           <div class="connect-summary">
             "1,000,000 sats"
@@ -398,12 +398,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 3
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
         <div class="connect-foot-act">
           <div class="connect-summary">
             "1,000,000 sats"
@@ -536,12 +536,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -683,12 +683,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 4
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -830,12 +830,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 5
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -977,12 +977,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1124,12 +1124,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1271,12 +1271,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 6
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1418,12 +1418,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1563,12 +1563,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 7
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1707,12 +1707,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -1854,12 +1854,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 8
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2001,12 +2001,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
         <div class="connect-foot-act">
           <div class="connect-summary">
             "1,000,000 sats"
@@ -2177,12 +2177,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2362,12 +2362,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2542,12 +2542,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2716,12 +2716,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -2895,12 +2895,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
         <div class="connect-foot-act">
           <div class="connect-summary">
             "1,000,000 sats"
@@ -3065,12 +3065,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -3214,12 +3214,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
@@ -3363,12 +3363,12 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
                 <span style="font-family: var(--mono); word-break: break-all; text-align: right;">
                   <span class="fee-rate-token">
                     "Economy ~1 sat/vB"
-                  " · "
+                  " "
                   <span class="fee-rate-token">
-                    "Normal ~5 sat/vB"
-                  " · "
+                    "· Normal ~5 sat/vB"
+                  " "
                   <span class="fee-rate-token">
-                    "Priority ~15 sat/vB"
+                    "· Priority ~15 sat/vB"
               <div class="connect-address">
                 <label class="form-label">
                   "BitCorn's address"
