@@ -24,6 +24,24 @@ import react from "@vitejs/plugin-react";
 //
 // setupFiles: the test-network guard. Every test file runs it before anything
 // else loads, so no test reaches the network — see its header for the rules.
+//
+// VITEST_MAX_WORKERS (code-audit-2 "web test memory", ruled 2026-11-19):
+// a positive integer sets BOTH maxWorkers and minWorkers. Setting only the max
+// throws on vitest 2.1.9 (tinypool: "options.minThreads and options.maxThreads
+// must not conflict"), as minWorkers defaults to CPUs − 1. Unset means vitest's
+// default. Anything else throws here rather than being ignored. CLI flags still
+// win over it: with the variable set, pass both --maxWorkers and --minWorkers,
+// or neither.
+
+export function workersFromEnv(raw: string | undefined): { maxWorkers?: number; minWorkers?: number } {
+  if (raw === undefined) return {};
+  if (!/^[1-9][0-9]*$/.test(raw)) {
+    throw new Error(`VITEST_MAX_WORKERS must be a positive integer, got ${JSON.stringify(raw)}`);
+  }
+  const n = Number(raw);
+  return { maxWorkers: n, minWorkers: n };
+}
+
 export default defineConfig({
   plugins: [react()],
   test: {
@@ -32,5 +50,6 @@ export default defineConfig({
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     setupFiles: ["src/testSetup/networkGuard.ts"],
     testTimeout: 20_000,
+    ...workersFromEnv(process.env.VITEST_MAX_WORKERS),
   },
 });
