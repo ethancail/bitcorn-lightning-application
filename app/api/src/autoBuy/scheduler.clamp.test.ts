@@ -58,7 +58,7 @@ vi.mock("./credentials", () => ({
   decrypt: () => "-----BEGIN EC PRIVATE KEY-----\nstub\n-----END EC PRIVATE KEY-----",
 }));
 vi.mock("../lightning/lnd", () => ({
-  createLndChainAddress: vi.fn(async () => "bcrt1qstubaddress"),
+  createLndChainAddress: vi.fn(async () => ({ address: "bcrt1qstubaddress" })),
 }));
 
 import { runTick } from "./scheduler";
@@ -66,7 +66,7 @@ import { runTick } from "./scheduler";
 const MIG = (f: string) => fs.readFileSync(path.join(__dirname, "../db/migrations", f), "utf8");
 
 const WEEK = 7 * 86400;
-/** Fixed wall clock for every tick in a case. 2026-09-14T12:00:00Z. */
+/** Fixed wall clock for every tick in a case. 2026-09-17T12:00:00Z (a Thursday). */
 const NOW = 1789646400;
 
 let db: Database.Database;
