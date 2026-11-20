@@ -1000,7 +1000,8 @@ jobs:
         # and THE THIRD IS NOT REQUIRED: vitest collects without a config,
         # falling back to vite.config.ts plus its own defaults. Renaming
         # app/web/vitest.config.ts away and running this body with the skip
-        # removed, on 2026-08-14 under Node v20.20.2:
+        # removed, on 2026-08-14 under Node v20.20.2 (the pin then; .nvmrc
+        # now pins 24.22.3, and this was not re-measured on 24):
         #
         #   Test Files  2 failed | 18 passed (20)
         #        Tests  17 failed | 240 passed (257)      → vitest exited 1
@@ -1041,7 +1042,9 @@ jobs:
         # MEASUREMENT PROVENANCE: 257 tests across 20 files, measured 2026-08-14
         # under Node v20.20.2 from a clean `npm install` in a fresh worktree —
         # NOT carried forward from a prior report. Corroborated independently by
-        # CI run 31732161503 (2026-08-13), which logged the same 20/257.
+        # CI run 31732161503 (2026-08-13), which logged the same 20/257. Both
+        # predate the move to Node 24 (.nvmrc = 24.22.3); the floor's ratio
+        # argument does not depend on the runtime, the measured N did.
         # Re-measure rather than trusting this number:
         #   cd app/web && npx --no-install vitest run
         #

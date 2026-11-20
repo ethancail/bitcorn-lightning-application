@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // polar-preflight.test.mjs — node:test suite for scripts/polar-preflight.mjs.
 //
-// Run the Node 20 binary by its path, not whatever `node` is first on PATH:
-//   ~/.nvm/versions/node/v20.20.2/bin/node --test scripts/polar-preflight.test.mjs
+// Run the pinned Node 24 binary (.nvmrc) by its path, not whatever `node` is
+// first on PATH:
+//   ~/.nvm/versions/node/v$(cat .nvmrc)/bin/node --test scripts/polar-preflight.test.mjs
 // (npx and npm are out: both re-resolve `node` from PATH. A test below fails if
 // the running major differs from .nvmrc.)
 //
@@ -830,7 +831,7 @@ test("(e) docker endpoint: DOCKER_HOST is reported when set, the context otherwi
 // ─── (h) the pin ──────────────────────────────────────────────────────────
 
 test("(h) running under the Node major pinned in .nvmrc", () => {
-  const pinned = fs.readFileSync(path.join(ROOT, ".nvmrc"), "utf8").trim();
+  const pinned = fs.readFileSync(path.join(ROOT, ".nvmrc"), "utf8").trim().split(".")[0];
   assert.equal(process.version.split(".")[0], `v${pinned}`);
 });
 

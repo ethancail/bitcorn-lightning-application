@@ -105,8 +105,8 @@ const TIERS: Array<{ tier: Tier; o?: { paid_through?: number; worker_until?: num
 ];
 
 describe("R45 A1 — the banner's button, rendered", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   it.each(TIERS)("$tier: dollars with a rate, sats with none; enabled when verified", async (t) => {

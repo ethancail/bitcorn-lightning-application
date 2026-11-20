@@ -171,8 +171,8 @@ const RENEW_ROW =
 const SERVICES = "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements.";
 
 describe("R45 copy", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   describe("Q4 — when a payment counts", () => {

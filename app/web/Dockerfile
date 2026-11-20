@@ -1,6 +1,11 @@
 # Web frontend Dockerfile
 # ---- Build stage (runs on native arch — Vite output is static) ----
-FROM --platform=$BUILDPLATFORM node:20-alpine AS build
+# Both images are pinned by multi-arch index digest, in the form
+# app/loopd/Dockerfile uses; their tags must agree with .nvmrc. TO BUMP, read
+# each new tag's index digest from the registry without pulling:
+#     docker buildx imagetools inspect node:<version>-alpine --format '{{.Manifest.Digest}}'
+#     docker buildx imagetools inspect node:<version>-slim --format '{{.Manifest.Digest}}'
+FROM --platform=$BUILDPLATFORM node:24.22.3-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS build
 
 WORKDIR /app
 
@@ -24,7 +29,7 @@ ENV VITE_BASE_CHAIN_ID=$VITE_BASE_CHAIN_ID
 RUN npm run build
 
 # ---- Runtime stage (multi-arch: amd64 + arm64) ----
-FROM node:20-slim
+FROM node:24.22.3-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54
 
 WORKDIR /app
 

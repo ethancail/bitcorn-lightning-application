@@ -32,13 +32,17 @@
 // move the clock across notAfter instead of needing an expired fixture — and it
 // means the committed fixtures never rot.
 //
-// ⚠ Node's X509Certificate.validToDate IS NOT USABLE HERE. The docs list it as
-// added in v18.13.0, but MEASURED on this repo's pinned runtime (Node 20.20.2,
-// .nvmrc = "20", node:20-slim) it is `undefined`. Using it would make
-// daysRemaining NaN — and because `NaN < threshold` is false, the
+// ⚠ Why Date.parse(validTo) and not X509Certificate.validToDate. The docs list
+// validToDate as added in v18.13.0, but MEASURED on the runtime this was
+// written for (Node 20.20.2, node:20-slim) it was `undefined`. Using it would
+// have made daysRemaining NaN — and because `NaN < threshold` is false, the
 // "a valid cert produces no warning" control would have passed VACUOUSLY while
-// the check was dead. Hence Date.parse(validTo), and hence the explicit
-// non-finite guard below: that branch is reachable, not defensive dressing.
+// the check was dead. The pin is now Node 24 (.nvmrc = "24.22.3"), where
+// validToDate exists: measured 2026-11-20 on v24.22.3 against
+// __fixtures__/lnd-tls-a.crt it returns a Date equal to Date.parse(validTo),
+// while v20.20.2 still returns `undefined`. The code stays on Date.parse(validTo),
+// which works on both, and keeps the explicit non-finite guard below (its own
+// comment says why that branch is reachable).
 
 import { X509Certificate } from "crypto";
 

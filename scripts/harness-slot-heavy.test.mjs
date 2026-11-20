@@ -5,9 +5,9 @@
 // for the single lock run at HARNESS_HEAVY_LIMIT=1 (start()'s default); the
 // "N slots" section runs at 2, with a fake meminfo where memory matters.
 //
-// Run the Node 20 binary by its path, under the heavy lock (this suite is a
-// heavy job itself):
-//   node scripts/harness-slot.mjs heavy run -- ~/.nvm/versions/node/v20.20.2/bin/node --test scripts/harness-slot-heavy.test.mjs
+// Run the pinned Node 24 binary (.nvmrc) by its path, under the heavy lock
+// (this suite is a heavy job itself):
+//   node scripts/harness-slot.mjs heavy run -- ~/.nvm/versions/node/v$(cat .nvmrc)/bin/node --test scripts/harness-slot-heavy.test.mjs
 //
 // Every lock here lives in a scratch home (HARNESS_HEAVY_TEST_HOME), never the
 // account's real heavy.lock, with one exception that takes no lock: the
@@ -91,7 +91,7 @@ function meminfo(mb, file = path.join(scratch(), "meminfo")) {
 }
 const PLENTY = meminfo(64_000);
 
-// The CLI under Node 20, its environment built from scratch: no inherited $HOME.
+// The CLI under Node 24, its environment built from scratch: no inherited $HOME.
 // Unless a test says otherwise: one slot (the single-lock behaviour these tests
 // were written for, which the OptiPlex keeps) and plenty of memory, so no test
 // depends on this machine's MemAvailable.
@@ -177,8 +177,8 @@ function assertNoOverlap(spans) {
   }
 }
 
-ttest("the process under test is Node 20", () => {
-  assert.match(process.version, /^v20\./, `run this under Node 20 by its path, not ${process.version}`);
+ttest("the process under test is Node 24", () => {
+  assert.match(process.version, /^v24\./, `run this under Node 24 by its path, not ${process.version}`);
 });
 
 // ─── A1: one account per host; the password database, never $HOME ────────

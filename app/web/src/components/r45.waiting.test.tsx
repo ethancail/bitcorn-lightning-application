@@ -130,8 +130,8 @@ const notice = () => host.querySelector("[data-pending-payment]") as HTMLElement
 const tierBannerAction = () => host.querySelector(".member-sub-banner .member-sub-banner-action") as HTMLButtonElement | null;
 
 describe("R45 waiting state — the Settings panel", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   const TIERS: Array<[string, () => any]> = [

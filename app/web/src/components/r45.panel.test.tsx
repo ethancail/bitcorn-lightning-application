@@ -127,8 +127,8 @@ const bareSats = () => {
 };
 
 describe("R45 A2 — the panel's amounts, dollars first", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   it.each(["routing_lapsed", "close_due"] as const)("%s, fresh rate: MONTHLY, the alert, the helper and the button", async (tier) => {
