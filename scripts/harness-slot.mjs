@@ -882,38 +882,72 @@ export function hasOpen(pid, key) {
   return openFds(pid, key).length > 0;
 }
 
-// The descriptor numbers on which process `pid` has open the file `key` names.
-function openFds(pid, key) {
-  let fds;
+// The /proc directories whose fd/ and fdinfo/ hold process `pid`'s descriptors:
+// its own, and, when that lists none, each of its threads'. A thread group whose
+// leader has exited (a zombie) while other threads run on keeps its descriptors,
+// and a flock with them, only in those threads' entries: the leader's own fd/
+// lists nothing. (Probe, 2026-11-20: a SIGKILLed Node holder read state Z with a
+// thread still alive, the flock still in /proc/locks, freed ~5 ms later.)
+function fdDirs(pid) {
   try {
-    fds = fs.readdirSync(`/proc/${pid}/fd`);
+    if (fs.readdirSync(`/proc/${pid}/fd`).length > 0) return [`/proc/${pid}`];
+  } catch {}
+  try {
+    return fs.readdirSync(`/proc/${pid}/task`).filter((tid) => tid !== String(pid)).map((tid) => `/proc/${pid}/task/${tid}`);
   } catch {
     return [];
   }
-  return fds.filter((n) => {
+}
+
+// The descriptors ({ dir, n }) on which process `pid`, any thread of it, has open the file `key` names.
+function openFds(pid, key) {
+  return fdDirs(pid).flatMap((dir) => {
+    let fds;
     try {
-      const s = fs.statSync(`/proc/${pid}/fd/${n}`);
-      return `${s.dev}:${s.ino}` === key;
+      fds = fs.readdirSync(`${dir}/fd`);
     } catch {
-      return false;
+      return [];
     }
+    return fds.filter((n) => {
+      try {
+        const s = fs.statSync(`${dir}/fd/${n}`);
+        return `${s.dev}:${s.ino}` === key;
+      } catch {
+        return false;
+      }
+    }).map((n) => ({ dir, n }));
   });
 }
 
 const allPids = () => fs.readdirSync("/proc").filter((n) => /^[0-9]+$/.test(n)).map(Number);
 
 // The processes that hold the flock on the file `key` names, read from
-// /proc/<pid>/fdinfo: a descriptor whose open file holds a flock lists it as a
-// "lock:" line there, and every process sharing that open file shows it. A
-// waiter's own open of the file shows none, so it is not counted.
+// /proc/<pid>/fdinfo (or a thread's, fdDirs): a descriptor whose open file holds
+// a flock lists it as a "lock:" line there, and every process sharing that open
+// file shows it. A waiter's own open of the file shows none, so it is not counted.
 export function lockHolders(key) {
-  return allPids().filter((pid) => openFds(pid, key).some((n) => {
+  return allPids().filter((pid) => openFds(pid, key).some(({ dir, n }) => {
     try {
-      return /^lock:\s.*\bFLOCK\b/m.test(fs.readFileSync(`/proc/${pid}/fdinfo/${n}`, "utf8"));
+      return /^lock:\s.*\bFLOCK\b/m.test(fs.readFileSync(`${dir}/fdinfo/${n}`, "utf8"));
     } catch {
       return false;
     }
   }));
+}
+
+// How long a release waits, after its holder's pid has gone, for the last
+// process (or thread) holding the lock to let go, before it says NOT released.
+export const LOCK_FREE_WAIT_MS = 3000;
+
+// Polls until no process other than `except` holds the flock on any of `keys`,
+// up to waitMs. Resolves to the pids still holding it then: [] when free.
+export async function lockFreed(keys, { except = [], waitMs = LOCK_FREE_WAIT_MS } = {}) {
+  const held = () => [...new Set(keys.flatMap((key) => lockHolders(key)))].filter((p) => !except.includes(p));
+  for (const t0 = Date.now(); ;) {
+    const left = held();
+    if (left.length === 0 || Date.now() - t0 >= waitMs) return left;
+    await sleep(25);
+  }
 }
 
 const readProcLocks = () => fs.readFileSync("/proc/locks", "utf8");
@@ -1374,12 +1408,16 @@ function parseHeavyArgs(args) {
 const waitMsOf = (opts) => (opts.wait === undefined ? Infinity : Number(opts.wait) * 1000);
 const signalCode = (signal) => 128 + (os.constants.signals[signal] ?? 0);
 
-// Ends this process on `signal`. Node ignores some signals (SIGPIPE) and acts
-// on others (SIGUSR1 starts its inspector), so the re-raise may not end it:
-// the exit code is set first, so it is 128 + the signal's number either way.
+// Signals Node does not die of: it ignores SIGPIPE, and SIGUSR1 starts its
+// inspector, whose start can abort the process (Node 20.20.2, 2026-11-20:
+// "Assertion failed: start_io_thread_async_initialized", exit 134).
+const NOT_FATAL_TO_NODE = new Set(["SIGPIPE", "SIGUSR1"]);
+
+// Ends this process on `signal`, or, for one Node does not die of, leaves with
+// its code without raising it: 128 + the signal's number either way.
 function reraise(signal) {
   process.exitCode = signalCode(signal);
-  process.kill(process.pid, signal);
+  if (!NOT_FATAL_TO_NODE.has(signal)) process.kill(process.pid, signal);
 }
 
 // F1: how long what is left of a heavy run's process group has, after its top
@@ -1460,7 +1498,9 @@ function heavyRun(opts, command, env, ctx, { err }) {
       if (child !== null && child.pid !== undefined) await endGroup(child.pid);
       for (const { slot, fd, rec } of hold?.entries ?? []) {
         try {
-          const others = lockHolders(fdKey(fd)).filter((p) => p !== process.pid);
+          // Bounded: a process of the command that is still exiting (a thread outliving its
+          // leader) lets go within milliseconds; one that left the group keeps it.
+          const others = await lockFreed([fdKey(fd)], { except: [process.pid] });
           if (others.length > 0) {
             closeQuietly(fd);
             say(`${heavySlot(slot)} NOT released: ${others.map((p) => `pid ${p} (${procComm(p)})`).join(", ")} still ` +
@@ -1707,6 +1747,28 @@ async function stopHolder(pid, signal) {
   }
 }
 
+// Stops holder process `pid` and confirms its `slots` are free, before any
+// release of them is written or reported. Under the admission flock, so no job
+// can take one of them meanwhile: it signals the holder, waits for its pid to
+// go, then for no process to hold any of their locks (a thread outliving the
+// pid included: fdDirs), up to LOCK_FREE_WAIT_MS. Throws NOT released, naming
+// who still holds them, when they do not free in time.
+async function stopAndConfirm(home, pid, signal, slots) {
+  const admitFd = fs.openSync(admitFile(home), "a", 0o644);
+  try {
+    if (await flockOnce(admitFd, 10_000) !== "locked") throw new Error("the admission lock was not had within 10 s; nothing was released");
+    await stopHolder(pid, signal);
+    const left = await lockFreed(slots.map((k) => fileKey(lockFile(home, heavySlot(k)))).filter((key) => key !== null));
+    if (left.length > 0) {
+      throw new Error(`${slots.map(heavySlot).join(", ")} NOT released: ${left.map((p) => `pid ${p} (${procComm(p)})`).join(", ")} ` +
+        `still ${left.length === 1 ? "holds" : "hold"} the lock ${LOCK_FREE_WAIT_MS / 1000} s after holder pid ${pid} ended; ` +
+        `it frees when ${left.length === 1 ? "it exits" : "they exit"}`);
+    }
+  } finally {
+    closeQuietly(admitFd);
+  }
+}
+
 // `heavy release`: stops a heavy acquire's holder process. Only a holder
 // process that has its slot open, and (without --force) only under the name it
 // was acquired for; --slot K picks one when several match. A heavy run, or the
@@ -1757,9 +1819,12 @@ async function heavyRelease(opts, ctx) {
   }
   // The holder process's every slot goes with it (an exclusive holder's are all of them).
   const slots = held.filter((h) => h.holderProcess && h.info.pid === pids[0]);
+  // Released only once confirmed free; a record the holder itself has already
+  // released (its --pid owner exited meanwhile) is not released twice.
+  await stopAndConfirm(home, pids[0], opts.force ? "SIGKILL" : "SIGTERM", slots.map((h) => h.slot));
   const at = utc(new Date());
   const lines = [];
-  for (const h of slots) {
+  for (const h of slots.filter((s) => readInfoText(home, s.slot) === s.text)) {
     if (opts.force) {
       appendHistory(home, `${at} force-release ${field("lock", heavySlot(h.slot))} ${field("holder", h.info.holder)} ` +
         `${field("acquired_at", h.info.acquired_at ?? null)} ${field("reason", opts.reason)}`);
@@ -1770,7 +1835,6 @@ async function heavyRelease(opts, ctx) {
     }
     dropInfo(home, h.slot, h.text);
   }
-  await stopHolder(pids[0], opts.force ? "SIGKILL" : "SIGTERM");
   return lines.join("\n");
 }
 
@@ -1941,8 +2005,10 @@ async function releaseSlotHeavy(heavy, env, { reason } = {}) {
         key !== null && hasOpen(heavy.pid, key);
     });
   if (held.length === 0) return [`its heavy (holder pid ${heavy.pid}) had already been let go`];
+  // Released only once confirmed free (stopAndConfirm), never before.
+  await stopAndConfirm(home, heavy.pid, reason === undefined ? "SIGTERM" : "SIGKILL", held.map((h) => h.slot));
   const at = utc(new Date());
-  const lines = held.map(({ slot, text, info }) => {
+  const lines = held.filter((h) => readInfoText(home, h.slot) === h.text).map(({ slot, text, info }) => {
     let line;
     if (reason === undefined) {
       line = releasedLine(home, heavySlot(slot), info.holder, info, at);
@@ -1955,7 +2021,6 @@ async function releaseSlotHeavy(heavy, env, { reason } = {}) {
     dropInfo(home, slot, text);
     return line;
   });
-  await stopHolder(heavy.pid, reason === undefined ? "SIGTERM" : "SIGKILL");
   return lines;
 }
 

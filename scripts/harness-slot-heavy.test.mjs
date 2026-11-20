@@ -50,7 +50,8 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
-  HEAVY_HOSTS, acquireLock, heavyAccountRefusal, heavyContext, heavyLocked, heavySettings, heldByThisJob, procStart, releaseLock,
+  HEAVY_HOSTS, acquireLock, heavyAccountRefusal, heavyContext, heavyLocked, heavySettings, heldByThisJob, lockHolders, procStart,
+  procStat, releaseLock,
 } from "./harness-slot.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -286,13 +287,24 @@ ttest("released on success and on failure; the command's exit code is the wrappe
   assert.match(history(home), new RegExp(`acquire lock="heavy" holder="${os.userInfo().username}@${HOST}:${NODE.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")} -e`));
 });
 
+// The listing is of the command's own shell, sampled 20 times, 50 ms apart, with
+// no pipeline and no command substitution: a shell running either holds a pipe's
+// ends while it forks, and a listing taken then showed them (fds 4, 5). A
+// descriptor passed to the command would be in every sample; so must fd 9 be.
 ttest("the command holds the lock as its fd 9, and nothing else is passed to it", async () => {
   const home = scratch();
-  const r = await cli(["heavy", "run", "--", "sh", "-c", "ls /proc/$$/fd | sort -n | tr '\\n' ' '; echo; readlink /proc/$$/fd/9"], { home });
+  const r = await cli(["heavy", "run", "--", "sh", "-c",
+    "i=0; while [ $i -lt 20 ]; do ls /proc/$$/fd; echo --; i=$((i+1)); sleep 0.05; done; readlink /proc/$$/fd/9"], { home });
   assert.equal(r.code, 0, r.stderr);
-  const [fds, nine] = r.stdout.trim().split("\n");
-  assert.deepEqual(fds.trim().split(" ").map(Number).filter((n) => n !== 3).sort((x, y) => x - y), [0, 1, 2, 9],
-    `fds ${fds} (3 is ls's own directory handle)`);
+  const parts = r.stdout.trim().split("--\n");
+  const nine = parts.pop().trim();
+  const samples = parts.map((p) => p.trim().split("\n").map(Number));
+  const lines = samples.map((s) => s.join(" "));
+  assert.equal(samples.length, 20);
+  for (const s of samples) assert.ok(s.includes(9), `fd 9 in every sample: ${s}`);
+  const everywhere = [...new Set(samples.flat())].filter((n) => samples.every((s) => s.includes(n))).sort((x, y) => x - y);
+  assert.deepEqual(everywhere, [0, 1, 2, 9], `the descriptors in every sample (passed to the command): ${everywhere}`);
+  assert.ok(samples.some((s) => [...s].sort((x, y) => x - y).join() === "0,1,2,9"), `some sample is exactly 0 1 2 9: ${lines.join(" | ")}`);
   assert.equal(nine, lockPath(home));
 });
 
@@ -970,12 +982,104 @@ ttest("F4: heavy release never signals a process its record names unless that pr
       const { pid } = readInfo(home2);
       const r = await cli(["heavy", "release", ...args], { home: home2 });
       assert.equal(r.code, 0, r.stderr);
-      assert.ok(gone(pid));
-      assert.equal(lockState(home2), "free");
+      // Waited for, bounded: what this test proves is who is signalled. That a release is never
+      // reported before the lock is free is proved, deterministically, by "a release is never reported early".
+      await until(() => gone(pid) && lockState(home2) === "free", "the holder gone and its lock free", 5000);
     }
   } finally {
     stopHolders(home2);
   }
+});
+
+// ─── a release is never reported before the lock is free (2026-11-20) ─────
+//
+// A probe found a SIGKILLed Node holder's main thread reading Z (gone) while a
+// thread still held its descriptor, and the flock, for ~5 ms. These fixtures make
+// that window deterministic: a holder pid that ends while another process keeps
+// the same open file (a shell's background child), and a process whose leader has
+// exited while a thread keeps it (Python's main thread calling pthread_exit).
+
+// A holder record of kind "acquire" naming a shell that holds heavy.lock, whose background child
+// shares the descriptor for `childSecs`; resolves to { pid, kill } once the lock is held.
+async function holderWithStraggler(home, childSecs) {
+  fs.mkdirSync(locksDir(home), { recursive: true });
+  const p = spawn("sh", ["-c", `exec 9>>"$1"; /usr/bin/flock 9; (sleep ${childSecs}) & exec sleep 300`, "sh", lockPath(home)],
+    { detached: true, stdio: "ignore" });
+  p.unref();
+  await until(() => lockState(home) === "held", "the fixture's lock");
+  await until(() => fs.readlinkSync(`/proc/${p.pid}/exe`).endsWith("/sleep"), "the fixture's exec");
+  fs.writeFileSync(infoPath(home), JSON.stringify({
+    holder: "fake", acquired_at: "2026-11-20T12:00:00Z", host: HOST, slot: "heavy", kind: "acquire", pid: p.pid, job: `fake:${p.pid}`,
+  }));
+  return { pid: p.pid, kill: () => { try { process.kill(-p.pid, "SIGKILL"); } catch {} } };
+}
+
+ttest("a release is never reported early: it waits (bounded) for the last process holding the lock, or says NOT released", async () => {
+  // A straggler that lets go within the bound: released, and only once the lock is free.
+  for (const args of [["--holder", "fake"], ["--force", "--reason", "test"]]) {
+    const home = scratch();
+    const h = await holderWithStraggler(home, 1.5);
+    try {
+      const t0 = Date.now();
+      const r = await cli(["heavy", "release", ...args], { home });
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(lockState(home), "free", `${args[0]}: the release was reported while the lock was still held`);
+      assert.ok(Date.now() - t0 >= 1000, `${args[0]}: it waited for the straggler (${Date.now() - t0} ms)`);
+      assert.match(history(home), args[0] === "--force" ? /force-release lock="heavy"/ : /release lock="heavy" holder="fake"/);
+    } finally {
+      h.kill();
+    }
+  }
+  // One that outlasts the bound: NOT released, nothing logged, the record kept.
+  const home = scratch();
+  const h = await holderWithStraggler(home, 30);
+  try {
+    const r = await cli(["heavy", "release", "--force", "--reason", "test"], { home });
+    assert.equal(r.code, 2, r.stderr);
+    assert.match(r.stderr, /heavy NOT released: pid \d+ \(sleep\) still holds the lock 3 s after holder pid \d+ ended; it frees when it exits/);
+    assert.equal(lockState(home), "held");
+    assert.doesNotMatch(history(home), /release/);
+    assert.ok(fs.existsSync(infoPath(home)), "the record stays");
+  } finally {
+    h.kill();
+  }
+});
+
+ttest("a holder whose main thread has exited while a thread keeps the lock is still seen holding it", async () => {
+  const home = scratch();
+  fs.mkdirSync(locksDir(home), { recursive: true });
+  const py = path.join(home, "zombie-leader.py");
+  fs.writeFileSync(py, [
+    "import ctypes, fcntl, os, sys, threading, time",
+    "f = open(sys.argv[1], 'a'); fcntl.flock(f, fcntl.LOCK_EX)",
+    "def hold():",
+    "    time.sleep(float(sys.argv[2])); os._exit(0)",
+    "threading.Thread(target=hold).start()",
+    "sys.stdout.write('locked\\n'); sys.stdout.flush()",
+    "ctypes.CDLL(None).pthread_exit(None)", // the main thread exits; the process lives on in `hold`
+  ].join("\n"));
+  const p = spawn("/usr/bin/python3", ["-I", py, lockPath(home), "4"], { stdio: ["ignore", "pipe", "inherit"] });
+  try {
+    await until(() => procStat(p.pid)?.state === "Z", "the leader to exit");
+    assert.equal(lockState(home), "held", "the fixture: a thread still holds the lock");
+    const key = `${fs.statSync(lockPath(home)).dev}:${fs.statSync(lockPath(home)).ino}`;
+    assert.ok(lockHolders(key).includes(p.pid), "lockHolders sees the process by its thread");
+    assert.equal(heavyLocked(home, 0), true, "heavyLocked sees it held");
+    const s = await cli(["heavy", "status"], { home });
+    assert.match(s.stdout, /^heavy \S+: held by/m);
+  } finally {
+    p.kill("SIGKILL");
+  }
+});
+
+ttest("heavy run waits (bounded) for a straggler holding its descriptor to let go, then releases", async () => {
+  const home = scratch();
+  // setsid: the straggler leaves the command's process group, so the wrapper does not end it.
+  const r = await cli(["heavy", "run", "--", "sh", "-c", "setsid sleep 1 & exit 0"], { home });
+  assert.equal(r.code, 0, r.stderr);
+  assert.doesNotMatch(r.stderr, /NOT released/);
+  assert.match(r.stderr, /harness lock released: heavy/);
+  assert.equal(lockState(home), "free", "released only once the straggler let go");
 });
 
 // F4 (2): the reused-pid property, in the job token. The mutant (no hasOpen in
@@ -1318,6 +1422,9 @@ ttest("a command killed by a signal Node ignores or handles still gives 128 + it
     const r = await cli(["heavy", "run", "--", "sh", "-c", `kill -${sig} $$`], { home });
     const got = r.code ?? 128 + os.constants.signals[r.signal];
     assert.equal(got, code, `SIG${sig}: ${r.stderr}`);
-    assert.equal(lockState(home), "free");
+    // The wrapper never sends itself SIGUSR1 (or SIGPIPE): SIGUSR1 starts Node's inspector,
+    // whose start aborted Node 20 now and then (exit 134), and which says so on stderr.
+    assert.doesNotMatch(r.stderr, /Debugger listening|inspector/i, `SIG${sig}: the wrapper must not start Node's inspector`);
+    await until(() => lockState(home) === "free", `SIG${sig}: the lock free`, 5000);
   }
 });
