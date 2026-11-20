@@ -97,7 +97,9 @@ describe("T1: no font size under 9px at text 1.0", () => {
 
   it("not vacuous: the scan reads styles.css and the inline sizes, hundreds of each", () => {
     expect(hits.filter((h) => h.where.startsWith("styles.css:")).length).toBeGreaterThanOrEqual(150);
-    expect(hits.filter((h) => !h.where.startsWith("styles.css:")).length).toBeGreaterThanOrEqual(400);
+    // 400 → 350: member-first-run-ui slice 3 moved Withdraw's inline sizes into
+    // styles.css classes (396 inline at that commit); still hundreds.
+    expect(hits.filter((h) => !h.where.startsWith("styles.css:")).length).toBeGreaterThanOrEqual(350);
   });
 
   it("every size is 9px or more, except the listed owner's line", () => {

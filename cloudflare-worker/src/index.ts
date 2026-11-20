@@ -32,6 +32,7 @@
 
 import { handleOnramp } from "./handlers/onramp";
 import { handlePrices, handleCornHistory } from "./handlers/prices";
+import { handleFees } from "./handlers/fees";
 import { handleRecommendedPeers } from "./handlers/recommendedPeers";
 import { handleTreasuryInfo } from "./handlers/treasuryInfo";
 import {
@@ -81,6 +82,12 @@ export default {
     // them for sync before they hold any entitlement token.
     if (request.method === "GET" && url.pathname === "/base/contract-info") {
       return handleBaseContractInfo(env);
+    }
+    // /fees is public per fee-estimates O10: projected mempool blocks are
+    // public data, and a member opens their first channel before it holds any
+    // token. The treasury's channel cards read it too.
+    if (request.method === "GET" && url.pathname === "/fees") {
+      return handleFees(env);
     }
 
     // ── HMAC-gated endpoints (treasury-only writes, unchanged) ────

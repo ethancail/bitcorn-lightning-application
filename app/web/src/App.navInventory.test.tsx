@@ -59,7 +59,6 @@ async function renderShell(opts: {
   treasury?: boolean;
   liquidity?: unknown;
   subscription?: unknown;
-  daybreakNav?: boolean;
 }) {
   vi.resetModules();
   vi.clearAllMocks();
@@ -67,8 +66,6 @@ async function renderShell(opts: {
   ctl.liquidity = opts.liquidity ?? { classification: { channelRole: "farmer" } };
   ctl.subscription = opts.subscription ?? null;
   if (opts.treasury) localStorage.setItem("bitcorn_setup_done", "1");
-  if (opts.daybreakNav === undefined) vi.doUnmock("./daybreak/launch");
-  else vi.doMock("./daybreak/launch", () => ({ SHOW_DAYBREAK_IN_MEMBER_NAV: opts.daybreakNav }));
   const App = (await import("./App")).default;
   // Pages whose reads are stubbed: Daybreak for the member, the editor for the treasury.
   window.history.pushState({}, "", opts.treasury ? "/daybreak-editor" : "/daybreak");
@@ -91,7 +88,6 @@ afterEach(async () => {
   host?.remove();
   host = null;
   root = null;
-  vi.doUnmock("./daybreak/launch");
   localStorage.removeItem("bitcorn_setup_done");
 });
 
@@ -139,7 +135,7 @@ const TREASURY = [
   'a /settings "⚙Settings"',
 ];
 
-function member(opts: { liquidity: string; daybreak?: boolean; stablecoin?: boolean; settingsBadge?: string }) {
+function member(opts: { liquidity: string; stablecoin?: boolean; settingsBadge?: string }) {
   return [
     ...HEAD,
     'a /dashboard "▤My Dashboard"',
@@ -150,7 +146,7 @@ function member(opts: { liquidity: string; daybreak?: boolean; stablecoin?: bool
     // Top Up and before Charts.
     'a /automatic-transfers "↻Automatic transfers"',
     'a /charts "⟠Charts"',
-    ...(opts.daybreak === false ? [] : ['a /daybreak "☀Daybreak"']),
+    'a /daybreak "☀Daybreak"',
     'a /contacts "☰Contacts"',
     'a /channels "◈My Channels"',
     `a /auto-buy "📈Auto-Buy" ${AUTOBUY_BADGE}`,
@@ -221,11 +217,6 @@ describe("nav inventory, per shell and declared role (characterization, before t
   it("member, role read fails → Withdraw", async () => {
     const el = await renderShell({ liquidity: "reject" });
     expect(inventory(el)).toEqual(member({ liquidity: WITHDRAW }));
-  });
-
-  it("member, Daybreak's nav flag off → no Daybreak entry", async () => {
-    const el = await renderShell({ daybreakNav: false });
-    expect(inventory(el)).toEqual(member({ liquidity: WITHDRAW, daybreak: false }));
   });
 
   it("member, merchant with a lapsed subscription → no Stablecoin entry; Settings carries the orange '!'", async () => {

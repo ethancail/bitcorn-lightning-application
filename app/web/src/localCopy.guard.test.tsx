@@ -138,7 +138,7 @@ describe("SH8/SH8a/R2: the old wording is gone from the sources", () => {
     expect(hits).toEqual([]);
   });
 
-  it("the new wording sits at each site: Top Up 3, Payments 2 + 2 (R40(7)), Cash Out 2, the gauge 1", () => {
+  it("the new wording sits at each site: Top Up 3, Payments 2 + 2 (R40(7)), Cash Out 1 (its descriptor), the gauge 1", () => {
     const count = (file: string, re: RegExp) => (readFileSync(join(PAGES, file), "utf8").match(re) ?? []).length;
     expect(count("RefillChannel.tsx", /(%|<\/span>) available to send$/gm)).toBe(3);
     // Drive-mode P3, R40(7): the Pay tab keeps "available to send"; the
@@ -146,10 +146,14 @@ describe("SH8/SH8a/R2: the old wording is gone from the sources", () => {
     expect(count("Payments.tsx", /% available to send$/gm)).toBe(2);
     expect(count("Payments.tsx", /% of your connection$/gm)).toBe(1);
     expect(count("Payments.tsx", /% room to receive$/gm)).toBe(1);
-    // drive-mode P2 item 15 (R26(8)): Cash Out's share is "of your connection",
-    // no longer a claim of what is available to withdraw.
-    expect(count("WithdrawBitcoin.tsx", /% of your connection$/gm)).toBe(2);
+    // drive-mode P2 item 15 (R26(8)): Cash Out's share is of the connection,
+    // no longer a claim of what is available to withdraw. Re-pinned for
+    // member-first-run-ui slice 3, R1 (Ethan's "recs", 2026-11-17): no bar;
+    // the one share is the note line, worded in the page's descriptor.
+    expect(count("WithdrawBitcoin.tsx", /% of your connection$/gm)).toBe(0);
     expect(count("WithdrawBitcoin.tsx", /% available to withdraw$/gm)).toBe(0);
+    expect(count("../components/withdraw/withdrawDescriptor.ts", /from \$\{fromPct\}% to \$\{toPct\}% full\.`/g)).toBe(1);
+    expect(count("../components/withdraw/withdrawDescriptor.ts", /available to withdraw/g)).toBe(0);
     expect(count("MemberDashboard.tsx", /% on your side — \$\{remotePct\}% on the hub's side`/g)).toBe(1);
   });
 });
@@ -165,12 +169,12 @@ describe("SH8/SH8a/R2: each surface as the member reads it", () => {
   });
 
   // drive-mode P2 item 15 (R26(8)): "N% of your connection", before and after.
-  it("Cash Out: \"N% of your connection\", and after the withdrawal", async () => {
+  // Slice 3, R1: one note line, "Your connection goes from X% to Y% full."
+  it("Cash Out: \"Your connection goes from N% to M% full.\"", async () => {
     stub.getMemberStats.mockResolvedValue(stats(900_000));
     stub.getMemberLiquidityStatus.mockResolvedValue(status("farmer"));
     const el = await mount(WithdrawBitcoin);
-    expect(el.textContent).toContain("90% of your connection");
-    expect(el.textContent).toMatch(/After withdrawal: 90% → \d+% of your connection/);
+    expect(el.textContent).toMatch(/Your connection goes from 90% to \d+% full\./);
     expect(el.textContent).not.toContain("available to withdraw");
     expectNoLocal(el);
   });

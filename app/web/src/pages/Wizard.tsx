@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
 import { api, type NodeInfo } from "../api/client";
 
 type WizardData = {
@@ -443,7 +442,6 @@ function Row({
 // ─── Main Wizard ─────────────────────────────────────────────────────────
 
 export default function Wizard() {
-  const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);

@@ -1,6 +1,4 @@
 import { useEffect, useState, useCallback, useRef, type CSSProperties } from "react";
-// QR code generation disabled — payments should route through the BitCorn app, not external wallets
-// import QRCode from "qrcode";
 import {
   api,
   type NetworkPayment,
@@ -211,7 +209,6 @@ function RequestPaymentForm({
   const [memo, setMemo] = useState("");
   const [creating, setCreating] = useState(false);
   const [invoice, setInvoice] = useState<InvoiceResult | null>(null);
-  // const [qrDataUrl, setQrDataUrl] = useState<string>("");
   const [error, setError] = useState("");
   const [deniedPayload, setDeniedPayload] = useState<RoutingDeniedPayload | null>(null);
   const [copied, setCopied] = useState(false);
@@ -266,11 +263,6 @@ function RequestPaymentForm({
         memo: memo.trim() || undefined,
       });
       setInvoice(result);
-      // QR code disabled — payments should route through the BitCorn app
-      // const dataUrl = await QRCode.toDataURL(result.payment_request.toUpperCase(), {
-      //   width: 280, margin: 2, color: { dark: "#000000", light: "#ffffff" },
-      // });
-      // setQrDataUrl(dataUrl);
       onCreated();
     } catch (err: any) {
       // A prepay/lapsed farmer is blocked from minting a routed invoice.
@@ -295,7 +287,6 @@ function RequestPaymentForm({
 
   const handleReset = () => {
     setInvoice(null);
-    // setQrDataUrl("");
     setAmount("");
     setMemo("");
     setCopied(false);
@@ -305,11 +296,6 @@ function RequestPaymentForm({
     return (
       <div className="invoice-display">
         <div style={{ textAlign: "center" }}>
-          {/* QR code disabled — payments should route through the BitCorn app
-          {qrDataUrl && (
-            <img src={qrDataUrl} alt="Invoice QR code" className="invoice-qr" />
-          )}
-          */}
           <div style={{ margin: "16px 0 8px", fontSize: "1.25rem", fontWeight: 600 }}>
             {fmtSats(sats)}
             {invoice.amount_usd != null && (

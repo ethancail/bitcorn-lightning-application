@@ -149,7 +149,6 @@ export default function RefillChannel() {
   const [warning, setWarning] = useState<string | null>(null);
 
   // ─── Channel state ────────────────────────────────────────────────────
-  const [channelLocal, setChannelLocal] = useState<number | null>(null);
   // Room to send, the server's one figure (drive-mode P1 item 2): local − the
   // channel reserve. The gauge reads it, as Payments' does, since "available
   // to send" names it (R35).
@@ -275,7 +274,6 @@ export default function RefillChannel() {
 
         if (stats?.treasury_channel) {
           setHubActive(stats.treasury_channel.is_active);
-          setChannelLocal(stats.treasury_channel.local_sats);
           setRoomToSend(stats.treasury_channel.room_to_send_sats);
           setChannelCapacity(stats.treasury_channel.capacity_sats);
           setChannelRemote(stats.treasury_channel.room_to_receive_sats);
@@ -477,7 +475,6 @@ export default function RefillChannel() {
     api.getMemberStats().then((s) => {
       if (s.treasury_channel) {
         setHubActive(s.treasury_channel.is_active);
-        setChannelLocal(s.treasury_channel.local_sats);
         setRoomToSend(s.treasury_channel.room_to_send_sats);
         setChannelCapacity(s.treasury_channel.capacity_sats);
         setChannelRemote(s.treasury_channel.room_to_receive_sats);

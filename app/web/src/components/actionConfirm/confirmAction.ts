@@ -150,16 +150,27 @@ export function challengePrompt(c: Challenge): string {
 //     wrong.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// fee-estimates CONFIRM-RULING (2026-11-17): each of the three channel
+// summaries carries ONE row with the live rate it will send, for every
+// option, Economy included. That rate is the request's fee_rate, which the
+// confirmation hashes — a pin holds the row's rate equal to the hashed one.
+// The words are member-first-run-ui's to review.
+
+/** The fee option a channel summary shows: its label and the integer sat/vB it sends. */
+export type SummaryFee = { label: string; rate: number };
+
 export function summarizeOpenMemberChannel(p: {
   capacitySats: number;
   partnerSocket?: string;
   hubLabel?: string;
+  fee: SummaryFee;
 }): ActionSummary {
   return {
     title: "Open a channel to the hub",
     rows: [
       { label: "Capacity", value: fmtSats(p.capacitySats) },
       { label: "Peer", value: p.hubLabel ?? "Bitcorn treasury hub" },
+      { label: "Speed", value: `${p.fee.label} (about ${p.fee.rate} sat/vB)` },
       ...(p.partnerSocket ? [{ label: "Address", value: p.partnerSocket, ident: true as const }] : []),
     ],
     irreversible:
@@ -173,12 +184,14 @@ export function summarizeTreasuryOpenChannel(p: {
   peerPubkey: string;
   capacitySats: number;
   peerAlias?: string;
+  fee: SummaryFee;
 }): ActionSummary {
   return {
     title: "Open a treasury channel",
     rows: [
       { label: "Capacity", value: fmtSats(p.capacitySats) },
       { label: "Peer", value: p.peerAlias ? `${p.peerAlias} (${truncId(p.peerPubkey)})` : truncId(p.peerPubkey), ident: true },
+      { label: "Fee rate", value: `${p.fee.label}, ~${p.fee.rate} sat/vB` },
     ],
     irreversible: "On-chain funding transaction. The mining fee is not recoverable.",
     challenge: { kind: "amount", sats: p.capacitySats },
@@ -191,6 +204,8 @@ export function summarizeCloseChannel(p: {
   isForceClose?: boolean;
   capacitySats?: number;
   peerAlias?: string;
+  /** A cooperative close's proposed rate (R2). A force close sends none (F1). */
+  fee?: SummaryFee;
 }): ActionSummary {
   const force = p.isForceClose === true;
   return {
@@ -200,6 +215,7 @@ export function summarizeCloseChannel(p: {
       ...(p.peerAlias ? [{ label: "Peer", value: p.peerAlias }] : []),
       ...(p.capacitySats !== undefined ? [{ label: "Capacity", value: fmtSats(p.capacitySats) }] : []),
       { label: "Type", value: force ? "Force close" : "Cooperative close" },
+      ...(!force && p.fee ? [{ label: "Fee rate proposed", value: `${p.fee.label}, ~${p.fee.rate} sat/vB` }] : []),
     ],
     irreversible: force
       ? "A force close pays on-chain fees now and locks your balance behind a timelock — typically days before the funds are spendable."

@@ -76,13 +76,14 @@ beforeEach(() => {
 const sha = (s: string) => crypto.createHash("sha256").update(s, "utf8").digest("hex");
 
 function open(): Promise<{ status: number; body: any }> {
-  const raw = JSON.stringify({ capacity_sats: 1_000_000 });
+  // fee_rate is required on member open since fee-estimates (O5, P16).
+  const raw = JSON.stringify({ capacity_sats: 1_000_000, fee_rate: 3 });
   const req = new PassThrough() as unknown as http.IncomingMessage;
   (req as any).method = "POST";
   (req as any).url = "/api/member/open-channel";
   (req as any).headers = {
     "content-type": "application/json",
-    [CONFIRMATION_HEADER]: sha("capacity_sats=1000000"),
+    [CONFIRMATION_HEADER]: sha("capacity_sats=1000000&fee_rate=3"),
   };
   (req as any).socket = { remoteAddress: "127.0.0.1" };
   return new Promise((resolve) => {

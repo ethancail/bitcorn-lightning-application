@@ -17,8 +17,8 @@ A check counts only if the command ACTUALLY RAN, you READ its output, and the re
 As applicable to what you touched (from repo root):
 
 ```bash
-cd app/api && npx tsc --noEmit && npx vitest run                    # api
-cd app/web && npx tsc --noEmit && npx vite build && npx vitest run  # web
+cd app/api && npx --no-install tsc --noEmit && npx --no-install vitest run                                         # api
+cd app/web && npx --no-install tsc --noEmit && npx --no-install vite build && npx --no-install vitest run  # web
 ```
 
 - Paste the real tail: pass/fail counts, error lines, exit codes.

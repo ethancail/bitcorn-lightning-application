@@ -185,10 +185,10 @@ describe("§9.1 PERMITTING CONTROL — a member WITH a stored name sees NO promp
 });
 
 describe("§9.2 the prompt renders for a CHANNEL-LESS member", () => {
-  it("treasury_channel null, no name → prompt, alongside the Connect-to-Hub panel", async () => {
+  it("treasury_channel null, no name → prompt, alongside the Connect card", async () => {
     await renderDashboard();
     // Fixture check: this IS the noChannel state, not stats-failed or loading.
-    expect(host.textContent).toContain("Connect to Hub");
+    expect(host.textContent).toContain("Connect to BitCorn");
     expect(host.textContent).not.toContain("Channel role");
     expect(hasPrompt()).toBe(true);
   });
@@ -203,7 +203,7 @@ describe("§9.2 the prompt renders for a CHANNEL-LESS member", () => {
   it("stats still loading → prompt still renders", async () => {
     stub.getMemberStats.mockImplementation(never);
     await renderDashboard();
-    expect(host.textContent).not.toContain("Connect to Hub");
+    expect(host.textContent).not.toContain("Connect to BitCorn");
     expect(hasPrompt()).toBe(true);
   });
 });

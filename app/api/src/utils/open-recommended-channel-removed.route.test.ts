@@ -166,11 +166,13 @@ describe("the surviving routes are unaffected", () => {
     // Surviving openTreasuryChannel call site #1. With a CORRECT confirmation it
     // must get past classification and verification into the handler; the
     // handler then fails on absent LND, which is the baseline behaviour here.
-    const correct = sha("capacity_sats=250000");
+    // fee_rate is required and hashed on member open since fee-estimates (O5,
+    // P16), so a correct confirmation carries it.
+    const correct = sha("capacity_sats=250000&fee_rate=3");
     const r = await call(
       "POST",
       "/api/member/open-channel",
-      { capacity_sats: 250_000 },
+      { capacity_sats: 250_000, fee_rate: 3 },
       { [CONFIRMATION_HEADER]: correct },
     );
     expect(r.status).not.toBe(-1);

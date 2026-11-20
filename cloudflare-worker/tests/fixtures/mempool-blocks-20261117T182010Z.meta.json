@@ -1,0 +1,8 @@
+{
+  "url": "https://mempool.space/api/v1/fees/mempool-blocks",
+  "fetched_at_utc": "2026-11-17T18:20:10Z",
+  "fetched_at_source": "date -u immediately before the curl: Tue Nov 17 06:20:10 PM UTC 2026",
+  "http_status": 200,
+  "host": "ubuntu-pc",
+  "command": "curl -sS -o mempool-blocks-20261117T182010Z.json -w '%{http_code}\\n' https://mempool.space/api/v1/fees/mempool-blocks"
+}

@@ -112,8 +112,8 @@ const PK = "02" + "ab".repeat(32);
 
 describe("Z2: the confirm modal sets identifier rows in .ident, and only those", () => {
   const CASES: Array<[string, ActionSummary, string[]]> = [
-    ["open member channel", summarizeOpenMemberChannel({ capacitySats: 1_000_000, partnerSocket: "203.0.113.5:9735" }), ["Address"]],
-    ["open treasury channel", summarizeTreasuryOpenChannel({ peerPubkey: PK, capacitySats: 1_000_000, peerAlias: "M1" }), ["Peer"]],
+    ["open member channel", summarizeOpenMemberChannel({ capacitySats: 1_000_000, partnerSocket: "203.0.113.5:9735", fee: { label: "Economy", rate: 1 } }), ["Address"]],
+    ["open treasury channel", summarizeTreasuryOpenChannel({ peerPubkey: PK, capacitySats: 1_000_000, peerAlias: "M1", fee: { label: "Economy", rate: 1 } }), ["Peer"]],
     ["close channel", summarizeCloseChannel({ channelId: "123456789012345678", peerAlias: "M1", capacitySats: 1_000_000 }), ["Channel"]],
     ["payment", summarizePayInvoice({ amountSats: 1_000, destination: PK, memo: "m" }), ["To"]],
     ["loop out", summarizeLoopOut({ amountSats: 300_000, destinationAddress: "bcrt1q" + "x".repeat(38), feeSats: 500 }), ["To address"]],

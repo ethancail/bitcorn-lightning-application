@@ -165,10 +165,15 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     fields: [
       { name: "peer_pubkey", from: "body", kind: "text" },
       { name: "capacity_sats", from: "body", kind: "number" },
+      { name: "fee_rate", from: "body", kind: "number", optional: true },
       { name: "dry_run", from: "body", kind: "boolean", optional: true },
     ],
     note:
       "Opens a channel to peer_pubkey for capacity_sats. Both are the consequence.\n" +
+      "fee_rate (sat/vB) is hashed so a confirmed rate is the rate sent (fee-estimates " +
+      "O5). It is optional HERE only because a dry_run preview sends nothing to LND and " +
+      "does not require it (D4); the route requires it on every real open and refuses " +
+      "anything but a positive JSON integer up to 200.\n" +
       "dry_run is hashed for the reason given at DRY-RUN below: preview and execute " +
       "are the largest difference this route has, and nothing else in the body " +
       "distinguishes them.",
@@ -180,14 +185,18 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     fields: [
       { name: "channel_id", from: "body", kind: "text" },
       { name: "is_force_close", from: "body", kind: "boolean", optional: true },
+      { name: "fee_rate", from: "body", kind: "number", optional: true },
       { name: "dry_run", from: "body", kind: "boolean", optional: true },
     ],
     note:
       "Closes channel_id. is_force_close is in the hash because it changes WHAT " +
       "HAPPENS, not merely what it costs: a force close pays on-chain fees now and " +
       "locks the balance behind a timelock. Same channel, materially different act. " +
-      "fee_rate is deliberately NOT here — a cost modifier on a spend already " +
-      "bounded elsewhere, and the field most likely to be omitted on purpose.",
+      "fee_rate (sat/vB, the rate proposed to the peer) is hashed so a confirmed rate " +
+      "is the rate sent (fee-estimates O5). The table marks it optional because the " +
+      "rule is conditional (F1, D1): the route requires it unless is_force_close is " +
+      "true, refuses it when is_force_close is true, and does not require it on a " +
+      "dry_run preview.",
   },
   {
     method: "POST",
@@ -258,11 +267,15 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
     shape: 1,
     fields: [
       { name: "capacity_sats", from: "body", kind: "number" },
+      { name: "fee_rate", from: "body", kind: "number" },
       { name: "partner_socket", from: "body", kind: "text", optional: true },
     ],
     note:
-      "Peer is ENV.treasuryPubkey (server-side), so capacity_sats is the only required " +
-      "caller consequence. partner_socket is an optional connect hint and is covered when sent.",
+      "Peer is ENV.treasuryPubkey (server-side), so capacity_sats is the caller's " +
+      "consequence. fee_rate (sat/vB) is required and hashed so a confirmed rate is " +
+      "the rate sent (fee-estimates O5, P16); the route refuses anything but a positive " +
+      "JSON integer up to 200. partner_socket is an optional connect hint and is " +
+      "covered when sent.",
   },
   {
     method: "POST",

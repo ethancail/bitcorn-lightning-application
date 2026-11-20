@@ -1,6 +1,6 @@
 # scripts/
 
-Operational shell scripts (`healthcheck.sh`, `init-secrets.sh`, `migrate.sh`) and dev tools.
+Operational shell scripts (`init-secrets.sh`, `migrate.sh`) and dev tools.
 
 ## state-snapshot.mjs — STATE.md generator
 

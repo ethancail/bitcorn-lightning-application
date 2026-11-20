@@ -65,10 +65,10 @@ Frontend deps: `react`, `react-dom`, `react-router-dom`, `recharts`, `date-fns`,
 
 **Heavy jobs** (full suites, mutation/negative-control batches, Polar gates and captures) run at most two at a time on ubuntu-pc (one on the OptiPlex), a second only with MemAvailable ≥ 4 GB: `node scripts/harness-slot.mjs heavy run -- <command>`; `--exclusive` for Polar gates, captures and measurement runs. See `docs/dev-setup.md` § The heavy lock.
 
-**Parallel sessions (worktrees):** `claude --worktree <name>` creates an isolated checkout at `.claude/worktrees/<name>/` on branch `worktree-<name>` — already gitignored by the existing `.claude/*` rule. `.worktreeinclude` copies in the gitignored files a fresh checkout can't regenerate (the four `.env.dev.*` files, `cloudflare-worker/.dev.vars`); dependencies are NOT copied — install per worktree, and note `better-sqlite3` compiles native bindings each time. The worktree guard refuses `bash <script>` and unverifiable compound commands; run CI checks as single commands. After a fresh `app/web` install, `npx vite optimize --force` before several Vite servers (else "Invalid hook call").
+**Parallel sessions (worktrees):** `claude --worktree <name>` creates an isolated checkout at `.claude/worktrees/<name>/` on branch `worktree-<name>` — already gitignored by the existing `.claude/*` rule. `.worktreeinclude` copies in the gitignored files a fresh checkout can't regenerate (the four `.env.dev.*` files, `cloudflare-worker/.dev.vars`); dependencies are NOT copied — run `npm ci` in each package directory you need (the root, `app/api`, `app/web`, `cloudflare-worker`), never `npm install`; to add or change a dependency, `npm run lock:refresh -- <dir> <name@version>` (`docs/dev-setup.md` § Step 2); note `better-sqlite3` compiles native bindings each time. The worktree guard refuses `bash <script>` and unverifiable compound commands; run CI checks as single commands. After a fresh `app/web` `npm ci`, `npx --no-install vite optimize --force` before several Vite servers (else "Invalid hook call").
 
 **This machine:**
-- Launch Claude Code with Node 20 first on PATH; Bash calls inherit it. The verify gate runs `npx` from PATH, so a Node 22 launch reports false reds.
+- Launch Claude Code with Node 20 first on PATH; Bash calls inherit it. The verify gate runs `npx --no-install` from PATH, so a Node 22 launch reports false reds.
 - 15 GB RAM, OOM-killed twice: up to two heavy jobs at a time on ubuntu-pc through the heavy lock (one on the OptiPlex); light work (tsc, lint, single test files) runs without it; no test suite during a browser capture; one browser engine at a time; `free -h` first, stop under 3 GB.
 - Playwright MCP: one call per message — batched calls aren't ordered.
 
@@ -125,9 +125,9 @@ Note what its absence leaves in place — and note that this changed under the s
 
 One residual caveat, down from two: the local `verify-gate` Stop hook — bypassable via `VERIFY_GATE_SKIP=1`, and absent for anyone working from another machine — is still the only check between a commit and opening the PR.
 
-**The other caveat is closed, and the correction matters more than the caveat did.** It used to read: "the workflow triggers on `pull_request` only, so it gates PRs rather than pushes (fine while direct pushes to `main` stay forbidden, **load-bearing on that**)." The trigger observation is still true — `pr-checks.yml` has no `push:` trigger, by design. What was load-bearing on a *convention* is now enforced mechanically: **repository ruleset `20756755` ("main protection", `enforcement: active`)** carries a `pull_request` rule and a `non_fast_forward` rule, with `bypass_actors: []` and `current_user_can_bypass: "never"`, so a direct push to the default branch is refused rather than merely discouraged. It also carries `deletion` and `required_status_checks` (eight contexts, `strict_required_status_checks_policy: true`).
+**The other caveat is closed, and the correction matters more than the caveat did.** It used to read: "the workflow triggers on `pull_request` only, so it gates PRs rather than pushes (fine while direct pushes to `main` stay forbidden, **load-bearing on that**)." The trigger observation is still true — `pr-checks.yml` has no `push:` trigger, by design. What was load-bearing on a *convention* is now enforced mechanically: **repository ruleset `20756755` ("main protection", `enforcement: active`)** carries a `pull_request` rule and a `non_fast_forward` rule, with `bypass_actors: []` and `current_user_can_bypass: "never"`, so a direct push to the default branch is refused rather than merely discouraged. It also carries `deletion` and `required_status_checks` (nine contexts since v1.18.40 added `Lockfile age (hard gate)`, `strict_required_status_checks_policy: true`).
 
-Do not take that from this paragraph — it is exactly the class of volatile fact this file says to re-query: `gh api repos/ethancail/bitcorn-lightning-application/rulesets/20756755`. Two things that read confirm which this sentence cannot: the ruleset's condition is `ref_name.include: ["~DEFAULT_BRANCH"]`, so it governs `main` **only** — `develop` has no ruleset and no classic protection (`gh api repos/ethancail/bitcorn-lightning-application/branches/main/protection` returns 404 "Branch not protected", confirming there is no classic layer anywhere) — and the eight required contexts are pinned **by exact string**, so renaming any job `name:` in `pr-checks.yml` makes the ruleset require a check that never appears, which blocks merges permanently. Changing a required job's name is a two-part change: workflow *and* ruleset.
+Do not take that from this paragraph — it is exactly the class of volatile fact this file says to re-query: `gh api repos/ethancail/bitcorn-lightning-application/rulesets/20756755`. Two things that read confirm which this sentence cannot: the ruleset's condition is `ref_name.include: ["~DEFAULT_BRANCH"]`, so it governs `main` **only** — `develop` has no ruleset and no classic protection (`gh api repos/ethancail/bitcorn-lightning-application/branches/main/protection` returns 404 "Branch not protected", confirming there is no classic layer anywhere) — and the required contexts are pinned **by exact string**, so renaming any job `name:` in `pr-checks.yml` makes the ruleset require a check that never appears, which blocks merges permanently. Changing a required job's name is a two-part change: workflow *and* ruleset.
 
 ### Umbrel Gotchas (read before releasing)
 
@@ -135,7 +135,7 @@ Do not take that from this paragraph — it is exactly the class of volatile fac
 
 **Version must match in two files.** Bump `umbrel-app.yml` AND `bitcorn-lightning-node/docker-compose.yml` image tags together. Drift → Umbrel pulls stale images.
 
-**If install fails (flips back to "Install" at 0%):** Docker images likely don't exist on ghcr.io yet. Check `gh run list` for a failed build. Common cause: transient npm 403 errors (e.g. `npm install -g serve` rate-limited). Re-run with `gh run rerun <run-id> --failed`. Always verify the build is green after a version bump.
+**If install fails (flips back to "Install" at 0%):** Docker images likely don't exist on ghcr.io yet. Check `gh run list` for a failed build. Common cause: transient npm 403 errors (e.g. the web image's `npm ci` of serve in `app/web/runtime` rate-limited). Re-run with `gh run rerun <run-id> --failed`. Always verify the build is green after a version bump.
 
 **If install reaches ~50% then resets:** Port conflict. Check `sudo journalctl -u umbreld -n 100` for "already allocated". Remove conflicting container (`sudo docker rm -f <name>`) and retry.
 
@@ -235,7 +235,8 @@ See `docs/LOOP_SETUP.md` for the full gotcha list. Highlights that bite regularl
 
 - **Clear KV cache after changing API keys:**
   ```bash
-  npx wrangler kv key delete commodity_prices --namespace-id=62c68c41830141cc8b0b6e7cdb193461
+  cd cloudflare-worker && npm ci   # the locked wrangler; --no-install never fetches one
+  npx --no-install wrangler kv key delete commodity_prices --namespace-id=62c68c41830141cc8b0b6e7cdb193461
   ```
 - **Secret format:** paste the raw key / raw PEM from the CDP JSON — do NOT wrap in quotes when piping to `wrangler secret put`.
 

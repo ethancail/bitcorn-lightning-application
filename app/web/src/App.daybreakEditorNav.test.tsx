@@ -8,6 +8,11 @@
 // call the shells and the page make), RailScope (a pass-through), and the theme
 // key, because App.tsx's initTheme() reads window.matchMedia at import, which
 // jsdom does not provide. Same harness as App.daybreakNav.test.tsx.
+//
+// Also stubbed: BitcoinPriceGraph, which the member dashboard renders (the two
+// FORBIDS cases land there) and which fetches api.coinbase.com directly — an
+// outbound request the test-network guard (src/testSetup/networkGuard.ts)
+// fails. Nothing here asserts on the graph.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
@@ -39,16 +44,16 @@ vi.mock("./stablecoin/RailScope", () => ({
   RailScope: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+vi.mock("./components/BitcoinPriceGraph", () => ({ default: () => null }));
+
 let host: HTMLDivElement | null = null;
 let root: Root | null = null;
 
-async function renderAppAt(path: string, nodeRole: string, memberDaybreakNavVisible?: boolean) {
+async function renderAppAt(path: string, nodeRole: string) {
   vi.resetModules();
   role.node_role = nodeRole;
   // A treasury that has finished setup goes straight to the treasury shell.
   localStorage.setItem("bitcorn_setup_done", "1");
-  if (memberDaybreakNavVisible === undefined) vi.doUnmock("./daybreak/launch");
-  else vi.doMock("./daybreak/launch", () => ({ SHOW_DAYBREAK_IN_MEMBER_NAV: memberDaybreakNavVisible }));
   const App = (await import("./App")).default;
   window.history.pushState({}, "", path);
   host = document.createElement("div");
@@ -70,7 +75,6 @@ afterEach(async () => {
   host?.remove();
   host = null;
   root = null;
-  vi.doUnmock("./daybreak/launch");
   localStorage.removeItem("bitcorn_setup_done");
 });
 
@@ -88,15 +92,13 @@ describe("the Daybreak Editor nav entry is TREASURY-only", () => {
     expect(stub.getDaybreakEditor).toHaveBeenCalled();
   });
 
-  for (const visible of [undefined, true]) {
-    it(`FORBIDS: the member sidebar has NO editor entry (member Daybreak nav ${visible === undefined ? "as committed" : "switched on"})`, async () => {
-      const el = await renderAppAt("/dashboard", "node", visible);
-      expect(nav(el), "the member sidebar must render").not.toBeNull();
-      expect(navHrefs(el)).toContain("/charts"); // anti-vacuity: the member nav's items are readable
-      expect(navHrefs(el)).not.toContain("/daybreak-editor");
-      expect(nav(el)!.textContent).not.toContain("Daybreak Editor");
-    });
-  }
+  it("FORBIDS: the member sidebar has NO editor entry", async () => {
+    const el = await renderAppAt("/dashboard", "node");
+    expect(nav(el), "the member sidebar must render").not.toBeNull();
+    expect(navHrefs(el)).toContain("/charts"); // anti-vacuity: the member nav's items are readable
+    expect(navHrefs(el)).not.toContain("/daybreak-editor");
+    expect(nav(el)!.textContent).not.toContain("Daybreak Editor");
+  });
 
   it("FORBIDS: the member shell does not route /daybreak-editor — it redirects to the dashboard", async () => {
     stub.getDaybreakEditor.mockClear();

@@ -15,10 +15,10 @@ import {
 } from "./confirmAction";
 
 const ALL: Array<[string, ActionSummary]> = [
-  ["openMemberChannel", summarizeOpenMemberChannel({ capacitySats: 1_000_000 })],
+  ["openMemberChannel", summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 } })],
   [
     "treasuryOpenChannel",
-    summarizeTreasuryOpenChannel({ peerPubkey: "02b759b1552f6471599420c9aa8b7fb52c0a343ecc", capacitySats: 2_000_000 }),
+    summarizeTreasuryOpenChannel({ peerPubkey: "02b759b1552f6471599420c9aa8b7fb52c0a343ecc", capacitySats: 2_000_000, fee: { label: "Economy", rate: 1 } }),
   ],
   ["closeChannel coop", summarizeCloseChannel({ channelId: "842391119757312" })],
   ["closeChannel force", summarizeCloseChannel({ channelId: "842391119757312", isForceClose: true })],
@@ -110,8 +110,8 @@ describe("every summary is usable", () => {
   it("an amount-bearing action challenges on the AMOUNT, not a word", () => {
     // Ethan's requirement: type the amount where there is one.
     const withAmounts: ActionSummary[] = [
-      summarizeOpenMemberChannel({ capacitySats: 1_000_000 }),
-      summarizeTreasuryOpenChannel({ peerPubkey: "02ab", capacitySats: 2_000_000 }),
+      summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 } }),
+      summarizeTreasuryOpenChannel({ peerPubkey: "02ab", capacitySats: 2_000_000, fee: { label: "Economy", rate: 1 } }),
       summarizePayInvoice({ amountSats: 25_000 }),
       summarizeLoopOut({ amountSats: 500_000, destinationAddress: "bc1q" }),
       summarizeLoopIn({ amountSats: 250_000 }),

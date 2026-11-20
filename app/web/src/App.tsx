@@ -4,7 +4,7 @@ import "./font.css"; // Z4: the font faces and tokens, self-hosted; before style
 import "./styles.css";
 import bitcornLogo from "./assets/bitcorn-logo.svg";
 import bitcornLogoLight from "./assets/bitcorn-logo-light.svg";
-import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type PendingChannel, type AutoBuyAlertBadge, findContact, resolveContactName } from "./api/client";
+import { api, type NodeInfo, type TreasuryFeePolicy, type Contact, type PendingChannel, type AutoBuyAlertBadge, type ExchangeRate, type FeeEstimates, type FeeOptionKey, findContact, resolveContactName } from "./api/client";
 import { API_BASE } from "./config/api";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -22,6 +22,7 @@ import AutoBuy from "./pages/AutoBuy";
 import SubscriptionPanel from "./components/SubscriptionPanel";
 import ErrorState from "./components/ErrorState";
 import ActionConfirmModal, {
+  RESHOWN,
   useActionConfirm,
 } from "./components/actionConfirm/ActionConfirmModal";
 import {
@@ -35,6 +36,17 @@ import ProfilePanel from "./components/ProfilePanel";
 import BitcornNamePanel from "./components/BitcornNamePanel";
 import ChannelRolePanel from "./components/firstRun/ChannelRolePanel";
 import { Choice } from "./components/Choice";
+import { FeeCost } from "./components/amount/FeeCost";
+import {
+  DEFAULT_FEE_OPTION,
+  FEE_COPY,
+  FEE_OPTION_LABEL,
+  feeOptions,
+  isAboveCeiling,
+  shownDataAgeMinutes,
+  timeText,
+} from "./components/fees/feeEstimatesDescriptor";
+import { isStaleAtConfirm, useFeeEstimates } from "./components/fees/useFeeEstimates";
 import LoadingSplash from "./components/shell/LoadingSplash";
 import ApiUnreachableScreen from "./components/shell/ApiUnreachableScreen";
 import { useSubscriptionStatus } from "./components/useSubscriptionStatus";
@@ -53,7 +65,6 @@ import AdminMembers from "./pages/AdminMembers";
 import Liquidity from "./pages/Liquidity";
 import Daybreak from "./pages/Daybreak";
 import { DAYBREAK_NAV_LABEL } from "./daybreak/daybreakCopy";
-import { SHOW_DAYBREAK_IN_MEMBER_NAV } from "./daybreak/launch";
 import DaybreakEditor from "./pages/DaybreakEditor";
 import AutomaticTransfers from "./pages/AutomaticTransfers";
 import { transfersApi } from "./api/client";
@@ -503,10 +514,7 @@ function MemberSidebar({ open, onClose, channelRole }: { open: boolean; onClose:
     { to: "/charts", icon: "⟠", label: "Charts" },
     // Flat on purpose — no "Insights" group until it has a second entry
     // (member-screen Ruling 2, 2026-09-25). Member shell only for now.
-    // LAUNCHED 2026-10-12 — the entry is shown (daybreak/launch.ts). Before
-    // launch it was hidden with the Stablecoin entry's "hide the entry, keep
-    // the door" pattern above.
-    ...(SHOW_DAYBREAK_IN_MEMBER_NAV ? [{ to: "/daybreak", icon: "☀", label: DAYBREAK_NAV_LABEL }] : []),
+    { to: "/daybreak", icon: "☀", label: DAYBREAK_NAV_LABEL },
     { to: "/contacts", icon: "☰", label: "Contacts" },
     { to: "/channels", icon: "◈", label: "My Channels" },
     { to: "/auto-buy", icon: "📈", label: "Auto-Buy" },
@@ -599,8 +607,6 @@ function MemberShell() {
           <Routes>
             <Route path="/dashboard" element={<MemberDashboard />} />
             <Route path="/charts" element={<Charts />} />
-            {/* Its nav entry is launched as of 2026-10-12 (daybreak/launch.ts);
-                the route does not depend on that flag. */}
             <Route path="/daybreak" element={<Daybreak />} />
             <Route path="/contacts" element={<Contacts />} />
             <Route path="/channels" element={<ChannelsPage />} />
@@ -1304,12 +1310,47 @@ function ChannelsPage() {
   const [expandedHint, setExpandedHint] = useState<string | null>(null);
   const [nodeRole, setNodeRole] = useState<string | null>(null);
   const [closingChannel, setClosingChannel] = useState<string | null>(null);
-  const [closeConfirm, setCloseConfirm] = useState<{ channelId: string; peerName: string; capacity: number } | null>(null);
+  // openedAtMs: when the dialog opened, so only an answer fetched since is frozen.
+  const [closeConfirm, setCloseConfirm] = useState<{ channelId: string; peerName: string; capacity: number; openedAtMs: number } | null>(null);
   // Typed challenge for the close. The existing dialog already carries the peer,
   // capacity and fee-rate picker, so only this gate was missing — and the
   // challenge logic is shared with the generic modal rather than re-derived.
   const [closeTyped, setCloseTyped] = useState("");
-  const [closeFeeRate, setCloseFeeRate] = useState<number | undefined>(undefined); // Economy default (LND estimator)
+  // fee-estimates: the option is held by KEY (F3); its rate is live and is a
+  // proposal to the peer (R2). The estimate is fetched while the dialog is open.
+  const [closeFeeKey, setCloseFeeKey] = useState<FeeOptionKey>(DEFAULT_FEE_OPTION);
+  const [closeNotice, setCloseNotice] = useState<string | null>(null);
+  const closeFees = useFeeEstimates({ enabled: closeConfirm != null });
+  // The figure is FROZEN when the dialog opens, like the modal's summary (Ethan,
+  // 2026-11-18): the 5-min refresh does not move it; only the 10-min rule at
+  // confirm replaces it (refresh, re-show, ask again). What is frozen is the
+  // first answer fetched since this opening, never a previous opening's. With
+  // no figure (unavailable) there is nothing to freeze: the dialog follows the
+  // live read, so a later answer can still arrive.
+  const [closeFrozen, setCloseFrozen] = useState<{ estimates: FeeEstimates; fetchedAtMs: number } | null>(null);
+  const closeFresh = closeConfirm != null && closeFees.fetchedAtMs != null && closeFees.fetchedAtMs >= closeConfirm.openedAtMs;
+  const closeShown = closeFrozen
+    ?? (closeFresh && closeFees.status === "ready" && closeFees.estimates
+      ? { estimates: closeFees.estimates, fetchedAtMs: closeFees.fetchedAtMs! }
+      : null);
+  useEffect(() => {
+    if (closeConfirm && !closeFrozen && closeShown) setCloseFrozen(closeShown);
+  }, [closeConfirm, closeFrozen, closeShown]);
+  const closeStatus = closeShown ? "ready" : closeFresh ? closeFees.status : "loading";
+  const closeOptions = feeOptions(closeShown?.estimates ?? null);
+  const closeSelected = closeOptions?.find((o) => o.key === closeFeeKey) ?? null;
+  const closeFeeBlocked: string | null =
+    closeStatus === "loading" ? null
+    : !closeSelected || !closeShown ? FEE_COPY.unavailable
+    : isAboveCeiling(closeShown.estimates, closeSelected) ? FEE_COPY.aboveCeiling(closeShown.estimates.ceiling_sat_per_vbyte)
+    : null;
+  function resetCloseDialog() {
+    setCloseConfirm(null);
+    setCloseFrozen(null);
+    setCloseFeeKey(DEFAULT_FEE_OPTION); // F3: the reset is to Economy, the key
+    setCloseTyped("");
+    setCloseNotice(null);
+  }
   const [closeError, setCloseError] = useState<string | null>(null);
   const [closeResult, setCloseResult] = useState<{ channelId: string; txid: string | null } | null>(null);
   const [closingPubkeys, setClosingPubkeys] = useState<Set<string>>(new Set());
@@ -1319,6 +1360,15 @@ function ChannelsPage() {
   // fixed 2,000,000 with 5,000,000 recommended. The treasury's branch is
   // unchanged. null: no figure (no rate yet) — no size claim.
   const [memberMinimum, setMemberMinimum] = useState<number | null>(null);
+  // The treasury's fee pickers show each fee in dollars over sats (Ethan's
+  // ruling "fix the five" item 5, 2026-11-16). undefined while it loads; null
+  // when the read failed — both show sats alone. Display only.
+  const [feeRateInfo, setFeeRateInfo] = useState<ExchangeRate | null | undefined>(undefined);
+  useEffect(() => {
+    if (nodeRole !== "treasury") return;
+    api.getExchangeRate().then(setFeeRateInfo).catch(() => setFeeRateInfo(null));
+  }, [nodeRole]);
+
   useEffect(() => {
     if (nodeRole !== "member") return;
     transfersApi.getTransferSettings()
@@ -1359,13 +1409,21 @@ function ChannelsPage() {
   }
 
   async function handleCloseChannel() {
-    if (!closeConfirm) return;
+    if (!closeConfirm || !closeSelected || closeFeeBlocked) return;
+    // O6 / P18: the shown estimate is over 10 min old (since the dialog fetched
+    // it). Refresh, re-show, ask again: clear the typed word, send nothing.
+    if (isStaleAtConfirm(closeShown!.fetchedAtMs, Date.now())) {
+      const next = await closeFees.refresh();
+      setCloseFrozen(next.estimates ? { estimates: next.estimates, fetchedAtMs: next.fetchedAtMs } : null);
+      setCloseTyped("");
+      setCloseNotice(FEE_COPY.refreshed);
+      return;
+    }
     setClosingChannel(closeConfirm.channelId);
     setCloseError(null);
     const channelId = closeConfirm.channelId;
-    const feeRate = closeFeeRate;
-    setCloseConfirm(null);
-    setCloseFeeRate(undefined); // reset to Economy for next open
+    const feeRate = closeSelected.rate; // the rate shown, proposed to the peer
+    resetCloseDialog();
     try {
       const res = await api.treasuryCloseChannel({ channel_id: channelId, fee_rate: feeRate });
       setCloseResult({ channelId, txid: res.closing_txid });
@@ -1374,6 +1432,9 @@ function ChannelsPage() {
       // A 409 here means this dashboard and the API disagree about the action;
       // classifyConfirmError supplies wording that does not invite a retry.
       const cf = classifyConfirmError(e);
+      // LND refused the proposed rate as below this node's relay floor (D6
+      // ruling, extended to the close by Ethan, 2026-11-18).
+      if (!cf && e?.code === "fee_rate_below_network_minimum") { setCloseError(FEE_COPY.tooLowForNetwork); return; }
       setCloseError(cf ? cf.title + " \u2014 " + cf.detail : (e.message ?? "Failed to close channel"));
     } finally {
       setClosingChannel(null);
@@ -1393,26 +1454,50 @@ function ChannelsPage() {
             </div>
             <div style={{ marginTop: 14 }}>
               <div id="close-fee-rate-label" style={{ fontSize: "0.6875rem", fontFamily: "var(--mono)", textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-3)", marginBottom: 6 }}>
-                On-chain fee rate
+                {FEE_COPY.closeRateHeading}
               </div>
-              {/* String keys mapped to rates; Economy's rate is undefined. The
-                  cost is its own line, so "~192 sats" never splits. */}
+              {/* fee-estimates: live options, held by key (F3). A cooperative
+                  close's rate is a PROPOSAL to the peer (R2), so its cost reads
+                  "about $X proposed — the final fee is often higher" over
+                  "~N sats" (D3; ruling 4, 2026-11-18), rate × 192 vB
+                  (P14). No estimate → no figure, Close blocked (O7); above
+                  200 sat/vB → the figure, disabled, with the reason (P15). */}
+              {closeOptions && closeShown ? (
+                <Choice<FeeOptionKey>
+                  name="close-fee-rate"
+                  labelledBy="close-fee-rate-label"
+                  value={closeFeeKey}
+                  onChange={(key) => setCloseFeeKey(key)}
+                  options={closeOptions.map((opt) => ({
+                    value: opt.key,
+                    label: FEE_OPTION_LABEL[opt.key],
+                    description: `~${opt.rate} sat/vB`,
+                    meta: timeText(opt),
+                    cost: <FeeCost sats={opt.cost_sats.close} rate={feeRateInfo} qualifier={FEE_COPY.closeCostQualifier} />,
+                    disabled: isAboveCeiling(closeShown.estimates, opt),
+                    disabledReason: FEE_COPY.aboveCeiling(closeShown.estimates.ceiling_sat_per_vbyte),
+                  }))}
+                />
+              ) : closeStatus === "unavailable" ? (
+                <div className="fee-unavailable" style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{FEE_COPY.unavailable}</div>
+              ) : null}
               {(() => {
-                const CLOSE_FEE = ([
-                  { key: "economy", label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~192 sats" },
-                  { key: "normal", label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~960 sats" },
-                  { key: "priority", label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,885 sats" },
-                ] as const);
-                return (
-                  <Choice
-                    name="close-fee-rate"
-                    labelledBy="close-fee-rate-label"
-                    value={CLOSE_FEE.find((o) => o.rate === closeFeeRate)?.key ?? null}
-                    onChange={(key) => setCloseFeeRate(CLOSE_FEE.find((o) => o.key === key)?.rate)}
-                    options={CLOSE_FEE.map((opt) => ({ value: opt.key, label: opt.label, description: opt.desc, meta: opt.time, cost: opt.cost }))}
-                  />
-                );
+                const age = shownDataAgeMinutes(closeShown?.estimates ?? null, closeShown?.fetchedAtMs ?? null, Date.now());
+                return age != null ? <div className="fee-data-age" style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>{FEE_COPY.dataAge(age)}</div> : null;
               })()}
+              {closeSelected && (
+                <div className="close-fee-summary" style={{ fontSize: "0.8125rem", marginTop: 8 }}>
+                  {/* CONFIRM-RULING: the confirm summary's live-rate row. */}
+                  {summarizeCloseChannel({ channelId: closeConfirm.channelId, fee: { label: FEE_OPTION_LABEL[closeSelected.key], rate: closeSelected.rate } })
+                    .rows.filter((r) => r.label === "Fee rate proposed")
+                    .map((r) => <span key={r.label}>{r.label}: {r.value}</span>)}
+                </div>
+              )}
+              <div className="close-fee-payer" style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 4 }}>{FEE_COPY.closePayer}</div>
+              {closeFeeBlocked && closeFeeBlocked !== FEE_COPY.unavailable && (
+                <div style={{ color: "var(--red)", fontSize: "0.8125rem", marginTop: 6 }}>{closeFeeBlocked}</div>
+              )}
+              {closeNotice && <div role="status" className="close-fee-notice" style={{ fontSize: "0.8125rem", marginTop: 6 }}>{closeNotice}</div>}
             </div>
             <div style={{ marginTop: 14 }}>
               <label htmlFor="close-channel-challenge" style={{ display: "block", marginBottom: 6, fontSize: "0.8125rem" }}>
@@ -1429,11 +1514,14 @@ function ChannelsPage() {
               />
             </div>
             <div className="dialog-actions">
-              <button className="btn btn-ghost" onClick={() => { setCloseConfirm(null); setCloseFeeRate(undefined); setCloseTyped(""); }}>Cancel</button>
+              <button className="btn btn-ghost" onClick={resetCloseDialog}>Cancel</button>
               <button
                 className="btn btn-danger"
-                disabled={!challengeSatisfied(summarizeCloseChannel({ channelId: closeConfirm.channelId }).challenge, closeTyped)}
-                onClick={() => { setCloseTyped(""); handleCloseChannel(); }}
+                disabled={
+                  !challengeSatisfied(summarizeCloseChannel({ channelId: closeConfirm.channelId }).challenge, closeTyped) ||
+                  closeStatus === "loading" || closeFeeBlocked != null
+                }
+                onClick={() => { void handleCloseChannel(); }}
               >
                 Close Channel
               </button>
@@ -1585,7 +1673,7 @@ function ChannelsPage() {
             {c.active === 1 && closingChannel !== c.channel_id && closeResult?.channelId !== c.channel_id && (
               <button
                 className="btn btn-outline btn-sm"
-                onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat })}
+                onClick={() => setCloseConfirm({ channelId: c.channel_id, peerName: c.peerName, capacity: c.capacity_sat, openedAtMs: Date.now() })}
               >
                 {label ?? "Close"}
               </button>
@@ -2011,15 +2099,11 @@ function ChannelsPage() {
                           {isTreasury && (
                             <>
                               <div style={{ color: "var(--text-3)", fontSize: "0.6875rem" }}>
-                                Treasury channels carry all routed payments. Open a larger channel to increase routing capacity.
+                                Treasury channels carry all routed payments.
                               </div>
-                              <button
-                                className="btn btn-outline btn-sm"
-                                style={{ alignSelf: "flex-start", marginTop: 4 }}
-                                onClick={() => navigate(`/dashboard?upgrade_capacity=${upgradeSize}`)}
-                              >
-                                Upgrade Treasury Channel →
-                              </button>
+                              {/* member-first-run-ui slice 2: the upgrade form is
+                                  gone until Ethan decides who pays; the flag stays. */}
+                              <div>Making your connection bigger is coming soon.</div>
                             </>
                           )}
                         </div>
@@ -2035,7 +2119,7 @@ function ChannelsPage() {
       )}
 
       {/* Treasury: Open Channel panel */}
-      {nodeRole === "treasury" && <TreasuryOpenChannelPanel contacts={contacts} onChannelOpened={() => {
+      {nodeRole === "treasury" && <TreasuryOpenChannelPanel contacts={contacts} rate={feeRateInfo} onChannelOpened={() => {
         // Refresh channel list after opening
         Promise.all([
           fetch(`${API_BASE}/api/channels`).then((r) => r.json()),
@@ -2053,17 +2137,33 @@ function ChannelsPage() {
 
 const TREASURY_CHANNEL_PRESETS = [1_000_000, 5_000_000, 10_000_000];
 
-function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Contact[]; onChannelOpened: () => void }) {
+function TreasuryOpenChannelPanel({ contacts, rate, onChannelOpened }: {
+  contacts: Contact[];
+  /** For the fee cards' dollars; undefined while loading, null when the read failed. */
+  rate: ExchangeRate | null | undefined;
+  onChannelOpened: () => void;
+}) {
   const [selectedPubkey, setSelectedPubkey] = useState("");
   const [manualPubkey, setManualPubkey] = useState("");
   const [useManual, setUseManual] = useState(false);
   const [capacity, setCapacity] = useState(5_000_000);
-  const [feeRate, setFeeRate] = useState<number | undefined>(undefined); // undefined = LND default
+  // fee-estimates: held by KEY (F3); live; fetched while the form is shown.
+  const [feeKey, setFeeKey] = useState<FeeOptionKey>(DEFAULT_FEE_OPTION);
   const [opening, setOpening] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; txid: string | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [pending, setPending] = useState<PendingChannel[]>([]);
+  const fees = useFeeEstimates({ enabled: showForm });
+  const openOptions = feeOptions(fees.estimates);
+  const openSelected = openOptions?.find((o) => o.key === feeKey) ?? null;
+  const openFeeBlocked: string | null =
+    fees.status === "loading" ? null
+    : !openSelected || !fees.estimates ? FEE_COPY.unavailable
+    : isAboveCeiling(fees.estimates, openSelected) ? FEE_COPY.aboveCeiling(fees.estimates.ceiling_sat_per_vbyte)
+    : null;
+  // The option the open summary showed, its rate, and when the panel fetched it.
+  const shownFee = useRef<{ key: FeeOptionKey; rate: number; fetchedAtMs: number | null } | null>(null);
 
   const activePubkey = useManual ? manualPubkey.trim() : selectedPubkey;
   const selectedContact = contacts.find((c) => c.pubkey === selectedPubkey);
@@ -2079,18 +2179,42 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
   // Confirmation step for the treasury channel open (on-chain funding).
   const openConfirm = useActionConfirm();
 
+  function openSummary(opt: { key: FeeOptionKey; rate: number }) {
+    return summarizeTreasuryOpenChannel({
+      peerPubkey: activePubkey,
+      capacitySats: capacity,
+      fee: { label: FEE_OPTION_LABEL[opt.key], rate: opt.rate },
+    });
+  }
+
   function openChannelConfirm() {
     if (!activePubkey) { setError(useManual ? "Peer pubkey is required" : "Select a contact"); return; }
     if (capacity < 100_000) { setError("Minimum 100,000 sats"); return; }
+    if (!openSelected || openFeeBlocked) return;
     setError(null);
-    openConfirm.open(
-      summarizeTreasuryOpenChannel({ peerPubkey: activePubkey, capacitySats: capacity }),
-    );
+    shownFee.current = { key: openSelected.key, rate: openSelected.rate, fetchedAtMs: fees.fetchedAtMs };
+    openConfirm.open(openSummary(openSelected));
   }
 
   async function handleOpen() {
     if (!activePubkey) { setError(useManual ? "Peer pubkey is required" : "Select a contact"); return; }
     if (capacity < 100_000) { setError("Minimum 100,000 sats"); return; }
+    const shown = shownFee.current;
+    if (!shown) return;
+    // O6 / P18: the shown estimate is over 10 min old (since the panel fetched
+    // it). Refresh, re-show, ask again; send nothing now.
+    if (isStaleAtConfirm(shown.fetchedAtMs, Date.now())) {
+      const next = await fees.refresh();
+      const fresh = feeOptions(next.estimates)?.find((o) => o.key === shown.key);
+      if (!fresh || isAboveCeiling(next.estimates!, fresh)) {
+        shownFee.current = null;
+        openConfirm.dispatch({ t: "done" });
+        return RESHOWN;
+      }
+      shownFee.current = { key: shown.key, rate: fresh.rate, fetchedAtMs: next.fetchedAtMs };
+      openConfirm.dispatch({ t: "reshow", summary: openSummary(fresh), notice: FEE_COPY.refreshed });
+      return RESHOWN;
+    }
     setOpening(true);
     setError(null);
     setResult(null);
@@ -2098,7 +2222,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
       const res = await api.treasuryOpenChannel({
         peer_pubkey: activePubkey,
         capacity_sats: capacity,
-        ...(feeRate ? { fee_rate: feeRate } : {}),
+        fee_rate: shown.rate, // the rate the summary showed (sent = shown)
       });
       setResult({ ok: true, txid: res.funding_txid });
       // Refresh pending list immediately
@@ -2106,6 +2230,8 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
       onChannelOpened();
     } catch (e: any) {
       if (classifyConfirmError(e)) throw e;
+      // LND refused the rate as below this node's relay floor (D6 ruling).
+      if (e?.code === "fee_rate_below_network_minimum") { setError(FEE_COPY.tooLowForNetwork); return; }
       setError(e.message ?? "Failed to open channel");
     } finally {
       setOpening(false);
@@ -2117,6 +2243,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
     setManualPubkey("");
     setUseManual(false);
     setCapacity(5_000_000);
+    setFeeKey(DEFAULT_FEE_OPTION); // F3: the reset is to Economy, the key
     setResult(null);
     setError(null);
   }
@@ -2207,7 +2334,8 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
             <div className="alert-body">
               <div className="alert-type">Channel opening submitted</div>
               <div className="alert-msg">
-                Channel will become active after 1–3 on-chain confirmations.
+                {/* F5: the depth is the peer's; stock Umbrel members use 2. */}
+                Channel is usable once the peer confirms it — 2 on most member nodes.
               </div>
             </div>
           </div>
@@ -2363,24 +2491,38 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
           {/* Fee rate selector */}
           <div>
             <div className="form-label" id="treasury-open-fee-label">Confirmation Speed</div>
-            {/* String keys mapped to rates; Economy's rate is undefined. The
-                cost is its own line, so "~2,300 sats" never splits. */}
+            {/* fee-estimates: live options, held by key (F3). Each card shows
+                its rate, "~N sat/vB", then its time, as the close dialog's do
+                (member-first-run-ui's review, ruling 2, 2026-11-18); the cost
+                is the live rate × 155 vB (P14), "about $0.59" over "~770 sats"
+                (FeeCost). No estimate → no figure, submit blocked (O7); above
+                200 sat/vB → the figure, disabled, with the reason (P15). */}
+            {openOptions && fees.estimates ? (
+              <Choice<FeeOptionKey>
+                name="treasury-open-fee"
+                labelledBy="treasury-open-fee-label"
+                value={feeKey}
+                onChange={(key) => setFeeKey(key)}
+                options={openOptions.map((opt) => ({
+                  value: opt.key,
+                  label: FEE_OPTION_LABEL[opt.key],
+                  description: `~${opt.rate} sat/vB`,
+                  meta: timeText(opt),
+                  cost: <FeeCost sats={opt.cost_sats.open} rate={rate} />,
+                  disabled: isAboveCeiling(fees.estimates!, opt),
+                  disabledReason: FEE_COPY.aboveCeiling(fees.estimates!.ceiling_sat_per_vbyte),
+                }))}
+              />
+            ) : fees.status === "unavailable" ? (
+              <div className="fee-unavailable" style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{FEE_COPY.unavailable}</div>
+            ) : null}
             {(() => {
-              const OPEN_FEE = ([
-                { key: "economy", label: "Economy", rate: undefined, desc: "~1 sat/vB", time: "1–3 hours", cost: "~155 sats" },
-                { key: "normal", label: "Normal", rate: 5, desc: "~5 sat/vB", time: "~30 min", cost: "~770 sats" },
-                { key: "priority", label: "Priority", rate: 15, desc: "~15 sat/vB", time: "~10 min", cost: "~2,300 sats" },
-              ] as const);
-              return (
-                <Choice
-                  name="treasury-open-fee"
-                  labelledBy="treasury-open-fee-label"
-                  value={OPEN_FEE.find((o) => o.rate === feeRate)?.key ?? null}
-                  onChange={(key) => setFeeRate(OPEN_FEE.find((o) => o.key === key)?.rate)}
-                  options={OPEN_FEE.map((opt) => ({ value: opt.key, label: opt.label, description: opt.time, cost: opt.cost }))}
-                />
-              );
+              const age = shownDataAgeMinutes(fees.estimates, fees.fetchedAtMs, Date.now());
+              return age != null ? <div className="fee-data-age" style={{ fontSize: "0.75rem", color: "var(--text-3)", marginTop: 6 }}>{FEE_COPY.dataAge(age)}</div> : null;
             })()}
+            {openFeeBlocked && openFeeBlocked !== FEE_COPY.unavailable && (
+              <div style={{ color: "var(--red)", fontSize: "0.8125rem", marginTop: 6 }}>{openFeeBlocked}</div>
+            )}
           </div>
 
           {error && <div style={{ color: "var(--red)", fontSize: "0.8125rem" }}>{error}</div>}
@@ -2390,7 +2532,7 @@ function TreasuryOpenChannelPanel({ contacts, onChannelOpened }: { contacts: Con
               className="btn btn-primary"
               style={{ flex: 1 }}
               onClick={openChannelConfirm}
-              disabled={opening || !activePubkey}
+              disabled={opening || !activePubkey || fees.status === "loading" || openFeeBlocked != null}
             >
               {opening
                 ? "Opening..."

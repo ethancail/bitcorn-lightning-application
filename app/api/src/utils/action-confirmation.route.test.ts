@@ -152,9 +152,10 @@ describe("a capital route: three states, not two", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 describe("the body survives the gate", () => {
   it("the route sees the parsed body after replay", async () => {
-    const body = { capacity_sats: 1_000_000 };
+    // fee_rate is required on member open since fee-estimates (O5, P16).
+    const body = { capacity_sats: 1_000_000, fee_rate: 3 };
     const r = await call("POST", "/api/member/open-channel", body, {
-      [CONFIRMATION_HEADER]: sha("capacity_sats=1000000"),
+      [CONFIRMATION_HEADER]: sha("capacity_sats=1000000&fee_rate=3"),
     });
     expect(isConfirmError(r)).toBe(false);
     expect(JSON.stringify(r.body ?? {})).not.toContain("at least 100,000");
@@ -163,9 +164,9 @@ describe("the body survives the gate", () => {
   it("and the SAME route with a too-small capacity still reports it — proving the check is live", async () => {
     // The negative half: if the assertion above passed because the route never
     // validates, this would pass too. It must not.
-    const body = { capacity_sats: 50_000 };
+    const body = { capacity_sats: 50_000, fee_rate: 3 };
     const r = await call("POST", "/api/member/open-channel", body, {
-      [CONFIRMATION_HEADER]: sha("capacity_sats=50000"),
+      [CONFIRMATION_HEADER]: sha("capacity_sats=50000&fee_rate=3"),
     });
     expect(isConfirmError(r)).toBe(false);
     expect(JSON.stringify(r.body ?? {})).toContain("at least 100,000");
@@ -216,6 +217,42 @@ describe("the documented shell idiom clears the gate", () => {
         max_swap_routing_fee_sat: 2500, max_prepay_routing_fee_sat: 300,
       },
       "93d76c7c03566e4de6593c5232d6c024f6c985caee5c2bc0d3d57f3405906d64",
+    ],
+    // ── fee_rate (fee-estimates O5): hashed on all three open/close routes.
+    // Bash-computed with the docs/API.md recipes (2026-11-18).
+    [
+      "rotation, fee_rate 3 (a cooperative close)",
+      "/api/treasury/rotation/execute",
+      { channel_id: "842391119757312", fee_rate: 3 },
+      "fcf9fc7ae8a762277a5eada82e669a566432eaab370118d38c5d67b3c33a8696",
+    ],
+    [
+      "rotation, fee_rate 3 and dry_run true",
+      "/api/treasury/rotation/execute",
+      { channel_id: "842391119757312", fee_rate: 3, dry_run: true },
+      "6e47a50e6be0e0b1ac82c5ee828e8a2be189bbd861554843be3952be03604d7c",
+    ],
+    [
+      "expansion, fee_rate 3",
+      "/api/treasury/expansion/execute",
+      {
+        peer_pubkey: "02b759b1552f6471599420c9aa8b7fb52c0a343ecc8a06157b452b5a3b107a1bca",
+        capacity_sats: 2000000,
+        fee_rate: 3,
+      },
+      "24f1f9010819378f0a4c284387a6353ef8b92d905d6907c8003130ffb0cff700",
+    ],
+    [
+      "member open-channel, fee_rate 3",
+      "/api/member/open-channel",
+      { capacity_sats: 1000000, fee_rate: 3 },
+      "14ab162e1b0b2fe77bb8a4c9a04ac2566361c7e4116314294aac48f50bd022f7",
+    ],
+    [
+      "member open-channel, fee_rate 3 and partner_socket",
+      "/api/member/open-channel",
+      { capacity_sats: 1000000, fee_rate: 3, partner_socket: "1.2.3.4:9735" },
+      "0775b005a2423c261322873c38de1f4e7d5cabd5ff689ba17172f6bc174c2b0b",
     ],
     // ── optional BOOLEAN: all three states must be distinct and pinned
     [

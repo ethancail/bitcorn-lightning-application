@@ -18,7 +18,7 @@ import {
   STATUS_POLL_WAITING_MS,
 } from "../components/useSubscriptionStatus";
 import ErrorState from "../components/ErrorState";
-import ConnectToHub, { HUB_PUBKEY } from "../components/firstRun/ConnectToHub";
+import ConnectToHub, { ConnectSubmitted, HUB_PUBKEY } from "../components/firstRun/ConnectToHub";
 import StaleMarker from "../components/StaleMarker";
 import { channelStalenessNotice } from "../components/channelStaleness";
 import { capacityTone, capacityWord, CAPACITY_BAR_COLOR, CAPACITY_TEXT_COLOR } from "../components/capacityTone";
@@ -77,8 +77,9 @@ export default function MemberDashboard() {
   const [usdRate, setUsdRate] = useState<number | null>(null);
   // The effective Loop Out minimum, read from the server (drive-mode P1 item 6).
   const [swapLimits, setSwapLimits] = useState<SwapLimits | null>(null);
-  // The rate's state, for its note (drive-mode P1 item 3).
-  const [rateInfo, setRateInfo] = useState<ExchangeRate | null>(null);
+  // The rate's state, for its note (drive-mode P1 item 3). undefined while it
+  // loads; null when the read failed (member-first-run-ui slice 2).
+  const [rateInfo, setRateInfo] = useState<ExchangeRate | null | undefined>(undefined);
   // Fees paid over the last 30 days (drive-mode P2 item 14).
   const [costs, setCosts] = useState<MemberCosts | null>(null);
   const [pendingTreasuryChannel, setPendingTreasuryChannel] = useState(false);
@@ -150,7 +151,7 @@ export default function MemberDashboard() {
 
   // Exchange rate for USD display. Also the no-price alert's "Check again".
   const loadRate = useCallback(() => {
-    api.getExchangeRate().then((r) => { setRateInfo(r); setUsdRate(r.usd); }).catch(() => {});
+    api.getExchangeRate().then((r) => { setRateInfo(r); setUsdRate(r.usd); }).catch(() => setRateInfo(null));
   }, []);
   useEffect(() => {
     loadRate();
@@ -484,8 +485,10 @@ export default function MemberDashboard() {
           );
         })()}
         {/* Item 8: no price (state "none" — stale past 6 hours, or never
-            fetched). Amounts show in sats; "Check again" re-reads (R27(12)). */}
-        {rateInfo?.state === "none" && (
+            fetched), or the read failed (null; slice 2). Amounts show in sats;
+            "Check again" re-reads (R27(12)). The page's one no-price
+            sentence: the Connect card renders none of its own. */}
+        {(rateInfo === null || rateInfo?.state === "none") && (
           <div className="alert info">
             <span className="alert-icon" aria-hidden>i</span>
             <div className="alert-body">
@@ -520,29 +523,15 @@ export default function MemberDashboard() {
         {/* Channel — pending opening, connect CTA, or earnings panel */}
         {noChannel && pendingTreasuryChannel && (
           <div className="panel ops fade-in">
-            <div className="panel-header">
-              <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
-            </div>
             <div className="panel-body">
-              <div className="alert healthy">
-                <span className="alert-icon">✓</span>
-                <div className="alert-body">
-                  <div className="alert-type">Channel opening submitted</div>
-                  <div className="alert-msg">
-                    Your channel to the hub is being broadcast. It will become active after 1–3 on-chain confirmations. This page will update automatically.
-                  </div>
-                </div>
-              </div>
+              <ConnectSubmitted />
             </div>
           </div>
         )}
         {noChannel && !pendingTreasuryChannel && (
           <div className="panel ops fade-in span-all">
-            <div className="panel-header">
-              <span className="panel-title"><span className="icon">◈</span>Connect to Hub</span>
-            </div>
             <div className="panel-body">
-              <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} initialCapacity={upgradeCapacity} />
+              <ConnectToHub isPeered={stats?.is_peered_to_hub ?? false} initialCapacity={upgradeCapacity} rate={rateInfo} />
             </div>
           </div>
         )}
@@ -854,21 +843,12 @@ export default function MemberDashboard() {
           );
         })()}
 
-        {/* Upgrade banner when navigated from Channels page */}
+        {/* The Connect card in upgrade mode: the current size, no form, until
+            Ethan decides who pays (slice 2). */}
         {hasChannel && upgradeCapacity && ch && ch.capacity_sats < upgradeCapacity && (
           <div className="panel ops fade-in span-all">
             <div className="panel-body">
-              <div className="alert info">
-                <span className="alert-icon">⚠</span>
-                <div className="alert-body">
-                  <div className="alert-type">Channel upgrade recommended</div>
-                  <div className="alert-msg">
-                    Your current channel is {ch.capacity_sats.toLocaleString()} sats.
-                    Open a larger replacement channel ({upgradeCapacity.toLocaleString()} sats) to increase capacity.
-                  </div>
-                  <ConnectToHub isPeered={true} initialCapacity={upgradeCapacity} />
-                </div>
-              </div>
+              <ConnectToHub isPeered={true} rate={rateInfo} upgrade={{ currentSats: ch.capacity_sats }} />
             </div>
           </div>
         )}

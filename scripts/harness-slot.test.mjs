@@ -144,12 +144,19 @@ test(`H8 pin: with the slot unset, every slot-1 command line is byte-identical t
   }
 });
 
+// Root scripts added since BASE by other arcs, each pinned to its exact text and
+// the commit that added it. Anything else new still fails "the set changed".
+const ADDED_SINCE_BASE = {
+  "lock:refresh": "node scripts/lock-refresh.mjs", // 452b992, lockfile arc (develop)
+};
+
 test("H8 wiring: each dev:* script runs this module under its own name, or is unchanged text", () => {
   const base = scriptsAtBase();
   const now = scriptsNow();
-  assert.deepEqual(Object.keys(now), Object.keys(base), "the set of npm scripts changed");
+  assert.deepEqual(Object.keys(now), [...Object.keys(base), ...Object.keys(ADDED_SINCE_BASE)], "the set of npm scripts changed");
   for (const [name, text] of Object.entries(now)) {
-    if (SCRIPTS.includes(name)) assert.equal(text, `node scripts/harness-slot.mjs run ${name}`, name);
+    if (name in ADDED_SINCE_BASE) assert.equal(text, ADDED_SINCE_BASE[name], `${name} differs from its pinned text`);
+    else if (SCRIPTS.includes(name)) assert.equal(text, `node scripts/harness-slot.mjs run ${name}`, name);
     else if (!name.startsWith("_comment")) assert.equal(text, base[name], `${name} should be unchanged`);
   }
 });

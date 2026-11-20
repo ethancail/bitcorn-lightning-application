@@ -1,8 +1,13 @@
 // Pure state machine for the capital-action confirmation modal.
 //
 //   idle ──open──▶ confirm ──submit──▶ sending ─┬─done────▶ closed
-//                     │                          └─failed──▶ failed
-//                     └──cancel──▶ closed
+//                     │                          ├─failed──▶ failed
+//                     └──cancel──▶ closed        └─reshow──▶ confirm (new summary)
+//
+// `reshow` (fee-estimates O6): the action found the shown fee estimate stale at
+// confirm, refreshed it and sent NOTHING. The modal goes back to the typed
+// challenge with the new summary and a notice, so the operator confirms the
+// new figure; a rate is never swapped silently.
 //
 // `cancel` from `sending` is IGNORED, deliberately: once the request is away the
 // server owns the outcome and a modal that closes mid-flight tells the operator
@@ -15,9 +20,12 @@
 import type { ActionSummary } from "./confirmAction";
 import type { ConfirmErrorView } from "./confirmErrors";
 
+/** A reshow's notice: one line, or a heading over a body (the member's, "recs" 2026-11-18). */
+export type ConfirmNotice = string | { heading: string; body: string };
+
 export type ConfirmState =
   | { step: "closed" }
-  | { step: "confirm"; summary: ActionSummary; typed: string }
+  | { step: "confirm"; summary: ActionSummary; typed: string; notice?: ConfirmNotice }
   | { step: "sending"; summary: ActionSummary }
   | { step: "failed"; summary: ActionSummary; error: ConfirmErrorView | null; message: string };
 
@@ -28,6 +36,7 @@ export type ConfirmEvent =
   | { t: "done" }
   | { t: "failed"; error: ConfirmErrorView | null; message: string }
   | { t: "retry" }
+  | { t: "reshow"; summary: ActionSummary; notice: ConfirmNotice }
   | { t: "cancel" };
 
 export const INITIAL_CONFIRM_STATE: ConfirmState = { step: "closed" };
@@ -63,6 +72,11 @@ export function reduceConfirm(state: ConfirmState, event: ConfirmEvent): Confirm
       // straight to sending. A retry re-earns the confirmation.
       if (state.step !== "failed") return state;
       return { step: "confirm", summary: state.summary, typed: "" };
+
+    case "reshow":
+      // Only from sending: the action ran, refreshed the estimate and sent nothing.
+      if (state.step !== "sending") return state;
+      return { step: "confirm", summary: event.summary, typed: "", notice: event.notice };
 
     case "cancel":
       if (state.step === "sending") return state;

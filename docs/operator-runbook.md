@@ -118,10 +118,11 @@ Now that you've confirmed the tunnel works, point the Worker at it:
 
 ```
 cd cloudflare-worker
-npx wrangler secret put TREASURY_API_URL
+npm ci
+npx --no-install wrangler secret put TREASURY_API_URL
 # When prompted, paste:
 # https://treasury.<your-domain>
-npx wrangler deploy
+npx --no-install wrangler deploy
 ```
 
 #### 9. Verify the Worker is publishing the new URL
@@ -130,7 +131,7 @@ npx wrangler deploy
 curl https://<your-worker-url>/treasury-info
 ```
 
-The `api_url` field should now show `https://treasury.<your-domain>`. If it still shows the old URL, the Worker hasn't re-deployed cleanly — re-run `npx wrangler deploy` and check `npx wrangler tail` for errors.
+The `api_url` field should now show `https://treasury.<your-domain>`. If it still shows the old URL, the Worker hasn't re-deployed cleanly — re-run `npx --no-install wrangler deploy` and check `npx --no-install wrangler tail` for errors.
 
 #### 10. Restart the treasury to confirm sync
 
@@ -166,7 +167,7 @@ Set up the named tunnel without yet updating the Worker secret. After step 7, th
 
 #### 3. Cut over the Worker secret
 
-`npx wrangler secret put TREASURY_API_URL` + `npx wrangler deploy` per first-time setup step 8.
+`npx --no-install wrangler secret put TREASURY_API_URL` + `npx --no-install wrangler deploy` per first-time setup step 8.
 
 #### 4. Watch members self-heal
 
@@ -245,9 +246,11 @@ If Phase 4 deploys badly — named tunnel can't be created, DNS doesn't resolve,
 3. **Update the Worker secret to the ephemeral URL:**
 
    ```
-   npx wrangler secret put TREASURY_API_URL
+   cd cloudflare-worker
+   npm ci
+   npx --no-install wrangler secret put TREASURY_API_URL
    # Paste the new https://<random>.trycloudflare.com URL
-   npx wrangler deploy
+   npx --no-install wrangler deploy
    ```
 
 4. **Wait for member self-heal.** Cached `api_url` values refresh within 12 hours or sooner on transport-error.
