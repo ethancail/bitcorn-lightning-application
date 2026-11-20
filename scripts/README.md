@@ -103,8 +103,15 @@ that weakens them is caught mechanically:
   driven against a throwaway fixture git repo in a temp dir with a stub `npx`
   on `PATH` — no real tsc/vitest runs, so the whole suite takes seconds. Exit
   codes are read from `spawnSync().status` directly (no pipes to mask them).
-  Cases 9–14 cover the heavy lock (A4), in a scratch lock home
-  (`HARNESS_HEAVY_TEST_HOME`), never the account's real `heavy.lock`.
+  Cases 9–14 cover the heavy lock (A4) — both slots held → "verification not
+  run"; one slot held → the gate takes the other with `VITEST_MAX_WORKERS=3`
+  (11b) — in a scratch lock home (`HARNESS_HEAVY_TEST_HOME`) with a fake
+  meminfo (`HARNESS_HEAVY_TEST_MEMINFO`), never the account's real
+  `heavy-<k>.lock` files. The lock itself — at most the host's limit of heavy
+  jobs (2 on ubuntu-pc, 1 on the OptiPlex), a second admitted only with
+  MemAvailable ≥ 4096 MB (`HARNESS_HEAVY_MIN_FREE_MB`), `--exclusive` for
+  every slot — is documented in `docs/dev-setup.md` § The heavy lock and
+  tested by `scripts/harness-slot-heavy.test.mjs`.
 - **permissions.deny (.claude/settings.json):** parses the deny array and
   pattern-matches it against tables of commands that must be blocked
   (push/PR/broadcast/deploy, incl. compound and `-C`/`-c` bypass forms) and

@@ -32,13 +32,16 @@
 //        6. stop_hook_active=true → exit 0 (no infinite block loop)
 //        7. VERIFY_GATE_SKIP=1    → exit 0 (escape hatch)
 //        8. runner cannot execute → exit 0 + warning (broken env never traps)
-//        9–14. the heavy lock (A4, a kernel flock): every check runs holding it
-//           as its fd 9; held past the wait → exit 2 "verification not run:
-//           heavy lock held by …", then on stop_hook_active a wait of at most
+//        9–14. the heavy lock (A4, a kernel flock): every check runs holding a
+//           slot as its fd 9; both slots held past the wait → exit 2
+//           "verification not run: heavy lock held by …", then on
+//           stop_hook_active a wait of at most
 //           10 s and exit 0 with that warning, never a PASS; a refused account
 //           and an error taking the lock take the same not-run path; the gate
 //           killed mid-check dies at once and the lock stays with the running
-//           check until it exits. Every run uses a scratch heavy-lock home
+//           check until it exits; with one slot held the gate takes the
+//           other and its checks get VITEST_MAX_WORKERS=3 (11b), alone none.
+//           Every run uses a scratch heavy-lock home
 //           (HARNESS_HEAVY_TEST_HOME), never the account's real lock.
 //      Exit codes come from spawnSync .status directly — no pipes to mask them.
 //   C. the conflict-markers job in .github/workflows/pr-checks.yml — EXTRACTS
@@ -429,6 +432,8 @@ try {
       '  if [ "$(readlink /proc/$$/fd/9)" = "$STUB_HEAVY_LOCK" ]; then echo fd9=lock; else echo fd9=none; fi >> "$STUB_LOG"',
       // ... and the job token it was handed (F2: the gate's checks belong to its job by token).
       '  echo "job=$HARNESS_HEAVY_JOB" >> "$STUB_LOG"',
+      // ... and the worker cap, set only when the gate shares the machine.
+      '  echo "workers=${VITEST_MAX_WORKERS-none}" >> "$STUB_LOG"',
       "fi",
       // A check that takes a while, for killing the gate mid-check.
       'if [ -n "$STUB_SLEEP" ]; then sleep "$STUB_SLEEP"; echo "end $1" >> "$STUB_LOG"; fi',
@@ -469,7 +474,12 @@ try {
   // The gate imports the heavy lock from its sibling (A4).
   fs.copyFileSync(path.join(ROOT, "scripts", "harness-slot.mjs"), path.join(FX, "scripts", "harness-slot.mjs"));
   const HEAVY_HOME = path.join(TMP, "heavy-home");
-  const HEAVY_LOCK = path.join(HEAVY_HOME, ".bitcorn-dev", "locks", "heavy.lock");
+  // ubuntu-pc's limit is 2: slots heavy-0 and heavy-1.
+  const HEAVY_LOCK = path.join(HEAVY_HOME, ".bitcorn-dev", "locks", "heavy-0.lock");
+  const HEAVY_LOCK_1 = path.join(HEAVY_HOME, ".bitcorn-dev", "locks", "heavy-1.lock");
+  // Plenty of memory, so the gate's admission never depends on this machine's MemAvailable.
+  const PLENTY_MEM = path.join(TMP, "meminfo");
+  fs.writeFileSync(PLENTY_MEM, "MemTotal:       16000000 kB\nMemAvailable:   64000000 kB\n");
   const HEAVY_HISTORY = path.join(HEAVY_HOME, ".bitcorn-dev", "locks", "history.log");
   fs.writeFileSync(path.join(FX, "app", "api", "src", "x.ts"), "export const a = 1;\n");
   fs.writeFileSync(path.join(FX, "app", "web", "src", "x.ts"), "export const b = 1;\n");
@@ -488,6 +498,7 @@ try {
     STUB_LOG,
     STUB_HEAVY_LOCK: HEAVY_LOCK,
     HARNESS_HEAVY_TEST_HOME: HEAVY_HOME,
+    HARNESS_HEAVY_TEST_MEMINFO: PLENTY_MEM,
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_SYSTEM: "/dev/null",
     ...env,
@@ -572,34 +583,43 @@ try {
   // ancestor's lock as its own): a detached flock(1) holding the file, beside
   // the info file a holder writes.
   const FLOCK = "/usr/bin/flock";
-  const lockState = () => {
-    const s = spawnSync(FLOCK, ["-n", "-E", "200", HEAVY_LOCK, "true"]).status;
+  const lockState = (file = HEAVY_LOCK) => {
+    const s = spawnSync(FLOCK, ["-n", "-E", "200", file, "true"]).status;
     return s === 0 ? "free" : s === 200 ? "held" : `error (flock status ${s})`;
   };
   const sleepMs = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
   const waitFor = (cond, what, ms = 10_000) => {
     for (const t0 = Date.now(); !cond(); sleepMs(25)) if (Date.now() - t0 > ms) throw new Error(`timed out waiting for ${what}`);
   };
-  const HEAVY_INFO = path.join(path.dirname(HEAVY_LOCK), "heavy.info.json");
+  const HEAVY_INFO = path.join(path.dirname(HEAVY_LOCK), "heavy-0.info.json");
+  const HEAVY_INFO_1 = path.join(path.dirname(HEAVY_LOCK), "heavy-1.info.json");
   fs.mkdirSync(path.dirname(HEAVY_LOCK), { recursive: true });
+  // Both slots held, each by its own holder outside the gate.
   const holderProc = spawn(FLOCK, [HEAVY_LOCK, "sleep", "300"], { detached: true, stdio: "ignore" });
+  const holderProc1 = spawn(FLOCK, [HEAVY_LOCK_1, "sleep", "300"], { detached: true, stdio: "ignore" });
   try {
-    waitFor(() => lockState() === "held", "the fixture holder");
-    const infoText = `${JSON.stringify({
-      holder: "fixture-holder", acquired_at: "2026-11-18T12:00:00Z", host: os.hostname(), slot: "heavy", kind: "run", pid: holderProc.pid,
+    waitFor(() => lockState() === "held" && lockState(HEAVY_LOCK_1) === "held", "the fixture holders");
+    const infoOf = (holder, slot, pid) => `${JSON.stringify({
+      holder, acquired_at: "2026-11-18T12:00:00Z", host: os.hostname(), slot, kind: "run", pid,
     }, null, 2)}\n`;
+    const infoText = infoOf("fixture-holder", "heavy-0", holderProc.pid);
+    const infoText1 = infoOf("fixture-holder-2", "heavy-1", holderProc1.pid);
     fs.writeFileSync(HEAVY_INFO, infoText);
-    const NOT_RUN = 'verification not run: heavy lock held by "fixture-holder" since 2026-11-18T12:00:00Z; run it when the lock frees';
+    fs.writeFileSync(HEAVY_INFO_1, infoText1);
+    const NOT_RUN = 'verification not run: heavy lock held by "fixture-holder" since 2026-11-18T12:00:00Z (heavy-0) and ' +
+      '"fixture-holder-2" since 2026-11-18T12:00:00Z (heavy-1); run it when the lock frees';
 
     // 9. held past the wait → blocks once, the A4 message, no check run, the holder untouched
     let t = Date.now();
     r = runGate({ dirty: "api", env: { VERIFY_GATE_HEAVY_WAIT_S: "2", STUB_VITEST_OUT: OUT.vitestGreen } });
     const waitedMs = Date.now() - t;
-    check("gate 9: heavy lock held → blocks (exit 2)", r.status === 2, r.out);
+    check("gate 9: both heavy slots held → blocks (exit 2)", r.status === 2, r.out);
     check("gate 9: says verification not run, naming holder and time", r.out.includes(NOT_RUN), r.out);
     check("gate 9: no check ran", !fs.existsSync(STUB_LOG), fs.existsSync(STUB_LOG) ? fs.readFileSync(STUB_LOG, "utf8") : "");
     check("gate 9: it waited the full bound first (>= 2s)", waitedMs >= 2000, `waited ${waitedMs}ms`);
-    check("gate 9: the holder still holds, its record untouched", lockState() === "held" && fs.readFileSync(HEAVY_INFO, "utf8") === infoText);
+    check("gate 9: the holders still hold, their records untouched",
+      lockState() === "held" && lockState(HEAVY_LOCK_1) === "held" &&
+        fs.readFileSync(HEAVY_INFO, "utf8") === infoText && fs.readFileSync(HEAVY_INFO_1, "utf8") === infoText1);
     check("gate 9: never says PASS", !r.out.includes("PASS"), r.out);
 
     // 10. ... and the second try (stop_hook_active) waits at most 10 s, whatever the wait is set to (#8),
@@ -617,23 +637,38 @@ try {
     check("gate 10: never says PASS", !r.out.includes("PASS"), r.out);
     check("gate 10: no check ran", !fs.existsSync(STUB_LOG));
 
+    // 11b. one slot freed → the gate takes it, sharing the machine: its checks hold heavy-1 as
+    //      fd 9 and get VITEST_MAX_WORKERS=3, while heavy-0's holder keeps its slot
+    process.kill(-holderProc1.pid, "SIGKILL");
+    waitFor(() => lockState(HEAVY_LOCK_1) === "free", "the second fixture holder to go");
+    fs.rmSync(HEAVY_INFO_1, { force: true });
+    r = runGate({ dirty: "api", env: { STUB_HEAVY_LOCK: HEAVY_LOCK_1, STUB_VITEST_OUT: OUT.vitestGreen } });
+    let ran = fs.existsSync(STUB_LOG) ? fs.readFileSync(STUB_LOG, "utf8") : "";
+    check("gate 11b: one slot free → PASS (exit 0)", r.status === 0 && r.out.includes("PASS"), r.out);
+    check("gate 11b: both checks ran holding heavy-1 as fd 9",
+      (ran.match(/^heavy=held$/gm) || []).length === 2 && (ran.match(/^fd9=lock$/gm) || []).length === 2, ran);
+    check("gate 11b: sharing the machine, each check got VITEST_MAX_WORKERS=3", (ran.match(/^workers=3$/gm) || []).length === 2, ran);
+    check("gate 11b: heavy-0's holder kept its slot, heavy-1 is free after",
+      lockState() === "held" && lockState(HEAVY_LOCK_1) === "free" && !fs.existsSync(HEAVY_INFO_1));
+
     // 11. lock free → both checks run HOLDING the lock (their fd 9), which is free after
     process.kill(-holderProc.pid, "SIGKILL");
     waitFor(() => lockState() === "free", "the fixture holder to go");
     fs.rmSync(HEAVY_INFO, { force: true });
     fs.rmSync(HEAVY_HISTORY, { force: true });
     r = runGate({ dirty: "api", env: { STUB_VITEST_OUT: OUT.vitestGreen } });
-    const ran = fs.existsSync(STUB_LOG) ? fs.readFileSync(STUB_LOG, "utf8") : "";
+    ran = fs.existsSync(STUB_LOG) ? fs.readFileSync(STUB_LOG, "utf8") : "";
     check("gate 11: lock free → PASS (exit 0)", r.status === 0 && r.out.includes("PASS"), r.out);
     check("gate 11: tsc and vitest both ran under the lock, each holding it as fd 9",
       (ran.match(/^heavy=held$/gm) || []).length === 2 && (ran.match(/^fd9=lock$/gm) || []).length === 2 &&
         !ran.includes("heavy=free") && !ran.includes("fd9=none"), ran);
+    check("gate 11: alone, the checks got no worker cap", (ran.match(/^workers=none$/gm) || []).length === 2, ran);
     check("gate 11: each check was handed the gate's job token",
       (ran.match(/^job=[^\n]*verify-gate\.mjs[^\n]*:\d+$/gm) || []).length === 2, ran);
     check("gate 11: the lock is free afterwards, its record gone", lockState() === "free" && !fs.existsSync(HEAVY_INFO));
     const hist = fs.existsSync(HEAVY_HISTORY) ? fs.readFileSync(HEAVY_HISTORY, "utf8") : "";
     check("gate 11: history.log has the gate's acquire then release",
-      /acquire lock="heavy" holder="[^"]*verify-gate[^"]*"[^\n]*\n[^\n]*release lock="heavy"/.test(hist), hist);
+      /acquire lock="heavy-0" holder="[^"]*verify-gate[^"]*"[^\n]*\n[^\n]*release lock="heavy-0"/.test(hist), hist);
 
     // 12. an account other than this host's heavy account → the not-run path (ruling 3)
     r = runGate({ dirty: "api", env: { HARNESS_HEAVY_TEST_ACCOUNT: "arcagent", STUB_VITEST_OUT: OUT.vitestGreen } });
@@ -674,7 +709,7 @@ try {
     check("gate 14: the lock frees when that check exits", lockState() === "free", lockState());
     check("gate 14: the next check never started", !log().includes("vitest"), log());
   } finally {
-    try { process.kill(-holderProc.pid, "SIGKILL"); } catch {}
+    for (const p of [holderProc, holderProc1]) try { process.kill(-p.pid, "SIGKILL"); } catch {}
   }
 } finally {
   fs.rmSync(TMP, { recursive: true, force: true });
