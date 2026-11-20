@@ -113,8 +113,9 @@ that weakens them is caught mechanically:
   every slot — is documented in `docs/dev-setup.md` § The heavy lock and
   tested by `scripts/harness-slot-heavy.test.mjs`. So is the lock order,
   heavy first, then the slot (`docs/dev-setup.md` § The lock order):
-  `lock acquire --slot N` from a command whose job holds no heavy takes heavy,
-  exclusive, before the slot, and `lock release --slot N` lets go of the slot
+  `lock acquire --slot N` from a command whose job holds no heavy takes one
+  heavy slot (every slot with `--exclusive`) before the slot, under the same
+  limit and memory check as any heavy job, and `lock release --slot N` lets go of the slot
   and then that heavy; a heavy holder (by its `HARNESS_HEAVY_JOB` token) just
   takes the slot, and may wait for it.
 - **permissions.deny (.claude/settings.json):** parses the deny array and

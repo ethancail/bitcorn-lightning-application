@@ -453,10 +453,12 @@ ttest("heavy status says free or held as the kernel does, and names the holder",
 
 // ─── the lock order: heavy first, then the slot (2026-11-20; reverses A3) ──
 //
-// lock acquire --slot N with no token of its own takes heavy, exclusive, by a
-// holder process of kind "slot", then the slot; lock release releases the slot,
-// then that heavy. A heavy holder (by token) just takes the slot, and may wait
-// for it. Here the slot locks live in slotHome (the CLI's HOME) and heavy in
+// lock acquire --slot N with no token of its own takes ONE heavy slot (every
+// slot with --exclusive; Ethan, 2026-11-20), by a holder process of kind
+// "slot", then the slot; lock release releases the slot, then that heavy. A
+// heavy holder (by token) just takes the slot, and may wait for it. Most tests
+// here run at start()'s limit of 1, where one heavy slot is all of heavy; the
+// "limit 2" tests show the slot's heavy sharing the machine. Here the slot locks live in slotHome (the CLI's HOME) and heavy in
 // home (HARNESS_HEAVY_TEST_HOME), unless a test passes one home for both. A
 // plain slot holder (no heavy) is made with acquireLock directly: a holder from
 // before the order, or one that took its slot under a token.
@@ -476,11 +478,11 @@ ttest("order: a slot acquire with no token holds heavy before the slot, and its 
     assert.equal(a.code, 0, a.stderr);
     assert.deepEqual(events(home), ["acquire heavy", "acquire slot 1"], "heavy before the slot");
     assert.match(a.stdout, /^acquired slot 1 for arc: /m);
-    assert.match(a.stdout, /with the heavy lock, exclusive \(heavy\), taken first, held by pid \d+: released with the slot/);
+    assert.match(a.stdout, /with the heavy lock \(heavy\), taken first, held by pid \d+: released with the slot/);
     const info = readInfo(home);
     assert.equal(info.kind, "slot");
     assert.equal(info.for_slot, 1);
-    assert.equal(info.exclusive, true);
+    assert.equal(info.exclusive, undefined, "one ordinary heavy slot, not exclusive");
     assert.equal(tokenOf(a.stdout), info.job, "it prints the holder's token, for the arc's own heavy jobs");
     assert.deepEqual(JSON.parse(fs.readFileSync(slotLockPath(home), "utf8")).heavy, { pid: info.pid, job: info.job },
       "the slot lock records the heavy it was taken with");
@@ -516,7 +518,7 @@ ttest("order: while one slot holder runs, a second slot acquire waits on heavy, 
       assert.equal(b.code, 2, b.stderr);
       assert.ok(Date.now() - t0 >= 1900, `slot ${slot}: it waited (${Date.now() - t0} ms)`);
       const refusal = b.stderr.split("\n").find((l) => l.includes("already locked")) ?? "";
-      assert.match(refusal, /^harness-slot lock: heavy is already locked by "slot-1\/first" \(exclusive\)/);
+      assert.match(refusal, /^harness-slot lock: heavy is already locked by "slot-1\/first" since /);
       assert.match(refusal.replace("harness-slot lock: ", ""), WORKFLOW_WAIT);
       assert.doesNotMatch(b.stderr, /slot \d is already locked/, `slot ${slot}: it never reached the slot`);
     }
@@ -534,6 +536,93 @@ ttest("order: while one slot holder runs, a second slot acquire waits on heavy, 
     assert.equal(readInfo(home).holder, "slot-2/second");
     assert.equal((await cli(["lock", "release", "--slot", "2", "--holder", "second"], { home, slotHome })).code, 0);
     assert.equal(lockState(home), "free");
+  } finally {
+    stopHolders(home);
+  }
+});
+
+const LIMIT2 = { HARNESS_HEAVY_LIMIT: "2" };
+
+ttest("order, limit 2: a slot holder and one ordinary heavy job run together; a second ordinary job waits", async () => {
+  const home = scratch();
+  const slotHome = scratch();
+  let job1;
+  try {
+    const a = await cli(takeSlot("arc"), { home, slotHome, env: LIMIT2 });
+    assert.equal(a.code, 0, a.stderr);
+    assert.equal(lockState(home, 1), "free", "the slot took one heavy slot, not both");
+    assert.match(a.stdout, /with the heavy lock \(heavy\), taken first/);
+    assert.equal(readInfo(home, 0).kind, "slot");
+
+    job1 = start(["heavy", "run", "--holder", "job1", "--", "sleep", "30"], { home, slotHome, env: LIMIT2 });
+    await until(() => job1.err().includes("acquired the heavy lock"), "the ordinary job to run beside the slot holder");
+    assert.match(job1.err(), /acquired the heavy lock \(heavy-1\) for "job1".*sharing the machine, so VITEST_MAX_WORKERS=3/);
+    assert.equal(lockState(home, 1), "held");
+
+    const t0 = Date.now();
+    const job2 = await cli(["heavy", "run", "--holder", "job2", "--wait", "2", "--", "true"], { home, slotHome, env: LIMIT2 });
+    assert.equal(job2.code, 2, job2.stderr);
+    assert.ok(Date.now() - t0 >= 1900, "it waited");
+    assert.match(job2.stderr, /heavy is already locked by "slot-1\/arc" .*\(heavy\) and "job1" .*\(heavy-1\)/);
+    assert.doesNotMatch(history(home), /holder="job2"/);
+  } finally {
+    job1?.child.kill("SIGTERM");
+    await job1?.done;
+    await cli(["lock", "release", "--slot", "1", "--holder", "arc"], { home, slotHome, env: LIMIT2 });
+    stopHolders(home);
+  }
+  assert.equal(lockState(home, 0), "free");
+  assert.equal(lockState(home, 1), "free");
+});
+
+ttest("order, limit 2: a slot acquire beside another job passes the memory check, and its wait keeps the words a waiter waits on", async () => {
+  const home = scratch();
+  const slotHome = scratch();
+  const job1 = start(["heavy", "run", "--holder", "job1", "--", "sleep", "30"], { home, slotHome, env: LIMIT2 });
+  try {
+    await until(() => job1.err().includes("acquired the heavy lock"), "the first job");
+    const low = await cli(takeSlot("arc", ["--wait", "2"]), { home, slotHome, env: { ...LIMIT2, HARNESS_HEAVY_TEST_MEMINFO: meminfo(100) } });
+    assert.equal(low.code, 2, low.stderr);
+    const refusal = low.stderr.split("\n").find((l) => l.includes("not admitted")) ?? "";
+    assert.match(refusal, /heavy-1 is free, but MemAvailable is 100 MB, under the 4096 MB/);
+    assert.match(refusal.replace("harness-slot lock: ", ""), WORKFLOW_WAIT, "browser-slot.py keeps waiting on a memory wait");
+    assert.ok(!fs.existsSync(slotLockPath(slotHome)), "no slot while heavy was not admitted");
+
+    const ok = await cli(takeSlot("arc"), { home, slotHome, env: LIMIT2 });
+    assert.equal(ok.code, 0, ok.stderr);
+    assert.match(ok.stdout, /with the heavy lock \(heavy-1\), taken first/);
+    assert.match(ok.stdout, /^VITEST_MAX_WORKERS=3$/m, "it shares the machine, so its token's jobs get the cap");
+    assert.equal(readInfo(home, 1).shared, true);
+    assert.equal((await cli(["lock", "release", "--slot", "1", "--holder", "arc"], { home, slotHome, env: LIMIT2 })).code, 0);
+  } finally {
+    job1.child.kill("SIGTERM");
+    await job1.done;
+    stopHolders(home);
+  }
+});
+
+ttest("order, limit 2: lock acquire --slot N --exclusive takes every heavy slot; an ordinary job waits", async () => {
+  const home = scratch();
+  const slotHome = scratch();
+  try {
+    const a = await cli(takeSlot("arc", ["--exclusive"]), { home, slotHome, env: LIMIT2 });
+    assert.equal(a.code, 0, a.stderr);
+    assert.equal(lockState(home, 0), "held");
+    assert.equal(lockState(home, 1), "held", "--exclusive took every heavy slot");
+    assert.match(a.stdout, /with the heavy lock, exclusive \(heavy, heavy-1\), taken first/);
+    assert.equal(readInfo(home, 1).exclusive, true);
+    const job = await cli(["heavy", "run", "--wait", "2", "--", "true"], { home, slotHome, env: LIMIT2 });
+    assert.equal(job.code, 2, job.stderr);
+    assert.match(job.stderr, /heavy is already locked by "slot-1\/arc" \(exclusive\)/);
+    const r = await cli(["lock", "release", "--slot", "1", "--holder", "arc"], { home, slotHome, env: LIMIT2 });
+    assert.equal(r.code, 0, r.stderr);
+    assert.match(r.stdout, /released: heavy, holder slot-1\/arc.*\n.*released: heavy-1, holder slot-1\/arc/);
+    assert.equal(lockState(home, 0), "free");
+    assert.equal(lockState(home, 1), "free");
+    // --exclusive is the slot acquire's alone.
+    const setup = await cli(["lock", "acquire", "--setup", "--holder", "p", "--go", "test", "--exclusive"], { home, slotHome, env: LIMIT2 });
+    assert.equal(setup.code, 2);
+    assert.match(setup.stderr, /--wait, --pid and --exclusive belong to lock acquire --slot/);
   } finally {
     stopHolders(home);
   }
