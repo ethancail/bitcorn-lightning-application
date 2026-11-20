@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.39"
+version: "1.18.40"
 port: 3200
 
 description: >
@@ -27,4 +27,4 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: |
-  Text is easier to read, choices are clearer, and amounts show consistently across the app.
+  Opening and closing connections now shows live network fees and realistic times. Connecting and withdrawing are simpler, and this update includes security fixes.
