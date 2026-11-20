@@ -660,10 +660,16 @@ test("H14 cli: lock acquire, status and release through the entry point; a refus
   const first = run(["lock", "acquire", "--slot", "1", "--holder", "harness-host", ...go]);
   assert.equal(first.status, 0, first.stderr);
   assert.match(first.stdout, /^acquired slot 1 for harness-host: /);
-  // The lock order: the second waits on the heavy the first took with its slot, never reaching the slot.
+  // The held slot is refused at once, before heavy (F6), in the slot's own words.
   const second = run(["lock", "acquire", "--slot", "1", "--holder", "drive-mode", ...go, "--wait", "1"]);
   assert.equal(second.status, 2);
-  assert.match(second.stderr, /harness-slot lock: heavy is already locked by "slot-1\/harness-host"/);
+  assert.match(second.stderr, /harness-slot lock: slot 1 is already locked by "harness-host"/);
+  assert.doesNotMatch(second.stderr, /heavy is already locked/);
+  // The lock order: a free slot's acquire waits on the heavy the first took with its slot, never reaching the slot.
+  const other = run(["lock", "acquire", "--slot", "2", "--holder", "drive-mode", ...go, "--wait", "1"]);
+  assert.equal(other.status, 2);
+  assert.match(other.stderr, /harness-slot lock: heavy is already locked by "slot-1\/harness-host"/);
+  assert.doesNotMatch(other.stderr, /slot 2 is already locked/);
   assert.equal(run(["lock", "acquire", "--slot", "1", "--setup", "--holder", "x", ...go]).status, 2, "--slot and --setup together");
   assert.equal(run(["lock", "acquire", "--slot", "0", "--holder", "x", ...go]).status, 2, "slot 0");
   assert.equal(run(["lock", "acquire", "--setup", "--holder", "x", ...go, "--wait", "1"]).status, 2, "--wait with --setup");
