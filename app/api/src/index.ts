@@ -71,6 +71,7 @@ import { channelDataFreshness } from "./api/memberStatsFreshness";
 import { getMemberCosts } from "./api/member-costs";
 import { readLocalCertExpiry } from "./lightning/readCertExpiry";
 import { certExpiryLevel, certExpiryMessage } from "./lightning/certExpiry";
+import { getLndVersion, nodeUpdateNoticeText } from "./lightning/lndVersion";
 import { runTimeoutBoundLndProbe } from "./lightning/lndProbeRoute";
 import { normalizeAlias, validateAliasFormat, isAliasBlocked, lndDefaultAlias } from "./profile/aliasValidation";
 import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow, setBitcornName } from "./profile/profileStore";
@@ -3603,6 +3604,10 @@ async function dispatchRequest(
         lnd_live_read_ok: lndLiveReadOk,
         // Read from disk this request, independent of the two live reads above.
         cert_expiry: certExpiry,
+        // node-version-alert (R4): the member line when LND is below the
+        // minimum, else null. From the sync loop's in-memory read, so it needs
+        // no LND this request (lightning/lndVersion.ts).
+        node_update_notice: nodeUpdateNoticeText(getLndVersion()),
         treasury_channel: treasuryChannel
           ? {
               channel_id: treasuryChannel.channel_id,
