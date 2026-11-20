@@ -1,21 +1,16 @@
 import type Database from "better-sqlite3";
 import { createLndChainAddress } from "../lightning/lnd";
 import * as caps from "./caps";
-import {
-  listAccounts,
-  placeMarketBuy,
-  placeWithdraw,
-  pollOrder,
-  pollWithdraw,
-  type CoinbaseCredentials,
-} from "./coinbaseClient";
-import { decrypt } from "./credentials";
+// The scheduler reaches the exchange only through ./exchange (kraken-autobuy
+// spec §2), never through a provider's client; exchangeBoundary.test.ts asserts it.
+import * as exchange from "./exchange";
+import type { ErrorClass, ExchangeSession } from "./exchangeProvider";
 import {
   selectCurrency,
   currenciesCheckedFor,
   type CurrencyPreference,
 } from "./currency";
-import { classifyCoinbaseError, type AlertType } from "./alerts";
+import type { AlertType } from "./alerts";
 import { raiseAlert, clearAlerts } from "./alertStore";
 import { getCurrent } from "./valuationClient";
 
@@ -85,38 +80,33 @@ function nowSec(): number {
   return Math.floor(Date.now() / 1000);
 }
 
-function loadCredentials(db: Database.Database): CoinbaseCredentials | null {
-  const row = db.prepare(
-    `SELECT key_name, encrypted_private_key, nonce FROM coinbase_credentials WHERE id = 1`,
-  ).get() as { key_name: string; encrypted_private_key: Buffer; nonce: Buffer } | undefined;
-  if (!row) return null;
-  try {
-    const privateKeyPem = decrypt({ ciphertext: row.encrypted_private_key, nonce: row.nonce });
-    return { keyName: row.key_name, privateKeyPem };
-  } catch {
+function openExchange(db: Database.Database): ExchangeSession | null {
+  const opened = exchange.openSession(db);
+  if (opened.kind === "ok") return opened.session;
+  if (opened.kind === "corrupted") {
     // credentials_corrupted — flag via paused_reason and return null
     db.prepare(`UPDATE autobuy_config SET enabled = 0, paused_reason = 'credentials_corrupted' WHERE id = 1`).run();
-    return null;
   }
+  return null;
 }
 
 function pauseWithReason(db: Database.Database, reason: string): void {
   db.prepare(`UPDATE autobuy_config SET enabled = 0, paused_reason = ? WHERE id = 1`).run(reason);
 }
 
-// Route a placement/poll failure to the right alert type via the shared
-// classifier (spec §2/§6): a 401/403 surfacing as a failed_buy error routes to
-// AUTH_FAILURE, a 429/5xx to RATE_LIMITED, everything else to ORDER_FAILED.
-// Additive only — does not change buy/pause semantics (the caller still writes
-// the failed_buy row and records the failure).
+// Route a placement/poll failure to the right alert type by the class the
+// exchange adapter gave it (spec §2/§6): auth (a 401/403 on Coinbase) routes to
+// AUTH_FAILURE, rate_limit (a 429/5xx) to RATE_LIMITED, everything else to
+// ORDER_FAILED. Additive only — does not change buy/pause semantics (the caller
+// still writes the failed_buy row and records the failure).
 function raiseOrderFailureAlert(
   db: Database.Database,
   httpStatus: number,
+  cls: ErrorClass,
   errorText: string,
   runId: number,
   orderStatus: string | null,
 ): void {
-  const cls = classifyCoinbaseError(httpStatus, errorText);
   let type: AlertType;
   let context: Record<string, unknown>;
   if (cls === "auth") {
@@ -229,47 +219,42 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   }
 
   // Need credentials to proceed — also do a balance check
-  const creds = loadCredentials(db);
-  if (!creds) {
+  const session = openExchange(db);
+  if (!session) {
     pauseWithReason(db, "no_credentials");
     return;
   }
 
-  const accounts = await listAccounts(creds);
-  if (!accounts.ok) {
-    if (accounts.status === 401 || accounts.status === 403) {
+  const balances = await exchange.getBalances(session);
+  if (!balances.ok) {
+    if (balances.errorClass === "auth") {
       pauseWithReason(db, "credentials_invalid");
       raiseAlert(db, {
         type: "AUTOBUY_AUTH_FAILURE",
         latestRunId: null,
-        context: { paused_reason: "credentials_invalid", http_status: accounts.status, source: "list_accounts", error: accounts.error },
+        context: { paused_reason: "credentials_invalid", http_status: balances.httpStatus, source: "list_accounts", error: balances.detail },
       });
       return;
     }
-    // Non-auth listAccounts failure (429 / 5xx / network) — previously silent.
+    // Non-auth balance-read failure (429 / 5xx / network) — previously silent.
     // Scenario 3: raise a transient rate-limit/unavailable alert (spec §2).
     raiseAlert(db, {
       type: "AUTOBUY_RATE_LIMITED",
       latestRunId: null,
-      context: { http_status: accounts.status, retry_after: null, source: "list_accounts", error: accounts.error },
+      context: { http_status: balances.httpStatus, retry_after: null, source: "list_accounts", error: balances.detail },
     });
-    console.warn(`[autobuy-scheduler] account check failed: ${accounts.status} ${accounts.error}`);
+    console.warn(`[autobuy-scheduler] account check failed: ${balances.httpStatus} ${balances.detail}`);
     return;
   }
-  // listAccounts ok — credentials demonstrably valid and the API reachable.
+  // Balance read ok — credentials demonstrably valid and the API reachable.
   // Clear any active auth / rate-limit alerts (spec §3 aggressive api_ok clear).
   clearAlerts(db, "api_ok");
 
-  // Read both USD and USDC balances; an absent account is treated as 0
-  // (mirroring the existing Number.isFinite guard). selectCurrency (§2) then
-  // picks which to spend, bounded by the configured preference.
-  const usdAcct = accounts.data.accounts.find((a) => a.currency === "USD");
-  const parsedUsd = usdAcct ? Number(usdAcct.available_balance.value) : 0;
-  const usdBalance = Number.isFinite(parsedUsd) ? parsedUsd : 0;
-
-  const usdcAcct = accounts.data.accounts.find((a) => a.currency === "USDC");
-  const parsedUsdc = usdcAcct ? Number(usdcAcct.available_balance.value) : 0;
-  const usdcBalance = Number.isFinite(parsedUsdc) ? parsedUsdc : 0;
+  // Both USD and USDC balances (an absent or unreadable one reads 0, in the
+  // adapter). selectCurrency (§2) then picks which to spend, bounded by the
+  // configured preference.
+  const usdBalance = balances.balances.usd;
+  const usdcBalance = balances.balances.usdc;
 
   const preference = cfg.currency_preference as CurrencyPreference;
   const currenciesChecked = currenciesCheckedFor(preference);
@@ -301,16 +286,16 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   }
 
   // All checks pass — place the buy in the selected currency.
-  // TODO: v1 known limitation — if placeMarketBuy returns a network-level error
+  // TODO: v1 known limitation — if the buy returns a network-level error
   // (status=0), Coinbase may still have committed the order. On the next tick
   // this path would generate a fresh client_order_id and could double-fill.
   // Future: reconcile by querying Coinbase for recent autobuy-prefixed orders
   // before re-placing. For v1 we accept this low-probability edge; operators
   // have per-buy + rolling caps as the outer containment.
-  const placed = await placeMarketBuy(creds, intendedUsd, currency);
+  const placed = await exchange.buy(session, intendedUsd, currency);
   if (!placed.ok) {
-    const runId = insertFailedBuyRow(db, placed.error, mult, val, intendedUsd, null, currenciesChecked);
-    raiseOrderFailureAlert(db, placed.status, placed.error, runId, null);
+    const runId = insertFailedBuyRow(db, placed.detail, mult, val, intendedUsd, null, currenciesChecked);
+    raiseOrderFailureAlert(db, placed.httpStatus, placed.errorClass, placed.detail, runId, null);
     caps.recordFailure(db);
     scheduleNext(db, cfg);
     return;
@@ -323,13 +308,13 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
      VALUES (?, ?, ?, ?, ?, ?, 'buy_placed', ?, ?, ?, ?, ?)`,
   ).run(
     now, val.z_score, val.zone, mult, cfg.base_unit_usd, intendedUsd,
-    placed.order_id, currenciesChecked, currency, now, now,
+    placed.orderId, currenciesChecked, currency, now, now,
   );
   // Buy placed successfully — clear any active insufficient-funds / order-failed
   // alerts (spec §3). Auth / rate-limit already cleared via the api_ok above.
   clearAlerts(db, "buy");
   scheduleNext(db, cfg);
-  console.log(`[autobuy-scheduler] placed buy order=${placed.order_id} ${currency.toLowerCase()}=${intendedUsd} zone=${val.zone}`);
+  console.log(`[autobuy-scheduler] placed buy order=${placed.orderId} ${currency.toLowerCase()}=${intendedUsd} zone=${val.zone}`);
 }
 
 function parseZoneMultiplier(zoneMultipliersJson: string, zone: string): number {
@@ -789,20 +774,16 @@ export async function runCatchUp(
     };
   }
 
-  const creds = loadCredentials(db);
-  if (!creds) return { ok: false, code: "no_credentials", reason: "no_credentials" };
+  const session = openExchange(db);
+  if (!session) return { ok: false, code: "no_credentials", reason: "no_credentials" };
 
-  const accounts = await listAccounts(creds);
-  if (!accounts.ok) {
-    return { ok: false, code: "account_check_failed", reason: `http_${accounts.status}` };
+  const balances = await exchange.getBalances(session);
+  if (!balances.ok) {
+    return { ok: false, code: "account_check_failed", reason: `http_${balances.httpStatus}` };
   }
 
-  const usdAcct = accounts.data.accounts.find((a) => a.currency === "USD");
-  const parsedUsd = usdAcct ? Number(usdAcct.available_balance.value) : 0;
-  const usdBalance = Number.isFinite(parsedUsd) ? parsedUsd : 0;
-  const usdcAcct = accounts.data.accounts.find((a) => a.currency === "USDC");
-  const parsedUsdc = usdcAcct ? Number(usdcAcct.available_balance.value) : 0;
-  const usdcBalance = Number.isFinite(parsedUsdc) ? parsedUsdc : 0;
+  const usdBalance = balances.balances.usd;
+  const usdcBalance = balances.balances.usdc;
 
   const preference = cfg.currency_preference as CurrencyPreference;
   const currenciesChecked = currenciesCheckedFor(preference);
@@ -824,12 +805,12 @@ export async function runCatchUp(
     };
   }
 
-  const placed = await placeMarketBuy(creds, total, currency);
+  const placed = await exchange.buy(session, total, currency);
   if (!placed.ok) {
-    const runId = insertFailedBuyRow(db, placed.error, mult, val, total, null, currenciesChecked);
-    raiseOrderFailureAlert(db, placed.status, placed.error, runId, null);
+    const runId = insertFailedBuyRow(db, placed.detail, mult, val, total, null, currenciesChecked);
+    raiseOrderFailureAlert(db, placed.httpStatus, placed.errorClass, placed.detail, runId, null);
     caps.recordFailure(db);
-    return { ok: false, code: "order_failed", reason: placed.error.slice(0, 200) };
+    return { ok: false, code: "order_failed", reason: placed.detail.slice(0, 200) };
   }
 
   // ONE buy_placed row, entering the normal hold → sweep state machine exactly
@@ -843,7 +824,7 @@ export async function runCatchUp(
      VALUES (?, ?, ?, ?, ?, ?, 'buy_placed', ?, ?, ?, ?, ?)`,
   ).run(
     now, val.z_score, val.zone, mult, cfg.base_unit_usd, total,
-    placed.order_id, currenciesChecked, currency, now, now,
+    placed.orderId, currenciesChecked, currency, now, now,
   );
   const runId = Number(info.lastInsertRowid);
 
@@ -854,7 +835,7 @@ export async function runCatchUp(
   for (const row of missed.slice(0, k)) claim.run(runId, now, row.id);
 
   clearAlerts(db, "buy");
-  console.log(`[autobuy-catchup] placed ${k}x order=${placed.order_id} ${currency.toLowerCase()}=${total} remainder=${missed.length - k}`);
+  console.log(`[autobuy-catchup] placed ${k}x order=${placed.orderId} ${currency.toLowerCase()}=${total} remainder=${missed.length - k}`);
 
   return {
     ok: true,
@@ -862,7 +843,7 @@ export async function runCatchUp(
     intervals: k,
     usd: total,
     currency,
-    order_id: placed.order_id,
+    order_id: placed.orderId,
     remainder_intervals: missed.length - k,
   };
 }
@@ -877,33 +858,32 @@ async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
   ).all() as Array<{ id: number; coinbase_order_id: string }>;
   if (rows.length === 0) return;
 
-  const creds = loadCredentials(db);
-  if (!creds) { pauseWithReason(db, "no_credentials"); return; }
+  const session = openExchange(db);
+  if (!session) { pauseWithReason(db, "no_credentials"); return; }
 
   for (const row of rows) {
-    const res = await pollOrder(creds, row.coinbase_order_id);
+    const res = await exchange.getOrder(session, row.coinbase_order_id);
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
+      if (res.errorClass === "auth") {
         pauseWithReason(db, "credentials_invalid");
         raiseAlert(db, {
           type: "AUTOBUY_AUTH_FAILURE",
           latestRunId: row.id,
-          context: { paused_reason: "credentials_invalid", http_status: res.status, source: "order_poll", error: res.error },
+          context: { paused_reason: "credentials_invalid", http_status: res.httpStatus, source: "order_poll", error: res.detail },
         });
         return;
       }
-      console.warn(`[autobuy-scheduler] pollOrder failed order=${row.coinbase_order_id}: ${res.error}`);
+      console.warn(`[autobuy-scheduler] pollOrder failed order=${row.coinbase_order_id}: ${res.detail}`);
       continue; // next tick retries
     }
     // A successful poll proves the credentials are valid and the API reachable.
     clearAlerts(db, "api_ok");
     const order = res.order;
     const now = nowSec();
-    if (order.status === "FILLED") {
-      const parsedMs = order.filled_at ? Date.parse(order.filled_at) : NaN;
-      const filledAt = Number.isFinite(parsedMs) ? Math.floor(parsedMs / 1000) : now;
-      const filledBtc = Number(order.filled_size);
-      const filledUsd = Number(order.filled_value);
+    if (order.state === "filled") {
+      const filledAt = order.filledAt ?? now;
+      const filledBtc = order.filledBtc;
+      const filledUsd = order.filledUsd;
       if (!Number.isFinite(filledBtc) || !Number.isFinite(filledUsd)) {
         db.prepare(
           `UPDATE autobuy_runs
@@ -914,9 +894,9 @@ async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
         raiseAlert(db, {
           type: "AUTOBUY_ORDER_FAILED",
           latestRunId: row.id,
-          context: { latest_run_id: row.id, error_code: "unparseable_fill_amount", error_message: null, order_status: order.status },
+          context: { latest_run_id: row.id, error_code: "unparseable_fill_amount", error_message: null, order_status: order.rawStatus },
         });
-        console.warn(`[autobuy-scheduler] unparseable fill amounts order=${row.coinbase_order_id} size=${order.filled_size} value=${order.filled_value}`);
+        console.warn(`[autobuy-scheduler] unparseable fill amounts order=${row.coinbase_order_id} btc=${filledBtc} usd=${filledUsd}`);
         continue;
       }
       db.prepare(
@@ -927,20 +907,20 @@ async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
       // Fill confirmed — clear any active insufficient-funds / order-failed alerts (spec §3).
       clearAlerts(db, "buy");
       console.log(`[autobuy-scheduler] filled order=${row.coinbase_order_id} btc=${filledBtc} usd=${filledUsd}`);
-    } else if (order.status === "CANCELLED" || order.status === "EXPIRED" || order.status === "FAILED") {
+    } else if (order.state === "cancelled" || order.state === "expired" || order.state === "failed") {
       db.prepare(
         `UPDATE autobuy_runs
          SET status = 'failed_buy', error_code = ?, updated_at = ?
          WHERE id = ?`,
-      ).run(order.status.toLowerCase(), now, row.id);
+      ).run(order.state, now, row.id);
       caps.recordFailure(db);
       raiseAlert(db, {
         type: "AUTOBUY_ORDER_FAILED",
         latestRunId: row.id,
-        context: { latest_run_id: row.id, error_code: order.status.toLowerCase(), error_message: null, order_status: order.status },
+        context: { latest_run_id: row.id, error_code: order.state, error_message: null, order_status: order.rawStatus },
       });
     }
-    // OPEN / PENDING → leave as-is, poll again next tick
+    // pending (OPEN / PENDING on Coinbase) → leave as-is, poll again next tick
   }
 }
 
@@ -1000,43 +980,42 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
   ).get() as { total: number };
   if (totalRow.total < SWEEP_MIN_BTC) return; // defer, retry next week
 
-  const creds = loadCredentials(db);
-  if (!creds) { pauseWithReason(db, "no_credentials"); return; }
+  const session = openExchange(db);
+  if (!session) { pauseWithReason(db, "no_credentials"); return; }
 
-  const accounts = await listAccounts(creds);
-  if (!accounts.ok) {
-    if (accounts.status === 401 || accounts.status === 403) {
+  const balances = await exchange.getBalances(session);
+  if (!balances.ok) {
+    if (balances.errorClass === "auth") {
       pauseWithReason(db, "credentials_invalid");
       raiseAlert(db, {
         type: "AUTOBUY_AUTH_FAILURE",
         latestRunId: null,
-        context: { paused_reason: "credentials_invalid", http_status: accounts.status, source: "list_accounts", error: accounts.error },
+        context: { paused_reason: "credentials_invalid", http_status: balances.httpStatus, source: "list_accounts", error: balances.detail },
       });
     } else {
       raiseAlert(db, {
         type: "AUTOBUY_RATE_LIMITED",
         latestRunId: null,
-        context: { http_status: accounts.status, retry_after: null, source: "list_accounts", error: accounts.error },
+        context: { http_status: balances.httpStatus, retry_after: null, source: "list_accounts", error: balances.detail },
       });
     }
     return;
   }
-  // Sweep-path listAccounts ok — same aggressive api_ok clear as the buy path.
+  // Sweep-path balance read ok — same aggressive api_ok clear as the buy path.
   clearAlerts(db, "api_ok");
-  const btcAcct = accounts.data.accounts.find((a) => a.currency === "BTC");
-  if (!btcAcct) {
+  if (balances.balances.btc === null) {
     console.warn("[autobuy-scheduler] no BTC account found");
     return;
   }
 
-  const withdrawResult = await placeWithdraw(
-    creds, btcAcct.uuid, cfg.withdraw_address, totalRow.total,
-  );
+  const withdrawResult = await exchange.withdraw(session, cfg.withdraw_address, totalRow.total);
   const now = nowSec();
 
   if (!withdrawResult.ok) {
-    // Record a failed sweep row for audit + mark all assigned runs as failed_withdraw
-    const errorCode = withdrawResult.status === 400 ? "address_not_whitelisted" : `http_${withdrawResult.status}`;
+    // Record a failed sweep row for audit + mark all assigned runs as failed_withdraw.
+    // The exchange adapter decides what an address refusal is (a 400 on Coinbase).
+    const addressRejected = withdrawResult.errorClass === "withdraw_address_rejected";
+    const errorCode = addressRejected ? "address_not_whitelisted" : `http_${withdrawResult.httpStatus}`;
     // Capture which runs are affected before the UPDATE rewrites their status,
     // so the critical alert can point at the latest affected run (spec §2 Sc.5).
     const affected = db.prepare(
@@ -1046,13 +1025,13 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
     const sweepInfo = db.prepare(
       `INSERT INTO autobuy_sweeps (swept_at, btc_amount, status, error_code, error_message)
        VALUES (?, ?, 'failed', ?, ?)`,
-    ).run(now, totalRow.total, errorCode, withdrawResult.error.slice(0, 500));
+    ).run(now, totalRow.total, errorCode, withdrawResult.detail.slice(0, 500));
     db.prepare(
       `UPDATE autobuy_runs
        SET status = 'failed_withdraw', error_message = ?, updated_at = ?
        WHERE status = 'sweep_assigned'`,
-    ).run(withdrawResult.error.slice(0, 500), now);
-    if (withdrawResult.status === 400) {
+    ).run(withdrawResult.detail.slice(0, 500), now);
+    if (addressRejected) {
       pauseWithReason(db, "address_not_whitelisted");
     }
     caps.recordFailure(db);
@@ -1065,7 +1044,7 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
         btc_amount: totalRow.total,
         buy_completed_at: affected?.buy_completed_at ?? null,
         error_code: errorCode,
-        error_message: withdrawResult.error.slice(0, 500),
+        error_message: withdrawResult.detail.slice(0, 500),
       },
     });
     return;
@@ -1075,14 +1054,14 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
   const sweepInsert = db.prepare(
     `INSERT INTO autobuy_sweeps (swept_at, btc_amount, coinbase_tx_id, status)
      VALUES (?, ?, ?, 'placed') RETURNING id`,
-  ).get(now, totalRow.total, withdrawResult.transaction_id) as { id: number };
+  ).get(now, totalRow.total, withdrawResult.withdrawalId) as { id: number };
 
   db.prepare(
     `UPDATE autobuy_runs
      SET status = 'withdraw_placed', withdraw_sweep_id = ?, updated_at = ?
      WHERE status = 'sweep_assigned'`,
   ).run(sweepInsert.id, now);
-  console.log(`[autobuy-scheduler] sweep placed tx=${withdrawResult.transaction_id} btc=${totalRow.total}`);
+  console.log(`[autobuy-scheduler] sweep placed tx=${withdrawResult.withdrawalId} btc=${totalRow.total}`);
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -1095,33 +1074,33 @@ async function stepPollWithdraws(db: Database.Database): Promise<void> {
   ).all() as Array<{ id: number; coinbase_tx_id: string }>;
   if (sweeps.length === 0) return;
 
-  const creds = loadCredentials(db);
-  if (!creds) return;
+  const session = openExchange(db);
+  if (!session) return;
 
-  const accounts = await listAccounts(creds);
-  if (!accounts.ok) return;
-  const btcAcct = accounts.data.accounts.find((a) => a.currency === "BTC");
-  if (!btcAcct) return;
+  const balances = await exchange.getBalances(session);
+  if (!balances.ok) return;
+  if (balances.balances.btc === null) return;
 
   for (const sweep of sweeps) {
-    const res = await pollWithdraw(creds, btcAcct.uuid, sweep.coinbase_tx_id);
+    const res = await exchange.getWithdrawal(session, sweep.coinbase_tx_id);
     if (!res.ok) continue; // retry next tick
 
     const now = nowSec();
-    if (res.withdraw.status === "completed") {
+    const w = res.withdrawal;
+    if (w.state === "completed") {
       db.prepare(
         `UPDATE autobuy_sweeps SET status = 'confirmed', withdraw_txid = ? WHERE id = ?`,
-      ).run(res.withdraw.network_tx_hash ?? null, sweep.id);
+      ).run(w.txHash, sweep.id);
       db.prepare(
         `UPDATE autobuy_runs
          SET status = 'withdraw_confirmed', withdraw_txid = ?, updated_at = ?
          WHERE withdraw_sweep_id = ? AND status = 'withdraw_placed'`,
-      ).run(res.withdraw.network_tx_hash ?? null, now, sweep.id);
+      ).run(w.txHash, now, sweep.id);
       caps.resetFailureCounter(db);
       // Sweep confirmed — clear any active sweep-failed alert (spec §3).
       clearAlerts(db, "sweep");
-      console.log(`[autobuy-scheduler] sweep confirmed sweep=${sweep.id} txid=${res.withdraw.network_tx_hash ?? "<pending>"}`);
-    } else if (res.withdraw.status === "failed" || res.withdraw.status === "cancelled") {
+      console.log(`[autobuy-scheduler] sweep confirmed sweep=${sweep.id} txid=${w.txHash ?? "<pending>"}`);
+    } else if (w.state === "failed" || w.state === "cancelled") {
       const sweepRow = db.prepare(
         `SELECT btc_amount FROM autobuy_sweeps WHERE id = ?`,
       ).get(sweep.id) as { btc_amount: number } | undefined;
@@ -1131,7 +1110,7 @@ async function stepPollWithdraws(db: Database.Database): Promise<void> {
       ).get(sweep.id) as { id: number | null; buy_completed_at: number | null };
       db.prepare(
         `UPDATE autobuy_sweeps SET status = 'failed', error_code = ? WHERE id = ?`,
-      ).run(res.withdraw.status, sweep.id);
+      ).run(w.state, sweep.id);
       db.prepare(
         `UPDATE autobuy_runs
          SET status = 'failed_withdraw', updated_at = ?
@@ -1146,7 +1125,7 @@ async function stepPollWithdraws(db: Database.Database): Promise<void> {
           latest_run_id: affected?.id ?? null,
           btc_amount: sweepRow?.btc_amount ?? null,
           buy_completed_at: affected?.buy_completed_at ?? null,
-          error_code: res.withdraw.status,
+          error_code: w.state,
           error_message: null,
         },
       });
