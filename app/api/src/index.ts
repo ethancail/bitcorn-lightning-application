@@ -105,6 +105,7 @@ import {
 import { listAccounts } from "./autoBuy/coinbaseClient";
 import { encrypt, decrypt } from "./autoBuy/credentials";
 import * as caps from "./autoBuy/caps";
+import { activeProvider } from "./autoBuy/exchange";
 import { withHoldEnd } from "./autoBuy/hold";
 import {
   getCurrent,
@@ -4439,10 +4440,21 @@ async function dispatchRequest(
         res.end(JSON.stringify({ error: "config_missing" }));
         return;
       }
-      const creds = db.prepare(`SELECT id FROM coinbase_credentials WHERE id = 1`).get();
+      // The ACTIVE provider's credentials (kraken-autobuy P4b). A Kraken key is
+      // usable only once the node's address was matched to a saved Kraken
+      // address_id (P4d); until then the sweep would have nowhere to go.
+      const provider = activeProvider(db);
+      const creds = provider === "kraken"
+        ? db.prepare(`SELECT withdraw_address_id FROM kraken_credentials WHERE id = 1`).get() as { withdraw_address_id: string | null } | undefined
+        : db.prepare(`SELECT id FROM coinbase_credentials WHERE id = 1`).get();
       if (!creds) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "no_credentials" }));
+        return;
+      }
+      if (provider === "kraken" && !(creds as { withdraw_address_id: string | null }).withdraw_address_id) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "address_not_whitelisted" }));
         return;
       }
       if (!cfg.withdraw_address_whitelisted_at) {
@@ -4460,6 +4472,67 @@ async function dispatchRequest(
       res.writeHead(500, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "internal_error" }));
     }
+    return;
+  }
+
+  // The provider switch (kraken-autobuy P4b; D2, rulings D-P4-2/-4/-7).
+  //
+  // DRAIN GUARD: refused while any run or sweep is in flight on the current
+  // provider, so one sweep never mixes exchanges (ruling S1) and every in-flight
+  // row is finished by the adapter that started it. In flight = a run that is
+  // buy_placed, buy_filled, awaiting_withdraw_hold, sweep_assigned or
+  // withdraw_placed, or a sweep that is placed or awaiting_approval (D-P4-4).
+  //
+  // A switch PAUSES Auto-Buy and clears withdraw_address_whitelisted_at: the
+  // address stays, but its approval on the old exchange says nothing about the
+  // new one. Re-enabling runs /enable's checks against the new provider.
+  if (req.method === "POST" && req.url === "/api/autobuy/provider") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const provider = parsed?.provider;
+        if (provider !== "coinbase" && provider !== "kraken") {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_provider" }));
+          return;
+        }
+        if (provider === activeProvider(db)) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: true, provider, changed: false }));
+          return;
+        }
+        const inFlight = db.prepare(
+          `SELECT
+             (SELECT COUNT(*) FROM autobuy_runs WHERE status IN
+                ('buy_placed','buy_filled','awaiting_withdraw_hold','sweep_assigned','withdraw_placed')) AS runs,
+             (SELECT COUNT(*) FROM autobuy_sweeps WHERE status IN ('placed','awaiting_approval')) AS sweeps`,
+        ).get() as { runs: number; sweeps: number };
+        if (inFlight.runs > 0 || inFlight.sweeps > 0) {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "provider_switch_in_flight", in_flight_runs: inFlight.runs, in_flight_sweeps: inFlight.sweeps }));
+          return;
+        }
+        db.prepare(
+          `UPDATE autobuy_config
+              SET provider = ?, enabled = 0, paused_reason = 'provider_changed', withdraw_address_whitelisted_at = NULL
+            WHERE id = 1`,
+        ).run(provider);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, provider, changed: true }));
+      } catch (err: any) {
+        console.error("[autobuy-provider]", err);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "internal_error" }));
+      }
+    });
     return;
   }
 

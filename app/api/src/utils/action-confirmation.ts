@@ -417,6 +417,10 @@ export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: stri
   { method: "POST", match: { kind: "exact", url: "/api/admin/swaps/loop-in" }, why: "410 deprecated, no body" },
   { method: "POST", match: { kind: "exact", url: "/api/autobuy/enable" }, why: "config" },
   { method: "POST", match: { kind: "exact", url: "/api/autobuy/pause" }, why: "config" },
+  // kraken-autobuy P4b (ruling D-P4-2): the provider switch. It decides which
+  // exchange later buys go to but carries no amount, and it pauses Auto-Buy;
+  // exempt as config, by the same position as the capital-policy write above.
+  { method: "POST", match: { kind: "exact", url: "/api/autobuy/provider" }, why: "config" },
   { method: "POST", match: { kind: "exact", url: "/api/autobuy/credentials" }, why: "credential storage" },
   { method: "DELETE", match: { kind: "exact", url: "/api/autobuy/credentials" }, why: "credential removal" },
   { method: "POST", match: { kind: "exact", url: "/api/autobuy/credentials/verify" }, why: "credential check" },

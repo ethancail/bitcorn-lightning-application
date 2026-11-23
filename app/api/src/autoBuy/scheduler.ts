@@ -17,9 +17,6 @@ import { holdSecondsFor } from "./hold";
 
 const TICK_INTERVAL_MS = 15 * 60 * 1000;
 const SWEEP_MIN_BTC = 0.0001;
-// Coinbase's hold, from the one source the API also reports from. P4 makes the
-// cutoff per provider.
-const WITHDRAW_HOLD_SECONDS = holdSecondsFor("coinbase");
 
 // ───────────────────────────────────────────────────────────────────────
 // Public entry point
@@ -140,7 +137,30 @@ function readConfig(db: Database.Database) {
     paused_reason: string | null;
     last_run_at: number | null;
     next_run_at: number | null;
+    /** Migration 084. Read through exchange.activeProvider, which treats a missing column as Coinbase. */
+    provider?: string;
   };
+}
+
+/**
+ * The provider a new row belongs to: the node's active one (kraken-autobuy P4b).
+ * Every insert into autobuy_runs and autobuy_sweeps writes it explicitly; the
+ * column's DEFAULT exists only so pre-084 rows read 'coinbase'.
+ */
+function providerOf(db: Database.Database): "coinbase" | "kraken" {
+  return exchange.activeProvider(db);
+}
+
+/**
+ * The client order id for a buy (ruling D-P4-3): keyed to the INTERVAL SLOT, so
+ * a retry after a crash or an unknown outcome re-derives the same id and the
+ * Kraken adapter finds the order instead of placing another. A scheduled buy's
+ * slot is next_run_at, which advances only after the buy is recorded; a
+ * catch-up's is its oldest claimed missed slot, claimed only after the buy.
+ * Kraken's free-text form: ASCII, at most 18 characters. Coinbase ignores it.
+ */
+export function clientOrderIdFor(kind: "scheduled" | "catchup", slot: number): string {
+  return `${kind === "scheduled" ? "bcab" : "bccu"}-${Math.floor(slot).toString(36)}`;
 }
 
 function frequencyToSeconds(frequency: string): number {
@@ -295,7 +315,7 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   // Future: reconcile by querying Coinbase for recent autobuy-prefixed orders
   // before re-placing. For v1 we accept this low-probability edge; operators
   // have per-buy + rolling caps as the outer containment.
-  const placed = await exchange.buy(session, intendedUsd, currency);
+  const placed = await exchange.buy(session, intendedUsd, currency, clientOrderIdFor("scheduled", cfg.next_run_at ?? now));
   if (!placed.ok) {
     const runId = insertFailedBuyRow(db, placed.detail, mult, val, intendedUsd, null, currenciesChecked);
     raiseOrderFailureAlert(db, placed.httpStatus, placed.errorClass, placed.detail, runId, null);
@@ -307,11 +327,11 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   db.prepare(
     `INSERT INTO autobuy_runs
        (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
-        status, coinbase_order_id, currencies_checked, currency_used, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'buy_placed', ?, ?, ?, ?, ?)`,
+        status, coinbase_order_id, currencies_checked, currency_used, created_at, updated_at, provider)
+     VALUES (?, ?, ?, ?, ?, ?, 'buy_placed', ?, ?, ?, ?, ?, ?)`,
   ).run(
     now, val.z_score, val.zone, mult, cfg.base_unit_usd, intendedUsd,
-    placed.orderId, currenciesChecked, currency, now, now,
+    placed.orderId, currenciesChecked, currency, now, now, session.provider,
   );
   // Buy placed successfully — clear any active insufficient-funds / order-failed
   // alerts (spec §3). Auth / rate-limit already cleared via the api_ok above.
@@ -343,9 +363,9 @@ function insertSkippedRow(
   const info = db.prepare(
     `INSERT INTO autobuy_runs
        (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
-        status, error_code, currencies_checked, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
-  ).run(now, val.z_score, val.zone, multiplier, intendedUsd, status, reason, currenciesChecked, now, now);
+        status, error_code, currencies_checked, created_at, updated_at, provider)
+     VALUES (?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(now, val.z_score, val.zone, multiplier, intendedUsd, status, reason, currenciesChecked, now, now, providerOf(db));
   return Number(info.lastInsertRowid);
 }
 
@@ -362,9 +382,9 @@ function insertFailedBuyRow(
   const info = db.prepare(
     `INSERT INTO autobuy_runs
        (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
-        status, coinbase_order_id, error_message, currencies_checked, created_at, updated_at)
-     VALUES (?, ?, ?, ?, NULL, ?, 'failed_buy', ?, ?, ?, ?, ?)`,
-  ).run(now, val.z_score, val.zone, multiplier, intendedUsd, orderId, errorMessage.slice(0, 500), currenciesChecked, now, now);
+        status, coinbase_order_id, error_message, currencies_checked, created_at, updated_at, provider)
+     VALUES (?, ?, ?, ?, NULL, ?, 'failed_buy', ?, ?, ?, ?, ?, ?)`,
+  ).run(now, val.z_score, val.zone, multiplier, intendedUsd, orderId, errorMessage.slice(0, 500), currenciesChecked, now, now, providerOf(db));
   return Number(info.lastInsertRowid);
 }
 
@@ -457,9 +477,9 @@ function insertMissedIntervalRow(db: Database.Database, slot: number, baseUnitUs
   db.prepare(
     `INSERT INTO autobuy_runs
        (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
-        status, error_code, created_at, updated_at)
-     VALUES (?, NULL, NULL, NULL, ?, ?, ?, 'clamped_past_interval', ?, ?)`,
-  ).run(slot, baseUnitUsd, baseUnitUsd, STATUS_MISSED_INTERVAL, now, now);
+        status, error_code, created_at, updated_at, provider)
+     VALUES (?, NULL, NULL, NULL, ?, ?, ?, 'clamped_past_interval', ?, ?, ?)`,
+  ).run(slot, baseUnitUsd, baseUnitUsd, STATUS_MISSED_INTERVAL, now, now, providerOf(db));
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -808,7 +828,8 @@ export async function runCatchUp(
     };
   }
 
-  const placed = await exchange.buy(session, total, currency);
+  // missed is oldest first, and the oldest k are claimed only after this buy.
+  const placed = await exchange.buy(session, total, currency, clientOrderIdFor("catchup", missed[0].scheduled_for));
   if (!placed.ok) {
     const runId = insertFailedBuyRow(db, placed.detail, mult, val, total, null, currenciesChecked);
     raiseOrderFailureAlert(db, placed.httpStatus, placed.errorClass, placed.detail, runId, null);
@@ -823,11 +844,11 @@ export async function runCatchUp(
   const info = db.prepare(
     `INSERT INTO autobuy_runs
        (scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
-        status, coinbase_order_id, currencies_checked, currency_used, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'buy_placed', ?, ?, ?, ?, ?)`,
+        status, coinbase_order_id, currencies_checked, currency_used, created_at, updated_at, provider)
+     VALUES (?, ?, ?, ?, ?, ?, 'buy_placed', ?, ?, ?, ?, ?, ?)`,
   ).run(
     now, val.z_score, val.zone, mult, cfg.base_unit_usd, total,
-    placed.orderId, currenciesChecked, currency, now, now,
+    placed.orderId, currenciesChecked, currency, now, now, session.provider,
   );
   const runId = Number(info.lastInsertRowid);
 
@@ -856,9 +877,12 @@ export async function runCatchUp(
 // ───────────────────────────────────────────────────────────────────────
 
 async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
+  // Only the active provider's rows: a row is polled through the adapter that
+  // placed it. The drain guard (POST /api/autobuy/provider) keeps the other
+  // provider's set empty.
   const rows = db.prepare(
-    `SELECT id, coinbase_order_id FROM autobuy_runs WHERE status = 'buy_placed' LIMIT 10`,
-  ).all() as Array<{ id: number; coinbase_order_id: string }>;
+    `SELECT id, coinbase_order_id FROM autobuy_runs WHERE status = 'buy_placed' AND provider = ? LIMIT 10`,
+  ).all(providerOf(db)) as Array<{ id: number; coinbase_order_id: string }>;
   if (rows.length === 0) return;
 
   const session = openExchange(db);
@@ -933,27 +957,32 @@ async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
 
 async function stepAssignToSweep(db: Database.Database): Promise<void> {
   const now = nowSec();
-  const cutoff = now - WITHDRAW_HOLD_SECONDS;
+  // Each row's hold is its own provider's (hold.ts; ruling S2, E1): Coinbase
+  // 72 h, Kraken 7 days. Pure DB work, no exchange call.
+  for (const provider of ["coinbase", "kraken"] as const) {
+    const cutoff = now - holdSecondsFor(provider);
 
-  // Rows whose hold has elapsed → sweep_assigned. Covers both buy_filled
-  // and awaiting_withdraw_hold states, so a row can skip the intermediate
-  // rename if it was filled long enough ago.
-  db.prepare(
-    `UPDATE autobuy_runs
-     SET status = 'sweep_assigned', updated_at = ?
-     WHERE status IN ('buy_filled', 'awaiting_withdraw_hold')
-       AND filled_at IS NOT NULL
-       AND filled_at <= ?`,
-  ).run(now, cutoff);
+    // Rows whose hold has elapsed → sweep_assigned. Covers both buy_filled
+    // and awaiting_withdraw_hold states, so a row can skip the intermediate
+    // rename if it was filled long enough ago.
+    db.prepare(
+      `UPDATE autobuy_runs
+       SET status = 'sweep_assigned', updated_at = ?
+       WHERE status IN ('buy_filled', 'awaiting_withdraw_hold')
+         AND provider = ?
+         AND filled_at IS NOT NULL
+         AND filled_at <= ?`,
+    ).run(now, provider, cutoff);
 
-  // Remaining buy_filled rows are genuinely still in their hold → rename for
-  // operator visibility. Skip rows without filled_at (shouldn't happen, but
-  // don't strand them in awaiting_withdraw_hold if it does).
-  db.prepare(
-    `UPDATE autobuy_runs
-     SET status = 'awaiting_withdraw_hold', updated_at = ?
-     WHERE status = 'buy_filled' AND filled_at IS NOT NULL AND filled_at > ?`,
-  ).run(now, cutoff);
+    // Remaining buy_filled rows are genuinely still in their hold → rename for
+    // operator visibility. Skip rows without filled_at (shouldn't happen, but
+    // don't strand them in awaiting_withdraw_hold if it does).
+    db.prepare(
+      `UPDATE autobuy_runs
+       SET status = 'awaiting_withdraw_hold', updated_at = ?
+       WHERE status = 'buy_filled' AND provider = ? AND filled_at IS NOT NULL AND filled_at > ?`,
+    ).run(now, provider, cutoff);
+  }
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -976,11 +1005,13 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
   ).get(todayStart) as { id: number } | undefined;
   if (alreadySwept) return;
 
-  // Total BTC across sweep_assigned rows
+  // Total BTC across the active provider's sweep_assigned rows. One sweep never
+  // mixes exchanges (ruling S1; the drain guard keeps the other set empty).
+  const provider = providerOf(db);
   const totalRow = db.prepare(
     `SELECT COALESCE(SUM(filled_btc), 0) AS total
-     FROM autobuy_runs WHERE status = 'sweep_assigned'`,
-  ).get() as { total: number };
+     FROM autobuy_runs WHERE status = 'sweep_assigned' AND provider = ?`,
+  ).get(provider) as { total: number };
   if (totalRow.total < SWEEP_MIN_BTC) return; // defer, retry next week
 
   const session = openExchange(db);
@@ -1023,17 +1054,17 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
     // so the critical alert can point at the latest affected run (spec §2 Sc.5).
     const affected = db.prepare(
       `SELECT MAX(id) AS id, MAX(filled_at) AS buy_completed_at
-       FROM autobuy_runs WHERE status = 'sweep_assigned'`,
-    ).get() as { id: number | null; buy_completed_at: number | null };
+       FROM autobuy_runs WHERE status = 'sweep_assigned' AND provider = ?`,
+    ).get(provider) as { id: number | null; buy_completed_at: number | null };
     const sweepInfo = db.prepare(
-      `INSERT INTO autobuy_sweeps (swept_at, btc_amount, status, error_code, error_message)
-       VALUES (?, ?, 'failed', ?, ?)`,
-    ).run(now, totalRow.total, errorCode, withdrawResult.detail.slice(0, 500));
+      `INSERT INTO autobuy_sweeps (swept_at, btc_amount, status, error_code, error_message, provider)
+       VALUES (?, ?, 'failed', ?, ?, ?)`,
+    ).run(now, totalRow.total, errorCode, withdrawResult.detail.slice(0, 500), provider);
     db.prepare(
       `UPDATE autobuy_runs
        SET status = 'failed_withdraw', error_message = ?, updated_at = ?
-       WHERE status = 'sweep_assigned'`,
-    ).run(withdrawResult.detail.slice(0, 500), now);
+       WHERE status = 'sweep_assigned' AND provider = ?`,
+    ).run(withdrawResult.detail.slice(0, 500), now, provider);
     if (addressRejected) {
       pauseWithReason(db, "address_not_whitelisted");
     }
@@ -1054,16 +1085,17 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
   }
 
   // Create the sweep row + link all sweep_assigned runs to it + transition them
+  // coinbase_tx_id holds the provider's withdrawal id (Kraken's too; D-P4-6).
   const sweepInsert = db.prepare(
-    `INSERT INTO autobuy_sweeps (swept_at, btc_amount, coinbase_tx_id, status)
-     VALUES (?, ?, ?, 'placed') RETURNING id`,
-  ).get(now, totalRow.total, withdrawResult.withdrawalId) as { id: number };
+    `INSERT INTO autobuy_sweeps (swept_at, btc_amount, coinbase_tx_id, status, provider)
+     VALUES (?, ?, ?, 'placed', ?) RETURNING id`,
+  ).get(now, totalRow.total, withdrawResult.withdrawalId, provider) as { id: number };
 
   db.prepare(
     `UPDATE autobuy_runs
      SET status = 'withdraw_placed', withdraw_sweep_id = ?, updated_at = ?
-     WHERE status = 'sweep_assigned'`,
-  ).run(sweepInsert.id, now);
+     WHERE status = 'sweep_assigned' AND provider = ?`,
+  ).run(sweepInsert.id, now, provider);
   console.log(`[autobuy-scheduler] sweep placed tx=${withdrawResult.withdrawalId} btc=${totalRow.total}`);
 }
 
@@ -1073,8 +1105,8 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
 
 async function stepPollWithdraws(db: Database.Database): Promise<void> {
   const sweeps = db.prepare(
-    `SELECT id, coinbase_tx_id FROM autobuy_sweeps WHERE status = 'placed' LIMIT 5`,
-  ).all() as Array<{ id: number; coinbase_tx_id: string }>;
+    `SELECT id, coinbase_tx_id FROM autobuy_sweeps WHERE status = 'placed' AND provider = ? LIMIT 5`,
+  ).all(providerOf(db)) as Array<{ id: number; coinbase_tx_id: string }>;
   if (sweeps.length === 0) return;
 
   const session = openExchange(db);
