@@ -290,6 +290,53 @@ describe("GET /api/autobuy/status for the web (P4e)", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+describe("the balance snapshot on the routes (P5)", () => {
+  const seedSnapshot = (usd: number, usdc: number, readAt: number) =>
+    db.prepare(
+      `INSERT OR REPLACE INTO autobuy_balance_snapshot (provider, usd_available, usdc_available, btc_available, read_at)
+       VALUES ('kraken', ?, ?, 0.002, ?)`,
+    ).run(usd, usdc, readAt);
+
+  it("K13 GET /status returns the snapshot and funds and makes ZERO Kraken calls", async () => {
+    db.prepare(`DELETE FROM autobuy_balance_snapshot`).run();
+    const now = Math.floor(Date.now() / 1000);
+    seedSnapshot(150, 1000, now - 60);
+    calls = [];
+    const r = await call("GET", "/api/autobuy/status");
+    expect(r.status).toBe(200);
+    expect(calls, "a status poll must not call Kraken").toEqual([]);
+    expect(r.body.balance_snapshot).toEqual({ usd_available: 150, usdc_available: 1000, btc_available: 0.002, read_at: now - 60, stale: false });
+    // The SAME basis as the warning (fundsCoverage): USD only, next buy = base × current multiplier.
+    const { fundsCoverage, readKrakenSnapshot } = await import("./balanceSnapshot");
+    expect(r.body.funds).toEqual(fundsCoverage(readKrakenSnapshot(db), 100, 1, Math.floor(Date.now() / 1000)));
+    expect(r.body.funds).toMatchObject({ currency: "USD", usd_available: 150, next_buy_usd: 100, buys_covered: 1, stale: false });
+  });
+
+  it("K13b a snapshot older than an hour is reported stale; none at all is null; Coinbase active is null", async () => {
+    db.prepare(`DELETE FROM autobuy_balance_snapshot`).run();
+    let r = await call("GET", "/api/autobuy/status");
+    expect(r.body.balance_snapshot).toBeNull();
+    expect(r.body.funds).toBeNull();
+    seedSnapshot(500, 0, Math.floor(Date.now() / 1000) - 7200);
+    r = await call("GET", "/api/autobuy/status");
+    expect(r.body.balance_snapshot.stale).toBe(true);
+    expect(r.body.funds.stale).toBe(true);
+    db.prepare(`UPDATE autobuy_config SET provider = 'coinbase' WHERE id = 1`).run();
+    r = await call("GET", "/api/autobuy/status");
+    expect(r.body.balance_snapshot).toBeNull();
+    expect(r.body.funds).toBeNull();
+  });
+
+  it("K14 verify refreshes the snapshot from its own balance read", async () => {
+    db.prepare(`DELETE FROM autobuy_balance_snapshot`).run();
+    await save();
+    await call("POST", "/api/autobuy/kraken/credentials/verify");
+    expect(db.prepare(`SELECT usd_available, usdc_available, btc_available FROM autobuy_balance_snapshot WHERE provider = 'kraken'`).get())
+      .toEqual({ usd_available: 200, usdc_available: 0, btc_available: 0.002 });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 describe("the setup-time STOP 2 warning (D-P4-13)", () => {
   it("K11 base × the SMALLEST non-zero multiplier vs max(costmin, ordermin × price): below → warned with the figures", async () => {
     db.prepare(`UPDATE autobuy_config SET base_unit_usd = 20 WHERE id = 1`).run(); // 20 × 0.25 = 5 < 9.99
