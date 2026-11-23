@@ -526,8 +526,12 @@ export interface KrakenWithdrawMethod {
 }
 
 /** GET /funding/v1/methods/withdraw?asset[class]=currency&asset[name]=BTC (Query Funds). */
-export async function krakenListWithdrawMethods(auth: KrakenAuth): Promise<KrakenResult<{ methods: KrakenWithdrawMethod[]; nextCursor: string | null }>> {
-  const r = await fundingCall(auth, "GET", "/funding/v1/methods/withdraw", BTC_ASSET_QUERY);
+export async function krakenListWithdrawMethods(
+  auth: KrakenAuth,
+  cursor?: string,
+): Promise<KrakenResult<{ methods: KrakenWithdrawMethod[]; nextCursor: string | null }>> {
+  // "Do not provide other request parameters with a cursor."
+  const r = await fundingCall(auth, "GET", "/funding/v1/methods/withdraw", cursor ? [["cursor", cursor]] : BTC_ASSET_QUERY);
   return parsed(r, statusOf(r), ({ value }) => {
     if (!Array.isArray(value.methods)) throw new Bad("methods");
     return {
@@ -552,9 +556,13 @@ export interface KrakenSavedAddress {
 }
 
 /** GET /funding/v1/addresses?scope[method_id]=… (Query Funds): addresses usable with that method. */
-export async function krakenListAddresses(auth: KrakenAuth, methodId: string): Promise<KrakenResult<{ addresses: KrakenSavedAddress[]; nextCursor: string | null }>> {
+export async function krakenListAddresses(
+  auth: KrakenAuth,
+  methodId: string,
+  cursor?: string,
+): Promise<KrakenResult<{ addresses: KrakenSavedAddress[]; nextCursor: string | null }>> {
   if (!UUID.test(methodId)) return invalid(`method_id is not a UUID: ${JSON.stringify(methodId)}`);
-  const r = await fundingCall(auth, "GET", "/funding/v1/addresses", [["scope[method_id]", methodId]]);
+  const r = await fundingCall(auth, "GET", "/funding/v1/addresses", cursor ? [["cursor", cursor]] : [["scope[method_id]", methodId]]);
   return parsed(r, statusOf(r), ({ value }) => {
     if (!Array.isArray(value.addresses)) throw new Bad("addresses");
     return {

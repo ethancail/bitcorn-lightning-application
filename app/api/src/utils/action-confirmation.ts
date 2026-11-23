@@ -343,8 +343,10 @@ export const CONFIRMED_ROUTES: ConfirmedRoute[] = [
  * "policy config" tag as a recorded position, not an accident of taint
  * direction.
  *
- * ONE RESIDUAL IS OPEN: /api/autobuy/credentials, POST and DELETE. Its
- * disposition is unmade. The decision above does not settle it in either
+ * ONE RESIDUAL IS OPEN: /api/autobuy/credentials, POST and DELETE, and since
+ * kraken-autobuy P4d its Kraken counterpart /api/autobuy/kraken/credentials,
+ * POST and DELETE (same nature: storing or removing a key that can move funds).
+ * Its disposition is unmade. The decision above does not settle it in either
  * direction and neither does this comment — do not read its presence in this
  * list as the answer.
  */
@@ -424,6 +426,12 @@ export const EXEMPT_MUTATIONS: Array<{ method: string; match: Matcher; why: stri
   { method: "POST", match: { kind: "exact", url: "/api/autobuy/credentials" }, why: "credential storage" },
   { method: "DELETE", match: { kind: "exact", url: "/api/autobuy/credentials" }, why: "credential removal" },
   { method: "POST", match: { kind: "exact", url: "/api/autobuy/credentials/verify" }, why: "credential check" },
+  // kraken-autobuy P4d: Kraken's credential routes, the same position as
+  // Coinbase's three above. They are INSIDE the open residual described at
+  // the head of this list; their presence here does not settle it.
+  { method: "POST", match: { kind: "exact", url: "/api/autobuy/kraken/credentials" }, why: "credential storage" },
+  { method: "DELETE", match: { kind: "exact", url: "/api/autobuy/kraken/credentials" }, why: "credential removal" },
+  { method: "POST", match: { kind: "exact", url: "/api/autobuy/kraken/credentials/verify" }, why: "credential check" },
   { method: "POST", match: { kind: "wrap", prefix: "/api/autobuy/alerts/", suffix: "/dismiss" }, why: "alert state" },
   { method: "PATCH", match: { kind: "exact", url: "/api/autobuy/config" }, why: "config" },
 ];

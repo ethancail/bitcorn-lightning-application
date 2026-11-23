@@ -258,6 +258,15 @@ describe("R · request shapes", () => {
     expect(calls[1].url).toBe(`${API}/funding/v1/withdrawals?cursor=CURSOR-2`);
     fundingGet(calls[0]);
   });
+
+  it("R13 methods and addresses page by cursor alone ('Do not provide other request parameters with a cursor')", async () => {
+    sequence(() => json({ methods: [] }), () => json({ addresses: [] }));
+    await krakenListWithdrawMethods(auth, "M-CURSOR");
+    await krakenListAddresses(auth, METHOD_ID, "A-CURSOR");
+    expect(calls[0].url).toBe(`${API}/funding/v1/methods/withdraw?cursor=M-CURSOR`);
+    expect(calls[1].url).toBe(`${API}/funding/v1/addresses?cursor=A-CURSOR`);
+    fundingGet(calls[0]);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

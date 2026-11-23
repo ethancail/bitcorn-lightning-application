@@ -107,6 +107,47 @@ import { encrypt, decrypt } from "./autoBuy/credentials";
 import * as caps from "./autoBuy/caps";
 import { activeProvider } from "./autoBuy/exchange";
 import { withHoldEnd } from "./autoBuy/hold";
+import { krakenNonceSource } from "./autoBuy/krakenNonce";
+import { KRAKEN_BALANCE_KEYS, krakenGetBalances, type KrakenAuth, type KrakenFailure } from "./autoBuy/krakenClient";
+import { minimumBuyWarning, resolveKrakenWithdrawAddress, verifyKrakenKey, type AddressResolution, type MinimumWarning } from "./autoBuy/krakenSetup";
+import { classifyKrakenFailure } from "./autoBuy/krakenProvider";
+
+// ── kraken-autobuy P4d helpers for the Kraken credential routes ─────────────
+
+/** A Kraken call that failed during key setup → the route's status, as Coinbase's routes do: 401 for a refused key, 502 otherwise. */
+function krakenSetupFailureStatus(f: KrakenFailure): number {
+  return classifyKrakenFailure(f) === "auth" ? 401 : 502;
+}
+
+function krakenFailureDetail(f: KrakenFailure): string {
+  return f.kind === "api_error" ? f.errors.join("; ") : f.kind === "http_error" ? `http_${f.httpStatus}` : f.kind === "timeout" ? "timeout" : f.detail;
+}
+
+/** The setup-time STOP 2 warning for the node's current settings (D-P4-13): live, never stored. */
+async function krakenMinimumWarning(): Promise<MinimumWarning | null> {
+  const cfg = db.prepare(`SELECT base_unit_usd, zone_multipliers FROM autobuy_config WHERE id = 1`).get() as
+    | { base_unit_usd: number; zone_multipliers: string }
+    | undefined;
+  if (!cfg) return null;
+  const val = await getCurrent();
+  return minimumBuyWarning(cfg.base_unit_usd, cfg.zone_multipliers, val.ok ? val.value.price_usd : null);
+}
+
+/**
+ * After an address lookup: store the resolved method and address ids and, when
+ * Kraken is the active provider, set or clear the whitelist the scheduler and
+ * /enable gate on. Not matched → the ids are NULL, so /enable refuses
+ * (address_not_whitelisted) until the farm saves the node's address in Kraken.
+ */
+function applyKrakenAddress(resolution: AddressResolution): void {
+  const matched = resolution.status === "matched" ? resolution : null;
+  db.prepare(`UPDATE kraken_credentials SET withdraw_method_id = ?, withdraw_address_id = ? WHERE id = 1`)
+    .run(matched?.methodId ?? null, matched?.addressId ?? null);
+  if (activeProvider(db) === "kraken") {
+    db.prepare(`UPDATE autobuy_config SET withdraw_address_whitelisted_at = ? WHERE id = 1`)
+      .run(matched ? Math.floor(Date.now() / 1000) : null);
+  }
+}
 import {
   getCurrent,
   getHistory,
@@ -4798,6 +4839,201 @@ async function dispatchRequest(
     return;
   }
 
+  // ── Kraken credentials (kraken-autobuy P4d; rulings K1, D-P4-6/-11/-12/-13) ──
+  // Separate from Coinbase's routes, which are unchanged. A key is stored only
+  // after it is read live and its permissions are EXACTLY the five K1 allows;
+  // then the node's withdraw_address is looked up among the account's saved
+  // addresses. No match still stores the key (the farm adds the address in
+  // Kraken's UI and presses Verify); /enable refuses until it matches.
+  // Confirmation: exempt as credential storage / removal / check, the same
+  // position as Coinbase's, and inside the same open residual
+  // (utils/action-confirmation.ts).
+
+  if (req.method === "POST" && req.url === "/api/autobuy/kraken/credentials") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    let body = "";
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", async () => {
+      try {
+        const parsed = JSON.parse(body || "{}");
+        const apiKey = typeof parsed?.api_key === "string" ? parsed.api_key.trim() : "";
+        const secret = typeof parsed?.api_secret === "string" ? parsed.api_secret.trim() : "";
+        if (!apiKey || !secret) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "api_key_and_api_secret_required" }));
+          return;
+        }
+        if (apiKey.length > 128 || !/^[A-Za-z0-9+/]+={0,2}$/.test(secret) || Buffer.from(secret, "base64").length < 32) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid_kraken_key_format" }));
+          return;
+        }
+        const auth: KrakenAuth = { apiKey, secret, nonce: krakenNonceSource(db) };
+
+        const key = await verifyKrakenKey(auth);
+        if (!key.ok && "failure" in key) {
+          console.error(`[autobuy-kraken-credentials-post] verification failed: ${krakenFailureDetail(key.failure)}`);
+          res.writeHead(krakenSetupFailureStatus(key.failure), { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "verification_failed", detail: krakenFailureDetail(key.failure) }));
+          return;
+        }
+        if (!key.ok) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(key.refused));
+          return;
+        }
+
+        const cfg = db.prepare(`SELECT withdraw_address FROM autobuy_config WHERE id = 1`).get() as { withdraw_address: string } | undefined;
+        const address = await resolveKrakenWithdrawAddress(auth, cfg?.withdraw_address ?? "");
+        if (!address.ok) {
+          res.writeHead(krakenSetupFailureStatus(address.failure), { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "address_lookup_failed", detail: krakenFailureDetail(address.failure) }));
+          return;
+        }
+        if (address.resolution.status === "ambiguous") {
+          res.writeHead(409, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "ambiguous_withdraw_method", method_ids: address.resolution.methodIds }));
+          return;
+        }
+
+        const { ciphertext, nonce } = encrypt(secret, "kraken-autobuy");
+        const now = Math.floor(Date.now() / 1000);
+        db.prepare(
+          `INSERT INTO kraken_credentials (id, api_key, encrypted_secret, nonce, connected_at, last_verified_at)
+           VALUES (1, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             api_key = excluded.api_key,
+             encrypted_secret = excluded.encrypted_secret,
+             nonce = excluded.nonce,
+             connected_at = excluded.connected_at,
+             last_verified_at = excluded.last_verified_at`,
+        ).run(apiKey, ciphertext, nonce, now, now);
+        applyKrakenAddress(address.resolution);
+        if (activeProvider(db) === "kraken") {
+          db.prepare(
+            `UPDATE autobuy_config SET paused_reason = CASE
+               WHEN paused_reason IN ('no_credentials','credentials_invalid','credentials_corrupted') THEN NULL
+               ELSE paused_reason END
+             WHERE id = 1`,
+          ).run();
+        }
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({
+          ok: true,
+          connected_at: now,
+          address_status: address.resolution.status,
+          minimum_warning: await krakenMinimumWarning(),
+        }));
+      } catch (err: any) {
+        console.error("[autobuy-kraken-credentials-post]", err);
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "internal_error" }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === "DELETE" && req.url === "/api/autobuy/kraken/credentials") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      db.prepare(`DELETE FROM kraken_credentials WHERE id = 1`).run();
+      if (activeProvider(db) === "kraken") {
+        db.prepare(`UPDATE autobuy_config SET enabled = 0, paused_reason = 'no_credentials' WHERE id = 1`).run();
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } catch (err: any) {
+      console.error("[autobuy-kraken-credentials-delete]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
+  if (req.method === "POST" && req.url === "/api/autobuy/kraken/credentials/verify") {
+    const node = getNodeInfo();
+    try { assertNonEmpty(node?.node_role); } catch (err: any) {
+      res.writeHead(403, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err?.message }));
+      return;
+    }
+    try {
+      const row = db.prepare(
+        `SELECT api_key, encrypted_secret, nonce FROM kraken_credentials WHERE id = 1`,
+      ).get() as { api_key: string; encrypted_secret: Buffer; nonce: Buffer } | undefined;
+      if (!row) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "no_credentials" }));
+        return;
+      }
+      let secret: string;
+      try {
+        secret = decrypt({ ciphertext: row.encrypted_secret, nonce: row.nonce }, "kraken-autobuy");
+      } catch {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "credentials_corrupted" }));
+        return;
+      }
+      const auth: KrakenAuth = { apiKey: row.api_key, secret, nonce: krakenNonceSource(db) };
+
+      const key = await verifyKrakenKey(auth);
+      if (!key.ok && "failure" in key) {
+        res.writeHead(krakenSetupFailureStatus(key.failure), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "verification_failed", detail: krakenFailureDetail(key.failure) }));
+        return;
+      }
+      if (!key.ok) {
+        // The key on file no longer passes K1 (its permissions changed on Kraken).
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(key.refused)); // { ok: false, error, extra | missing }
+        return;
+      }
+      const cfg = db.prepare(`SELECT withdraw_address FROM autobuy_config WHERE id = 1`).get() as { withdraw_address: string } | undefined;
+      const address = await resolveKrakenWithdrawAddress(auth, cfg?.withdraw_address ?? "");
+      if (!address.ok) {
+        res.writeHead(krakenSetupFailureStatus(address.failure), { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "address_lookup_failed", detail: krakenFailureDetail(address.failure) }));
+        return;
+      }
+      if (address.resolution.status === "ambiguous") {
+        res.writeHead(409, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "ambiguous_withdraw_method", method_ids: address.resolution.methodIds }));
+        return;
+      }
+      applyKrakenAddress(address.resolution);
+      const now = Math.floor(Date.now() / 1000);
+      db.prepare(`UPDATE kraken_credentials SET last_verified_at = ? WHERE id = 1`).run(now);
+
+      const balances = await krakenGetBalances(auth);
+      const available = (k: string) => (balances.ok ? balances.balances[k]?.available ?? 0 : null);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({
+        ok: true,
+        last_verified_at: now,
+        address_status: address.resolution.status,
+        balances: balances.ok
+          ? { usd: available(KRAKEN_BALANCE_KEYS.usd), usdc: available(KRAKEN_BALANCE_KEYS.usdc), btc: available(KRAKEN_BALANCE_KEYS.btc) }
+          : null,
+        minimum_warning: await krakenMinimumWarning(),
+      }));
+    } catch (err: any) {
+      console.error("[autobuy-kraken-credentials-verify]", err);
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "internal_error" }));
+    }
+    return;
+  }
+
   if (req.method === "GET" && req.url === "/api/autobuy/status") {
     const node = getNodeInfo();
     try { assertNonEmpty(node?.node_role); } catch (err: any) {
@@ -5037,7 +5273,7 @@ async function dispatchRequest(
     }
     let body = "";
     req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => {
+    req.on("end", async () => {
       try {
         const parsed = JSON.parse(body || "{}");
         const updates: string[] = [];
@@ -5120,8 +5356,11 @@ async function dispatchRequest(
         params.push(1);
         db.prepare(`UPDATE autobuy_config SET ${updates.join(", ")} WHERE id = ?`).run(...params);
         const cfg = db.prepare(`SELECT * FROM autobuy_config WHERE id = 1`).get();
+        // kraken-autobuy P4d (D-P4-13): with Kraken active, the response also
+        // says whether these settings can produce a buy below Kraken's minimum.
+        const minimumWarning = activeProvider(db) === "kraken" ? await krakenMinimumWarning() : undefined;
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true, config: cfg }));
+        res.end(JSON.stringify({ ok: true, config: cfg, ...(minimumWarning !== undefined ? { minimum_warning: minimumWarning } : {}) }));
       } catch (err: any) {
         console.error("[autobuy-config-patch]", err);
         res.writeHead(500, { "Content-Type": "application/json" });
