@@ -41,6 +41,8 @@
 //           killed mid-check dies at once and the lock stays with the running
 //           check until it exits; with one slot held the gate takes the
 //           other and its checks get VITEST_MAX_WORKERS=3 (11b), alone none.
+//           With the lock free but a filesystem holding /tmp or the lock's home
+//           under the disk floor, the gate waits and says not run (13b).
 //           Every run uses a scratch heavy-lock home
 //           (HARNESS_HEAVY_TEST_HOME), never the account's real lock.
 //      Exit codes come from spawnSync .status directly — no pipes to mask them.
@@ -526,6 +528,9 @@ try {
   // Plenty of memory, so the gate's admission never depends on this machine's MemAvailable.
   const PLENTY_MEM = path.join(TMP, "meminfo");
   fs.writeFileSync(PLENTY_MEM, "MemTotal:       16000000 kB\nMemAvailable:   64000000 kB\n");
+  // Plenty of disk, so the gate's admission never depends on this machine's free space either.
+  const PLENTY_DISK = path.join(TMP, "diskfree");
+  fs.writeFileSync(PLENTY_DISK, "1000000\n");
   const HEAVY_HISTORY = path.join(HEAVY_HOME, ".bitcorn-dev", "locks", "history.log");
   fs.writeFileSync(path.join(FX, "app", "api", "src", "x.ts"), "export const a = 1;\n");
   fs.writeFileSync(path.join(FX, "app", "web", "src", "x.ts"), "export const b = 1;\n");
@@ -545,6 +550,7 @@ try {
     STUB_HEAVY_LOCK: HEAVY_LOCK,
     HARNESS_HEAVY_TEST_HOME: HEAVY_HOME,
     HARNESS_HEAVY_TEST_MEMINFO: PLENTY_MEM,
+    HARNESS_HEAVY_TEST_DISKFREE: PLENTY_DISK,
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_SYSTEM: "/dev/null",
     ...env,
@@ -730,6 +736,16 @@ try {
     check("gate 13: says verification not run: the heavy lock could not be taken",
       r.out.includes("verification not run: the heavy lock could not be taken") && !r.out.includes("gate itself crashed"), r.out);
     check("gate 13: no check ran", !fs.existsSync(STUB_LOG));
+
+    // 13b. the lock free but the disk under the floor (a filesystem holding /tmp or the lock's home)
+    //      → the same admission waits, then the not-run path, naming the filesystem and its free space
+    const LOW_DISK = path.join(TMP, "diskfree-low");
+    fs.writeFileSync(LOW_DISK, "100\n");
+    r = runGate({ dirty: "api", env: { HARNESS_HEAVY_TEST_DISKFREE: LOW_DISK, VERIFY_GATE_HEAVY_WAIT_S: "2", STUB_VITEST_OUT: OUT.vitestGreen } });
+    check("gate 13b: low disk blocks (exit 2)", r.status === 2, r.out);
+    check("gate 13b: says verification not run, naming the filesystem and its free space",
+      /verification not run: the filesystem at \/\S* \(holding \/tmp and [^)]*\) has 100 MB free, under the 5120 MB every heavy job needs/.test(r.out), r.out);
+    check("gate 13b: no check ran, the lock is free", !fs.existsSync(STUB_LOG) && lockState() === "free");
 
     // 14. the gate killed mid-check (SIGTERM, as a hook timeout sends): it dies at once (#6: no
     //     handler keeps it alive), the next check never starts, and the lock stays with the
