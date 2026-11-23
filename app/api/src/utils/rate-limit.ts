@@ -1,10 +1,12 @@
 import { db } from "../db";
 import { ENV } from "../config/env";
 
-const MAX_TX_PER_MINUTE = ENV.rateLimitTxPerMinute ?? 5;
-const MAX_SATS_PER_MINUTE = ENV.rateLimitSatsPerMinute ?? 100_000;
-const MAX_SATS_PER_HOUR = ENV.rateLimitSatsPerHour ?? 1_000_000;
-const MAX_SINGLE_PAYMENT = ENV.rateLimitMaxSinglePayment ?? 250_000;
+// The limits and their defaults live in config/env.ts alone; positiveIntEnv
+// guarantees each is a positive whole number, never NaN.
+const MAX_TX_PER_MINUTE = ENV.rateLimitTxPerMinute;
+const MAX_SATS_PER_MINUTE = ENV.rateLimitSatsPerMinute;
+const MAX_SATS_PER_HOUR = ENV.rateLimitSatsPerHour;
+const MAX_SINGLE_PAYMENT = ENV.rateLimitMaxSinglePayment;
 
 /**
  * Asserts that the payment does not exceed rate limits
