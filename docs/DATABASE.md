@@ -89,6 +89,11 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `081_fee_estimate_samples_rate.sql` | Drive-mode P3: `fee_estimate_samples.sat_per_vbyte` |
 | `082_swap_requests_actual_fee_usd.sql` | Drive-mode P3: `swap_requests.actual_fee_usd_cents` — the completed fee in cents, written by the poller only with a fresh rate; NULL → sats |
 | `083_subscription_deposit_address_pin.sql` | Treasury-price-trust (D4): `subscription_deposit_address_pin` — APPEND-ONLY; the member's current pin is its newest row. Written on the first VERIFIED status (`first_sight`, or `marker_seed` = the newest send marker's address); a stated address that differs refuses manual and auto pay until the host command `node dist/cli/acknowledge-deposit-address.js <address>` appends an `acknowledged` row (never an HTTP route). Member-local; empty on the treasury (`subscription/depositAddressPin.ts`) |
+| `084_autobuy_config_provider.sql` | Kraken auto-buy P2: `autobuy_config.provider` — `'coinbase'` or `'kraken'`, NOT NULL DEFAULT `'coinbase'` (existing rows read `'coinbase'`) |
+| `085_autobuy_runs_provider.sql` | Kraken auto-buy P2: `autobuy_runs.provider`, same shape. The API reports each run's `hold_ends_at` from it (`autoBuy/hold.ts`) |
+| `086_autobuy_sweeps_provider.sql` | Kraken auto-buy P2: `autobuy_sweeps.provider`, same shape |
+| `087_kraken_credentials.sql` | Kraken auto-buy P2: `kraken_credentials` singleton — `api_key` (plain), `encrypted_secret` + `nonce` (AES-256-GCM, HKDF label `kraken-autobuy`), and the account's `withdraw_method_id` / `withdraw_address_id` |
+| `088_autobuy_balance_snapshot.sql` | Kraken auto-buy P2: `autobuy_balance_snapshot` — one row per provider (upserted, no history): USD/USDC/BTC buying power and `read_at` |
 
 `001` through `070` are contiguous. `071`–`073` are held by unmerged arcs (membership-gating `071`, `072`; pay-from-node `073`), so drive-mode P3 starts at `074`; until those merge the set has that gap, which the runner tolerates (it applies any unapplied filename in sorted order, `migrate.ts`). Always check the other arcs' branches, then allocate the next free number at or above the highest.
 
