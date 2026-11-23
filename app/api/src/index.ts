@@ -5046,6 +5046,10 @@ async function dispatchRequest(
       const creds = db.prepare(
         `SELECT key_name, connected_at, last_verified_at FROM coinbase_credentials WHERE id = 1`,
       ).get() as { key_name: string; connected_at: number; last_verified_at: number | null } | undefined;
+      // kraken-autobuy P4e: the Kraken key's state for the web (never the key or secret).
+      const krakenCreds = db.prepare(
+        `SELECT connected_at, last_verified_at, withdraw_address_id FROM kraken_credentials WHERE id = 1`,
+      ).get() as { connected_at: number; last_verified_at: number | null; withdraw_address_id: string | null } | undefined;
       // Generate withdraw_address on first call if absent (per spec §7 edge case)
       if (cfg && !cfg.withdraw_address) {
         try {
@@ -5106,11 +5110,17 @@ async function dispatchRequest(
           paused_reason: cfg.paused_reason,
           last_run_at: cfg.last_run_at,
           next_run_at: cfg.next_run_at,
+          provider: activeProvider(db),
         } : null,
         credentials: creds ? {
           key_name: creds.key_name,
           connected_at: creds.connected_at,
           last_verified_at: creds.last_verified_at,
+        } : null,
+        kraken_credentials: krakenCreds ? {
+          connected_at: krakenCreds.connected_at,
+          last_verified_at: krakenCreds.last_verified_at,
+          address_matched: krakenCreds.withdraw_address_id !== null,
         } : null,
         in_flight: next,
         recent,

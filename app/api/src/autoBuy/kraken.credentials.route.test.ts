@@ -187,7 +187,11 @@ describe("POST /api/autobuy/kraken/credentials", () => {
     expect(() => decrypt({ ciphertext: row.encrypted_secret, nonce: row.nonce })).toThrow(/credentials_corrupted/); // not under Coinbase's label
     expect(Buffer.from(row.encrypted_secret).toString("utf8")).not.toContain(SECRET.slice(0, 20));
     expect(config()).toMatchObject({ paused_reason: null });
-    expect(config().withdraw_address_whitelisted_at).toBeGreaterThan(0);
+    // The whitelist timestamp is SET (a number, now), not merely truthy: a match
+    // that fails to set it leaves the scheduler and /enable gated shut.
+    const whitelistedAt = config().withdraw_address_whitelisted_at;
+    expect(typeof whitelistedAt, "withdraw_address_whitelisted_at must be set to a timestamp on a match").toBe("number");
+    expect(Math.abs(whitelistedAt - Math.floor(Date.now() / 1000))).toBeLessThan(60);
     // Both methods' address lists were read; the address chose the method.
     expect(calls.filter((c) => c.path === "/funding/v1/addresses").map((c) => new URLSearchParams(c.search).get("scope[method_id]")))
       .toEqual([M_LIGHTNING, M_BITCOIN]);
@@ -259,6 +263,29 @@ describe("verify and delete", () => {
     db.prepare(`UPDATE autobuy_config SET provider = 'coinbase', enabled = 1, paused_reason = NULL WHERE id = 1`).run();
     await call("DELETE", "/api/autobuy/kraken/credentials");
     expect(config()).toMatchObject({ enabled: 1, paused_reason: null });
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe("GET /api/autobuy/status for the web (P4e)", () => {
+  it("K12 carries the active provider and the Kraken key's state — never its key or secret", async () => {
+    let r = await call("GET", "/api/autobuy/status");
+    expect(r.status).toBe(200);
+    expect(r.body.config.provider).toBe("kraken");
+    expect(r.body.kraken_credentials).toBeNull();
+
+    await save();
+    r = await call("GET", "/api/autobuy/status");
+    expect(Object.keys(r.body.kraken_credentials).sort()).toEqual(["address_matched", "connected_at", "last_verified_at"]);
+    expect(r.body.kraken_credentials.address_matched).toBe(true);
+    expect(JSON.stringify(r.body)).not.toContain("PUBLIC-KEY");
+    expect(JSON.stringify(r.body)).not.toContain(SECRET.slice(0, 12));
+
+    db.prepare(`UPDATE kraken_credentials SET withdraw_address_id = NULL WHERE id = 1`).run();
+    db.prepare(`UPDATE autobuy_config SET provider = 'coinbase' WHERE id = 1`).run();
+    r = await call("GET", "/api/autobuy/status");
+    expect(r.body.config.provider).toBe("coinbase");
+    expect(r.body.kraken_credentials.address_matched).toBe(false);
   });
 });
 
