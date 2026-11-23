@@ -45,7 +45,13 @@ const baseConnectors = [
     // Coinbase tile has a branch that works even if the on-chain read cannot.
     preference: "all",
   }),
-  metaMask(),
+  // Analytics OFF (ruled 2026-11-18, code-audit-2). The SDK defaults it to true,
+  // and createConfig below runs this connector's setup() at import, which inits
+  // the SDK — so every page load, treasury included, POSTed "sdk_initialized" to
+  // mm-sdk-analytics.api.cx.metamask.io with no wallet interaction. The same flag
+  // gates the SDK's older events to metamask-sdk.api.cx.metamask.io/evt.
+  // Guarded by wagmi.analytics.test.ts.
+  metaMask({ enableAnalytics: false }),
 ];
 
 // ⚠ SECURE CONTEXT: MEASURED, NOT INFERRED — Coinbase cannot connect over plain HTTP.
