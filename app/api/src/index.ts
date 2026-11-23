@@ -71,6 +71,7 @@ import { channelDataFreshness } from "./api/memberStatsFreshness";
 import { getMemberCosts } from "./api/member-costs";
 import { readLocalCertExpiry } from "./lightning/readCertExpiry";
 import { certExpiryLevel, certExpiryMessage } from "./lightning/certExpiry";
+import { getLndVersion, nodeUpdateNoticeText } from "./lightning/lndVersion";
 import { runTimeoutBoundLndProbe } from "./lightning/lndProbeRoute";
 import { normalizeAlias, validateAliasFormat, isAliasBlocked, lndDefaultAlias } from "./profile/aliasValidation";
 import { getBlockedAliasList, getMemberProfile, recordAliasIntent, markAliasApplied, clearMemberAliasRow, setBitcornName } from "./profile/profileStore";
@@ -649,7 +650,6 @@ async function dispatchRequest(
         return;
       }
       const { address } = await createLndChainAddress();
-      const node = getNodeInfo();
 
       const sessionToken = await getCoinbaseSessionToken(address);
       const url =
@@ -657,9 +657,8 @@ async function dispatchRequest(
         `?appId=${encodeURIComponent(ENV.coinbaseAppId)}` +
         `&sessionToken=${encodeURIComponent(sessionToken)}`;
 
-      db.prepare(
-        "INSERT INTO coinbase_onramp_sessions (node_pubkey, wallet_address, onramp_url, created_at) VALUES (?, ?, ?, ?)"
-      ).run(node?.pubkey ?? "", address, url, Date.now());
+      // Not persisted (code-audit-2 S7): the URL carries the session token and
+      // coinbase_onramp_sessions had no reader. The table stays (migration 019).
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ url, wallet_address: address }));
     } catch (err) {
@@ -3605,6 +3604,10 @@ async function dispatchRequest(
         lnd_live_read_ok: lndLiveReadOk,
         // Read from disk this request, independent of the two live reads above.
         cert_expiry: certExpiry,
+        // node-version-alert (R4): the member line when LND is below the
+        // minimum, else null. From the sync loop's in-memory read, so it needs
+        // no LND this request (lightning/lndVersion.ts).
+        node_update_notice: nodeUpdateNoticeText(getLndVersion()),
         treasury_channel: treasuryChannel
           ? {
               channel_id: treasuryChannel.channel_id,

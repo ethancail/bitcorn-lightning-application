@@ -24,7 +24,7 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `016_channel_fee_log.sql` | Per-channel fee adjustment history (target/applied rates, classification snapshot) |
 | `017_rotation_executions.sql` | Channel rotation audit log (capacity, ROI, reason, outcome) |
 | `018_add_loss_cap.sql` | Adds `max_daily_loss_sats` column to `treasury_capital_policy` |
-| `019_coinbase_onramp_sessions.sql` | Persisted Coinbase Onramp session tokens (per-node, per-wallet) |
+| `019_coinbase_onramp_sessions.sql` | Coinbase Onramp sessions table — **no longer written** (code-audit-2 S7: the stored URL carried the session token and nothing read it); rows written before the change remain |
 | `020_contacts.sql` | Contacts address book (pubkey UNIQUE, tags as comma-string) |
 | `021_member_keysend_status.sql` | Tracks peers that reject keysend (24h skip window) |
 | `022_network_payments.sql` | Invoice-based payment records (direction, status, USD, counterparty, memo) |

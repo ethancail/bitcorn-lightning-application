@@ -15,7 +15,8 @@
 // ~/.bitcorn-dev/locks/slot-N.lock, exists and its holder equals
 // HARNESS_HOLDER, and refuses while setup.lock is held. The refusal names the
 // holder, or "no lock". Read-only needs no lock: `command`, `lock status` and
-// dev:kill --print. scripts/polar-preflight.mjs enforces the same lock.
+// dev:kill --print. scripts/polar-preflight.mjs enforces the slot's lock too,
+// or accepts setup.lock held by HARNESS_HOLDER (preflightLockRefusal).
 //
 // SLOT 1 IS TODAY'S HARNESS (D6). Its command lines are byte-identical to the
 // scripts at 523e6ab, except dev:loopserver (D13: the bridge network, bound to
@@ -323,9 +324,12 @@ export function scriptCommand(script, slot, ctx, args = []) {
 // create, so a second acquire fails. It holds holder, go, acquired_at (UTC),
 // host and the slot number or "setup". The go is a claim: the lock records what
 // the acquirer typed and cannot verify it (D11b). Every acquire, release and
-// forced release appends one line to history.log. A setup lock and a slot lock
-// never coexist: each acquire checks for the other kind before and after its
-// own create, and backs out if one appeared in between.
+// forced release appends one line to history.log. A setup lock and another
+// holder's slot lock never coexist: each acquire checks for the other kind
+// before and after its own create, and backs out if one appeared in between.
+// Setup's own holder may take slots under it (the handoff: hold setup, take the
+// slot, release setup, with no moment holding neither); setup is refused while
+// any slot is held, so the order stays setup, then the slot.
 //
 // dev-safety (vault: decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…):
 // R3 — an unreadable lock is refused by enforcement and by plain release,
@@ -436,15 +440,32 @@ function heldSlots(home) {
   return names.map((n) => n.match(/^slot-([1-9][0-9]*)\.lock$/)?.[1]).filter(Boolean).map(Number).sort((a, b) => a - b);
 }
 
-// The other kind of lock that stands in the way of acquiring `target`, or null.
-function exclusionConflict(home, target) {
+// The other kind of lock that stands in the way of `holder` acquiring `target`,
+// or null. THE HANDOFF (2026-11-23): setup's own holder may take a slot while
+// it holds setup, so a repair hands setup over to the slot with no gap; setup
+// is still refused while any slot is held, its holder's included (setup comes
+// before the slot in the order), and an unreadable setup.lock matches no one.
+function exclusionConflict(home, target, holder) {
   if (target === "setup") {
     const slots = heldSlots(home);
     return slots.length === 0 ? null :
       `setup refused: slot locks are held (${slots.map((s) => `slot ${s} by ${JSON.stringify(readLock(home, s)?.holder)}`).join(", ")})`;
   }
   const setup = readLock(home, "setup");
-  return setup === null ? null : `slot ${target} refused: setup.lock is held by ${JSON.stringify(setup.holder)}`;
+  if (setup === null || (!setup.unreadable && setup.holder === holder)) return null;
+  return `slot ${target} refused: setup.lock is held by ${JSON.stringify(setup.holder)}`;
+}
+
+// The order's guard for a slot taken under setup: null, or the refusal when
+// `holder` holds setup.lock, for a command that would now wait on heavy while
+// holding it (heavy, then setup, then the slot).
+function setupOrderRefusal(home, holder, what) {
+  if (typeof holder !== "string" || holder === "") return null;
+  const setup = readLock(home, "setup");
+  if (setup === null || setup.unreadable || setup.holder !== holder) return null;
+  return `${what} refused: ${JSON.stringify(holder)} holds setup.lock, and waiting on heavy while holding setup breaks ` +
+    "the lock order (heavy, then setup, then the slot): release setup, take heavy first (heavy acquire --holder <arc>), " +
+    "then setup, then the slot with that HARNESS_HEAVY_JOB set";
 }
 
 function requireText(flag, value) {
@@ -477,7 +498,7 @@ export function acquireLock(args) {
 function takeSlotLock({ home, target, holder, go, now = new Date(), host = os.hostname(), race = {}, heavy }) {
   requireText("--holder", holder);
   requireText("--go", go);
-  const before = exclusionConflict(home, target);
+  const before = exclusionConflict(home, target, holder);
   if (before) throw new Error(before);
   fs.mkdirSync(lockDir(home), { recursive: true });
   const lock = { holder, go, acquired_at: utc(now), host, slot: target, ...(heavy ? { heavy } : {}) };
@@ -495,7 +516,7 @@ function takeSlotLock({ home, target, holder, go, now = new Date(), host = os.ho
     fs.rmSync(tmp, { force: true });
   }
   race.afterCreate?.();
-  const after = exclusionConflict(home, target);
+  const after = exclusionConflict(home, target, holder);
   if (after) {
     // R4: back out only the lock this acquire wrote, byte for byte.
     removeLock(home, target, (held, heldText) => (heldText === text ? null :
@@ -534,12 +555,15 @@ function releaseSlotLock({ home, target, holder, now = new Date(), race = {} }) 
 }
 
 // The history line and the release line. The heavy lock has no go (ruling 7),
-// so its line ends at the host.
-function releasedLine(home, target, holder, lock, at) {
+// so its line ends at the host. `reason`, when given, ends both: a slot's heavy
+// holder that let go by itself because its slot lock was gone or changed.
+function releasedLine(home, target, holder, lock, at, reason) {
   appendHistory(home, `${at} release ${field("lock", lockName(target))} ${field("holder", holder)} ` +
-    `${field("acquired_at", lock.acquired_at)} ${field("held", heldFor(lock.acquired_at, at))}`);
+    `${field("acquired_at", lock.acquired_at)} ${field("held", heldFor(lock.acquired_at, at))}` +
+    (reason === undefined ? "" : ` ${field("reason", reason)}`));
   return `harness lock released: ${lockName(target)}, holder ${holder}, held ${lock.acquired_at} to ${at} ` +
-    `(${heldFor(lock.acquired_at, at)}) on ${lock.host}` + (lock.go === undefined ? "" : `; go ${JSON.stringify(lock.go)}`);
+    `(${heldFor(lock.acquired_at, at)}) on ${lock.host}` + (lock.go === undefined ? "" : `; go ${JSON.stringify(lock.go)}`) +
+    (reason === undefined ? "" : `; reason ${JSON.stringify(reason)}`);
 }
 
 export const forceReleaseLock = (args) => forceReleaseSlotLock(args).line;
@@ -599,6 +623,57 @@ export function slotHeavyLive(heavyHomeDir, heavy) {
 const heavyRecordText = (heavy) => (Number.isInteger(heavy?.pid) ? `heavy holder pid ${heavy.pid}` :
   typeof heavy?.job === "string" ? `heavy job ${JSON.stringify(heavy.job)}` : "no heavy record");
 
+// THE ORPHAN (2026-11-23: a slot-1/workflow-app heavy holder kept heavy-1 for
+// 2.5 days after its slot lock, in a test's scratch lock home, was deleted with
+// that home; nothing that removes a file tells the holder). A slot's heavy
+// holder records where its slot lock lives (for_slot_home); a holder from
+// before that record is looked for in `fallback` (the caller's $HOME).
+const slotHomeOf = (info, fallback) => (typeof info?.for_slot_home === "string" ? info.for_slot_home : fallback);
+
+// What slot `target`'s lock in `home` is now, against `text` (the lock a
+// holder took): "same", "gone", "changed", or null when it cannot be read.
+function slotLockNow(home, target, text) {
+  let now;
+  try {
+    now = readLockText(home, target);
+  } catch {
+    return null;
+  }
+  return now === null ? "gone" : now === text ? "same" : "changed";
+}
+
+// Why heavy record `info` is ORPHANED — a slot's holder whose slot lock is gone
+// or no longer records its pid — or null: not a slot's holder, its lock
+// records it, or it cannot be told (an unreadable lock).
+export function heavyOrphaned(info, fallbackSlotHome) {
+  if (info === null || info.unreadable || info.kind !== "slot" || info.for_slot === undefined) return null;
+  const home = slotHomeOf(info, fallbackSlotHome);
+  let lock;
+  try {
+    lock = readLock(home, info.for_slot);
+  } catch {
+    return null;
+  }
+  const where = `${lockName(info.for_slot)}'s lock (${lockFile(home, info.for_slot)})`;
+  if (lock === null) return `${where} is gone`;
+  if (lock.unreadable) return null;
+  if (lock.heavy?.pid !== info.pid) return `${where} records ${heavyRecordText(lock.heavy)}, not this holder's pid ${info.pid}`;
+  return null;
+}
+
+// The ORPHANED tail of a status line for heavy slot k: why, and the command that frees it.
+const orphanedText = (k, why) => ` — ORPHANED: ${why} — status frees nothing; ` +
+  `free it with: heavy release --force --slot ${k} --reason "<why>"`;
+
+// One line per held heavy slot whose record is ORPHANED (heavyOrphaned).
+function orphanedHeavyLines(heavyHomeDir, fallbackSlotHome) {
+  return heavySlotsOnDisk(heavyHomeDir, ".lock").filter((k) => heavyLocked(heavyHomeDir, k)).flatMap((k) => {
+    const info = readHeavyInfo(heavyHomeDir, k);
+    const why = heavyOrphaned(info, fallbackSlotHome);
+    return why === null ? [] : [`${heavySlot(k)}: held by ${describeHeavy(info)}, for ${lockName(info.for_slot)}` + orphanedText(k, why)];
+  });
+}
+
 // R5: the reasons a lock looks stale, and whether its listener check ran.
 // F1/F2: a slot lock taken with heavy is also SUSPECT once that heavy is gone
 // (heavyLive: true, false, or null when it could not say).
@@ -632,9 +707,12 @@ function suspicion(target, lock, { now, host, listening, heavyLive }) {
   return { reasons, unchecked, heavyUnchecked };
 }
 
+// heavyHomeDir, when given, is the heavy lock's home: its slots' holders whose
+// slot lock is gone are listed too, ORPHANED (the CLI passes it; a library call
+// without it reads no heavy home).
 export function lockStatus(home, {
   now = new Date(), host = os.hostname(), listening = portsListening,
-  heavyLive = (heavy) => slotHeavyLive(os.userInfo().homedir, heavy),
+  heavyLive = (heavy) => slotHeavyLive(os.userInfo().homedir, heavy), heavyHomeDir,
 } = {}) {
   const lines = [];
   for (const target of ["setup", ...heldSlots(home)]) {
@@ -650,6 +728,7 @@ export function lockStatus(home, {
       (reasons.length === 0 ? "" : ` — SUSPECT: ${reasons.join("; ")} — status frees nothing; ` +
         `if it is stale: lock release ${lockFlag(target)} --force --reason "<why>"`));
   }
+  if (heavyHomeDir !== undefined) lines.push(...orphanedHeavyLines(heavyHomeDir, home));
   return lines.length > 0 ? lines.join("\n") : "no locks held";
 }
 
@@ -672,15 +751,39 @@ export function lockRefusal(slot, harnessHolder, home) {
   return null;
 }
 
+// The pre-flight's enforcement (2026-11-23): it runs for HARNESS_HOLDER when
+// that holder holds the slot's lock (lockRefusal) OR setup.lock, so a repair
+// can check its network under setup before it hands over to the slot. Under
+// setup it is still refused when another holder holds the slot. The dev:*
+// scripts keep lockRefusal: they refuse in any setup window.
+export function preflightLockRefusal(slot, harnessHolder, home) {
+  const setup = readLock(home, "setup");
+  if (setup === null) return lockRefusal(slot, harnessHolder, home);
+  if (setup.unreadable) return `slot ${slot} refused: ${unreadableRefusal(home, "setup")}`;
+  if (!harnessHolder || harnessHolder !== setup.holder) {
+    return `slot ${slot} refused: setup.lock is held by ${JSON.stringify(setup.holder)}` +
+      (harnessHolder ? `, not HARNESS_HOLDER ${JSON.stringify(harnessHolder)}` : ", and HARNESS_HOLDER is unset") + " (a Polar setup window)";
+  }
+  const lock = readLock(home, slot);
+  if (lock === null) return null;
+  if (lock.unreadable) return `slot ${slot} refused: ${unreadableRefusal(home, slot)}`;
+  return lock.holder === harnessHolder ? null :
+    `slot ${slot} refused: locked by ${JSON.stringify(lock.holder)}, not HARNESS_HOLDER ${JSON.stringify(harnessHolder)}`;
+}
+
 const LOCK_USAGE =
   "usage: harness-slot.mjs lock acquire --slot N --holder <arc> --go \"<text>\" [--wait <seconds>] [--pid <pid>] [--exclusive]\n" +
   "       harness-slot.mjs lock acquire --setup --holder <arc> --go \"<text>\"\n" +
   "       harness-slot.mjs lock release (--slot N | --setup) --holder <arc>\n" +
   "       harness-slot.mjs lock release (--slot N | --setup) --force --reason \"<text>\"\n" +
   "       harness-slot.mjs lock status\n" +
-  "The order is heavy first, then the slot: lock acquire --slot takes one heavy slot (every slot with --exclusive)\n" +
+  "The order is heavy, then setup, then the slot: lock acquire --slot takes one heavy slot (every slot with --exclusive)\n" +
   "before the slot, unless HARNESS_HEAVY_JOB says this job holds heavy already, and lock release --slot releases\n" +
-  "that heavy after the slot.";
+  "that heavy after the slot. Setup's holder takes a slot only inside a heavy job (its HARNESS_HEAVY_JOB).\n" +
+  "Which lock for what: one network's docker compose up/down (and the pre-flight, the dev:* scripts) needs that\n" +
+  "slot's lock; anything shared (the Polar GUI, networks.json, images, more than one network) needs setup.\n" +
+  "The handoff, setup to a slot with no gap: hold setup, take the slot (same holder), then release setup.\n" +
+  "The pre-flight runs for the holder of the slot's lock or of setup.lock; the dev:* scripts refuse under setup.";
 
 function parseLockArgs(args) {
   const opts = {};
@@ -708,7 +811,7 @@ function lockTarget(opts) {
 
 // The slot lock alone, synchronously: it never takes heavy (lockCli does that
 // for the CLI). --wait, --pid and --exclusive, which only that heavy uses, are lockCli's.
-export function lockMain(args, { home = os.homedir(), now = new Date(), host = os.hostname(), listening = portsListening, heavyLive } = {}) {
+export function lockMain(args, { home = os.homedir(), now = new Date(), host = os.hostname(), listening = portsListening, heavyLive, heavyHomeDir } = {}) {
   const [action, ...rest] = args;
   const opts = parseLockArgs(rest);
   if (opts.wait !== undefined || opts.pid !== undefined || opts.exclusive) {
@@ -716,7 +819,7 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
   }
   if (action === "status") {
     if (Object.keys(opts).length > 0) throw new Error("lock status takes no arguments");
-    return lockStatus(home, { now, host, listening, ...(heavyLive ? { heavyLive } : {}) });
+    return lockStatus(home, { now, host, listening, heavyHomeDir, ...(heavyLive ? { heavyLive } : {}) });
   }
   if (action === "acquire") {
     if (opts.force || opts.reason !== undefined) throw new Error("--force and --reason belong to lock release");
@@ -1410,10 +1513,10 @@ export function recordHeavy(home, k, fd, { holder, host, ...rest }, now = new Da
         (info.exclusive ? ` ${field("exclusive", true)}` : "") + (info.shared ? ` ${field("shared", true)}` : ""));
       rec.logged = true;
     },
-    release: (at = new Date()) => {
+    release: (at = new Date(), reason = undefined) => {
       try {
         dropInfo(home, k, rec.text);
-        return rec.logged ? releasedLine(home, slot, holder, info, utc(at)) : null;
+        return rec.logged ? releasedLine(home, slot, holder, info, utc(at), reason) : null;
       } finally {
         closeQuietly(fd);
       }
@@ -1423,12 +1526,18 @@ export function recordHeavy(home, k, fd, { holder, host, ...rest }, now = new Da
   return rec;
 }
 
-// One line per slot (0..limit-1, and any other slot file on disk), free or its holder.
-export function heavyStatus(home, limit = 1) {
+// One line per slot (0..limit-1, and any other slot file on disk), free or its
+// holder; a slot's holder whose slot lock is gone is flagged ORPHANED (looked for
+// in slotHome when its record does not say where).
+export function heavyStatus(home, limit = 1, { slotHome = os.homedir() } = {}) {
   const slots = [...new Set([...Array(limit).keys(), ...heavySlotsOnDisk(home, ".lock")])].sort((a, b) => a - b);
-  return slots.map((k) => `${heavySlot(k)} ${lockFile(home, heavySlot(k))}: ` +
-    (heavyLocked(home, k) ? `held by ${describeHeavy(readHeavyInfo(home, k))}` : "free") +
-    (k >= limit ? ` (beyond this host's limit of ${limit})` : "")).join("\n");
+  return slots.map((k) => {
+    if (!heavyLocked(home, k)) return `${heavySlot(k)} ${lockFile(home, heavySlot(k))}: free` + (k >= limit ? ` (beyond this host's limit of ${limit})` : "");
+    const info = readHeavyInfo(home, k);
+    const why = heavyOrphaned(info, slotHome);
+    return `${heavySlot(k)} ${lockFile(home, heavySlot(k))}: held by ${describeHeavy(info)}` +
+      (k >= limit ? ` (beyond this host's limit of ${limit})` : "") + (why === null ? "" : orphanedText(k, why));
+  }).join("\n");
 }
 
 const HEAVY_USAGE =
@@ -1511,11 +1620,14 @@ const procComm = (pid) => {
 const admission = (ctx) => ({ home: ctx.home, limit: ctx.limit, minFreeMb: ctx.minFreeMb, meminfo: ctx.meminfo });
 
 // F2, the lock order: null, or the refusal when the caller's holder
-// (HARNESS_HOLDER) holds a slot lock whose heavy is not live (slotHeavyLive): a
-// heavy wait from it would wait on heavy while holding a slot.
+// (HARNESS_HOLDER) holds a slot lock whose heavy is not live (slotHeavyLive), or
+// holds setup.lock: a heavy wait from it would wait on heavy while holding a
+// slot, or setup (heavy, then setup, then the slot).
 function orderRefusal(slotHome, ctx, env) {
   const holder = env.HARNESS_HOLDER;
   if (typeof holder !== "string" || holder === "") return null;
+  const setup = setupOrderRefusal(slotHome, holder, "heavy");
+  if (setup) return setup;
   const stale = heldSlots(slotHome).map((slot) => ({ slot, lock: readLock(slotHome, slot) }))
     .filter(({ lock }) => lock !== null && !lock.unreadable && lock.holder === holder && !slotHeavyLive(ctx.home, lock.heavy));
   if (stale.length === 0) return null;
@@ -1650,6 +1762,10 @@ function heavyRun(opts, command, env, ctx, { err, slotHome }) {
 // had; if the CLI goes away before either, this lets go of heavy. With --pid,
 // when that process exits it removes the slot lock (only if it is still the
 // one taken, byte for byte), then lets go of heavy: the reverse of the order.
+// Once the slot is taken, with or without --pid, it looks at the slot lock every
+// second, and lets go of heavy by itself when that lock has been gone, or been
+// another lock, for HOLD_ORPHAN_GRACE_MS: its release line then carries
+// reason="slot lock gone" or reason="slot lock changed" (THE ORPHAN).
 async function heavyHold(specText, ctx) {
   const spec = JSON.parse(specText);
   const send = (m) => {
@@ -1670,7 +1786,7 @@ async function heavyHold(specText, ctx) {
       record: {
         holder: spec.holder, host: ctx.host, kind: spec.slot ? "slot" : "acquire", pid: process.pid,
         job: jobToken(spec.holder, process.pid),
-        ...(spec.slot ? { for_slot: spec.slot.target } : {}),
+        ...(spec.slot ? { for_slot: spec.slot.target, for_slot_home: spec.slot.home } : {}),
         ...(spec.watch ? { owner_pid: spec.ownerPid, owner_start: spec.ownerStart } : {}),
       },
     });
@@ -1695,10 +1811,10 @@ async function heavyHold(specText, ctx) {
     for (const fd of hold.fds) closeQuietly(fd);
     process.exit(0);
   });
-  // Let go, logged as a release, unless a release has already taken the record.
-  const letGo = () => {
+  // Let go, logged as a release (with `reason`, if given), unless a release has already taken the record.
+  const letGo = (reason) => {
     for (const { slot, fd, rec } of hold.entries) {
-      if (readInfoText(ctx.home, slot) === rec.text) rec.release();
+      if (readInfoText(ctx.home, slot) === rec.text) rec.release(new Date(), reason);
       else closeQuietly(fd);
     }
     process.exit(0);
@@ -1709,27 +1825,48 @@ async function heavyHold(specText, ctx) {
       if (typeof m?.slotTaken === "string") slotText = m.slotTaken;
       else if (m?.abandon) letGo();
     });
-    process.on("disconnect", () => {
-      if (slotText === null) letGo();
-    });
   }
   send({ acquired: true, pid: process.pid, job: hold.entries[0].rec.info.job, slots: hold.slots, shared: hold.shared });
+  let missingSince = null; // when the slot lock was first seen gone or changed, in this run of looks
   return new Promise(() => {
     setInterval(() => {
-      if (!spec.watch || procStart(spec.ownerPid) === spec.ownerStart) return;
-      // The process this lock was taken for has exited: the slot first, then heavy.
-      if (slotText !== null) {
-        const { target, home } = spec.slot;
-        try {
-          const lock = removeLock(home, target, (_, text) => (text === slotText ? null :
-            `${lockName(target)} is no longer the lock taken with this heavy`));
-          if (lock !== null) releasedLine(home, target, lock.holder, lock, utc(new Date()));
-        } catch {} // not this hold's lock any more: left in place
+      if (spec.watch && procStart(spec.ownerPid) !== spec.ownerStart) {
+        // The process this lock was taken for has exited: the slot first, then heavy.
+        if (slotText !== null) {
+          const { target, home } = spec.slot;
+          try {
+            const lock = removeLock(home, target, (_, text) => (text === slotText ? null :
+              `${lockName(target)} is no longer the lock taken with this heavy`));
+            if (lock !== null) releasedLine(home, target, lock.holder, lock, utc(new Date()));
+          } catch {} // not this hold's lock any more: left in place
+        }
+        letGo();
       }
-      letGo();
+      if (!spec.slot) return;
+      if (slotText === null) {
+        // The CLI went away before it took the slot: nothing will take it with this heavy.
+        // (Polled, not a disconnect listener: one added after the await above misses a disconnect during it.)
+        if (!process.connected) letGo();
+        return;
+      }
+      // THE ORPHAN: the slot lock this heavy was taken for is gone, or is another
+      // lock now, and nothing told this holder (a file removed, a scratch home
+      // deleted). It lets go once that has lasted HOLD_ORPHAN_GRACE_MS, so a
+      // normal lock release, which removes the slot and then stops this holder,
+      // is never logged as an orphan. A lock it cannot read is not a lock gone.
+      const now = slotLockNow(spec.slot.home, spec.slot.target, slotText);
+      if (now === "same" || now === null) {
+        missingSince = null;
+        return;
+      }
+      missingSince ??= Date.now();
+      if (Date.now() - missingSince >= HOLD_ORPHAN_GRACE_MS) letGo(now === "gone" ? "slot lock gone" : "slot lock changed");
     }, 1000);
   });
 }
+
+// How long a slot's heavy holder waits, once its slot lock is gone or changed, before it lets go.
+export const HOLD_ORPHAN_GRACE_MS = 3000;
 
 // `heavy acquire`: starts the holder process and reports what it did, ending
 // with the job token as a line `HARNESS_HEAVY_JOB=<token>` (shell-quoted) for
@@ -1888,7 +2025,8 @@ async function heavyRelease(opts, ctx, slotHome) {
     targets = inScope.filter((h) => h.holderProcess);
     if (targets.length === 0) throw new Error(notAHolder(inScope));
     // F1: a slot's heavy whose slot lock still records it goes with that slot, by the slot's own --force.
-    const tied = targets.find((h) => h.info.kind === "slot" && readLock(slotHome, h.info.for_slot)?.heavy?.pid === h.info.pid);
+    const tied = targets.find((h) => h.info.kind === "slot" &&
+      readLock(slotHomeOf(h.info, slotHome), h.info.for_slot)?.heavy?.pid === h.info.pid);
     if (tied) {
       throw new Error(`heavy is held for ${lockName(tied.info.for_slot)}'s lock, which still records it (holder pid ` +
         `${tied.info.pid}); free both, the slot first: lock release ${lockFlag(tied.info.for_slot)} --force --reason "<why>"`);
@@ -1950,7 +2088,7 @@ export async function heavyMain(args, env, { out = console.log, err = console.er
       const settings = heavySettings(env);
       if (env.HARNESS_HEAVY_TEST_HOME) err(`harness-slot heavy: a TEST lock home, ${home} (HARNESS_HEAVY_TEST_HOME), not the account's`);
       for (const note of settings.notes) err(`harness-slot heavy: ${note}`);
-      out(heavyStatus(home, settings.limit));
+      out(heavyStatus(home, settings.limit, { slotHome }));
       return 0;
     }
     if (!["run", "acquire", "release"].includes(action)) throw new Error(HEAVY_USAGE);
@@ -2130,7 +2268,7 @@ async function releaseSlotHeavy(heavy, env, { reason } = {}) {
 async function lockCli(args, env, { home, out, err }) {
   const [action, ...rest] = args;
   if (action !== "acquire" && action !== "release") {
-    out(lockMain(args, { home, heavyLive: (heavy) => slotHeavyLive(heavyHome(env), heavy) }));
+    out(lockMain(args, { home, heavyLive: (heavy) => slotHeavyLive(heavyHome(env), heavy), heavyHomeDir: heavyHome(env) }));
     return 0;
   }
   const opts = parseLockArgs(rest);
@@ -2180,6 +2318,9 @@ async function lockCli(args, env, { home, out, err }) {
     out("heavy: already held by this job (HARNESS_HEAVY_JOB), so not taken again; the slot's release leaves it");
     return 0;
   }
+  // Setup's holder, outside a heavy job, would take heavy after setup: refused at once, before any heavy wait.
+  const order = setupOrderRefusal(home, opts.holder, lockName(target));
+  if (order) throw new Error(order);
   const ctx = heavyContext(env);
   for (const note of ctx.notes) err(`harness-slot lock: ${note}`);
   return acquireSlotWithHeavy({

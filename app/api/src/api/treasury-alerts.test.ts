@@ -193,6 +193,9 @@ vi.mock("../valuation/manualInputStore", () => ({
 }));
 
 const { getTreasuryAlerts } = await import("./treasury-alerts");
+// The real module: getTreasuryAlerts reads the same in-memory value the sync
+// loop writes. Reset in every beforeEach, so no case inherits a version.
+const { recordLndVersion, resetLndVersionForTests } = await import("../lightning/lndVersion");
 
 // ─── Fixtures: the real ln-service array shape ──────────────────────────────
 
@@ -243,6 +246,7 @@ beforeEach(() => {
   s.probeThrows = false;
   s.channelPeers = [];
   s.channelGate = { applicable: false, stream_open: false, last_predicate_error_at: null };
+  resetLndVersionForTests();
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -675,12 +679,19 @@ const RULED_HEADINGS: Record<string, string> = {
   VALUATION_MANUAL_STALE: "Valuation inputs need attention",
   // Membership-gating pass 10 item 4 (spec T5).
   CHANNEL_GATE_OFFLINE: "Channel gate offline",
+  // node-version-alert (R5; spec §(d) treasury heading).
+  LND_VERSION_OUTDATED: "Lightning Node app is out of date",
 };
 
 function emittableTypes(): string[] {
   const src = (f: string) => readFileSync(join(__dirname, f), "utf8");
   const types = new Set<string>();
-  for (const f of ["treasury-alerts.ts", "channelDataStaleness.ts", "../lightning/channelAcceptor.ts"]) {
+  for (const f of [
+    "treasury-alerts.ts",
+    "channelDataStaleness.ts",
+    "../lightning/channelAcceptor.ts",
+    "../lightning/lndVersion.ts",
+  ]) {
     for (const m of src(f).matchAll(/^\s+type: "([A-Z][A-Z0-9_]+)",$/gm)) types.add(m[1]);
   }
   for (const m of src("lndFaultAlerts.ts").matchAll(/export const \w+_ALERT\s*=\s*"([A-Z][A-Z0-9_]+)"/g)) {
@@ -718,6 +729,7 @@ const SCENARIOS: Record<string, () => void> = {
   "channel gate stream not open": () => {
     s.channelGate = { applicable: true, stream_open: false, last_predicate_error_at: null };
   },
+  "LND below the minimum version": () => { recordLndVersion("0.20.0-beta commit=v0.20.0-beta"); },
 };
 
 /** The suite's beforeEach reset, for use between scenarios inside one test. */
@@ -730,11 +742,12 @@ function resetState() {
   s.metricKeys.length = 0;
   s.channelPeers = [];
   s.channelGate = { applicable: false, stream_open: false, last_predicate_error_at: null };
+  resetLndVersionForTests();
 }
 
 describe("SH1/SH2: every alert carries its ruled heading", () => {
   it("the ruled table covers exactly the types the API can emit", () => {
-    expect(emittableTypes().length).toBe(16);
+    expect(emittableTypes().length).toBe(17);
     expect(Object.keys(RULED_HEADINGS).sort()).toEqual(emittableTypes());
   });
 
@@ -811,5 +824,34 @@ describe("DW10: the channel-gate alert reaches the alerts surface", () => {
   it("CLEARS once the stream is open and no predicate error is recent", async () => {
     s.channelGate = { applicable: true, stream_open: true, last_predicate_error_at: Date.now() - 61 * 60_000 };
     expect(await gate()).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// node-version-alert (R5): the LND-version alert reaches the alerts surface.
+// The comparison itself is pinned in lightning/lndVersion.test.ts; this proves
+// the wiring through the real getTreasuryAlerts(), from the same in-memory
+// value the sync loop writes.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe("node-version-alert: the LND-version alert reaches the alerts surface", () => {
+  const outdated = () => getTreasuryAlerts().then((a) => a.filter((x) => x.type === "LND_VERSION_OUTDATED"));
+
+  it("FIRES as a warning on an LND below 0.21.2, carrying the version and the minimum", async () => {
+    recordLndVersion("0.20.0-beta commit=v0.20.0-beta");
+    const [alert, ...rest] = await outdated();
+    expect(rest).toEqual([]);
+    expect(alert.severity).toBe("warning");
+    expect(alert.heading).toBe("Lightning Node app is out of date");
+    expect(alert.data).toEqual({ version: "0.20.0-beta commit=v0.20.0-beta", minimum: "0.21.2" });
+  });
+
+  it("stays QUIET on a current LND", async () => {
+    recordLndVersion("0.21.8-beta commit=v0.21.8-beta");
+    expect(await outdated()).toEqual([]);
+  });
+
+  it("stays QUIET before the first read", async () => {
+    expect(await outdated()).toEqual([]);
   });
 });

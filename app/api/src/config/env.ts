@@ -2,6 +2,7 @@
 // REQUIRED vars have no safe default and must be set before starting.
 // All other vars have conservative defaults suitable for first-run operators.
 import { parseSyncTimingLevel } from "../lightning/syncTiming";
+import { positiveIntEnv } from "./positiveIntEnv";
 
 export const ENV = {
     // true when NODE_ENV is not "production"
@@ -21,14 +22,17 @@ export const ENV = {
     // --- Rate limits (member payment API) ---
     // Grain transactions can exceed $20k (~30M sats at current prices).
     // Defaults sized for agricultural commerce, not micro-payments.
+    // These defaults are the only ones: utils/rate-limit.ts reads them as-is.
+    // A value that is not a positive whole number gives the default, with a
+    // warning (positiveIntEnv.ts) — never NaN, which switched every limit off.
     // Max payments per member per minute
-    rateLimitTxPerMinute: parseInt(process.env.RATE_LIMIT_TX_PER_MINUTE || "10", 10),
+    rateLimitTxPerMinute: positiveIntEnv("RATE_LIMIT_TX_PER_MINUTE", 10),
     // Max sats per member per minute
-    rateLimitSatsPerMinute: parseInt(process.env.RATE_LIMIT_SATS_PER_MINUTE || "50000000", 10),
+    rateLimitSatsPerMinute: positiveIntEnv("RATE_LIMIT_SATS_PER_MINUTE", 50_000_000),
     // Max sats per member per hour
-    rateLimitSatsPerHour: parseInt(process.env.RATE_LIMIT_SATS_PER_HOUR || "200000000", 10),
+    rateLimitSatsPerHour: positiveIntEnv("RATE_LIMIT_SATS_PER_HOUR", 200_000_000),
     // Max sats in a single payment
-    rateLimitMaxSinglePayment: parseInt(process.env.RATE_LIMIT_MAX_SINGLE_PAYMENT || "50000000", 10),
+    rateLimitMaxSinglePayment: positiveIntEnv("RATE_LIMIT_MAX_SINGLE_PAYMENT", 50_000_000),
 
     // --- Rebalance viability thresholds ---
     // Minimum remote/capacity ratio (ppm) on the incoming channel to attempt rebalance
@@ -212,8 +216,10 @@ export const ENV = {
     memberMinWithdrawalSat: Number(process.env.MEMBER_MIN_WITHDRAWAL_SAT ?? "250000"),
     // Maximum sats a member can withdraw in a single Loop Out (default: 2,000,000)
     memberMaxWithdrawalSat: Number(process.env.MEMBER_MAX_WITHDRAWAL_SAT ?? "2000000"),
-    // Maximum total daily withdrawal for a member (default: 5,000,000)
-    memberMaxDailyWithdrawalSat: Number(process.env.MEMBER_MAX_DAILY_WITHDRAWAL_SAT ?? "5000000"),
+    // Maximum total daily withdrawal for a member (default: 5,000,000).
+    // positiveIntEnv: "" gives the default, not 0 (which refused every swap),
+    // and garbage gives the default, not NaN (which switched the cap off).
+    memberMaxDailyWithdrawalSat: positiveIntEnv("MEMBER_MAX_DAILY_WITHDRAWAL_SAT", 5_000_000),
     // Quote expiry in seconds (default: 5 minutes)
     swapQuoteExpirySec: Number(process.env.SWAP_QUOTE_EXPIRY_SEC ?? "300"),
     // Safety buffer subtracted from member's treasury-channel local balance (default: 50,000)
@@ -232,8 +238,9 @@ export const ENV = {
     memberMinRefillSat: Number(process.env.MEMBER_MIN_REFILL_SAT ?? "100000"),
     // Maximum sats a member can refill in a single Loop In (default: 3,000,000)
     memberMaxRefillSat: Number(process.env.MEMBER_MAX_REFILL_SAT ?? "3000000"),
-    // Maximum total daily refill for a member (default: 5,000,000)
-    memberMaxDailyRefillSat: Number(process.env.MEMBER_MAX_DAILY_REFILL_SAT ?? "5000000"),
+    // Maximum total daily refill for a member (default: 5,000,000).
+    // positiveIntEnv, for the same reason as memberMaxDailyWithdrawalSat.
+    memberMaxDailyRefillSat: positiveIntEnv("MEMBER_MAX_DAILY_REFILL_SAT", 5_000_000),
     // On-chain reserve buffer — subtracted from available balance to prevent draining to zero
     memberOnchainReserveSat: Number(process.env.MEMBER_ONCHAIN_RESERVE_SAT ?? "50000"),
 

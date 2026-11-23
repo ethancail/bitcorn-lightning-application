@@ -39,7 +39,7 @@ export async function payInvoice(paymentRequest: string, amountMtokens: string) 
   const result = await payViaPaymentRequest({
     lnd,
     request: paymentRequest,
-    ...(outgoingChannel ? { outgoing_channel: outgoingChannel } : {}),
+    ...(outgoingChannel ? { outgoing_channels: [outgoingChannel] } : {}),
     ...(maxFeeMtokens ? { max_fee_mtokens: maxFeeMtokens } : {}),
   });
 
