@@ -767,6 +767,13 @@ export type MemberStats = {
     /** null when the cert could not be read. */
     not_after_ms: number | null;
   };
+  /**
+   * node-version-alert (R4): the member's one-line "Lightning Node app is out
+   * of date" sentence, written by the API, when LND is below 0.21.2. null when
+   * there is nothing to say: version current, unknown, or not yet read. The
+   * dashboard shows it or not; it never writes its own text.
+   */
+  node_update_notice: string | null;
   treasury_channel: null | {
     channel_id: string;
     local_sats: number;

@@ -87,3 +87,45 @@ describe("deriveNodeRole — real identities still classify correctly", () => {
     expect(deriveNodeRole(OTHER_NODE, false)).toBe("external");
   });
 });
+
+// ─── node-version-alert: the sync loop records LND's version (R1, R6) ───────
+//
+// The read happens every tick on every node (bootSideEffects has no role
+// check). The version is recorded straight after getLndInfo, before any later
+// step can throw, and a failed read leaves the last good version in place
+// (Ethan, 2026-11-20, Phase 1 item 5). The real lndVersion module is used, not
+// a mock: the property is that sync writes the value the surfaces read.
+
+describe("syncLndState records LND's version", async () => {
+  const lnd = await import("./lnd");
+  const persistChannelsMod = await import("./persist-channels");
+  const { syncLndState } = await import("./sync");
+  const { getLndVersion, resetLndVersionForTests } = await import("./lndVersion");
+
+  beforeEach(() => {
+    resetLndVersionForTests();
+    vi.mocked(lnd.isLndAvailable).mockReturnValue(true);
+  });
+
+  it("records the version even when a later step of the tick throws", async () => {
+    vi.mocked(lnd.getLndInfo).mockResolvedValue({ version: "0.20.0-beta commit=v0.20.0-beta" });
+    vi.mocked(persistChannelsMod.persistPeers).mockRejectedValueOnce(new Error("peers read failed"));
+    await expect(syncLndState()).rejects.toThrow("peers read failed");
+    expect(getLndVersion()).toBe("0.20.0-beta commit=v0.20.0-beta");
+  });
+
+  it("keeps the last good version when a later read fails", async () => {
+    vi.mocked(lnd.getLndInfo).mockResolvedValueOnce({ version: "0.20.0-beta commit=v0.20.0-beta" });
+    vi.mocked(persistChannelsMod.persistPeers).mockRejectedValueOnce(new Error("stop the tick here"));
+    await expect(syncLndState()).rejects.toThrow("stop the tick here");
+    vi.mocked(lnd.getLndInfo).mockRejectedValueOnce(new Error("14 UNAVAILABLE"));
+    await expect(syncLndState()).rejects.toThrow("14 UNAVAILABLE");
+    expect(getLndVersion()).toBe("0.20.0-beta commit=v0.20.0-beta");
+  });
+
+  it("records nothing when LND is not available", async () => {
+    vi.mocked(lnd.isLndAvailable).mockReturnValue(false);
+    await syncLndState();
+    expect(getLndVersion()).toBeNull();
+  });
+});
