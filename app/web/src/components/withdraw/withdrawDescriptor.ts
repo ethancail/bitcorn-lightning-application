@@ -19,17 +19,11 @@
 // the errors. The quote panel, tracking and the confirm dialog keep their own
 // words (R8; slice 5).
 
-import { formatSats, formatUsd } from "../amount/amountDescriptor";
-
 /** The presets (D1.9: only those the policy accepts now are offered). */
 export const AMOUNT_PRESETS = [250_000, 500_000, 1_000_000, 2_000_000];
 
-/** An amount inside a sentence: "$29.77 (49,619 sats)", or "49,619 sats" with
- *  no usable price. `about` prefixes an estimate. */
-export function inlineAmount(sats: number, usd: number | null, about = false): string {
-  const lead = about ? "about " : "";
-  return usd != null ? `${lead}${formatUsd(sats, usd).text} (${formatSats(sats)})` : `${lead}${formatSats(sats)}`;
-}
+// An amount inside a sentence: inlineAmount, in ../amount/inlineAmount.ts
+// (moved there by slice 4 so the Membership panel shares it).
 
 export const WITHDRAW_COPY = {
   title: "Withdraw",

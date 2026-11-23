@@ -13,7 +13,8 @@ import { Amount, usableUsd } from "../components/amount/Amount";
 import { NoRateNote } from "../components/amount/NoRateNote";
 import { formatUsd } from "../components/amount/amountDescriptor";
 import { Choice } from "../components/Choice";
-import { AMOUNT_PRESETS, WITHDRAW_COPY as COPY, inlineAmount } from "../components/withdraw/withdrawDescriptor";
+import { AMOUNT_PRESETS, WITHDRAW_COPY as COPY } from "../components/withdraw/withdrawDescriptor";
+import { inlineAmount } from "../components/amount/inlineAmount";
 import { statusBadge, memberSwapBadge } from "../components/swapStatus";
 import { loopFailureSentence } from "../components/loopFailureCopy";
 import ActionConfirmModal, {
