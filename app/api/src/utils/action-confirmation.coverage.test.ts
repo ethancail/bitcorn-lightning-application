@@ -104,7 +104,18 @@ const OUTFLOW_PRIMITIVES: Array<[file: string, name: string]> = [
   ["lightning/loop.ts", "executeLoopInSwap"],
   ["autoBuy/coinbaseClient.ts", "placeMarketBuy"],
   ["autoBuy/coinbaseClient.ts", "placeWithdraw"],
+  // kraken-autobuy P4a (F2): Kraken's two outflow primitives.
+  ["autoBuy/krakenClient.ts", "krakenPlaceMarketBuy"],
+  ["autoBuy/krakenClient.ts", "krakenCreateWithdrawal"],
 ];
+
+/**
+ * Kraken's seeds ALONE (kraken-autobuy P4a, R2). With Coinbase's seeds in the
+ * same walk, /api/autobuy/execute-now and /catch-up derive capital through the
+ * Coinbase branch whether or not the Kraken branch is walked at all. Walking
+ * with these seeds only is what shows exchange.ts's Kraken branch is followed.
+ */
+const KRAKEN_PRIMITIVES = OUTFLOW_PRIMITIVES.filter(([f]) => f === "autoBuy/krakenClient.ts");
 
 /**
  * ln-service exports that move funds, and the only files allowed to import
@@ -151,7 +162,7 @@ beforeAll(() => {
   D = derive();
 }, 60_000);
 
-function derive(): Derived {
+function derive(seeds: Array<[file: string, name: string]> = OUTFLOW_PRIMITIVES): Derived {
   const cfgPath = ts.findConfigFile(API_ROOT, ts.sys.fileExists, "tsconfig.json")!;
   const cfg = ts.readConfigFile(cfgPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(cfg.config, ts.sys, path.dirname(cfgPath));
@@ -308,7 +319,7 @@ function derive(): Derived {
   }
 
   // ── taint: reverse-reachability to the primitives
-  const tainted = new Set(OUTFLOW_PRIMITIVES.map(([f, n]) => `${f}::${n}`));
+  const tainted = new Set(seeds.map(([f, n]) => `${f}::${n}`));
   for (let round = 0; round < 40; round++) {
     let changed = false;
     for (const [caller, callees] of callsFrom) {
@@ -470,6 +481,26 @@ describe("every capital dispatch site is classified", () => {
       phantom,
       `Entries in action-confirmation.ts matching no dispatch site — a route was removed or renamed:\n  ${phantom.join("\n  ")}`
     ).toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// kraken-autobuy P4a (R1, R2): the Kraken branch is walked on its own.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("the Kraken branch of exchange.ts is walked (Kraken seeds alone)", () => {
+  let DK: Derived;
+  beforeAll(() => {
+    DK = derive(KRAKEN_PRIMITIVES);
+  }, 60_000);
+
+  it("with only Kraken's two primitives seeded, exactly execute-now and catch-up derive capital", () => {
+    expect(KRAKEN_PRIMITIVES.map(([, n]) => n)).toEqual(["krakenPlaceMarketBuy", "krakenCreateWithdrawal"]);
+    const derived = DK.mutations.filter((m) => m.capital).flatMap((m) => rkeys(m.method, m.matchers)).sort();
+    expect(
+      derived,
+      `The walk with Kraken's seeds alone should reach Kraken's primitives through exchange.ts's static\n` +
+        `branch from exactly these routes. Empty means the Kraken branch is not walked (R1/R2):`,
+    ).toEqual(["POST =/api/autobuy/catch-up", "POST =/api/autobuy/execute-now"]);
   });
 });
 
