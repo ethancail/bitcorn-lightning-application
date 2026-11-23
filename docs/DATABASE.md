@@ -94,6 +94,7 @@ SQLite (single file under `/data/db` in the container). Migrations run on API st
 | `086_autobuy_sweeps_provider.sql` | Kraken auto-buy P2: `autobuy_sweeps.provider`, same shape |
 | `087_kraken_credentials.sql` | Kraken auto-buy P2: `kraken_credentials` singleton — `api_key` (plain), `encrypted_secret` + `nonce` (AES-256-GCM, HKDF label `kraken-autobuy`), and the account's `withdraw_method_id` / `withdraw_address_id` |
 | `088_autobuy_balance_snapshot.sql` | Kraken auto-buy P2: `autobuy_balance_snapshot` — one row per provider (upserted, no history): USD/USDC/BTC buying power and `read_at` |
+| `089_kraken_nonce.sql` | Kraken auto-buy P3: `kraken_nonce` singleton — the last nonce issued for the Kraken key (decimal TEXT), saved before each signed request so a restart or a backwards clock never reissues one (`autoBuy/krakenNonce.ts`) |
 
 `001` through `070` are contiguous. `071`–`073` are held by unmerged arcs (membership-gating `071`, `072`; pay-from-node `073`), so drive-mode P3 starts at `074`; until those merge the set has that gap, which the runner tolerates (it applies any unapplied filename in sorted order, `migrate.ts`). Always check the other arcs' branches, then allocate the next free number at or above the highest.
 

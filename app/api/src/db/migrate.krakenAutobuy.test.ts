@@ -3,6 +3,7 @@
 //   084 autobuy_config.provider     085 autobuy_runs.provider
 //   086 autobuy_sweeps.provider     087 kraken_credentials
 //   088 autobuy_balance_snapshot
+//   089 kraken_nonce (P3, ruling K2; M7–M9 at the end of this file)
 //
 // What the spec's done-when asks: the files apply on a fresh DB (M1) and on a
 // DB at 083 holding Coinbase rows, which then read 'coinbase' (M2). M2 is the
@@ -185,7 +186,8 @@ describe("migrations 084–088 (kraken-autobuy P2)", () => {
     // 001–083 were not re-run; 084–088 were applied once each.
     const appliedAfter = applied(db);
     expect(appliedAfter.slice(0, appliedBefore.length)).toEqual(appliedBefore);
-    expect(appliedAfter.slice(appliedBefore.length).map((r) => r.id)).toEqual(P2_FILES);
+    // Later migrations (089 on) may follow; the five P2 files come first, in order.
+    expect(appliedAfter.slice(appliedBefore.length, appliedBefore.length + P2_FILES.length).map((r) => r.id)).toEqual(P2_FILES);
   });
 
   it("M3 the CHECK admits 'coinbase' and 'kraken' and refuses anything else, on all four tables; kraken_credentials is a singleton", async () => {
@@ -259,5 +261,73 @@ describe("migrations 084–088 (kraken-autobuy P2)", () => {
     ]);
     expect(() => db.prepare(`INSERT INTO autobuy_balance_snapshot (provider, read_at) VALUES ('kraken', 2000)`).run())
       .toThrow(/UNIQUE constraint failed|PRIMARY KEY/);
+  });
+});
+
+// ─── 089 kraken_nonce (kraken-autobuy P3, ruling K2) ─────────────────────────
+const NONCE_FILE = "089_kraken_nonce.sql";
+
+/** A migrations directory holding only the files numbered at or below 088. */
+function migrationsAt088(): string {
+  const dir = tempDir("bitcorn-migrations-088-");
+  for (const f of fs.readdirSync(REAL_MIGRATIONS_DIR)) {
+    if (f.endsWith(".sql") && parseInt(f.slice(0, 3), 10) <= 88) {
+      fs.copyFileSync(path.join(REAL_MIGRATIONS_DIR, f), path.join(dir, f));
+    }
+  }
+  return dir;
+}
+
+describe("migration 089 (kraken-autobuy P3)", () => {
+  it("M7 a fresh DB: kraken_nonce has exactly (id, last_nonce), last_nonce TEXT NOT NULL, no row; 089 recorded once", async () => {
+    const { runMigrations, db } = await loadRunner(tempDir("bitcorn-mig-nonce-fresh-"));
+    runMigrations();
+    expect(tableInfo(db, "kraken_nonce").map((c) => ({ name: c.name, type: c.type, notnull: c.notnull, pk: c.pk }))).toEqual([
+      { name: "id", type: "INTEGER", notnull: 0, pk: 1 },
+      { name: "last_nonce", type: "TEXT", notnull: 1, pk: 0 },
+    ]);
+    expect((db.prepare("SELECT COUNT(*) AS n FROM kraken_nonce").get() as { n: number }).n).toBe(0);
+    expect(applied(db).filter((r) => r.id === NONCE_FILE)).toHaveLength(1);
+  });
+
+  it("M8 a DB at 088 holding P2-era rows: 089 applies, nothing else changes, and a re-boot is a no-op", async () => {
+    const dbDir = tempDir("bitcorn-mig-nonce-088-");
+    const at088 = await loadRunner(dbDir, migrationsAt088());
+    at088.runMigrations();
+    const db0 = at088.db;
+    expect(colNames(db0, "kraken_nonce")).toEqual([]);
+    db0.prepare(
+      `INSERT INTO kraken_credentials (id, api_key, encrypted_secret, nonce, connected_at) VALUES (1, 'k', x'00', x'01', 1)`,
+    ).run();
+    db0.prepare(`INSERT INTO autobuy_balance_snapshot (provider, usd_available, read_at) VALUES ('kraken', 50, 9)`).run();
+    const dump = (db: Database.Database, t: string) => db.prepare(`SELECT * FROM ${t} ORDER BY rowid`).all();
+    const before = { creds: dump(db0, "kraken_credentials"), snap: dump(db0, "autobuy_balance_snapshot"), applied: applied(db0) };
+    db0.close();
+
+    const upgraded = await loadRunner(dbDir);
+    upgraded.runMigrations();
+    const db = upgraded.db;
+    expect(colNames(db, "kraken_nonce")).toEqual(["id", "last_nonce"]);
+    expect(dump(db, "kraken_credentials")).toEqual(before.creds);
+    expect(dump(db, "autobuy_balance_snapshot")).toEqual(before.snap);
+    const after = applied(db);
+    expect(after.slice(0, before.applied.length)).toEqual(before.applied);
+    expect(after.slice(before.applied.length).map((r) => r.id)).toEqual([NONCE_FILE]);
+    upgraded.runMigrations();
+    expect(applied(db)).toEqual(after);
+  });
+
+  it("M9 one statement; a singleton; last_nonce must be 1–20 decimal digits", async () => {
+    expect(statements(NONCE_FILE)).toBe(1);
+    const { runMigrations, db } = await loadRunner(tempDir("bitcorn-mig-nonce-check-"));
+    runMigrations();
+    const put = (id: number, v: string | null) => db.prepare(`INSERT INTO kraken_nonce (id, last_nonce) VALUES (?, ?)`).run(id, v);
+    put(1, "18446744073709551615"); // the largest unsigned 64-bit value: 20 digits
+    expect(() => put(2, "1")).toThrow(/CHECK constraint failed/);
+    db.prepare("DELETE FROM kraken_nonce").run();
+    for (const bad of ["", "12a", "-1", "1.5", " 1", "184467440737095516150"]) {
+      expect(() => put(1, bad), JSON.stringify(bad)).toThrow(/CHECK constraint failed/);
+    }
+    expect(() => put(1, null)).toThrow(/NOT NULL constraint failed/);
   });
 });
