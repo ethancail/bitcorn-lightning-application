@@ -105,6 +105,7 @@ import {
 import { listAccounts } from "./autoBuy/coinbaseClient";
 import { encrypt, decrypt } from "./autoBuy/credentials";
 import * as caps from "./autoBuy/caps";
+import { withHoldEnd } from "./autoBuy/hold";
 import {
   getCurrent,
   getHistory,
@@ -4745,16 +4746,18 @@ async function dispatchRequest(
           console.warn("[autobuy-status] ensureWithdrawAddress failed:", err);
         }
       }
-      const next = db.prepare(
-        `SELECT id, scheduled_for, z_score, zone, multiplier, intended_buy_usd, status
+      // Each run carries its provider and hold end (kraken-autobuy ruling S2):
+      // the hold depends on the provider, so the web never computes it.
+      const next = (db.prepare(
+        `SELECT id, scheduled_for, z_score, zone, multiplier, intended_buy_usd, status, filled_at, provider
          FROM autobuy_runs WHERE status IN ('scheduled','buy_placed','awaiting_withdraw_hold','sweep_assigned','withdraw_placed')
          ORDER BY scheduled_for ASC LIMIT 10`,
-      ).all();
-      const recent = db.prepare(
+      ).all() as Array<{ provider: string; filled_at: number | null }>).map(withHoldEnd);
+      const recent = (db.prepare(
         `SELECT id, scheduled_for, z_score, zone, multiplier, intended_buy_usd, filled_btc, filled_usd,
-                status, filled_at, withdraw_txid, error_code, error_message, currencies_checked, currency_used
+                status, filled_at, withdraw_txid, error_code, error_message, currencies_checked, currency_used, provider
          FROM autobuy_runs ORDER BY id DESC LIMIT 20`,
-      ).all();
+      ).all() as Array<{ provider: string; filled_at: number | null }>).map(withHoldEnd);
       // Unclaimed passed-over intervals, and what buying them would cost.
       // NULL when there are none — the UI renders nothing at all in that case
       // (spec §4 A1: no empty state, no "0 missed"). A valuation failure
@@ -4832,13 +4835,13 @@ async function dispatchRequest(
         params.push(statusFilter);
       }
       params.push(limit, offset);
-      const rows = db.prepare(
+      const rows = (db.prepare(
         `SELECT id, scheduled_for, z_score, zone, multiplier, base_unit_usd, intended_buy_usd,
                 status, coinbase_order_id, filled_btc, filled_usd, filled_at,
                 withdraw_txid, error_code, error_message, currencies_checked, currency_used,
-                created_at, updated_at
+                created_at, updated_at, provider
          FROM autobuy_runs ${where} ORDER BY id DESC LIMIT ? OFFSET ?`,
-      ).all(...params);
+      ).all(...params) as Array<{ provider: string; filled_at: number | null }>).map(withHoldEnd);
       const total = db.prepare(
         `SELECT COUNT(*) AS c FROM autobuy_runs ${where}`,
       ).get(...(statusFilter ? [statusFilter] : [])) as { c: number };

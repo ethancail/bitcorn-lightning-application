@@ -22,3 +22,8 @@ export function holdSecondsFor(provider: string): number {
 export function holdEndsAt(provider: string, filledAt: number | null | undefined): number | null {
   return filledAt == null ? null : filledAt + holdSecondsFor(provider);
 }
+
+/** A run row as the API returns it: the row plus its hold end. */
+export function withHoldEnd<T extends { provider: string; filled_at: number | null }>(row: T): T & { hold_ends_at: number | null } {
+  return { ...row, hold_ends_at: holdEndsAt(row.provider, row.filled_at) };
+}
