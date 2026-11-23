@@ -7,14 +7,19 @@
 // and performs the DB write itself (see alertStore.ts). Keeping this pure is
 // what makes it unit-testable in isolation (§7) without a DB or Coinbase.
 
-/** The five canonical alert types (spec §2). The AUTOBUY_ prefix keeps these
- *  distinct from the computed TreasuryAlert types. */
+/** The five canonical alert types (spec §2), plus two the Kraken path raises
+ *  (kraken-autobuy P4c). The AUTOBUY_ prefix keeps these distinct from the
+ *  computed TreasuryAlert types. */
 export type AlertType =
   | "AUTOBUY_INSUFFICIENT_FUNDS"
   | "AUTOBUY_AUTH_FAILURE"
   | "AUTOBUY_RATE_LIMITED"
   | "AUTOBUY_ORDER_FAILED"
-  | "AUTOBUY_SWEEP_FAILED";
+  | "AUTOBUY_SWEEP_FAILED"
+  /** A buy below the exchange's minimum was skipped, never rounded up (STOP 2). */
+  | "AUTOBUY_BUY_BELOW_MINIMUM"
+  /** A withdrawal the exchange parked for approval (Kraken's approval_request_id; G1: a warning). */
+  | "AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL";
 
 /** Phase 2 emits warning or critical only — never info, even though the
  *  shared AlertSeverity vocabulary allows it (spec §1). */
@@ -32,6 +37,8 @@ export const SEVERITY_BY_TYPE: Record<AlertType, AlertSeverity> = {
   AUTOBUY_RATE_LIMITED: "warning",
   AUTOBUY_ORDER_FAILED: "warning",
   AUTOBUY_SWEEP_FAILED: "critical",
+  AUTOBUY_BUY_BELOW_MINIMUM: "warning",
+  AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL: "warning",
 };
 
 /** The minimal shape of an existing active alert the decision functions need.
@@ -75,7 +82,7 @@ export interface AlertResolution {
 }
 
 /** Success events that auto-clear matching active alerts (spec §3). */
-export type SuccessKind = "buy" | "api_ok" | "sweep";
+export type SuccessKind = "buy" | "api_ok" | "sweep" | "approval_decided";
 
 // ───────────────────────────────────────────────────────────────────────
 // classifyCoinbaseError
@@ -153,9 +160,12 @@ export function decideAlertForFailure(
  *  table). Kept separate per type so a `buy` does not clear auth/rate-limit
  *  (those clear on the prior `api_ok` from the same tick's listAccounts). */
 const RESOLVES_BY_SUCCESS: Record<SuccessKind, AlertType[]> = {
-  buy: ["AUTOBUY_INSUFFICIENT_FUNDS", "AUTOBUY_ORDER_FAILED"],
+  buy: ["AUTOBUY_INSUFFICIENT_FUNDS", "AUTOBUY_ORDER_FAILED", "AUTOBUY_BUY_BELOW_MINIMUM"],
   api_ok: ["AUTOBUY_AUTH_FAILURE", "AUTOBUY_RATE_LIMITED"],
-  sweep: ["AUTOBUY_SWEEP_FAILED"],
+  sweep: ["AUTOBUY_SWEEP_FAILED", "AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL"],
+  // A parked withdrawal resolved either way (granted → confirmed, or refused →
+  // failed): the "awaiting approval" alert no longer describes anything.
+  approval_decided: ["AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL"],
 };
 
 /**

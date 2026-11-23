@@ -122,6 +122,63 @@ function raiseOrderFailureAlert(
   raiseAlert(db, { type, latestRunId: runId, context });
 }
 
+/**
+ * Ruling S5 (kraken-autobuy P4c): on a provider whose policy says so (Kraken),
+ * a failure that Coinbase's path leaves SILENT raises the alert its class
+ * names. Coinbase's silent paths stay silent: callers check
+ * policy.alertOnSilentPaths first. auth pauses (credentials_invalid) as the
+ * buy path already does; anything else is the transient RATE_LIMITED warning.
+ */
+function raiseSilentPathAlert(
+  db: Database.Database,
+  cls: ErrorClass,
+  httpStatus: number,
+  detail: string,
+  source: string,
+  latestRunId: number | null = null,
+): void {
+  if (cls === "auth") {
+    pauseWithReason(db, "credentials_invalid");
+    raiseAlert(db, {
+      type: "AUTOBUY_AUTH_FAILURE",
+      latestRunId,
+      context: { paused_reason: "credentials_invalid", http_status: httpStatus, source, error: detail },
+    });
+    return;
+  }
+  raiseAlert(db, {
+    type: "AUTOBUY_RATE_LIMITED",
+    latestRunId,
+    context: { http_status: httpStatus, retry_after: null, source, error: detail },
+  });
+}
+
+/**
+ * STOP 2 (kraken-autobuy P4c): a buy below the exchange's minimum is SKIPPED
+ * with its own status and a warning, and the next interval is scheduled. The
+ * amount is never rounded up to the minimum, and it is not a failure.
+ */
+function skipBelowMinimum(
+  db: Database.Database,
+  cfg: { frequency: string; next_run_at: number | null; base_unit_usd: number },
+  multiplier: number,
+  val: { z_score: number; zone: string },
+  intendedUsd: number,
+  minimumUsd: number | null,
+  source: "pre_check" | "exchange_refused",
+  detail: string | null,
+): void {
+  const reason = minimumUsd !== null ? `minimum_usd=${minimumUsd}` : `exchange_refused:${detail ?? ""}`.slice(0, 200);
+  const runId = insertSkippedRow(db, "skipped_below_minimum", reason, multiplier, val, intendedUsd);
+  raiseAlert(db, {
+    type: "AUTOBUY_BUY_BELOW_MINIMUM",
+    latestRunId: runId,
+    context: { intended_buy_usd: intendedUsd, minimum_usd: minimumUsd, source, error: detail },
+  });
+  console.log(`[autobuy-scheduler] skip: buy ${intendedUsd} below the exchange minimum ${minimumUsd ?? "(refused)"}`);
+  scheduleNext(db, cfg);
+}
+
 function readConfig(db: Database.Database) {
   return db.prepare(`SELECT * FROM autobuy_config WHERE id = 1`).get() as {
     id: number;
@@ -273,13 +330,23 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   // Clear any active auth / rate-limit alerts (spec §3 aggressive api_ok clear).
   clearAlerts(db, "api_ok");
 
+  // STOP 2: below the exchange's minimum → skipped, never rounded up. Coinbase's
+  // minimum is 0 and costs no call. A minimum that cannot be read is no reason
+  // to skip: the exchange still refuses a too-small order, which lands below.
+  const minimum = await exchange.buyMinimumUsd(session, val.price_usd);
+  if (minimum.ok && intendedUsd < minimum.minimumUsd) {
+    skipBelowMinimum(db, cfg, mult, val, intendedUsd, minimum.minimumUsd, "pre_check", null);
+    return;
+  }
+
   // Both USD and USDC balances (an absent or unreadable one reads 0, in the
   // adapter). selectCurrency (§2) then picks which to spend, bounded by the
-  // configured preference.
+  // configured preference. E9 (ruling D-P4-8): a provider that cannot buy with
+  // USDC buys USD, whatever the preference says.
   const usdBalance = balances.balances.usd;
   const usdcBalance = balances.balances.usdc;
 
-  const preference = cfg.currency_preference as CurrencyPreference;
+  const preference = (exchange.policy(session).usdcBuys ? cfg.currency_preference : "usd_only") as CurrencyPreference;
   const currenciesChecked = currenciesCheckedFor(preference);
   const currency = selectCurrency(preference, usdBalance, usdcBalance, intendedUsd);
   if (!currency) {
@@ -317,6 +384,25 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   // have per-buy + rolling caps as the outer containment.
   const placed = await exchange.buy(session, intendedUsd, currency, clientOrderIdFor("scheduled", cfg.next_run_at ?? now));
   if (!placed.ok) {
+    if (placed.belowMinimum) {
+      skipBelowMinimum(db, cfg, mult, val, intendedUsd, null, "exchange_refused", placed.detail);
+      return;
+    }
+    if (placed.delivery === "unknown") {
+      // The order may exist and the adapter's lookup did not find it (Kraken
+      // only). HOLD THE SLOT: no failed_buy row and next_run_at NOT advanced,
+      // so the next tick re-derives the same client order id and the adapter
+      // finds the order, or places it if it never existed. Amendment A: this
+      // still counts as a failure, so repeated unknowns pause at the threshold.
+      raiseAlert(db, {
+        type: "AUTOBUY_ORDER_FAILED",
+        latestRunId: null,
+        context: { latest_run_id: null, error_code: "outcome_unknown", error_message: placed.detail.slice(0, 500), order_status: null },
+      });
+      caps.recordFailure(db);
+      console.warn(`[autobuy-scheduler] buy outcome unknown; slot held for reconciliation: ${placed.detail}`);
+      return;
+    }
     const runId = insertFailedBuyRow(db, placed.detail, mult, val, intendedUsd, null, currenciesChecked);
     raiseOrderFailureAlert(db, placed.httpStatus, placed.errorClass, placed.detail, runId, null);
     caps.recordFailure(db);
@@ -632,7 +718,11 @@ export type CatchUpRefusalCode =
   | "no_credentials"
   | "account_check_failed"
   | "insufficient_funds"
-  | "order_failed";
+  | "order_failed"
+  /** kraken-autobuy P4c, STOP 2: the total is below the exchange's minimum. Nothing was placed. */
+  | "below_minimum"
+  /** kraken-autobuy P4c: the order may exist; nothing is claimed, so a retry re-derives the same order id. */
+  | "order_outcome_unknown";
 
 /**
  * ⚠ THE STRUCTURED REFUSAL FIELDS BELOW ARE THE MEMBER-FACING NUMBERS.
@@ -802,13 +892,22 @@ export async function runCatchUp(
 
   const balances = await exchange.getBalances(session);
   if (!balances.ok) {
+    // S5: Coinbase returns this refusal silently; Kraken also raises its alert.
+    if (exchange.policy(session).alertOnSilentPaths) {
+      raiseSilentPathAlert(db, balances.errorClass, balances.httpStatus, balances.detail, "catch_up_balance");
+    }
     return { ok: false, code: "account_check_failed", reason: `http_${balances.httpStatus}` };
+  }
+
+  const minimum = await exchange.buyMinimumUsd(session, val.price_usd);
+  if (minimum.ok && total < minimum.minimumUsd) {
+    return { ok: false, code: "below_minimum", reason: `total=${total};minimum_usd=${minimum.minimumUsd}` };
   }
 
   const usdBalance = balances.balances.usd;
   const usdcBalance = balances.balances.usdc;
 
-  const preference = cfg.currency_preference as CurrencyPreference;
+  const preference = (exchange.policy(session).usdcBuys ? cfg.currency_preference : "usd_only") as CurrencyPreference;
   const currenciesChecked = currenciesCheckedFor(preference);
   const currency = selectCurrency(preference, usdBalance, usdcBalance, total);
   if (!currency) {
@@ -830,6 +929,20 @@ export async function runCatchUp(
 
   // missed is oldest first, and the oldest k are claimed only after this buy.
   const placed = await exchange.buy(session, total, currency, clientOrderIdFor("catchup", missed[0].scheduled_for));
+  if (!placed.ok && placed.belowMinimum) {
+    return { ok: false, code: "below_minimum", reason: placed.detail.slice(0, 200) };
+  }
+  if (!placed.ok && placed.delivery === "unknown") {
+    // As the scheduled buy: no failed_buy row and nothing claimed, so a retry
+    // re-derives the same order id; it still counts as a failure (amendment A).
+    raiseAlert(db, {
+      type: "AUTOBUY_ORDER_FAILED",
+      latestRunId: null,
+      context: { latest_run_id: null, error_code: "outcome_unknown", error_message: placed.detail.slice(0, 500), order_status: null },
+    });
+    caps.recordFailure(db);
+    return { ok: false, code: "order_outcome_unknown", reason: placed.detail.slice(0, 200) };
+  }
   if (!placed.ok) {
     const runId = insertFailedBuyRow(db, placed.detail, mult, val, total, null, currenciesChecked);
     raiseOrderFailureAlert(db, placed.httpStatus, placed.errorClass, placed.detail, runId, null);
@@ -901,6 +1014,10 @@ async function stepPollBuyPlaced(db: Database.Database): Promise<void> {
         return;
       }
       console.warn(`[autobuy-scheduler] pollOrder failed order=${row.coinbase_order_id}: ${res.detail}`);
+      // S5: silent on Coinbase; Kraken raises it (the next tick still retries).
+      if (exchange.policy(session).alertOnSilentPaths) {
+        raiseSilentPathAlert(db, res.errorClass, res.httpStatus, res.detail, "order_poll", row.id);
+      }
       continue; // next tick retries
     }
     // A successful poll proves the credentials are valid and the API reachable.
@@ -1042,14 +1159,38 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
     return;
   }
 
+  // STOP 1 (kraken-autobuy P4c): the exchange's own withdrawal minimum, read now.
+  // Below it the sweep DEFERS, exactly as below SWEEP_MIN_BTC above; it never
+  // fails. Coinbase's is SWEEP_MIN_BTC itself (no call).
+  const minimum = await exchange.withdrawalMinimumBtc(session);
+  if (!minimum.ok) {
+    if (exchange.policy(session).alertOnSilentPaths) {
+      raiseSilentPathAlert(db, minimum.errorClass, minimum.httpStatus, minimum.detail, "withdrawal_minimum");
+    }
+    return;
+  }
+  if (totalRow.total < minimum.minimumBtc) return; // defer
+
   const withdrawResult = await exchange.withdraw(session, cfg.withdraw_address, totalRow.total);
   const now = nowSec();
+
+  if (!withdrawResult.ok && withdrawResult.delivery === "not_sent") {
+    // Nothing reached the exchange's withdrawal call (Kraken: the fee quote
+    // failed). Nothing to record as failed: the rows stay sweep_assigned and
+    // no sweep row is written, so a later tick today retries.
+    raiseSilentPathAlert(db, withdrawResult.errorClass, withdrawResult.httpStatus, withdrawResult.detail, "fee_quote");
+    return;
+  }
 
   if (!withdrawResult.ok) {
     // Record a failed sweep row for audit + mark all assigned runs as failed_withdraw.
     // The exchange adapter decides what an address refusal is (a 400 on Coinbase).
+    // An UNKNOWN outcome (Kraken, after its List check) ends the same way and is
+    // never re-sent: the runs leave sweep_assigned for good (spec §4).
     const addressRejected = withdrawResult.errorClass === "withdraw_address_rejected";
-    const errorCode = addressRejected ? "address_not_whitelisted" : `http_${withdrawResult.httpStatus}`;
+    const errorCode = addressRejected
+      ? "address_not_whitelisted"
+      : withdrawResult.delivery === "unknown" ? "withdraw_outcome_unknown" : `http_${withdrawResult.httpStatus}`;
     // Capture which runs are affected before the UPDATE rewrites their status,
     // so the critical alert can point at the latest affected run (spec §2 Sc.5).
     const affected = db.prepare(
@@ -1086,10 +1227,20 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
 
   // Create the sweep row + link all sweep_assigned runs to it + transition them
   // coinbase_tx_id holds the provider's withdrawal id (Kraken's too; D-P4-6).
+  // A withdrawal the exchange parked for approval gets its own sweep state
+  // (G1: a warning alert); the withdraw poll resolves it either way.
+  const sweepStatus = withdrawResult.parked ? "awaiting_approval" : "placed";
   const sweepInsert = db.prepare(
     `INSERT INTO autobuy_sweeps (swept_at, btc_amount, coinbase_tx_id, status, provider)
-     VALUES (?, ?, ?, 'placed', ?) RETURNING id`,
-  ).get(now, totalRow.total, withdrawResult.withdrawalId, provider) as { id: number };
+     VALUES (?, ?, ?, ?, ?) RETURNING id`,
+  ).get(now, totalRow.total, withdrawResult.withdrawalId, sweepStatus, provider) as { id: number };
+  if (withdrawResult.parked) {
+    raiseAlert(db, {
+      type: "AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL",
+      latestRunId: null,
+      context: { sweep_id: sweepInsert.id, btc_amount: totalRow.total, withdrawal_id: withdrawResult.withdrawalId },
+    });
+  }
 
   db.prepare(
     `UPDATE autobuy_runs
@@ -1105,20 +1256,41 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
 
 async function stepPollWithdraws(db: Database.Database): Promise<void> {
   const sweeps = db.prepare(
-    `SELECT id, coinbase_tx_id FROM autobuy_sweeps WHERE status = 'placed' AND provider = ? LIMIT 5`,
-  ).all(providerOf(db)) as Array<{ id: number; coinbase_tx_id: string }>;
+    `SELECT id, coinbase_tx_id, status FROM autobuy_sweeps
+      WHERE status IN ('placed', 'awaiting_approval') AND provider = ? LIMIT 5`,
+  ).all(providerOf(db)) as Array<{ id: number; coinbase_tx_id: string; status: string }>;
   if (sweeps.length === 0) return;
 
+  // Each early return below is SILENT on Coinbase (pinned, ruling S5); on Kraken
+  // it raises the alert its cause names.
   const session = openExchange(db);
-  if (!session) return;
+  if (!session) {
+    if (exchange.activePolicy(db).alertOnSilentPaths) {
+      const reason = readConfig(db).paused_reason === "credentials_corrupted" ? "credentials_corrupted" : "no_credentials";
+      pauseWithReason(db, reason);
+      raiseAlert(db, {
+        type: "AUTOBUY_AUTH_FAILURE",
+        latestRunId: null,
+        context: { paused_reason: reason, http_status: null, source: "withdraw_poll", error: reason },
+      });
+    }
+    return;
+  }
+  const alertSilent = exchange.policy(session).alertOnSilentPaths;
 
   const balances = await exchange.getBalances(session);
-  if (!balances.ok) return;
+  if (!balances.ok) {
+    if (alertSilent) raiseSilentPathAlert(db, balances.errorClass, balances.httpStatus, balances.detail, "withdraw_poll");
+    return;
+  }
   if (balances.balances.btc === null) return;
 
   for (const sweep of sweeps) {
     const res = await exchange.getWithdrawal(session, sweep.coinbase_tx_id);
-    if (!res.ok) continue; // retry next tick
+    if (!res.ok) {
+      if (alertSilent) raiseSilentPathAlert(db, res.errorClass, res.httpStatus, res.detail, "withdraw_poll");
+      continue; // retry next tick
+    }
 
     const now = nowSec();
     const w = res.withdrawal;
@@ -1132,7 +1304,8 @@ async function stepPollWithdraws(db: Database.Database): Promise<void> {
          WHERE withdraw_sweep_id = ? AND status = 'withdraw_placed'`,
       ).run(w.txHash, now, sweep.id);
       caps.resetFailureCounter(db);
-      // Sweep confirmed — clear any active sweep-failed alert (spec §3).
+      // Sweep confirmed — clear any active sweep-failed alert (spec §3), and an
+      // awaiting-approval alert if this withdrawal was parked.
       clearAlerts(db, "sweep");
       console.log(`[autobuy-scheduler] sweep confirmed sweep=${sweep.id} txid=${w.txHash ?? "<pending>"}`);
     } else if (w.state === "failed" || w.state === "cancelled") {
@@ -1152,6 +1325,8 @@ async function stepPollWithdraws(db: Database.Database): Promise<void> {
          WHERE withdraw_sweep_id = ? AND status = 'withdraw_placed'`,
       ).run(now, sweep.id);
       caps.recordFailure(db);
+      // A parked withdrawal that was refused: the approval is decided.
+      if (sweep.status === "awaiting_approval") clearAlerts(db, "approval_decided");
       raiseAlert(db, {
         type: "AUTOBUY_SWEEP_FAILED",
         latestRunId: affected?.id ?? null,

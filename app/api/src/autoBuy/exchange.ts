@@ -94,6 +94,15 @@ export function policy(s: ExchangeSession): ProviderPolicy {
   return s.provider === "kraken" ? kraken.policy(s) : coinbase.policy(s);
 }
 
+/**
+ * The active provider's policy without a session: for paths where opening one
+ * failed (no or unreadable credentials), which S5 still treats per provider.
+ * Both adapters' policy() is static and ignores the session it is given.
+ */
+export function activePolicy(db: Database.Database): ProviderPolicy {
+  return activeProvider(db) === "kraken" ? kraken.policy({ provider: "kraken" }) : coinbase.policy({ provider: "coinbase" });
+}
+
 // Compile-time only: this module's own functions satisfy the interface too. Not
 // exported, so nothing can call them through it.
 void ({

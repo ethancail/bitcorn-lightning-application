@@ -4625,7 +4625,7 @@ async function dispatchRequest(
         const status =
           result.code === "amount_changed" ? 409
           : result.code === "valuation_unavailable" || result.code === "account_check_failed" ? 503
-          : result.code === "order_failed" ? 502
+          : result.code === "order_failed" || result.code === "order_outcome_unknown" ? 502
           : 400;
         res.writeHead(status, { "Content-Type": "application/json" });
         res.end(JSON.stringify({

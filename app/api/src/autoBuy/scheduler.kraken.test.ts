@@ -76,6 +76,8 @@ function krakenFetch(url: string, init: RequestInit = {}): Response {
   switch (`${c.method} ${c.path}`) {
     case "POST /0/private/BalanceEx":
       return ok0({ ZUSD: { balance: "1000", hold_trade: "0" }, XXBT: { balance: "0.001", hold_trade: "0" } });
+    case "GET /0/public/AssetPairs": return ok0({ XXBTZUSD: { altname: "XBTUSD", ordermin: "0.0001", costmin: "0.5" } });
+    case "GET /funding/v1/methods/withdraw": return json({ methods: [{ method_id: METHOD_ID, minimum_amount: "0.000218", fees: {} }] });
     case "POST /0/private/OpenOrders": return ok0({ open: {} });
     case "POST /0/private/ClosedOrders": return ok0({ closed: {}, count: 0 });
     case "POST /0/private/AddOrder": return ok0({ descr: { order: "buy 100.00 XBTUSD @ market" }, txid: [TXID] });
@@ -159,6 +161,7 @@ describe("a Kraken run end to end through runTick (stubbed fetch)", () => {
     await tickAt(T0);
     expect(pathsSince(0)).toEqual([
       "POST /0/private/BalanceEx",
+      "GET /0/public/AssetPairs", // STOP 2's minimum (P4c)
       "POST /0/private/OpenOrders",
       "POST /0/private/ClosedOrders",
       "POST /0/private/AddOrder",
@@ -187,6 +190,7 @@ describe("a Kraken run end to end through runTick (stubbed fetch)", () => {
     await tickAt(FILLED_AT + 7 * 86400 + 60);
     expect(pathsSince(n)).toEqual([
       "POST /0/private/BalanceEx",
+      "GET /funding/v1/methods/withdraw", // STOP 1's minimum (P4c)
       `GET /funding/v1/fees/${METHOD_ID}`,
       "POST /funding/v1/withdrawals",
       "POST /0/private/BalanceEx",
