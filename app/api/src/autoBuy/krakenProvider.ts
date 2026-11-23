@@ -347,7 +347,7 @@ export async function buyMinimumUsd(_s: ExchangeSession, priceUsd: number): Prom
   return { ok: true, minimumUsd: Math.max(res.pair.costmin ?? 0, res.pair.ordermin * priceUsd) };
 }
 
-/** Kraken alerts where Coinbase is silent (S5), buys USD only (E9), and reconciles buys by cl_ord_id. */
+/** Kraken alerts where Coinbase is silent (S5), buys USD only (E9), reconciles buys by cl_ord_id, and keeps a balance snapshot (S3). */
 export function policy(_s: ExchangeSession): ProviderPolicy {
-  return { alertOnSilentPaths: true, usdcBuys: false, reconcileBuys: true };
+  return { alertOnSilentPaths: true, usdcBuys: false, reconcileBuys: true, snapshotBalances: true };
 }

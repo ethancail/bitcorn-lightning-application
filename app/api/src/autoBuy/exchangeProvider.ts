@@ -86,11 +86,14 @@ export interface ExchangeSession {
  *   alertOnSilentPaths  raise an alert where Coinbase's path is silent (S5: Coinbase's stay silent)
  *   usdcBuys            the provider can buy BTC with USDC (Kraken: no, E9)
  *   reconcileBuys       buys carry a client order id and are reconciled by it
+ *   snapshotBalances    balances are persisted each tick and drive the low-funds
+ *                       warning (P5, ruling S3: the Kraken path only)
  */
 export interface ProviderPolicy {
   alertOnSilentPaths: boolean;
   usdcBuys: boolean;
   reconcileBuys: boolean;
+  snapshotBalances: boolean;
 }
 
 export type OpenSessionResult =

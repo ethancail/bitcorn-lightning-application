@@ -19,7 +19,9 @@ export type AlertType =
   /** A buy below the exchange's minimum was skipped, never rounded up (STOP 2). */
   | "AUTOBUY_BUY_BELOW_MINIMUM"
   /** A withdrawal the exchange parked for approval (Kraken's approval_request_id; G1: a warning). */
-  | "AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL";
+  | "AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL"
+  /** The Kraken balance covers fewer than 2 next buys at the current multiplier (P5, E3/G3; D-P5-2: a warning). */
+  | "AUTOBUY_LOW_FUNDS";
 
 /** Phase 2 emits warning or critical only — never info, even though the
  *  shared AlertSeverity vocabulary allows it (spec §1). */
@@ -39,6 +41,7 @@ export const SEVERITY_BY_TYPE: Record<AlertType, AlertSeverity> = {
   AUTOBUY_SWEEP_FAILED: "critical",
   AUTOBUY_BUY_BELOW_MINIMUM: "warning",
   AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL: "warning",
+  AUTOBUY_LOW_FUNDS: "warning",
 };
 
 /** The minimal shape of an existing active alert the decision functions need.
@@ -82,7 +85,7 @@ export interface AlertResolution {
 }
 
 /** Success events that auto-clear matching active alerts (spec §3). */
-export type SuccessKind = "buy" | "api_ok" | "sweep" | "approval_decided";
+export type SuccessKind = "buy" | "api_ok" | "sweep" | "approval_decided" | "funds_ok";
 
 // ───────────────────────────────────────────────────────────────────────
 // classifyCoinbaseError
@@ -166,6 +169,9 @@ const RESOLVES_BY_SUCCESS: Record<SuccessKind, AlertType[]> = {
   // A parked withdrawal resolved either way (granted → confirmed, or refused →
   // failed): the "awaiting approval" alert no longer describes anything.
   approval_decided: ["AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL"],
+  // A fresh snapshot covering 2+ next buys (P5, D-P5-3). A successful buy is
+  // not evidence of that, so "buy" does not clear it.
+  funds_ok: ["AUTOBUY_LOW_FUNDS"],
 };
 
 /**

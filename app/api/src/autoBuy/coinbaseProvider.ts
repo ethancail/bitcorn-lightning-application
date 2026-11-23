@@ -189,5 +189,5 @@ export async function buyMinimumUsd(_s: ExchangeSession, _priceUsd: number): Pro
 
 /** Coinbase's silent paths stay silent (ruling S5); USDC buys are supported; buys are not reconciled. */
 export function policy(_s: ExchangeSession): ProviderPolicy {
-  return { alertOnSilentPaths: false, usdcBuys: true, reconcileBuys: false };
+  return { alertOnSilentPaths: false, usdcBuys: true, reconcileBuys: false, snapshotBalances: false };
 }

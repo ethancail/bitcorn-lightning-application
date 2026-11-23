@@ -166,6 +166,7 @@ describe("a Kraken run end to end through runTick (stubbed fetch)", () => {
       "POST /0/private/ClosedOrders",
       "POST /0/private/AddOrder",
       "POST /0/private/QueryOrders",
+      "POST /0/private/BalanceEx", // P5: the snapshot, re-read because the buy made the first read stale
     ]);
     const add = calls.find((c) => c.path === "/0/private/AddOrder")!;
     const form = new URLSearchParams(add.body);
@@ -246,8 +247,9 @@ describe("a Kraken run end to end through runTick (stubbed fetch)", () => {
     // dead nonce store or a broken route would fail here, not pass silently).
     const polled = calls.filter((c) => c.path === "/0/private/QueryOrders").map((c) => new URLSearchParams(c.body).get("txid"));
     expect(polled).toEqual([TXID]);
-    // The refusing half: nothing else was sent for the Coinbase row or sweep.
-    expect(pathsSince(0)).toEqual(["POST /0/private/QueryOrders"]);
+    // The refusing half: nothing else was sent for the Coinbase row or sweep
+    // (the one BalanceEx is P5's per-tick snapshot on an enabled Kraken node).
+    expect(pathsSince(0)).toEqual(["POST /0/private/QueryOrders", "POST /0/private/BalanceEx"]);
     expect(stubs.coinbase).not.toHaveBeenCalled();
     expect(runs().map((r) => r.status)).toEqual(["buy_placed", "buy_placed"]);
     expect(sweeps()[0].status).toBe("placed");

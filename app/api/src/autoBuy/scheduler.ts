@@ -13,6 +13,7 @@ import {
 import type { AlertType } from "./alerts";
 import { raiseAlert, clearAlerts } from "./alertStore";
 import { getCurrent } from "./valuationClient";
+import { fundsCoverage, intendedBuyUsd, isLowFunds, readKrakenSnapshot, writeKrakenSnapshot } from "./balanceSnapshot";
 import { holdSecondsFor } from "./hold";
 
 const TICK_INTERVAL_MS = 15 * 60 * 1000;
@@ -61,12 +62,14 @@ export async function runTick(db: Database.Database): Promise<void> {
     return;
   }
   tickInFlight = true;
+  snapshotWrittenThisTick = false;
   try {
     await stepEnqueueAndPlaceBuy(db);
     await stepPollBuyPlaced(db);
     await stepAssignToSweep(db);
     await stepRunSweep(db);
     await stepPollWithdraws(db);
+    await stepBalanceSnapshotAndLowFunds(db);
   } finally {
     tickInFlight = false;
   }
@@ -231,7 +234,31 @@ function frequencyToSeconds(frequency: string): number {
 }
 
 function computeIntendedBuy(baseUnit: number, multiplier: number): number {
-  return Math.round(baseUnit * multiplier * 100) / 100;
+  return intendedBuyUsd(baseUnit, multiplier); // the one rule, shared with the low-funds coverage (P5)
+}
+
+// ── The balance snapshot (kraken-autobuy P5; ruling S3) ────────────────────
+//
+// Every balance read the scheduler already makes goes through readBalances,
+// which persists the snapshot when the provider keeps one (policy
+// snapshotBalances: Kraken). The last step of a tick reads balances ONLY if no
+// read earlier in the tick wrote the snapshot, so a tick costs at most one
+// extra BalanceEx (about 4 an hour at the 15-minute tick). After a buy is
+// placed the snapshot is no longer current, so the flag is reset and the last
+// step reads again: the warning never counts money the buy just spent.
+
+let snapshotWrittenThisTick = false;
+
+async function readBalances(
+  db: Database.Database,
+  session: ExchangeSession,
+): Promise<Awaited<ReturnType<typeof exchange.getBalances>>> {
+  const res = await exchange.getBalances(session);
+  if (res.ok && exchange.policy(session).snapshotBalances) {
+    writeKrakenSnapshot(db, res.balances, nowSec());
+    snapshotWrittenThisTick = true;
+  }
+  return res;
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -305,7 +332,7 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
     return;
   }
 
-  const balances = await exchange.getBalances(session);
+  const balances = await readBalances(db, session);
   if (!balances.ok) {
     if (balances.errorClass === "auth") {
       pauseWithReason(db, "credentials_invalid");
@@ -422,11 +449,13 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
   // Buy placed successfully — clear any active insufficient-funds / order-failed
   // alerts (spec §3). Auth / rate-limit already cleared via the api_ok above.
   clearAlerts(db, "buy");
+  snapshotWrittenThisTick = false; // the read above predates this buy (P5)
   scheduleNext(db, cfg);
   console.log(`[autobuy-scheduler] placed buy order=${placed.orderId} ${currency.toLowerCase()}=${intendedUsd} zone=${val.zone}`);
 }
 
-function parseZoneMultiplier(zoneMultipliersJson: string, zone: string): number {
+/** The configured multiplier for a zone. Exported for GET /status's "buys left" (P5), which must use the same one. */
+export function parseZoneMultiplier(zoneMultipliersJson: string, zone: string): number {
   try {
     const m = JSON.parse(zoneMultipliersJson) as Record<string, number>;
     const v = m[zone];
@@ -890,7 +919,7 @@ export async function runCatchUp(
   const session = openExchange(db);
   if (!session) return { ok: false, code: "no_credentials", reason: "no_credentials" };
 
-  const balances = await exchange.getBalances(session);
+  const balances = await readBalances(db, session);
   if (!balances.ok) {
     // S5: Coinbase returns this refusal silently; Kraken also raises its alert.
     if (exchange.policy(session).alertOnSilentPaths) {
@@ -1134,7 +1163,7 @@ async function stepRunSweep(db: Database.Database): Promise<void> {
   const session = openExchange(db);
   if (!session) { pauseWithReason(db, "no_credentials"); return; }
 
-  const balances = await exchange.getBalances(session);
+  const balances = await readBalances(db, session);
   if (!balances.ok) {
     if (balances.errorClass === "auth") {
       pauseWithReason(db, "credentials_invalid");
@@ -1278,7 +1307,7 @@ async function stepPollWithdraws(db: Database.Database): Promise<void> {
   }
   const alertSilent = exchange.policy(session).alertOnSilentPaths;
 
-  const balances = await exchange.getBalances(session);
+  const balances = await readBalances(db, session);
   if (!balances.ok) {
     if (alertSilent) raiseSilentPathAlert(db, balances.errorClass, balances.httpStatus, balances.detail, "withdraw_poll");
     return;
@@ -1342,6 +1371,62 @@ async function stepPollWithdraws(db: Database.Database): Promise<void> {
     }
     // "pending" → leave as-is
   }
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// Step 6: the balance snapshot and the low-funds warning (kraken-autobuy P5)
+// ───────────────────────────────────────────────────────────────────────
+
+/**
+ * While Auto-Buy is ENABLED on a provider that keeps a snapshot (Kraken), make
+ * sure this tick has a fresh one (reusing any read the tick already made), then
+ * evaluate the low-funds warning (E3/G3): it fires before a buy is due, when
+ * the snapshot's USD covers fewer than 2 next buys at the CURRENT multiplier.
+ * Raised once per episode (D-P5-4); cleared by funds_ok when 2+ are covered
+ * (D-P5-3). A stale or missing snapshot, or a zone that buys nothing, neither
+ * raises nor clears (D-P5-5). Coinbase: nothing here runs (S3, Coinbase unchanged).
+ */
+async function stepBalanceSnapshotAndLowFunds(db: Database.Database): Promise<void> {
+  const cfg = readConfig(db);
+  if (!cfg.enabled) return;
+  if (!exchange.activePolicy(db).snapshotBalances) return;
+
+  if (!snapshotWrittenThisTick) {
+    const session = openExchange(db);
+    if (!session) return;
+    const res = await readBalances(db, session);
+    if (!res.ok) {
+      raiseSilentPathAlert(db, res.errorClass, res.httpStatus, res.detail, "balance_snapshot");
+      return;
+    }
+  }
+
+  const val = await getCurrent();
+  if (!val.ok) return; // no valuation, no current multiplier: no verdict
+  const multiplier = parseZoneMultiplier(cfg.zone_multipliers, val.value.zone);
+  const coverage = fundsCoverage(readKrakenSnapshot(db), cfg.base_unit_usd, multiplier, nowSec());
+  if (!coverage || coverage.stale || coverage.buys_covered === null) return;
+
+  if (isLowFunds(coverage)) {
+    const active = db.prepare(
+      `SELECT 1 FROM autobuy_alerts WHERE type = 'AUTOBUY_LOW_FUNDS' AND status = 'active' LIMIT 1`,
+    ).get();
+    if (active) return; // once per episode (D-P5-4)
+    raiseAlert(db, {
+      type: "AUTOBUY_LOW_FUNDS",
+      latestRunId: null,
+      context: {
+        currency: coverage.currency,
+        usd_available: coverage.usd_available,
+        next_buy_usd: coverage.next_buy_usd,
+        buys_covered: coverage.buys_covered,
+        multiplier: coverage.multiplier,
+        read_at: coverage.read_at,
+      },
+    });
+    return;
+  }
+  clearAlerts(db, "funds_ok");
 }
 
 /**

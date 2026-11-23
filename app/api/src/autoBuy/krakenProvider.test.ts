@@ -304,8 +304,8 @@ describe("KE · minimums and policy", () => {
     expect(await kraken.buyMinimumUsd(session(), 1_000)).toEqual({ ok: true, minimumUsd: 0.5 });
   });
 
-  it("KE3 policy: Kraken alerts on Coinbase's silent paths, buys USD only, reconciles buys", () => {
-    expect(kraken.policy(session())).toEqual({ alertOnSilentPaths: true, usdcBuys: false, reconcileBuys: true });
+  it("KE3 policy: Kraken alerts on Coinbase's silent paths, buys USD only, reconciles buys, keeps a balance snapshot (P5)", () => {
+    expect(kraken.policy(session())).toEqual({ alertOnSilentPaths: true, usdcBuys: false, reconcileBuys: true, snapshotBalances: true });
   });
 });
 

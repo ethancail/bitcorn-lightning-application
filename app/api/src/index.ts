@@ -95,7 +95,8 @@ import { postManualInputToWorker, postRefreshToWorker } from "./valuation/worker
 import { isLoopAvailable, getLoopOutTerms, getLoopOutQuote } from "./lightning/loop";
 import { executeLoopOut, autoLoopOutRebalance, LoopOutError, checkLoopOutPreconditions } from "./lightning/rebalance-loop";
 import { startRebalanceScheduler } from "./lightning/rebalance-scheduler";
-import { startScheduler, runTick, ensureWithdrawAddress, runCatchUp, computeMissedSummary } from "./autoBuy/scheduler";
+import { startScheduler, runTick, ensureWithdrawAddress, runCatchUp, computeMissedSummary, parseZoneMultiplier } from "./autoBuy/scheduler";
+import { fundsCoverage, isStale as isSnapshotStale, readKrakenSnapshot, writeKrakenSnapshot } from "./autoBuy/balanceSnapshot";
 import {
   getActiveAlerts,
   getAlertHistory,
@@ -105,7 +106,7 @@ import {
 import { listAccounts } from "./autoBuy/coinbaseClient";
 import { encrypt, decrypt } from "./autoBuy/credentials";
 import * as caps from "./autoBuy/caps";
-import { activeProvider } from "./autoBuy/exchange";
+import { activePolicy, activeProvider } from "./autoBuy/exchange";
 import { withHoldEnd } from "./autoBuy/hold";
 import { krakenNonceSource } from "./autoBuy/krakenNonce";
 import { KRAKEN_BALANCE_KEYS, krakenGetBalances, type KrakenAuth, type KrakenFailure } from "./autoBuy/krakenClient";
@@ -5016,6 +5017,15 @@ async function dispatchRequest(
 
       const balances = await krakenGetBalances(auth);
       const available = (k: string) => (balances.ok ? balances.balances[k]?.available ?? 0 : null);
+      // P5: this read refreshes the balance snapshot too (ruling S3: "refreshed
+      // wherever a balance is already read"), with the adapter's basis.
+      if (balances.ok) {
+        writeKrakenSnapshot(db, {
+          usd: available(KRAKEN_BALANCE_KEYS.usd) ?? 0,
+          usdc: available(KRAKEN_BALANCE_KEYS.usdc) ?? 0,
+          btc: available(KRAKEN_BALANCE_KEYS.btc) ?? 0,
+        }, now);
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         ok: true,
@@ -5095,6 +5105,21 @@ async function dispatchRequest(
         missedError = err instanceof Error ? err.message.slice(0, 200) : "unknown_error";
         console.warn("[autobuy-status] computeMissedSummary failed:", err);
       }
+      // kraken-autobuy P5 (S3, G11, D-P5-5): the persisted balance snapshot and
+      // "buys left", from the DATABASE and the cached valuation only. This poll
+      // must never call the exchange (a call-counting test pins zero). Both come
+      // from fundsCoverage, the function the low-funds warning uses.
+      let balanceSnapshot: (ReturnType<typeof readKrakenSnapshot> & { stale: boolean }) | null = null;
+      let funds: ReturnType<typeof fundsCoverage> = null;
+      if (cfg && activePolicy(db).snapshotBalances) {
+        const snap = readKrakenSnapshot(db);
+        const nowS = Math.floor(Date.now() / 1000);
+        if (snap) {
+          balanceSnapshot = { ...snap, stale: isSnapshotStale(snap, nowS) };
+          const val = await getCurrent();
+          if (val.ok) funds = fundsCoverage(snap, cfg.base_unit_usd, parseZoneMultiplier(cfg.zone_multipliers, val.value.zone), nowS);
+        }
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({
         config: cfg ? {
@@ -5122,6 +5147,8 @@ async function dispatchRequest(
           last_verified_at: krakenCreds.last_verified_at,
           address_matched: krakenCreds.withdraw_address_id !== null,
         } : null,
+        balance_snapshot: balanceSnapshot,
+        funds,
         in_flight: next,
         recent,
         missed,
