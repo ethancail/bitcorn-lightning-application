@@ -15,7 +15,8 @@
 // ~/.bitcorn-dev/locks/slot-N.lock, exists and its holder equals
 // HARNESS_HOLDER, and refuses while setup.lock is held. The refusal names the
 // holder, or "no lock". Read-only needs no lock: `command`, `lock status` and
-// dev:kill --print. scripts/polar-preflight.mjs enforces the same lock.
+// dev:kill --print. scripts/polar-preflight.mjs enforces the slot's lock too,
+// or accepts setup.lock held by HARNESS_HOLDER (preflightLockRefusal).
 //
 // SLOT 1 IS TODAY'S HARNESS (D6). Its command lines are byte-identical to the
 // scripts at 523e6ab, except dev:loopserver (D13: the bridge network, bound to
@@ -323,9 +324,12 @@ export function scriptCommand(script, slot, ctx, args = []) {
 // create, so a second acquire fails. It holds holder, go, acquired_at (UTC),
 // host and the slot number or "setup". The go is a claim: the lock records what
 // the acquirer typed and cannot verify it (D11b). Every acquire, release and
-// forced release appends one line to history.log. A setup lock and a slot lock
-// never coexist: each acquire checks for the other kind before and after its
-// own create, and backs out if one appeared in between.
+// forced release appends one line to history.log. A setup lock and another
+// holder's slot lock never coexist: each acquire checks for the other kind
+// before and after its own create, and backs out if one appeared in between.
+// Setup's own holder may take slots under it (the handoff: hold setup, take the
+// slot, release setup, with no moment holding neither); setup is refused while
+// any slot is held, so the order stays setup, then the slot.
 //
 // dev-safety (vault: decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…):
 // R3 — an unreadable lock is refused by enforcement and by plain release,
@@ -436,15 +440,32 @@ function heldSlots(home) {
   return names.map((n) => n.match(/^slot-([1-9][0-9]*)\.lock$/)?.[1]).filter(Boolean).map(Number).sort((a, b) => a - b);
 }
 
-// The other kind of lock that stands in the way of acquiring `target`, or null.
-function exclusionConflict(home, target) {
+// The other kind of lock that stands in the way of `holder` acquiring `target`,
+// or null. THE HANDOFF (2026-11-23): setup's own holder may take a slot while
+// it holds setup, so a repair hands setup over to the slot with no gap; setup
+// is still refused while any slot is held, its holder's included (setup comes
+// before the slot in the order), and an unreadable setup.lock matches no one.
+function exclusionConflict(home, target, holder) {
   if (target === "setup") {
     const slots = heldSlots(home);
     return slots.length === 0 ? null :
       `setup refused: slot locks are held (${slots.map((s) => `slot ${s} by ${JSON.stringify(readLock(home, s)?.holder)}`).join(", ")})`;
   }
   const setup = readLock(home, "setup");
-  return setup === null ? null : `slot ${target} refused: setup.lock is held by ${JSON.stringify(setup.holder)}`;
+  if (setup === null || (!setup.unreadable && setup.holder === holder)) return null;
+  return `slot ${target} refused: setup.lock is held by ${JSON.stringify(setup.holder)}`;
+}
+
+// The order's guard for a slot taken under setup: null, or the refusal when
+// `holder` holds setup.lock, for a command that would now wait on heavy while
+// holding it (heavy, then setup, then the slot).
+function setupOrderRefusal(home, holder, what) {
+  if (typeof holder !== "string" || holder === "") return null;
+  const setup = readLock(home, "setup");
+  if (setup === null || setup.unreadable || setup.holder !== holder) return null;
+  return `${what} refused: ${JSON.stringify(holder)} holds setup.lock, and waiting on heavy while holding setup breaks ` +
+    "the lock order (heavy, then setup, then the slot): release setup, take heavy first (heavy acquire --holder <arc>), " +
+    "then setup, then the slot with that HARNESS_HEAVY_JOB set";
 }
 
 function requireText(flag, value) {
@@ -477,7 +498,7 @@ export function acquireLock(args) {
 function takeSlotLock({ home, target, holder, go, now = new Date(), host = os.hostname(), race = {}, heavy }) {
   requireText("--holder", holder);
   requireText("--go", go);
-  const before = exclusionConflict(home, target);
+  const before = exclusionConflict(home, target, holder);
   if (before) throw new Error(before);
   fs.mkdirSync(lockDir(home), { recursive: true });
   const lock = { holder, go, acquired_at: utc(now), host, slot: target, ...(heavy ? { heavy } : {}) };
@@ -495,7 +516,7 @@ function takeSlotLock({ home, target, holder, go, now = new Date(), host = os.ho
     fs.rmSync(tmp, { force: true });
   }
   race.afterCreate?.();
-  const after = exclusionConflict(home, target);
+  const after = exclusionConflict(home, target, holder);
   if (after) {
     // R4: back out only the lock this acquire wrote, byte for byte.
     removeLock(home, target, (held, heldText) => (heldText === text ? null :
@@ -730,15 +751,39 @@ export function lockRefusal(slot, harnessHolder, home) {
   return null;
 }
 
+// The pre-flight's enforcement (2026-11-23): it runs for HARNESS_HOLDER when
+// that holder holds the slot's lock (lockRefusal) OR setup.lock, so a repair
+// can check its network under setup before it hands over to the slot. Under
+// setup it is still refused when another holder holds the slot. The dev:*
+// scripts keep lockRefusal: they refuse in any setup window.
+export function preflightLockRefusal(slot, harnessHolder, home) {
+  const setup = readLock(home, "setup");
+  if (setup === null) return lockRefusal(slot, harnessHolder, home);
+  if (setup.unreadable) return `slot ${slot} refused: ${unreadableRefusal(home, "setup")}`;
+  if (!harnessHolder || harnessHolder !== setup.holder) {
+    return `slot ${slot} refused: setup.lock is held by ${JSON.stringify(setup.holder)}` +
+      (harnessHolder ? `, not HARNESS_HOLDER ${JSON.stringify(harnessHolder)}` : ", and HARNESS_HOLDER is unset") + " (a Polar setup window)";
+  }
+  const lock = readLock(home, slot);
+  if (lock === null) return null;
+  if (lock.unreadable) return `slot ${slot} refused: ${unreadableRefusal(home, slot)}`;
+  return lock.holder === harnessHolder ? null :
+    `slot ${slot} refused: locked by ${JSON.stringify(lock.holder)}, not HARNESS_HOLDER ${JSON.stringify(harnessHolder)}`;
+}
+
 const LOCK_USAGE =
   "usage: harness-slot.mjs lock acquire --slot N --holder <arc> --go \"<text>\" [--wait <seconds>] [--pid <pid>] [--exclusive]\n" +
   "       harness-slot.mjs lock acquire --setup --holder <arc> --go \"<text>\"\n" +
   "       harness-slot.mjs lock release (--slot N | --setup) --holder <arc>\n" +
   "       harness-slot.mjs lock release (--slot N | --setup) --force --reason \"<text>\"\n" +
   "       harness-slot.mjs lock status\n" +
-  "The order is heavy first, then the slot: lock acquire --slot takes one heavy slot (every slot with --exclusive)\n" +
+  "The order is heavy, then setup, then the slot: lock acquire --slot takes one heavy slot (every slot with --exclusive)\n" +
   "before the slot, unless HARNESS_HEAVY_JOB says this job holds heavy already, and lock release --slot releases\n" +
-  "that heavy after the slot.";
+  "that heavy after the slot. Setup's holder takes a slot only inside a heavy job (its HARNESS_HEAVY_JOB).\n" +
+  "Which lock for what: one network's docker compose up/down (and the pre-flight, the dev:* scripts) needs that\n" +
+  "slot's lock; anything shared (the Polar GUI, networks.json, images, more than one network) needs setup.\n" +
+  "The handoff, setup to a slot with no gap: hold setup, take the slot (same holder), then release setup.\n" +
+  "The pre-flight runs for the holder of the slot's lock or of setup.lock; the dev:* scripts refuse under setup.";
 
 function parseLockArgs(args) {
   const opts = {};
@@ -1575,11 +1620,14 @@ const procComm = (pid) => {
 const admission = (ctx) => ({ home: ctx.home, limit: ctx.limit, minFreeMb: ctx.minFreeMb, meminfo: ctx.meminfo });
 
 // F2, the lock order: null, or the refusal when the caller's holder
-// (HARNESS_HOLDER) holds a slot lock whose heavy is not live (slotHeavyLive): a
-// heavy wait from it would wait on heavy while holding a slot.
+// (HARNESS_HOLDER) holds a slot lock whose heavy is not live (slotHeavyLive), or
+// holds setup.lock: a heavy wait from it would wait on heavy while holding a
+// slot, or setup (heavy, then setup, then the slot).
 function orderRefusal(slotHome, ctx, env) {
   const holder = env.HARNESS_HOLDER;
   if (typeof holder !== "string" || holder === "") return null;
+  const setup = setupOrderRefusal(slotHome, holder, "heavy");
+  if (setup) return setup;
   const stale = heldSlots(slotHome).map((slot) => ({ slot, lock: readLock(slotHome, slot) }))
     .filter(({ lock }) => lock !== null && !lock.unreadable && lock.holder === holder && !slotHeavyLive(ctx.home, lock.heavy));
   if (stale.length === 0) return null;
@@ -2270,6 +2318,9 @@ async function lockCli(args, env, { home, out, err }) {
     out("heavy: already held by this job (HARNESS_HEAVY_JOB), so not taken again; the slot's release leaves it");
     return 0;
   }
+  // Setup's holder, outside a heavy job, would take heavy after setup: refused at once, before any heavy wait.
+  const order = setupOrderRefusal(home, opts.holder, lockName(target));
+  if (order) throw new Error(order);
   const ctx = heavyContext(env);
   for (const note of ctx.notes) err(`harness-slot lock: ${note}`);
   return acquireSlotWithHeavy({

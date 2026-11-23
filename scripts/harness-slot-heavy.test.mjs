@@ -948,6 +948,62 @@ ttest("order (F2): after heavy acquire, a later separate command carrying its to
   }
 });
 
+// THE HANDOFF (2026-11-23): heavy, then setup, then the slot. Setup's holder
+// takes its slot inside a heavy job (the token), so it never waits on heavy
+// while holding setup, and releases setup only after the slot is taken.
+ttest("handoff: heavy, then setup, then the slot under the token, then setup released — in that order in history.log", async () => {
+  const home = scratch();
+  try {
+    const opts = (env = {}) => ({ home, slotHome: home, env }); // one home, so history.log orders all four locks together
+    const h = await cli(["heavy", "acquire", "--holder", "repair-arc"], opts());
+    assert.equal(h.code, 0, h.stderr);
+    const token = tokenOf(h.stdout);
+    const s = await cli(["lock", "acquire", "--setup", "--holder", "repair-arc", "--go", "test"], opts());
+    assert.equal(s.code, 0, s.stderr);
+    const slot = await cli(takeSlot("repair-arc"), opts({ HARNESS_HEAVY_JOB: token }));
+    assert.equal(slot.code, 0, slot.stderr);
+    assert.match(slot.stdout, /^acquired slot 1 for repair-arc: /m);
+    const rel = await cli(["lock", "release", "--setup", "--holder", "repair-arc"], opts());
+    assert.equal(rel.code, 0, rel.stderr);
+    const order = events(home);
+    console.log(order.join("\n"));
+    assert.deepEqual(order, ["acquire heavy", "acquire setup", "acquire slot 1", "release setup"]);
+    assert.ok(order.indexOf("acquire slot 1") < order.indexOf("release setup"), "no moment with neither setup nor the slot");
+    assert.equal(lockState(home), "held", "the job's heavy is still held");
+    // the pre-flight's view at this point: the slot's holder, setup gone
+    assert.ok(fs.existsSync(slotLockPath(home)) && !fs.existsSync(path.join(locksDir(home), "setup.lock")));
+    const out = await cli(["lock", "release", "--slot", "1", "--holder", "repair-arc"], opts());
+    assert.match(out.stdout, /heavy: left to job/, out.stderr);
+    assert.equal((await cli(["heavy", "release", "--holder", "repair-arc"], opts())).code, 0);
+  } finally {
+    stopHolders(home);
+  }
+});
+
+ttest("handoff order: setup's holder outside a heavy job is refused at once — lock acquire --slot, heavy run, heavy acquire — taking no heavy", async () => {
+  const home = scratch();
+  const slotHome = scratch();
+  acquireLock({ home: slotHome, target: "setup", holder: "repair-arc", go: "test" });
+  const t0 = Date.now();
+  const slot = await cli(takeSlot("repair-arc", ["--wait", "5"]), { home, slotHome });
+  assert.ok(Date.now() - t0 < 3000, `refused at once (took ${Date.now() - t0} ms)`);
+  assert.equal(slot.code, 2, slot.stderr);
+  console.log(slot.stderr.trim());
+  assert.match(slot.stderr, /slot 1 refused: "repair-arc" holds setup\.lock, and waiting on heavy while holding setup breaks the lock order \(heavy, then setup, then the slot\)/);
+  assert.ok(!fs.existsSync(slotLockPath(slotHome)));
+  for (const args of [["heavy", "run", "--wait", "5", "--", "true"], ["heavy", "acquire", "--holder", "repair-arc", "--wait", "5"]]) {
+    const r = await cli(args, { home, slotHome, env: { HARNESS_HOLDER: "repair-arc" } });
+    assert.equal(r.code, 2, `${args[1]}: ${r.stderr}`);
+    assert.match(r.stderr, /heavy refused: "repair-arc" holds setup\.lock, and waiting on heavy while holding setup/, args[1]);
+  }
+  assert.deepEqual(events(home), [], "no heavy was taken");
+  // another holder's setup is not this guard's business: that slot acquire takes heavy, then meets setup's refusal
+  const other = await cli(takeSlot("drive-mode"), { home, slotHome });
+  assert.equal(other.code, 2);
+  assert.match(other.stderr, /slot 1 refused: setup\.lock is held by "repair-arc"/);
+  assert.doesNotMatch(other.stderr, /holds setup\.lock, and waiting/);
+});
+
 // F2: ancestry no longer joins processes to the job. At e1abb82 both runs below
 // descended from the --pid owner, counted as "already held by this job", and
 // ran at once.

@@ -12,10 +12,12 @@
 // Polar-GUI check stays host-wide in every slot (D10): with several networks on
 // one host, a running Polar can rewrite any of their compose files.
 //
-// LOCK (H14): the CLI refuses, exit 2, before any check, unless the slot's lock
-// (~/.bitcorn-dev/locks/slot-N.lock) is held by HARNESS_HOLDER, and while
-// setup.lock is held. Acquire it with scripts/harness-slot.mjs lock acquire.
-// The report-only run needs the lock too: it is part of the gate.
+// LOCK (H14; 2026-11-23): the CLI refuses, exit 2, before any check, unless
+// HARNESS_HOLDER holds the slot's lock (~/.bitcorn-dev/locks/slot-N.lock) or
+// setup.lock (a repair checking its network before it hands setup over to the
+// slot); under setup it is still refused when another holder has the slot.
+// Acquire with scripts/harness-slot.mjs lock acquire. The report-only run
+// needs a lock too: it is part of the gate.
 //
 // The procedure this serves is docs/dev-setup.md § Polar regtest gate. It runs
 // immediately before each gate and again after it, not once per session,
@@ -95,7 +97,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { BITCOIN_NODE, LND_NODE_NAMES, dataDir, lockRefusal, parseSlot, resolveNetwork } from "./harness-slot.mjs";
+import { BITCOIN_NODE, LND_NODE_NAMES, dataDir, parseSlot, preflightLockRefusal, resolveNetwork } from "./harness-slot.mjs";
 
 // The expected set for one Polar network, by its id. Container names embed the
 // id (polar-n<id>-<Node>); the node names are D16's five in every slot.
@@ -744,8 +746,8 @@ async function checkDepositUtxos({ docker, sqlite, copyFile, tmpdir, sleep, repo
 // ─── entry point ──────────────────────────────────────────────────────────
 
 // The lock (H14, D11a): the CLI refuses, exit 2, before any check runs, unless
-// the slot's lock is held by HARNESS_HOLDER, as the dev:* scripts do. It refuses
-// after the argument check, so an unknown flag is still named as one.
+// HARNESS_HOLDER holds the slot's lock or setup.lock (preflightLockRefusal). It
+// refuses after the argument check, so an unknown flag is still named as one.
 export async function main(args = process.argv.slice(2), {
   env = process.env, home = os.homedir(), run = runPreflight, err = console.error,
 } = {}) {
@@ -756,7 +758,7 @@ export async function main(args = process.argv.slice(2), {
   }
   let refusal;
   try {
-    refusal = lockRefusal(parseSlot(env.HARNESS_SLOT), env.HARNESS_HOLDER, home);
+    refusal = preflightLockRefusal(parseSlot(env.HARNESS_SLOT), env.HARNESS_HOLDER, home);
   } catch (error) {
     refusal = error.message;
   }
