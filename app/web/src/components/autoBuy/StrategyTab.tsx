@@ -3,6 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { api, type AutoBuyMissed, type AutoBuyStatus, type AutoBuyZoneMultipliers, type CurrencyPreference, type ValuationCurrent, type ValuationZone } from "../../api/client";
 import HistoryTable from "./HistoryTable";
 import CoinbaseCard from "./CoinbaseCard";
+import KrakenCard from "./KrakenCard";
+import ProviderChoice from "./ProviderChoice";
+import { canEnableAutoBuy } from "../../autoBuy/enableGate";
 import ActionConfirmModal, { useActionConfirm } from "../actionConfirm/ActionConfirmModal";
 import { summarizeCatchUp, fmtUsd } from "../actionConfirm/confirmAction";
 import { classifyConfirmError } from "../actionConfirm/confirmErrors";
@@ -390,7 +393,11 @@ export default function StrategyTab({ status, valuation, onRefresh, valuationErr
       <MultipliersEditor config={cfg} onSaved={onRefresh} />
 
       <HistoryTable sweepDayOfWeek={cfg.sweep_day_of_week} />
-      <CoinbaseCard status={status} onRefresh={onRefresh} />
+      {/* kraken-autobuy P4e: the exchange choice, then that exchange's card. */}
+      <ProviderChoice status={status} onRefresh={onRefresh} />
+      {cfg.provider === "kraken"
+        ? <KrakenCard status={status} onRefresh={onRefresh} />
+        : <CoinbaseCard status={status} onRefresh={onRefresh} />}
     </div>
   );
 }
@@ -527,7 +534,7 @@ function MasterControl({ status, onRefresh }: { status: AutoBuyStatus; onRefresh
   if (!cfg) return null;
   const enabled = cfg.enabled;
   const pausedReason = cfg.paused_reason;
-  const canEnable = !!status.credentials && !!cfg.withdraw_address_whitelisted_at && cfg.consecutive_failures < 3;
+  const canEnable = canEnableAutoBuy(status); // the active provider's credentials (kraken-autobuy P4e)
 
   const doEnable = async () => {
     setBusy(true); setToast(null);

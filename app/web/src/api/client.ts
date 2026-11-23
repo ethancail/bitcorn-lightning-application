@@ -427,6 +427,25 @@ export const api = {
       { method: "POST" },
     ),
 
+  // kraken-autobuy P4e. All four routes are EXEMPT from per-action confirmation
+  // (server: utils/action-confirmation.ts), so apiFetch attaches no header.
+  /** Switch the node's exchange. 409 provider_switch_in_flight while buys or sweeps are in progress; a switch pauses Auto-Buy. */
+  setAutoBuyProvider: (provider: AutoBuyProvider) =>
+    apiFetch<AutoBuyProviderSwitch>("/api/autobuy/provider", {
+      method: "POST",
+      body: JSON.stringify({ provider }),
+    }),
+  /** Store a Kraken key after the server checks its permissions and looks up the node's address on Kraken. */
+  saveKrakenCredentials: (body: { api_key: string; api_secret: string }) =>
+    apiFetch<KrakenCredentialsSaved>("/api/autobuy/kraken/credentials", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  deleteKrakenCredentials: () =>
+    apiFetch<{ ok: true }>("/api/autobuy/kraken/credentials", { method: "DELETE" }),
+  verifyKrakenCredentials: () =>
+    apiFetch<KrakenCredentialsVerified>("/api/autobuy/kraken/credentials/verify", { method: "POST" }),
+
   getValuationCurrent: () =>
     apiFetch<ValuationCurrent>("/api/valuation/current"),
 
@@ -1760,6 +1779,8 @@ export type AutoBuyConfig = {
   paused_reason: string | null;
   last_run_at: number | null;
   next_run_at: number | null;
+  /** The node's active exchange (kraken-autobuy). */
+  provider: AutoBuyProvider;
 };
 
 export type AutoBuyCredentialsInfo = {
@@ -1767,6 +1788,45 @@ export type AutoBuyCredentialsInfo = {
   connected_at: number;
   last_verified_at: number | null;
 };
+
+// ── kraken-autobuy P4e ──────────────────────────────────────────────────────
+
+export type AutoBuyProvider = "coinbase" | "kraken";
+
+/** The Kraken key's state from GET /api/autobuy/status. The key and secret are never sent. */
+export type KrakenCredentialsInfo = {
+  connected_at: number;
+  last_verified_at: number | null;
+  /** The node's withdraw address was found, verified, among the account's saved Kraken addresses. */
+  address_matched: boolean;
+};
+
+export type KrakenAddressStatus = "matched" | "not_found" | "not_verified" | "node_address_missing";
+
+/** The setup-time check: can these settings produce a buy below Kraken's minimum at today's price? */
+export type KrakenMinimumWarning = {
+  below: boolean;
+  smallest_buy_usd: number;
+  minimum_usd: number;
+  price_usd: number;
+};
+
+export type KrakenCredentialsSaved = {
+  ok: true;
+  connected_at: number;
+  address_status: KrakenAddressStatus;
+  minimum_warning: KrakenMinimumWarning | null;
+};
+
+export type KrakenCredentialsVerified = {
+  ok: true;
+  last_verified_at: number;
+  address_status: KrakenAddressStatus;
+  balances: { usd: number; usdc: number; btc: number } | null;
+  minimum_warning: KrakenMinimumWarning | null;
+};
+
+export type AutoBuyProviderSwitch = { ok: true; provider: AutoBuyProvider; changed: boolean };
 
 export type AutoBuyRun = {
   id: number;
@@ -1849,6 +1909,8 @@ export type AutoBuyCatchUpResult = {
 export type AutoBuyStatus = {
   config: AutoBuyConfig | null;
   credentials: AutoBuyCredentialsInfo | null;
+  /** kraken-autobuy P4e: the Kraken key's state, or null when none is connected. */
+  kraken_credentials: KrakenCredentialsInfo | null;
   in_flight: AutoBuyRun[];
   recent: AutoBuyRun[];
   /**
