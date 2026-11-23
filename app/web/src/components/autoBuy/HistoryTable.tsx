@@ -4,12 +4,6 @@ import { api, type AutoBuyRun } from "../../api/client";
 
 const PAGE_SIZE = 25;
 
-// Mirrors WITHDRAW_HOLD_SECONDS in app/api/src/autoBuy/scheduler.ts (the 72h
-// post-fill hold before BTC is eligible to sweep). The API doesn't expose the
-// constant, so the frontend mirrors it for display purposes only — if the
-// backend hold ever changes, update this too.
-const WITHDRAW_HOLD_SECONDS = 72 * 3600;
-
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 // First UTC calendar day with getUTCDay() === sweepDow on/after `fromSec`.
@@ -60,8 +54,9 @@ export default function HistoryTable({ sweepDayOfWeek }: Props) {
   // the hold + weekly-sweep mechanics. Returns null for all other statuses.
   const deliveryLine = (r: AutoBuyRun): { text: string; full: string } | null => {
     if (r.status === "awaiting_withdraw_hold") {
-      if (r.filled_at == null) return null;
-      const holdEnd = r.filled_at + WITHDRAW_HOLD_SECONDS;
+      // The hold end comes from the API per run (it depends on the provider).
+      if (r.hold_ends_at == null) return null;
+      const holdEnd = r.hold_ends_at;
       const holdStr = fmtLocalDate(holdEnd);
       if (sweepDayOfWeek == null) {
         return {

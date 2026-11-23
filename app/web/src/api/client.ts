@@ -1786,6 +1786,13 @@ export type AutoBuyRun = {
    * run that bought this interval, or null while it is still claimable.
    */
   claimed_by_run_id?: number | null;
+  /** The exchange this run bought on. */
+  provider: "coinbase" | "kraken";
+  /**
+   * When this run's post-fill withdrawal hold ends (unix seconds): filled_at
+   * plus the provider's hold, computed by the API. Null until the run fills.
+   */
+  hold_ends_at: number | null;
 };
 
 /**
