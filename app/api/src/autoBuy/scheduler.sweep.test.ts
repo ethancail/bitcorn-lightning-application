@@ -203,6 +203,9 @@ beforeEach(async () => {
   db.exec(MIG("049_currency_adaptive_autobuy.sql"));
   db.exec(MIG("050_autobuy_alerts.sql"));
   db.exec(MIG("054_autobuy_missed_interval_claim.sql"));
+  db.exec(MIG("084_autobuy_config_provider.sql"));
+  db.exec(MIG("085_autobuy_runs_provider.sql"));
+  db.exec(MIG("086_autobuy_sweeps_provider.sql"));
 
   stubs.decrypt.mockReturnValue(PEM);
   stubs.getCurrent.mockResolvedValue({
