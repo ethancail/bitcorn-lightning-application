@@ -78,7 +78,7 @@ function NodeAddress({ address }: { address: string }) {
   return (
     <p style={{ marginTop: 0, marginBottom: 12, fontSize: "0.8125rem" }}>
       Your node's withdrawal address:{" "}
-      <code data-testid="node-address" style={{ fontFamily: "var(--font-id)", wordBreak: "break-all" }}>{address || "—"}</code>
+      <code className="ident" data-testid="node-address" style={{ wordBreak: "break-all" }}>{address || "—"}</code>
     </p>
   );
 }
