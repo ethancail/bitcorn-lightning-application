@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import * as coinbase from "./coinbaseProvider";
+import * as kraken from "./krakenProvider";
 import type {
   Balances,
   ExchangeProvider,
@@ -7,64 +8,94 @@ import type {
   ExchangeSession,
   OpenSessionResult,
   OrderReport,
+  ProviderPolicy,
   QuoteCurrency,
   WithdrawalReport,
 } from "./exchangeProvider";
 
-// The scheduler's only route to an exchange (kraken-autobuy spec §2, §3 P1).
+// The scheduler's only route to an exchange (kraken-autobuy spec §2, §3 P1, P4).
 // The scheduler imports this module and nothing provider-specific; that is
 // asserted by exchangeBoundary.test.ts.
 //
-// P1: STATICALLY WIRED TO COINBASE. Each function calls the adapter's top-level
-// function directly, never through an ExchangeProvider-typed value: the
-// outflow-taint walk (utils/action-confirmation.coverage.test.ts) records no
-// edge for a call through an interface member, so a call like that would cut
-// /api/autobuy/execute-now and /api/autobuy/catch-up off from placeMarketBuy
-// and placeWithdraw (P1 control T-1 demonstrates it).
+// P4 (Ethan's ruling R1, 2026-11-20): the provider is chosen by a PLAIN BRANCH
+// that calls each adapter's top-level function directly, never through an
+// ExchangeProvider-typed value. The outflow-taint walk
+// (utils/action-confirmation.coverage.test.ts) records no edge for a call
+// through an interface member, so a dispatch table would cut
+// /api/autobuy/execute-now and /api/autobuy/catch-up off from both providers'
+// primitives (P1 control T-1). R2 prefers this to seeding the interface,
+// because seeding it would hide whether each implementation is covered.
 //
-// P4 DIRECTION (Ethan's ruling R1, 2026-11-20): select the provider here with a
-// plain branch that calls each provider's top-level functions directly, so the
-// walk follows every branch. P4's plan tries that before any change to the
-// coverage test.
+// The session carries its provider; openSession reads the node's active one.
 
-// Compile-time only: the Coinbase adapter satisfies the interface.
+// Compile-time only: each adapter satisfies the interface.
 void (coinbase satisfies ExchangeProvider);
+void (kraken satisfies ExchangeProvider);
+
+/**
+ * The node's active provider (autobuy_config.provider, migration 084). A
+ * database without that column reads as Coinbase: the P0 scheduler suites
+ * build their schema from migrations 034/049/050/054 only.
+ */
+export function activeProvider(db: Database.Database): "coinbase" | "kraken" {
+  const row = db.prepare(`SELECT * FROM autobuy_config WHERE id = 1`).get() as { provider?: string } | undefined;
+  const provider = row?.provider ?? "coinbase";
+  if (provider !== "coinbase" && provider !== "kraken") throw new Error(`unknown_autobuy_provider: ${provider}`);
+  return provider;
+}
 
 export function openSession(db: Database.Database): OpenSessionResult {
-  return coinbase.openSession(db);
+  return activeProvider(db) === "kraken" ? kraken.openSession(db) : coinbase.openSession(db);
 }
 
 export async function getBalances(s: ExchangeSession): Promise<ExchangeResult<{ balances: Balances }>> {
-  return coinbase.getBalances(s);
+  return s.provider === "kraken" ? kraken.getBalances(s) : coinbase.getBalances(s);
 }
 
 export async function buy(
   s: ExchangeSession,
   quoteUsd: number,
   currency: QuoteCurrency,
+  clientOrderId?: string,
 ): Promise<ExchangeResult<{ orderId: string }>> {
-  return coinbase.buy(s, quoteUsd, currency);
+  return s.provider === "kraken"
+    ? kraken.buy(s, quoteUsd, currency, clientOrderId)
+    : coinbase.buy(s, quoteUsd, currency, clientOrderId);
 }
 
 export async function getOrder(s: ExchangeSession, orderId: string): Promise<ExchangeResult<{ order: OrderReport }>> {
-  return coinbase.getOrder(s, orderId);
+  return s.provider === "kraken" ? kraken.getOrder(s, orderId) : coinbase.getOrder(s, orderId);
 }
 
 export async function withdraw(
   s: ExchangeSession,
   toAddress: string,
   btcAmount: number,
-): Promise<ExchangeResult<{ withdrawalId: string }>> {
-  return coinbase.withdraw(s, toAddress, btcAmount);
+): Promise<ExchangeResult<{ withdrawalId: string; parked?: boolean }>> {
+  return s.provider === "kraken" ? kraken.withdraw(s, toAddress, btcAmount) : coinbase.withdraw(s, toAddress, btcAmount);
 }
 
 export async function getWithdrawal(
   s: ExchangeSession,
   withdrawalId: string,
 ): Promise<ExchangeResult<{ withdrawal: WithdrawalReport }>> {
-  return coinbase.getWithdrawal(s, withdrawalId);
+  return s.provider === "kraken" ? kraken.getWithdrawal(s, withdrawalId) : coinbase.getWithdrawal(s, withdrawalId);
+}
+
+export async function withdrawalMinimumBtc(s: ExchangeSession): Promise<ExchangeResult<{ minimumBtc: number }>> {
+  return s.provider === "kraken" ? kraken.withdrawalMinimumBtc(s) : coinbase.withdrawalMinimumBtc(s);
+}
+
+export async function buyMinimumUsd(s: ExchangeSession, priceUsd: number): Promise<ExchangeResult<{ minimumUsd: number }>> {
+  return s.provider === "kraken" ? kraken.buyMinimumUsd(s, priceUsd) : coinbase.buyMinimumUsd(s, priceUsd);
+}
+
+export function policy(s: ExchangeSession): ProviderPolicy {
+  return s.provider === "kraken" ? kraken.policy(s) : coinbase.policy(s);
 }
 
 // Compile-time only: this module's own functions satisfy the interface too. Not
 // exported, so nothing can call them through it.
-void ({ openSession, getBalances, buy, getOrder, withdraw, getWithdrawal } satisfies ExchangeProvider);
+void ({
+  openSession, getBalances, buy, getOrder, withdraw, getWithdrawal, withdrawalMinimumBtc, buyMinimumUsd, policy,
+} satisfies ExchangeProvider);

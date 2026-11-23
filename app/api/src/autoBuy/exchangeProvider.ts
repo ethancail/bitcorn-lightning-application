@@ -33,6 +33,17 @@ export interface ExchangeFailure {
   httpStatus: number;
   /** The exchange's error text, as the adapter received it. */
   detail: string;
+  /**
+   * For an outflow (buy, withdraw), what the adapter knows about whether it
+   * happened. Absent means "the exchange answered and refused": the outcome is
+   * known. Only Kraken's adapter sets it (P4a); Coinbase's never does, so every
+   * Coinbase path is unchanged.
+   *   not_sent  nothing reached the exchange's outflow call (a pre-step failed)
+   *   unknown   the outflow call may have taken effect, and a lookup did not find it
+   */
+  delivery?: "not_sent" | "unknown";
+  /** Set when the exchange refused a buy for being below its minimum (Kraken; P4c skips it, STOP 2). */
+  belowMinimum?: boolean;
 }
 
 export type ExchangeResult<T> = ({ ok: true } & T) | ExchangeFailure;
@@ -66,7 +77,20 @@ export interface WithdrawalReport {
 
 /** An adapter's per-use handle: its credentials and anything it learned during the session. Opaque to the scheduler. */
 export interface ExchangeSession {
-  readonly provider: "coinbase";
+  readonly provider: "coinbase" | "kraken";
+}
+
+/**
+ * Static per-provider behaviour the scheduler branches on, so that it never
+ * branches on a provider's NAME (spec §2; ruling D-P4-1).
+ *   alertOnSilentPaths  raise an alert where Coinbase's path is silent (S5: Coinbase's stay silent)
+ *   usdcBuys            the provider can buy BTC with USDC (Kraken: no, E9)
+ *   reconcileBuys       buys carry a client order id and are reconciled by it
+ */
+export interface ProviderPolicy {
+  alertOnSilentPaths: boolean;
+  usdcBuys: boolean;
+  reconcileBuys: boolean;
 }
 
 export type OpenSessionResult =
@@ -78,8 +102,23 @@ export interface ExchangeProvider {
   /** Load and decrypt this provider's stored credentials. No network call. */
   openSession(db: Database.Database): OpenSessionResult;
   getBalances(s: ExchangeSession): Promise<ExchangeResult<{ balances: Balances }>>;
-  buy(s: ExchangeSession, quoteUsd: number, currency: QuoteCurrency): Promise<ExchangeResult<{ orderId: string }>>;
+  /**
+   * `clientOrderId` identifies the buy for reconciliation after an unknown
+   * outcome (Kraken's cl_ord_id). Coinbase's adapter ignores it.
+   */
+  buy(
+    s: ExchangeSession,
+    quoteUsd: number,
+    currency: QuoteCurrency,
+    clientOrderId?: string,
+  ): Promise<ExchangeResult<{ orderId: string }>>;
   getOrder(s: ExchangeSession, orderId: string): Promise<ExchangeResult<{ order: OrderReport }>>;
-  withdraw(s: ExchangeSession, toAddress: string, btcAmount: number): Promise<ExchangeResult<{ withdrawalId: string }>>;
+  /** `parked`: the exchange accepted the withdrawal but holds it for approval (Kraken's approval_request_id). */
+  withdraw(s: ExchangeSession, toAddress: string, btcAmount: number): Promise<ExchangeResult<{ withdrawalId: string; parked?: boolean }>>;
   getWithdrawal(s: ExchangeSession, withdrawalId: string): Promise<ExchangeResult<{ withdrawal: WithdrawalReport }>>;
+  /** The smallest sweep the exchange will send, in BTC (STOP 1). */
+  withdrawalMinimumBtc(s: ExchangeSession): Promise<ExchangeResult<{ minimumBtc: number }>>;
+  /** The smallest buy the exchange will take, in USD, at `priceUsd` per BTC (STOP 2). */
+  buyMinimumUsd(s: ExchangeSession, priceUsd: number): Promise<ExchangeResult<{ minimumUsd: number }>>;
+  policy(s: ExchangeSession): ProviderPolicy;
 }

@@ -19,6 +19,7 @@ import type {
   OpenSessionResult,
   OrderReport,
   OrderState,
+  ProviderPolicy,
   QuoteCurrency,
   WithdrawalReport,
   WithdrawalState,
@@ -102,6 +103,7 @@ export async function buy(
   s: ExchangeSession,
   quoteUsd: number,
   currency: QuoteCurrency,
+  _clientOrderId?: string, // unused: coinbaseClient makes its own client_order_id, as before P4
 ): Promise<ExchangeResult<{ orderId: string }>> {
   const res = await placeMarketBuy(asCoinbase(s).creds, quoteUsd, currency);
   if (!res.ok) return fail(res.status, res.error);
@@ -170,4 +172,22 @@ export async function getWithdrawal(
     ok: true,
     withdrawal: { state: withdrawalStateOf(res.withdraw.status), txHash: res.withdraw.network_tx_hash ?? null },
   };
+}
+
+// ── kraken-autobuy P4a: the members Kraken needed. None makes a call, so no
+// Coinbase path changes.
+
+/** The scheduler's own sweep minimum, unchanged (SWEEP_MIN_BTC). Coinbase publishes none the node reads. */
+export async function withdrawalMinimumBtc(_s: ExchangeSession): Promise<ExchangeResult<{ minimumBtc: number }>> {
+  return { ok: true, minimumBtc: 0.0001 };
+}
+
+/** No buy minimum is enforced on the Coinbase path (STOP 2 is Kraken's). */
+export async function buyMinimumUsd(_s: ExchangeSession, _priceUsd: number): Promise<ExchangeResult<{ minimumUsd: number }>> {
+  return { ok: true, minimumUsd: 0 };
+}
+
+/** Coinbase's silent paths stay silent (ruling S5); USDC buys are supported; buys are not reconciled. */
+export function policy(_s: ExchangeSession): ProviderPolicy {
+  return { alertOnSilentPaths: false, usdcBuys: true, reconcileBuys: false };
 }
