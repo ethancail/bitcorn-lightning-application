@@ -276,8 +276,8 @@ function checkRows(where: string, rows: string[]) {
 }
 
 describe("slice 4 — every applicable state, in its tiers, across the status labels", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   for (const st of APPLICABLE) {
