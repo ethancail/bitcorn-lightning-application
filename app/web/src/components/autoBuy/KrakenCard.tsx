@@ -43,6 +43,20 @@ export function addressStatusText(status: KrakenAddressStatus): string {
   }
 }
 
+/**
+ * "Buys left" (P5, G11): from the API's funds, the same USD and the same next
+ * buy the low-funds warning counts. Never computed here, so the two agree.
+ */
+export function fundsText(status: AutoBuyStatus): string {
+  const f = status.funds;
+  const snap = status.balance_snapshot;
+  if (!snap) return "No balance read yet. Press Verify.";
+  const asOf = `As of ${new Date(snap.read_at * 1000).toLocaleString()}${snap.stale ? " — may be out of date" : ""}.`;
+  if (!f) return `$${snap.usd_available.toFixed(2)} USD available. Buys left can't be worked out without today's valuation. ${asOf}`;
+  if (f.buys_covered === null) return `$${f.usd_available.toFixed(2)} USD available. The current zone buys nothing. ${asOf}`;
+  return `About ${f.buys_covered} buy${f.buys_covered === 1 ? "" : "s"} left: $${f.usd_available.toFixed(2)} USD available, next buy $${f.next_buy_usd.toFixed(2)}. ${asOf}`;
+}
+
 export function minimumWarningText(w: KrakenMinimumWarning | null): string | null {
   if (!w || !w.below) return null;
   return `Your smallest buy ($${w.smallest_buy_usd.toFixed(2)}) is below Kraken's minimum (about $${w.minimum_usd.toFixed(2)} at today's price). Buys that small will be skipped, not rounded up.`;
@@ -194,6 +208,7 @@ function ConnectedState({ status, onRefresh }: Props) {
           {creds.address_matched ? addressStatusText("matched") : addressStatusText("not_found")}
         </p>
         {!creds.address_matched && <NodeAddress address={status.config?.withdraw_address ?? ""} />}
+        <p data-testid="kraken-funds" style={{ marginTop: 0, marginBottom: 12 }}>{fundsText(status)}</p>
         <NoteBox note={note} />
         {warning && <NoteBox note={{ kind: "info", text: warning }} />}
         {balances && (

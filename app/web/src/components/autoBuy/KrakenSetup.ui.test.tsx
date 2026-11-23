@@ -23,7 +23,15 @@ let respond: (r: Req) => { status: number; body: unknown };
 
 const NODE_ADDRESS = "bcrt1qnodeaddressxyz";
 
-function status(over: { provider?: "coinbase" | "kraken"; kraken?: AutoBuyStatus["kraken_credentials"]; coinbase?: boolean; whitelisted?: boolean; failures?: number } = {}): AutoBuyStatus {
+function status(over: {
+  provider?: "coinbase" | "kraken";
+  kraken?: AutoBuyStatus["kraken_credentials"];
+  coinbase?: boolean;
+  whitelisted?: boolean;
+  failures?: number;
+  snapshot?: AutoBuyStatus["balance_snapshot"];
+  funds?: AutoBuyStatus["funds"];
+} = {}): AutoBuyStatus {
   return {
     config: {
       enabled: false, base_unit_usd: 100, frequency: "weekly",
@@ -35,6 +43,8 @@ function status(over: { provider?: "coinbase" | "kraken"; kraken?: AutoBuyStatus
     },
     credentials: over.coinbase ? { key_name: "k", connected_at: 1, last_verified_at: null } : null,
     kraken_credentials: over.kraken ?? null,
+    balance_snapshot: over.snapshot ?? null,
+    funds: over.funds ?? null,
     in_flight: [], recent: [], missed: null, missed_error: null,
   } as AutoBuyStatus;
 }
@@ -182,6 +192,40 @@ describe("KrakenCard — connected", () => {
     await render(<KrakenCard status={status({ provider: "kraken", kraken: { connected_at: 1, last_verified_at: null, address_matched: false } })} onRefresh={vi.fn(async () => {})} />);
     expect(host.querySelector('[data-testid="address-state"]')?.textContent).toContain("Save your node's address (below) as a Bitcoin withdrawal address in Kraken");
     expect(host.querySelector('[data-testid="node-address"]')?.textContent).toBe(NODE_ADDRESS);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe("KrakenCard — buys left (P5, G11)", () => {
+  const CONNECTED = { connected_at: 1_800_000_000, last_verified_at: null, address_matched: true };
+  const READ_AT = 1_894_017_600;
+  const asOf = (stale: boolean) => `As of ${new Date(READ_AT * 1000).toLocaleString()}${stale ? " — may be out of date" : ""}.`;
+  const funds = (over: Partial<NonNullable<AutoBuyStatus["funds"]>> = {}) => ({
+    currency: "USD" as const, usd_available: 150, next_buy_usd: 100, multiplier: 1, buys_covered: 1, read_at: READ_AT, stale: false, ...over,
+  });
+  const snap = (stale: boolean) => ({ usd_available: 150, usdc_available: 1000, btc_available: 0, read_at: READ_AT, stale });
+  const fundsLine = () => host.querySelector('[data-testid="kraken-funds"]')?.textContent;
+
+  it("W8 shows the API's buys-left figures (USD, next buy), as of the read — never recomputed from USDC", async () => {
+    await render(<KrakenCard status={status({ provider: "kraken", kraken: CONNECTED, snapshot: snap(false), funds: funds() })} onRefresh={vi.fn(async () => {})} />);
+    expect(fundsLine()).toBe(`About 1 buy left: $150.00 USD available, next buy $100.00. ${asOf(false)}`);
+    expect(requests).toEqual([]); // the card makes no request to show it
+  });
+
+  it("W9 a stale snapshot says so; no snapshot says how to get one; a zero zone says it buys nothing", async () => {
+    await render(<KrakenCard status={status({ provider: "kraken", kraken: CONNECTED, snapshot: snap(true), funds: funds({ stale: true, buys_covered: 3, usd_available: 300 }) })} onRefresh={vi.fn(async () => {})} />);
+    expect(fundsLine()).toBe(`About 3 buys left: $300.00 USD available, next buy $100.00. ${asOf(true)}`);
+
+    await render(<KrakenCard status={status({ provider: "kraken", kraken: CONNECTED })} onRefresh={vi.fn(async () => {})} />);
+    expect(fundsLine()).toBe("No balance read yet. Press Verify.");
+
+    await render(<KrakenCard status={status({ provider: "kraken", kraken: CONNECTED, snapshot: snap(false), funds: funds({ buys_covered: null, next_buy_usd: 0, multiplier: 0 }) })} onRefresh={vi.fn(async () => {})} />);
+    expect(fundsLine()).toBe(`$150.00 USD available. The current zone buys nothing. ${asOf(false)}`);
+  });
+
+  it("W10 a snapshot without a valuation shows the USD, and says buys left needs today's valuation", async () => {
+    await render(<KrakenCard status={status({ provider: "kraken", kraken: CONNECTED, snapshot: snap(false) })} onRefresh={vi.fn(async () => {})} />);
+    expect(fundsLine()).toBe(`$150.00 USD available. Buys left can't be worked out without today's valuation. ${asOf(false)}`);
   });
 });
 

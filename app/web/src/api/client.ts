@@ -1828,6 +1828,29 @@ export type KrakenCredentialsVerified = {
 
 export type AutoBuyProviderSwitch = { ok: true; provider: AutoBuyProvider; changed: boolean };
 
+// ── kraken-autobuy P5 ───────────────────────────────────────────────────────
+
+/** The persisted Kraken balances (buying power), as of read_at. Older than an hour is stale. */
+export type KrakenBalanceSnapshot = {
+  usd_available: number;
+  usdc_available: number;
+  btc_available: number;
+  read_at: number;
+  stale: boolean;
+};
+
+/** "Buys left": the snapshot's USD against the next buy at the current multiplier. The low-funds warning uses the same figures. */
+export type KrakenFundsCoverage = {
+  currency: "USD";
+  usd_available: number;
+  next_buy_usd: number;
+  multiplier: number;
+  /** null when the current zone buys nothing. */
+  buys_covered: number | null;
+  read_at: number;
+  stale: boolean;
+};
+
 export type AutoBuyRun = {
   id: number;
   scheduled_for: number;
@@ -1911,6 +1934,10 @@ export type AutoBuyStatus = {
   credentials: AutoBuyCredentialsInfo | null;
   /** kraken-autobuy P4e: the Kraken key's state, or null when none is connected. */
   kraken_credentials: KrakenCredentialsInfo | null;
+  /** kraken-autobuy P5: null unless Kraken is active and a balance has been read. */
+  balance_snapshot: KrakenBalanceSnapshot | null;
+  /** kraken-autobuy P5: null without a snapshot or a valuation. */
+  funds: KrakenFundsCoverage | null;
   in_flight: AutoBuyRun[];
   recent: AutoBuyRun[];
   /**
