@@ -9,7 +9,7 @@
 import fs from "fs";
 import path from "path";
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.hoisted(() => {
   process.env.AUTOBUY_ENABLED = "true";
@@ -110,9 +110,24 @@ const runs = () => db.prepare(`SELECT id, status, provider, coinbase_order_id, f
 const sweeps = () => db.prepare(`SELECT id, status, provider, coinbase_tx_id, btc_amount, withdraw_txid FROM autobuy_sweeps ORDER BY id`).all() as any[];
 const pathsSince = (i: number) => calls.slice(i).map((c) => `${c.method} ${c.path}`);
 
+// ONE database for the whole file. krakenNonceSource is one per process and
+// binds to the FIRST database it is given; a fresh database per case would
+// leave every later case's nonce store pointing at a closed handle, so every
+// Kraken call would fail locally before fetch and "no calls" assertions would
+// pass vacuously (found by P4b control B6). Rows are reset per case instead.
+beforeAll(() => {
+  db = buildDb();
+});
+
+afterAll(() => {
+  db.close();
+});
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
-  db = buildDb();
+  for (const t of ["autobuy_runs", "autobuy_sweeps", "autobuy_alerts", "kraken_credentials"]) db.prepare(`DELETE FROM ${t}`).run();
+  db.prepare(`UPDATE autobuy_config SET consecutive_failures = 0, paused_reason = NULL, zone_multipliers = ? WHERE id = 1`)
+    .run(JSON.stringify({ extreme_buy: 3, undervalued: 2, fair_value: 1, elevated: 0.5, overvalued: 0.25, extreme_sell: 0 }));
   calls = [];
   state = { orderStatus: "open", withdrawalStatus: "pending" };
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => krakenFetch(url, init)));
@@ -136,7 +151,6 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.useRealTimers();
-  db.close();
 });
 
 describe("a Kraken run end to end through runTick (stubbed fetch)", () => {
@@ -195,7 +209,9 @@ describe("a Kraken run end to end through runTick (stubbed fetch)", () => {
   });
 
   it("R2 the hold is per row's provider: with Kraken active, a Coinbase row is released at 72 h, a Kraken row only at 7 days", async () => {
-    db.prepare(`UPDATE autobuy_config SET next_run_at = ? WHERE id = 1`).run(T0 + 365 * 86400); // no buy due
+    // No buy due, and no sweep day in the window: this case is the hold alone.
+    const releaseDow = new Date((FILLED_AT + 7 * 86400) * 1000).getUTCDay();
+    db.prepare(`UPDATE autobuy_config SET next_run_at = ?, sweep_day_of_week = ? WHERE id = 1`).run(T0 + 365 * 86400, (releaseDow + 2) % 7); // Wednesday: no tick below falls on it
     const ins = db.prepare(
       `INSERT INTO autobuy_runs (scheduled_for, status, filled_btc, filled_usd, filled_at, created_at, updated_at, provider)
        VALUES (?, 'buy_filled', 0.001, 100, ?, ?, ?, ?)`,
@@ -210,19 +226,26 @@ describe("a Kraken run end to end through runTick (stubbed fetch)", () => {
     expect(runs()[1].status).toBe("sweep_assigned");
   });
 
-  it("R3 polls touch only the ACTIVE provider's rows: a Coinbase buy_placed row is not polled through Kraken, and Coinbase is not called", async () => {
+  it("R3 polls touch only the ACTIVE provider's rows: the Kraken row IS polled, the Coinbase row is not (and Coinbase is not called)", async () => {
     db.prepare(`UPDATE autobuy_config SET next_run_at = ? WHERE id = 1`).run(T0 + 365 * 86400);
-    db.prepare(
+    const ins = db.prepare(
       `INSERT INTO autobuy_runs (scheduled_for, status, coinbase_order_id, created_at, updated_at, provider)
-       VALUES (?, 'buy_placed', 'cb-order-1', ?, ?, 'coinbase')`,
-    ).run(T0, T0, T0);
+       VALUES (?, 'buy_placed', ?, ?, ?, ?)`,
+    );
+    ins.run(T0, "cb-order-1", T0, T0, "coinbase");
+    ins.run(T0, TXID, T0, T0, "kraken");
     db.prepare(
       `INSERT INTO autobuy_sweeps (swept_at, btc_amount, coinbase_tx_id, status, provider) VALUES (?, 0.001, 'cb-tx-1', 'placed', 'coinbase')`,
     ).run(T0);
     await tickAt(T0 + 60);
-    expect(calls).toHaveLength(0);
+    // The permitting half: the Kraken row was polled, so the path is live (a
+    // dead nonce store or a broken route would fail here, not pass silently).
+    const polled = calls.filter((c) => c.path === "/0/private/QueryOrders").map((c) => new URLSearchParams(c.body).get("txid"));
+    expect(polled).toEqual([TXID]);
+    // The refusing half: nothing else was sent for the Coinbase row or sweep.
+    expect(pathsSince(0)).toEqual(["POST /0/private/QueryOrders"]);
     expect(stubs.coinbase).not.toHaveBeenCalled();
-    expect(runs()[0].status).toBe("buy_placed");
+    expect(runs().map((r) => r.status)).toEqual(["buy_placed", "buy_placed"]);
     expect(sweeps()[0].status).toBe("placed");
   });
 
