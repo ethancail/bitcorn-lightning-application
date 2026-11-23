@@ -608,14 +608,20 @@ function sandbox() {
   fs.mkdirSync(path.join(home, ".polar", "networks"), { recursive: true });
   fs.writeFileSync(path.join(home, ".polar", "networks", "networks.json"), JSON.stringify({ networks: [NET1] }));
   const log = path.join(home, "stub.log");
+  const diskfree = path.join(home, "diskfree");
+  fs.writeFileSync(diskfree, "1000000\n");
   const run = (args, extra = {}) => {
     fs.rmSync(log, { force: true });
     const r = spawnSync(process.execPath, [MODULE, ...args], {
       cwd: ROOT, encoding: "utf8", timeout: 20_000,
       // HARNESS_HEAVY_TEST_HOME: `lock acquire --slot` takes heavy first (the lock
       // order), so the sandbox is its heavy home too, never the account's real
-      // heavy.lock; at one heavy slot, so its history is the same on any host.
-      env: { PATH: bin, HOME: home, STUB_LOG: log, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", ...extra },
+      // heavy.lock; at one heavy slot, so its history is the same on any host;
+      // and plenty of free disk, so its admission never depends on this host's.
+      env: {
+        PATH: bin, HOME: home, STUB_LOG: log, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1",
+        HARNESS_HEAVY_TEST_DISKFREE: diskfree, ...extra,
+      },
     });
     const ran = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
     return { status: r.status, stdout: r.stdout, stderr: r.stderr, ran };
