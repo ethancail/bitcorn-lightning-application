@@ -13,10 +13,13 @@ import {
 import type { AlertType } from "./alerts";
 import { raiseAlert, clearAlerts } from "./alertStore";
 import { getCurrent } from "./valuationClient";
+import { holdSecondsFor } from "./hold";
 
 const TICK_INTERVAL_MS = 15 * 60 * 1000;
 const SWEEP_MIN_BTC = 0.0001;
-const WITHDRAW_HOLD_SECONDS = 72 * 3600;
+// Coinbase's hold, from the one source the API also reports from. P4 makes the
+// cutoff per provider.
+const WITHDRAW_HOLD_SECONDS = holdSecondsFor("coinbase");
 
 // ───────────────────────────────────────────────────────────────────────
 // Public entry point
