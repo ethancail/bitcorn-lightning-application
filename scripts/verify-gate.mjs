@@ -31,12 +31,15 @@
 //                                                     still held: exit 0 + that warning,
 //                                                     NOT VERIFIED
 //
-// THE HEAVY LOCK (A4, Ethan 2026-11-18; on flock, 2026-11-19): tsc and vitest
-// are heavy jobs, so the checks run only under scripts/harness-slot.mjs's heavy
-// lock, a kernel flock taken here in process before the first check, waiting up
-// to HEAVY_WAIT_S (SECOND_TRY_WAIT_S on the second try). Each check is handed
+// THE HEAVY LOCK (A4, Ethan 2026-11-18; on flock, 2026-11-19; N slots,
+// 2026-11-20): tsc and vitest are heavy jobs, so the checks run only holding a
+// slot of scripts/harness-slot.mjs's heavy lock, a kernel flock taken here in
+// process before the first check by the same admission as heavy run (the
+// host's slot limit, the memory check; never exclusive), waiting up to
+// HEAVY_WAIT_S (SECOND_TRY_WAIT_S on the second try). Each check is handed
 // the locked descriptor as its fd 9 and the gate's job token as
-// HARNESS_HEAVY_JOB (harness-slot.mjs, THE JOB TOKEN); a gate whose own
+// HARNESS_HEAVY_JOB (harness-slot.mjs, THE JOB TOKEN), plus
+// VITEST_MAX_WORKERS when it took its slot while another was held; a gate whose own
 // environment carries the live holder's token checks under that hold instead.
 // A gate killed mid-check leaves the lock
 // with that check until it exits; there are no signal handlers here. It is
@@ -62,7 +65,6 @@
 // Documented in CLAUDE.md § Build & Dev.
 
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -226,7 +228,7 @@ async function takeHeavy(hook) {
   // #7: an error taking the lock is "not run" too, never a crash that lets the stop through.
   try {
     if (heavy.heldByThisJob(ctx.home)) {
-      const info = heavy.readHeavyInfo(ctx.home);
+      const info = heavy.heldJobInfo(ctx.home);
       console.error(`[verify-gate] the heavy lock is this job's own (${JSON.stringify(info?.holder ?? "(unrecorded)")}); checking under it`);
       return { ok: true, release: () => {} };
     }
@@ -241,37 +243,38 @@ async function takeHeavy(hook) {
       waitS = SECOND_TRY_WAIT_S;
       console.error(`[verify-gate] second try: waiting at most ${SECOND_TRY_WAIT_S}s for the heavy lock`);
     }
+    const holder = `${ctx.account}@${ctx.host}:node scripts/verify-gate.mjs (${path.basename(ROOT)})`;
+    const job = heavy.jobToken(holder, process.pid);
+    // One slot, by the same admission as heavy run (limit, memory check), never exclusive.
     const r = await heavy.lockHeavy({
       home: ctx.home,
+      limit: ctx.limit,
+      minFreeMb: ctx.minFreeMb,
+      meminfo: ctx.meminfo,
+      record: { holder, host: ctx.host, kind: "gate", pid: process.pid, job },
       waitMs: waitS * 1000,
       pollMs: Math.max(1000, Math.min(5000, waitS * 1000)),
       say: (m) => console.error(`[verify-gate] ${m}`),
     });
-    if (r.fd === null) {
-      return {
-        ok: false,
-        notRun: `verification not run: heavy lock held by ${JSON.stringify(r.info?.holder ?? "(unrecorded)")} ` +
-          `since ${r.info?.acquired_at ?? "?"}; run it when the lock frees`,
-      };
+    if (r.hold === null) {
+      return { ok: false, notRun: `verification not run: ${r.notRun}; run it when the lock frees` };
     }
-    let rec;
-    const holder = `${ctx.account}@${ctx.host}:node scripts/verify-gate.mjs (${path.basename(ROOT)})`;
-    const job = heavy.jobToken(holder, process.pid);
+    const hold = r.hold;
     try {
-      rec = heavy.recordHeavy(ctx.home, r.fd, { holder, host: ctx.host, kind: "gate", pid: process.pid, job });
+      hold.log(hold.shared ? { shared: true } : {});
     } catch (error) {
-      fs.closeSync(r.fd);
+      hold.release();
       throw error;
     }
-    checkStdio = heavy.heavyStdio(["pipe", "pipe", "pipe"], r.fd);
-    checkEnv = { ...process.env, HARNESS_HEAVY_JOB: job };
+    checkStdio = heavy.heavyStdio(["pipe", "pipe", "pipe"], hold.fds);
+    checkEnv = { ...process.env, ...heavy.heavyJobEnv(job, hold.shared, ctx.sharedWorkers) };
     return {
       ok: true,
       release: () => {
         checkStdio = null;
         checkEnv = null;
         try {
-          console.error(`[verify-gate] ${rec.release()}`);
+          for (const line of hold.release()) console.error(`[verify-gate] ${line}`);
         } catch (error) {
           console.error(`[verify-gate] WARN: the heavy lock's record was not cleared: ${error.message}`);
         }

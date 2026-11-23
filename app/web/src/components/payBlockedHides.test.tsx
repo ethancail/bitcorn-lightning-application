@@ -293,41 +293,60 @@ describe("the auto-pay pointer shows only while auto-pay is on", () => {
   });
 });
 
-describe("the panel's \"Renew now\" is gated", () => {
-  const renewNow = () =>
-    [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("Renew now")) as HTMLButtonElement | undefined;
+// Slice 4: "Renew now" (current) and "I have BTC — …" (the rest) are one
+// button now, "Renew from your node" / "Pay from your node" (R1), in every
+// applicable shape; R3's line under it says the node pays, so it is hidden
+// while blocked too.
+describe("the panel's one button is gated", () => {
+  const button = () => host.querySelector(".membership-button") as HTMLButtonElement | null;
+  const USES = /Uses .* of your node's bitcoin, plus a small network fee\./;
+  const SHAPES: Array<[string, (l: Record<string, unknown>) => any]> = [
+    ["current", (l) => status("current", l, { paid_through: NOW + 5 * DAY, worker_until: NOW + 35 * DAY })],
+    ["current, pre-pause", (l) => status("current", l, { paid_through: NOW - DAY, worker_until: NOW + 9 * DAY })],
+    ["prepay", (l) => status("prepay", l)],
+    ["worker_lapsed", (l) => status("worker_lapsed", l)],
+    ["routing_lapsed", (l) => status("routing_lapsed", l)],
+    ["close_due", (l) => status("close_due", l)],
+  ];
 
-  it("disabled under unsigned and S6, enabled under verified and unrefused", async () => {
-    for (const [name, labels] of Object.entries(BLOCKED)) {
-      stub.getSubscriptionStatus.mockResolvedValue(status("current", labels, { paid_through: NOW + 5 * DAY, worker_until: NOW + 35 * DAY }));
+  it("disabled, with no 'Uses …' line, under unsigned and S6; enabled with it under verified and unrefused", async () => {
+    for (const [shape, s] of SHAPES) {
+      for (const [name, labels] of Object.entries(BLOCKED)) {
+        stub.getSubscriptionStatus.mockResolvedValue(s(labels));
+        await show(React.createElement(SubscriptionPanel));
+        expect(button(), `${shape}, ${name}: the button renders (setup)`).not.toBeNull();
+        expect(button()!.disabled, `${shape}, ${name}: the button offered a payment the node won't make`).toBe(true);
+        expect(text(), `${shape}, ${name}: the line under the button says the node pays`).not.toMatch(USES);
+      }
+      stub.getSubscriptionStatus.mockResolvedValue(s(VERIFIED));
       await show(React.createElement(SubscriptionPanel));
-      expect(renewNow(), `${name}: the Renew now button renders (setup)`).toBeDefined();
-      expect(renewNow()!.disabled, `${name}: Renew now offered a payment the node won't make`).toBe(true);
+      expect(button()!.disabled, `${shape}, verified`).toBe(false);
+      expect(text(), `${shape}, verified`).toMatch(USES);
     }
-    stub.getSubscriptionStatus.mockResolvedValue(status("current", VERIFIED, { paid_through: NOW + 5 * DAY, worker_until: NOW + 35 * DAY }));
-    await show(React.createElement(SubscriptionPanel));
-    expect(renewNow()!.disabled).toBe(false);
   });
 });
 
 describe("G3 extension 2 — the Settings panel's remaining payment asks are hidden while blocked", () => {
-  // Ruled 2026-11-11: the routing_lapsed/close_due alert's "Pay {price} to
-  // restore them." and the current tier's pre-pause "Renew before then to keep
-  // them running.". The surrounding sentences stay, with their spacing.
-  const OVERDUE_LEAD = "Your membership payment is overdue, so hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements.";
-  const STILL_OPEN = " Your connection to Bitcorn is still open and its balance is unchanged.";
+  // Ruled 2026-11-11: the overdue family's "Pay {price} to restore them." and
+  // the current tier's pre-pause "Renew before then to keep them running.". The
+  // surrounding sentences stay. Slice 4: the restore ask is in the "What's
+  // paused?" row, after the services sentence (worker_lapsed has it too, R6).
+  const SERVICES = "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements.";
+  const pausedFirst = () => host.querySelector('details[data-row="paused"] p')?.textContent?.replace(/\s+/g, " ") ?? null;
+  const lead = () => host.querySelector(".membership-lead")?.textContent?.replace(/\s+/g, " ") ?? null;
+  const overdue = (tier: Tier) => ({
+    where: `${tier} "What's paused?"`, s: (l: Record<string, unknown>) => status(tier, l),
+    read: pausedFirst, present: `${SERVICES} Pay 42,000 sats to restore them.`, blocked: SERVICES,
+  });
   const SITES = [
-    { where: "routing_lapsed alert", s: (l: Record<string, unknown>) => status("routing_lapsed", l),
-      present: `${OVERDUE_LEAD} Pay 42,000 sats to restore them.${STILL_OPEN}`, absent: /Pay 42,000 sats to restore them/,
-      blocked: `${OVERDUE_LEAD}${STILL_OPEN}` },
-    { where: "close_due alert", s: (l: Record<string, unknown>) => status("close_due", l),
-      present: `${OVERDUE_LEAD} Pay 42,000 sats to restore them.${STILL_OPEN}`, absent: /Pay 42,000 sats to restore them/,
-      blocked: `${OVERDUE_LEAD}${STILL_OPEN}` },
-    { where: "current pre-pause line", s: (l: Record<string, unknown>) => status("current", l, { paid_through: NOW - DAY, worker_until: NOW + 9 * DAY }),
-      present: /Hosted services pause on [A-Z][a-z]{2} \d{1,2}, \d{4}\. Renew before then to keep them running\./,
-      absent: /Renew before then/, blocked: /Hosted services pause on [A-Z][a-z]{2} \d{1,2}, \d{4}\.MONTHLY/ },
+    overdue("worker_lapsed"),
+    overdue("routing_lapsed"),
+    overdue("close_due"),
+    { where: "current pre-pause lead", s: (l: Record<string, unknown>) => status("current", l, { paid_through: NOW - DAY, worker_until: NOW + 9 * DAY }),
+      read: lead, present: /^Hosted services pause on [A-Z][a-z]{2} \d{1,2}, \d{4}\. Renew before then to keep them running\.$/,
+      blocked: /^Hosted services pause on [A-Z][a-z]{2} \d{1,2}, \d{4}\.$/ },
   ];
-  const has = (t: string, p: string | RegExp) => (typeof p === "string" ? t.includes(p) : p.test(t));
+  const is = (t: string | null, p: string | RegExp) => (typeof p === "string" ? t === p : p.test(t ?? ""));
 
   it("each ask is absent under unsigned and S6, and present under verified and unrefused", async () => {
     for (const s of SITES) {
@@ -335,33 +354,31 @@ describe("G3 extension 2 — the Settings panel's remaining payment asks are hid
         stub.getSubscriptionStatus.mockResolvedValue(s.s(labels));
         await show(React.createElement(SubscriptionPanel));
         const where = `${s.where}, ${name}`;
-        expect(text(), `${where}: the panel asked for payment`).not.toMatch(s.absent);
-        expect(has(text(), s.blocked), `${where}: the surrounding sentences stay, spaced: ${text().slice(0, 400)}`).toBe(true);
+        expect(text(), `${where}: the panel asked for payment`).not.toMatch(/Pay 42,000 sats to restore them|Renew before then/);
+        expect(is(s.read(), s.blocked), `${where}: the surrounding sentence stays, alone: ${s.read()}`).toBe(true);
       }
       // Anti-vacuity: verified and unrefused, the ask renders in place.
       stub.getSubscriptionStatus.mockResolvedValue(s.s(VERIFIED));
       await show(React.createElement(SubscriptionPanel));
-      expect(has(text(), s.present), `${s.where}, verified: ${text().slice(0, 400)}`).toBe(true);
+      expect(is(s.read(), s.present), `${s.where}, verified: ${s.read()}`).toBe(true);
     }
   });
 });
 
 describe("G3 extension — the Settings panel invites no payment from another wallet while blocked", () => {
   // Every tier with such a sentence (ruled 2026-11-11). The deposit block's own
-  // helper and fineprint are already withheld by C15 while blocked.
+  // helper and fineprint are already withheld by C15 while blocked. Slice 4:
+  // worker_lapsed has the overdue layout (R6), whose "If you renew" row never
+  // had the other-wallet sentence; its site is gone with the sentence.
   const SITES = [
-    { tier: "prepay" as Tier, where: "prepay tagline", ask: "until your first payment. Send 42,000 sats to activate full membership.",
-      blockedText: "You have payment access until your first payment." },
+    { tier: "prepay" as Tier, where: "prepay lead", ask: "isn't active yet. Pay 42,000 sats to start it.",
+      blockedText: "Your membership isn't active yet." },
     { tier: "prepay" as Tier, where: "prepay \"Available now\" bullet",
       ask: "Available now — Coinbase Onramp for buying BTC, BTC/USD price reads, and the address below for receiving your first payment.",
       blockedText: "Activates on first payment" },
-    { tier: "worker_lapsed" as Tier, where: "worker_lapsed \"If you renew\" row",
-      ask: "recovery is fully in-app. Buy BTC via Onramp or send from a wallet you already have. Payment is detected within ~15 seconds;",
-      blockedText: "recovery is fully in-app. Payment is detected within ~15 seconds;" },
   ];
-  const ANY = /wallet you already have|to activate full membership|address below for receiving your first payment/;
-  const iHaveBtc = () =>
-    [...host.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith("I have BTC")) as HTMLButtonElement | undefined;
+  const ANY = /wallet you already have|to start it\.|address below for receiving your first payment/;
+  const button = () => host.querySelector(".membership-button") as HTMLButtonElement | null;
 
   it("each site is absent under unsigned and S6, and present under verified and unrefused", async () => {
     for (const s of SITES) {
@@ -372,13 +389,24 @@ describe("G3 extension — the Settings panel invites no payment from another wa
         expect(text(), `${where}: the panel invited payment from another wallet`).not.toContain(s.ask);
         expect(text(), `${where}: no such sentence anywhere`).not.toMatch(ANY);
         expect(text(), `${where}: the rest stays`).toContain(s.blockedText);
-        expect(iHaveBtc()?.disabled, `${where}: "I have BTC" stays disabled`).toBe(true);
+        expect(button()?.disabled, `${where}: the button stays disabled`).toBe(true);
       }
       // Anti-vacuity: verified and unrefused, the sentence renders.
       stub.getSubscriptionStatus.mockResolvedValue(status(s.tier, VERIFIED));
       await show(React.createElement(SubscriptionPanel));
       expect(text(), `${s.where}, verified`).toContain(s.ask);
-      expect(iHaveBtc()?.disabled, `${s.where}, verified: "I have BTC" is enabled`).toBe(false);
+      expect(button()?.disabled, `${s.where}, verified: the button is enabled`).toBe(false);
+    }
+  });
+
+  it("no tier, worker_lapsed included, invites payment from another wallet while blocked", async () => {
+    for (const tier of ["prepay", "current", "worker_lapsed", "routing_lapsed", "close_due"] as Tier[]) {
+      for (const [name, labels] of Object.entries(BLOCKED)) {
+        stub.getSubscriptionStatus.mockResolvedValue(status(tier, labels));
+        await show(React.createElement(SubscriptionPanel));
+        expect(host.querySelector(".membership-button"), `${tier}: rendered (setup)`).not.toBeNull();
+        expect(text(), `${tier}, ${name}`).not.toMatch(ANY);
+      }
     }
   });
 });

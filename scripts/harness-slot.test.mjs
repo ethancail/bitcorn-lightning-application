@@ -503,13 +503,58 @@ test("H14 exclusion (L5): with a slot lock held, a setup acquire is refused", ()
   assert.ok(!fs.existsSync(lockPath(home, "setup.lock")));
 });
 
-test("H14 exclusion (L6): with setup.lock held, a slot acquire is refused", () => {
+test("H14 exclusion (L6): with setup.lock held, a slot acquire by another holder is refused", () => {
   const home = tmpHome();
   take(home, "setup", "harness-host");
   for (const slot of [1, 2]) {
     assert.throws(() => take(home, slot, "drive-mode"), new RegExp(`slot ${slot} refused: setup.lock is held by "harness-host"`));
     assert.ok(!fs.existsSync(lockPath(home, `slot-${slot}.lock`)));
   }
+});
+
+// THE HANDOFF (2026-11-23: a repair released setup before taking slot 1, leaving network 1 unlocked 16 m 40 s).
+test("handoff: setup's own holder may take a slot under it; another holder may not; setup is still refused over any slot", () => {
+  const home = tmpHome();
+  take(home, "setup", "repair-arc");
+  console.log(take(home, 1, "repair-arc", at(1)));
+  assert.ok(fs.existsSync(lockPath(home, "slot-1.lock")), "the same holder holds setup and slot 1 at once");
+  assert.ok(fs.existsSync(lockPath(home, "setup.lock")));
+  assert.throws(() => take(home, 2, "drive-mode", at(2)), /slot 2 refused: setup\.lock is held by "repair-arc"/);
+  assert.ok(!fs.existsSync(lockPath(home, "slot-2.lock")));
+  // setup is taken before the slot, never after: with the holder's own slot held, a new setup is refused.
+  releaseLock({ home, target: "setup", holder: "repair-arc", now: at(3) });
+  assert.throws(() => take(home, "setup", "repair-arc", at(4)), /setup refused: slot locks are held \(slot 1 by "repair-arc"\)/);
+  // an unreadable setup.lock matches no holder, not even the unreadable holder string
+  const garbled = tmpHome();
+  fs.mkdirSync(lockDir(garbled), { recursive: true });
+  fs.writeFileSync(lockPath(garbled, "setup.lock"), "{ not json\n");
+  assert.throws(() => take(garbled, 1, "(unreadable lock file)"), /slot 1 refused: setup\.lock is held by "\(unreadable lock file\)"/);
+});
+
+test("handoff: hold setup, take the slot, release setup — history.log never shows a moment with neither lock", () => {
+  const home = tmpHome();
+  take(home, "setup", "repair-arc", at(0));
+  take(home, 1, "repair-arc", at(1));
+  releaseLock({ home, target: "setup", holder: "repair-arc", now: at(2) });
+  const lines = history(home);
+  console.log(lines.join("\n"));
+  const events = lines.map((l) => l.match(/ (acquire|release) lock="([^"]+)" holder="([^"]+)"/).slice(1).join(" "));
+  assert.deepEqual(events, ["acquire setup repair-arc", "acquire slot 1 repair-arc", "release setup repair-arc"]);
+  assert.ok(events.indexOf("acquire slot 1 repair-arc") < events.indexOf("release setup repair-arc"), "slot acquired before setup released");
+  assert.equal(readLock(home, 1).holder, "repair-arc", "the slot is held when setup is gone");
+  assert.equal(readLock(home, "setup"), null);
+});
+
+test("handoff back-out: setup taken by the slot's own holder between the create and the second check is no conflict", () => {
+  const home2 = tmpHome();
+  const race2 = { afterCreate: () => realWriteSetupAs(home2, "repair-arc") };
+  acquireLock({ home: home2, target: 1, holder: "repair-arc", go: "x", now: T0, host: "test-host", race: race2 });
+  assert.equal(readLock(home2, 1).holder, "repair-arc", "the slot is kept");
+  const home3 = tmpHome();
+  const race3 = { afterCreate: () => realWriteSetupAs(home3, "other-arc") };
+  assert.throws(() => acquireLock({ home: home3, target: 1, holder: "repair-arc", go: "x", now: T0, host: "test-host", race: race3 }),
+    /slot 1 refused: setup\.lock is held by "other-arc"/);
+  assert.equal(readLock(home3, 1), null, "another holder's setup still backs the slot out");
 });
 
 test("H14 lockRefusal: no lock, unset holder, wrong holder, setup held, and the matching holder", () => {
@@ -523,6 +568,13 @@ test("H14 lockRefusal: no lock, unset holder, wrong holder, setup held, and the 
   assert.match(refusal(2, "harness-host"), /^slot 2 refused: no lock/, "slot 1's lock does not cover slot 2");
   fs.writeFileSync(lockPath(home, "setup.lock"), JSON.stringify({ holder: "polar-setup" })); // the impossible both-held case
   assert.match(refusal(1, "harness-host"), /setup\.lock is held by "polar-setup"/);
+});
+
+test("handoff: the dev:* scripts' lockRefusal still refuses under setup, even for setup's own holder holding the slot", () => {
+  const home = tmpHome();
+  take(home, "setup", "repair-arc");
+  take(home, 1, "repair-arc");
+  assert.match(lockRefusal(1, "repair-arc", home) ?? "(allowed)", /slot 1 refused: setup\.lock is held by "repair-arc" \(a Polar setup window\)/);
 });
 
 test("H14 lock status: lists what is held, read-only", () => {
@@ -559,11 +611,10 @@ function sandbox() {
     fs.rmSync(log, { force: true });
     const r = spawnSync(process.execPath, [MODULE, ...args], {
       cwd: ROOT, encoding: "utf8", timeout: 20_000,
-      // HARNESS_HEAVY_TEST_HOME: this suite is itself a heavy job (H3), so it runs
-      // under the REAL heavy lock, and the slot CLI would rightly see its own
-      // ancestor holding heavy (A3) and refuse in the no-wait wording. The sandbox
-      // home has no heavy.lock, so the slot locks behave as they do outside heavy.
-      env: { PATH: bin, HOME: home, STUB_LOG: log, HARNESS_HEAVY_TEST_HOME: home, ...extra },
+      // HARNESS_HEAVY_TEST_HOME: `lock acquire --slot` takes heavy first (the lock
+      // order), so the sandbox is its heavy home too, never the account's real
+      // heavy.lock; at one heavy slot, so its history is the same on any host.
+      env: { PATH: bin, HOME: home, STUB_LOG: log, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", ...extra },
     });
     const ran = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
     return { status: r.status, stdout: r.stdout, stderr: r.stderr, ran };
@@ -661,15 +712,24 @@ test("H14 cli: lock acquire, status and release through the entry point; a refus
   const first = run(["lock", "acquire", "--slot", "1", "--holder", "harness-host", ...go]);
   assert.equal(first.status, 0, first.stderr);
   assert.match(first.stdout, /^acquired slot 1 for harness-host: /);
-  const second = run(["lock", "acquire", "--slot", "1", "--holder", "drive-mode", ...go]);
+  // The held slot is refused at once, before heavy (F6), in the slot's own words.
+  const second = run(["lock", "acquire", "--slot", "1", "--holder", "drive-mode", ...go, "--wait", "1"]);
   assert.equal(second.status, 2);
   assert.match(second.stderr, /harness-slot lock: slot 1 is already locked by "harness-host"/);
+  assert.doesNotMatch(second.stderr, /heavy is already locked/);
+  // The lock order: a free slot's acquire waits on the heavy the first took with its slot, never reaching the slot.
+  const other = run(["lock", "acquire", "--slot", "2", "--holder", "drive-mode", ...go, "--wait", "1"]);
+  assert.equal(other.status, 2);
+  assert.match(other.stderr, /harness-slot lock: heavy is already locked by "slot-1\/harness-host"/);
+  assert.doesNotMatch(other.stderr, /slot 2 is already locked/);
   assert.equal(run(["lock", "acquire", "--slot", "1", "--setup", "--holder", "x", ...go]).status, 2, "--slot and --setup together");
   assert.equal(run(["lock", "acquire", "--slot", "0", "--holder", "x", ...go]).status, 2, "slot 0");
+  assert.equal(run(["lock", "acquire", "--setup", "--holder", "x", ...go, "--wait", "1"]).status, 2, "--wait with --setup");
   const release = run(["lock", "release", "--slot", "1", "--holder", "harness-host"]);
   assert.equal(release.status, 0, release.stderr);
-  assert.match(release.stdout, /^harness lock released: slot 1, holder harness-host, held /);
-  assert.equal(history(home).length, 2);
+  assert.match(release.stdout, /^harness lock released: slot 1, holder harness-host, held .*\nharness lock released: heavy, holder slot-1\/harness-host, /);
+  assert.deepEqual(history(home).map((l) => l.match(/ (acquire|release) lock="([^"]+)"/).slice(1).join(" ")),
+    ["acquire heavy", "acquire slot 1", "release slot 1", "release heavy"], "heavy first, then the slot; released in reverse");
 });
 
 // ─── dev-safety R3–R5: the lock's corrections ─────────────────────────────
@@ -782,7 +842,10 @@ test("workflow-app compatibility: every wait case exits 2 with a message browser
 
 // setup.lock written directly: the "impossible" both-held state a race produces
 function realWriteSetup(home) {
-  fs.writeFileSync(lockPath(home, "setup.lock"), JSON.stringify({ holder: "polar-setup", go: "x", acquired_at: utc(T0), host: "test-host", slot: "setup" }));
+  realWriteSetupAs(home, "polar-setup");
+}
+function realWriteSetupAs(home, holder) {
+  fs.writeFileSync(lockPath(home, "setup.lock"), JSON.stringify({ holder, go: "x", acquired_at: utc(T0), host: "test-host", slot: "setup" }));
 }
 const utc = (d) => d.toISOString().replace(/\.\d{3}Z$/, "Z");
 const otherArcLock = (home, minutes) =>

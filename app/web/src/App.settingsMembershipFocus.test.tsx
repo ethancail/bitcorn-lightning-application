@@ -104,7 +104,7 @@ const scrolledElements = () => (Element.prototype.scrollIntoView as Mock).mock.c
 describe("/settings?focus=membership lands on the membership section", () => {
   it("PERMITTING: the section is scrolled into view and its heading has keyboard focus", async () => {
     await renderAppAt("/settings?focus=membership");
-    expect(heading().textContent).toBe("Subscription");
+    expect(heading().textContent).toBe("Membership"); // slice 4, R7: the heading was "Subscription"
     expect(scrolledElements()).toContain(section());
     expect(document.activeElement).toBe(heading());
   });
