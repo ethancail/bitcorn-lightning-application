@@ -271,8 +271,8 @@ function warnsNaming(text: string): number {
 // ═════════════════════════════════════════════════════════════════════════════
 
 describe("environment", () => {
-  it("runs under Node 20 (the verify gate and CI both pin it)", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs under Node 24 (the verify gate and CI both pin it)", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 });
 

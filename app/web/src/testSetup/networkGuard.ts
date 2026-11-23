@@ -6,10 +6,19 @@
 // `globalThis.fetch` once, in createClient() — a test's later
 // vi.stubGlobal("fetch") never reaches that client. Importing App.tsx loads it:
 // wagmi's createConfig runs the MetaMask connector's setup(), which inits the
-// SDK, which enables analytics and POSTs "sdk_initialized" 200 ms later, then
-// retries a failed send forever on a re-arming timer (sdk-analytics
-// dist/index.js:56-84). Measured 2026-11-18: 12 of 20 App-mounting test files
-// sent it to the real host before this guard existed.
+// SDK at import.
+//
+// MetaMask analytics is OFF since code-audit-2's "MetaMask analytics off" slice
+// (2026-11-20): wagmi.ts passes enableAnalytics: false, so importing App.tsx no
+// longer sends anything to the analytics host; wagmi.analytics.test.ts guards it.
+// Before that, init enabled analytics and POSTed "sdk_initialized" 200 ms later,
+// retrying a failed send forever on a re-arming timer (sdk-analytics
+// dist/index.js:56-84); measured 2026-11-18, 12 of 20 App-mounting test files
+// sent it to the real host before this guard existed. The host stays in
+// TELEMETRY_SINK_HOSTS below as a BACKSTOP: if analytics is ever re-enabled (a
+// wagmi.ts edit, or an SDK upgrade that changes the option), the send is still
+// answered locally instead of reaching the network, and the retry timer cannot
+// fail an unrelated later test.
 //
 // Per destination (ruled 2026-11-18, code-audit-2 "test-network stub"):
 //   - outside this machine → recorded, rejected with NetworkBlockedError, and the
@@ -64,7 +73,8 @@ export interface GuardRecord {
 }
 
 export const TELEMETRY_SINK_HOSTS: ReadonlySet<string> = new Set([
-  // MetaMask SDK analytics — see the header for why it is answered, not failed.
+  // MetaMask SDK analytics — off in wagmi.ts; kept as a backstop. See the header
+  // for why it is answered, not failed.
   "mm-sdk-analytics.api.cx.metamask.io",
 ]);
 

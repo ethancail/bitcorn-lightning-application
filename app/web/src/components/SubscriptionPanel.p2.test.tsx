@@ -9,6 +9,13 @@
 //     so it never "never lapses".
 //
 // Harness: SubscriptionPanel.copy.test.tsx's.
+//
+// Slice 4 (member-first-run-ui, the simplified Membership panel): the MONTHLY
+// and PAID THROUGH stats are gone. The price is the big amount and, in the two
+// not-applicable states, the "Price" row; the paid-through date is the cadence
+// line; the pill is the status mark ("Paid up" green, "Due" quiet). The rate
+// is stubbed to "none" (sats): unstubbed, the real client reached a live
+// server on this machine and the amounts came back in dollars.
 
 import fs from "fs";
 import path from "path";
@@ -27,6 +34,7 @@ const stub = vi.hoisted(() => ({
   getSubscriptionStatus: vi.fn(),
   getAutoPayConfig: vi.fn(),
   getAutoPayHistory: vi.fn(),
+  getExchangeRate: vi.fn(),
 }));
 
 vi.mock("../api/client", async (importOriginal) => {
@@ -76,6 +84,7 @@ beforeEach(() => {
   stub.getNode.mockResolvedValue({ pubkey: "02" + "c".repeat(64) });
   stub.getAutoPayConfig.mockResolvedValue(autoPay());
   stub.getAutoPayHistory.mockResolvedValue({ alerts: [] });
+  stub.getExchangeRate.mockResolvedValue({ usd: null, source: "coinbase", fetched_at: null, age_ms: null, state: "none" });
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -95,25 +104,25 @@ async function mount() {
 const text = () => (host.textContent ?? "").replace(/\s+/g, " ");
 const date = (ms: number) => new Date(ms).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 
-/** The MONTHLY stat's value. */
-function monthly(): string | null {
-  const stat = [...host.querySelectorAll(".sub-stats > *")].find((s) => s.textContent?.includes("MONTHLY"));
-  return stat ? (stat.textContent ?? "").replace("MONTHLY", "").trim() : null;
+/** The not-applicable states' "Price" row. */
+function priceRow(): string | null {
+  return host.querySelector('details[data-row="price"]')?.textContent ?? null;
 }
 
 describe("item 10, D2.5: the live price, never the literal 50,000", () => {
   it("the renewal helper reads the status's price (42,000)", async () => {
     stub.getSubscriptionStatus.mockResolvedValue(applicable({ price: 42_000 }));
     await mount();
-    expect(text()).toContain("Send 42,000 sats to renew for one month.");
+    expect(text()).toContain("Send exactly 42,000 sats to renew for 30 days.");
+    expect(host.querySelector(".membership-amount [data-sats]")?.getAttribute("data-sats")).toBe("42000");
     expect(text()).not.toContain("50,000");
   });
 
   for (const reason of ["unclassified", "not_yet_allocated"] as const) {
-    it(`${reason}: MONTHLY shows auto-pay's current_price`, async () => {
+    it(`${reason}: the price row shows auto-pay's current_price`, async () => {
       stub.getSubscriptionStatus.mockResolvedValue({ applicable: false, reason, channel_age_seconds: 10 });
       await mount();
-      expect(monthly()).toMatch(/^42,000\s*sats/);
+      expect(priceRow()).toContain("Membership costs 42,000 sats a month.");
       expect(text()).not.toContain("50,000");
     });
 
@@ -121,12 +130,13 @@ describe("item 10, D2.5: the live price, never the literal 50,000", () => {
       stub.getSubscriptionStatus.mockResolvedValue({ applicable: false, reason, channel_age_seconds: 10 });
       stub.getAutoPayConfig.mockResolvedValue(autoPay({ current_price: null }));
       await mount();
-      expect(monthly()).toMatch(/^—/);
+      expect(priceRow()).toContain("The membership price isn't available yet.");
+      expect(priceRow()).not.toMatch(/\d sats/);
     });
   }
 
   it("no renewal file carries the literal 50,000-sat price", () => {
-    const files = ["SubscriptionPanel.tsx", "subscriptionBanner.ts", "MemberSubscriptionBanner.tsx", "AutoPaySection.tsx", "PayFromNodeModal.tsx"];
+    const files = ["SubscriptionPanel.tsx", "membership/membershipDescriptor.ts", "subscriptionBanner.ts", "MemberSubscriptionBanner.tsx", "AutoPaySection.tsx", "PayFromNodeModal.tsx"];
     for (const f of files) {
       const src = fs.readFileSync(path.join(__dirname, f), "utf8");
       expect(src.length, f).toBeGreaterThan(100);
@@ -139,7 +149,7 @@ describe("item 11: the panel says when services pause, from P", () => {
   it("before P: \"paid up\"", async () => {
     stub.getSubscriptionStatus.mockResolvedValue(applicable({ paid_through: NOW + DAY }));
     await mount();
-    expect(text()).toContain("are paid up."); // R45 Q6: "Your connection to Bitcorn and your hosted services are paid up."
+    expect(text()).toContain("are paid up."); // R45 Q6: "Your connection to BitCorn and your hosted services are paid up."
   });
 
   it("at P: not \"paid up\" — the pause date, read from the status", async () => {
@@ -155,24 +165,23 @@ describe("item 11: the panel says when services pause, from P", () => {
 // "Paid through" are not good news, so the pill and the stat lose their green.
 describe("R34 item 6: quiet, not green, while the pre-pause warning shows", () => {
   const pill = () => host.querySelector(".sub-pill") as HTMLElement | null;
-  const paidThrough = () =>
-    [...host.querySelectorAll(".sub-stat")].find((s) => s.querySelector(".sub-stat-label")?.textContent === "PAID THROUGH") as HTMLElement | undefined;
+  const cadence = () => host.querySelector("[data-cadence]")?.textContent ?? null;
 
-  it("at P: the \"current\" pill is quiet and Paid through has no green accent", async () => {
+  it("at P: the mark is a quiet \"Due\", not a green one, and the cadence says when it was paid through", async () => {
     stub.getSubscriptionStatus.mockResolvedValue(applicable({ paid_through: NOW, worker_until: NOW + 9 * DAY }));
     await mount();
-    expect(pill()?.textContent).toBe("current");
+    expect(pill()?.textContent).toBe("Due");
     expect(pill()?.className).toContain("sub-pill-quiet");
     expect(pill()?.className).not.toContain("sub-pill-emerald");
-    expect(paidThrough(), "the Paid through stat renders").toBeDefined();
-    expect(paidThrough()!.querySelector(".sub-stat-accent-emerald")).toBeNull();
+    expect(cadence()).toBe(`Every 30 days · was paid through ${date(NOW)} (today)`);
   });
 
   it("before P (paid up): still green", async () => {
     stub.getSubscriptionStatus.mockResolvedValue(applicable({ paid_through: NOW + DAY }));
     await mount();
+    expect(pill()?.textContent).toBe("Paid up");
     expect(pill()?.className).toContain("sub-pill-emerald");
-    expect(paidThrough()!.querySelector(".sub-stat-accent-emerald")).not.toBeNull();
+    expect(cadence()).toBe(`Every 30 days · paid through ${date(NOW + DAY)} (tomorrow)`);
   });
 });
 

@@ -111,8 +111,8 @@ const outsideAmounts = (el: Element) => {
 const MONEY = /\$\d|\d[\d,]* sats/;
 
 describe("R56 (1) — 'Auto‑Buy' never splits at its hyphen", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   it.each(["routing_lapsed", "close_due"] as const)("%s banner: U+2011, no ASCII hyphen", (tier) => {
@@ -122,12 +122,14 @@ describe("R56 (1) — 'Auto‑Buy' never splits at its hyphen", () => {
     expect(`${d.context} ${d.body}`).not.toContain("Auto-Buy");
   });
 
-  it.each(["routing_lapsed", "close_due"] as const)("%s panel alert: U+2011, no ASCII hyphen", async (tier) => {
+  // Slice 4: the services sentence is the "What's paused?" row's (it was the alert's).
+  it.each(["routing_lapsed", "close_due"] as const)("%s panel 'What's paused?': U+2011, no ASCII hyphen", async (tier) => {
     stub.getSubscriptionStatus.mockResolvedValue(status(tier));
     await render(React.createElement(SubscriptionPanel));
-    const alert = host.querySelector(".sub-alert")!.textContent ?? "";
-    expect(alert).toContain(`hosted services are paused: Auto${NBH}Buy, with its Valuation Chart`);
-    expect(alert).not.toContain("Auto-Buy");
+    const row = host.querySelector('details[data-row="paused"]')!.textContent ?? "";
+    expect(row).toContain(`Hosted services are paused: Auto${NBH}Buy, with its Valuation Chart`);
+    expect(row).not.toContain("Auto-Buy");
+    expect(host.textContent).not.toContain("Auto-Buy");
   });
 
   it("the rendered banner too", async () => {

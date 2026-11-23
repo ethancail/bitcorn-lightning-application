@@ -185,7 +185,7 @@ describe("scanSubscriptionDeposits — orchestration guards (audit §3/§6/§7)"
   // copy would understate how soon), not two or more (it would be false). Both
   // sides are pinned here, in one scan.
   it("R45 copy pin: a payment counts at its FIRST confirmation — 0 is not credited, exactly 1 is", async () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+    expect(process.versions.node.split(".")[0]).toBe("24");
     const OTHER = "02" + "d4".repeat(32);
     const OTHER_ADDR = "bcrt1qr45firstconfirmationpin0000000000000";
     seedMember(MEMBER, ADDR, Date.now() - MS_PER_DAY);

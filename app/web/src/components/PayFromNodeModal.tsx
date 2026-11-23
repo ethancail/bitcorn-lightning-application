@@ -92,6 +92,7 @@ function copyText(text: string): void {
 export default function PayFromNodeModal({
   status,
   onClose,
+  startAt,
 }: {
   // Only price_sats + deposit_address are read, so the prop is narrowed
   // to that Pick. The panel's full-status call site still satisfies it,
@@ -105,8 +106,12 @@ export default function PayFromNodeModal({
     "price_sats" | "deposit_address" | "treasury_signature" | "treasury_signature_reason" | "treasury_pay_refusal"
   >;
   onClose: () => void;
+  /** member-first-run-ui slice 4, R1: "this-node" opens straight at "Pay from
+   *  this node" (the Membership panel's "Renew from your node"); Back still
+   *  reaches the chooser. Omitted, the modal opens at the chooser. */
+  startAt?: "this-node";
 }) {
-  const [state, dispatch] = useReducer(reducePayModal, INITIAL_PAY_MODAL_STATE);
+  const [state, dispatch] = useReducer(reducePayModal, startAt === "this-node" ? { step: "confirm" } : INITIAL_PAY_MODAL_STATE);
   const [quote, setQuote] = useState<PayFromNodeQuote | null>(null);
   const [quoteError, setQuoteError] = useState(false);
   // treasury-price-trust (spec §4 R8): a quote refused because the status is

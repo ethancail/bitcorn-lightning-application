@@ -12,10 +12,12 @@
 // Polar-GUI check stays host-wide in every slot (D10): with several networks on
 // one host, a running Polar can rewrite any of their compose files.
 //
-// LOCK (H14): the CLI refuses, exit 2, before any check, unless the slot's lock
-// (~/.bitcorn-dev/locks/slot-N.lock) is held by HARNESS_HOLDER, and while
-// setup.lock is held. Acquire it with scripts/harness-slot.mjs lock acquire.
-// The report-only run needs the lock too: it is part of the gate.
+// LOCK (H14; 2026-11-23): the CLI refuses, exit 2, before any check, unless
+// HARNESS_HOLDER holds the slot's lock (~/.bitcorn-dev/locks/slot-N.lock) or
+// setup.lock (a repair checking its network before it hands setup over to the
+// slot); under setup it is still refused when another holder has the slot.
+// Acquire with scripts/harness-slot.mjs lock acquire. The report-only run
+// needs a lock too: it is part of the gate.
 //
 // The procedure this serves is docs/dev-setup.md § Polar regtest gate. It runs
 // immediately before each gate and again after it, not once per session,
@@ -47,7 +49,7 @@
 //   2. Runs lncli connect on Treasury, by hostname, only for an expected peer
 //      missing from its listpeers. An unexpected peer stays a FAIL.
 // It never restarts or stops a container or the daemon, never edits the compose
-// file, and never opens or closes a channel. A failed write is FAIL (the script
+// file or bitcoind's settings.json, and never opens or closes a channel. A failed write is FAIL (the script
 // did look). A re-check it cannot read is CANNOT-LOOK, beside the repair's FAIL.
 //
 // EXPECTED SET: pinned from ~/.polar/networks/1/docker-compose.yml, and the same
@@ -63,6 +65,14 @@
 // resolves the active context or DOCKER_HOST itself. No endpoint is written here.
 //
 // LOGS: this script reads none.
+//
+// BITCOIND SETTINGS (2026-11-23): bitcoind-settings reads the settings.json
+// network 1's bitcoind reads — found from the compose file: backend1's volume
+// onto /home/bitcoin/.bitcoin, then regtest/settings.json — and FAILs, naming
+// the file and the documented repair (docs/dev-setup.md, "bitcoind
+// settings.json"), when it is absent, empty, does not parse, or is not a JSON
+// object: bitcoind will not start on it. A full disk emptied it on 2026-11-21.
+// It reads the file only; --repair does not touch it.
 //
 // TREASURY DB (dev-safety R6): deposit-utxos-unledgered reads the slot's
 // treasury DB, dataDir(slot, "treasury")/db/bitcorn.sqlite, and never opens the
@@ -95,7 +105,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { BITCOIN_NODE, LND_NODE_NAMES, dataDir, lockRefusal, parseSlot, resolveNetwork } from "./harness-slot.mjs";
+import { BITCOIN_NODE, LND_NODE_NAMES, dataDir, parseSlot, preflightLockRefusal, resolveNetwork } from "./harness-slot.mjs";
 
 // The expected set for one Polar network, by its id. Container names embed the
 // id (polar-n<id>-<Node>); the node names are D16's five in every slot.
@@ -159,6 +169,7 @@ const defaultDocker = (args) => runCommand("docker", args);
 const defaultSqlite = (args) => runCommand("sqlite3", args);
 const defaultPs = () => runCommand("ps", ["-ww", "-eo", "pid=,args="]);
 const defaultReadCompose = (file) => fs.promises.readFile(file, "utf8");
+const defaultReadSettings = (file) => fs.promises.readFile(file, "utf8");
 const defaultReadNetworks = async () =>
   JSON.parse(await fs.promises.readFile(path.join(os.homedir(), ".polar", "networks", "networks.json"), "utf8"));
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -400,16 +411,59 @@ function decideMine({ repair, chain, nodes }) {
   return unsynced.length > 0 && unsynced.every((n) => matchesTip(n.info, chain));
 }
 
-// Scoped to backend1's block, because every LND carries a restart line too.
-function composeRestartPolicy(text) {
+// backend1's service block, its lines after the `backend1:` line.
+function backendBlock(text) {
   const lines = text.split("\n");
   const start = lines.findIndex((line) => /^ {2}backend1:\s*$/.test(line));
   if (start === -1) throw new CannotLook("compose file has no backend1 service");
-  for (const line of lines.slice(start + 1)) {
-    if (/^ {0,2}\S/.test(line)) break;
+  const end = lines.findIndex((line, i) => i > start && /^ {0,2}\S/.test(line));
+  return lines.slice(start + 1, end === -1 ? undefined : end);
+}
+
+// Scoped to backend1's block, because every LND carries a restart line too.
+function composeRestartPolicy(text) {
+  for (const line of backendBlock(text)) {
     const match = line.match(/^ {4}restart:\s*["']?([^"'\s#]+)/);
     if (match) return match[1];
   }
+  return null;
+}
+
+// The datadir inside polarlightning/bitcoind, and the one network it runs.
+const BITCOIND_DATADIR = "/home/bitcoin/.bitcoin";
+
+// The settings.json bitcoind reads, on the host: backend1's volume onto its
+// datadir (relative to the compose file's directory), then the network
+// directory. Bitcoin Core keeps settings.json in the network-specific datadir,
+// so with -regtest it is <datadir>/regtest/settings.json; a copy at the
+// datadir's top is not read. Polar runs `bitcoind ... -regtest=1`.
+export function bitcoindSettingsPath(text, composePath) {
+  const block = backendBlock(text);
+  if (!block.some((line) => /(?:^|\s)-regtest(?:=1)?(?:\s|$)/.test(line))) {
+    throw new CannotLook("compose file's backend1 does not run bitcoind with -regtest");
+  }
+  const volume = block
+    .map((line) => line.match(/^ {6}-\s*["']?([^"'\s:]+):([^"'\s:]+)(?::[a-z,]+)?["']?\s*$/))
+    .find((m) => m && m[2].replace(/\/+$/, "") === BITCOIND_DATADIR);
+  if (!volume) throw new CannotLook(`compose file's backend1 has no volume onto ${BITCOIND_DATADIR}`);
+  return path.join(path.resolve(path.dirname(composePath), volume[1]), "regtest", "settings.json");
+}
+
+// The repair, in docs/dev-setup.md § Polar regtest gate, "bitcoind settings.json".
+const SETTINGS_REPAIR =
+  "repair=docs/dev-setup.md#bitcoind-settingsjson (stop the network, move the file aside, start backend1: bitcoind writes a new one)";
+
+// Bitcoin Core refuses to start on a settings.json that is empty, does not
+// parse, or holds anything but a JSON object.
+function settingsProblem(text) {
+  if (text.trim() === "") return `empty (${Buffer.byteLength(text)} bytes)`;
+  let value;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    return `does not parse (${oneLine(error.message)})`;
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return "is not a JSON object";
   return null;
 }
 
@@ -419,6 +473,7 @@ export async function runPreflight({
   docker = defaultDocker,
   ps = defaultPs,
   readCompose = defaultReadCompose,
+  readSettings = defaultReadSettings,
   sleep = defaultSleep,
   now = () => new Date(),
   print = console.log,
@@ -446,7 +501,7 @@ export async function runPreflight({
   };
 
   const blocked = [
-    "containers", "polar-not-running", "compose-restart-policy", "restart-counts-steady", "bitcoind",
+    "containers", "polar-not-running", "compose-restart-policy", "bitcoind-settings", "restart-counts-steady", "bitcoind",
     ...LND_NODE_NAMES.map((n) => `synced-to-chain:${n}`),
     "treasury-peers", "treasury-channels", "deposit-utxos-unledgered",
   ];
@@ -481,7 +536,8 @@ export async function runPreflight({
 
   const { running, firstSample } = await checkContainers(docker, report, t);
   await checkPolar(ps, report);
-  await checkCompose(readCompose, report, t);
+  const composeText = await checkCompose(readCompose, report, t);
+  await checkBitcoindSettings({ readSettings, report, composeText, t });
   await checkRestartCounts({ docker, sleep, report, firstSample, t });
   const chain = await checkBitcoind({ docker, report, running, t });
   const nodes = await checkLnds({ docker, sleep, report, running, chain, repair, t });
@@ -532,11 +588,12 @@ async function checkPolar(ps, report) {
   report("PASS", name, `processes=${processes.length} matched=0`);
 }
 
+// Resolves to the compose file's text when it was read (for bitcoind-settings), else null.
 async function checkCompose(readCompose, report, t) {
   const name = "compose-restart-policy";
   const file = t.composePath;
+  let text = null;
   const policy = await attempt(async () => {
-    let text;
     try {
       text = await readCompose(file);
     } catch (error) {
@@ -544,8 +601,29 @@ async function checkCompose(readCompose, report, t) {
     }
     return composeRestartPolicy(text);
   });
-  if (policy.reason !== undefined) return report("CANNOT-LOOK", name, policy.reason);
-  report(policy.value === "unless-stopped" ? "PASS" : "FAIL", name, `backend1 restart=${policy.value ?? "absent"}`);
+  if (policy.reason !== undefined) report("CANNOT-LOOK", name, policy.reason);
+  else report(policy.value === "unless-stopped" ? "PASS" : "FAIL", name, `backend1 restart=${policy.value ?? "absent"}`);
+  return text;
+}
+
+// A full disk emptied network 1's bitcoind settings.json (2026-11-21), and
+// bitcoind will not start on it. Report-only, under --repair too: the repair is
+// a person's, documented, with the network stopped.
+async function checkBitcoindSettings({ readSettings, report, composeText, t }) {
+  const name = "bitcoind-settings";
+  if (composeText === null) return report("CANNOT-LOOK", name, "blocked-by=compose-restart-policy");
+  const file = await attempt(async () => bitcoindSettingsPath(composeText, t.composePath));
+  if (file.reason !== undefined) return report("CANNOT-LOOK", name, file.reason);
+  let text;
+  try {
+    text = await readSettings(file.value);
+  } catch (error) {
+    if (error?.code === "ENOENT") return report("FAIL", name, `file=${file.value} absent ${SETTINGS_REPAIR}`);
+    return report("CANNOT-LOOK", name, `file=${file.value} unreadable: ${oneLine(error.message)}`);
+  }
+  const problem = settingsProblem(text);
+  if (problem) return report("FAIL", name, `file=${file.value} ${problem} ${SETTINGS_REPAIR}`);
+  report("PASS", name, `file=${file.value} bytes=${Buffer.byteLength(text)} parses=yes`);
 }
 
 async function checkRestartCounts({ docker, sleep, report, firstSample, t }) {
@@ -744,8 +822,8 @@ async function checkDepositUtxos({ docker, sqlite, copyFile, tmpdir, sleep, repo
 // ─── entry point ──────────────────────────────────────────────────────────
 
 // The lock (H14, D11a): the CLI refuses, exit 2, before any check runs, unless
-// the slot's lock is held by HARNESS_HOLDER, as the dev:* scripts do. It refuses
-// after the argument check, so an unknown flag is still named as one.
+// HARNESS_HOLDER holds the slot's lock or setup.lock (preflightLockRefusal). It
+// refuses after the argument check, so an unknown flag is still named as one.
 export async function main(args = process.argv.slice(2), {
   env = process.env, home = os.homedir(), run = runPreflight, err = console.error,
 } = {}) {
@@ -756,7 +834,7 @@ export async function main(args = process.argv.slice(2), {
   }
   let refusal;
   try {
-    refusal = lockRefusal(parseSlot(env.HARNESS_SLOT), env.HARNESS_HOLDER, home);
+    refusal = preflightLockRefusal(parseSlot(env.HARNESS_SLOT), env.HARNESS_HOLDER, home);
   } catch (error) {
     refusal = error.message;
   }

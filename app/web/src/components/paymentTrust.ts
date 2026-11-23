@@ -174,32 +174,32 @@ export function trustCopy(
     case "S1_unsigned":
       return split(
         "Payments are paused.",
-        "Your node can't confirm this price came from Bitcorn, so it won't pay it. Nothing has been sent. If this doesn't clear, contact Bitcorn.",
+        "Your node can't confirm this price came from BitCorn, so it won't pay it. Nothing has been sent. If this doesn't clear, contact BitCorn.",
       );
     case "S2_invalid":
       return split(
         "Payments are blocked.",
-        "The subscription details your node received failed a security check. Nothing has been sent. Don't pay from another wallet. Contact Bitcorn.",
+        "The subscription details your node received failed a security check. Nothing has been sent. Don't pay from another wallet. Contact BitCorn.",
       );
     case "S3_unverifiable":
       return s.reason === "key_unset"
         ? split(
             "Payments are paused.",
-            "Your app needs an update before it can pay. Update Bitcorn Lightning in the Umbrel App Store.",
+            "Your app needs an update before it can pay. Update BitCorn Lightning in the Umbrel App Store.",
           )
         : split(
             "Your node's Lightning service isn't responding, so payments are paused.",
-            "It usually comes back within a few minutes; if it's still down in an hour, restart the Lightning app, then restart Bitcorn Lightning.",
+            "It usually comes back within a few minutes; if it's still down in an hour, restart the Lightning app, then restart BitCorn Lightning.",
           );
     case "S4_price_above_cap":
       return split(
         "Payments are paused.",
-        `The subscription price, ${priceText ?? "—"}, is above the limit built into this app. Nothing has been sent. Contact Bitcorn.`,
+        `The subscription price, ${priceText ?? "—"}, is above the limit built into this app. Nothing has been sent. Contact BitCorn.`,
       );
     case "S5_price_not_integer":
       return split(
         "Payments are paused.",
-        "The price your node received doesn't look right, so it won't pay it. Nothing has been sent. Contact Bitcorn.",
+        "The price your node received doesn't look right, so it won't pay it. Nothing has been sent. Contact BitCorn.",
       );
     case "S6_deposit_address_changed":
       // The support pointer: drive-mode's plain-language review, 2026-11-10.
@@ -207,7 +207,7 @@ export function trustCopy(
       // Bitcorn's help (S6 design ruled (a), 2026-11-10).
       return split(
         `Your subscription payment address has changed, from ${shortAddress(s.pinned)} to ${shortAddress(s.stated)}.`,
-        "Your node won't send to a new address until you confirm it on the node itself. Nothing has been sent. Don't pay until you've checked with Bitcorn, from this node or any other wallet. Contact Bitcorn and we'll help you confirm the new address.",
+        "Your node won't send to a new address until you confirm it on the node itself. Nothing has been sent. Don't pay until you've checked with BitCorn, from this node or any other wallet. Contact BitCorn and we'll help you confirm the new address.",
       );
   }
 }

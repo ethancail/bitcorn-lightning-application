@@ -54,6 +54,7 @@ export const DOM_TS_TESTS: readonly string[] = [
   "src/logoTheme.test.ts", // <style> injection + getComputedStyle
   "src/stablecoin/pendingStore.test.ts", // localStorage + window events
   "src/stablecoin/secureContext.test.ts", // window.isSecureContext
+  "src/stablecoin/wagmi.analytics.test.ts", // the MetaMask SDK inits as a browser only with window
   "src/testSetup/networkGuard.test.ts", // jsdom's XMLHttpRequest, WebSocket, navigator
 ];
 

@@ -1,50 +1,40 @@
-// AutoPaySection — member-facing subscription auto-pay opt-in control.
+// Automatic renewal (subscription auto-pay) — the Membership panel's switch and
+// its "About automatic renewal" row (member-first-run-ui slice 4, R2).
 //
 // Source: bitcorn-research/specs/2026-06-12-subscription-auto-pay-
-// implementation.md §7A. Mounted in SubscriptionPanel's applicable branch as
-// its own .sub-panel card (v1.17.18 relocation from Profile — auto-renew is a
-// subscription concern, the automation of "Renew now", not an identity one).
-// Member view only.
+// implementation.md §7A. It was its own card under the panel (v1.17.18); slice
+// 4 splits it: the switch, "Renew automatically", with one line, is always
+// visible; everything else the card said is in the "About automatic renewal"
+// row. The panel reads the settings ONCE (useAutoRenew) and passes them to
+// both, and to the not-applicable states' price. Member view only. Off by
+// default.
 //
-// A thin renderer over api.getAutoPayConfig()/setAutoPay(): a toggle, the
-// always-visible standing-authorization status (decision §7 — the member must
-// always be able to see auto-pay is on, the amount, and that it fires on
-// lapse), and an expandable history. Off by default.
+// Decision §7 holds: the member can always see that auto-pay is on (the
+// switch), the amount and that it fires on lapse (the row).
 
 import { useCallback, useEffect, useState } from "react";
-import { api, type AutoPayConfig, type AutoPayAlert } from "../api/client";
+import { api, type AutoPayConfig, type AutoPayAlert, type ExchangeRate } from "../api/client";
 import { formatDistanceToNow } from "date-fns";
 import { autoPayCanEnable, trustCopy, trustStateOfAutoPayConfig } from "./paymentTrust";
-import { renewalAmount } from "./subscriptionBanner";
-
-const sats = (n: number | null | undefined) =>
-  typeof n === "number" ? `${new Intl.NumberFormat("en-US").format(n)} sats` : "—";
+import { usableUsd } from "./amount/Amount";
+import { inlineAmount } from "./amount/inlineAmount";
+import { MEMBERSHIP_COPY as COPY } from "./membership/membershipDescriptor";
+import { Sentence } from "./membership/Sentence";
 
 type Save = { kind: "idle" } | { kind: "saving" } | { kind: "error"; message: string };
 
-/** pausesOn: the status's grace.worker_until (ms), when hosted services pause
- *  if the subscription is not renewed. Auto-pay fires only once a lapse has
- *  begun (autoPayTrigger.ts, the recoverable-lapsed tiers), which is after
- *  that pause — the copy below says so (drive-mode P2 item 13, R6(b)(b)).
- *  payBlocked: payBlocked(status) from paymentTrust.ts; while true, the line
- *  saying the node pays from its balance is hidden (G3 finding 3, ruled
- *  2026-11-11) and the S-state shows as a pointer to the panel's notice.
- *  Omitted reads as blocked.
- *  usdRate: the panel's BTC/USD rate (drive-mode R45 A2, ruling 3), so the
- *  "your node pays …" line is dollars first like the rest of the panel; null
- *  or omitted shows sats. */
-export default function AutoPaySection({
-  pausesOn,
-  payBlocked = true,
-  usdRate = null,
-}: { pausesOn?: number; payBlocked?: boolean; usdRate?: number | null } = {}) {
-  const amount = (n: number | null | undefined) =>
-    typeof n === "number" ? <span className="sub-amount">{renewalAmount(n, usdRate).text}</span> : "—";
+export type AutoRenew = {
+  cfg: AutoPayConfig | null;
+  loadFailed: boolean;
+  save: Save;
+  toggle: (next: boolean) => Promise<void>;
+};
+
+/** The one auto-pay read for the panel: on mount, and again after a toggle. */
+export function useAutoRenew(): AutoRenew {
   const [cfg, setCfg] = useState<AutoPayConfig | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [save, setSave] = useState<Save>({ kind: "idle" });
-  const [showHistory, setShowHistory] = useState(false);
-  const [history, setHistory] = useState<AutoPayAlert[] | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -58,142 +48,141 @@ export default function AutoPaySection({
     void load();
   }, [load]);
 
-  const saving = save.kind === "saving";
-
-  async function onToggle(next: boolean) {
-    if (saving) return;
-    setSave({ kind: "saving" });
+  const toggle = useCallback(async (next: boolean) => {
+    setSave((s) => (s.kind === "saving" ? s : { kind: "saving" }));
     try {
       await api.setAutoPay(next);
       await load();
       setSave({ kind: "idle" });
     } catch (e: any) {
-      setSave({ kind: "error", message: e?.detail ?? e?.message ?? "Could not update auto-pay." });
+      setSave({ kind: "error", message: e?.detail ?? e?.message ?? COPY.autoPaySaveFailed });
     }
-  }
+  }, [load]);
 
-  async function onToggleHistory() {
-    const next = !showHistory;
-    setShowHistory(next);
-    if (next && history === null) {
-      try {
-        setHistory(await api.getAutoPayHistory());
-      } catch {
-        setHistory([]);
-      }
-    }
-  }
+  return { cfg, loadFailed, save, toggle };
+}
 
+/** The always-visible switch and its one line (R2). payBlocked: payBlocked(status)
+ *  from paymentTrust.ts; while true, no line says the node pays (G3 finding 3):
+ *  on, the line is the pointer to the panel's notice; off, the off line. */
+export function AutoRenewSwitch({
+  auto,
+  payBlocked,
+  rate,
+}: {
+  auto: AutoRenew;
+  payBlocked: boolean;
+  rate: ExchangeRate | null | undefined;
+}) {
+  const { cfg, loadFailed, save } = auto;
+  const saving = save.kind === "saving";
   const enabled = cfg?.enabled ?? false;
   // treasury-price-trust (spec §8): why the current price is unavailable (S1–S5),
   // and opting IN only on a verified, payable status. Opting out always works.
   const trust = trustStateOfAutoPayConfig(cfg);
-  const trustText = trust
-    ? trustCopy(trust, trust.state === "S4_price_above_cap" ? sats(trust.price_sats) : undefined).text
-    : null;
+  const s4Price = trust?.state === "S4_price_above_cap" ? inlineAmount(trust.price_sats, usableUsd(rate)) : undefined;
+  const trustText = trust ? trustCopy(trust, s4Price).text : null;
   const canEnable = autoPayCanEnable(cfg);
 
+  const line = !cfg ? null : enabled ? (payBlocked ? COPY.autoPayPaused : COPY.switchOn) : COPY.switchOff;
+
   return (
-    <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: "0.875rem", fontWeight: 600 }}>Auto-renew subscription</span>
+    <div className="membership-switch">
+      <div className="membership-switch-row">
+        <span className="membership-switch-label">{COPY.switchLabel}</span>
         <label style={{ display: "inline-flex", alignItems: "center", gap: 8, cursor: saving ? "wait" : "pointer" }}>
           <input
             type="checkbox"
             checked={enabled}
             disabled={saving || !cfg || (!enabled && !canEnable)}
-            onChange={(e) => void onToggle(e.target.checked)}
+            onChange={(e) => {
+              if (!saving) void auto.toggle(e.target.checked);
+            }}
+            aria-label={COPY.switchLabel}
           />
-          <span style={{ fontSize: "0.8125rem", color: enabled ? "var(--green, #22c55e)" : "var(--text-3)" }}>
-            {enabled ? "On" : "Off"}
-          </span>
+          <span className="membership-switch-state">{enabled ? COPY.on : COPY.off}</span>
         </label>
       </div>
-
-      {/* One S-state per panel screen (drive-mode, accepted by Ethan
-          2026-11-11): while payments are blocked the panel's page notice
-          carries the full S-state, so this section only points to it, and
-          only while auto-pay is on (drive-mode, accepted 2026-11-11); off,
-          the off-state line below stands alone. */}
-      {payBlocked ? (
-        enabled && <p style={{ color: "var(--text)", fontSize: "0.8125rem", margin: "6px 0 0" }}>Auto-pay is paused (see above).</p>
-      ) : trustText && (
-        <p role="status" data-trust-state={trust!.state} style={{ color: "var(--text)", fontSize: "0.8125rem", margin: "6px 0 0" }}>
-          {trustText}
+      {line && <p className="membership-switch-line">{line}</p>}
+      {!payBlocked && trustText && (
+        <p className="membership-warning" role="status" data-trust-state={trust!.state}>
+          <Sentence text={trustText} amounts={s4Price ? [s4Price] : []} />
         </p>
       )}
+      {loadFailed && <p className="membership-warning">{COPY.autoPayLoadFailed}</p>}
+      {save.kind === "error" && <p className="membership-error">{save.message}</p>}
+    </div>
+  );
+}
 
-      {loadFailed && (
-        <p style={{ color: "var(--text-3)", fontSize: "0.8125rem", margin: "6px 0 0" }}>
-          Couldn't load auto-pay settings. It will retry when you reload.
-        </p>
-      )}
+/** "About automatic renewal": everything else the auto-pay card said (R2).
+ *  pausesOn: the status's grace.worker_until (ms), when hosted services pause;
+ *  auto-pay fires only once a lapse has begun (autoPayTrigger.ts), after that
+ *  pause, and the line says so (drive-mode P2 item 13). While payments are
+ *  blocked, the "your node pays …" line is hidden (G3 finding 3). */
+export function AutoRenewAbout({
+  auto,
+  pausesOn,
+  payBlocked,
+  rate,
+}: {
+  auto: AutoRenew;
+  pausesOn: number;
+  payBlocked: boolean;
+  rate: ExchangeRate | null | undefined;
+}) {
+  const { cfg } = auto;
+  const enabled = cfg?.enabled ?? false;
+  const usd = usableUsd(rate);
+  const price = typeof cfg?.current_price === "number" ? inlineAmount(cfg.current_price, usd) : "—";
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<{ kind: "ok"; rows: AutoPayAlert[] } | { kind: "failed" } | null>(null);
 
+  async function onToggleHistory() {
+    const next = !showHistory;
+    setShowHistory(next);
+    if (next && (history === null || history.kind === "failed")) {
+      try {
+        setHistory({ kind: "ok", rows: await api.getAutoPayHistory() });
+      } catch {
+        setHistory({ kind: "failed" });
+      }
+    }
+  }
+
+  const pauseDate = new Date(pausesOn).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  const paysLine = pausesOn <= Date.now() ? COPY.aboutLapsedNow(price) : COPY.aboutIfLapses(price, pauseDate);
+
+  return (
+    <div className="membership-about">
       {enabled && cfg && (
-        <div style={{ fontSize: "0.75rem", color: "var(--text-3)", lineHeight: 1.5, marginTop: 8 }}>
-          {/* Past the pause (the screenshot gate): the lapse has begun, which is
-              exactly when auto-pay fires, so say that rather than "if". */}
-          {payBlocked ? null : pausesOn != null && pausesOn <= Date.now() ? (
-            <p style={{ margin: "0 0 6px" }}>
-              Your subscription has lapsed and hosted services are paused, so your node will pay{" "}
-              <strong>{amount(cfg.current_price)}</strong> from its Bitcoin balance to renew it.
-            </p>
-          ) : (
-            <p style={{ margin: "0 0 6px" }}>
-              If your subscription lapses, your node pays <strong>{amount(cfg.current_price)}</strong> from its
-              Bitcoin balance to renew it. That happens after hosted services pause
-              {pausesOn ? ` on ${new Date(pausesOn).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })}` : ""}, so
-              turning this on doesn't prevent the pause.
-            </p>
-          )}
-          <p style={{ margin: "0 0 6px" }}>Requires sufficient on-chain BTC and your node to be online.</p>
+        <>
+          {!payBlocked && <p><Sentence text={paysLine} amounts={[price]} /></p>}
+          <p>{COPY.aboutRequires}</p>
           {/* pay-from-node D2/D3, 2026-11-05; wording approved at G3, 2026-11-06 (ruling R6). */}
-          <p style={{ margin: "0 0 6px" }}>
-            It never pays more than the price you last accepted, and it won't pay again while an
-            earlier payment hasn't been credited.
-          </p>
-          <p style={{ margin: 0 }}>You can opt out at any time.</p>
+          <p>{COPY.aboutNeverMore}</p>
+          <p>{COPY.aboutOptOut}</p>
           {cfg.enabled_at && (
-            <p style={{ margin: "6px 0 0", fontFamily: "var(--mono)", fontSize: "0.75rem" }}>
-              Enabled {formatDistanceToNow(new Date(cfg.enabled_at * 1000), { addSuffix: true })}
-            </p>
+            <p className="membership-mono">{COPY.enabledAgo(formatDistanceToNow(new Date(cfg.enabled_at * 1000), { addSuffix: true }))}</p>
           )}
-        </div>
+        </>
       )}
-
-      {!enabled && cfg && (
-        <p style={{ fontSize: "0.75rem", color: "var(--text-3)", lineHeight: 1.5, margin: "8px 0 0" }}>
-          When on, your node renews from its Bitcoin balance once your subscription has lapsed.
-        </p>
-      )}
-
-      {save.kind === "error" && (
-        <p style={{ color: "var(--red, #ef4444)", fontSize: "0.8125rem", margin: "6px 0 0" }}>{save.message}</p>
-      )}
+      {!enabled && cfg && <p>{COPY.aboutOffLine}</p>}
 
       {cfg && (
-        <button
-          onClick={() => void onToggleHistory()}
-          style={{
-            background: "none",
-            border: "none",
-            padding: "8px 0 0",
-            color: "var(--text-3)",
-            fontSize: "0.75rem",
-            cursor: "pointer",
-            fontFamily: "var(--sans)",
-          }}
-        >
-          {showHistory ? "Hide auto-pay history" : "View auto-pay history →"}
+        <button className="sub-link sub-link-button" onClick={() => void onToggleHistory()}>
+          {showHistory ? COPY.historyHide : COPY.historyShow}
         </button>
       )}
 
       {showHistory && history !== null && (
-        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-          {history.length === 0 ? (
-            <p style={{ fontSize: "0.75rem", color: "var(--text-3)", margin: 0 }}>No auto-pay events yet.</p>
+        <div className="membership-history">
+          {history.kind === "failed" ? (
+            <p className="membership-error" role="alert">{COPY.historyFailed}</p>
+          ) : history.rows.length === 0 ? (
+            <p>{COPY.historyEmpty}</p>
           ) : (
-            history.map((a) => <AutoPayHistoryRow key={a.id} alert={a} />)
+            history.rows.map((a) => <AutoPayHistoryRow key={a.id} alert={a} />)
           )}
         </div>
       )}
@@ -247,9 +236,9 @@ export function autoPayLabel(type: string): string {
     case "AUTOPAY_PRICE_NOT_ACKNOWLEDGED":
       return "Price not accepted";
     // treasury-price-trust: drive-mode's plain-language review, 2026-11-10.
-    // Without these the raw type name showed.
+    // Without these the raw type name showed. "BitCorn": slice 4.
     case "AUTOPAY_STATUS_UNVERIFIED":
-      return "Auto-pay paused: couldn't confirm the price came from Bitcorn";
+      return "Auto-pay paused: couldn't confirm the price came from BitCorn";
     case "AUTOPAY_PAY_TARGET_REFUSED":
       return "Auto-pay paused: payment held for safety";
     default:

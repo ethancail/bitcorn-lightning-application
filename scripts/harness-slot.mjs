@@ -9,13 +9,14 @@
 //       node scripts/harness-slot.mjs heavy acquire|release|status ... (see "the heavy lock" below)
 // The root package.json's dev:* scripts call `run`. The slot comes from
 // HARNESS_SLOT, default 1. Callers in other repos run the main checkout's copy
-// (ruling 6), under Node 20, with an argument list.
+// (ruling 6), under the Node pinned in .nvmrc (24), with an argument list.
 //
 // THE LOCK (H14, D11): `run` refuses every script unless the slot's lock,
 // ~/.bitcorn-dev/locks/slot-N.lock, exists and its holder equals
 // HARNESS_HOLDER, and refuses while setup.lock is held. The refusal names the
 // holder, or "no lock". Read-only needs no lock: `command`, `lock status` and
-// dev:kill --print. scripts/polar-preflight.mjs enforces the same lock.
+// dev:kill --print. scripts/polar-preflight.mjs enforces the slot's lock too,
+// or accepts setup.lock held by HARNESS_HOLDER (preflightLockRefusal).
 //
 // SLOT 1 IS TODAY'S HARNESS (D6). Its command lines are byte-identical to the
 // scripts at 523e6ab, except dev:loopserver (D13: the bridge network, bound to
@@ -48,7 +49,7 @@
 // decisions/2026-11-18-workflow-app-heavy-lock-and-rulings-… (H1–H7) and
 // specs/2026-11-18-heavy-lock-spec.md, as amended by Ethan's A1–A4.
 // Tests: scripts/harness-slot.test.mjs and scripts/harness-slot-heavy.test.mjs,
-// run by hand under Node 20.
+// run by hand under the Node pinned in .nvmrc (24).
 
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
@@ -323,9 +324,12 @@ export function scriptCommand(script, slot, ctx, args = []) {
 // create, so a second acquire fails. It holds holder, go, acquired_at (UTC),
 // host and the slot number or "setup". The go is a claim: the lock records what
 // the acquirer typed and cannot verify it (D11b). Every acquire, release and
-// forced release appends one line to history.log. A setup lock and a slot lock
-// never coexist: each acquire checks for the other kind before and after its
-// own create, and backs out if one appeared in between.
+// forced release appends one line to history.log. A setup lock and another
+// holder's slot lock never coexist: each acquire checks for the other kind
+// before and after its own create, and backs out if one appeared in between.
+// Setup's own holder may take slots under it (the handoff: hold setup, take the
+// slot, release setup, with no moment holding neither); setup is refused while
+// any slot is held, so the order stays setup, then the slot.
 //
 // dev-safety (vault: decisions/2026-11-13-dev-safety-rulings-r1-to-r5-…):
 // R3 — an unreadable lock is refused by enforcement and by plain release,
@@ -436,15 +440,32 @@ function heldSlots(home) {
   return names.map((n) => n.match(/^slot-([1-9][0-9]*)\.lock$/)?.[1]).filter(Boolean).map(Number).sort((a, b) => a - b);
 }
 
-// The other kind of lock that stands in the way of acquiring `target`, or null.
-function exclusionConflict(home, target) {
+// The other kind of lock that stands in the way of `holder` acquiring `target`,
+// or null. THE HANDOFF (2026-11-23): setup's own holder may take a slot while
+// it holds setup, so a repair hands setup over to the slot with no gap; setup
+// is still refused while any slot is held, its holder's included (setup comes
+// before the slot in the order), and an unreadable setup.lock matches no one.
+function exclusionConflict(home, target, holder) {
   if (target === "setup") {
     const slots = heldSlots(home);
     return slots.length === 0 ? null :
       `setup refused: slot locks are held (${slots.map((s) => `slot ${s} by ${JSON.stringify(readLock(home, s)?.holder)}`).join(", ")})`;
   }
   const setup = readLock(home, "setup");
-  return setup === null ? null : `slot ${target} refused: setup.lock is held by ${JSON.stringify(setup.holder)}`;
+  if (setup === null || (!setup.unreadable && setup.holder === holder)) return null;
+  return `slot ${target} refused: setup.lock is held by ${JSON.stringify(setup.holder)}`;
+}
+
+// The order's guard for a slot taken under setup: null, or the refusal when
+// `holder` holds setup.lock, for a command that would now wait on heavy while
+// holding it (heavy, then setup, then the slot).
+function setupOrderRefusal(home, holder, what) {
+  if (typeof holder !== "string" || holder === "") return null;
+  const setup = readLock(home, "setup");
+  if (setup === null || setup.unreadable || setup.holder !== holder) return null;
+  return `${what} refused: ${JSON.stringify(holder)} holds setup.lock, and waiting on heavy while holding setup breaks ` +
+    "the lock order (heavy, then setup, then the slot): release setup, take heavy first (heavy acquire --holder <arc>), " +
+    "then setup, then the slot with that HARNESS_HEAVY_JOB set";
 }
 
 function requireText(flag, value) {
@@ -477,7 +498,7 @@ export function acquireLock(args) {
 function takeSlotLock({ home, target, holder, go, now = new Date(), host = os.hostname(), race = {}, heavy }) {
   requireText("--holder", holder);
   requireText("--go", go);
-  const before = exclusionConflict(home, target);
+  const before = exclusionConflict(home, target, holder);
   if (before) throw new Error(before);
   fs.mkdirSync(lockDir(home), { recursive: true });
   const lock = { holder, go, acquired_at: utc(now), host, slot: target, ...(heavy ? { heavy } : {}) };
@@ -495,7 +516,7 @@ function takeSlotLock({ home, target, holder, go, now = new Date(), host = os.ho
     fs.rmSync(tmp, { force: true });
   }
   race.afterCreate?.();
-  const after = exclusionConflict(home, target);
+  const after = exclusionConflict(home, target, holder);
   if (after) {
     // R4: back out only the lock this acquire wrote, byte for byte.
     removeLock(home, target, (held, heldText) => (heldText === text ? null :
@@ -730,15 +751,39 @@ export function lockRefusal(slot, harnessHolder, home) {
   return null;
 }
 
+// The pre-flight's enforcement (2026-11-23): it runs for HARNESS_HOLDER when
+// that holder holds the slot's lock (lockRefusal) OR setup.lock, so a repair
+// can check its network under setup before it hands over to the slot. Under
+// setup it is still refused when another holder holds the slot. The dev:*
+// scripts keep lockRefusal: they refuse in any setup window.
+export function preflightLockRefusal(slot, harnessHolder, home) {
+  const setup = readLock(home, "setup");
+  if (setup === null) return lockRefusal(slot, harnessHolder, home);
+  if (setup.unreadable) return `slot ${slot} refused: ${unreadableRefusal(home, "setup")}`;
+  if (!harnessHolder || harnessHolder !== setup.holder) {
+    return `slot ${slot} refused: setup.lock is held by ${JSON.stringify(setup.holder)}` +
+      (harnessHolder ? `, not HARNESS_HOLDER ${JSON.stringify(harnessHolder)}` : ", and HARNESS_HOLDER is unset") + " (a Polar setup window)";
+  }
+  const lock = readLock(home, slot);
+  if (lock === null) return null;
+  if (lock.unreadable) return `slot ${slot} refused: ${unreadableRefusal(home, slot)}`;
+  return lock.holder === harnessHolder ? null :
+    `slot ${slot} refused: locked by ${JSON.stringify(lock.holder)}, not HARNESS_HOLDER ${JSON.stringify(harnessHolder)}`;
+}
+
 const LOCK_USAGE =
   "usage: harness-slot.mjs lock acquire --slot N --holder <arc> --go \"<text>\" [--wait <seconds>] [--pid <pid>] [--exclusive]\n" +
   "       harness-slot.mjs lock acquire --setup --holder <arc> --go \"<text>\"\n" +
   "       harness-slot.mjs lock release (--slot N | --setup) --holder <arc>\n" +
   "       harness-slot.mjs lock release (--slot N | --setup) --force --reason \"<text>\"\n" +
   "       harness-slot.mjs lock status\n" +
-  "The order is heavy first, then the slot: lock acquire --slot takes one heavy slot (every slot with --exclusive)\n" +
+  "The order is heavy, then setup, then the slot: lock acquire --slot takes one heavy slot (every slot with --exclusive)\n" +
   "before the slot, unless HARNESS_HEAVY_JOB says this job holds heavy already, and lock release --slot releases\n" +
-  "that heavy after the slot.";
+  "that heavy after the slot. Setup's holder takes a slot only inside a heavy job (its HARNESS_HEAVY_JOB).\n" +
+  "Which lock for what: one network's docker compose up/down (and the pre-flight, the dev:* scripts) needs that\n" +
+  "slot's lock; anything shared (the Polar GUI, networks.json, images, more than one network) needs setup.\n" +
+  "The handoff, setup to a slot with no gap: hold setup, take the slot (same holder), then release setup.\n" +
+  "The pre-flight runs for the holder of the slot's lock or of setup.lock; the dev:* scripts refuse under setup.";
 
 function parseLockArgs(args) {
   const opts = {};
@@ -828,6 +873,18 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
 // environment; a job that starts alone gets none. The cap takes effect once
 // code-audit-2's VITEST_MAX_WORKERS change (app/web/vitest.config.ts) merges to develop.
 //
+// THE DISK FLOOR (2026-11-23): no job is admitted, first or second, exclusive or
+// not, while a filesystem holding /tmp or the heavy lock's home has less free
+// space (statfs: blocks available to an unprivileged user) than
+// HARNESS_HEAVY_MIN_FREE_DISK_MB (default 5120). It waits, as for memory, and its
+// waiting line names the filesystem (its mount point) and the free space. Read
+// at each admission decision, under the admission flock; like the memory figure,
+// a snapshot, nothing more. Why: ubuntu-pc's disk filled at 2026-11-21T23:52Z
+// and stayed full ~41 h, the cause left no trace, and a full disk emptied Polar
+// network 1's bitcoind settings.json. A read that fails is an error, never a pass.
+// Test seam: HARNESS_HEAVY_TEST_DISKFREE, a file holding a free figure in MB that
+// stands in for every filesystem's, honoured only beside HARNESS_HEAVY_TEST_HOME.
+//
 // EXCLUSIVE (--exclusive, for Polar gates, captures and measurement runs):
 // takes every slot, in order, holding each while it waits for the next. Slots
 // are always taken in order and a non-exclusive job never waits while holding
@@ -902,6 +959,7 @@ export const HEAVY_HOSTS = new Map([
   ["bitcorn-harness", { account: "harnessagent", limit: 1 }],
 ]);
 export const HEAVY_MIN_FREE_MB = 4096; // MemAvailable a job needs to share the machine
+export const HEAVY_MIN_FREE_DISK_MB = 5120; // free space every job needs on /tmp's and the lock home's filesystems
 export const HEAVY_SHARED_WORKERS = 3; // VITEST_MAX_WORKERS for a job that shares it
 
 const FLOCK = "/usr/bin/flock"; // by path: browser-slot.py calls this CLI with a scrubbed environment
@@ -1174,12 +1232,13 @@ function wholeSetting(name, raw, min) {
   return Number(raw);
 }
 
-// The slot limit, the memory threshold, the worker cap and where MemAvailable
-// is read, with a note for each value that is not the default. The limit is the
-// host table's (1 for a host not in it); HARNESS_HEAVY_LIMIT and
-// HARNESS_HEAVY_TEST_MEMINFO are test seams, honoured only beside
-// HARNESS_HEAVY_TEST_HOME; HARNESS_HEAVY_MIN_FREE_MB and
-// HARNESS_HEAVY_SHARED_WORKERS are settings.
+// The slot limit, the memory threshold, the worker cap, where MemAvailable is
+// read, the disk floor and how free space is read, with a note for each value
+// that is not the default. The limit is the host table's (1 for a host not in
+// it); HARNESS_HEAVY_LIMIT, HARNESS_HEAVY_TEST_MEMINFO and
+// HARNESS_HEAVY_TEST_DISKFREE are test seams, honoured only beside
+// HARNESS_HEAVY_TEST_HOME; HARNESS_HEAVY_MIN_FREE_MB,
+// HARNESS_HEAVY_MIN_FREE_DISK_MB and HARNESS_HEAVY_SHARED_WORKERS are settings.
 export function heavySettings(env, host = os.hostname()) {
   const testing = Boolean(env.HARNESS_HEAVY_TEST_HOME);
   const hostLimit = HEAVY_HOSTS.get(host)?.limit ?? 1;
@@ -1205,8 +1264,63 @@ export function heavySettings(env, host = os.hostname()) {
     if (!path.isAbsolute(meminfo)) throw new Error(`HARNESS_HEAVY_TEST_MEMINFO must be an absolute path, got ${JSON.stringify(meminfo)}`);
     notes.push(`a TEST meminfo, ${meminfo} (HARNESS_HEAVY_TEST_MEMINFO), not /proc/meminfo`);
   }
-  return { limit, minFreeMb, sharedWorkers, meminfo, notes };
+  let minFreeDiskMb = HEAVY_MIN_FREE_DISK_MB;
+  if (env.HARNESS_HEAVY_MIN_FREE_DISK_MB) {
+    minFreeDiskMb = wholeSetting("HARNESS_HEAVY_MIN_FREE_DISK_MB", env.HARNESS_HEAVY_MIN_FREE_DISK_MB, 0);
+    notes.push(`every heavy job needs ${minFreeDiskMb} MB free disk (HARNESS_HEAVY_MIN_FREE_DISK_MB), not ${HEAVY_MIN_FREE_DISK_MB}`);
+  }
+  let statfs = fs.statfsSync;
+  if (testing && env.HARNESS_HEAVY_TEST_DISKFREE) {
+    const file = env.HARNESS_HEAVY_TEST_DISKFREE;
+    if (!path.isAbsolute(file)) throw new Error(`HARNESS_HEAVY_TEST_DISKFREE must be an absolute path, got ${JSON.stringify(file)}`);
+    statfs = testStatfs(file);
+    notes.push(`a TEST free-disk figure, read from ${file} (HARNESS_HEAVY_TEST_DISKFREE), not statfs`);
+  }
+  return { limit, minFreeMb, sharedWorkers, meminfo, minFreeDiskMb, statfs, notes };
 }
+
+// HARNESS_HEAVY_TEST_DISKFREE's reader: a statfs whose free space, for every
+// path, is the whole number of MB the file holds when it is read. A file that
+// does not hold one is an error, never a guess.
+const testStatfs = (file) => () => {
+  const text = fs.readFileSync(file, "utf8").trim();
+  if (!/^[0-9]+$/.test(text)) throw new Error(`${file} must hold a whole number of MB, got ${JSON.stringify(text)}`);
+  return { bsize: 1024 * 1024, bavail: Number(text) };
+};
+
+// The mount point of the filesystem holding `p`: the highest directory above
+// it on the same device.
+function mountOf(p) {
+  let dir = fs.realpathSync(p);
+  const dev = fs.statSync(dir).dev;
+  for (;;) {
+    const up = path.dirname(dir);
+    if (up === dir || fs.statSync(up).dev !== dev) return dir;
+    dir = up;
+  }
+}
+
+// The filesystems holding `paths`, one entry per device: { mount, paths, mb },
+// mb being the space free to an unprivileged user (statfs bavail × bsize), in
+// whole MB. statfs is the seam (fs.statfsSync's shape: { bsize, bavail }). A
+// path or a statfs that cannot be read throws: free space is never assumed.
+export function diskFree(paths, { statfs = fs.statfsSync } = {}) {
+  const byDev = new Map();
+  for (const p of paths) {
+    const dev = fs.statSync(p).dev;
+    if (byDev.has(dev)) byDev.get(dev).paths.push(p);
+    else byDev.set(dev, { mount: mountOf(p), paths: [p] });
+  }
+  return [...byDev.values()].map((f) => {
+    const s = statfs(f.paths[0]);
+    const mb = Math.floor((Number(s.bavail) * Number(s.bsize)) / (1024 * 1024));
+    if (!Number.isFinite(mb)) throw new Error(`statfs of ${f.paths[0]} gave no free space`);
+    return { ...f, mb };
+  });
+}
+
+// The paths whose filesystems the disk floor covers: /tmp and the heavy lock's home.
+export const heavyDiskPaths = (home) => ["/tmp", home];
 
 // A1 for a command that takes the lock: { home, account, host, notes, limit,
 // minFreeMb, sharedWorkers, meminfo }, or a throw naming the refusal. Test
@@ -1288,7 +1402,7 @@ const busySlots = (home, limit, skip = []) => [...Array(limit).keys()]
 // waiter's slots so far (it keeps them between polls). Resolves to
 // { entries, shared } on admission, else { kind: "held" | "memory" |
 // "exclusive", busy, free?, mb? } saying why not, or { cancelled }.
-async function admit(home, { limit, exclusive, minFreeMb, meminfo, record, signal, deadline }, taken) {
+async function admit(home, { limit, exclusive, minFreeMb, meminfo, minFreeDiskMb, statfs, record, signal, deadline }, taken) {
   const admitFd = fs.openSync(admitFile(home), "a", 0o644);
   try {
     // F4: the admission flock waits no longer than the job's own wait has left.
@@ -1296,6 +1410,10 @@ async function admit(home, { limit, exclusive, minFreeMb, meminfo, record, signa
     if (await flockOnce(admitFd, left, signal) !== "locked") {
       return signal?.aborted ? { cancelled: true } : { kind: "admission", busy: busySlots(home, limit, taken.map((t) => t.slot)) };
     }
+    // The disk floor, for every job, before any slot is taken (an exclusive
+    // waiter keeps the slots it already has, as it does while one is held).
+    const low = diskFree(heavyDiskPaths(home), { statfs }).filter((f) => f.mb < minFreeDiskMb);
+    if (low.length > 0) return { kind: "disk", low, busy: busySlots(home, limit, taken.map((t) => t.slot)) };
     const take = (k, fd, extra = {}) => {
       try {
         return { slot: k, fd, rec: recordHeavy(home, k, fd, { ...record, ...extra }, new Date(), { deferLog: true }) };
@@ -1344,8 +1462,13 @@ async function admit(home, { limit, exclusive, minFreeMb, meminfo, record, signa
 }
 
 // Why a job is not admitted, as a waiter is told it; short names holders by name and time only.
-function notAdmitted(r, { minFreeMb }, { short = false } = {}) {
+function notAdmitted(r, { minFreeMb, minFreeDiskMb }, { short = false } = {}) {
   const holders = holdersText(r.busy, { short });
+  if (r.kind === "disk") {
+    return r.low.map((f) => `the filesystem at ${f.mount} (holding ${f.paths.join(" and ")}) has ${f.mb} MB free`).join(", and ") +
+      `, under the ${minFreeDiskMb} MB every heavy job needs (HARNESS_HEAVY_MIN_FREE_DISK_MB)` +
+      (r.busy.length > 0 ? `, while heavy is held by ${holders}` : "");
+  }
   if (r.kind === "memory") {
     return `${heavySlot(r.free)} is free, but MemAvailable is ${r.mb} MB, under the ${minFreeMb} MB a job sharing ` +
       `the machine needs, while heavy is held by ${holders}`;
@@ -1370,10 +1493,14 @@ function notAdmitted(r, { minFreeMb }, { short = false } = {}) {
 // `signal` aborted it. message keeps "is already locked by", the phrase the
 // slot lock's waiters read; notRun is the Stop hook's shorter form.
 export async function lockHeavy({ home, limit = 1, exclusive = false, minFreeMb = HEAVY_MIN_FREE_MB, meminfo = "/proc/meminfo",
+  minFreeDiskMb = HEAVY_MIN_FREE_DISK_MB, statfs = fs.statfsSync,
   record, waitMs = Infinity, pollMs = 1000, say = () => {}, signal } = {}) {
   fs.mkdirSync(lockDir(home), { recursive: true });
   const t0 = Date.now();
-  const opts = { limit, exclusive, minFreeMb, meminfo, record, signal, deadline: waitMs === Infinity ? Infinity : t0 + waitMs };
+  const opts = {
+    limit, exclusive, minFreeMb, meminfo, minFreeDiskMb, statfs, record, signal,
+    deadline: waitMs === Infinity ? Infinity : t0 + waitMs,
+  };
   const taken = [];
   let said = null;
   let last = null;
@@ -1572,14 +1699,20 @@ const procComm = (pid) => {
 };
 
 // The lockHeavy options a context gives.
-const admission = (ctx) => ({ home: ctx.home, limit: ctx.limit, minFreeMb: ctx.minFreeMb, meminfo: ctx.meminfo });
+export const admission = (ctx) => ({
+  home: ctx.home, limit: ctx.limit, minFreeMb: ctx.minFreeMb, meminfo: ctx.meminfo,
+  minFreeDiskMb: ctx.minFreeDiskMb, statfs: ctx.statfs,
+});
 
 // F2, the lock order: null, or the refusal when the caller's holder
-// (HARNESS_HOLDER) holds a slot lock whose heavy is not live (slotHeavyLive): a
-// heavy wait from it would wait on heavy while holding a slot.
+// (HARNESS_HOLDER) holds a slot lock whose heavy is not live (slotHeavyLive), or
+// holds setup.lock: a heavy wait from it would wait on heavy while holding a
+// slot, or setup (heavy, then setup, then the slot).
 function orderRefusal(slotHome, ctx, env) {
   const holder = env.HARNESS_HOLDER;
   if (typeof holder !== "string" || holder === "") return null;
+  const setup = setupOrderRefusal(slotHome, holder, "heavy");
+  if (setup) return setup;
   const stale = heldSlots(slotHome).map((slot) => ({ slot, lock: readLock(slotHome, slot) }))
     .filter(({ lock }) => lock !== null && !lock.unreadable && lock.holder === holder && !slotHeavyLive(ctx.home, lock.heavy));
   if (stale.length === 0) return null;
@@ -2270,6 +2403,9 @@ async function lockCli(args, env, { home, out, err }) {
     out("heavy: already held by this job (HARNESS_HEAVY_JOB), so not taken again; the slot's release leaves it");
     return 0;
   }
+  // Setup's holder, outside a heavy job, would take heavy after setup: refused at once, before any heavy wait.
+  const order = setupOrderRefusal(home, opts.holder, lockName(target));
+  if (order) throw new Error(order);
   const ctx = heavyContext(env);
   for (const note of ctx.notes) err(`harness-slot lock: ${note}`);
   return acquireSlotWithHeavy({

@@ -46,8 +46,8 @@ const status = (over: Partial<SubscriptionStatusApplicable> = {}): SubscriptionS
 });
 
 describe("pendingPaymentView — when the waiting state shows", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   it("no marker → hidden", () => {

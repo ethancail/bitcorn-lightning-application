@@ -129,8 +129,8 @@ afterAll(() => {
 });
 
 describe("GET /api/subscription/pay-from-node/pending", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   it("PERMITTING CONTROL: an active marker is returned with its fields", async () => {

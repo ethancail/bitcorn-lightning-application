@@ -329,3 +329,48 @@ describe("R2: amounts never break inside themselves; the address truncates", () 
     expect(address.getAttribute("title")).toBe(ADDR);
   });
 });
+
+// member-first-run-ui slice 4, R1: one optional prop, startAt="this-node",
+// opens straight at "Pay from this node" (the Membership panel's "Renew from
+// your node"); Back still reaches the chooser. Omitted, the modal opens at the
+// chooser as before (the dashboard banner and the 402 notice).
+describe("R1 (slice 4): the two entry points", () => {
+  async function mountWith(startAt?: "this-node") {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    root = createRoot(host);
+    await act(async () => {
+      root!.render(
+        React.createElement(PayFromNodeModal, {
+          status: { price_sats: PRICE, deposit_address: ADDR, treasury_signature: "verified" },
+          onClose: () => undefined,
+          ...(startAt ? { startAt } : {}),
+        }),
+      );
+    });
+    await flush();
+  }
+  const title = () => document.querySelector('[role="dialog"] .dialog-title')?.textContent ?? null;
+
+  it("startAt=\"this-node\": opens at \"Pay from this node\", fetches its quote, and Back reaches the chooser", async () => {
+    stub.getPayFromNodeQuote.mockClear();
+    await mountWith("this-node");
+    expect(title()).toBe("Pay from this node");
+    expect(buttonNamed("Confirm send"), "the confirm step renders").toBeDefined();
+    expect(stub.getPayFromNodeQuote).toHaveBeenCalledTimes(1);
+    await act(async () => { buttonNamed("Back")!.click(); });
+    await flush();
+    expect(title()).toBe("Where is your BTC?");
+    expect(buttonNamed("I have BTC elsewhere"), "the chooser offers the other path").toBeDefined();
+  });
+
+  it("omitted: opens at the chooser, as before, and fetches no quote until chosen", async () => {
+    stub.getPayFromNodeQuote.mockClear();
+    await mountWith();
+    expect(title()).toBe("Where is your BTC?");
+    expect(stub.getPayFromNodeQuote).not.toHaveBeenCalled();
+    await act(async () => { buttonNamed("Pay from this node")!.click(); });
+    await flush();
+    expect(title()).toBe("Pay from this node");
+  });
+});

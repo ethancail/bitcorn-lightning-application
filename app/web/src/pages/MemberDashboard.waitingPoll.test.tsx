@@ -124,8 +124,8 @@ const strip = () => host.querySelector(".member-sub-banner[data-pending-payment]
 const tierBanner = () => host.querySelector(".member-sub-banner:not([data-pending-payment])");
 
 describe("R45 follow-up: the dashboard's status cadence follows the waiting strip", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   it("no waiting strip: status every 60 s, none at 15, 30 or 45 s", async () => {
