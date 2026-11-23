@@ -25,6 +25,14 @@ const MASTER_KEY_PATH = join(SECRETS_DIR, "master.key");
 // string invalidates all previously-encrypted blobs.
 const HKDF_INFO = "coinbase-autobuy";
 
+/**
+ * Which credential a key is derived for. Each label is its own HKDF info
+ * string, so a blob encrypted for one exchange never decrypts under the other
+ * (kraken-autobuy spec §2, decision D4). Changing either string invalidates
+ * every blob stored under it.
+ */
+export type CredentialLabel = typeof HKDF_INFO | "kraken-autobuy";
+
 function loadOrCreateMasterKey(): Buffer {
   if (existsSync(MASTER_KEY_PATH)) {
     const buf = readFileSync(MASTER_KEY_PATH);
@@ -55,12 +63,17 @@ function hkdfSha256(masterKey: Buffer, info: string, lengthBytes: number): Buffe
   return t1.subarray(0, lengthBytes);
 }
 
-let cachedKey: Buffer | null = null;
-function getEncryptionKey(): Buffer {
-  if (cachedKey) return cachedKey;
+// One cached key per label, each derived on that label's first use and kept
+// for the module's life. A single slot would hand the second label the first
+// label's key.
+const cachedKeys = new Map<CredentialLabel, Buffer>();
+function getEncryptionKey(label: CredentialLabel): Buffer {
+  const cached = cachedKeys.get(label);
+  if (cached) return cached;
   const master = loadOrCreateMasterKey();
-  cachedKey = hkdfSha256(master, HKDF_INFO, 32);
-  return cachedKey;
+  const key = hkdfSha256(master, label, 32);
+  cachedKeys.set(label, key);
+  return key;
 }
 
 export interface EncryptedBlob {
@@ -71,9 +84,10 @@ export interface EncryptedBlob {
 /**
  * Encrypt a plaintext PEM. Returns ciphertext (with appended 16-byte auth
  * tag) and a fresh 12-byte nonce. Caller persists both in the DB row.
+ * The label defaults to Coinbase's, so existing callers are unchanged.
  */
-export function encrypt(plaintext: string): EncryptedBlob {
-  const key = getEncryptionKey();
+export function encrypt(plaintext: string, label: CredentialLabel = HKDF_INFO): EncryptedBlob {
+  const key = getEncryptionKey(label);
   const nonce = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, nonce);
   const enc = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
@@ -84,10 +98,12 @@ export function encrypt(plaintext: string): EncryptedBlob {
 /**
  * Decrypt a blob. Throws "credentials_corrupted" if the auth tag doesn't
  * verify — the caller (route handler) maps that to a 500 response that
- * prompts the operator to reconnect their Coinbase credentials.
+ * prompts the operator to reconnect their Coinbase credentials. A blob
+ * decrypted under a label other than the one it was encrypted for fails the
+ * same way.
  */
-export function decrypt(blob: EncryptedBlob): string {
-  const key = getEncryptionKey();
+export function decrypt(blob: EncryptedBlob, label: CredentialLabel = HKDF_INFO): string {
+  const key = getEncryptionKey(label);
   if (blob.ciphertext.length < 16) {
     throw new Error("credentials_corrupted");
   }
