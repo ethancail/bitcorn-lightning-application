@@ -123,8 +123,8 @@ async function type(input: HTMLInputElement, value: string) {
 }
 
 describe("runtime", () => {
-  it("runs on Node 20 (the pinned runtime)", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on Node 24 (the pinned runtime)", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 });
 

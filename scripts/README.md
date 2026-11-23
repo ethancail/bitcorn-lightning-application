@@ -168,11 +168,11 @@ Exit codes are three-valued, as in `loopd-guard-exec.sh`: **0** every check pass
 could not run never prints PASS.
 
 **polar-preflight.test.mjs** runs every probe through a fake, so it needs no
-harness. Run the Node 20 binary by its path; `npx` and `npm` re-resolve `node` from
-`PATH`:
+harness. Run the pinned Node 24 binary (`.nvmrc`) by its path; `npx` and `npm`
+re-resolve `node` from `PATH`:
 
 ```bash
-~/.nvm/versions/node/v20.20.2/bin/node --test scripts/polar-preflight.test.mjs
+~/.nvm/versions/node/v$(cat .nvmrc)/bin/node --test scripts/polar-preflight.test.mjs
 ```
 
 No CI job runs it and the Stop hook does not watch `scripts/`, so run it by hand

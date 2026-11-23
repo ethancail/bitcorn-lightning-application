@@ -9,7 +9,7 @@
 //       node scripts/harness-slot.mjs heavy acquire|release|status ... (see "the heavy lock" below)
 // The root package.json's dev:* scripts call `run`. The slot comes from
 // HARNESS_SLOT, default 1. Callers in other repos run the main checkout's copy
-// (ruling 6), under Node 20, with an argument list.
+// (ruling 6), under the Node pinned in .nvmrc (24), with an argument list.
 //
 // THE LOCK (H14, D11): `run` refuses every script unless the slot's lock,
 // ~/.bitcorn-dev/locks/slot-N.lock, exists and its holder equals
@@ -49,7 +49,7 @@
 // decisions/2026-11-18-workflow-app-heavy-lock-and-rulings-… (H1–H7) and
 // specs/2026-11-18-heavy-lock-spec.md, as amended by Ethan's A1–A4.
 // Tests: scripts/harness-slot.test.mjs and scripts/harness-slot-heavy.test.mjs,
-// run by hand under Node 20.
+// run by hand under the Node pinned in .nvmrc (24).
 
 import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";

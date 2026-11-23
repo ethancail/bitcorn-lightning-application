@@ -137,8 +137,8 @@ const bareSats = () => {
 };
 
 describe("R45 A2 / slice 4 — the panel's amounts, dollars first", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   it.each(["worker_lapsed", "routing_lapsed", "close_due"] as const)("%s, fresh rate: the big amount, the ask, the button's line", async (tier) => {

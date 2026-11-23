@@ -89,8 +89,8 @@ describe("item 12: services paused carries the dollar amount", () => {
 // rules — dollars with a rate, sats with none — through renewalAmount's
 // label. This replaces P2's pin "the other tiers are unchanged by a rate".
 describe("R45 A1: the banner buttons follow the amount rules", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   it("with a rate: Renew / Pay in dollars, every tier", () => {
