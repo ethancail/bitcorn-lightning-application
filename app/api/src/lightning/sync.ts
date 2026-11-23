@@ -9,6 +9,7 @@ import { db } from "../db";
 import type { NodeRole } from "../types/node";
 import { createTickTimer, formatTickTiming } from "./syncTiming";
 import { getHubChannel } from "./hubChannel";
+import { recordLndVersion } from "./lndVersion";
 
 export function deriveNodeRole(
   pubkey: string,
@@ -49,6 +50,11 @@ export async function syncLndState() {
   const timer = createTickTimer();
   try {
     const walletInfo = await timer.time("getLndInfo", () => getLndInfo());
+    // node-version-alert (R1, R6): hold LND's version in memory for the member
+    // notice and the treasury alert. Recorded first, so a later step that
+    // throws cannot skip it; a failed read never reaches this line, so the last
+    // good version stays in place.
+    recordLndVersion(walletInfo.version);
     if (ENV.debug) {
       console.log("[lnd] wallet info:", walletInfo);
     }

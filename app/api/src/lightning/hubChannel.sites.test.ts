@@ -108,7 +108,14 @@ async function pinFor(tokens: number, destination = OTHER): Promise<string | und
   ln.payViaPaymentRequest.mockClear();
   await payNetworkInvoice("lnbcrt1test");
   expect(ln.payViaPaymentRequest).toHaveBeenCalledTimes(1);
-  return ln.payViaPaymentRequest.mock.calls[0][0].outgoing_channel;
+  // The pin travels as a one-element outgoing_channels list; the singular
+  // outgoing_channel must never be passed (LND ≥0.21 drops it silently —
+  // outgoing-channel-pin, D2b; pay.outgoingChannelPin.test.ts pins the wire).
+  const args = ln.payViaPaymentRequest.mock.calls[0][0];
+  expect(args).not.toHaveProperty("outgoing_channel");
+  if (args.outgoing_channels === undefined) return undefined;
+  expect(args.outgoing_channels).toHaveLength(1);
+  return args.outgoing_channels[0];
 }
 
 async function precheckError(tokens: number, destination: string): Promise<string> {

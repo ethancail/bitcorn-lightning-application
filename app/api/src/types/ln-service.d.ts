@@ -92,7 +92,13 @@ declare module "ln-service" {
   export function payViaPaymentRequest(options: {
     lnd: any;
     request: string;
-    outgoing_channel?: string;
+    // No singular outgoing_channel: lightning@11.1.0 sends it as
+    // SendPaymentRequest field 8, which LND ≥0.21 reserves and silently
+    // ignores, dropping the pin. The list goes out as field 19, read by LND
+    // 0.20 and 0.21 alike (outgoing-channel-pin, D2b). tsc rejects the old
+    // field only when written directly: pay.ts's conditional spread escapes
+    // the excess-property check, so pay.outgoingChannelPin.test.ts is the guard.
+    outgoing_channels?: string[];
     max_fee_mtokens?: string;
   }): Promise<{
     id: string;

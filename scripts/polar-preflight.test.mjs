@@ -32,7 +32,7 @@ import {
   runCommand,
   runPreflight,
 } from "./polar-preflight.mjs";
-import { acquireLock } from "./harness-slot.mjs";
+import { acquireLock, lockDir } from "./harness-slot.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./polar-preflight.mjs", import.meta.url));
 const ROOT = path.resolve(path.dirname(SCRIPT), "..");
@@ -981,13 +981,49 @@ test("(j) lock: held by another holder, or with HARNESS_HOLDER unset, the prefli
   }
 });
 
-test("(j) lock: while setup.lock is held the preflight refuses naming it", async () => {
+// 2026-11-23 (the setup-to-slot handoff): the slot's lock OR setup.lock, held by HARNESS_HOLDER; neither is refused.
+test("(j) lock: setup.lock held by HARNESS_HOLDER lets the preflight run, with no slot lock and in the handoff", async () => {
   const home = lockHome();
   lockFor(home, "setup", "polar-setup");
+  const env = { HARNESS_HOLDER: "polar-setup" };
+  const setupOnly = await mainWith(home, env, ["--repair"]);
+  console.log(`setup only: exit ${setupOnly.exitCode} ${setupOnly.stderr}`);
+  assert.equal(setupOnly.exitCode, 0, setupOnly.stderr);
+  assert.deepEqual(setupOnly.runs, [{ repair: true, env }]);
+  lockFor(home, 1, "polar-setup"); // the handoff's middle: setup and the slot, one holder
+  const both = await mainWith(home, env);
+  assert.equal(both.exitCode, 0, both.stderr);
+  assert.deepEqual(both.runs, [{ repair: false, env }]);
+});
+
+test("(j) lock: setup.lock held by another holder, or with HARNESS_HOLDER unset, the preflight refuses naming it", async () => {
+  const home = lockHome();
+  lockFor(home, "setup", "polar-setup");
+  for (const env of [{ HARNESS_HOLDER: "harness-host" }, {}]) {
+    const r = await mainWith(home, env);
+    console.log(`${JSON.stringify(env)}: exit ${r.exitCode} ${r.stderr}`);
+    assert.equal(r.exitCode, 2, JSON.stringify(env));
+    assert.match(r.stderr, /slot 1 refused: setup\.lock is held by "polar-setup"/, JSON.stringify(env));
+    assert.deepEqual(r.runs, []);
+  }
+});
+
+test("(j) lock: under setup.lock it still refuses when another holder has the slot, and an unreadable setup.lock", async () => {
+  const home = lockHome();
+  lockFor(home, 1, "drive-mode");
+  // The both-held state a race or a forced write produces: setup written directly beside another's slot.
+  fs.writeFileSync(path.join(lockDir(home), "setup.lock"), JSON.stringify({ holder: "polar-setup", go: "x", acquired_at: "x", host: "x", slot: "setup" }));
   const r = await mainWith(home, { HARNESS_HOLDER: "polar-setup" });
   assert.equal(r.exitCode, 2);
-  assert.match(r.stderr, /slot 1 refused: setup\.lock is held by "polar-setup"/);
+  assert.match(r.stderr, /slot 1 refused: locked by "drive-mode", not HARNESS_HOLDER "polar-setup"/);
   assert.deepEqual(r.runs, []);
+  const garbled = lockHome();
+  fs.mkdirSync(lockDir(garbled), { recursive: true });
+  fs.writeFileSync(path.join(lockDir(garbled), "setup.lock"), "{ not json\n");
+  const u = await mainWith(garbled, { HARNESS_HOLDER: "(unreadable lock file)" });
+  assert.equal(u.exitCode, 2);
+  assert.match(u.stderr, /setup's lock file .* is unreadable/);
+  assert.deepEqual(u.runs, []);
 });
 
 test("(j) lock: the slot comes from HARNESS_SLOT, so slot 1's lock does not let slot 2's preflight run", async () => {
