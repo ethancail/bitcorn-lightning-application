@@ -310,6 +310,23 @@ export default function MemberDashboard() {
             </div>
           );
         })()}
+
+        {/* node-version-alert (R4): the node's Lightning Node app is out of
+            date. AFTER the cert notice and, like it, OUTSIDE every channel
+            gate: a member with no connection yet still runs an LND that can be
+            old (placement confirmed by member-first-run-ui, 2026-11-20).
+
+            One line, no heading (Q2), in the cert notice's own warning markup.
+            The API writes the sentence; null — still loading, version current
+            or unknown — renders nothing. */}
+        {stats?.node_update_notice ? (
+          <div className="alert warning">
+            <span className="alert-icon" aria-hidden>⚠</span>
+            <div className="alert-body">
+              <div className="alert-msg">{stats.node_update_notice}</div>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="dash-notices dash-notices-info">
