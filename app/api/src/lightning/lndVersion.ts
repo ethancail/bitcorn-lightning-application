@@ -107,7 +107,7 @@ export function lndVersionAlert(raw: string | null, nowMs: number): TreasuryAler
     heading: "Lightning Node app is out of date",
     severity: "warning",
     message:
-      `This node runs LND ${v.join(".")}; Bitcorn needs ${minimum} or later. ` +
+      `This node runs LND ${v.join(".")}; BitCorn needs ${minimum} or later. ` +
       "Update Lightning Node, Bitcoin Node and Electrs in the Umbrel App Store.",
     data: { version: raw, minimum },
     at: nowMs,

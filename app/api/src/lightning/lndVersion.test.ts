@@ -98,7 +98,7 @@ describe("the treasury alert", () => {
       heading: "Lightning Node app is out of date",
       severity: "warning",
       message:
-        "This node runs LND 0.20.0; Bitcorn needs 0.21.2 or later. " +
+        "This node runs LND 0.20.0; BitCorn needs 0.21.2 or later. " +
         "Update Lightning Node, Bitcoin Node and Electrs in the Umbrel App Store.",
       data: { version: raw, minimum: "0.21.2" },
       at: 1_700_000_000_000,
