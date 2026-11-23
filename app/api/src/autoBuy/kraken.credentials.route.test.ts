@@ -298,6 +298,9 @@ describe("the balance snapshot on the routes (P5)", () => {
     ).run(usd, usdc, readAt);
 
   it("K13 GET /status returns the snapshot and funds and makes ZERO Kraken calls", async () => {
+    // A real, usable Kraken key on file: a status route that DID read live
+    // would be able to, so "zero calls" is not vacuous.
+    await save();
     db.prepare(`DELETE FROM autobuy_balance_snapshot`).run();
     const now = Math.floor(Date.now() / 1000);
     seedSnapshot(150, 1000, now - 60);

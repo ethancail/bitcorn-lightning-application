@@ -161,6 +161,9 @@ describe("the snapshot (S3, Q1)", () => {
   });
 
   it("S4 Coinbase active, or Kraken paused: no Kraken call, no snapshot (Coinbase unchanged)", async () => {
+    // A Coinbase key on file, so a snapshot step that wrongly ran on Coinbase
+    // could open a session and read (not a vacuous pass).
+    db.prepare(`INSERT OR REPLACE INTO coinbase_credentials (id, key_name, encrypted_private_key, nonce, connected_at) VALUES (1, 'k', x'00', x'00', 1)`).run();
     db.prepare(`UPDATE autobuy_config SET provider = 'coinbase' WHERE id = 1`).run();
     await tickAt(T0);
     expect(calls).toEqual([]);
