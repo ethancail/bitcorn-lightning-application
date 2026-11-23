@@ -436,7 +436,7 @@ The file is the one bitcoind reads, found from the network's compose file: `back
 
 *Cause seen:* a full disk. On 2026-11-21 ubuntu-pc's disk filled (see the heavy lock's [disk floor](#the-heavy-lock-two-heavy-jobs-at-a-time-on-ubuntu-pc-one-on-the-optiplex)) and network 1's `settings.json` was left at 0 bytes, which broke that network until it was repaired on 2026-11-23.
 
-*Repair*, holding the slot's lock (a gate's arc holds it already):
+*Repair*, holding the slot's lock (a gate's arc holds it already). **These steps have not yet been run end to end as written.** They are assembled from the 2026-11-23 repair of network 1 and from Bitcoin Core writing a new `settings.json` when it starts without one.
 
 1. Make room first: `df -h / /tmp`. A repair onto a full disk fails the same way.
 2. From `~/.polar/networks/<id>`, stop the network: `docker compose stop`.

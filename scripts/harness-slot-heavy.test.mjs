@@ -1674,20 +1674,23 @@ ttest("memory: a second job waits while MemAvailable is under 4096 MB, and start
   const env = { ...TWO, HARNESS_HEAVY_TEST_MEMINFO: mem };
   const marker = path.join(home, "second-ran");
   const first = start(["heavy", "run", "--holder", "first", "--", "sleep", "30"], { home, env });
+  let second = null;
   try {
     await until(() => first.err().includes("acquired the heavy lock"), "the first job, alone, under 2000 MB");
-    const second = start(["heavy", "run", "--holder", "second", "--", NODE, "-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "x")`], { home, env });
+    second = start(["heavy", "run", "--holder", "second", "--", NODE, "-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "x")`], { home, env });
     await until(() => second.err().includes("waiting"), "the second job to wait");
     assert.match(second.err(), /heavy-1 is free, but MemAvailable is 2000 MB, under the 4096 MB a job sharing the machine needs, while heavy is held by "first"/);
     await sleep(1500);
     assert.ok(!fs.existsSync(marker), "the second job must not run under the threshold");
     assert.equal(lockState(home, 1), "free");
     meminfo(4096, mem);
+    // Bounded, so a second job that never starts fails this test rather than holding the file open.
+    await until(() => fs.existsSync(marker), "the second job to run once MemAvailable reached the threshold");
     const r = await second.done;
     assert.equal(r.code, 0, r.stderr);
-    assert.ok(fs.existsSync(marker), "it ran once MemAvailable reached the threshold");
     assert.equal(lockState(home, 0), "held", "while the first still ran");
   } finally {
+    second?.child.kill("SIGTERM");
     first.child.kill("SIGTERM");
     await first.done;
   }
