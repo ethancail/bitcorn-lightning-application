@@ -105,7 +105,22 @@ This section is also the exact setup a farm follows for its Kraken API key. Krak
 
 The lock blocks adding API keys and withdrawal addresses. Unlocking takes 1 to 29 days (3 by default), so start it first. [What is the Global Settings Lock?](https://support.kraken.com/articles/201396877-what-is-the-global-settings-lock-gsl-)
 
-### Step K2 — Create the API key
+### Step K2 — Choose Kraken and copy your node's address
+
+1. Dashboard → **Auto-Buy** → **DCA Strategy**. In the **Exchange** panel, click **Switch to Kraken**.
+2. The **Kraken** panel shows your node's withdrawal address (`bc1q...`). Copy it.
+
+### Step K3 — Save your node's address in Kraken
+
+Save the address before you create the key, so connecting the key finds it in one go. The node can't add the address itself (it never holds Add Withdrawal Addresses), so you save it in Kraken:
+
+1. In Kraken: **Withdraw** → **Bitcoin** → **Add new withdrawal address**.
+2. Paste the address from the Kraken panel and give it a unique label.
+3. Confirm it. From a device Kraken doesn't trust, Kraken emails a confirmation link that is valid for one hour. [Adding and confirming a withdrawal address](https://support.kraken.com/articles/360000672863-adding-and-confirming-a-new-cryptocurrency-withdrawal-address)
+
+Keep the address under one Bitcoin withdrawal method only; if it is saved under more than one, the node refuses rather than guess.
+
+### Step K4 — Create the API key
 
 In Kraken: account menu → **Settings** → **API** → **Create API key**. [How to create an API key](https://support.kraken.com/articles/how-to-create-an-api-key-on-kraken-pro)
 
@@ -126,24 +141,12 @@ On the same screen:
 - **Leave the nonce window unset.** The node sends every request from one serialized nonce, so it needs no window. [Authentication](https://docs.kraken.com/exchange/guides/rest/authentication)
 - **IP address restriction only if your node has a static IP.** If the node's IP changes, the key stops working.
 
-### Step K3 — Choose Kraken and connect the key in BitCorn
+### Step K5 — Connect the key in BitCorn
 
-1. Dashboard → **Auto-Buy** → **DCA Strategy**. In the **Exchange** panel, click **Switch to Kraken**.
-2. The **Kraken** panel lists the five permissions and shows your node's withdrawal address (`bc1q...`).
-3. Paste the **API key** and the **private key** from Kraken, then click **Connect Kraken**. The node checks the key's permissions with Kraken before it stores anything.
+1. In the **Kraken** panel, paste the **API key** and the **private key** from Kraken, then click **Connect Kraken**. The node checks the key's permissions with Kraken before it stores anything, then looks your node's address up among the addresses saved in Kraken.
+2. It should say "Connected. Your node's address is saved and verified on Kraken." If it says the address isn't saved or isn't verified yet, finish [Step K3](#step-k3--save-your-nodes-address-in-kraken), then press **Verify**.
 
-### Step K4 — Save your node's address in Kraken
-
-The node can't add the address itself (it never holds Add Withdrawal Addresses), so you save it in Kraken:
-
-1. In Kraken: **Withdraw** → **Bitcoin** → **Add new withdrawal address**.
-2. Paste the address from the Kraken panel and give it a unique label.
-3. Confirm it. From a device Kraken doesn't trust, Kraken emails a confirmation link that is valid for one hour. [Adding and confirming a withdrawal address](https://support.kraken.com/articles/360000672863-adding-and-confirming-a-new-cryptocurrency-withdrawal-address)
-4. Back in BitCorn, press **Verify** in the Kraken panel. It should say "Your node's address is saved and verified on Kraken."
-
-Keep the address under one Bitcoin withdrawal method only; if it is saved under more than one, the node refuses rather than guess.
-
-### Step K5 — Schedule one recurring ACH deposit
+### Step K6 — Schedule one recurring ACH deposit
 
 In Kraken, set up one recurring ACH deposit from your bank. Set the deposit to cover a full interval of buys at your highest zone multiplier, plus a margin — for example, weekly $100 base buys with a 2× top zone means at least $200 a week. [Recurring ACH deposits](https://support.kraken.com/articles/recurring-ach-deposits)
 
@@ -151,7 +154,7 @@ In Kraken, set up one recurring ACH deposit from your bank. Set the deposit to c
 - Kraken limits ACH by state; check Kraken's ACH page for your state.
 - **Open condition: whether a business account can use recurring ACH deposits** is not stated on Kraken's pages. Confirm it with Kraken before relying on it.
 
-### Step K6 — Pick a base buy that clears Kraken's minimum
+### Step K7 — Pick a base buy that clears Kraken's minimum
 
 Kraken's minimum order changes without notice, so the node reads it live. When you save a key or press Verify, the Kraken panel warns if your smallest non-zero buy (base × the smallest zone multiplier) is below the minimum at today's price. As a starting point, a **base buy of at least $50** keeps the smallest zone buy (0.25×) at about $12.50. [Minimum order sizes](https://support.kraken.com/articles/205893708-minimum-order-size-volume-for-trading), [Cost minimum](https://support.kraken.com/articles/12425041458708-cost-minimum-for-trading)
 
@@ -165,13 +168,14 @@ On a Kraken **Organization** account with an approval policy, each withdrawal wa
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| "This key has permissions it must not have" on Connect | Add or Update Withdrawal Addresses granted | Create a new key with only the five (Step K2) |
+| "This key has permissions it must not have" on Connect | Add or Update Withdrawal Addresses granted | Create a new key with only the five (Step K4) |
 | "This key is missing: …" on Connect | One of the five not granted | Create a new key with all five |
-| "Save your node's address … then press Verify here." | The address isn't saved in Kraken yet | Step K4 |
+| "Save your node's address … then press Verify here." | The address isn't saved in Kraken yet | Step K3, then press Verify |
 | "… saved on Kraken but not verified yet" | Kraken's confirmation not done | Confirm it in Kraken, then press Verify |
-| **BELOW MIN** rows and "Buy skipped: below Kraken's minimum" | Base × multiplier under Kraken's minimum | Raise the base buy or that zone's multiplier (Step K6) |
-| "Low funds on Kraken" | USD covers fewer than 2 next buys | Add USD, or raise the recurring deposit (Step K5) |
+| **BELOW MIN** rows and "Buy skipped: below Kraken's minimum" | Base × multiplier under Kraken's minimum | Raise the base buy or that zone's multiplier (Step K7) |
+| "Low funds on Kraken" | USD covers fewer than 2 next buys | Add USD, or raise the recurring deposit (Step K6) |
 | "Auto-Buy paused: Kraken key refused" | Key deleted, changed, or used by another app | Create a new key and connect it |
+| "Paused: exchange switched" | The exchange was switched | Set up the new exchange, then turn Auto-Buy back on |
 | "Withdrawal failed: your BTC is safe on Kraken" | Kraken didn't send the sweep (for example, a review hold) | Withdraw by hand in Kraken to your node's saved address; Auto-Buy won't retry it |
 | "Withdrawal outcome unknown" | Kraken didn't confirm the sweep | Check Withdrawals in Kraken **before** withdrawing anything by hand |
 

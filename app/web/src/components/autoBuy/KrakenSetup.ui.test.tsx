@@ -141,6 +141,22 @@ describe("KrakenCard — not connected", () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("W3b the setup order saves the address before the key is connected (DOC2); the permissions sit in the create-the-key step (S2), indented (S3)", async () => {
+    await render(<KrakenCard status={status({ provider: "kraken" })} onRefresh={vi.fn(async () => {})} />);
+    const steps = Array.from(host.querySelectorAll('[data-testid="kraken-setup-steps"] > li'));
+    expect(steps.map((li) => (li.textContent ?? "").slice(0, 30))).toEqual([
+      "If Kraken's Global Settings Lo",
+      "Save your node's address (belo",
+      "In Kraken, go to Settings → AP",
+      "Paste the API key and private ",
+      "Set up one recurring ACH depos",
+    ]);
+    const perms = steps[2].querySelector('[data-testid="kraken-permissions"]') as HTMLElement | null;
+    expect(perms).not.toBeNull();
+    expect(steps[2].textContent).toContain('Do not give it "Add withdrawal addresses" or "Update withdrawal addresses".');
+    expect(perms!.style.paddingLeft).toBe("20px");
+  });
+
   it("W4 the server's refusals read plainly, naming the permissions from the structured body", async () => {
     await render(<KrakenCard status={status({ provider: "kraken" })} onRefresh={vi.fn(async () => {})} />);
     await type("Kraken API key", "K");

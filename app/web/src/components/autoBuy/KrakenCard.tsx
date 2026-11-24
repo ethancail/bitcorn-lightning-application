@@ -150,32 +150,35 @@ function DisconnectedState({ status, onRefresh }: Props) {
     <div className="panel" style={{ marginBottom: 16 }}>
       <div className="panel-header">Kraken</div>
       <div className="panel-body">
+        {/* The order (ruling DOC2, P6 capture review): the address is saved in
+            Kraken BEFORE the key is connected, so Connect finds it in one go.
+            The five permissions sit inside the create-the-key step (S2), and
+            that list is indented inside the card at every width (S3). */}
         <ol data-testid="kraken-setup-steps" style={{ marginTop: 0, marginBottom: 12, paddingLeft: 20 }}>
           <li>If Kraken's Global Settings Lock is on, unlock it first. <HelpLink href={KRAKEN_HELP.settingsLock}>About the lock</HelpLink></li>
-          <li>
-            In Kraken, go to Settings → API → Create API key. Don't add 2FA to the key, and leave Key Expiration
-            and the nonce window unset. Restrict it to an IP address only if your node has a static IP.{" "}
-            <HelpLink href={KRAKEN_HELP.apiKey}>Creating a key</HelpLink>
-          </li>
           <li>
             Save your node's address (below) in Kraken: Withdraw → Bitcoin → Add new withdrawal address, with a
             unique label, and confirm it. <HelpLink href={KRAKEN_HELP.address}>Adding an address</HelpLink>
           </li>
+          <li>
+            In Kraken, go to Settings → API → Create API key, with exactly these permissions:
+            <ul data-testid="kraken-permissions" style={{ marginTop: 4, marginBottom: 4, paddingLeft: 20 }}>
+              {KRAKEN_KEY_PERMISSIONS.map((p) => <li key={p}>{p}</li>)}
+            </ul>
+            <span className="text-dim" style={{ fontSize: "0.8125rem" }}>
+              Do not give it "Add withdrawal addresses" or "Update withdrawal addresses". A key with either is refused.
+            </span>{" "}
+            Don't add 2FA to the key, and leave Key Expiration and the nonce window unset. Restrict it to an IP
+            address only if your node has a static IP.{" "}
+            <HelpLink href={KRAKEN_HELP.apiKey}>Creating a key</HelpLink>
+          </li>
+          <li>Paste the API key and private key below and press Connect Kraken. BitCorn checks the key and finds your saved address.</li>
           <li>
             Set up one recurring ACH deposit in Kraken, covering a full interval of buys at your highest zone
             multiplier, plus a margin. Each deposit can be withdrawn seven days after it arrives.{" "}
             <HelpLink href={KRAKEN_HELP.recurringAch}>Recurring deposits</HelpLink>
           </li>
         </ol>
-        <p style={{ marginTop: 0, marginBottom: 8 }}>
-          Create the API key with exactly these permissions:
-        </p>
-        <ul data-testid="kraken-permissions" style={{ marginTop: 0, marginBottom: 8 }}>
-          {KRAKEN_KEY_PERMISSIONS.map((p) => <li key={p}>{p}</li>)}
-        </ul>
-        <p className="text-dim" style={{ marginTop: 0, marginBottom: 12, fontSize: "0.8125rem" }}>
-          Do not give it "Add withdrawal addresses" or "Update withdrawal addresses". A key with either is refused.
-        </p>
         <NodeAddress address={status.config?.withdraw_address ?? ""} />
         <label style={{ display: "block", marginBottom: 8 }}>
           API key
