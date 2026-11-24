@@ -430,9 +430,15 @@ none should be added.
 The runner is **filename-keyed**: it reads applied filenames from a `migrations`
 table and skips any file already recorded. Files are sorted, but because the key is
 the filename string, the runner is **order-tolerant** — a numbering gap or an
-out-of-order addition still runs each file exactly once, ever. It also tolerates
-re-application of `ALTER TABLE … ADD COLUMN` by catching "duplicate column" /
-"already exists", logging, and marking the file applied.
+out-of-order addition still runs each file exactly once, ever. Each file runs
+in one transaction with its `migrations` row (code-audit-2 F03), so a file
+applies completely or not at all; a container killed mid-migration re-runs that
+whole file on the next start. The exception is `072`, which carries its own
+`BEGIN`/`COMMIT` and is listed in `SELF_TRANSACTING` (`migrate.ts`). The runner
+also tolerates re-application of `ALTER TABLE … ADD COLUMN` by catching
+"duplicate column" / "already exists", logging, and marking the file applied —
+after rolling the whole file back, so none of its statements run. See
+`docs/DATABASE.md` § Migrations Overview.
 
 Migrations must still be idempotent. Never mutate schema by hand.
 
