@@ -40,7 +40,9 @@
 //           and an error taking the lock take the same not-run path; the gate
 //           killed mid-check dies at once and the lock stays with the running
 //           check until it exits; with one slot held the gate takes the
-//           other and its checks get VITEST_MAX_WORKERS=3 (11b), alone none.
+//           other and its checks get VITEST_MAX_WORKERS=3 (11b), alone none,
+//           unless the 1-minute load is not under the threshold: then it waits
+//           and says not run (11a).
 //           With the lock free but a filesystem holding /tmp or the lock's home
 //           under the disk floor, the gate waits and says not run (13b).
 //           Every run uses a scratch heavy-lock home
@@ -531,6 +533,9 @@ try {
   // Plenty of disk, so the gate's admission never depends on this machine's free space either.
   const PLENTY_DISK = path.join(TMP, "diskfree");
   fs.writeFileSync(PLENTY_DISK, "1000000\n");
+  // No load, so the gate's admission never depends on this machine's load average either.
+  const CALM_LOAD = path.join(TMP, "loadavg");
+  fs.writeFileSync(CALM_LOAD, "0.00 0.00 0.00 1/500 12345\n");
   const HEAVY_HISTORY = path.join(HEAVY_HOME, ".bitcorn-dev", "locks", "history.log");
   fs.writeFileSync(path.join(FX, "app", "api", "src", "x.ts"), "export const a = 1;\n");
   fs.writeFileSync(path.join(FX, "app", "web", "src", "x.ts"), "export const b = 1;\n");
@@ -551,6 +556,7 @@ try {
     HARNESS_HEAVY_TEST_HOME: HEAVY_HOME,
     HARNESS_HEAVY_TEST_MEMINFO: PLENTY_MEM,
     HARNESS_HEAVY_TEST_DISKFREE: PLENTY_DISK,
+    HARNESS_HEAVY_TEST_LOADAVG: CALM_LOAD,
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_CONFIG_SYSTEM: "/dev/null",
     ...env,
@@ -694,6 +700,18 @@ try {
     process.kill(-holderProc1.pid, "SIGKILL");
     waitFor(() => lockState(HEAVY_LOCK_1) === "free", "the second fixture holder to go");
     fs.rmSync(HEAVY_INFO_1, { force: true });
+
+    // 11a. one slot free but the 1-minute load not under the threshold → the same admission
+    //      (heavy.admission) waits, then the not-run path, naming the load and the threshold
+    const HIGH_LOAD = path.join(TMP, "loadavg-high");
+    fs.writeFileSync(HIGH_LOAD, "99.50 50.00 10.00 9/500 12345\n");
+    r = runGate({ dirty: "api", env: { HARNESS_HEAVY_TEST_LOADAVG: HIGH_LOAD, HARNESS_HEAVY_MAX_LOAD: "6",
+      VERIFY_GATE_HEAVY_WAIT_S: "2", STUB_HEAVY_LOCK: HEAVY_LOCK_1, STUB_VITEST_OUT: OUT.vitestGreen } });
+    check("gate 11a: sharing under high load blocks (exit 2)", r.status === 2, r.out);
+    check("gate 11a: says verification not run, naming the load and the threshold",
+      r.out.includes("verification not run: heavy-1 is free, but the 1-minute load average is 99.5, not under the 6 a job sharing the machine needs"), r.out);
+    check("gate 11a: no check ran, heavy-1 is free", !fs.existsSync(STUB_LOG) && lockState(HEAVY_LOCK_1) === "free" && !fs.existsSync(HEAVY_INFO_1));
+
     r = runGate({ dirty: "api", env: { STUB_HEAVY_LOCK: HEAVY_LOCK_1, STUB_VITEST_OUT: OUT.vitestGreen } });
     let ran = fs.existsSync(STUB_LOG) ? fs.readFileSync(STUB_LOG, "utf8") : "";
     check("gate 11b: one slot free → PASS (exit 0)", r.status === 0 && r.out.includes("PASS"), r.out);
