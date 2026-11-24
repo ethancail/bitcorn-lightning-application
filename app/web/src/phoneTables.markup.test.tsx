@@ -62,6 +62,7 @@ import RefillChannel from "./pages/RefillChannel";
 import SubscriptionPayments from "./pages/SubscriptionPayments";
 import WithdrawBitcoin from "./pages/WithdrawBitcoin";
 import Payments from "./pages/Payments";
+import App from "./App";
 
 const pk = (c: string) => "02" + c.repeat(64);
 const lane = (id: string, peer: string, localPct: number) => ({
@@ -158,7 +159,6 @@ const page = (C: React.ComponentType) => React.createElement(MemoryRouter, null,
 
 async function channelsTables() {
   stub.getNode.mockResolvedValue({ node_role: "treasury", alias: "t", pubkey: pk("a"), synced_to_chain: true });
-  const App = (await import("./App")).default;
   const el = await mount(React.createElement(App), "/channels");
   return [...el.querySelectorAll("table")];
 }

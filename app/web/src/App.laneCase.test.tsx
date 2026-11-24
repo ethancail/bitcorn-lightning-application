@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import React from "react";
+import App from "./App";
 
 vi.hoisted(() => {
   localStorage.setItem("bitcorn_theme", "dark");
@@ -91,7 +92,6 @@ afterEach(async () => {
 async function renderChannels(contacts: unknown[]) {
   stub.getContacts.mockResolvedValue(contacts);
   stub.getNode.mockResolvedValue({ node_role: "treasury", alias: "lnd-alias", pubkey: "02" + "a".repeat(64), synced_to_chain: true });
-  const App = (await import("./App")).default;
   window.history.pushState({}, "", "/channels");
   host = document.createElement("div");
   document.body.appendChild(host);

@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import React from "react";
+import App from "./App";
 
 vi.hoisted(() => {
   localStorage.setItem("bitcorn_theme", "dark");
@@ -91,7 +92,6 @@ async function channelsPage(nodeRole: string, ch: Array<{ peer: string; capacity
     local_balance_sat: c.capacity / 2, remote_balance_sat: c.capacity / 2, active: 1,
   }));
   stub.getNode.mockResolvedValue({ node_role: nodeRole, alias: "lnd-alias", pubkey: "02" + "a".repeat(64), synced_to_chain: true });
-  const App = (await import("./App")).default;
   window.history.pushState({}, "", "/channels");
   host = document.createElement("div");
   document.body.appendChild(host);
