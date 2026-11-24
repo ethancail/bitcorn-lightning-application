@@ -35,7 +35,7 @@
 // 2026-11-20): tsc and vitest are heavy jobs, so the checks run only holding a
 // slot of scripts/harness-slot.mjs's heavy lock, a kernel flock taken here in
 // process before the first check by the same admission as heavy run (the
-// host's slot limit, the memory check; never exclusive), waiting up to
+// host's slot limit, the memory check, the disk floor; never exclusive), waiting up to
 // HEAVY_WAIT_S (SECOND_TRY_WAIT_S on the second try). Each check is handed
 // the locked descriptor as its fd 9 and the gate's job token as
 // HARNESS_HEAVY_JOB (harness-slot.mjs, THE JOB TOKEN), plus
@@ -245,12 +245,10 @@ async function takeHeavy(hook) {
     }
     const holder = `${ctx.account}@${ctx.host}:node scripts/verify-gate.mjs (${path.basename(ROOT)})`;
     const job = heavy.jobToken(holder, process.pid);
-    // One slot, by the same admission as heavy run (limit, memory check), never exclusive.
+    // One slot, by the same admission as heavy run (limit, memory check, disk
+    // floor: heavy.admission, the CLI's own), never exclusive.
     const r = await heavy.lockHeavy({
-      home: ctx.home,
-      limit: ctx.limit,
-      minFreeMb: ctx.minFreeMb,
-      meminfo: ctx.meminfo,
+      ...heavy.admission(ctx),
       record: { holder, host: ctx.host, kind: "gate", pid: process.pid, job },
       waitMs: waitS * 1000,
       pollMs: Math.max(1000, Math.min(5000, waitS * 1000)),
