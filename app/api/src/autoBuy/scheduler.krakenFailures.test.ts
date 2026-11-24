@@ -376,8 +376,14 @@ describe("S5 — Coinbase's silent paths stay silent (pinned)", () => {
   it("F9a a Coinbase order-poll failure raises nothing", async () => {
     db.prepare(`INSERT INTO autobuy_runs (scheduled_for, status, coinbase_order_id, created_at, updated_at, provider) VALUES (?, 'buy_placed', 'cb-1', ?, ?, 'coinbase')`).run(T0, T0, T0);
     stubs.pollOrder.mockImplementation(async () => ({ ok: false, status: 503, error: "unavailable" }));
+    // The other Coinbase calls record and refuse instead of throwing (P6, P7's
+    // tightening, as S4): a Kraken-only step that wrongly ran on Coinbase then
+    // fails the `not.toHaveBeenCalled()` below cleanly, not by an exception.
+    const others = [stubs.listAccounts, stubs.placeMarketBuy, stubs.placeWithdraw, stubs.pollWithdraw];
+    for (const s of others) s.mockImplementation(async () => ({ ok: false, status: 503, error: "coinbase stub: not expected to be called" }));
     await tickAt(T0);
     expect(stubs.pollOrder).toHaveBeenCalledTimes(1);
+    for (const s of others) expect(s).not.toHaveBeenCalled();
     expect(alerts()).toEqual([]);
   });
 
