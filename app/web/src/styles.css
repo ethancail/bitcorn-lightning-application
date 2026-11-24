@@ -1616,9 +1616,11 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 /* ─── Mobile responsive (< 768px) ─────────────────────────────── */
 @media (max-width: 767px) {
-  /* Layout: collapse to single column */
+  /* Layout: collapse to single column. minmax(0, 1fr), not 1fr: 1fr is
+     minmax(auto, 1fr), so the top bar's min-content (its nowrap name) set the
+     column and the page ran 4.7px past a 390px screen (slice 5, ruling 1). */
   .app-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .main-content { grid-column: 1; }
 
