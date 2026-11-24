@@ -43,7 +43,15 @@ const baseConnectors = [
     // WHY IT MATTERS RATHER THAN JUST BEING MORE GENEROUS: an EOA verifies
     // locally, a Smart Wallet needs an ERC-1271 on-chain read. "all" means the
     // Coinbase tile has a branch that works even if the on-chain read cannot.
-    preference: "all",
+    //
+    // Telemetry OFF (ruled 2026-11-23, code-audit-2). The SDK defaults it on
+    // (Preference.telemetry "@default true"; createCoinbaseWalletSDK only skips
+    // loadTelemetryScript on an explicit `false`), and WagmiProvider's reconnect
+    // calls getProvider() on every connector at member-shell mount — so every
+    // member page load in a secure context sent /metrics, /amp and /traces to
+    // cca-lite.coinbase.com with no wallet interaction. Guarded by
+    // wagmi.cbTelemetry.test.ts.
+    preference: { options: "all", telemetry: false },
   }),
   // Analytics OFF (ruled 2026-11-18, code-audit-2). The SDK defaults it to true,
   // and createConfig below runs this connector's setup() at import, which inits

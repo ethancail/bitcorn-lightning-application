@@ -870,8 +870,23 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
 // workers, ~1,052 MB at VITEST_MAX_WORKERS=2; code-audit-2, 2026-11-20); app/api's
 // peak is not yet measured. A job that took its slot while another was held gets
 // VITEST_MAX_WORKERS=<HARNESS_HEAVY_SHARED_WORKERS, default 3> in its command's
-// environment; a job that starts alone gets none. The cap takes effect once
-// code-audit-2's VITEST_MAX_WORKERS change (app/web/vitest.config.ts) merges to develop.
+// environment; a job that starts alone gets none. The cap is live:
+// app/web/vitest.config.ts has read VITEST_MAX_WORKERS since #433, and
+// app/api/vitest.config.ts since code-audit-2's vitest-workers slice (#448).
+//
+// THE LOAD CHECK (2026-11-24): a job that would take its slot while another is
+// held is admitted only if the 1-minute load average (/proc/loadavg's first
+// field) is below HARNESS_HEAVY_MAX_LOAD, default 0.75 × the CPU count
+// (os.availableParallelism()), rounded down: 6 on ubuntu-pc's 8. Otherwise it
+// waits, as for memory, its waiting line naming the load and the threshold. A
+// job that starts alone is never load-checked. Read at each admission decision,
+// under the admission flock, after the memory check; a read that fails is an
+// error, never a pass. Like the memory figure it is a snapshot, and one that
+// LAGS: the kernel's average decays over a minute, so a job started a few
+// seconds ago may not show in it yet. Why: code-audit-2 saw app/web full suites
+// hit test timeouts at a load average of ~10.7 on 8 CPUs with two heavy jobs
+// running (2026-11-24). Test seam: HARNESS_HEAVY_TEST_LOADAVG, a file in
+// /proc/loadavg's format, honoured only beside HARNESS_HEAVY_TEST_HOME.
 //
 // THE DISK FLOOR (2026-11-23): no job is admitted, first or second, exclusive or
 // not, while a filesystem holding /tmp or the heavy lock's home has less free
@@ -961,6 +976,9 @@ export const HEAVY_HOSTS = new Map([
 export const HEAVY_MIN_FREE_MB = 4096; // MemAvailable a job needs to share the machine
 export const HEAVY_MIN_FREE_DISK_MB = 5120; // free space every job needs on /tmp's and the lock home's filesystems
 export const HEAVY_SHARED_WORKERS = 3; // VITEST_MAX_WORKERS for a job that shares it
+export const HEAVY_LOAD_PER_CPU = 0.75; // the 1-minute load a job sharing the machine needs to be under, per CPU
+// The default load threshold: HEAVY_LOAD_PER_CPU × the CPU count, rounded down.
+export const defaultMaxLoad = (cpus = os.availableParallelism()) => Math.floor(HEAVY_LOAD_PER_CPU * cpus);
 
 const FLOCK = "/usr/bin/flock"; // by path: browser-slot.py calls this CLI with a scrubbed environment
 const FLOCK_BUSY = 200; // flock(1)'s exit code for "held" (-E): -n refused, or -w ran out
@@ -1235,11 +1253,12 @@ function wholeSetting(name, raw, min) {
 // The slot limit, the memory threshold, the worker cap, where MemAvailable is
 // read, the disk floor and how free space is read, with a note for each value
 // that is not the default. The limit is the host table's (1 for a host not in
-// it); HARNESS_HEAVY_LIMIT, HARNESS_HEAVY_TEST_MEMINFO and
-// HARNESS_HEAVY_TEST_DISKFREE are test seams, honoured only beside
-// HARNESS_HEAVY_TEST_HOME; HARNESS_HEAVY_MIN_FREE_MB,
-// HARNESS_HEAVY_MIN_FREE_DISK_MB and HARNESS_HEAVY_SHARED_WORKERS are settings.
-export function heavySettings(env, host = os.hostname()) {
+// it); HARNESS_HEAVY_LIMIT, HARNESS_HEAVY_TEST_MEMINFO,
+// HARNESS_HEAVY_TEST_DISKFREE and HARNESS_HEAVY_TEST_LOADAVG are test seams,
+// honoured only beside HARNESS_HEAVY_TEST_HOME; HARNESS_HEAVY_MIN_FREE_MB,
+// HARNESS_HEAVY_MIN_FREE_DISK_MB, HARNESS_HEAVY_SHARED_WORKERS and
+// HARNESS_HEAVY_MAX_LOAD are settings. `cpus` sets the load default's CPU count.
+export function heavySettings(env, host = os.hostname(), { cpus = os.availableParallelism() } = {}) {
   const testing = Boolean(env.HARNESS_HEAVY_TEST_HOME);
   const hostLimit = HEAVY_HOSTS.get(host)?.limit ?? 1;
   const notes = [];
@@ -1276,7 +1295,23 @@ export function heavySettings(env, host = os.hostname()) {
     statfs = testStatfs(file);
     notes.push(`a TEST free-disk figure, read from ${file} (HARNESS_HEAVY_TEST_DISKFREE), not statfs`);
   }
-  return { limit, minFreeMb, sharedWorkers, meminfo, minFreeDiskMb, statfs, notes };
+  const loadDefault = defaultMaxLoad(cpus);
+  let maxLoad = loadDefault;
+  if (env.HARNESS_HEAVY_MAX_LOAD) {
+    const raw = env.HARNESS_HEAVY_MAX_LOAD;
+    if (!/^[0-9]+(\.[0-9]+)?$/.test(raw) || !(Number(raw) > 0)) {
+      throw new Error(`HARNESS_HEAVY_MAX_LOAD must be a number above 0, got ${JSON.stringify(raw)}`);
+    }
+    maxLoad = Number(raw);
+    notes.push(`a job sharing the machine needs a 1-minute load under ${maxLoad} (HARNESS_HEAVY_MAX_LOAD), not ${loadDefault}`);
+  }
+  let loadavg = "/proc/loadavg";
+  if (testing && env.HARNESS_HEAVY_TEST_LOADAVG) {
+    loadavg = env.HARNESS_HEAVY_TEST_LOADAVG;
+    if (!path.isAbsolute(loadavg)) throw new Error(`HARNESS_HEAVY_TEST_LOADAVG must be an absolute path, got ${JSON.stringify(loadavg)}`);
+    notes.push(`a TEST loadavg, ${loadavg} (HARNESS_HEAVY_TEST_LOADAVG), not /proc/loadavg`);
+  }
+  return { limit, minFreeMb, sharedWorkers, meminfo, minFreeDiskMb, statfs, maxLoad, loadavg, notes };
 }
 
 // HARNESS_HEAVY_TEST_DISKFREE's reader: a statfs whose free space, for every
@@ -1347,6 +1382,14 @@ export function memAvailableMb(file = "/proc/meminfo") {
   return Math.floor(Number(m[1]) / 1024);
 }
 
+// The 1-minute load average, /proc/loadavg's first field. A file that cannot be
+// read, or does not start with one, is an error, never a guess.
+export function loadAvg1(file = "/proc/loadavg") {
+  const m = fs.readFileSync(file, "utf8").match(/^([0-9]+(?:\.[0-9]+)?) /);
+  if (!m) throw new Error(`no 1-minute load average in ${file}`);
+  return Number(m[1]);
+}
+
 // One flock(1) on `fd` (its fd 3): resolves "locked" or "busy", or rejects when
 // flock(1) cannot run. waitMs 0 is -n; Infinity waits for as long as it takes.
 // Aborted, the flock(1) is killed: "busy", and if it had just taken the lock,
@@ -1402,7 +1445,7 @@ const busySlots = (home, limit, skip = []) => [...Array(limit).keys()]
 // waiter's slots so far (it keeps them between polls). Resolves to
 // { entries, shared } on admission, else { kind: "held" | "memory" |
 // "exclusive", busy, free?, mb? } saying why not, or { cancelled }.
-async function admit(home, { limit, exclusive, minFreeMb, meminfo, minFreeDiskMb, statfs, record, signal, deadline }, taken) {
+async function admit(home, { limit, exclusive, minFreeMb, meminfo, minFreeDiskMb, statfs, maxLoad, loadavg, record, signal, deadline }, taken) {
   const admitFd = fs.openSync(admitFile(home), "a", 0o644);
   try {
     // F4: the admission flock waits no longer than the job's own wait has left.
@@ -1452,6 +1495,17 @@ async function admit(home, { limit, exclusive, minFreeMb, meminfo, minFreeDiskMb
           closeQuietly(fd);
           return { kind: "memory", free: k, busy: others, mb };
         }
+        let load;
+        try {
+          load = loadAvg1(loadavg);
+        } catch (error) {
+          closeQuietly(fd); // as for memory: the slot this took is let go before the error leaves
+          throw error;
+        }
+        if (!(load < maxLoad)) {
+          closeQuietly(fd);
+          return { kind: "load", free: k, busy: others, load };
+        }
       }
       return { entries: [take(k, fd)], shared: others.length > 0 };
     }
@@ -1462,7 +1516,7 @@ async function admit(home, { limit, exclusive, minFreeMb, meminfo, minFreeDiskMb
 }
 
 // Why a job is not admitted, as a waiter is told it; short names holders by name and time only.
-function notAdmitted(r, { minFreeMb, minFreeDiskMb }, { short = false } = {}) {
+function notAdmitted(r, { minFreeMb, minFreeDiskMb, maxLoad }, { short = false } = {}) {
   const holders = holdersText(r.busy, { short });
   if (r.kind === "disk") {
     return r.low.map((f) => `the filesystem at ${f.mount} (holding ${f.paths.join(" and ")}) has ${f.mb} MB free`).join(", and ") +
@@ -1472,6 +1526,10 @@ function notAdmitted(r, { minFreeMb, minFreeDiskMb }, { short = false } = {}) {
   if (r.kind === "memory") {
     return `${heavySlot(r.free)} is free, but MemAvailable is ${r.mb} MB, under the ${minFreeMb} MB a job sharing ` +
       `the machine needs, while heavy is held by ${holders}`;
+  }
+  if (r.kind === "load") {
+    return `${heavySlot(r.free)} is free, but the 1-minute load average is ${r.load}, not under the ${maxLoad} a job sharing ` +
+      `the machine needs (HARNESS_HEAVY_MAX_LOAD), while heavy is held by ${holders}`;
   }
   if (r.kind === "exclusive") return `${heavySlot(r.free)} is free, but an exclusive job is waiting for every slot: ${holders}`;
   if (r.kind === "admission") {
@@ -1493,12 +1551,12 @@ function notAdmitted(r, { minFreeMb, minFreeDiskMb }, { short = false } = {}) {
 // `signal` aborted it. message keeps "is already locked by", the phrase the
 // slot lock's waiters read; notRun is the Stop hook's shorter form.
 export async function lockHeavy({ home, limit = 1, exclusive = false, minFreeMb = HEAVY_MIN_FREE_MB, meminfo = "/proc/meminfo",
-  minFreeDiskMb = HEAVY_MIN_FREE_DISK_MB, statfs = fs.statfsSync,
+  minFreeDiskMb = HEAVY_MIN_FREE_DISK_MB, statfs = fs.statfsSync, maxLoad = defaultMaxLoad(), loadavg = "/proc/loadavg",
   record, waitMs = Infinity, pollMs = 1000, say = () => {}, signal } = {}) {
   fs.mkdirSync(lockDir(home), { recursive: true });
   const t0 = Date.now();
   const opts = {
-    limit, exclusive, minFreeMb, meminfo, minFreeDiskMb, statfs, record, signal,
+    limit, exclusive, minFreeMb, meminfo, minFreeDiskMb, statfs, maxLoad, loadavg, record, signal,
     deadline: waitMs === Infinity ? Infinity : t0 + waitMs,
   };
   const taken = [];
@@ -1701,7 +1759,7 @@ const procComm = (pid) => {
 // The lockHeavy options a context gives.
 export const admission = (ctx) => ({
   home: ctx.home, limit: ctx.limit, minFreeMb: ctx.minFreeMb, meminfo: ctx.meminfo,
-  minFreeDiskMb: ctx.minFreeDiskMb, statfs: ctx.statfs,
+  minFreeDiskMb: ctx.minFreeDiskMb, statfs: ctx.statfs, maxLoad: ctx.maxLoad, loadavg: ctx.loadavg,
 });
 
 // F2, the lock order: null, or the refusal when the caller's holder
