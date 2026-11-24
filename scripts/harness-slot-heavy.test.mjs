@@ -51,7 +51,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   HEAVY_HOSTS, HOLD_ORPHAN_GRACE_MS, KILL_WAIT_MS, acquireLock, diskFree, forceReleaseLock, heavyAccountRefusal, heavyContext, heavyLocked, heavySettings, heldByThisJob,
-  lockHeavy, lockHolders, procStart, procStat, releaseLock, stopAndConfirm, stopHolder,
+  loadAvg1, lockHeavy, lockHolders, procStart, procStat, releaseLock, stopAndConfirm, stopHolder,
 } from "./harness-slot.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -97,18 +97,24 @@ function diskfree(mb, file = path.join(scratch(), "diskfree")) {
   return file;
 }
 const PLENTY_DISK = diskfree(1_000_000);
+// A fake /proc/loadavg whose 1-minute average is `load` (rewritten in place to change it).
+function loadavg(load, file = path.join(scratch(), "loadavg")) {
+  fs.writeFileSync(file, `${load.toFixed(2)} 0.50 0.40 1/500 12345\n`);
+  return file;
+}
+const CALM = loadavg(0);
 // The in-process seam: fs.statfsSync's shape, `mb()` MB free on every filesystem.
 const statfsOf = (mb) => () => ({ bsize: 1024 * 1024, bavail: typeof mb === "function" ? mb() : mb });
 
 // The CLI under Node 24, its environment built from scratch: no inherited $HOME.
 // Unless a test says otherwise: one slot (the single-lock behaviour these tests
-// were written for, which the OptiPlex keeps) and plenty of memory and disk, so
-// no test depends on this machine's MemAvailable or free space.
+// were written for, which the OptiPlex keeps), plenty of memory and disk and no
+// load, so no test depends on this machine's MemAvailable, free space or load.
 function start(args, { home, env = {}, slotHome } = {}) {
   const child = spawn(NODE, [SCRIPT, ...args], {
     env: {
       PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: slotHome ?? scratch(), HARNESS_HEAVY_TEST_HOME: home,
-      HARNESS_HEAVY_LIMIT: "1", HARNESS_HEAVY_TEST_MEMINFO: PLENTY, HARNESS_HEAVY_TEST_DISKFREE: PLENTY_DISK, ...env,
+      HARNESS_HEAVY_LIMIT: "1", HARNESS_HEAVY_TEST_MEMINFO: PLENTY, HARNESS_HEAVY_TEST_DISKFREE: PLENTY_DISK, HARNESS_HEAVY_TEST_LOADAVG: CALM, ...env,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -803,7 +809,7 @@ ttest("orphan: a slot's holder whose CLI goes away before taking the slot lets g
   const spec = { holder: "slot-1/gone-cli", waitMs: null, ownerPid: null, ownerStart: null, watch: false, exclusive: false,
     slot: { target: 1, home: slotHome } };
   const child = spawn(NODE, [SCRIPT, "heavy", "__hold", JSON.stringify(spec)], {
-    env: { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: slotHome, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", HARNESS_HEAVY_TEST_MEMINFO: PLENTY, HARNESS_HEAVY_TEST_DISKFREE: PLENTY_DISK },
+    env: { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: slotHome, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", HARNESS_HEAVY_TEST_MEMINFO: PLENTY, HARNESS_HEAVY_TEST_DISKFREE: PLENTY_DISK, HARNESS_HEAVY_TEST_LOADAVG: CALM },
     stdio: ["ignore", "ignore", "ignore", "ipc"], detached: true,
   });
   try {
@@ -920,7 +926,7 @@ ttest("order: a Node grandchild of a heavy command, which holds no descriptor, s
 ttest("order (F2): after heavy acquire, a later separate command carrying its token reaches the slot; one without it waits on heavy", async () => {
   const home = scratch();
   const slotHome = scratch();
-  const env = { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: slotHome, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", HARNESS_HEAVY_TEST_MEMINFO: PLENTY, HARNESS_HEAVY_TEST_DISKFREE: PLENTY_DISK };
+  const env = { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: slotHome, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", HARNESS_HEAVY_TEST_MEMINFO: PLENTY, HARNESS_HEAVY_TEST_DISKFREE: PLENTY_DISK, HARNESS_HEAVY_TEST_LOADAVG: CALM };
   const q = (s) => `'${s.replace(/'/g, "'\\''")}'`;
   const shell = (line, extra = {}) => spawnSync("sh", ["-c", line], { encoding: "utf8", timeout: 30_000, env: { ...env, ...extra } });
   try {
@@ -1027,7 +1033,7 @@ ttest("F2: two heavy runs that descend from a --pid owner, without its token, wa
     const sh = spawn("sh", ["-c",
       `${q(NODE)} ${q(SCRIPT)} heavy acquire --holder session --pid $$ >/dev/null; ` +
       `(${run("a")}) 2>>${q(out)} & (${run("b")}) 2>>${q(out)} & sleep 1.5; exit 0`], {
-      env: { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: scratch(), HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", HARNESS_HEAVY_TEST_MEMINFO: PLENTY, HARNESS_HEAVY_TEST_DISKFREE: PLENTY_DISK }, stdio: "ignore",
+      env: { PATH: "/usr/bin:/bin", LC_ALL: "C", HOME: scratch(), HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", HARNESS_HEAVY_TEST_MEMINFO: PLENTY, HARNESS_HEAVY_TEST_DISKFREE: PLENTY_DISK, HARNESS_HEAVY_TEST_LOADAVG: CALM }, stdio: "ignore",
     });
     await once(sh, "exit");
     await until(() => fs.existsSync(log) && (fs.readFileSync(log, "utf8").match(/^end /gm) ?? []).length === 2, "both runs", 20_000);
@@ -1556,7 +1562,7 @@ ttest("F5: a MemAvailable read that fails lets go of the slot it took before the
   fs.writeFileSync(bad, "MemTotal:       16000000 kB\n");
   try {
     await assert.rejects(lockHeavy({
-      home, limit: 2, meminfo: bad, waitMs: 0, statfs: statfsOf(1_000_000),
+      home, limit: 2, meminfo: bad, loadavg: CALM, waitMs: 0, statfs: statfsOf(1_000_000),
       record: { holder: "f5", host: HOST, kind: "run", pid: process.pid, job: "f5:1" },
     }), /no MemAvailable line in /);
     assert.equal(lockState(home, 1), "free", "heavy-1 is not left locked by this process");
@@ -1696,6 +1702,119 @@ ttest("memory: a second job waits while MemAvailable is under 4096 MB, and start
   }
 });
 
+// ─── the load check (2026-11-24) ─────────────────────────────────────────
+
+// This host's default threshold, as the script computes it: 0.75 × the CPU count, rounded down.
+const MAX_LOAD = Math.floor(0.75 * os.availableParallelism());
+const loadText = (n) => String(Number(n.toFixed(2))); // as the waiting line prints a figure loadavg() wrote
+
+ttest("load: a second job waits while the 1-minute load is at or above the default threshold, and starts once it drops below", async () => {
+  const home = scratch();
+  const high = MAX_LOAD + 4.7;
+  const load = loadavg(high);
+  const env = { ...TWO, HARNESS_HEAVY_TEST_LOADAVG: load };
+  const marker = path.join(home, "second-ran");
+  const first = start(["heavy", "run", "--holder", "first", "--", "sleep", "30"], { home, env });
+  let second = null;
+  try {
+    await until(() => first.err().includes("acquired the heavy lock"), "the first job, alone, at a high load");
+    second = start(["heavy", "run", "--holder", "second", "--", NODE, "-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "x")`], { home, env });
+    await until(() => second.err().includes("waiting"), "the second job to wait");
+    assert.ok(second.err().includes(`heavy-1 is free, but the 1-minute load average is ${loadText(high)}, not under the ${MAX_LOAD} ` +
+      `a job sharing the machine needs (HARNESS_HEAVY_MAX_LOAD), while heavy is held by "first"`), second.err());
+    await sleep(1500);
+    assert.ok(!fs.existsSync(marker), "the second job must not run above the threshold");
+    assert.equal(lockState(home, 1), "free");
+    loadavg(MAX_LOAD, load); // at the threshold is not below it
+    await until(() => second.err().includes(`load average is ${loadText(MAX_LOAD)},`), "the second job to see the threshold itself");
+    await sleep(1500);
+    assert.ok(!fs.existsSync(marker), "the second job must not run AT the threshold");
+    loadavg(MAX_LOAD - 0.01, load);
+    await until(() => fs.existsSync(marker), "the second job to run once the load dropped below the threshold");
+    const r = await second.done;
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(lockState(home, 0), "held", "while the first still ran");
+  } finally {
+    second?.child.kill("SIGTERM");
+    first.child.kill("SIGTERM");
+    await first.done;
+  }
+});
+
+ttest("load: a first job, alone, is admitted at any load, and never reads the load at all", async () => {
+  const home = scratch();
+  const r = await cli(["heavy", "run", "--holder", "alone", "--wait", "2", "--", "true"], { home, env: { ...TWO, HARNESS_HEAVY_TEST_LOADAVG: loadavg(999) } });
+  assert.equal(r.code, 0, r.stderr);
+  assert.ok(!r.stderr.includes("load average"), r.stderr);
+  // In process: a loadavg that does not exist would throw if it were read.
+  const ok = await lockHeavy({
+    home: scratch(), limit: 2, meminfo: PLENTY, loadavg: path.join(scratch(), "no-loadavg"), maxLoad: 1, statfs: statfsOf(1_000_000), waitMs: 0,
+    record: { holder: "alone", host: HOST, kind: "run", pid: process.pid, job: "alone:1" },
+  });
+  assert.ok(ok.hold, ok.message);
+  assert.equal(ok.hold.shared, false);
+  ok.hold.release();
+});
+
+ttest("load: HARNESS_HEAVY_MAX_LOAD overrides the default (0.75 × CPUs, rounded down), announced; the test loadavg only beside the test home", async () => {
+  assert.equal(heavySettings({}, "ubuntu-pc", { cpus: 8 }).maxLoad, 6, "ubuntu-pc's 8 CPUs: 6");
+  assert.equal(heavySettings({}, "ubuntu-pc", { cpus: 12 }).maxLoad, 9);
+  assert.equal(heavySettings({}, "ubuntu-pc", { cpus: 3 }).maxLoad, 2, "2.25 rounds down");
+  assert.equal(heavySettings({}, "ubuntu-pc").maxLoad, MAX_LOAD, "this host's CPU count by default");
+  const d = heavySettings({ HARNESS_HEAVY_TEST_LOADAVG: "/tmp/l" }, "ubuntu-pc", { cpus: 8 });
+  assert.deepEqual([d.loadavg, d.notes], ["/proc/loadavg", []], "the real loadavg, its test seam ignored without the test home");
+  const s = heavySettings({ HARNESS_HEAVY_MAX_LOAD: "2.5" }, "ubuntu-pc", { cpus: 8 });
+  assert.equal(s.maxLoad, 2.5);
+  assert.deepEqual(s.notes, ["a job sharing the machine needs a 1-minute load under 2.5 (HARNESS_HEAVY_MAX_LOAD), not 6"]);
+  for (const bad of ["0", "-1", "six", "6x", " 6", "1e3"]) {
+    assert.throws(() => heavySettings({ HARNESS_HEAVY_MAX_LOAD: bad }, "ubuntu-pc"), /HARNESS_HEAVY_MAX_LOAD must be a number above 0/, bad);
+  }
+  const t = heavySettings({ HARNESS_HEAVY_TEST_HOME: "/tmp/x", HARNESS_HEAVY_TEST_LOADAVG: "/tmp/l" }, "ubuntu-pc");
+  assert.equal(t.loadavg, "/tmp/l");
+  assert.throws(() => heavySettings({ HARNESS_HEAVY_TEST_HOME: "/tmp/x", HARNESS_HEAVY_TEST_LOADAVG: "rel" }, "ubuntu-pc"), /must be an absolute path/);
+
+  // End to end: a load of 1.00 is under the default (more than one CPU's worth here) but not under a setting of 1.
+  assert.ok(MAX_LOAD > 1, `this test needs a default above 1, got ${MAX_LOAD}`);
+  const home = scratch();
+  const load = loadavg(1);
+  const bare = await bareHolder(home, 30, 0);
+  try {
+    const set = await cli(["heavy", "run", "--holder", "set", "--wait", "2", "--", "true"],
+      { home, env: { ...TWO, HARNESS_HEAVY_TEST_LOADAVG: load, HARNESS_HEAVY_MAX_LOAD: "1" } });
+    assert.equal(set.code, 2, set.stderr);
+    assert.match(set.stderr, /heavy not admitted: heavy-1 is free, but the 1-minute load average is 1, not under the 1 a job sharing the machine needs/);
+    const dflt = await cli(["heavy", "run", "--holder", "default", "--wait", "2", "--", "true"], { home, env: { ...TWO, HARNESS_HEAVY_TEST_LOADAVG: load } });
+    assert.equal(dflt.code, 0, dflt.stderr);
+  } finally {
+    bare.kill();
+  }
+});
+
+// The control (no catch, no close): this process kept heavy-1 locked after lockHeavy threw.
+ttest("load: a loadavg that cannot be read, or holds no figure, is an error for a second job, never a pass, and lets go of the slot", async () => {
+  assert.equal(loadAvg1(loadavg(10.7)), 10.7);
+  const home = scratch();
+  const bare = await bareHolder(home, 30, 0); // slot 0 held, so slot 1's admission reads the load
+  const record = { holder: "l5", host: HOST, kind: "run", pid: process.pid, job: "l5:1" };
+  const garbled = path.join(scratch(), "loadavg");
+  fs.writeFileSync(garbled, "not a load\n");
+  try {
+    for (const [file, why] of [[path.join(scratch(), "no-loadavg"), /ENOENT/], [garbled, /no 1-minute load average in /]]) {
+      await assert.rejects(lockHeavy({ home, limit: 2, meminfo: PLENTY, loadavg: file, statfs: statfsOf(1_000_000), waitMs: 0, record }), why);
+      assert.equal(lockState(home, 1), "free", "heavy-1 is not left locked by this process");
+      assert.ok(!fs.existsSync(infoPath(home, 1)));
+    }
+    const marker = path.join(home, "ran");
+    const r = await cli(["heavy", "run", "--holder", "cli", "--wait", "2", "--", NODE, "-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "x")`],
+      { home, env: { ...TWO, HARNESS_HEAVY_TEST_LOADAVG: path.join(scratch(), "no-loadavg") } });
+    assert.notEqual(r.code, 0, r.stderr);
+    assert.match(r.stderr, /ENOENT/);
+    assert.ok(!fs.existsSync(marker), "the command never ran");
+  } finally {
+    bare.kill();
+  }
+});
+
 // ─── the disk floor (2026-11-23) ─────────────────────────────────────────
 
 ttest("disk: the floor is 5120 MB by default; HARNESS_HEAVY_MIN_FREE_DISK_MB sets it, announced; its test seam only beside the test home", () => {
@@ -1772,7 +1891,7 @@ ttest("disk: a SECOND job waits on disk too, with memory to spare, and the messa
     let mb = 100;
     const said = [];
     const p = lockHeavy({
-      home, limit: 2, meminfo: PLENTY, statfs: statfsOf(() => mb), waitMs: 10_000, pollMs: 100, say: (m) => said.push(m),
+      home, limit: 2, meminfo: PLENTY, loadavg: CALM, statfs: statfsOf(() => mb), waitMs: 10_000, pollMs: 100, say: (m) => said.push(m),
       record: { holder: "second", host: HOST, kind: "run", pid: process.pid, job: "second:1" },
     });
     await until(() => said.length > 0, "the second job to say why it waits");
@@ -1792,14 +1911,14 @@ ttest("disk: a SECOND job waits on disk too, with memory to spare, and the messa
 ttest("disk: an exclusive job is refused too, and a wait that runs out leaves no slot held; a statfs that fails rejects, no slot held", async () => {
   const home = scratch();
   const record = { holder: "x", host: HOST, kind: "run", pid: process.pid, job: "x:1" };
-  const r = await lockHeavy({ home, limit: 2, exclusive: true, meminfo: PLENTY, statfs: statfsOf(5119), waitMs: 300, pollMs: 100, record });
+  const r = await lockHeavy({ home, limit: 2, exclusive: true, meminfo: PLENTY, loadavg: CALM, statfs: statfsOf(5119), waitMs: 300, pollMs: 100, record });
   assert.equal(r.hold, null);
   assert.match(r.message, /heavy not admitted: the filesystem at .* has 5119 MB free, under the 5120 MB/);
   assert.match(r.notRun, /has 5119 MB free/);
   assert.deepEqual([lockState(home, 0), lockState(home, 1)], ["free", "free"]);
-  await assert.rejects(lockHeavy({ home, limit: 2, meminfo: PLENTY, statfs: () => { throw new Error("statfs EIO"); }, waitMs: 0, record }), /statfs EIO/);
+  await assert.rejects(lockHeavy({ home, limit: 2, meminfo: PLENTY, loadavg: CALM, statfs: () => { throw new Error("statfs EIO"); }, waitMs: 0, record }), /statfs EIO/);
   assert.deepEqual([lockState(home, 0), lockState(home, 1)], ["free", "free"]);
-  const ok = await lockHeavy({ home, limit: 2, exclusive: true, meminfo: PLENTY, statfs: statfsOf(5120), waitMs: 0, record });
+  const ok = await lockHeavy({ home, limit: 2, exclusive: true, meminfo: PLENTY, loadavg: CALM, statfs: statfsOf(5120), waitMs: 0, record });
   assert.ok(ok.hold, ok.message);
   assert.deepEqual(ok.hold.slots, [0, 1], "at the floor exactly, admitted");
   ok.hold.release();
