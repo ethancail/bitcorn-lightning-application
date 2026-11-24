@@ -148,7 +148,7 @@ On the same screen:
 
 ### Step K6 — Schedule one recurring ACH deposit
 
-In Kraken, set up one recurring ACH deposit from your bank. Set the deposit to cover a full interval of buys at your highest zone multiplier, plus a margin — for example, weekly $100 base buys with a 2× top zone means at least $200 a week. [Recurring ACH deposits](https://support.kraken.com/articles/recurring-ach-deposits)
+In Kraken, set up one recurring ACH deposit from your bank. Set the deposit to cover a full interval of buys at your highest zone multiplier, plus a margin — for example, weekly $100 base buys with the default 3× Extreme Buy zone means at least $300 a week. [Recurring ACH deposits](https://support.kraken.com/articles/recurring-ach-deposits)
 
 - **Each deposit can be withdrawn seven days after it arrives**, and the hold covers BTC bought with that money, up to the deposit's amount. Auto-Buy's 7-day hold counts from each buy, which comes after the deposit, so it outlasts Kraken's.
 - Kraken limits ACH by state; check Kraken's ACH page for your state.
