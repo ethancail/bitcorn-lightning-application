@@ -505,9 +505,10 @@ export default function WithdrawBitcoin() {
   }
 
   // ─── Confirm withdrawal ───────────────────────────────────────────────
-  // The destination address is the field a mistake ruins irrecoverably, so the
-  // modal shows it and requires the amount typed. apiFetch derives the
-  // x-bitcorn-confirm header from the serialized body.
+  // The address is the node's own (getNodeAddress), so the modal says where in
+  // words ("Goes to: Your node's bitcoin wallet", slice 5 ruling (2)) and
+  // requires the amount typed. apiFetch derives the x-bitcorn-confirm header
+  // from the serialized body, which still carries the address.
   const confirm = useActionConfirm();
 
   function openWithdrawConfirm() {
@@ -515,10 +516,10 @@ export default function WithdrawBitcoin() {
     confirm.open(
       summarizeLoopOut({
         amountSats: quoteResp.quote.amount_sat,
-        destinationAddress: address,
         // The same estimate the quote panel shows (loop-fee-ceilings §7).
         feeSats: loopOutEstimatedFeeSats(quoteResp.quote),
         authorizedMaxSats: authorizedMaxSats(quoteResp.ceilings),
+        rate: rateInfo,
       }),
     );
   }

@@ -62,9 +62,10 @@ function buttonNamed(label: string): HTMLButtonElement | undefined {
 }
 
 const CASES: Array<[string, ActionSummary]> = [
-  ["Loop In (/refill)", summarizeLoopIn({ amountSats: 250_000, feeSats: 1_200, authorizedMaxSats: 3_400 })],
+  // Slice 5: both take the page's rate; Withdraw no longer shows an address.
+  ["Loop In (/refill)", summarizeLoopIn({ amountSats: 250_000, feeSats: 1_200, authorizedMaxSats: 3_400, rate: null })],
   ["Loop Out (/withdraw)", summarizeLoopOut({
-    amountSats: 300_000, destinationAddress: "bcrt1q" + "x".repeat(38), feeSats: 1_500, authorizedMaxSats: 9_000,
+    amountSats: 300_000, feeSats: 1_500, authorizedMaxSats: 9_000, rate: null,
   })],
 ];
 

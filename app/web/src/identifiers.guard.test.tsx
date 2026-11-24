@@ -116,7 +116,10 @@ describe("Z2: the confirm modal sets identifier rows in .ident, and only those",
     ["open treasury channel", summarizeTreasuryOpenChannel({ peerPubkey: PK, capacitySats: 1_000_000, peerAlias: "M1", fee: { label: "Economy", rate: 1 } }), ["Peer"]],
     ["close channel", summarizeCloseChannel({ channelId: "123456789012345678", peerAlias: "M1", capacitySats: 1_000_000 }), ["Channel"]],
     ["payment", summarizePayInvoice({ amountSats: 1_000, destination: PK, memo: "m" }), ["To"]],
-    ["loop out", summarizeLoopOut({ amountSats: 300_000, destinationAddress: "bcrt1q" + "x".repeat(38), feeSats: 500 }), ["To address"]],
+    // Slice 5, ruling (2): Withdraw shows no address ("Goes to: Your node's
+    // bitcoin wallet"), so its one row, the fee limit under Details, is not an
+    // identifier. This case used to expect ["To address"].
+    ["loop out", summarizeLoopOut({ amountSats: 300_000, feeSats: 500, authorizedMaxSats: 900, rate: null }), []],
   ];
   for (const [name, summary, idents] of CASES) {
     it(name, async () => {

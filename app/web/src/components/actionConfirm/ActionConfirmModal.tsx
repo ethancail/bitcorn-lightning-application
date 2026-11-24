@@ -20,13 +20,19 @@
 // (Polar gate 1, L5). The card is capped at the viewport and only its middle
 // scrolls, so the title and the buttons stay on screen at any content height.
 
-import { useReducer } from "react";
+import { Children, useReducer, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
+  MEMBER_DIALOG_COPY as COPY,
   challengePrompt,
   challengeSatisfied,
+  memberChallengePrompt,
   type ActionSummary,
+  type MemberLayout,
 } from "./confirmAction";
+import { Amount, usableUsd } from "../amount/Amount";
+import { inlineAmount } from "../amount/inlineAmount";
+import { CantUndoIcon } from "./CantUndoIcon";
 import {
   INITIAL_CONFIRM_STATE,
   reduceConfirm,
@@ -84,6 +90,78 @@ export function useActionConfirm(): ActionConfirmController {
   };
 }
 
+// ─── The member layout (slice 5; opt-in through `summary.member`) ──────────
+// When `on` is false each helper renders its children and nothing else, so a
+// summary without `member` gets the DOM it always had.
+
+/** The "sats" label inside the typed-amount field. */
+function SatsUnit({ on, children }: { on: boolean; children: ReactNode }) {
+  if (!on) return <>{children}</>;
+  return (
+    <div className="action-confirm-sats">
+      {children}
+      <span className="action-confirm-sats-unit" aria-hidden="true">{COPY.satsUnit}</span>
+    </div>
+  );
+}
+
+/** The buttons in source order (main first), or with the main one last. */
+function MainLast({ on, children }: { on: boolean; children: ReactNode }) {
+  return <>{on ? Children.toArray(children).reverse() : children}</>;
+}
+
+function MemberRows({ rows, usd }: { rows: MemberLayout["details"]["rows"]; usd: number | null }) {
+  return (
+    <dl className="action-confirm-rows">
+      {rows.map((r) => (
+        <div key={r.label} className="action-confirm-row">
+          <dt>{r.label}</dt>
+          <dd className={"ident" in r && r.ident ? "ident" : undefined}>
+            {"sats" in r ? inlineAmount(r.sats, usd) : r.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function MemberSummary({ m }: { m: MemberLayout }) {
+  const usd = usableUsd(m.rate);
+  const { rows, notes } = m.details;
+  return (
+    <div className="action-confirm-member">
+      <div className="action-confirm-amount">
+        <Amount sats={m.amountSats} rate={m.rate} size="hero" />
+      </div>
+      {m.costSats !== undefined && (
+        <p className="action-confirm-line">
+          <span className="text-dim">{COPY.cost}</span> {inlineAmount(m.costSats, usd, true)}
+        </p>
+      )}
+      {m.goesTo && (
+        <p className="action-confirm-line">
+          <span className="text-dim">{COPY.goesTo}</span> {m.goesTo}
+        </p>
+      )}
+      {m.rows && m.rows.length > 0 && <MemberRows rows={m.rows} usd={usd} />}
+      {m.finalLine.kind === "cant_undo" ? (
+        <p className="action-confirm-final"><CantUndoIcon />{COPY.cantUndo}</p>
+      ) : (
+        <p className="action-confirm-final">{m.finalLine.text}</p>
+      )}
+      {(rows.length > 0 || notes.length > 0) && (
+        <details className="action-confirm-details">
+          <summary>{COPY.details}</summary>
+          <div className="action-confirm-details-body">
+            {rows.length > 0 && <MemberRows rows={rows} usd={usd} />}
+            {notes.map((n) => <p key={n}>{n}</p>)}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 export default function ActionConfirmModal({
   controller,
   onConfirm,
@@ -96,6 +174,7 @@ export default function ActionConfirmModal({
   if (state.step === "closed") return null;
 
   const summary: ActionSummary = state.summary;
+  const member = summary.member;
   const typed = state.step === "confirm" ? state.typed : "";
   const ready = state.step === "confirm" && challengeSatisfied(summary.challenge, typed);
 
@@ -115,6 +194,8 @@ export default function ActionConfirmModal({
             and after a failure — removing it at the moment something went
             wrong is exactly when the operator most needs to see it. */}
         <div className="dialog-body">
+          {member ? <MemberSummary m={member} /> : (
+            <>
           <dl style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 14px", margin: 0 }}>
             {summary.rows.map((r) => (
               <div key={r.label} style={{ display: "contents" }}>
@@ -136,6 +217,8 @@ export default function ActionConfirmModal({
           {summary.irreversible && (
             <p style={{ marginTop: 12, marginBottom: 0, opacity: 0.85 }}>{summary.irreversible}</p>
           )}
+            </>
+          )}
         </div>
 
         {state.step === "confirm" && state.notice && (typeof state.notice === "string" ? (
@@ -154,8 +237,11 @@ export default function ActionConfirmModal({
         {state.step === "confirm" && (
           <div style={{ marginTop: 14 }}>
             <label htmlFor="action-confirm-challenge" style={{ display: "block", marginBottom: 6 }}>
-              {challengePrompt(summary.challenge)}
+              {member ? memberChallengePrompt(summary.challenge) : challengePrompt(summary.challenge)}
             </label>
+            {/* The member layout labels the field "sats" (ruled), on a wrapper:
+                .action-confirm-input sets only its 44px (confirmInput.test.ts). */}
+            <SatsUnit on={member != null && summary.challenge.kind === "amount"}>
             <input
               id="action-confirm-challenge"
               className="form-input action-confirm-input"
@@ -171,6 +257,7 @@ export default function ActionConfirmModal({
               }}
               style={{ width: "100%", fontVariantNumeric: "tabular-nums" }}
             />
+            </SatsUnit>
           </div>
         )}
 
@@ -190,10 +277,12 @@ export default function ActionConfirmModal({
         )}
         </div>
 
-        {/* ── Actions ── */}
+        {/* ── Actions ──
+            The member layout puts the main button on the RIGHT (ruled, slice
+            5); every other summary keeps it first. */}
         <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
           {state.step === "confirm" && (
-            <>
+            <MainLast on={member != null}>
               <button
                 className="btn btn-primary"
                 disabled={!ready}
@@ -205,7 +294,7 @@ export default function ActionConfirmModal({
               <button className="btn btn-outline" onClick={() => dispatch({ t: "cancel" })}>
                 Cancel
               </button>
-            </>
+            </MainLast>
           )}
 
           {state.step === "sending" && (
@@ -216,7 +305,7 @@ export default function ActionConfirmModal({
           )}
 
           {state.step === "failed" && (
-            <>
+            <MainLast on={member != null}>
               {/* A mismatch is deterministic — offering "Try again" would send
                   the operator round a loop that cannot terminate. */}
               {state.error?.retryable !== false && (
@@ -231,7 +320,7 @@ export default function ActionConfirmModal({
               >
                 Close
               </button>
-            </>
+            </MainLast>
           )}
         </div>
       </div>

@@ -436,6 +436,7 @@ export default function RefillChannel() {
           mode: "loop_in",
           minerFeeMarginPct: quoteResp.miner_fee_margin_pct,
         }),
+        rate: rateInfo,
       }),
     );
   }
