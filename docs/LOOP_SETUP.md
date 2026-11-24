@@ -141,6 +141,17 @@ forward. That file is authoritative; this table is a copy and can drift.
 | `LOOP_CONF_TARGET` | `6` | On-chain confirmation target, in blocks |
 | `LOOP_SERVER_PUBKEYS` | Lightning Labs mainnet Loop server | Comma-separated pubkeys for the Loop In route-probe preflight, and the Loop Out route probe's fallback when the quote's `swap_payment_dest` finds no route |
 
+**A numeric value outside its range gives the default**, with one `[env] …;
+using the default …` warning at startup; unset or empty gives the default
+silently (`app/api/src/config/numberEnv.ts`). Plain digits only — no sign,
+exponent or separator. The ranges: `LOOP_GRPC_PORT` 1–65,535;
+`LOOP_MAX_SWAP_FEE_PCT` above 0 and at most 100, decimals allowed;
+`LOOP_ROUTING_FEE_CAP_PPM` 1–1,000,000; `LOOP_MINER_FEE_MARGIN_PCT` 0–100,
+decimals allowed; `LOOP_MIN_REBALANCE_SATS` 0 or more; `LOOP_CONF_TARGET` 2 or
+more (loopd refuses a lower target); `REBALANCE_SCHEDULER_INTERVAL_MS`
+1,000–2,147,483,647 (outside it Node would run the scheduler every 1 ms).
+Before this, a malformed value became `NaN` and switched the check it fed off.
+
 **`LOOP_MAX_SWAP_FEE_PCT` is 15, and since loop-fee-ceilings it is only a
 sanity check.** It applies to `quote.swap_fee_sat` alone, not to the total,
 and it is never sent to loopd: `max_swap_fee` is the quoted swap fee itself.
