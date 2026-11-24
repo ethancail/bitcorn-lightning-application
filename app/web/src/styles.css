@@ -1567,6 +1567,9 @@ div:has(> .action-confirm-input) + .dialog-actions {
   width: 8px; height: 8px;
   border-radius: var(--radius-full);
   display: inline-block;
+  /* Slice 5: an empty span in a flex row (the top bar's sync state) has no
+     min-content, so the 390px bar squeezed it to ~2x8px. It keeps its size. */
+  flex-shrink: 0;
 }
 .pulse-dot.green { background: var(--green); box-shadow: 0 0 0 0 var(--green-glow); animation: pulse-green 2s infinite; }
 .pulse-dot.red   { background: var(--red); }
