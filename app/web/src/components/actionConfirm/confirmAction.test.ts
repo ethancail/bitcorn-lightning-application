@@ -4,6 +4,7 @@ import {
   challengePrompt,
   challengeSatisfied,
   challengeTarget,
+  memberChallengePrompt,
   summarizeCloseChannel,
   summarizeLoopIn,
   summarizeLoopOut,
@@ -14,8 +15,21 @@ import {
   type ActionSummary,
 } from "./confirmAction";
 
+/** Every word a member layout puts on screen (slice 5), for the copy guards. */
+function memberWords(s: ActionSummary): string {
+  const m = s.member;
+  if (!m) return "";
+  return [
+    m.goesTo ?? "",
+    m.finalLine.kind === "plain" ? m.finalLine.text : "Can't be undone",
+    ...(m.rows ?? []).map((r) => `${r.label} ${r.value}`),
+    ...m.details.rows.map((r) => ("value" in r ? `${r.label} ${r.value}` : r.label)),
+    ...m.details.notes,
+  ].join(" ");
+}
+
 const ALL: Array<[string, ActionSummary]> = [
-  ["openMemberChannel", summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 } })],
+  ["openMemberChannel", summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 }, rate: null })],
   [
     "treasuryOpenChannel",
     summarizeTreasuryOpenChannel({ peerPubkey: "02b759b1552f6471599420c9aa8b7fb52c0a343ecc", capacitySats: 2_000_000, fee: { label: "Economy", rate: 1 } }),
@@ -23,8 +37,8 @@ const ALL: Array<[string, ActionSummary]> = [
   ["closeChannel coop", summarizeCloseChannel({ channelId: "842391119757312" })],
   ["closeChannel force", summarizeCloseChannel({ channelId: "842391119757312", isForceClose: true })],
   ["payInvoice", summarizePayInvoice({ amountSats: 25_000, destination: "02abcdef1234567890" })],
-  ["loopOut", summarizeLoopOut({ amountSats: 500_000, destinationAddress: "bc1qxyzqabc123" })],
-  ["loopIn", summarizeLoopIn({ amountSats: 250_000 })],
+  ["loopOut", summarizeLoopOut({ amountSats: 500_000, rate: null })],
+  ["loopIn", summarizeLoopIn({ amountSats: 250_000, rate: null })],
 ];
 
 describe("the typed challenge", () => {
@@ -87,6 +101,9 @@ describe("the typed challenge", () => {
         // The prompt shows a grouped number; typing what is shown must work.
         const shown = challengePrompt(s.challenge).split(": ")[1];
         expect(challengeSatisfied(s.challenge, shown), `${s.title}: prompted form rejected`).toBe(true);
+        // The member layout's prompt (slice 5) ends ": N" the same way.
+        const memberShown = memberChallengePrompt(s.challenge).split(": ")[1];
+        expect(challengeSatisfied(s.challenge, memberShown), `${s.title}: member prompt rejected`).toBe(true);
       } else {
         expect(challengePrompt(s.challenge)).toContain(s.challenge.text);
       }
@@ -96,9 +113,10 @@ describe("the typed challenge", () => {
 
 describe("every summary is usable", () => {
   for (const [label, s] of ALL) {
-    it(`${label}: has a title, at least one row and a confirm label`, () => {
+    // A member-layout summary (slice 5) shows its member block instead of rows.
+    it(`${label}: has a title, at least one row (or a member layout) and a confirm label`, () => {
       expect(s.title.length).toBeGreaterThan(0);
-      expect(s.rows.length).toBeGreaterThan(0);
+      expect(s.rows.length > 0 || s.member !== undefined).toBe(true);
       expect(s.confirmLabel.length).toBeGreaterThan(0);
     });
 
@@ -110,20 +128,24 @@ describe("every summary is usable", () => {
   it("an amount-bearing action challenges on the AMOUNT, not a word", () => {
     // Ethan's requirement: type the amount where there is one.
     const withAmounts: ActionSummary[] = [
-      summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 } }),
+      summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 }, rate: null }),
       summarizeTreasuryOpenChannel({ peerPubkey: "02ab", capacitySats: 2_000_000, fee: { label: "Economy", rate: 1 } }),
       summarizePayInvoice({ amountSats: 25_000 }),
-      summarizeLoopOut({ amountSats: 500_000, destinationAddress: "bc1q" }),
-      summarizeLoopIn({ amountSats: 250_000 }),
+      summarizeLoopOut({ amountSats: 500_000, rate: null }),
+      summarizeLoopIn({ amountSats: 250_000, rate: null }),
     ];
     for (const s of withAmounts) expect(s.challenge.kind, s.title).toBe("amount");
   });
 
   it("and the amount challenged is the amount SHOWN", () => {
     // A challenge on a different number than the one on screen is unpassable.
-    const s = summarizeLoopOut({ amountSats: 500_000, destinationAddress: "bc1qabc" });
+    // Slice 5: Withdraw's amount is its member layout's big amount, not a row.
+    const s = summarizeLoopOut({ amountSats: 500_000, rate: null });
     expect(s.challenge).toEqual({ kind: "amount", sats: 500_000 });
-    expect(s.rows.find((r) => r.label === "Amount")?.value).toBe("500,000 sats");
+    expect(s.member?.amountSats).toBe(500_000);
+    const pay = summarizePayInvoice({ amountSats: 25_000 });
+    expect(pay.challenge).toEqual({ kind: "amount", sats: 25_000 });
+    expect(pay.rows.find((r) => r.label === "Amount")?.value).toBe("25,000 sats");
   });
 
   it("a close has no amount leaving, so it challenges on a word instead", () => {
@@ -142,10 +164,18 @@ describe("every summary is usable", () => {
     expect(force.title).not.toBe(coop.title);
   });
 
-  it("loop-out leads with the destination address, the field a mistake ruins", () => {
-    const s = summarizeLoopOut({ amountSats: 1000, destinationAddress: "bc1qlongaddressvalue0000" });
-    expect(s.rows.map((r) => r.label).slice(0, 2)).toEqual(["Amount", "To address"]);
-    expect(s.irreversible).toMatch(/address/i);
+  // REWRITTEN for slice 5, ruling (2) (vault decisions/2026-11-23-member-first-
+  // run-ui-slice-5-rulings-...): "Goes to: Your node's bitcoin wallet", with no
+  // address row and no wrong-address sentence. This pin used to require both.
+  // The address is the node's own (api.getNodeAddress), and the confirmation
+  // hash is of the request body, which still carries it.
+  it("Withdraw says where the money goes in words, with no address row and no wrong-address sentence", () => {
+    const s = summarizeLoopOut({ amountSats: 1000, feeSats: 10, authorizedMaxSats: 20, rate: null });
+    expect(s.member?.goesTo).toBe("Your node's bitcoin wallet");
+    expect(s.rows).toEqual([]);
+    expect(s.irreversible).toBeUndefined();
+    expect(JSON.stringify(s)).not.toMatch(/address/i);
+    expect(s.member?.finalLine).toEqual({ kind: "cant_undo" });
   });
 });
 
@@ -159,7 +189,7 @@ describe("no copy tells the operator to ask an operator", () => {
 
   it("no summary text matches the banned phrasings", () => {
     for (const [label, s] of ALL) {
-      const text = [s.title, s.irreversible ?? "", s.confirmLabel, ...s.rows.map((r) => `${r.label} ${r.value}`)].join(" ");
+      const text = [s.title, s.irreversible ?? "", s.confirmLabel, ...s.rows.map((r) => `${r.label} ${r.value}`), memberWords(s)].join(" ");
       for (const re of BANNED) expect(text, `${label} matched ${re}`).not.toMatch(re);
     }
   });
@@ -245,8 +275,9 @@ describe("loop-fee-ceilings: the authorised maximum and the post-start disclosur
   it("tt: Loop In without the server's margin shows no maximum (never a guessed 50)", () => {
     const max = helpers.authorizedMaxSats?.(GATE1_LOOP_IN, { mode: "loop_in", minerFeeMarginPct: undefined });
     expect(max).toBeUndefined();
-    const s = summarizeLoopIn({ amountSats: 250_000, feeSats: 4_046, authorizedMaxSats: max });
-    expect(s.rows.some((r) => /most you authori[sz]e/i.test(r.label))).toBe(false);
+    const s = summarizeLoopIn({ amountSats: 250_000, feeSats: 4_046, authorizedMaxSats: max, rate: null });
+    // Slice 5: the maximum is a Details row, "Most you allow in fees".
+    expect(s.member!.details.rows.some((r) => /most you allow/i.test(r.label))).toBe(false);
   });
 
   it("tt guard: Loop Out's figure is unchanged", () => {
@@ -260,20 +291,21 @@ describe("loop-fee-ceilings: the authorised maximum and the post-start disclosur
   });
 
   it("Loop Out: shows the maximum and says the network fee follows the market, capped at 20%", () => {
-    const s = summarizeLoopOut({
-      amountSats: 250_000, destinationAddress: "bc1qabc", feeSats: 2_035, authorizedMaxSats: 4_835,
-    } as Parameters<typeof summarizeLoopOut>[0]);
-    expect(s.rows.find((r) => /most you authori[sz]e/i.test(r.label))?.value).toBe("4,835 sats");
-    expect(s.body).toMatch(/follows the market/i);
-    expect(s.body).toMatch(/20% of the amount/);
+    // Slice 5, ruling (2): the fee limit and the 20% rule sit under Details.
+    const s = summarizeLoopOut({ amountSats: 250_000, feeSats: 2_035, authorizedMaxSats: 4_835, rate: null });
+    expect(s.member!.details.rows).toEqual([{ label: "Most you allow in fees", sats: 4_835 }]);
+    expect(s.member!.costSats).toBe(2_035);
+    const notes = s.member!.details.notes.join(" ");
+    expect(notes).toMatch(/follows the market/i);
+    expect(notes).toMatch(/20% of the amount/);
   });
 
   it("Loop In: shows the maximum, says the network fee follows the market, and claims no 20% cap", () => {
-    const s = summarizeLoopIn({
-      amountSats: 250_000, feeSats: 1_400, authorizedMaxSats: 1_400,
-    } as Parameters<typeof summarizeLoopIn>[0]);
-    expect(s.rows.find((r) => /most you authori[sz]e/i.test(r.label))?.value).toBe("1,400 sats");
-    expect(s.body).toMatch(/follows the market/i);
-    expect(s.body ?? "").not.toMatch(/20%/);
+    // Slice 5, ruling (3): the fee limit sits under Details.
+    const s = summarizeLoopIn({ amountSats: 250_000, feeSats: 1_400, authorizedMaxSats: 1_400, rate: null });
+    expect(s.member!.details.rows).toEqual([{ label: "Most you allow in fees", sats: 1_400 }]);
+    const notes = s.member!.details.notes.join(" ");
+    expect(notes).toMatch(/follows the market/i);
+    expect(notes).not.toMatch(/20%/);
   });
 });

@@ -6,7 +6,10 @@ describe("payErrorMessage", () => {
     expect(payErrorMessage("insufficient_funds")).toMatch(/not enough/i);
     expect(payErrorMessage("fee_estimate_failed")).toMatch(/fee/i);
     expect(payErrorMessage("lnd_unavailable")).toMatch(/unavailable/i);
-    expect(payErrorMessage("status_unavailable")).toMatch(/treasury/i);
+    // Slice 5, ruling (6): "…with BitCorn", no longer "…with the treasury".
+    expect(payErrorMessage("status_unavailable")).toBe(
+      "Couldn't confirm your subscription details with BitCorn. Try again in a moment.",
+    );
     expect(payErrorMessage("payment_in_flight")).toMatch(/already being sent/i);
     expect(payErrorMessage("member_required")).toMatch(/member nodes/i);
   });

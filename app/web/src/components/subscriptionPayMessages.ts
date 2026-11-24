@@ -34,7 +34,8 @@ export function payErrorMessage(code?: string, detail?: string, body?: unknown):
         ? `The payment couldn't be sent: ${detail}`
         : "The payment couldn't be sent. Try again.";
     case "status_unavailable":
-      return "Couldn't confirm your subscription details with the treasury. Try again in a moment.";
+      // Slice 5, ruling (6): "…with BitCorn", not "…with the treasury".
+      return "Couldn't confirm your subscription details with BitCorn. Try again in a moment.";
     case "status_incomplete":
       return "Nothing was sent. Your node couldn't read your subscription status; try again later.";
     case "payment_in_flight":

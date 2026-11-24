@@ -1449,6 +1449,29 @@ div:has(> .action-confirm-input) + .dialog-actions {
 .action-confirm-notice-heading { font-weight: 600; color: var(--text); }
 .action-confirm-notice-body { color: var(--text-2); }
 
+/* The member layout of ActionConfirmModal (slice 5; summary.member): the
+   amount big, dollars over sats; one "What it costs" line; "Goes to"; the
+   last line ("Can't be undone" with its lock, or a plain sentence: a line,
+   no box, like Withdraw's "Waiting costs less"); a closed "Details". */
+.action-confirm-member { display: flex; flex-direction: column; gap: 10px; }
+.action-confirm-member p { margin: 0; }
+.action-confirm-line { color: var(--text); }
+.action-confirm-rows { display: flex; flex-direction: column; gap: 4px; margin: 0; }
+.action-confirm-row { display: flex; justify-content: space-between; gap: 12px; }
+.action-confirm-row dt { color: var(--text-3); }
+.action-confirm-row dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
+.action-confirm-final { display: flex; gap: 8px; align-items: flex-start; color: var(--text); }
+.action-confirm-final-icon { flex: none; margin-top: 3px; color: var(--text-2); }
+.action-confirm-details > summary { cursor: pointer; user-select: none; color: var(--text); }
+.action-confirm-details-body { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; font-size: 0.8125rem; }
+/* The "sats" label in the typed-amount field (Withdraw's .withdraw-unit). */
+.action-confirm-sats { position: relative; }
+.action-confirm-sats .form-input { padding-right: 42px; }
+.action-confirm-sats-unit {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  font-size: 0.75rem; color: var(--text-3); font-family: var(--mono); pointer-events: none;
+}
+
 .dialog-actions {
   display: flex;
   gap: 10px;
@@ -1495,15 +1518,29 @@ div:has(> .action-confirm-input) + .dialog-actions {
   text-align: right;
 }
 
-/* G3 ruling R2: no line break inside an amount, and an address that does not
-   fit ends in an ellipsis instead of wrapping mid-token (phone-m15 showed
-   "(3,749 s / ats)" and "…lzsq8 / kct" under word-break: break-all). */
+/* G3 ruling R2: no line break inside an amount, and no address wrapped
+   mid-token (phone-m15 showed "(3,749 s / ats)" and "…lzsq8 / kct" under
+   word-break: break-all). Slice 5, ruling (5): the FULL address, under its
+   label, in groups of 4; each group is nowrap and the spaces between them are
+   the only places a line can break. (It replaced a middle cut followed by an
+   ellipsis, which cut the address twice at 390px.) */
 .sub-amount {
   white-space: nowrap;
 }
+.sub-pay-preview .amount { align-items: flex-end; }
+.sub-pay-preview > div.sub-pay-row-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
 .sub-pay-preview dd.sub-pay-address {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: left;
+  white-space: normal;
+  line-height: 1.6;
+  /* An identifier (Z2): .ident's font, which .sub-pay-preview dd outranks. */
+  font-family: var(--font-id);
+}
+.sub-pay-address-group {
   white-space: nowrap;
 }
 
@@ -1530,6 +1567,9 @@ div:has(> .action-confirm-input) + .dialog-actions {
   width: 8px; height: 8px;
   border-radius: var(--radius-full);
   display: inline-block;
+  /* Slice 5: an empty span in a flex row (the top bar's sync state) has no
+     min-content, so the 390px bar squeezed it to ~2x8px. It keeps its size. */
+  flex-shrink: 0;
 }
 .pulse-dot.green { background: var(--green); box-shadow: 0 0 0 0 var(--green-glow); animation: pulse-green 2s infinite; }
 .pulse-dot.red   { background: var(--red); }
@@ -1616,9 +1656,11 @@ div:has(> .action-confirm-input) + .dialog-actions {
 
 /* ─── Mobile responsive (< 768px) ─────────────────────────────── */
 @media (max-width: 767px) {
-  /* Layout: collapse to single column */
+  /* Layout: collapse to single column. minmax(0, 1fr), not 1fr: 1fr is
+     minmax(auto, 1fr), so the top bar's min-content (its nowrap name) set the
+     column and the page ran 4.7px past a 390px screen (slice 5, ruling 1). */
   .app-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .main-content { grid-column: 1; }
 

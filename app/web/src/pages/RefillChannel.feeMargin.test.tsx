@@ -108,17 +108,24 @@ async function confirmationFor(marginPct: number | undefined): Promise<string> {
   return (dialog!.textContent ?? "").replace(/\s+/g, " ");
 }
 
-describe("ruling tt — Top Up's \"Most you authorize in fees\" includes the miner-fee margin", () => {
+// Slice 5, ruling (3): the dialog is "Top up your connection" and the maximum
+// is "Most you allow in fees" under its closed Details, as dollars and sats
+// (the amount rule; the fixture's rate is $60,000, so 5,984 sats is $3.59).
+// The figure is unchanged; only its words and its place moved. (A closed
+// <details> is still in the DOM, so textContent reads it.)
+describe("ruling tt — Top Up's \"Most you allow in fees\" includes the miner-fee margin", () => {
   it("margin 50%: the confirmation shows 5,984 sats (171 + ceil(3,875 × 1.5)), not the 4,046 of the ceilings alone", async () => {
     const text = await confirmationFor(50);
-    expect(text).toContain("Refill this channel");
-    expect(text).toMatch(/Most you authorize in fees\s*5,984 sats/);
-    expect(text).not.toMatch(/Most you authorize in fees\s*4,046 sats/);
+    expect(text).toContain("Top up your connection");
+    expect(text).toMatch(/Most you allow in fees\s*\$3\.59 \(5,984 sats\)/);
+    // (4,046 can still appear: it is also this fixture's quoted total fee, on
+    // the "What it costs" line. What must not be 4,046 is the maximum.)
+    expect(text).not.toMatch(/Most you allow in fees\s*\$[\d.,]+ \(4,046 sats\)/);
   });
 
   it("no margin from the server: no maximum is shown (ruling ww), never the ceilings' sum", async () => {
     const text = await confirmationFor(undefined);
-    expect(text).toContain("Refill this channel");
-    expect(text).not.toContain("Most you authorize in fees");
+    expect(text).toContain("Top up your connection");
+    expect(text).not.toContain("Most you allow in fees");
   });
 });

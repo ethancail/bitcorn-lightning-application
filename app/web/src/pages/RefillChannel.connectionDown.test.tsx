@@ -4,8 +4,8 @@
 // option cards and offers no amounts (no presets, Max, input or "Most you can
 // add"). Unknown (no treasury_channel) fails open, as Withdraw's does.
 // The same commit says "connection" wherever Top Up's page said "channel" to a
-// member. The confirmation dialog's title ("Refill this channel") is not the
-// page's: it is loop-fee-ceilings' copy (actionConfirm/), left unchanged.
+// member. The confirmation dialog is not the page's: it is actionConfirm/'s,
+// "Top up your connection" since member-first-run-ui slice 5 (ruling (3)).
 //
 // Harness: optionCards.pages.test.tsx's.
 

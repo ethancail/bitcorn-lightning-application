@@ -14,6 +14,8 @@
 // the hash, a copy change could alter a confirmation value, which is absurd but
 // is exactly the coupling that "compute it in the form" produces.
 
+import type { ExchangeRate } from "../../api/client";
+
 export type Challenge =
   /**
    * Type the amount in sats.
@@ -82,6 +84,61 @@ export interface ActionSummary {
   challenge: Challenge;
   /** Text on the go-ahead button. */
   confirmLabel: string;
+  /**
+   * The member layout (member-first-run-ui slice 5), OPT-IN: set only by the
+   * member's money dialogs. When it is set the modal shows this instead of
+   * `rows`/`body`/`irreversible`, prompts with `memberChallengePrompt`, labels
+   * the field "sats" and puts the main button on the RIGHT. Every summary
+   * without it — Kevin's treasury dialogs, Payments, the Auto-Buy catch-up —
+   * renders exactly as before (ruling (8): left as they are).
+   */
+  member?: MemberLayout;
+}
+
+/** A row under the member layout's "Details": an amount (shown by the amount
+ *  rule) or a value in words; `ident` as in `ActionSummary.rows`. */
+export type MemberDetailRow =
+  | { label: string; sats: number }
+  | { label: string; value: string; ident?: true };
+
+/**
+ * What a member's money dialog shows. Data, not markup: the modal formats the
+ * amounts with slice 1's formatter (amountDescriptor), so dollars sit over
+ * sats and every figure follows the amount rule.
+ */
+export interface MemberLayout {
+  /** The amount, shown big: dollars over sats. */
+  amountSats: number;
+  /** The page's exchange rate; `<Amount>` decides from it whether dollars show. */
+  rate: ExchangeRate | null | undefined;
+  /** The one "What it costs" line, as "about $X (N sats)"; no line when unknown. */
+  costSats?: number;
+  /** Where the money goes, in words ("Goes to: …"). */
+  goesTo?: string;
+  /** Rows kept visible below the cost (the member open's Speed row). */
+  rows?: Array<{ label: string; value: string; ident?: true }>;
+  /** The last line: "Can't be undone" with its icon, or a plain sentence. */
+  finalLine: { kind: "cant_undo" } | { kind: "plain"; text: string };
+  /** What a closed "Details" holds: rows, then sentences. */
+  details: { rows: MemberDetailRow[]; notes: string[] };
+}
+
+/** The member layout's fixed words (slice 5, rulings (2)–(4)). */
+export const MEMBER_DIALOG_COPY = {
+  cost: "What it costs:",
+  goesTo: "Goes to:",
+  cantUndo: "Can't be undone",
+  details: "Details",
+  satsUnit: "sats",
+  mostInFees: "Most you allow in fees",
+} as const;
+
+/** The member layout's prompt (ruled): "To confirm, type the sats amount: N".
+ *  Ends ": N" like challengePrompt, so what is shown is what passes. */
+export function memberChallengePrompt(c: Challenge): string {
+  return c.kind === "amount"
+    ? `To confirm, type the sats amount: ${Math.round(c.sats).toLocaleString("en-US")}`
+    : challengePrompt(c);
 }
 
 export const fmtSats = (n: number): string =>
@@ -159,24 +216,35 @@ export function challengePrompt(c: Challenge): string {
 /** The fee option a channel summary shows: its label and the integer sat/vB it sends. */
 export type SummaryFee = { label: string; rate: number };
 
+// The member's open (Connect to BitCorn), through the member layout (slice 5,
+// ruling (4), option C): the size as dollars over sats; "What it costs" = the
+// live estimate's network fee; the Speed row KEPT, still the rate the request
+// sends and the confirmation hashes (the CONFIRM-RULING pin); the address
+// under Details. The "Fee updated" reshow is the hook's (useConnectToHub).
 export function summarizeOpenMemberChannel(p: {
   capacitySats: number;
   partnerSocket?: string;
-  hubLabel?: string;
   fee: SummaryFee;
+  /** The live estimate's network fee for the open, in sats (cost_sats.open). */
+  feeSats?: number;
+  rate: ExchangeRate | null | undefined;
 }): ActionSummary {
   return {
-    title: "Open a channel to the hub",
-    rows: [
-      { label: "Capacity", value: fmtSats(p.capacitySats) },
-      { label: "Peer", value: p.hubLabel ?? "Bitcorn treasury hub" },
-      { label: "Speed", value: `${p.fee.label} (about ${p.fee.rate} sat/vB)` },
-      ...(p.partnerSocket ? [{ label: "Address", value: p.partnerSocket, ident: true as const }] : []),
-    ],
-    irreversible:
-      "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later.",
+    title: "Connect to BitCorn",
+    rows: [],
     challenge: { kind: "amount", sats: p.capacitySats },
-    confirmLabel: "Open channel",
+    confirmLabel: "Connect",
+    member: {
+      amountSats: p.capacitySats,
+      rate: p.rate,
+      costSats: p.feeSats,
+      rows: [{ label: "Speed", value: `${p.fee.label} (about ${p.fee.rate} sat/vB)` }],
+      finalLine: { kind: "plain", text: "The network fee is spent even if you close the connection later." },
+      details: {
+        rows: p.partnerSocket ? [{ label: "Address", value: p.partnerSocket, ident: true }] : [],
+        notes: [],
+      },
+    },
   };
 }
 
@@ -304,51 +372,69 @@ export function loopOutEstimatedFeeSats(q: { swap_fee_sat?: number; miner_fee_sa
   return (q.swap_fee_sat ?? 0) + (q.miner_fee_sat ?? 0);
 }
 
+// Withdraw and Top Up are member-only (/withdraw, /cashout, /refill), so both
+// use the member layout (slice 5, rulings (2) and (3)). The address is not
+// shown: it is the node's own (api.getNodeAddress), so "Goes to" says so in
+// words, and the confirmation hash is of the request body, not of this copy.
+
+/** Withdraw's 20% rule (loop-fee-ceilings §7, ruling 5), under Details. */
+export const LOOP_OUT_MARKET_NOTE =
+  "Once the withdrawal starts, the Bitcoin network fee follows the market, capped at 20% of the amount.";
+
 export function summarizeLoopOut(p: {
   amountSats: number;
-  destinationAddress: string;
+  /** The quote's estimate (loopOutEstimatedFeeSats): "What it costs". */
   feeSats?: number;
   authorizedMaxSats?: number;
+  rate: ExchangeRate | null | undefined;
 }): ActionSummary {
   return {
-    title: "Move funds on-chain",
-    rows: [
-      { label: "Amount", value: fmtSats(p.amountSats) },
-      { label: "To address", value: truncId(p.destinationAddress, 10), ident: true },
-      ...(p.feeSats !== undefined ? [{ label: "Estimated fee", value: fmtSats(p.feeSats) }] : []),
-      ...(p.authorizedMaxSats !== undefined
-        ? [{ label: "Most you authorize in fees", value: fmtSats(p.authorizedMaxSats) }]
-        : []),
-    ],
-    body:
-      "Once the withdrawal starts, the Bitcoin network fee follows the market, " +
-      "capped at 20% of the amount.",
-    irreversible:
-      "The address above is where the coins land. A wrong address cannot be reversed by anyone.",
+    title: "Withdraw to your node's wallet",
+    rows: [],
     challenge: { kind: "amount", sats: p.amountSats },
     confirmLabel: "Withdraw",
+    member: {
+      amountSats: p.amountSats,
+      rate: p.rate,
+      costSats: p.feeSats,
+      goesTo: "Your node's bitcoin wallet",
+      finalLine: { kind: "cant_undo" },
+      details: {
+        rows: p.authorizedMaxSats !== undefined
+          ? [{ label: MEMBER_DIALOG_COPY.mostInFees, sats: p.authorizedMaxSats }]
+          : [],
+        notes: [LOOP_OUT_MARKET_NOTE],
+      },
+    },
   };
 }
 
 export function summarizeLoopIn(p: {
   amountSats: number;
+  /** The quote's total fee: "What it costs". */
   feeSats?: number;
   authorizedMaxSats?: number;
+  rate: ExchangeRate | null | undefined;
 }): ActionSummary {
   return {
-    title: "Refill this channel",
-    rows: [
-      { label: "Amount", value: fmtSats(p.amountSats) },
-      ...(p.feeSats !== undefined ? [{ label: "Estimated fee", value: fmtSats(p.feeSats) }] : []),
-      ...(p.authorizedMaxSats !== undefined
-        ? [{ label: "Most you authorize in fees", value: fmtSats(p.authorizedMaxSats) }]
-        : []),
-    ],
-    // No 20% clause: that clamp exists only on the Loop Out sweep (ruling 5).
-    body: "Once the refill starts, the Bitcoin network fee follows the market.",
-    irreversible: "The swap fee is spent even if the swap does not complete.",
+    title: "Top up your connection",
+    rows: [],
     challenge: { kind: "amount", sats: p.amountSats },
-    confirmLabel: "Refill",
+    confirmLabel: "Top up",
+    member: {
+      amountSats: p.amountSats,
+      rate: p.rate,
+      costSats: p.feeSats,
+      // Ruling (3): a plain line instead of "Can't be undone".
+      finalLine: { kind: "plain", text: "The fee is spent even if the top-up doesn't finish." },
+      details: {
+        rows: p.authorizedMaxSats !== undefined
+          ? [{ label: MEMBER_DIALOG_COPY.mostInFees, sats: p.authorizedMaxSats }]
+          : [],
+        // No 20% clause: that clamp exists only on the Loop Out sweep (ruling 5).
+        notes: ["Once the top-up starts, the Bitcoin network fee follows the market."],
+      },
+    },
   };
 }
 

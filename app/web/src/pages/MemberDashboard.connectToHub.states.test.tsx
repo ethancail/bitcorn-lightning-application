@@ -242,11 +242,12 @@ const sizeBox = () => host.querySelector("input[aria-label='Connection size in s
 const addressBox = () => host.querySelector(".connect-address input") as HTMLInputElement;
 const challenge = () => document.body.querySelector("#action-confirm-challenge") as HTMLInputElement;
 
-/** Open the modal and satisfy its typed challenge for `sats`. */
+/** Open the modal and satisfy its typed challenge for `sats`. The dialog's
+ *  main button is "Connect" since slice 5 (ruling (4)); it was "Open channel". */
 async function openAndConfirm(sats: string): Promise<void> {
   await click(btn("Connect to BitCorn →")!);
   await type(challenge(), sats);
-  await click(btn("Open channel")!);
+  await click(btn("Connect")!);
 }
 
 // ─── States ────────────────────────────────────────────────────────────────
@@ -357,7 +358,7 @@ describe("ConnectToHub, the no-channel call site (MemberDashboard :731)", () => 
     await renderDashboard();
     await click(btn("Connect to BitCorn →")!);
     await type(challenge(), "1000000");
-    expect(btn("Open channel")!.disabled).toBe(false);
+    expect(btn("Connect")!.disabled).toBe(false);
     expect(capture()).toMatchSnapshot();
   });
 
@@ -592,17 +593,21 @@ describe("fee-estimates — Economy has a live figure, like Normal and Priority"
 describe("slice 2 — no \"channel\" or \"hub\" in the card's member text, in any state", () => {
   const WORDS = /channel|hub/i;
   /** The cards' text and every attribute a member can read or hear, Technical
-   *  details included. The confirm dialog (a portal, not in the card) keeps
-   *  its words until slice 5. */
+   *  details included — and, since slice 5 (ruling (4)), the confirm dialog
+   *  too (a portal on <body>, not in the card), Details included, its own
+   *  aria-label with it. */
   function memberText(): string {
     const cs = cards();
     expect(cs.length, "no Connect card to check").toBeGreaterThanOrEqual(1);
-    return cs.map((c) => [
+    const dialog = document.body.querySelector('[role="dialog"]');
+    const els = dialog ? [...cs, dialog] : cs;
+    return els.map((c) => [
       c.textContent ?? "",
-      ...[...c.querySelectorAll("[aria-label],[placeholder],[title],[alt]")].flatMap((e) =>
+      ...[c, ...c.querySelectorAll("[aria-label],[placeholder],[title],[alt]")].flatMap((e) =>
         ["aria-label", "placeholder", "title", "alt"].map((a) => e.getAttribute(a) ?? "")),
     ].join(" | ")).join(" || ");
   }
+  const openDialog = async () => { await click(btn("Connect to BitCorn →")!); };
   const LOCKED = {
     applicable: true, current_tier: "prepay", open_channel_allowed: false, treasury_signature: "verified",
   };
@@ -622,6 +627,14 @@ describe("slice 2 — no \"channel\" or \"hub\" in the card's member text, in an
       await openAndConfirm("1000000");
     }],
     ["submitting", async () => { await renderDashboard(); await openAndConfirm("1000000"); }],
+    // Slice 5: the confirm dialog itself, Details and its address included.
+    ["the confirm dialog, auto-connect address", async () => {
+      stub.getTreasuryInfo.mockResolvedValue({ pubkey: TREASURY_PUBKEY_FIXTURE, socket: HUB_SOCKET });
+      await renderDashboard(); await openDialog();
+    }],
+    ["the confirm dialog, a typed address", async () => {
+      await renderDashboard(); await type(addressBox(), "203.0.113.5:9735"); await openDialog();
+    }],
     ["success with a txid", async () => { stub.openMemberChannel.mockResolvedValue({ funding_txid: "ab".repeat(32) }); await renderDashboard(); await openAndConfirm("1000000"); }],
     ["success, submitted", async () => { stub.openMemberChannel.mockResolvedValue({}); await renderDashboard(); await openAndConfirm("1000000"); }],
     ["pending", async () => { stub.getPendingChannels.mockResolvedValue([{ peer_pubkey: HUB_PUBKEY, status: "opening" }]); await renderDashboard(); }],
@@ -633,8 +646,23 @@ describe("slice 2 — no \"channel\" or \"hub\" in the card's member text, in an
       await setup();
       const text = memberText();
       expect(text.match(WORDS), `"${text.match(WORDS)?.[0]}" in: ${text}`).toBeNull();
+      // Slice 5: "BitCorn" is spelled so, the dialog included.
+      expect(text).not.toContain("Bitcorn");
     });
   }
+
+  it("not vacuous: with the dialog open the scan reads it, Details and the address included", async () => {
+    await renderDashboard();
+    await type(addressBox(), "203.0.113.5:9735");
+    await openDialog();
+    const text = memberText();
+    expect(text).toContain("Connect to BitCorn");
+    expect(text).toContain("The network fee is spent even if you close the connection later.");
+    expect(text).toContain("203.0.113.5:9735");
+    // …and the old dialog's words would be caught.
+    expect("Open a channel to the hub").toMatch(WORDS);
+    expect("Bitcorn treasury hub").toContain("Bitcorn");
+  });
 });
 
 // ─── Ethan's ruling "fix the five" (2026-11-16), display only ────────────────

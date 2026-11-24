@@ -148,9 +148,11 @@ async function openModal() {
   await click(btn("Connect to BitCorn →")!);
 }
 
+// The dialog's main button is "Connect" since slice 5 (ruling (4): member text
+// never says "channel"); it was "Open channel". What it sends is unchanged.
 async function confirmModal() {
   await type(document.body.querySelector("#action-confirm-challenge") as HTMLInputElement, "1000000");
-  await click(btn("Open channel")!);
+  await click(btn("Connect")!);
 }
 
 /** Open the confirm modal, satisfy its 1,000,000-sat challenge, confirm; return the request body. */
@@ -261,6 +263,37 @@ describe("the confirm summary's rate equals the hashed rate (CONFIRM-RULING)", (
       expect(body.fee_rate).toBe(rowRate);
       if (d.ok) expect(d.canonical).toContain(`fee_rate=${rowRate}`);
     });
+  });
+});
+
+// Slice 5, ruling (4): the dialog's one "What it costs" line is the chosen
+// option's network fee from the live estimate (cost_sats.open) — the figure
+// its card shows — and, after a reshow, the new estimate's.
+describe("slice 5 (4): 'What it costs' is the chosen option's live network fee", () => {
+  const costLine = () =>
+    [...document.body.querySelectorAll(".action-confirm-line")].map((l) => l.textContent ?? "").find((t) => t.startsWith("What it costs:"));
+
+  KEYS.forEach((key, i) => {
+    it(`${LABELS[i]}: the cost line carries its card's open fee`, async () => {
+      await render();
+      await choose(LABELS[i]);
+      await openModal();
+      expect(costLine()).toContain(`${formatSats(STUB.options![key].cost_sats.open)}`);
+    });
+  });
+
+  it("after the 10-min reshow, the cost line is the refreshed estimate's", async () => {
+    const T0 = Date.parse("2026-11-18T12:00:00.000Z");
+    const LATER = feeEstimatesStub({ economy: 3, normal: 6, priority: 12 });
+    const now = vi.spyOn(Date, "now").mockReturnValue(T0);
+    await render();
+    await openModal();
+    expect(costLine()).toContain(formatSats(STUB.options!.economy.cost_sats.open));
+    stub.getFeeEstimates.mockResolvedValue(LATER);
+    now.mockReturnValue(T0 + 11 * 60_000);
+    await confirmModal();
+    expect(stub.openMemberChannel).not.toHaveBeenCalled();
+    expect(costLine()).toContain(formatSats(LATER.options!.economy.cost_sats.open));
   });
 });
 
@@ -384,14 +417,14 @@ describe("the member's 10-min reshow: \"Fee updated\", the new fee, the box clea
   it("the type-to-confirm box is cleared, and confirming is blocked until the amount is typed again", async () => {
     await reshow(FRESH);
     expect(challengeBox().value).toBe("");
-    expect(btn("Open channel")!.disabled).toBe(true);
-    await click(btn("Open channel")!);
+    expect(btn("Connect")!.disabled).toBe(true);
+    await click(btn("Connect")!);
     expect(stub.openMemberChannel).not.toHaveBeenCalled();
     await type(challengeBox(), "999999");
-    expect(btn("Open channel")!.disabled).toBe(true);
+    expect(btn("Connect")!.disabled).toBe(true);
     await type(challengeBox(), "1000000");
-    expect(btn("Open channel")!.disabled).toBe(false);
-    await click(btn("Open channel")!);
+    expect(btn("Connect")!.disabled).toBe(false);
+    await click(btn("Connect")!);
     expect(stub.openMemberChannel).toHaveBeenCalledTimes(1);
     expect(stub.openMemberChannel.mock.calls[0][0].fee_rate).toBe(LATER.options!.economy.rate);
   });
