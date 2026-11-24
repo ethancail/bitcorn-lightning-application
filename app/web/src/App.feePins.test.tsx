@@ -41,6 +41,7 @@ import { feeEstimatesStub, UNAVAILABLE } from "./components/fees/feeEstimates.te
 import { FEE_COPY, REFRESH_INTERVAL_MS, timeText } from "./components/fees/feeEstimatesDescriptor";
 import { formatSats, formatUsd } from "./components/amount/amountDescriptor";
 import { confirmationFor, findUiConfirmedRoute } from "./api/actionConfirmation";
+import App from "./App";
 
 vi.hoisted(() => {
   localStorage.setItem("bitcorn_theme", "dark");
@@ -148,7 +149,6 @@ async function flush() {
 
 async function renderChannels() {
   stub.getNode.mockResolvedValue({ node_role: "treasury", alias: "lnd-alias", pubkey: pk("a"), synced_to_chain: true });
-  const App = (await import("./App")).default;
   window.history.pushState({}, "", "/channels");
   host = document.createElement("div");
   document.body.appendChild(host);
