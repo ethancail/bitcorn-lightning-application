@@ -11,6 +11,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import React from "react";
 import { cssRules } from "./styleRules.testutil";
+import App from "./App";
 
 vi.hoisted(() => {
   localStorage.setItem("bitcorn_theme", "dark");
@@ -98,7 +99,6 @@ describe("D3: the remote side of a channel bar is neutral", () => {
   });
 
   it("\"Their side\"'s legend dot matches the track; \"Your side\" stays green", async () => {
-    const App = (await import("./App")).default;
     const el = await mount(React.createElement(App), "/channels");
     const remote = el.querySelector(".channel-label-remote .channel-dot");
     const local = el.querySelector(".channel-label-local .channel-dot");

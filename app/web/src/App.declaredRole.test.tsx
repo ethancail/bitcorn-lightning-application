@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import React from "react";
+import App from "./App";
 
 vi.hoisted(() => {
   localStorage.setItem("bitcorn_theme", "dark");
@@ -72,7 +73,6 @@ afterEach(async () => {
 });
 
 async function renderAppAt(path: string) {
-  const App = (await import("./App")).default;
   window.history.pushState({}, "", path);
   host = document.createElement("div");
   document.body.appendChild(host);

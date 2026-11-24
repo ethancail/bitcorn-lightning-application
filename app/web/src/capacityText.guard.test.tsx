@@ -63,6 +63,7 @@ import WithdrawBitcoin from "./pages/WithdrawBitcoin";
 import Payments from "./pages/Payments";
 import LiquidityLaneRow from "./components/liquidity/LiquidityLaneRow";
 import LiquidityKpiBanner from "./components/liquidity/LiquidityKpiBanner";
+import App from "./App";
 
 // ── fixtures ────────────────────────────────────────────────────────────────
 
@@ -256,7 +257,6 @@ describe("PR3-7: no capacity text element uses --amber", () => {
   it("treasury Channels, every lane in a warning state", async () => {
     channels = LANE_CHANNELS;
     stub.getNode.mockResolvedValue({ node_role: "treasury", alias: "t", pubkey: pk("a"), synced_to_chain: true });
-    const App = (await import("./App")).default;
     const r = checkCapacityTexts(await mount(React.createElement(App), "/channels"));
     expect(r.offenders).toEqual([]);
     expect(r.count).toBe(8); // a % and a badge per lane
@@ -266,7 +266,6 @@ describe("PR3-7: no capacity text element uses --amber", () => {
     channels = SMALL_CHANNEL;
     stub.getNode.mockResolvedValue({ node_role: "node", alias: "m", pubkey: pk("a"), synced_to_chain: true });
     stub.getMemberLiquidityStatus.mockImplementation(never);
-    const App = (await import("./App")).default;
     const r = checkCapacityTexts(await mount(React.createElement(App), "/channels"));
     expect(r.offenders).toEqual([]);
     expect(r.count).toBe(1);

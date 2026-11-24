@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRoot, type Root } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import React from "react";
+import App from "./App";
 
 vi.hoisted(() => {
   localStorage.setItem("bitcorn_theme", "dark");
@@ -88,7 +89,6 @@ afterEach(async () => {
 
 async function renderAppAt(path: string, nodeRole: string) {
   stub.getNode.mockResolvedValue({ node_role: nodeRole, alias: "lnd-alias", pubkey: pk("a"), synced_to_chain: true });
-  const App = (await import("./App")).default;
   window.history.pushState({}, "", path);
   host = document.createElement("div");
   document.body.appendChild(host);
