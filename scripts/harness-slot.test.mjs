@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // harness-slot.test.mjs — node:test suite for scripts/harness-slot.mjs.
 //
-// Run the Node 20 binary by its path, not whatever `node` is first on PATH:
-//   ~/.nvm/versions/node/v20.20.2/bin/node --test scripts/harness-slot.test.mjs
+// Run the pinned Node 24 binary (.nvmrc) by its path, not whatever `node` is
+// first on PATH:
+//   ~/.nvm/versions/node/v$(cat .nvmrc)/bin/node --test scripts/harness-slot.test.mjs
 //
 // Nothing here touches the harness: no docker, no Polar, no .env.dev.* file.
 // The lock tests (H14) use a temporary HOME. Every test that runs a script does
@@ -15,7 +16,7 @@
 // pin; it never passes it.
 //
 // No CI job runs this, and the Stop hook does not watch scripts/. Run it by hand,
-// under the heavy lock: node scripts/harness-slot.mjs heavy run -- <node20> --test …
+// under the heavy lock: node scripts/harness-slot.mjs heavy run -- <node24> --test …
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
@@ -395,7 +396,7 @@ test("cli: command prints the resolved line and run is refused for an unknown sc
 });
 
 test("(h) running under the Node major pinned in .nvmrc", () => {
-  const pinned = fs.readFileSync(path.join(ROOT, ".nvmrc"), "utf8").trim();
+  const pinned = fs.readFileSync(path.join(ROOT, ".nvmrc"), "utf8").trim().split(".")[0];
   assert.equal(process.versions.node.split(".")[0], pinned);
   console.log(`process.version ${process.version}`);
 });
@@ -607,14 +608,20 @@ function sandbox() {
   fs.mkdirSync(path.join(home, ".polar", "networks"), { recursive: true });
   fs.writeFileSync(path.join(home, ".polar", "networks", "networks.json"), JSON.stringify({ networks: [NET1] }));
   const log = path.join(home, "stub.log");
+  const diskfree = path.join(home, "diskfree");
+  fs.writeFileSync(diskfree, "1000000\n");
   const run = (args, extra = {}) => {
     fs.rmSync(log, { force: true });
     const r = spawnSync(process.execPath, [MODULE, ...args], {
       cwd: ROOT, encoding: "utf8", timeout: 20_000,
       // HARNESS_HEAVY_TEST_HOME: `lock acquire --slot` takes heavy first (the lock
       // order), so the sandbox is its heavy home too, never the account's real
-      // heavy.lock; at one heavy slot, so its history is the same on any host.
-      env: { PATH: bin, HOME: home, STUB_LOG: log, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1", ...extra },
+      // heavy.lock; at one heavy slot, so its history is the same on any host;
+      // and plenty of free disk, so its admission never depends on this host's.
+      env: {
+        PATH: bin, HOME: home, STUB_LOG: log, HARNESS_HEAVY_TEST_HOME: home, HARNESS_HEAVY_LIMIT: "1",
+        HARNESS_HEAVY_TEST_DISKFREE: diskfree, ...extra,
+      },
     });
     const ran = fs.existsSync(log) ? fs.readFileSync(log, "utf8") : "";
     return { status: r.status, stdout: r.stdout, stderr: r.stderr, ran };

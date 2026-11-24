@@ -92,8 +92,8 @@ beforeEach(() => {
 });
 
 describe("pay.ts outgoing-channel pin (D2b) — what lightning sends to SendPaymentV2", () => {
-  it("runs on Node 20 (the app's runtime: .nvmrc, API Dockerfile)", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on Node 24 (the app's runtime: .nvmrc, API Dockerfile)", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   it("the fixture parses as a regtest request for 100,000 sats", () => {

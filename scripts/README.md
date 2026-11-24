@@ -109,13 +109,16 @@ that weakens them is caught mechanically:
   meminfo (`HARNESS_HEAVY_TEST_MEMINFO`), never the account's real
   `heavy.lock` and `heavy-<k>.lock` files. The lock itself — at most the host's limit of heavy
   jobs (2 on ubuntu-pc, 1 on the OptiPlex), a second admitted only with
-  MemAvailable ≥ 4096 MB (`HARNESS_HEAVY_MIN_FREE_MB`), `--exclusive` for
+  MemAvailable ≥ 4096 MB (`HARNESS_HEAVY_MIN_FREE_MB`), none admitted while
+  the filesystem holding `/tmp` or the lock's home has under 5120 MB free
+  (`HARNESS_HEAVY_MIN_FREE_DISK_MB`; case 13b, with a fake figure,
+  `HARNESS_HEAVY_TEST_DISKFREE`), `--exclusive` for
   every slot — is documented in `docs/dev-setup.md` § The heavy lock and
   tested by `scripts/harness-slot-heavy.test.mjs`. So is the lock order,
   heavy first, then the slot (`docs/dev-setup.md` § The lock order):
   `lock acquire --slot N` from a command whose job holds no heavy takes one
   heavy slot (every slot with `--exclusive`) before the slot, under the same
-  limit and memory check as any heavy job, and `lock release --slot N` lets go of the slot
+  limit, memory check and disk floor as any heavy job, and `lock release --slot N` lets go of the slot
   and then that heavy; a heavy holder (by its `HARNESS_HEAVY_JOB` token) just
   takes the slot, and may wait for it.
 - **permissions.deny (.claude/settings.json):** parses the deny array and
@@ -163,16 +166,21 @@ node scripts/polar-preflight.mjs --repair   # opt-in: mine one block and/or
                                             # reconnect missing expected peers
 ```
 
+`bitcoind-settings` FAILs when the network's bitcoind `settings.json` (found from
+the compose file's `backend1` volume, then `regtest/`) is absent, empty, or does not
+parse as a JSON object, naming the file and the repair in `docs/dev-setup.md`
+§ bitcoind settings.json; neither run, `--repair` included, touches it.
+
 Exit codes are three-valued, as in `loopd-guard-exec.sh`: **0** every check passed,
 **1** at least one failed, **2** it could not look. 2 wins over 1, and a check that
 could not run never prints PASS.
 
 **polar-preflight.test.mjs** runs every probe through a fake, so it needs no
-harness. Run the Node 20 binary by its path; `npx` and `npm` re-resolve `node` from
-`PATH`:
+harness. Run the pinned Node 24 binary (`.nvmrc`) by its path; `npx` and `npm`
+re-resolve `node` from `PATH`:
 
 ```bash
-~/.nvm/versions/node/v20.20.2/bin/node --test scripts/polar-preflight.test.mjs
+~/.nvm/versions/node/v$(cat .nvmrc)/bin/node --test scripts/polar-preflight.test.mjs
 ```
 
 No CI job runs it and the Stop hook does not watch `scripts/`, so run it by hand

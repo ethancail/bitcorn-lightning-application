@@ -7,6 +7,11 @@
 //   never on an unverified one. A txid-less marker says "may have sent" (Q2);
 //   the amount sent is in sats only (Q9).
 //
+// Slice 4 (member-first-run-ui, the simplified Membership panel): the panel's
+// notice is "only when it applies", directly above the one button (there is
+// no ACTIONS heading any more), and worker_lapsed shows it too (R8: it had
+// none).
+//
 // ⚠ PRE-CHANGE RUN: red at 297429d — nothing read the marker.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -46,7 +51,7 @@ const PT = NOW - 35 * DAY; // paid_through of the lapsed fixtures
 const VERIFIED = { treasury_signature: "verified", treasury_signature_reason: null, treasury_pay_refusal: null };
 const UNSIGNED = { treasury_signature: "unsigned", treasury_signature_reason: null, treasury_pay_refusal: null };
 
-type Tier = "prepay" | "current" | "routing_lapsed" | "close_due";
+type Tier = "prepay" | "current" | "worker_lapsed" | "routing_lapsed" | "close_due";
 const status = (tier: Tier, labels: Record<string, unknown> = VERIFIED, o: Record<string, unknown> = {}) => ({
   applicable: true,
   member_pubkey: "02" + "c".repeat(64),
@@ -130,11 +135,12 @@ const notice = () => host.querySelector("[data-pending-payment]") as HTMLElement
 const tierBannerAction = () => host.querySelector(".member-sub-banner .member-sub-banner-action") as HTMLButtonElement | null;
 
 describe("R45 waiting state — the Settings panel", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   const TIERS: Array<[string, () => any]> = [
+    ["worker_lapsed (R8)", () => status("worker_lapsed")],
     ["routing_lapsed", () => status("routing_lapsed")],
     ["close_due", () => status("close_due")],
     ["prepay", () => status("prepay")],
@@ -142,7 +148,7 @@ describe("R45 waiting state — the Settings panel", () => {
     ["current (paid up)", () => PAID_UP()],
   ];
 
-  it.each(TIERS)("%s: the notice, above ACTIONS, and the buttons stay", async (_n, s) => {
+  it.each(TIERS)("%s: the notice, directly above the button, and the button stays", async (_n, s) => {
     // The marker records the paid_through it was written at: this status's.
     stub.getPayFromNodePending.mockResolvedValue(marker({ paid_through_at_write: s().paid_through }));
     await panel(s());
@@ -150,12 +156,14 @@ describe("R45 waiting state — the Settings panel", () => {
     expect(n, "the notice renders").not.toBeNull();
     expect(n!.textContent?.replace(/\s+/g, " ")).toContain(SENT_HEAD);
     expect(n!.textContent?.replace(/\s+/g, " ")).toContain(SENT_BODY);
-    // Placed directly above the ACTIONS heading.
-    const actionsHeading = [...host.querySelectorAll(".sub-bracket-heading")].find((h) => h.textContent?.includes("ACTIONS"))!;
-    expect(n!.nextElementSibling).toBe(actionsHeading);
-    // The buttons stay: the pay button is still there and enabled.
-    const pay = [...host.querySelectorAll("button")].find((b) => /^(I have BTC|Renew now)/.test(b.textContent ?? ""));
-    expect(pay, "a pay button renders").toBeDefined();
+    // Placed directly above the button.
+    const action = host.querySelector(".membership-action");
+    expect(action, "the button's block renders").not.toBeNull();
+    expect(n!.nextElementSibling).toBe(action);
+    // The button stays: still there and enabled.
+    const pay = host.querySelector(".membership-button") as HTMLButtonElement | null;
+    expect(pay, "the pay button renders").not.toBeNull();
+    expect(pay!.parentElement).toBe(action);
     expect(pay!.disabled).toBe(false);
   });
 
@@ -188,7 +196,7 @@ describe("R45 waiting state — the Settings panel", () => {
     stub.getPayFromNodePending.mockRejectedValue(new Error("Failed to fetch"));
     await panel(status("routing_lapsed"));
     expect(notice()).toBeNull();
-    expect(text()).toContain("Your membership payment is overdue");
+    expect(text()).toContain("Your membership is overdue");
   });
 
   it("the waiting copy has no dollars, no 'channel', no '15 seconds'", async () => {

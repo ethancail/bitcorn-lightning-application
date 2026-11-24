@@ -13,6 +13,13 @@
 //     the dashboard's "Connect to Hub".
 //   R49 (ruling 7) — worker_lapsed is unreachable since migration 071; its
 //     copy is not edited, and it is excluded from the sweep below.
+//   Slice 4 (member-first-run-ui, R6/R8, 2026-11-18): the PANEL's
+//     worker_lapsed now has the overdue layout and its copy was fixed, so the
+//     panel sweeps include it (PANEL_REACHABLE). The dashboard banner is out of
+//     slice 4's scope: its sweeps keep REACHABLE. "Bitcorn" is "BitCorn" (R8),
+//     and the sweep also refuses "hub" and the old spelling. The overdue
+//     panel's first sentence is now the ruled lead; the services and the ask
+//     are in the "What's paused?" row.
 //
 // ⚠ PRE-CHANGE RUN: red at 297429d.
 
@@ -59,7 +66,7 @@ const CHANGED = {
 };
 const LABELS: Record<string, Record<string, unknown>> = { verified: VERIFIED, unsigned: UNSIGNED, "S6 address changed": CHANGED };
 
-type Tier = "prepay" | "current" | "routing_lapsed" | "close_due";
+type Tier = "prepay" | "current" | "worker_lapsed" | "routing_lapsed" | "close_due";
 const status = (tier: Tier, labels: Record<string, unknown> = VERIFIED, o: { paid_through?: number; worker_until?: number } = {}) => ({
   applicable: true,
   member_pubkey: "02" + "c".repeat(64),
@@ -81,6 +88,11 @@ const REACHABLE: Array<{ name: string; s: (l: Record<string, unknown>) => any }>
   { name: "prepay", s: (l) => status("prepay", l) },
   { name: "routing_lapsed", s: (l) => status("routing_lapsed", l) },
   { name: "close_due", s: (l) => status("close_due", l) },
+];
+/** The panel's reachable renders: worker_lapsed too (slice 4, R8). */
+const PANEL_REACHABLE: typeof REACHABLE = [
+  ...REACHABLE,
+  { name: "worker_lapsed", s: (l) => status("worker_lapsed", l) },
 ];
 const NOT_APPLICABLE = [
   { applicable: false, reason: "external_peer" },
@@ -171,8 +183,8 @@ const RENEW_ROW =
 const SERVICES = "Hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements.";
 
 describe("R45 copy", () => {
-  it("runs on the pinned Node 20", () => {
-    expect(process.versions.node.split(".")[0]).toBe("20");
+  it("runs on the pinned Node 24", () => {
+    expect(process.versions.node.split(".")[0]).toBe("24");
   });
 
   describe("Q4 — when a payment counts", () => {
@@ -181,12 +193,16 @@ describe("R45 copy", () => {
       expect(text()).toContain(RENEW_ROW);
     });
 
-    it("no reachable tier claims ~15 seconds, verified or blocked", async () => {
-      for (const r of REACHABLE) {
+    it("no reachable tier claims ~15 seconds, verified or blocked (the panel's worker_lapsed included, R8)", async () => {
+      for (const r of PANEL_REACHABLE) {
         for (const [name, labels] of Object.entries(LABELS)) {
           stub.getAutoPayConfig.mockResolvedValue(autoPay({ enabled: true, enabled_at: 1 }));
           await panel(r.s(labels));
           expect(text(), `${r.name}, ${name}: panel`).not.toMatch(/15 seconds|15–30 seconds/);
+        }
+      }
+      for (const r of REACHABLE) {
+        for (const [name, labels] of Object.entries(LABELS)) {
           await render(React.createElement(MemberSubscriptionBanner, { status: r.s(labels), usdRate: USD }));
           expect(text(), `${r.name}, ${name}: banner`).not.toMatch(/15 seconds/);
         }
@@ -195,12 +211,14 @@ describe("R45 copy", () => {
   });
 
   describe("Q5 — the paused services, by their names on a member's screens", () => {
-    it.each(["routing_lapsed", "close_due"] as const)("%s panel alert: the services, then the dollar ask", async (tier) => {
+    // Slice 4: the ruled lead is always visible; the services, then the dollar
+    // ask, are the "What's paused?" row's (the banner's sentence).
+    it.each(["routing_lapsed", "close_due"] as const)("%s panel: the lead, and the services then the dollar ask in 'What's paused?'", async (tier) => {
       await panel(status(tier));
-      expect(text()).toContain(
-        "Your membership payment is overdue, so hosted services are paused: Auto\u2011Buy, with its Valuation Chart, and Stablecoin settlements. " +
-          "Pay $25.20 (42,000 sats) to restore them.",
-      );
+      expect(text()).toContain("Your membership is overdue, so some services are paused.");
+      const row = host.querySelector('details[data-row="paused"]');
+      expect(row?.querySelector("summary")?.textContent).toBe("What's paused?");
+      expect((row?.textContent ?? "").replace(/\s+/g, " ")).toContain(`${SERVICES} Pay $25.20 (42,000 sats) to restore them.`);
       expect(text()).not.toMatch(/valuation, Auto-Buy and stablecoin settlement data/);
     });
 
@@ -214,7 +232,7 @@ describe("R45 copy", () => {
   describe("Q6 — 'connection', not 'channel'", () => {
     it("current (paid up): the tagline", async () => {
       await panel(REACHABLE[0].s(VERIFIED));
-      expect(text()).toContain("Your connection to Bitcorn and your hosted services are paid up.");
+      expect(text()).toContain("Your connection to BitCorn and your hosted services are paid up.");
     });
 
     it.each(["routing_lapsed", "close_due"] as const)("%s: the reassure line", async (tier) => {
@@ -231,12 +249,12 @@ describe("R45 copy", () => {
       // Ethan, 2026-11-11 ("recs" 3 + NEW): on a member node the farmer IS the
       // operator (C6), so the body points to Bitcorn, and the button names it.
       expect(text()).toContain(
-        "You don't have a connection to Bitcorn yet. Connect from your dashboard to enroll in the subscription system. " +
-          "If you believe you should have a connection, contact Bitcorn.",
+        "You don't have a connection to BitCorn yet. Connect from your dashboard to enroll in the subscription system. " +
+          "If you believe you should have a connection, contact BitCorn.",
       );
       expect(memberText()).not.toMatch(/\boperator\b/i);
       const btn = [...host.querySelectorAll("a")].find((a) => (a.textContent ?? "").includes("Connect to"));
-      expect(btn?.textContent?.replace(/\s+/g, " ").trim()).toBe("Connect to Bitcorn →");
+      expect(btn?.textContent?.replace(/\s+/g, " ").trim()).toBe("Connect to BitCorn →");
       expect(btn?.getAttribute("href")).toBe("/dashboard");
       expect(memberText()).not.toMatch(/\bHub\b/);
     });
@@ -244,16 +262,16 @@ describe("R45 copy", () => {
     // Ethan, 2026-11-11 ("recs" (2)): on a member node the farmer IS the
     // operator (C6), so the panel points to Bitcorn; the dead
     // mailto:operator@example.com button is removed.
-    it("operator → Bitcorn: each ruled sentence, exactly", async () => {
+    it("operator → BitCorn: each ruled sentence, exactly", async () => {
       await panel({ applicable: false, reason: "external_peer" });
-      expect(text()).toContain("If you believe this is incorrect, contact Bitcorn.");
+      expect(text()).toContain("If you believe this is incorrect, contact BitCorn.");
       await panel({ applicable: false, reason: "unclassified" });
       expect(text()).toContain(
-        "Subscription doesn't activate until your connection is classified as farmer or merchant. Contact Bitcorn if this lasts more than a few minutes.",
+        "Subscription doesn't activate until your connection is classified as farmer or merchant. Contact BitCorn if this lasts more than a few minutes.",
       );
       await panel({ applicable: false, reason: "missing" });
-      expect(text()).toContain("Share this with Bitcorn if you contact support.");
-      expect(text()).toContain("If this persists for more than a few minutes, contact Bitcorn with the pubkey above.");
+      expect(text()).toContain("Share this with BitCorn if you contact support.");
+      expect(text()).toContain("If this persists for more than a few minutes, contact BitCorn with the pubkey above.");
     });
 
     it("unclassified: no 'Contact operator' button, no mailto, no empty ACTIONS section", async () => {
@@ -266,7 +284,7 @@ describe("R45 copy", () => {
 
     it("SWEEP: no member text on the panel, in any reachable state, says 'operator'", async () => {
       const states: Array<[string, () => void]> = [
-        ...REACHABLE.map((r) => [r.name, () => stub.getSubscriptionStatus.mockResolvedValue(r.s(VERIFIED))] as [string, () => void]),
+        ...PANEL_REACHABLE.map((r) => [r.name, () => stub.getSubscriptionStatus.mockResolvedValue(r.s(VERIFIED))] as [string, () => void]),
         ...NOT_APPLICABLE.map((s) => [s.reason, () => stub.getSubscriptionStatus.mockResolvedValue(s)] as [string, () => void]),
         ...ERRORS.map((e) => [e.name, e.arrange] as [string, () => void]),
       ];
@@ -276,34 +294,42 @@ describe("R45 copy", () => {
         const hrefs = [...host.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? "").join(" ");
         expect(`${memberText()} ${hrefs}`, name).not.toMatch(/\boperator\b/i);
       }
-      expect(states.length).toBe(REACHABLE.length + NOT_APPLICABLE.length + ERRORS.length);
+      expect(states.length).toBe(PANEL_REACHABLE.length + NOT_APPLICABLE.length + ERRORS.length);
     });
 
-    it("SWEEP: no member text on the panel, in any reachable state, says 'channel'", async () => {
+    // Slice 4: "connection", never "channel" or "hub"; "BitCorn", never
+    // "Bitcorn" (R8). Every reachable state, worker_lapsed included, every
+    // status label, auto-pay on and off. The closed rows' text is in the DOM,
+    // so it is swept too.
+    const BANNED = /\bchannel\b|\bhub\b/i;
+    const OLD_SPELLING = /Bitcorn/;
+    it("SWEEP: no member text on the panel, in any reachable state, says 'channel' or 'hub', or spells 'Bitcorn'", async () => {
       const seen: string[] = [];
-      for (const r of REACHABLE) {
+      const check = (where: string) => {
+        seen.push(where);
+        expect(memberText(), where).not.toMatch(BANNED);
+        expect(memberText(), where).not.toMatch(OLD_SPELLING);
+      };
+      for (const r of PANEL_REACHABLE) {
         for (const [name, labels] of Object.entries(LABELS)) {
           for (const enabled of [true, false]) {
             stub.getAutoPayConfig.mockResolvedValue(autoPay(enabled ? { enabled: true, enabled_at: 1 } : {}));
             await panel(r.s(labels));
-            const where = `${r.name}, ${name}, auto-pay ${enabled ? "on" : "off"}`;
-            seen.push(where);
-            expect(memberText(), where).not.toMatch(/\bchannel\b/i);
+            expect(host.querySelector("details"), `${r.name}: the rows rendered (setup)`).not.toBeNull();
+            check(`${r.name}, ${name}, auto-pay ${enabled ? "on" : "off"}`);
           }
         }
       }
       for (const s of NOT_APPLICABLE) {
         await panel(s);
-        seen.push(s.reason);
-        expect(memberText(), s.reason).not.toMatch(/\bchannel\b/i);
+        check(s.reason);
       }
       for (const e of ERRORS) {
         e.arrange();
         await panel();
-        seen.push(e.name);
-        expect(memberText(), e.name).not.toMatch(/\bchannel\b/i);
+        check(e.name);
       }
-      expect(seen.length).toBe(REACHABLE.length * 3 * 2 + NOT_APPLICABLE.length + ERRORS.length);
+      expect(seen.length).toBe(PANEL_REACHABLE.length * 3 * 2 + NOT_APPLICABLE.length + ERRORS.length);
     });
 
     it("SWEEP: no member text on the banner, in any reachable tier, with every auto-pay alert, says 'channel'", async () => {
