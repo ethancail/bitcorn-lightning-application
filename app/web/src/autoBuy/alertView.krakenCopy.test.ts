@@ -20,12 +20,17 @@ describe("the three Kraken-only alert types", () => {
     const s = summarizeAlert(alert("AUTOBUY_BUY_BELOW_MINIMUM", { ...K, intended_buy_usd: 5, minimum_usd: 9.99 }));
     expect(s.title).toBe("Buy skipped: below Kraken's minimum");
     expect(s.message).toBe(
-      "Auto-Buy skipped a $5 buy because Kraken's minimum is about $9.99. Buys are never rounded up. To buy in this zone, raise your base buy or this zone's multiplier.",
+      "Auto-Buy skipped a $5.00 buy because Kraken's minimum is about $9.99. Buys are never rounded up. To buy in this zone, raise your base buy or this zone's multiplier.",
     );
+  });
+  it("AUTOBUY_BUY_BELOW_MINIMUM: every amount to two decimals (ruling C2; the capture read \"$5.6\")", () => {
+    const s = summarizeAlert(alert("AUTOBUY_BUY_BELOW_MINIMUM", { ...K, intended_buy_usd: 0.25, minimum_usd: 5.6 }));
+    expect(s.message).toContain("Auto-Buy skipped a $0.25 buy because Kraken's minimum is about $5.60.");
+    expect(s.message).not.toMatch(/\$5\.6(?!0)/);
   });
   it("AUTOBUY_BUY_BELOW_MINIMUM refused by Kraken itself (no minimum figure) still reads as a sentence", () => {
     const s = summarizeAlert(alert("AUTOBUY_BUY_BELOW_MINIMUM", { ...K, intended_buy_usd: 5, minimum_usd: null }));
-    expect(s.message).toContain("Auto-Buy skipped a $5 buy because it is below Kraken's minimum.");
+    expect(s.message).toContain("Auto-Buy skipped a $5.00 buy because it is below Kraken's minimum.");
   });
   it("AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL (G1)", () => {
     const s = summarizeAlert(alert("AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL", { ...K, btc_amount: 0.0123 }));
@@ -38,7 +43,7 @@ describe("the three Kraken-only alert types", () => {
     const s = summarizeAlert(alert("AUTOBUY_LOW_FUNDS", { ...K, usd_available: 150, next_buy_usd: 100, buys_covered: 1 }));
     expect(s.title).toBe("Low funds on Kraken");
     expect(s.message).toBe(
-      "$150 USD covers 1 of your next buys ($100 each at the current zone). Add USD to Kraken, or raise your recurring deposit, to keep Auto-Buy buying. USDC isn't used for Kraken buys.",
+      "$150.00 USD covers 1 of your next buys ($100.00 each at the current zone). Add USD to Kraken, or raise your recurring deposit, to keep Auto-Buy buying. USDC isn't used for Kraken buys.",
     );
   });
 });
@@ -48,7 +53,7 @@ describe("unknown outcomes and the too-short hold (G6, D-P6-3)", () => {
     const s = summarizeAlert(alert("AUTOBUY_ORDER_FAILED", { ...K, error_code: "outcome_unknown", intended_buy_usd: 100 }));
     expect(s.title).toBe("Buy outcome unknown");
     expect(s.message).toBe(
-      "Kraken didn't confirm whether the $100 buy went through. Auto-Buy won't buy twice: it checks on its next run. Three unknowns in a row pause Auto-Buy.",
+      "Kraken didn't confirm whether the $100.00 buy went through. Auto-Buy won't buy twice: it checks on its next run. Three unknowns in a row pause Auto-Buy.",
     );
   });
   it("SWEEP_FAILED withdraw_outcome_unknown says check first; it never says the BTC is safe", () => {
@@ -83,7 +88,7 @@ describe("the shared alert types, worded for Kraken", () => {
   });
   it("INSUFFICIENT_FUNDS adds the USDC note (D-P4-8)", () => {
     const s = summarizeAlert(alert("AUTOBUY_INSUFFICIENT_FUNDS", { ...K, intended_buy_usd: 100, currencies_checked: "USD" }));
-    expect(s.message).toBe("No selected currency covered the $100 buy (checked USD). Add funds or adjust your currency preference. USDC isn't used for Kraken buys.");
+    expect(s.message).toBe("No selected currency covered the $100.00 buy (checked USD). Add funds or adjust your currency preference. USDC isn't used for Kraken buys.");
   });
   it("ORDER_FAILED (a plain rejection) names Kraken", () => {
     const s = summarizeAlert(alert("AUTOBUY_ORDER_FAILED", { ...K, error_code: "rejected" }, { consecutive_count: 2 }));

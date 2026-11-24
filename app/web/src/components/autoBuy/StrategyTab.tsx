@@ -586,7 +586,7 @@ function MasterControl({ status, onRefresh }: { status: AutoBuyStatus; onRefresh
                 ? cfg.next_run_at
                   ? `Next scheduled tick: ${new Date(cfg.next_run_at * 1000).toLocaleString()}`
                   : "No scheduled tick yet"
-                : pausedReason ? `Paused: ${pausedReason}` : "Master switch is off"}
+                : pausedReason ? pausedLine(pausedReason, exchangeName(cfg.provider)) : "Master switch is off"}
             </div>
             {cfg.consecutive_failures > 0 && (
               <div className="warn-mark" style={{ fontSize: "0.75rem", color: "var(--text)", marginTop: 2 }}>
@@ -617,9 +617,25 @@ function MasterControl({ status, onRefresh }: { status: AutoBuyStatus; onRefresh
   );
 }
 
+/** A pause reason's words on the active exchange, or undefined for a reason with no entry. */
+function pauseCopy(reason: string, exchange: ExchangeName): { title: string; body: string } | undefined {
+  return (exchange === "Kraken" ? KRAKEN_PAUSED_MESSAGES[reason] : undefined) ?? PAUSED_MESSAGES[reason];
+}
+
+/**
+ * The master control's paused line (ruling C1b, P6 capture review): the
+ * banner's title, never the raw code, on both exchanges — "Paused: No Kraken
+ * key". A title that already starts "Paused" is shown as it is, so it never
+ * reads "Paused: Paused …". Only a reason with no entry falls back to its code.
+ */
+function pausedLine(reason: string, exchange: ExchangeName): string {
+  const copy = pauseCopy(reason, exchange);
+  if (!copy) return `Paused: ${reason}`;
+  return copy.title.startsWith("Paused") ? copy.title : `Paused: ${copy.title}`;
+}
+
 function PausedBanner({ reason, exchange }: { reason: string; exchange: ExchangeName }) {
-  const { title, body } = (exchange === "Kraken" ? KRAKEN_PAUSED_MESSAGES[reason] : undefined)
-    ?? PAUSED_MESSAGES[reason]
+  const { title, body } = pauseCopy(reason, exchange)
     ?? { title: "Auto-Buy paused", body: `paused_reason=${reason}` };
   return (
     <div className="alert warning" style={{ marginBottom: 16 }}>
@@ -639,6 +655,8 @@ const PAUSED_MESSAGES: Record<string, { title: string; body: string }> = {
   credentials_corrupted:   { title: "Credentials corrupted",       body: "The encrypted key could not be decrypted. Reconnect to repair." },
   address_not_whitelisted: { title: "Withdrawal address not whitelisted", body: "Add the displayed address to Coinbase's allowlist and confirm via the integration panel below." },
   consecutive_failures:    { title: "Auto-paused after 3 failures", body: "Review the purchase history for error messages, then re-enable." },
+  // Ruling C1 (P6 capture review): a switch of exchange pauses Auto-Buy.
+  provider_changed:        { title: "Paused: exchange switched",   body: "Auto-Buy pauses when you switch exchanges. Check the new exchange's setup below, then turn Auto-Buy back on." },
 };
 
 // The three pauses whose cause is the exchange's own setup, worded for Kraken

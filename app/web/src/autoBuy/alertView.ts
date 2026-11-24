@@ -44,6 +44,16 @@ function fmtUsd(n: number | null): string {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
+/**
+ * USD to two decimals — "$5.60" / "$1,250.00", null-safe. Every amount in the
+ * Kraken alert texts (Ethan's ruling C2, P6 capture review); the Coinbase
+ * texts keep fmtUsd's compact form.
+ */
+function fmtUsd2(n: number | null): string {
+  if (n == null) return "the intended amount";
+  return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 // ── deriveBadge ───────────────────────────────────────────────────────────
 
 /**
@@ -96,7 +106,7 @@ export function summarizeAlert(alert: AutoBuyAlert): AlertSummary {
 
   switch (alert.type) {
     case "AUTOBUY_INSUFFICIENT_FUNDS": {
-      const need = fmtUsd(ctxNum(ctx, "intended_buy_usd"));
+      const need = (kraken ? fmtUsd2 : fmtUsd)(ctxNum(ctx, "intended_buy_usd"));
       const checked = ctxStr(ctx, "currencies_checked") ?? "your selected currency";
       return {
         title: "Auto-Buy skipped — insufficient funds",
@@ -146,7 +156,7 @@ export function summarizeAlert(alert: AutoBuyAlert): AlertSummary {
         return {
           title: "Buy outcome unknown",
           message:
-            `${ex} didn't confirm whether the ${usd != null ? `${fmtUsd(usd)} ` : ""}buy went through. ` +
+            `${ex} didn't confirm whether the ${usd != null ? `${fmtUsd2(usd)} ` : ""}buy went through. ` +
             `Auto-Buy won't buy twice: it checks on its next run. Three unknowns in a row pause Auto-Buy.`,
           icon,
         };
@@ -200,7 +210,7 @@ export function summarizeAlert(alert: AutoBuyAlert): AlertSummary {
       return {
         title: `Buy skipped: below ${ex}'s minimum`,
         message:
-          `Auto-Buy skipped a ${fmtUsd(usd)} buy because ${min != null ? `${ex}'s minimum is about ${fmtUsd(min)}` : `it is below ${ex}'s minimum`}. ` +
+          `Auto-Buy skipped a ${fmtUsd2(usd)} buy because ${min != null ? `${ex}'s minimum is about ${fmtUsd2(min)}` : `it is below ${ex}'s minimum`}. ` +
           `Buys are never rounded up. To buy in this zone, raise your base buy or this zone's multiplier.`,
         icon,
       };
@@ -220,7 +230,7 @@ export function summarizeAlert(alert: AutoBuyAlert): AlertSummary {
       return {
         title: `Low funds on ${ex}`,
         message:
-          `${fmtUsd(usd)} USD covers ${n ?? "fewer than 2"} of your next buys (${fmtUsd(next)} each at the current zone). ` +
+          `${fmtUsd2(usd)} USD covers ${n ?? "fewer than 2"} of your next buys (${fmtUsd2(next)} each at the current zone). ` +
           `Add USD to ${ex}, or raise your recurring deposit, to keep Auto-Buy buying. USDC isn't used for ${ex} buys.`,
         icon,
       };

@@ -152,6 +152,39 @@ describe("the pause banner names the active exchange (D-P6-6)", () => {
   });
 });
 
+/** The master control's paused line: the exact text of the one element that shows it. */
+function masterLine(): string | null {
+  const el = Array.from(document.body.querySelectorAll(".text-dim")).find((d) => /^(Paused|Master switch)/.test(d.textContent ?? ""));
+  return el?.textContent ?? null;
+}
+const paused = (exchange: Record<string, unknown>, reason: string) =>
+  React.createElement(StrategyTab, { status: status({ ...exchange, enabled: false, paused_reason: reason }, null), valuation, onRefresh: async () => {} });
+
+describe("the master control names the pause in words, never the code (ruling C1b)", () => {
+  it("Kraken: the Kraken banner's title", async () => {
+    await render(paused(KRAKEN, "no_credentials"));
+    expect(masterLine()).toBe("Paused: No Kraken key");
+  });
+  it("Coinbase: the Coinbase banner's title", async () => {
+    await render(paused(COINBASE, "no_credentials"));
+    expect(masterLine()).toBe("Paused: No Coinbase credentials");
+  });
+  it("a reason with no entry falls back to its code", async () => {
+    await render(paused(KRAKEN, "some_future_reason"));
+    expect(masterLine()).toBe("Paused: some_future_reason");
+  });
+});
+
+describe("an exchange switch's pause (ruling C1)", () => {
+  it("the banner, and the master line without a doubled \"Paused\"", async () => {
+    await render(paused(KRAKEN, "provider_changed"));
+    expect(pageText()).toContain("Paused: exchange switched");
+    expect(pageText()).toContain("Auto-Buy pauses when you switch exchanges. Check the new exchange's setup below, then turn Auto-Buy back on.");
+    expect(pageText()).not.toContain("provider_changed");
+    expect(masterLine()).toBe("Paused: exchange switched");
+  });
+});
+
 describe("the catch-up confirm body names the exchange and its hold, from the API (D-P6-2)", () => {
   it("Kraken: 7-day", async () => {
     expect(await openModal(KRAKEN)).toContain("One market buy of about $200.00 on Kraken, then the usual 7-day hold and the weekly sweep.");
