@@ -440,7 +440,7 @@ async function stepEnqueueAndPlaceBuy(db: Database.Database): Promise<void> {
       raiseAlert(db, {
         type: "AUTOBUY_ORDER_FAILED",
         latestRunId: null,
-        context: { latest_run_id: null, error_code: "outcome_unknown", error_message: placed.detail.slice(0, 500), order_status: null },
+        context: { latest_run_id: null, error_code: "outcome_unknown", error_message: placed.detail.slice(0, 500), order_status: null, intended_buy_usd: intendedUsd },
       });
       caps.recordFailure(db);
       console.warn(`[autobuy-scheduler] buy outcome unknown; slot held for reconciliation: ${placed.detail}`);
@@ -983,7 +983,7 @@ export async function runCatchUp(
     raiseAlert(db, {
       type: "AUTOBUY_ORDER_FAILED",
       latestRunId: null,
-      context: { latest_run_id: null, error_code: "outcome_unknown", error_message: placed.detail.slice(0, 500), order_status: null },
+      context: { latest_run_id: null, error_code: "outcome_unknown", error_message: placed.detail.slice(0, 500), order_status: null, intended_buy_usd: total },
     });
     caps.recordFailure(db);
     return { ok: false, code: "order_outcome_unknown", reason: placed.detail.slice(0, 200) };

@@ -231,7 +231,7 @@ describe("unknown outcomes", () => {
     await tickAt(T0);
     expect(runs()).toEqual([]);
     expect(config()).toMatchObject({ next_run_at: T0 - 60, consecutive_failures: 1, enabled: 1 });
-    expect(active("AUTOBUY_ORDER_FAILED")).toMatchObject([{ severity: "warning", context: { error_code: "outcome_unknown" } }]);
+    expect(active("AUTOBUY_ORDER_FAILED")).toMatchObject([{ severity: "warning", context: { error_code: "outcome_unknown", intended_buy_usd: 100, provider: "kraken" } }]);
 
     // Kraken did take it: the retry's lookup finds it under the same cl_ord_id.
     const slotId = clientOrderIdFor("scheduled", T0 - 60);
