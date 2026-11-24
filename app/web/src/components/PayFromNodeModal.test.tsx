@@ -7,8 +7,11 @@
 // asserted is the property that removes that (the dialog is not inside the
 // card, and is a child of <body>), as ActionConfirmModal.portal.test.tsx does.
 //
-// R2: on a phone an amount never breaks inside itself and the address ends in
-// an ellipsis (phone-m15 showed "(3,749 s / ats)" and "…lzsq8 / kct").
+// R2: on a phone an amount never breaks inside itself and the address never
+// wraps mid-token (phone-m15 showed "(3,749 s / ats)" and "…lzsq8 / kct").
+// Slice 5 (member-first-run-ui, rulings (5) and (6)): the FULL address under
+// its label in groups of 4 (it was cut in the middle, then ellipsised), the
+// window's wording, and its amounts through slice 1's formatter.
 //
 // Harness: react-dom/client createRoot inside act(), no Testing Library; the
 // api client is stubbed (the SubscriptionPanel.p2.test.tsx idiom).
@@ -198,7 +201,8 @@ describe("R7: past amounts in sats only", () => {
     await mountInCard();
     await confirmRefusedWith(repeatRefusal());
     const body = document.querySelector(".sub-pay-modal .dialog-body")!.textContent!;
-    expect(body).toContain("Your node sent 37,000 sats to your subscription address");
+    // Slice 5, ruling (6): "your membership address".
+    expect(body).toContain("Your node sent 37,000 sats to your membership address");
     expect(body).not.toContain("$");
   });
 
@@ -256,8 +260,8 @@ describe("R6 and R10: repeat_ack and details-changed as ruled", () => {
     expect(notice).toBeDefined();
     expect(notice!.classList.contains("sub-alert-amber")).toBe(true);
     expect(notice!.classList.contains("sub-alert-dim-red")).toBe(false);
-    // The re-quoted amount is what is now shown.
-    expect(document.querySelector(".sub-pay-preview dd")?.textContent).toBe("$27.00 (45,000 sats)");
+    // The re-quoted amount is what is now shown (dollars over sats, slice 5).
+    expect(lines(document.querySelector(".sub-pay-preview dd")!)).toEqual(["usd:$27.00", "sats:45,000 sats"]);
   });
 });
 
@@ -305,17 +309,30 @@ describe("R8: this modal's confirmation errors", () => {
   });
 });
 
-describe("R2: amounts never break inside themselves; the address truncates", () => {
-  it("the preview's values have no break-all, an amount is nowrap, the address ellipsises", () => {
+/** An <Amount>'s lines, "data-line:text". */
+function lines(el: Element): string[] {
+  return [...el.querySelectorAll("[data-line]")].map((l) => `${l.getAttribute("data-line")}:${l.textContent}`);
+}
+
+// REWRITTEN for slice 5, ruling (5). R2 used to pin an address that ends in an
+// ellipsis (and a middle cut before it: "bc1qfixture0…00pin…" at 390px). It
+// now pins the FULL address under its label, in groups of 4 that wrap only
+// between groups — R2's no-mid-token rule, kept.
+describe("R2 + slice 5 (5): amounts never break inside themselves; the full address wraps only between groups of 4", () => {
+  it("styles: no break-all; amounts nowrap; each group nowrap; the address row stacks under its label", () => {
     expect(declsFor(".sub-pay-preview dd")["word-break"]).toBeUndefined();
     expect(declsFor(".sub-pay-preview dd")["min-width"]).toBe("0");
     expect(declsFor(".sub-amount")).toMatchObject({ "white-space": "nowrap" });
-    expect(declsFor(".sub-pay-preview dd.sub-pay-address")).toMatchObject({
-      overflow: "hidden", "text-overflow": "ellipsis", "white-space": "nowrap",
-    });
+    expect(declsFor(".sub-pay-address-group")).toEqual({ "white-space": "nowrap" });
+    const addr = declsFor(".sub-pay-preview dd.sub-pay-address");
+    expect(addr["white-space"]).toBe("normal");
+    expect(addr["text-overflow"]).toBeUndefined();
+    expect(addr.overflow).toBeUndefined();
+    expect(addr["word-break"]).toBeUndefined();
+    expect(declsFor(".sub-pay-preview > div.sub-pay-row-stacked")["flex-direction"]).toBe("column");
   });
 
-  it("on confirm, the amount and the fee are each one .sub-amount unit, and the address carries .sub-pay-address", async () => {
+  it("on confirm: the amount and the fee are dollars over sats; the address is whole, in groups of 4, under its label", async () => {
     await mountInCard();
     await act(async () => { buttonNamed("Pay from this node")!.click(); });
     await flush();
@@ -323,10 +340,100 @@ describe("R2: amounts never break inside themselves; the address truncates", () 
     expect(dds).toHaveLength(3);
     const [amount, address, fee] = dds;
     // 42,000 sats at $60,000 = $25.20; the fee 1,234 sats = $0.74.
-    expect(amount.querySelector(".sub-amount")?.textContent).toBe("$25.20 (42,000 sats)");
-    expect(fee.querySelector(".sub-amount")?.textContent).toBe("~$0.74 (1,234 sats)");
+    expect(lines(amount)).toEqual(["usd:$25.20", "sats:42,000 sats"]);
+    expect(lines(fee)).toEqual(["usd:about $0.74", "sats:~1,234 sats"]);
     expect(address.classList.contains("sub-pay-address")).toBe(true);
-    expect(address.getAttribute("title")).toBe(ADDR);
+    expect(address.classList.contains("ident")).toBe(true);
+    const groups = [...address.querySelectorAll(".sub-pay-address-group")].map((g) => g.textContent);
+    expect(groups.join("")).toBe(ADDR); // the FULL address, nothing cut
+    expect(groups.every((g) => g!.length === 4 || g === groups.at(-1))).toBe(true);
+    expect(groups.slice(0, 3)).toEqual(["bc1q", "dddd", "dddd"]);
+    // Spaces between the groups and nowhere else: the only break points.
+    expect(address.textContent).toBe(groups.join(" "));
+    expect(address.textContent).not.toContain("…");
+    // Under its label: the row is the stacked one.
+    expect(address.parentElement!.classList.contains("sub-pay-row-stacked")).toBe(true);
+    expect(address.previousElementSibling!.textContent).toBe("To your membership address");
+  });
+
+  it("a refused quote still shows no address (C15)", async () => {
+    stub.getPayFromNodeQuote.mockRejectedValue(Object.assign(new Error("status_unverified"), {
+      status: 503, code: "status_unverified", body: { error: "status_unverified", reason: "unsigned" },
+    }));
+    await mountInCard();
+    await toConfirm();
+    const address = document.querySelectorAll(".sub-pay-preview dd")[1];
+    expect(address.textContent).toBe("—");
+    expect(address.querySelector(".sub-pay-address-group")).toBeNull();
+  });
+});
+
+// ─── Slice 5, ruling (6): the window's words ────────────────────────────────
+describe("slice 5 (6): the payment window's wording", () => {
+  const CONFIRMS = "It usually confirms within an hour, and your membership updates soon after.";
+
+  it("the window is 'Pay membership'", async () => {
+    const { dialog } = await mountInCard();
+    expect(dialog!.getAttribute("aria-label")).toBe("Pay membership");
+  });
+
+  it("the chooser and the confirm step say 'your membership address'", async () => {
+    await mountInCard();
+    expect(cardText()).toContain("Pay $25.20 (42,000 sats) to your membership address.");
+    await toConfirm();
+    expect(cardText()).toContain("Sends an on-chain payment from your node's wallet to your membership address.");
+    expect(cardText()).toContain(`The exact network fee is set when it sends. ${CONFIRMS}`);
+  });
+
+  it("success says when it lands in the ruled words", async () => {
+    stub.payFromNode.mockResolvedValue({ txid: "ab".repeat(32) });
+    await mountInCard();
+    await toConfirm();
+    await act(async () => { buttonNamed("Confirm send")!.click(); });
+    await flush();
+    expect(document.querySelector(".dialog-title")?.textContent).toBe("Payment sent");
+    expect(cardText()).toContain(`Your payment is broadcasting. ${CONFIRMS}`);
+  });
+
+  it("status_unavailable says 'with BitCorn'", async () => {
+    await mountInCard();
+    await confirmRefusedWith(refusal(503, { error: "status_unavailable" }));
+    expect(cardText()).toContain("Couldn't confirm your subscription details with BitCorn.");
+  });
+
+  // The member-text guard over every step this window can show.
+  const STEPS: Array<[string, () => Promise<void>]> = [
+    ["chooser", async () => { await mountInCard(); }],
+    ["confirm", async () => { await mountInCard(); await toConfirm(); }],
+    ["repeat_ack", async () => { await mountInCard(); await confirmRefusedWith(repeatRefusal()); }],
+    ["price_ack", async () => { await mountInCard(); await confirmRefusedWith(priceRefusal(30_000)); }],
+    ["error: status_unavailable", async () => { await mountInCard(); await confirmRefusedWith(refusal(503, { error: "status_unavailable" })); }],
+    ["success", async () => {
+      stub.payFromNode.mockResolvedValue({ txid: "ab".repeat(32) });
+      await mountInCard(); await toConfirm();
+      await act(async () => { buttonNamed("Confirm send")!.click(); });
+      await flush();
+    }],
+    ["bip21", async () => { await mountInCard(); await act(async () => { buttonNamed("I have BTC elsewhere")!.click(); }); await flush(); }],
+  ];
+  const OLD = /subscription deposit address|subscription address|15–30 seconds|with the treasury|Pay subscription/i;
+  const WORDS = /\bchannels?\b|\bhubs?\b|\boperators?\b|\btreasury\b/i;
+  for (const [name, setup] of STEPS) {
+    it(`${name}: none of the old words; no "channel", "hub", "operator" or "treasury"; "BitCorn" spelled so`, async () => {
+      await setup();
+      const words = `${cardText()} ${document.querySelector('[role="dialog"]')!.getAttribute("aria-label")}`;
+      expect(words.length, "the scan reads the window").toBeGreaterThan(20);
+      expect(words).not.toMatch(OLD);
+      expect(words).not.toMatch(WORDS);
+      expect(words).not.toContain("Bitcorn");
+    });
+  }
+
+  it("negative control: the guards catch the old words", () => {
+    expect("Pay $25.20 to your subscription deposit address.").toMatch(OLD);
+    expect("It's detected within ~15–30 seconds after the first confirmation").toMatch(OLD);
+    expect("Couldn't confirm your subscription details with the treasury.").toMatch(OLD);
+    expect("with the treasury").toMatch(WORDS);
   });
 });
 

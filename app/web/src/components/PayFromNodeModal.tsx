@@ -15,9 +15,10 @@
 // from the prop until a refusal says they changed, then from a fresh quote
 // — and the server compares them with its own and sends only its own.
 //
-// Amounts are dollars first with the sats beside them (drive-mode R2). The
-// modal fetches the BTC/USD rate itself; when there is none it shows sats
-// and says why (rate.ts).
+// Amounts follow the amount rule through slice 1's formatter (member-first-
+// run-ui slice 5, ruling (6)): dollars over sats in the preview, "$X (N sats)"
+// in a sentence, past amounts in sats only. The modal fetches the BTC/USD rate
+// itself; when there is none it shows sats and says why (rate.ts).
 //
 // Rendered through a portal to document.body (G3 ruling R1, 2026-11-06): at
 // the Settings mount the modal sat inside SubscriptionPanel's card, which made
@@ -33,7 +34,7 @@
 // ordinary on-chain payment as far as the detector is concerned, so no
 // bespoke pending-poll here.
 
-import { useEffect, useReducer, useState } from "react";
+import { Fragment, useEffect, useReducer, useState } from "react";
 import { createPortal } from "react-dom";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -52,12 +53,43 @@ import {
   reducePayModal,
   type PayModalAcks,
 } from "./payModalMachine";
-import { renewalAmount } from "./subscriptionBanner";
+import { Amount, usableUsd } from "./amount/Amount";
+import { formatSats } from "./amount/amountDescriptor";
+import { inlineAmount } from "./amount/inlineAmount";
 import { payErrorMessage } from "./subscriptionPayMessages";
 import { depositAddressDisplay, trustCopy, trustStateOfRefusal, type TrustState } from "./paymentTrust";
 
 // This modal's wording for a missing confirmation (G3 ruling R8).
 const CONFIRMATION_REQUIRED_MESSAGE = "Not confirmed. Nothing was sent. Close this window and try again.";
+
+// member-first-run-ui slice 5, ruling (6): the window's name, and the one
+// line on when a payment lands, which replaced the "~15–30 seconds" sentences.
+const DIALOG_LABEL = "Pay membership";
+const CONFIRMS_LINE = "It usually confirms within an hour, and your membership updates soon after.";
+
+/** An address cut into groups of `size` (slice 5, ruling (5)). */
+export function addressGroups(address: string, size = 4): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < address.length; i += size) out.push(address.slice(i, i + size));
+  return out;
+}
+
+/** The FULL address, its groups separated by spaces; each group is nowrap, so
+ *  a line breaks only between groups, never inside one (G3 ruling R2). */
+function AddressGroups({ address }: { address: string }) {
+  if (!address) return <>—</>;
+  const groups = addressGroups(address);
+  return (
+    <>
+      {groups.map((g, i) => (
+        <Fragment key={i}>
+          {i > 0 ? " " : null}
+          <span className="sub-pay-address-group">{g}</span>
+        </Fragment>
+      ))}
+    </>
+  );
+}
 
 function truncMiddle(s: string, head = 12, tail = 8): string {
   if (!s) return "—";
@@ -137,16 +169,19 @@ export default function PayFromNodeModal({
     return () => { cancelled = true; };
   }, []);
 
-  const usdRate = rate && rate.state !== "none" ? rate.usd : null;
-  // An amount renders as one unbreakable unit, so "$X.XX (N sats)" never
-  // wraps inside itself on a phone (G3 ruling R2; .sub-amount in styles.css).
-  const amount = (sats: number, prefix = "") => (
-    <span className="sub-amount">{prefix}{renewalAmount(sats, usdRate).text}</span>
+  const usdRate = usableUsd(rate);
+  // Amounts through slice 1's formatter (member-first-run-ui slice 5, ruling
+  // (6)): in a sentence or a button, "$X (N sats)" (inlineAmount); in the
+  // preview's rows, <Amount>, dollars over sats. A sentence's amount renders as
+  // one unbreakable unit, so it never wraps inside itself on a phone (G3
+  // ruling R2; .sub-amount in styles.css).
+  const amount = (sats: number) => (
+    <span className="sub-amount">{inlineAmount(sats, usdRate)}</span>
   );
   // A past amount (a payment already sent, a price already agreed) in sats
   // only: today's rate would misstate what it was (G3 ruling R7).
   const satsOnly = (sats: number) => (
-    <span className="sub-amount">{renewalAmount(sats, null).text}</span>
+    <span className="sub-amount">{formatSats(sats)}</span>
   );
   const note = rateFailed ? RATE_NONE_SENTENCE : rateNote(rate);
   // The rate's note on every step that shows an amount (G3 ruling R7). A step
@@ -263,10 +298,10 @@ export default function PayFromNodeModal({
   if (!display.show) {
     const s = display.state;
     const copy = s
-      ? trustCopy(s, s.state === "S4_price_above_cap" ? renewalAmount(s.price_sats, usdRate).text : undefined)
+      ? trustCopy(s, s.state === "S4_price_above_cap" ? inlineAmount(s.price_sats, usdRate) : undefined)
       : null;
     return createPortal(
-      <div className="dialog-overlay" role="dialog" aria-modal="true" aria-label="Pay subscription">
+      <div className="dialog-overlay" role="dialog" aria-modal="true" aria-label={DIALOG_LABEL}>
         <div className="dialog-card sub-pay-modal">
           {copy && (
             <div className="sub-alert sub-alert-amber" role="alert" data-trust-state={s!.state}>
@@ -287,14 +322,14 @@ export default function PayFromNodeModal({
   }
 
   return createPortal(
-    <div className="dialog-overlay" role="dialog" aria-modal="true" aria-label="Pay subscription">
+    <div className="dialog-overlay" role="dialog" aria-modal="true" aria-label={DIALOG_LABEL}>
       <div className="dialog-card sub-pay-modal">
         {/* ── Chooser ── */}
         {state.step === "chooser" && (
           <>
             <div className="dialog-title">Where is your BTC?</div>
             <div className="dialog-body">
-              Pay {amount(target.price_sats)} to your subscription deposit address.
+              Pay {amount(target.price_sats)} to your membership address.
             </div>
             {rateLine(true)}
             {/* The note has no bottom margin; space it from the buttons (r2 capture, m06). */}
@@ -340,7 +375,7 @@ export default function PayFromNodeModal({
               const copy = trustCopy(
                 quoteRefusal,
                 quoteRefusal.state === "S4_price_above_cap"
-                  ? renewalAmount(quoteRefusal.price_sats, usdRate).text
+                  ? inlineAmount(quoteRefusal.price_sats, usdRate)
                   : undefined,
               );
               return (
@@ -354,26 +389,27 @@ export default function PayFromNodeModal({
               );
             })()}
             <div className="dialog-body" style={{ marginBottom: 14 }}>
-              Sends an on-chain payment from your node's wallet to your own
-              subscription deposit address.
+              Sends an on-chain payment from your node's wallet to your membership address.
             </div>
             <dl className="sub-pay-preview">
               <div>
                 <dt>Amount</dt>
-                <dd>{amount(target.price_sats)}</dd>
+                <dd><Amount sats={target.price_sats} rate={rate} /></dd>
               </div>
-              <div>
-                <dt>To deposit address</dt>
-                {/* C15: no address while the quote refuses it. */}
-                <dd className="sub-pay-address" title={quoteRefusal ? undefined : target.deposit_address}>
-                  {quoteRefusal ? "—" : truncMiddle(target.deposit_address)}
+              {/* Slice 5, ruling (5): the FULL address under its label, in
+                  groups of 4 that wrap only between groups (G3's R2: never
+                  mid-token). C15: no address while the quote refuses it. */}
+              <div className="sub-pay-row-stacked">
+                <dt>To your membership address</dt>
+                <dd className="sub-pay-address ident">
+                  {quoteRefusal ? "—" : <AddressGroups address={target.deposit_address} />}
                 </dd>
               </div>
               <div>
                 <dt>Estimated network fee</dt>
                 <dd>
                   {quote
-                    ? amount(quote.estimated_fee_sats, "~")
+                    ? <Amount sats={quote.estimated_fee_sats} rate={rate} approx />
                     : quoteError
                       ? "estimate unavailable"
                       : "estimating…"}
@@ -382,9 +418,7 @@ export default function PayFromNodeModal({
             </dl>
             {rateLine(true)}
             <p className="sub-fineprint" style={{ marginTop: 10 }}>
-              The exact network fee is set when it sends — targeting confirmation within
-              about an hour. Payment is detected within ~15–30 seconds after the first
-              confirmation.
+              The exact network fee is set when it sends. {CONFIRMS_LINE}
             </p>
             <div className="dialog-actions" style={{ marginTop: 18 }}>
               <button
@@ -411,7 +445,7 @@ export default function PayFromNodeModal({
           <>
             <div className="dialog-title">You already sent a payment</div>
             <div className="dialog-body">
-              Your node sent {satsOnly(state.marker.amount_sats)} to your subscription address{" "}
+              Your node sent {satsOnly(state.marker.amount_sats)} to your membership address{" "}
               {formatDistanceToNow(new Date(state.marker.created_at * 1000), { addSuffix: true })}
               {state.marker.txid ? ` (transaction ${truncMiddle(state.marker.txid, 8, 8)})` : ""}.
               It hasn't been credited yet. Most payments are credited soon after their
@@ -456,9 +490,7 @@ export default function PayFromNodeModal({
           <>
             <div className="dialog-title">Payment sent</div>
             <div className="dialog-body">
-              Your payment is broadcasting. It's detected within ~15–30 seconds
-              after the first confirmation — your subscription status updates
-              automatically.
+              Your payment is broadcasting. {CONFIRMS_LINE}
             </div>
             <div className="sub-stat-label">TRANSACTION ID</div>
             <code className="sub-deposit-address" title={state.txid}>
@@ -498,7 +530,7 @@ export default function PayFromNodeModal({
           <>
             <div className="dialog-title">I have BTC elsewhere</div>
             <div className="dialog-body">
-              Open your Bitcoin wallet with the deposit address and amount
+              Open your Bitcoin wallet with your membership address and amount
               pre-filled, or copy the address from the deposit block in the
               panel.
             </div>
@@ -516,7 +548,7 @@ export default function PayFromNodeModal({
             {rateLine(true)}
             <p className="sub-fineprint" style={{ marginTop: 10 }}>
               No Bitcoin wallet registered for <code className="ident">bitcoin:</code> links? This
-              button does nothing — use the deposit address and QR code in the
+              button does nothing — use your membership address and QR code in the
               panel instead.
             </p>
             <div className="dialog-actions" style={{ marginTop: 16 }}>

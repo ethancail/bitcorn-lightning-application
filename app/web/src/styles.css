@@ -1518,15 +1518,29 @@ div:has(> .action-confirm-input) + .dialog-actions {
   text-align: right;
 }
 
-/* G3 ruling R2: no line break inside an amount, and an address that does not
-   fit ends in an ellipsis instead of wrapping mid-token (phone-m15 showed
-   "(3,749 s / ats)" and "…lzsq8 / kct" under word-break: break-all). */
+/* G3 ruling R2: no line break inside an amount, and no address wrapped
+   mid-token (phone-m15 showed "(3,749 s / ats)" and "…lzsq8 / kct" under
+   word-break: break-all). Slice 5, ruling (5): the FULL address, under its
+   label, in groups of 4; each group is nowrap and the spaces between them are
+   the only places a line can break. (It replaced a middle cut followed by an
+   ellipsis, which cut the address twice at 390px.) */
 .sub-amount {
   white-space: nowrap;
 }
+.sub-pay-preview .amount { align-items: flex-end; }
+.sub-pay-preview > div.sub-pay-row-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
 .sub-pay-preview dd.sub-pay-address {
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: left;
+  white-space: normal;
+  line-height: 1.6;
+  /* An identifier (Z2): .ident's font, which .sub-pay-preview dd outranks. */
+  font-family: var(--font-id);
+}
+.sub-pay-address-group {
   white-space: nowrap;
 }
 
