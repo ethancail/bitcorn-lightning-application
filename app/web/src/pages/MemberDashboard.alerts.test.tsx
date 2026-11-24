@@ -341,8 +341,9 @@ describe("R34 item 3: only the same Loop fault is suppressed", () => {
     action: "channel_upgrade", suggestedAmountSats: 2_000_000, projectedMemberLocalPct: null,
     reason, urgency: "low", loopAvailable: false, generatedAt: NOW,
   });
-  const MERCHANT_UPGRADE = "Your channel (1,000,000 sats) is below the recommended merchant minimum of 2,000,000 sats. Open a larger channel to avoid running low on sending balance so often.";
-  const FARMER_UPGRADE = "Your channel (1,000,000 sats) is below the recommended farmer minimum of 2,000,000 sats. Open a larger channel to receive larger or more frequent earnings without filling up.";
+  // The API's words since member-first-run-ui slice 5 (ruling (7); recommendationEngine.ts).
+  const MERCHANT_UPGRADE = "Your connection (1,000,000 sats) is smaller than we recommend for a merchant (2,000,000 sats). Making your connection bigger is coming soon.";
+  const FARMER_UPGRADE = "Your connection (1,000,000 sats) is smaller than we recommend for a farmer (2,000,000 sats). Making your connection bigger is coming soon.";
 
   it("merchant: a Loop alert and an upgrade recommendation — both show", async () => {
     stub.getMemberLiquidityStatus.mockResolvedValue(advisor("merchant", {
@@ -350,7 +351,7 @@ describe("R34 item 3: only the same Loop fault is suppressed", () => {
     }));
     await renderDashboard();
     expect(alertWith("Loop isn't responding right now, so Top Up")).not.toBeNull();
-    expect(alertWith("below the recommended merchant minimum")).not.toBeNull();
+    expect(alertWith("smaller than we recommend for a merchant")).not.toBeNull();
   });
 
   it("farmer: a Loop alert and an upgrade recommendation — both show", async () => {
@@ -359,7 +360,7 @@ describe("R34 item 3: only the same Loop fault is suppressed", () => {
     }));
     await renderDashboard();
     expect(alertWith("Loop isn't responding right now, so Withdraw")).not.toBeNull();
-    expect(alertWith("below the recommended farmer minimum")).not.toBeNull();
+    expect(alertWith("smaller than we recommend for a farmer")).not.toBeNull();
   });
 });
 

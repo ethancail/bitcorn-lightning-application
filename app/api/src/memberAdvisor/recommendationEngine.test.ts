@@ -43,7 +43,7 @@ vi.mock("./advisorMinimum", () => ({
 // lets the one test that needs a non-default floor_sats set it (see
 // "farmer's SECOND manual_recovery" below).
 import { db as memDb } from "../db";
-import { describeSustainedRuns, computeRecommendation } from "./recommendationEngine";
+import { describeSustainedRuns, computeRecommendation, UPGRADE_COMING_SOON } from "./recommendationEngine";
 import type { ChannelClassification } from "./channelClassifier";
 import type { LoopAvailability } from "./loopAvailability";
 
@@ -443,7 +443,11 @@ describe("merchant pre-emption — undersized || repeatedDepletion", () => {
     );
     expect(rec.action).toBe("channel_upgrade");
     assertNonVacuous(rec.reason);
-    expect(rec.reason).toContain("recommended merchant");
+    // Slice 5: the farmer warning's pattern (was "below the recommended merchant minimum").
+    expect(rec.reason).toBe(
+      "Your connection (1,999,999 sats) is smaller than we recommend for a merchant (2,000,000 sats). " +
+        "Making your connection bigger is coming soon.",
+    );
   });
 
   it("repeatedDepletion fires on the RECEIVE state family", () => {
@@ -490,7 +494,11 @@ describe("farmer pre-emption — undersized || repeatedFilling", () => {
     );
     expect(rec.action).toBe("channel_upgrade");
     assertNonVacuous(rec.reason);
-    expect(rec.reason).toContain("recommended farmer");
+    // Slice 5, ruling (7), verbatim (was "below the recommended farmer minimum … Open a larger channel …").
+    expect(rec.reason).toBe(
+      "Your connection (999,999 sats) is smaller than we recommend for a farmer (1,000,000 sats). " +
+        "Making your connection bigger is coming soon.",
+    );
   });
 
   it("repeatedFilling fires on the SEND state family", () => {
@@ -560,5 +568,46 @@ describe("farmer's SECOND manual_recovery — Loop up, balance too small", () =>
     expect(rec.reason).not.toContain("Loop isn't ready on this node yet.");
     expect(rec.reason).not.toContain("Loop isn't responding right now.");
     expect(rec.reason).not.toContain("Withdrawals are currently unavailable.");
+  });
+});
+
+// ─── member-first-run-ui slice 5, ruling (7) ────────────────────────────────
+// The dashboard renders rec.reason verbatim (MemberDashboard.tsx), so every
+// channel_upgrade reason is member text: "connection", never "channel", "hub"
+// or "operator", and no advice to open a larger channel, which the app can't
+// do yet. The farmer's undersized form is ruled verbatim; the brief applies
+// its pattern to the other three.
+describe("slice 5 (7): every channel_upgrade reason says 'connection' and 'coming soon'", () => {
+  const CASES: Array<[string, Parameters<typeof classification>[0], string]> = [
+    ["farmer, undersized (ruled verbatim)",
+      { channelRole: "farmer", capacitySat: 999_999, memberLocalSat: 900_000, state: "send_saturated" },
+      "Your connection (999,999 sats) is smaller than we recommend for a farmer (1,000,000 sats). Making your connection bigger is coming soon."],
+    ["farmer, repeatedly full",
+      { channelRole: "farmer", capacitySat: 1_000_000, memberLocalSat: 900_000, state: "send_saturated", consecutiveNonHealthyRuns: 3 },
+      "Your connection has been full or nearly full for "],
+    ["merchant, undersized",
+      { channelRole: "merchant", capacitySat: 1_999_999, memberLocalSat: 200_000, state: "receive_exhausted" },
+      "Your connection (1,999,999 sats) is smaller than we recommend for a merchant (2,000,000 sats). Making your connection bigger is coming soon."],
+    ["merchant, repeatedly low",
+      { channelRole: "merchant", capacitySat: 2_000_000, memberLocalSat: 200_000, state: "receive_exhausted", consecutiveNonHealthyRuns: 3 },
+      "This usually means your connection is too small for your payment volume. "],
+  ];
+  const WORDS = /\bchannels?\b|\bhubs?\b|\boperators?\b|\blarger\b/i;
+
+  for (const [name, c, expected] of CASES) {
+    it(name, () => {
+      const rec = computeRecommendation(classification(c), loopDown("unreachable"));
+      expect(rec.action).toBe("channel_upgrade");
+      assertNonVacuous(rec.reason);
+      expect(rec.reason).toContain(expected);
+      expect(rec.reason.endsWith(UPGRADE_COMING_SOON)).toBe(true);
+      expect(rec.reason).not.toMatch(WORDS);
+      expect(rec.reason).not.toContain("Bitcorn");
+    });
+  }
+
+  it("negative control: the guard catches the old wording", () => {
+    expect("Your channel (999,999 sats) is below the recommended farmer minimum of 1,000,000 sats. Open a larger channel to receive larger or more frequent earnings without filling up.").toMatch(WORDS);
+    expect("Consider opening a larger channel instead of withdrawing frequently.").toMatch(WORDS);
   });
 });

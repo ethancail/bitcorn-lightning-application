@@ -77,7 +77,8 @@ describe("the advisor's minimum is the formula's", () => {
   it("a farmer at 400,000 is, and the advisor names and suggests 406,055", () => {
     const rec = computeRecommendation(c({ capacitySat: 400_000 }), LOOP);
     expect(rec.action).toBe("channel_upgrade");
-    expect(rec.reason).toContain("minimum of 406,055 sats");
+    // Slice 5 (7): the farmer warning names the minimum as "we recommend for a farmer (M sats)".
+    expect(rec.reason).toContain("smaller than we recommend for a farmer (406,055 sats)");
     expect(rec.suggestedAmountSats).toBe(406_055);
   });
 
@@ -89,7 +90,8 @@ describe("the advisor's minimum is the formula's", () => {
   it("a merchant at 360,000 is, and the advisor names 370,605", () => {
     const rec = computeRecommendation(c({ channelRole: "merchant", capacitySat: 360_000 }), LOOP);
     expect(rec.action).toBe("channel_upgrade");
-    expect(rec.reason).toContain("minimum of 370,605 sats");
+    // Slice 5: the same pattern for a merchant.
+    expect(rec.reason).toContain("smaller than we recommend for a merchant (370,605 sats)");
     expect(rec.suggestedAmountSats).toBe(370_605);
   });
 

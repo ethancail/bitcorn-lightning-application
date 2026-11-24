@@ -156,6 +156,14 @@ const LOOP_CREDENTIALS_ABSENT = "Loop isn't ready on this node yet.";
  */
 const LOOP_UNREACHABLE = "Loop isn't responding right now.";
 
+/**
+ * The end of every channel_upgrade reason (member-first-run-ui slice 5,
+ * ruling (7)): the app can't make a connection bigger yet, so the advice to
+ * "open a larger channel" is gone. The same words as the web's My Channels
+ * hint (slice 2). Member text says "connection", never "channel".
+ */
+export const UPGRADE_COMING_SOON = "Making your connection bigger is coming soon.";
+
 // ─── Role: UNKNOWN ──────────────────────────────────────────────────────────
 
 function recommendUnknown(
@@ -221,13 +229,15 @@ function recommendMerchant(
     (c.state === "receive_heavy" || c.state === "receive_exhausted");
 
   if (undersized || repeatedDepletion) {
+    // member-first-run-ui slice 5: the farmer warning's pattern (ruling (7)),
+    // applied here as the brief directs — "connection", not "channel", and no
+    // advice to open a larger one, which the app can't do yet.
     const reason = undersized
-      ? `Your channel (${fmt(c.capacitySat)} sats) is below the recommended merchant ` +
-        `minimum of ${fmt(minSize!)} sats. Open a larger channel ` +
-        `to avoid running low on sending balance so often.`
+      ? `Your connection (${fmt(c.capacitySat)} sats) is smaller than we recommend for a merchant ` +
+        `(${fmt(minSize!)} sats). ${UPGRADE_COMING_SOON}`
       : `Your sending balance has stayed low for ${describeSustainedRuns(c.consecutiveNonHealthyRuns)}. ` +
-        `This usually means the channel is too small for your payment volume. ` +
-        `Consider opening a larger channel instead of topping up repeatedly.`;
+        `This usually means your connection is too small for your payment volume. ` +
+        UPGRADE_COMING_SOON;
     return {
       action: "channel_upgrade",
       suggestedAmountSats: minSize,
@@ -339,13 +349,14 @@ function recommendFarmer(
     (c.state === "send_heavy" || c.state === "send_saturated");
 
   if (undersized || repeatedFilling) {
+    // member-first-run-ui slice 5, ruling (7): the dashboard's Your-earnings
+    // warning, verbatim. The repeated-filling form takes the same pattern.
     const reason = undersized
-      ? `Your channel (${fmt(c.capacitySat)} sats) is below the recommended farmer ` +
-        `minimum of ${fmt(minSize!)} sats. Open a larger channel ` +
-        `to receive larger or more frequent earnings without filling up.`
-      : `Your channel has been full or nearly full for ${describeSustainedRuns(c.consecutiveNonHealthyRuns)}. ` +
+      ? `Your connection (${fmt(c.capacitySat)} sats) is smaller than we recommend for a farmer ` +
+        `(${fmt(minSize!)} sats). ${UPGRADE_COMING_SOON}`
+      : `Your connection has been full or nearly full for ${describeSustainedRuns(c.consecutiveNonHealthyRuns)}. ` +
         `This usually means it's too small for your earnings flow. ` +
-        `Consider opening a larger channel instead of withdrawing frequently.`;
+        UPGRADE_COMING_SOON;
     return {
       action: "channel_upgrade",
       suggestedAmountSats: minSize,
