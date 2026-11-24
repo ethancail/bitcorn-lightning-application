@@ -519,7 +519,7 @@ Page structure (matches boss's mockup):
 - **Coinbase USD auto-replenishment** — users handle their own ACH/debit-card deposit setup inside Coinbase; we only warn on low balance.
 - **Weight tuning UI** — Model Inputs tab is read-only in v1; weight edits come in v2.
 - **Zone boundary editing** — zones are fixed at the boss-mockup values; only multipliers are user-configurable.
-- **Non-Coinbase exchanges** — no Kraken / Strike / river integration in v1.
+- ~~**Non-Coinbase exchanges** — no Kraken / Strike / river integration in v1.~~ *[Corrected 2026-11-24, kraken-autobuy P6:]* **Kraken was added later, in kraken-autobuy Slice 1 (2026-11, USD buys only). Strike and River remain out.** Setup: `docs/AUTOBUY_OPERATOR_GUIDE.md` § Kraken.
 - **Multi-asset DCA** — BTC only; no stablecoin stacking or asset-rotation.
 - **Scheduled withdrawals to multiple addresses** — single stable address only.
 - **Backtest simulator (endpoint + UI)** — deferred to Plan 2c. Plan 2a/2b ship a working auto-buy without historical simulation; backtest is a nice-to-have that requires Worker's `/valuation/history` but doesn't affect real-money flow. Add after real buys are validated in production.
