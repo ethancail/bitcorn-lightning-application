@@ -118,6 +118,27 @@ jobs:
             exit 1
           fi
 
+          # NO TESTS EXECUTED IS A FAILURE (code-audit-2 "vitest worker conflict
+          # and no-tests-ran", ruled 2026-11-24). numTotalTests counts SKIPPED
+          # tests, so a run in which everything was skipped (a stray -t, an
+          # all-.skip suite) clears the floor above and vitest exits 0. The
+          # config's NO TESTS RAN guard does not run here: --reporter=json
+          # replaces the config's reporters. So: at least one test must have
+          # passed or failed, read from the same report.
+          node -e "
+            const r = require('/tmp/api-vitest.json');
+            const p = r.numPassedTests, f = r.numFailedTests;
+            if (typeof p !== 'number' || typeof f !== 'number') {
+              console.log('::error::API test report has no numeric numPassedTests/numFailedTests — unparseable.');
+              process.exit(1);
+            }
+            console.log('API tests: ' + (p + f) + ' executed (' + p + ' passed, ' + f + ' failed)');
+            if (p + f <= 0) {
+              console.log('::error::No API tests executed: ' + r.numTotalTests + ' collected, 0 passed or failed. This is a FAILURE, not a pass.');
+              process.exit(1);
+            }
+          " || exit 1
+
   web-build:
     name: Web — production build (hard gate)
     runs-on: ubuntu-24.04
@@ -1132,3 +1153,24 @@ jobs:
             echo "config, moved/renamed test files, or a collection-time crash."
             exit 1
           fi
+
+          # NO TESTS EXECUTED IS A FAILURE (code-audit-2 "vitest worker conflict
+          # and no-tests-ran", ruled 2026-11-24). numTotalTests counts SKIPPED
+          # tests, so a run in which everything was skipped (a stray -t, an
+          # all-.skip suite) clears the floor above and vitest exits 0. The
+          # config's NO TESTS RAN guard does not run here: --reporter=json
+          # replaces the config's reporters. So: at least one test must have
+          # passed or failed, read from the same report.
+          node -e "
+            const r = require('/tmp/web-vitest.json');
+            const p = r.numPassedTests, f = r.numFailedTests;
+            if (typeof p !== 'number' || typeof f !== 'number') {
+              console.log('::error::Web test report has no numeric numPassedTests/numFailedTests — unparseable.');
+              process.exit(1);
+            }
+            console.log('Web tests: ' + (p + f) + ' executed (' + p + ' passed, ' + f + ' failed)');
+            if (p + f <= 0) {
+              console.log('::error::No web tests executed: ' + r.numTotalTests + ' collected, 0 passed or failed. This is a FAILURE, not a pass.');
+              process.exit(1);
+            }
+          " || exit 1
