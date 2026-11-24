@@ -5,7 +5,7 @@ name: BitCorn Lightning
 tagline: Self-optimizing Lightning capital allocation engine
 icon: https://raw.githubusercontent.com/ethancail/bitcorn-lightning-application/main/app/web/public/icon.png
 category: Finance
-version: "1.18.41"
+version: "1.18.42"
 port: 3200
 
 description: >
@@ -27,4 +27,4 @@ repo: https://github.com/ethancail/bitcorn-lightning-application
 support: https://github.com/ethancail/bitcorn-lightning-application/issues
 gallery: []
 releaseNotes: |
-  Payments from member nodes route through BitCorn again on newer Lightning versions, and your dashboard now tells you when your Lightning Node app needs an update.
+  A simpler Membership panel in Settings, an update to the software your node runs on, and wallet tools that no longer send usage data.
