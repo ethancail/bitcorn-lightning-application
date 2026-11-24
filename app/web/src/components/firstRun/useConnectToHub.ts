@@ -108,14 +108,15 @@ export function useConnectToHub({ isPeered, initialCapacity, rate }: {
     return (hasAutoSocket && !isPeered ? hubSocket : socket.trim() || undefined) || undefined;
   }
 
-  function summaryFor(capacitySats: number, opt: Pick<FeeEstimateOption, "key" | "rate">) {
+  function summaryFor(capacitySats: number, opt: Pick<FeeEstimateOption, "key" | "rate" | "cost_sats">) {
     return summarizeOpenMemberChannel({
       capacitySats,
       partnerSocket: partnerSocketNow(),
-      // TreasuryInfo carries pubkey + socket only, no alias — the summary's
-      // default label ("Bitcorn treasury hub") is the honest name here.
-      hubLabel: undefined,
       fee: { label: FEE_OPTION_LABEL[opt.key], rate: opt.rate },
+      // Slice 5, ruling (4): "What it costs" is this option's open fee, the
+      // figure its card shows and the reshow's "Fee updated" quotes.
+      feeSats: opt.cost_sats.open,
+      rate,
     });
   }
 

@@ -96,7 +96,7 @@ describe("the type-to-confirm input is a sized text field", () => {
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
-    const summary = summarizeOpenMemberChannel({ capacitySats: 1_000_000, partnerSocket: "203.0.113.5:9735", fee: { label: "Economy", rate: 1 } });
+    const summary = summarizeOpenMemberChannel({ capacitySats: 1_000_000, partnerSocket: "203.0.113.5:9735", fee: { label: "Economy", rate: 1 }, rate: null });
     await act(async () => { root!.render(React.createElement(Harness, { summary })); });
     // The modal portals to document.body (ruling ll).
     const input = document.body.querySelector("#action-confirm-challenge");

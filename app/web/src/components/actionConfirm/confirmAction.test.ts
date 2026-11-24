@@ -29,7 +29,7 @@ function memberWords(s: ActionSummary): string {
 }
 
 const ALL: Array<[string, ActionSummary]> = [
-  ["openMemberChannel", summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 } })],
+  ["openMemberChannel", summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 }, rate: null })],
   [
     "treasuryOpenChannel",
     summarizeTreasuryOpenChannel({ peerPubkey: "02b759b1552f6471599420c9aa8b7fb52c0a343ecc", capacitySats: 2_000_000, fee: { label: "Economy", rate: 1 } }),
@@ -128,7 +128,7 @@ describe("every summary is usable", () => {
   it("an amount-bearing action challenges on the AMOUNT, not a word", () => {
     // Ethan's requirement: type the amount where there is one.
     const withAmounts: ActionSummary[] = [
-      summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 } }),
+      summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 }, rate: null }),
       summarizeTreasuryOpenChannel({ peerPubkey: "02ab", capacitySats: 2_000_000, fee: { label: "Economy", rate: 1 } }),
       summarizePayInvoice({ amountSats: 25_000 }),
       summarizeLoopOut({ amountSats: 500_000, rate: null }),

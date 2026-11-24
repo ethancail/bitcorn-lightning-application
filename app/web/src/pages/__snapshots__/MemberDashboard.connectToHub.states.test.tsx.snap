@@ -2014,44 +2014,54 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 1
-<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+<div aria-label="Connect to BitCorn" aria-modal="true" class="dialog-overlay" role="dialog">
   <div class="dialog-card action-confirm-card">
     <div class="dialog-title">
-      "Open a channel to the hub"
+      "Connect to BitCorn"
     <div class="action-confirm-scroll">
       <div class="dialog-body">
-        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Capacity"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "1,000,000 sats"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Peer"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Bitcorn treasury hub"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Speed"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Economy (about 1 sat/vB)"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Address"
-            <dd class="ident" style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "198.51.100.7:9735"
-        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
-          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+        <div class="action-confirm-member">
+          <div class="action-confirm-amount">
+            <span class="amount amount-hero" data-sats="1000000">
+              <span class="amount-figure" data-line="usd">
+                "$600.00"
+              <span class="amount-sub" data-line="sats">
+                "1,000,000 sats"
+          <p class="action-confirm-line">
+            <span class="text-dim">
+              "What it costs:"
+            " "
+            "about $0.09 (155 sats)"
+          <dl class="action-confirm-rows">
+            <div class="action-confirm-row">
+              <dt>
+                "Speed"
+              <dd>
+                "Economy (about 1 sat/vB)"
+          <p class="action-confirm-final">
+            "The network fee is spent even if you close the connection later."
+          <details class="action-confirm-details">
+            <summary>
+              "Details"
+            <div class="action-confirm-details-body">
+              <dl class="action-confirm-rows">
+                <div class="action-confirm-row">
+                  <dt>
+                    "Address"
+                  <dd class="ident">
+                    "198.51.100.7:9735"
       <div style="margin-top: 14px;">
         <label for="action-confirm-challenge" style="display: block; margin-bottom: 6px;">
-          "Type the amount to confirm: 1,000,000"
-        <input autocomplete="off" class="form-input action-confirm-input" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="" prop:value="" prop:disabled=false>
+          "To confirm, type the sats amount: 1,000,000"
+        <div class="action-confirm-sats">
+          <input autocomplete="off" class="form-input action-confirm-input" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="" prop:value="" prop:disabled=false>
+          <span aria-hidden="true" class="action-confirm-sats-unit">
+            "sats"
     <div style="display: flex; gap: 10px; margin-top: 16px;">
-      <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
-        "Open channel"
       <button class="btn btn-outline" prop:disabled=false>
         "Cancel"
+      <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
+        "Connect"
 calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
 `;
 
@@ -2199,44 +2209,54 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 1
-<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+<div aria-label="Connect to BitCorn" aria-modal="true" class="dialog-overlay" role="dialog">
   <div class="dialog-card action-confirm-card">
     <div class="dialog-title">
-      "Open a channel to the hub"
+      "Connect to BitCorn"
     <div class="action-confirm-scroll">
       <div class="dialog-body">
-        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Capacity"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "1,000,000 sats"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Peer"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Bitcorn treasury hub"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Speed"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Economy (about 1 sat/vB)"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Address"
-            <dd class="ident" style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "203.0.113.5:9735"
-        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
-          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+        <div class="action-confirm-member">
+          <div class="action-confirm-amount">
+            <span class="amount amount-hero" data-sats="1000000">
+              <span class="amount-figure" data-line="usd">
+                "$600.00"
+              <span class="amount-sub" data-line="sats">
+                "1,000,000 sats"
+          <p class="action-confirm-line">
+            <span class="text-dim">
+              "What it costs:"
+            " "
+            "about $0.09 (155 sats)"
+          <dl class="action-confirm-rows">
+            <div class="action-confirm-row">
+              <dt>
+                "Speed"
+              <dd>
+                "Economy (about 1 sat/vB)"
+          <p class="action-confirm-final">
+            "The network fee is spent even if you close the connection later."
+          <details class="action-confirm-details">
+            <summary>
+              "Details"
+            <div class="action-confirm-details-body">
+              <dl class="action-confirm-rows">
+                <div class="action-confirm-row">
+                  <dt>
+                    "Address"
+                  <dd class="ident">
+                    "203.0.113.5:9735"
       <div style="margin-top: 14px;">
         <label for="action-confirm-challenge" style="display: block; margin-bottom: 6px;">
-          "Type the amount to confirm: 1,000,000"
-        <input autocomplete="off" class="form-input action-confirm-input" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="" prop:value="" prop:disabled=false>
+          "To confirm, type the sats amount: 1,000,000"
+        <div class="action-confirm-sats">
+          <input autocomplete="off" class="form-input action-confirm-input" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="" prop:value="" prop:disabled=false>
+          <span aria-hidden="true" class="action-confirm-sats-unit">
+            "sats"
     <div style="display: flex; gap: 10px; margin-top: 16px;">
-      <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
-        "Open channel"
       <button class="btn btn-outline" prop:disabled=false>
         "Cancel"
+      <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
+        "Connect"
 calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
 `;
 
@@ -2384,39 +2404,44 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 9
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 1
-<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+<div aria-label="Connect to BitCorn" aria-modal="true" class="dialog-overlay" role="dialog">
   <div class="dialog-card action-confirm-card">
     <div class="dialog-title">
-      "Open a channel to the hub"
+      "Connect to BitCorn"
     <div class="action-confirm-scroll">
       <div class="dialog-body">
-        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Capacity"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "1,000,000 sats"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Peer"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Bitcorn treasury hub"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Speed"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Economy (about 1 sat/vB)"
-        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
-          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+        <div class="action-confirm-member">
+          <div class="action-confirm-amount">
+            <span class="amount amount-hero" data-sats="1000000">
+              <span class="amount-figure" data-line="usd">
+                "$600.00"
+              <span class="amount-sub" data-line="sats">
+                "1,000,000 sats"
+          <p class="action-confirm-line">
+            <span class="text-dim">
+              "What it costs:"
+            " "
+            "about $0.09 (155 sats)"
+          <dl class="action-confirm-rows">
+            <div class="action-confirm-row">
+              <dt>
+                "Speed"
+              <dd>
+                "Economy (about 1 sat/vB)"
+          <p class="action-confirm-final">
+            "The network fee is spent even if you close the connection later."
       <div style="margin-top: 14px;">
         <label for="action-confirm-challenge" style="display: block; margin-bottom: 6px;">
-          "Type the amount to confirm: 1,000,000"
-        <input autocomplete="off" class="form-input action-confirm-input" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="1000000" prop:value="1000000" prop:disabled=false>
+          "To confirm, type the sats amount: 1,000,000"
+        <div class="action-confirm-sats">
+          <input autocomplete="off" class="form-input action-confirm-input" id="action-confirm-challenge" inputmode="numeric" style="width: 100%; font-variant-numeric: tabular-nums;" type="text" value="1000000" prop:value="1000000" prop:disabled=false>
+          <span aria-hidden="true" class="action-confirm-sats-unit">
+            "sats"
     <div style="display: flex; gap: 10px; margin-top: 16px;">
-      <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
-        "Open channel"
       <button class="btn btn-outline" prop:disabled=false>
         "Cancel"
+      <button class="btn btn-primary" style="flex: 1 1 0%;" prop:disabled=false>
+        "Connect"
 calls: {"openMemberChannel":[],"getTreasuryInfo":1}"
 `;
 
@@ -2564,30 +2589,32 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <button class="btn btn-primary" disabled="" prop:disabled=true>
             "Connecting…"
 portals: 1
-<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+<div aria-label="Connect to BitCorn" aria-modal="true" class="dialog-overlay" role="dialog">
   <div class="dialog-card action-confirm-card">
     <div class="dialog-title">
-      "Open a channel to the hub"
+      "Connect to BitCorn"
     <div class="action-confirm-scroll">
       <div class="dialog-body">
-        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Capacity"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "1,000,000 sats"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Peer"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Bitcorn treasury hub"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Speed"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Economy (about 1 sat/vB)"
-        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
-          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+        <div class="action-confirm-member">
+          <div class="action-confirm-amount">
+            <span class="amount amount-hero" data-sats="1000000">
+              <span class="amount-figure" data-line="usd">
+                "$600.00"
+              <span class="amount-sub" data-line="sats">
+                "1,000,000 sats"
+          <p class="action-confirm-line">
+            <span class="text-dim">
+              "What it costs:"
+            " "
+            "about $0.09 (155 sats)"
+          <dl class="action-confirm-rows">
+            <div class="action-confirm-row">
+              <dt>
+                "Speed"
+              <dd>
+                "Economy (about 1 sat/vB)"
+          <p class="action-confirm-final">
+            "The network fee is spent even if you close the connection later."
     <div style="display: flex; gap: 10px; margin-top: 16px;">
       <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
         "Sending…"
@@ -2738,35 +2765,42 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <button class="btn btn-primary" disabled="" prop:disabled=true>
             "Connecting…"
 portals: 1
-<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+<div aria-label="Connect to BitCorn" aria-modal="true" class="dialog-overlay" role="dialog">
   <div class="dialog-card action-confirm-card">
     <div class="dialog-title">
-      "Open a channel to the hub"
+      "Connect to BitCorn"
     <div class="action-confirm-scroll">
       <div class="dialog-body">
-        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Capacity"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "1,000,000 sats"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Peer"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Bitcorn treasury hub"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Speed"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Priority (about 15 sat/vB)"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Address"
-            <dd class="ident" style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "203.0.113.5:9735"
-        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
-          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+        <div class="action-confirm-member">
+          <div class="action-confirm-amount">
+            <span class="amount amount-hero" data-sats="1000000">
+              <span class="amount-figure" data-line="usd">
+                "$600.00"
+              <span class="amount-sub" data-line="sats">
+                "1,000,000 sats"
+          <p class="action-confirm-line">
+            <span class="text-dim">
+              "What it costs:"
+            " "
+            "about $1.40 (2,325 sats)"
+          <dl class="action-confirm-rows">
+            <div class="action-confirm-row">
+              <dt>
+                "Speed"
+              <dd>
+                "Priority (about 15 sat/vB)"
+          <p class="action-confirm-final">
+            "The network fee is spent even if you close the connection later."
+          <details class="action-confirm-details">
+            <summary>
+              "Details"
+            <div class="action-confirm-details-body">
+              <dl class="action-confirm-rows">
+                <div class="action-confirm-row">
+                  <dt>
+                    "Address"
+                  <dd class="ident">
+                    "203.0.113.5:9735"
     <div style="display: flex; gap: 10px; margin-top: 16px;">
       <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
         "Sending…"
@@ -2908,35 +2942,42 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <button class="btn btn-primary" disabled="" prop:disabled=true>
             "Connecting…"
 portals: 1
-<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+<div aria-label="Connect to BitCorn" aria-modal="true" class="dialog-overlay" role="dialog">
   <div class="dialog-card action-confirm-card">
     <div class="dialog-title">
-      "Open a channel to the hub"
+      "Connect to BitCorn"
     <div class="action-confirm-scroll">
       <div class="dialog-body">
-        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Capacity"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "1,000,000 sats"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Peer"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Bitcorn treasury hub"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Speed"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Normal (about 5 sat/vB)"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Address"
-            <dd class="ident" style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "198.51.100.7:9735"
-        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
-          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+        <div class="action-confirm-member">
+          <div class="action-confirm-amount">
+            <span class="amount amount-hero" data-sats="1000000">
+              <span class="amount-figure" data-line="usd">
+                "$600.00"
+              <span class="amount-sub" data-line="sats">
+                "1,000,000 sats"
+          <p class="action-confirm-line">
+            <span class="text-dim">
+              "What it costs:"
+            " "
+            "about $0.47 (775 sats)"
+          <dl class="action-confirm-rows">
+            <div class="action-confirm-row">
+              <dt>
+                "Speed"
+              <dd>
+                "Normal (about 5 sat/vB)"
+          <p class="action-confirm-final">
+            "The network fee is spent even if you close the connection later."
+          <details class="action-confirm-details">
+            <summary>
+              "Details"
+            <div class="action-confirm-details-body">
+              <dl class="action-confirm-rows">
+                <div class="action-confirm-row">
+                  <dt>
+                    "Address"
+                  <dd class="ident">
+                    "198.51.100.7:9735"
     <div style="display: flex; gap: 10px; margin-top: 16px;">
       <button class="btn btn-primary" disabled="" style="flex: 1 1 0%;" prop:disabled=true>
         "Sending…"
@@ -3385,30 +3426,32 @@ exports[`ConnectToHub, the no-channel call site (MemberDashboard :731) > state 1
           <button class="btn btn-primary" prop:disabled=false>
             "Connect to BitCorn →"
 portals: 1
-<div aria-label="Open a channel to the hub" aria-modal="true" class="dialog-overlay" role="dialog">
+<div aria-label="Connect to BitCorn" aria-modal="true" class="dialog-overlay" role="dialog">
   <div class="dialog-card action-confirm-card">
     <div class="dialog-title">
-      "Open a channel to the hub"
+      "Connect to BitCorn"
     <div class="action-confirm-scroll">
       <div class="dialog-body">
-        <dl style="display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0px;">
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Capacity"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "1,000,000 sats"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Peer"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Bitcorn treasury hub"
-          <div style="display: contents;">
-            <dt style="opacity: 0.7;">
-              "Speed"
-            <dd style="margin: 0px; font-variant-numeric: tabular-nums; word-break: break-word;">
-              "Economy (about 1 sat/vB)"
-        <p style="margin-top: 12px; margin-bottom: 0px; opacity: 0.85;">
-          "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later."
+        <div class="action-confirm-member">
+          <div class="action-confirm-amount">
+            <span class="amount amount-hero" data-sats="1000000">
+              <span class="amount-figure" data-line="usd">
+                "$600.00"
+              <span class="amount-sub" data-line="sats">
+                "1,000,000 sats"
+          <p class="action-confirm-line">
+            <span class="text-dim">
+              "What it costs:"
+            " "
+            "about $0.09 (155 sats)"
+          <dl class="action-confirm-rows">
+            <div class="action-confirm-row">
+              <dt>
+                "Speed"
+              <dd>
+                "Economy (about 1 sat/vB)"
+          <p class="action-confirm-final">
+            "The network fee is spent even if you close the connection later."
       <div class="dialog-body" role="alert" style="margin-top: 12px; border-top: 1px solid var(--border-hi); padding-top: 12px;">
         <strong>
           "This is a bug — nothing was sent"

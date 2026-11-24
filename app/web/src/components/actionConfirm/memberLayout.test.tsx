@@ -23,7 +23,7 @@ import React, { useEffect } from "react";
 import ActionConfirmModal, { useActionConfirm } from "./ActionConfirmModal";
 import {
   summarizeCatchUp, summarizeCloseChannel, summarizeLoopIn, summarizeLoopOut,
-  summarizePayInvoice, summarizeTreasuryOpenChannel, type ActionSummary,
+  summarizeOpenMemberChannel, summarizePayInvoice, summarizeTreasuryOpenChannel, type ActionSummary,
 } from "./confirmAction";
 import { declsFor } from "../../styleRules.testutil";
 
@@ -188,8 +188,51 @@ describe("slice 5 (3): Top Up's confirm dialog", () => {
   });
 });
 
+const CONNECT = () => summarizeOpenMemberChannel({
+  capacitySats: 1_000_000, partnerSocket: "203.0.113.5:9735", fee: { label: "Economy", rate: 1 }, feeSats: 155, rate: FRESH,
+});
+
+describe("slice 5 (4): the member open-channel dialog, option C", () => {
+  it("'Connect to BitCorn'; the size as dollars over sats; the network fee as 'What it costs'", async () => {
+    const d = await open(CONNECT());
+    expect(text(d.querySelector(".dialog-title"))).toBe("Connect to BitCorn");
+    expect([...d.querySelectorAll(".action-confirm-amount [data-line]")].map((l) => l.textContent)).toEqual(["$600.00", "1,000,000 sats"]);
+    expect(spaced(d)).toContain("What it costs: about $0.09 (155 sats)");
+  });
+
+  it("the Speed row is KEPT, visible, outside Details", async () => {
+    const d = await open(CONNECT());
+    const speed = [...d.querySelectorAll("dt")].find((t) => t.textContent === "Speed");
+    expect(speed?.nextElementSibling?.textContent).toBe("Economy (about 1 sat/vB)");
+    expect(speed!.closest("details")).toBeNull();
+  });
+
+  it("the plain line, no 'Can't be undone'; the address under Details, as an identifier", async () => {
+    const d = await open(CONNECT());
+    expect(text(d.querySelector(".action-confirm-final"))).toBe("The network fee is spent even if you close the connection later.");
+    expect(d.querySelector(".action-confirm-final svg")).toBeNull();
+    const details = d.querySelector("details.action-confirm-details") as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    const addr = [...details.querySelectorAll("dt")].find((t) => t.textContent === "Address")?.nextElementSibling;
+    expect(addr?.textContent).toBe("203.0.113.5:9735");
+    expect(addr?.classList.contains("ident")).toBe(true);
+  });
+
+  it("the typed-sats prompt with its label, and the main button on the right", async () => {
+    const d = await open(CONNECT());
+    expect(text(d.querySelector("label[for='action-confirm-challenge']"))).toBe("To confirm, type the sats amount: 1,000,000");
+    expect(d.querySelector(".action-confirm-sats-unit")).not.toBeNull();
+    expect(buttons(d)).toEqual(["Cancel", "Connect"]);
+  });
+
+  it("with no address there is no Details", async () => {
+    const d = await open(summarizeOpenMemberChannel({ capacitySats: 1_000_000, fee: { label: "Economy", rate: 1 }, feeSats: 155, rate: FRESH }));
+    expect(d.querySelector("details")).toBeNull();
+  });
+});
+
 describe("slice 5: member text in the member dialogs", () => {
-  for (const [name, make] of [["Withdraw", WITHDRAW], ["Top Up", TOP_UP]] as const) {
+  for (const [name, make] of [["Withdraw", WITHDRAW], ["Top Up", TOP_UP], ["Connect", CONNECT]] as const) {
     it(`${name}: no "channel", "hub" or "operator"; "BitCorn" spelled so`, async () => {
       const d = await open(make());
       (d.querySelector("details") as HTMLDetailsElement).open = true;

@@ -216,24 +216,35 @@ export function challengePrompt(c: Challenge): string {
 /** The fee option a channel summary shows: its label and the integer sat/vB it sends. */
 export type SummaryFee = { label: string; rate: number };
 
+// The member's open (Connect to BitCorn), through the member layout (slice 5,
+// ruling (4), option C): the size as dollars over sats; "What it costs" = the
+// live estimate's network fee; the Speed row KEPT, still the rate the request
+// sends and the confirmation hashes (the CONFIRM-RULING pin); the address
+// under Details. The "Fee updated" reshow is the hook's (useConnectToHub).
 export function summarizeOpenMemberChannel(p: {
   capacitySats: number;
   partnerSocket?: string;
-  hubLabel?: string;
   fee: SummaryFee;
+  /** The live estimate's network fee for the open, in sats (cost_sats.open). */
+  feeSats?: number;
+  rate: ExchangeRate | null | undefined;
 }): ActionSummary {
   return {
-    title: "Open a channel to the hub",
-    rows: [
-      { label: "Capacity", value: fmtSats(p.capacitySats) },
-      { label: "Peer", value: p.hubLabel ?? "Bitcorn treasury hub" },
-      { label: "Speed", value: `${p.fee.label} (about ${p.fee.rate} sat/vB)` },
-      ...(p.partnerSocket ? [{ label: "Address", value: p.partnerSocket, ident: true as const }] : []),
-    ],
-    irreversible:
-      "Funding a channel is an on-chain transaction. The mining fee is spent whether or not you close the channel later.",
+    title: "Connect to BitCorn",
+    rows: [],
     challenge: { kind: "amount", sats: p.capacitySats },
-    confirmLabel: "Open channel",
+    confirmLabel: "Connect",
+    member: {
+      amountSats: p.capacitySats,
+      rate: p.rate,
+      costSats: p.feeSats,
+      rows: [{ label: "Speed", value: `${p.fee.label} (about ${p.fee.rate} sat/vB)` }],
+      finalLine: { kind: "plain", text: "The network fee is spent even if you close the connection later." },
+      details: {
+        rows: p.partnerSocket ? [{ label: "Address", value: p.partnerSocket, ident: true }] : [],
+        notes: [],
+      },
+    },
   };
 }
 
