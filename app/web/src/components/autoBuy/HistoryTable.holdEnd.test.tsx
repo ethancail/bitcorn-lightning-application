@@ -107,3 +107,31 @@ describe("HistoryTable reads each run's hold end from the API", () => {
     expect(deliveryLine()).toBeNull();
   });
 });
+
+// kraken-autobuy P6 (D-P6-2; the spec's P6 control): the hold's NAME and
+// LENGTH come from the run and the API too. A Coinbase row still reads
+// "72-hour", now worked out from hold_ends_at − filled_at, and a Kraken row
+// reads "7-day". A web constant in either direction turns one of them red.
+describe("HistoryTable words each run's hold from its exchange and the API (P6)", () => {
+  it("a Kraken run: 'Kraken 7-day hold ends …'", async () => {
+    stub.getAutoBuyHistory.mockResolvedValue({ rows: [run()], total: 1, limit: 25, offset: 0 });
+    await render(React.createElement(HistoryTable, {}));
+    expect(deliveryLine()!.title).toBe(`Kraken 7-day hold ends ${new Date(KRAKEN_HOLD_END * 1000).toLocaleString()}.`);
+  });
+
+  it("a Coinbase run still shows 72-hour, from the API's hold end", async () => {
+    stub.getAutoBuyHistory.mockResolvedValue({
+      rows: [run({ provider: "coinbase", hold_ends_at: MIRROR_HOLD_END })], total: 1, limit: 25, offset: 0,
+    });
+    await render(React.createElement(HistoryTable, { sweepDayOfWeek: 0 }));
+    expect(deliveryLine()!.title).toContain(`Coinbase 72-hour hold ends ${new Date(MIRROR_HOLD_END * 1000).toLocaleString()};`);
+  });
+
+  it("a run skipped below the exchange minimum gets its own badge", async () => {
+    stub.getAutoBuyHistory.mockResolvedValue({
+      rows: [run({ status: "skipped_below_minimum", hold_ends_at: null, filled_at: null })], total: 1, limit: 25, offset: 0,
+    });
+    await render(React.createElement(HistoryTable, {}));
+    expect(host.querySelector("tbody .badge")?.textContent).toBe("BELOW MIN");
+  });
+});

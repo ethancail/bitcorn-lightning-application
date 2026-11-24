@@ -277,3 +277,24 @@ describe("loop-fee-ceilings: the authorised maximum and the post-start disclosur
     expect(s.body ?? "").not.toMatch(/20%/);
   });
 });
+
+// kraken-autobuy P6 (shared file: member-first-run-ui is told): the catch-up
+// body names the exchange and its hold from the caller, never a constant.
+describe("summarizeCatchUp names the exchange and its hold (kraken-autobuy P6)", () => {
+  const base = { intervals: 2, fitsIntervals: 2, fitsUsd: 200, remainderIntervals: 0 };
+  it("Kraken: 7-day hold", () => {
+    expect(confirmActionModule.summarizeCatchUp({ ...base, exchange: "Kraken", holdLabel: "7-day" }).body).toBe(
+      "One market buy of about $200.00 on Kraken, then the usual 7-day hold and the weekly sweep. This is a one-time action; it does not change your schedule.",
+    );
+  });
+  it("Coinbase: 72-hour hold, with the remainder sentence when the caps bind", () => {
+    const s = confirmActionModule.summarizeCatchUp({ ...base, fitsIntervals: 1, fitsUsd: 100, remainderIntervals: 1, exchange: "Coinbase", holdLabel: "72-hour" });
+    expect(s.body).toBe(
+      "One market buy of about $100.00 on Coinbase, then the usual 72-hour hold and the weekly sweep. 1 missed buy remains and can be bought once the limit frees up. This is a one-time action; it does not change your schedule.",
+    );
+  });
+  it("an unknown hold leaves the length out rather than guessing", () => {
+    expect(confirmActionModule.summarizeCatchUp({ ...base, exchange: "Kraken", holdLabel: null }).body)
+      .toContain("on Kraken, then the usual hold and the weekly sweep.");
+  });
+});

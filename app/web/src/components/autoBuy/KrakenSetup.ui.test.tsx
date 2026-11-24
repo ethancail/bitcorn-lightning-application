@@ -111,7 +111,7 @@ describe("ProviderChoice", () => {
     respond = () => ({ status: 409, body: { error: "provider_switch_in_flight", in_flight_runs: 2, in_flight_sweeps: 1 } });
     await render(<ProviderChoice status={status({ provider: "kraken" })} onRefresh={onRefresh} />);
     await click(btn("Switch to Coinbase"));
-    expect(text()).toContain("You can't switch yet: 2 buy(s) and 1 withdrawal(s) are still in progress on Kraken.");
+    expect(text()).toContain("You can't switch yet: 2 buys and 1 withdrawal are still in progress on Kraken.");
     expect(onRefresh).not.toHaveBeenCalled();
   });
 });
@@ -123,7 +123,8 @@ describe("KrakenCard — not connected", () => {
     respond = () => ({ status: 200, body: { ok: true, connected_at: 1, address_status: "not_found", minimum_warning: null } });
     await render(<KrakenCard status={status({ provider: "kraken" })} onRefresh={onRefresh} />);
     expect(Array.from(host.querySelectorAll('[data-testid="kraken-permissions"] li')).map((li) => li.textContent)).toEqual([
-      "Query Funds", "Withdraw Funds", "Query Open Orders & Trades", "Query Closed Orders & Trades", "Create & Modify Orders",
+      "Query Funds", "Withdraw Funds", "Query Open Orders & Trades", "Query Closed Orders & Trades",
+      "Create & Modify Orders (called Modify Orders on some screens)",
     ]);
     expect(host.querySelector('[data-testid="node-address"]')?.textContent).toBe(NODE_ADDRESS);
     expect((host.querySelector('input[aria-label="Kraken private key"]') as HTMLInputElement).type).toBe("password");
@@ -164,7 +165,7 @@ describe("KrakenCard — not connected", () => {
     await type("Kraken API key", "K");
     await type("Kraken private key", "S");
     await click(btn("Connect Kraken"));
-    expect(text()).toContain("Your smallest buy ($5.00) is below Kraken's minimum (about $9.99 at today's price). Buys that small will be skipped, not rounded up.");
+    expect(text()).toContain("Your smallest buy ($5.00) is below Kraken's minimum (about $9.99 at today's price). Those buys will be skipped, not rounded up.");
   });
 });
 
