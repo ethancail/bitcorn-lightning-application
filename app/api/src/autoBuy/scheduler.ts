@@ -10,8 +10,8 @@ import {
   currenciesCheckedFor,
   type CurrencyPreference,
 } from "./currency";
-import type { AlertType } from "./alerts";
-import { raiseAlert, clearAlerts } from "./alertStore";
+import type { AlertType, FailureSignal } from "./alerts";
+import { raiseAlert as storeAlert, clearAlerts } from "./alertStore";
 import { getCurrent } from "./valuationClient";
 import { fundsCoverage, intendedBuyUsd, isLowFunds, readKrakenSnapshot, writeKrakenSnapshot } from "./balanceSnapshot";
 import { holdSecondsFor } from "./hold";
@@ -91,6 +91,22 @@ function openExchange(db: Database.Database): ExchangeSession | null {
     db.prepare(`UPDATE autobuy_config SET enabled = 0, paused_reason = 'credentials_corrupted' WHERE id = 1`).run();
   }
   return null;
+}
+
+/**
+ * Every scheduler alert goes through here (kraken-autobuy P6, D-P6-1). An alert
+ * raised while Kraken is the active exchange records provider "kraken" in its
+ * context, so the web words it as Kraken's even after a later switch. A
+ * Coinbase alert's context is left exactly as it was, with no provider key:
+ * in the web, an alert without one is Coinbase's (every alert raised before
+ * this change was, and Coinbase's contexts are pinned by Suite B).
+ */
+function raiseAlert(db: Database.Database, signal: FailureSignal): void {
+  if (exchange.activeProvider(db) !== "kraken") {
+    storeAlert(db, signal);
+    return;
+  }
+  storeAlert(db, { ...signal, context: { ...signal.context, provider: "kraken" } });
 }
 
 function pauseWithReason(db: Database.Database, reason: string): void {
@@ -1405,6 +1421,12 @@ async function stepBalanceSnapshotAndLowFunds(db: Database.Database): Promise<vo
   if (!val.ok) return; // no valuation, no current multiplier: no verdict
   const multiplier = parseZoneMultiplier(cfg.zone_multipliers, val.value.zone);
   const coverage = fundsCoverage(readKrakenSnapshot(db), cfg.base_unit_usd, multiplier, nowSec());
+  // DEFENSIVE (Ethan's ruling on L5): from a tick, the snapshot read here is
+  // always fresh. It was written in this tick, by an earlier step or by the
+  // read just above, and a failed read returned before reaching this line. So
+  // the stale check here, and the one inside isLowFunds, cannot fire on the
+  // scheduler path; they guard a future caller. L5 tests the real behaviour:
+  // no warning when the read fails.
   if (!coverage || coverage.stale || coverage.buys_covered === null) return;
 
   if (isLowFunds(coverage)) {

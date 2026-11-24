@@ -107,7 +107,7 @@ import { listAccounts } from "./autoBuy/coinbaseClient";
 import { encrypt, decrypt } from "./autoBuy/credentials";
 import * as caps from "./autoBuy/caps";
 import { activePolicy, activeProvider } from "./autoBuy/exchange";
-import { withHoldEnd } from "./autoBuy/hold";
+import { holdSecondsFor, withHoldEnd } from "./autoBuy/hold";
 import { krakenNonceSource } from "./autoBuy/krakenNonce";
 import { KRAKEN_BALANCE_KEYS, krakenGetBalances, type KrakenAuth, type KrakenFailure } from "./autoBuy/krakenClient";
 import { minimumBuyWarning, resolveKrakenWithdrawAddress, verifyKrakenKey, type AddressResolution, type MinimumWarning } from "./autoBuy/krakenSetup";
@@ -5136,6 +5136,9 @@ async function dispatchRequest(
           last_run_at: cfg.last_run_at,
           next_run_at: cfg.next_run_at,
           provider: activeProvider(db),
+          // The active exchange's post-fill withdrawal hold (P6, D-P6-2): the
+          // web words "72-hour" or "7-day" from it and never mirrors a constant.
+          hold_seconds: holdSecondsFor(activeProvider(db)),
         } : null,
         credentials: creds ? {
           key_name: creds.key_name,

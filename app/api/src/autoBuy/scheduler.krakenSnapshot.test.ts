@@ -32,7 +32,11 @@ vi.hoisted(() => {
 
 const stubs = vi.hoisted(() => ({
   getCurrent: vi.fn(),
-  coinbase: vi.fn(() => { throw new Error("Coinbase client called"); }),
+  // Records any Coinbase call and answers with a plain failure, never a throw
+  // (P6, P7's tightening): a snapshot step that wrongly ran on Coinbase then
+  // fails S4's `not.toHaveBeenCalled()` assertion cleanly, instead of
+  // aborting the tick with an exception.
+  coinbase: vi.fn(async () => ({ ok: false, status: 503, error: "coinbase stub: not expected to be called" })),
 }));
 
 vi.mock("./valuationClient", () => ({ getCurrent: stubs.getCurrent }));
@@ -184,7 +188,7 @@ describe("the low-funds warning (E3, G3)", () => {
     await tickAt(T0);
     expect(lowFunds()).toEqual([{
       severity: "warning", status: "active", consecutive_count: 1,
-      context: { currency: "USD", usd_available: 150, next_buy_usd: 100, buys_covered: 1, multiplier: 1, read_at: T0 },
+      context: { currency: "USD", usd_available: 150, next_buy_usd: 100, buys_covered: 1, multiplier: 1, read_at: T0, provider: "kraken" },
     }]);
     expect(db.prepare(`SELECT COUNT(*) AS n FROM autobuy_runs`).get()).toEqual({ n: 0 }); // no buy happened
   });

@@ -287,6 +287,15 @@ describe("GET /api/autobuy/status for the web (P4e)", () => {
     expect(r.body.config.provider).toBe("coinbase");
     expect(r.body.kraken_credentials.address_matched).toBe(false);
   });
+
+  it("K15 carries the ACTIVE exchange's hold (P6, D-P6-2): Kraken 7 days, Coinbase 72 hours", async () => {
+    let r = await call("GET", "/api/autobuy/status");
+    expect(r.body.config.provider).toBe("kraken");
+    expect(r.body.config.hold_seconds).toBe(7 * 86400);
+    db.prepare(`UPDATE autobuy_config SET provider = 'coinbase' WHERE id = 1`).run();
+    r = await call("GET", "/api/autobuy/status");
+    expect(r.body.config.hold_seconds).toBe(72 * 3600);
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
