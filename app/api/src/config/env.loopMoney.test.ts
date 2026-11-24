@@ -77,8 +77,10 @@ const SITES: Site[] = [
     valid: [["0", 0], ["100000", 100_000]], invalid: ["1.5"] },
   { env: "LOOP_GRPC_PORT", key: "loopGrpcPort", def: 11_010,
     valid: [["1", 1], ["11020", 11_020], ["65535", 65_535]], invalid: ["0", "65536"] },
+  // Ethan's ruling 2026-11-24: at least 1. 0 would read BASE events at the tip,
+  // with no reorg depth at all; regtest sets 1.
   { env: "BASE_CONFIRMATION_DEPTH", key: "baseConfirmationDepth", def: 64,
-    valid: [["0", 0], ["12", 12]], invalid: ["1.5"] },
+    valid: [["1", 1], ["12", 12]], invalid: ["0", "1.5"] },
 ];
 
 // Malformed for every site, whatever its range.

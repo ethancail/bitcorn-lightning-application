@@ -128,8 +128,10 @@ export const ENV = {
     // committed for event-sync purposes. Spec §7.4 + T7 recommend 64 blocks
     // (~2 minutes at BASE's 2-second block time). Testnet dev can override
     // to a lower value (e.g. 12) for faster iteration; production should
-    // use the default 64. A whole number ≥ 0 (NaN stalled the sync loop).
-    baseConfirmationDepth: nonNegativeIntEnv("BASE_CONFIRMATION_DEPTH", 64),
+    // use the default 64. A whole number ≥ 1 (NaN stalled the sync loop; 0
+    // would mean no reorg depth at all, refused by Ethan's ruling 2026-11-24;
+    // regtest sets 1).
+    baseConfirmationDepth: positiveIntEnv("BASE_CONFIRMATION_DEPTH", 64),
 
     // --- BASE RPC for SIWE verification (spec amendment 2026-05-26 §2) ---
     // The SIWE wallet-binding flow uses Coinbase Smart Wallet (ERC-1271
