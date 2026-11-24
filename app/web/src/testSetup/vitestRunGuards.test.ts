@@ -12,7 +12,8 @@
 //       minimum to CPUs − 1 (7 on ubuntu-pc). Neither ran a test.
 //   C2. A run that executes zero tests exits 1 and prints NO TESTS RAN: here,
 //       -t with no match (every collected test ends "skip", the same state an
-//       all-.skip file gives). Before the fix it exited 0, "2 skipped".
+//       all-.skip file gives). Before the fix it exited 0, "2 skipped" (on the
+//       sample then in use, src/shellGrid.test.ts).
 //       And a run that matches zero files exits 1 (passWithNoTests: false).
 //
 // The spawned run gets this runner's environment minus its own markers
@@ -27,8 +28,10 @@ import config, { noTestsRanGuard, testsExecuted, type TaskLike } from "../../vit
 
 const WEB = path.resolve(__dirname, "../..");
 const VITEST = path.join(WEB, "node_modules/vitest/vitest.mjs");
-const TARGET = "src/shellGrid.test.ts"; // 2 tests, node environment, no I/O
-const TARGET_TESTS = 2;
+// This guard's own fixture (node environment, no I/O). Never point it at
+// another file's tests: their count changes under unrelated work.
+const TARGET = "src/testSetup/vitestRunGuards.fixture.test.ts";
+const TARGET_TESTS = 3;
 const SPAWN_TIMEOUT = 90_000;
 
 function runVitest(args: string[], workersEnv: string | undefined): { status: number; out: string } {
