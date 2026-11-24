@@ -16,11 +16,15 @@
 // mark-applied sequence runs verbatim against a two-statement file.
 //
 // ─── WHY 055 AND 056 ARE TWO FILES ──────────────────────────────────────────
-// The runner db.execs each file whole with no transaction and, on an error
-// containing "duplicate column" / "already exists", marks the WHOLE FILE
-// applied (migrate.ts). In a multi-statement file whose first statement hits
-// that swallow, the rest never run and are never retried. (d) observes that;
-// (c) shows the same swallow is exactly right for a one-statement file.
+// On an error containing "duplicate column" / "already exists", the runner
+// marks the WHOLE FILE applied (migrate.ts). In a multi-statement file whose
+// first statement hits that swallow, the rest never run and are never retried.
+// (d) observes that; (c) shows the same swallow is exactly right for a
+// one-statement file. When 055/056 were written the runner db.exec'd each file
+// with no transaction; since code-audit-2 F03 each file runs in one
+// transaction that rolls back whole before the swallow marks it applied
+// (migrate.transaction.test.ts). (d) holds either way: its b pre-exists for a
+// reason other than a part-applied file, which the transaction cannot undo.
 
 import fs from "fs";
 import os from "os";
