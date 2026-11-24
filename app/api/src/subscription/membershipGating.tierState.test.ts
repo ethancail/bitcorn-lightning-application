@@ -318,7 +318,9 @@ describe("DW3 — migration 072 credits grandfathered, sentinel-only rows", () =
     try {
       expect(() => bootTheUpdate()).toThrow(/injected paid_through failure/);
       // A stopped boot discards the connection, and with it anything not yet
-      // committed. ROLLBACK is that, in-process.
+      // committed. Since code-audit-2 F03 the runner ROLLBACKs 072's own open
+      // transaction before rethrowing; the ROLLBACK here would stand in for
+      // the discarded connection if it did not.
       openTransaction = db.inTransaction;
       if (openTransaction) db.exec("ROLLBACK");
     } finally {
@@ -327,8 +329,9 @@ describe("DW3 — migration 072 credits grandfathered, sentinel-only rows", () =
     // The property: no credit row survives without its paid_through move.
     expect(payments(GRANDFATHERED)).toEqual(before.p);
     expect(row(GRANDFATHERED)).toEqual(before.r);
-    // ...because the file's own BEGIN was still open when the boot threw.
-    expect(openTransaction).toBe(true);
+    // ...because the runner rolled the file's own BEGIN back before the boot
+    // threw (migrate.ts, the SELF_TRANSACTING path): nothing is left open.
+    expect(openTransaction).toBe(false);
     const recorded = db.prepare("SELECT 1 FROM migrations WHERE id = ?").get(M072);
     expect(recorded).toBeUndefined();
   });
