@@ -870,9 +870,9 @@ export function lockMain(args, { home = os.homedir(), now = new Date(), host = o
 // workers, ~1,052 MB at VITEST_MAX_WORKERS=2; code-audit-2, 2026-11-20); app/api's
 // peak is not yet measured. A job that took its slot while another was held gets
 // VITEST_MAX_WORKERS=<HARNESS_HEAVY_SHARED_WORKERS, default 3> in its command's
-// environment; a job that starts alone gets none. The cap is live for app/web
-// since #433 (app/web/vitest.config.ts reads VITEST_MAX_WORKERS); app/api picks
-// it up with code-audit-2's vitest-workers slice (app/api/vitest.config.ts).
+// environment; a job that starts alone gets none. The cap is live:
+// app/web/vitest.config.ts has read VITEST_MAX_WORKERS since #433, and
+// app/api/vitest.config.ts since code-audit-2's vitest-workers slice (#448).
 //
 // THE LOAD CHECK (2026-11-24): a job that would take its slot while another is
 // held is admitted only if the 1-minute load average (/proc/loadavg's first

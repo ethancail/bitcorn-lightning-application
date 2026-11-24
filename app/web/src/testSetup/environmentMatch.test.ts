@@ -23,8 +23,11 @@
 //      anywhere in the file text and it outranks every glob. The marker is
 //      assembled at runtime so this file's own text never contains it.
 //   4. Every DOM_TS_TESTS entry exists and is a `.test.ts` (no stale entries).
-//   5. VITEST_MAX_WORKERS parsing: unset → no change; a positive integer → both
-//      maxWorkers and minWorkers; anything else throws.
+//   5. VITEST_MAX_WORKERS parsing: unset → no change; a positive integer →
+//      maxWorkers only; anything else throws. minWorkers is fixed at 1 in the
+//      config, so it no longer equals the maximum (revised 2026-11-24, "vitest
+//      worker conflict and no-tests-ran"; vitestRunGuards.test.ts is the
+//      end-to-end control).
 //
 // What it does NOT prove: that a node-classified file doesn't NEED the DOM. A
 // file that touches `document` fails on its own with a ReferenceError; one that
@@ -111,9 +114,12 @@ describe("VITEST_MAX_WORKERS", () => {
   it("unset changes nothing", () => {
     expect(workersFromEnv(undefined)).toEqual({});
   });
-  it("a positive integer sets both maxWorkers and minWorkers", () => {
-    expect(workersFromEnv("2")).toEqual({ maxWorkers: 2, minWorkers: 2 });
-    expect(workersFromEnv("12")).toEqual({ maxWorkers: 12, minWorkers: 12 });
+  it("a positive integer sets maxWorkers only", () => {
+    expect(workersFromEnv("2")).toEqual({ maxWorkers: 2 });
+    expect(workersFromEnv("12")).toEqual({ maxWorkers: 12 });
+  });
+  it("minWorkers is fixed at 1, so it can never exceed a maximum", () => {
+    expect((config as { test: { minWorkers?: number } }).test.minWorkers).toBe(1);
   });
   it.each(["", "0", "-1", "2.5", "abc", "50%", " 2", "02"])("throws on %j", (raw) => {
     expect(() => workersFromEnv(raw)).toThrow(/VITEST_MAX_WORKERS must be a positive integer/);
