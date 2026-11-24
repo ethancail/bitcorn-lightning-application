@@ -386,6 +386,10 @@ export function summarizeCatchUp(p: {
   fitsUsd: number;
   /** Intervals left claimable; 0 when nothing is withheld. */
   remainderIntervals: number;
+  /** The exchange the buy is placed on, as the copy names it ("Coinbase", "Kraken"). kraken-autobuy P6. */
+  exchange: string;
+  /** Its hold as an adjective ("72-hour", "7-day"), from the API; null leaves the length out. kraken-autobuy P6. */
+  holdLabel: string | null;
 }): ActionSummary {
   const partial = p.remainderIntervals > 0;
   // The remainder sentence is the toast's exact words (decision (3)): one fact
@@ -395,6 +399,7 @@ export function summarizeCatchUp(p: {
   // member is committing money.
   const remainderSentence = `${p.remainderIntervals} missed ${plural(p.remainderIntervals, "buy", "buys")} ${plural(p.remainderIntervals, "remains", "remain")} and can be bought once the limit frees up.`;
   const persistence = "This is a one-time action; it does not change your schedule.";
+  const buyLine = `One market buy of about ${fmtUsd(p.fitsUsd)} on ${p.exchange}, then the usual ${p.holdLabel ? `${p.holdLabel} ` : ""}hold and the weekly sweep.`;
 
   return {
     title: partial
@@ -403,8 +408,8 @@ export function summarizeCatchUp(p: {
       : `Buy ${p.intervals} missed ${plural(p.intervals, "interval", "intervals")}?`,
     rows: [{ label: "Amount", value: fmtUsd(p.fitsUsd) }],
     body: partial
-      ? `One market buy of about ${fmtUsd(p.fitsUsd)} on Coinbase, then the usual 72h hold and weekly sweep. ${remainderSentence} ${persistence}`
-      : `One market buy of about ${fmtUsd(p.fitsUsd)} on Coinbase, then the usual 72h hold and weekly sweep. ${persistence}`,
+      ? `${buyLine} ${remainderSentence} ${persistence}`
+      : `${buyLine} ${persistence}`,
     // A USD amount in the `phrase` kind — see that kind's note at the top.
     challenge: { kind: "phrase", text: catchUpChallengeTarget(p.fitsUsd) },
     confirmLabel: "Buy now",

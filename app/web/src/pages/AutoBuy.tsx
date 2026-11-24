@@ -5,6 +5,7 @@ import StrategyTab from "../components/autoBuy/StrategyTab";
 import AlertsTab from "../components/autoBuy/AlertsTab";
 import AutoBuyAlertBanner from "../components/autoBuy/AutoBuyAlertBanner";
 import { deriveBadge } from "../autoBuy/alertView";
+import { exchangeName, holdLabel } from "../autoBuy/exchangeCopy";
 
 // Model Inputs tab removed in v1.11.4 — the full input table leaks which
 // metrics the treasury tracks, and this page is visible to member nodes.
@@ -151,8 +152,15 @@ export default function AutoBuy() {
       <div style={{ marginBottom: 24 }}>
         <h1 style={{ marginBottom: 4 }}>Auto-Buy Strategy</h1>
         <p className="text-dim" style={{ fontSize: "0.875rem" }}>
-          Valuation-modulated dollar-cost averaging on Coinbase. Reads the composite Z-score, sizes each buy
-          by zone multiplier, parks BTC on Coinbase for the 72h withdraw hold, sweeps weekly to your node's on-chain wallet.
+          {/* The exchange and its hold come from the API (P6, D-P6-2); before
+              the status loads, the line names no exchange. */}
+          {(() => {
+            const ex = status?.config ? exchangeName(status.config.provider) : null;
+            const len = holdLabel(status?.config?.hold_seconds);
+            return `Buys bitcoin on ${ex ?? "your exchange"} on a schedule, sized by the current valuation zone. ` +
+              `Each buy waits out ${ex ? `${ex}'s` : "the exchange's"} ${len ? `${len} ` : ""}withdrawal hold, ` +
+              `then goes to your node's on-chain wallet on the weekly sweep.`;
+          })()}
         </p>
       </div>
 

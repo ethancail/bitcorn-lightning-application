@@ -9,6 +9,7 @@ import { canEnableAutoBuy } from "../../autoBuy/enableGate";
 import ActionConfirmModal, { useActionConfirm } from "../actionConfirm/ActionConfirmModal";
 import { summarizeCatchUp, fmtUsd } from "../actionConfirm/confirmAction";
 import { classifyConfirmError } from "../actionConfirm/confirmErrors";
+import { exchangeName, holdLabel, type ExchangeName } from "../../autoBuy/exchangeCopy";
 
 interface Props {
   status: AutoBuyStatus | null;
@@ -95,7 +96,7 @@ function catchUpRefusalMessage(
       usdc_balance: number | null;
     };
   } | null,
-  ctx: { pausedReason: string | null; zone: string | null },
+  ctx: { pausedReason: string | null; zone: string | null; exchange: ExchangeName },
 ): string {
   const code = body?.error ?? "unknown";
   const tail = "Nothing was bought; the missed intervals are still listed.";
@@ -167,9 +168,16 @@ function catchUpRefusalMessage(
     if (f.considered.length === 1) {
       const currency = f.considered[0];
       const balance = currency === "USD" ? f.usd_balance : f.usdc_balance;
-      return `Not placed: your Coinbase ${currency} balance is ${fmtUsd(balance ?? 0)}, below the ${fmtUsd(f.needed_usd)} needed. Fund the account and try again; nothing was bought and the missed intervals are still listed.`;
+      return `Not placed: your ${ctx.exchange} ${currency} balance is ${fmtUsd(balance ?? 0)}, below the ${fmtUsd(f.needed_usd)} needed. Fund the account and try again; nothing was bought and the missed intervals are still listed.`;
     }
     return `Not placed: neither balance covers the ${fmtUsd(f.needed_usd)} needed — USD ${fmtUsd(f.usd_balance ?? 0)}, USDC ${fmtUsd(f.usdc_balance ?? 0)}. A single buy is paid from one currency, not both. Fund either account and try again; nothing was bought and the missed intervals are still listed.`;
+  }
+
+  // R-unknown (P6, D-P6-4) — NOT "Not placed": the exchange may have taken the
+  // order. The route raises no failed_buy row and claims nothing, and the next
+  // run finds the order under the same id or places it, so it is never bought twice.
+  if (code === "order_outcome_unknown") {
+    return `${ctx.exchange} didn't confirm whether this buy went through. Nothing will be bought twice: Auto-Buy checks on its next run. See Orders in ${ctx.exchange} for the result.`;
   }
 
   // GEN — including an `insufficient_funds` that arrives WITHOUT `funds`, which
@@ -194,8 +202,11 @@ function catchUpRefusalMessage(
  * "0 missed". Three states, and only two of them draw anything.
  */
 function MissedBuysBlock({
-  missed, missedError, pausedReason, frequency, onRefresh,
+  missed, missedError, pausedReason, frequency, exchange, holdSeconds, onRefresh,
 }: {
+  /** The active exchange and its hold, for the confirm body and the refusal copy (P6). */
+  exchange: ExchangeName;
+  holdSeconds: number | undefined;
   missed: AutoBuyMissed | null;
   /**
    * Why the summary could not be computed, or null.
@@ -299,6 +310,8 @@ function MissedBuysBlock({
                     fitsIntervals: fits.intervals,
                     fitsUsd: fits.estimated_usd,
                     remainderIntervals: remainder?.intervals ?? 0,
+                    exchange,
+                    holdLabel: holdLabel(holdSeconds),
                   }));
                 }}
               >
@@ -328,7 +341,7 @@ function MissedBuysBlock({
               // a frame carrying a code the member cannot act on.
               message: cls && cls.kind === "mismatch" && !body?.error
                 ? cls.detail
-                : catchUpRefusalMessage(body, { pausedReason, zone: missed?.zone ?? null }),
+                : catchUpRefusalMessage(body, { pausedReason, zone: missed?.zone ?? null, exchange }),
             });
             throw err;
           }
@@ -368,6 +381,8 @@ export default function StrategyTab({ status, valuation, onRefresh, valuationErr
           missedError={status.missed_error}
           pausedReason={cfg.paused_reason}
           frequency={cfg.frequency}
+          exchange={exchangeName(cfg.provider)}
+          holdSeconds={cfg.hold_seconds}
           onRefresh={onRefresh}
         />
       )}
@@ -558,7 +573,7 @@ function MasterControl({ status, onRefresh }: { status: AutoBuyStatus; onRefresh
 
   return (
     <>
-      {pausedReason && <PausedBanner reason={pausedReason} />}
+      {pausedReason && <PausedBanner reason={pausedReason} exchange={exchangeName(cfg.provider)} />}
 
       <div className="panel" style={{ marginBottom: 16 }}>
         <div className="panel-body" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
@@ -602,8 +617,10 @@ function MasterControl({ status, onRefresh }: { status: AutoBuyStatus; onRefresh
   );
 }
 
-function PausedBanner({ reason }: { reason: string }) {
-  const { title, body } = PAUSED_MESSAGES[reason] ?? { title: "Auto-Buy paused", body: `paused_reason=${reason}` };
+function PausedBanner({ reason, exchange }: { reason: string; exchange: ExchangeName }) {
+  const { title, body } = (exchange === "Kraken" ? KRAKEN_PAUSED_MESSAGES[reason] : undefined)
+    ?? PAUSED_MESSAGES[reason]
+    ?? { title: "Auto-Buy paused", body: `paused_reason=${reason}` };
   return (
     <div className="alert warning" style={{ marginBottom: 16 }}>
       <span className="alert-icon">⚠</span>
@@ -622,4 +639,12 @@ const PAUSED_MESSAGES: Record<string, { title: string; body: string }> = {
   credentials_corrupted:   { title: "Credentials corrupted",       body: "The encrypted key could not be decrypted. Reconnect to repair." },
   address_not_whitelisted: { title: "Withdrawal address not whitelisted", body: "Add the displayed address to Coinbase's allowlist and confirm via the integration panel below." },
   consecutive_failures:    { title: "Auto-paused after 3 failures", body: "Review the purchase history for error messages, then re-enable." },
+};
+
+// The three pauses whose cause is the exchange's own setup, worded for Kraken
+// (P6, D-P6-6). The other reasons read the same on either exchange.
+const KRAKEN_PAUSED_MESSAGES: Record<string, { title: string; body: string }> = {
+  no_credentials:          { title: "No Kraken key", body: "Connect a Kraken API key in the Kraken panel below." },
+  credentials_invalid:     { title: "Kraken key refused", body: "Kraken rejected the API key. Create a new key with the five permissions and connect it. This also happens if another app uses the same key." },
+  address_not_whitelisted: { title: "Withdrawal address not set up in Kraken", body: "Save your node's address as a Bitcoin withdrawal address in Kraken and confirm it, then press Verify below." },
 };

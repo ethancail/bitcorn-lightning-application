@@ -1,6 +1,7 @@
 // app/web/src/components/autoBuy/HistoryTable.tsx
 import { useCallback, useEffect, useState } from "react";
 import { api, type AutoBuyRun } from "../../api/client";
+import { exchangeName, runHoldLabel } from "../../autoBuy/exchangeCopy";
 
 const PAGE_SIZE = 25;
 
@@ -58,16 +59,20 @@ export default function HistoryTable({ sweepDayOfWeek }: Props) {
       if (r.hold_ends_at == null) return null;
       const holdEnd = r.hold_ends_at;
       const holdStr = fmtLocalDate(holdEnd);
+      // "Kraken 7-day hold" / "Coinbase 72-hour hold": the run's own exchange,
+      // and the length from the API's hold end (P6, D-P6-2).
+      const len = runHoldLabel(r);
+      const holdName = `${exchangeName(r.provider)} ${len ? `${len} ` : ""}hold`;
       if (sweepDayOfWeek == null) {
         return {
           text: `hold ends ${holdStr}`,
-          full: `Coinbase 72-hour hold ends ${new Date(holdEnd * 1000).toLocaleString()}.`,
+          full: `${holdName} ends ${new Date(holdEnd * 1000).toLocaleString()}.`,
         };
       }
       const sweep = nextSweepDateUtc(holdEnd, sweepDayOfWeek);
       return {
         text: `hold ends ${holdStr} · → node ~${fmtUtcDay(sweep)} (UTC)`,
-        full: `Coinbase 72-hour hold ends ${new Date(holdEnd * 1000).toLocaleString()}; BTC sweeps to your node on the next configured sweep day (${DOW_LABELS[sweepDayOfWeek]}, UTC) — est. ${fmtUtcDay(sweep)}.`,
+        full: `${holdName} ends ${new Date(holdEnd * 1000).toLocaleString()}; BTC sweeps to your node on the next configured sweep day (${DOW_LABELS[sweepDayOfWeek]}, UTC) — est. ${fmtUtcDay(sweep)}.`,
       };
     }
     if (r.status === "sweep_assigned") {
@@ -104,6 +109,7 @@ export default function HistoryTable({ sweepDayOfWeek }: Props) {
             <option value="skipped_zero_multiplier">Skipped (zero)</option>
             <option value="skipped_cap_hit">Skipped (cap)</option>
             <option value="skipped_insufficient_funds">Skipped (funds)</option>
+            <option value="skipped_below_minimum">Skipped (minimum)</option>
             {/* An interval that elapsed with no tick at all — distinct from the
                 four above, each of which means a tick ran and declined. The
                 value is sent verbatim as ?status= and matched by exact equality
@@ -202,6 +208,7 @@ function StatusBadge({ status }: { status: string }) {
     skipped_zero_multiplier: { label: "SKIPPED",           cls: "badge-muted" },
     skipped_cap_hit:         { label: "CAP HIT",           cls: "badge-muted" },
     skipped_insufficient_funds:{ label: "LOW FUNDS",       cls: "badge-muted" },
+    skipped_below_minimum:   { label: "BELOW MIN",         cls: "badge-muted" },
     skipped_missed_interval: { label: "MISSED",            cls: "badge-muted" },
     failed_buy:              { label: "FAILED",            cls: "badge-red" },
     failed_withdraw:         { label: "FAILED",            cls: "badge-red" },

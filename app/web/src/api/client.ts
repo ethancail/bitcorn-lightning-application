@@ -1781,6 +1781,12 @@ export type AutoBuyConfig = {
   next_run_at: number | null;
   /** The node's active exchange (kraken-autobuy). */
   provider: AutoBuyProvider;
+  /**
+   * The active exchange's post-fill withdrawal hold, in seconds (kraken-autobuy
+   * P6, D-P6-2): 72 h on Coinbase, 7 days on Kraken. The copy words the hold
+   * from this, never from a web constant. Absent from an API older than P6.
+   */
+  hold_seconds?: number;
 };
 
 export type AutoBuyCredentialsInfo = {

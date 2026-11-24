@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { api, type AutoBuyStatus } from "../../api/client";
+import { holdDuration } from "../../autoBuy/exchangeCopy";
 
 interface Props {
   status: AutoBuyStatus;
@@ -14,7 +15,7 @@ export default function CoinbaseCard({ status, onRefresh }: Props) {
   const connected = !!status.credentials;
   const whitelisted = !!status.config?.withdraw_address_whitelisted_at;
 
-  if (!connected) return <DisconnectedState onRefresh={onRefresh} />;
+  if (!connected) return <DisconnectedState holdSeconds={status.config?.hold_seconds} onRefresh={onRefresh} />;
   if (!whitelisted) return <ConnectedNotWhitelistedState status={status} onRefresh={onRefresh} />;
   return <ConnectedReadyState status={status} onRefresh={onRefresh} />;
 }
@@ -23,7 +24,8 @@ export default function CoinbaseCard({ status, onRefresh }: Props) {
 // Disconnected
 // ───────────────────────────────────────────────────────────────────────
 
-function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> }) {
+function DisconnectedState({ holdSeconds, onRefresh }: { holdSeconds?: number; onRefresh: () => Promise<unknown> }) {
+  const later = holdDuration(holdSeconds) ? `${holdDuration(holdSeconds)} later` : "later";
   const [blob, setBlob] = useState("");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<Toast>(null);
@@ -69,7 +71,7 @@ function DisconnectedState({ onRefresh }: { onRefresh: () => Promise<unknown> })
           <strong>View</strong> (read balances),{" "}
           <strong>Trade</strong> (place buy orders), and{" "}
           <strong>Transfer</strong> (withdraw BTC to your node).
-          A key missing Transfer will pass verification but fail silently 72h later at the sweep step.
+          A key missing Transfer will pass verification but fail silently {later} at the sweep step.
         </p>
         <textarea
           aria-label="Coinbase API key (JSON)"
@@ -193,7 +195,8 @@ function ConnectedNotWhitelistedState({ status, onRefresh }: { status: AutoBuySt
           <p className="text-dim" style={{ fontSize: "0.8125rem", marginTop: 0, marginBottom: 8 }}>
             Add this address to Coinbase's withdrawal allowlist before enabling Auto-Buy.
             The whole flow happens on Coinbase's side — clicking "I've whitelisted this in Coinbase" below
-            only flips a flag here. If you skip the Coinbase step, the buy will still place but the sweep will fail 72h later.
+            only flips a flag here. If you skip the Coinbase step, the buy will still place but the sweep will fail{" "}
+            {holdDuration(status.config?.hold_seconds) ? `${holdDuration(status.config?.hold_seconds)} later` : "later"}.
           </p>
           <ol className="text-dim" style={{ fontSize: "0.8125rem", marginTop: 0, marginBottom: 12, paddingLeft: 20 }}>
             <li>Sign into <a href="https://coinbase.com" target="_blank" rel="noopener noreferrer">coinbase.com</a> → top-right avatar → <strong>Settings</strong></li>

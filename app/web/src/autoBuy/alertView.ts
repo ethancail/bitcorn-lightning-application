@@ -7,6 +7,7 @@
 // functions never touch the DOM or the network.
 
 import type { AutoBuyAlert } from "../api/client";
+import { exchangeName } from "./exchangeCopy";
 
 export type BadgeSeverity = "warning" | "critical" | null;
 
@@ -86,6 +87,13 @@ export function summarizeAlert(alert: AutoBuyAlert): AlertSummary {
   const icon: "✕" | "⚠" = alert.severity === "critical" ? "✕" : "⚠";
   const ctx = alert.context ?? null;
 
+  // The exchange the alert was raised on (P6, D-P6-1): the API records
+  // provider "kraken" on a Kraken alert; an alert without one is Coinbase's.
+  const ex = exchangeName(ctxStr(ctx, "provider"));
+  const kraken = ex === "Kraken";
+  const btc = ctxNum(ctx, "btc_amount");
+  const amtBtc = btc != null ? `${btc} BTC` : "the BTC";
+
   switch (alert.type) {
     case "AUTOBUY_INSUFFICIENT_FUNDS": {
       const need = fmtUsd(ctxNum(ctx, "intended_buy_usd"));
@@ -94,11 +102,19 @@ export function summarizeAlert(alert: AutoBuyAlert): AlertSummary {
         title: "Auto-Buy skipped — insufficient funds",
         message:
           `No selected currency covered the ${need} buy (checked ${checked}). ` +
-          `Add funds or adjust your currency preference.`,
+          `Add funds or adjust your currency preference.` +
+          (kraken ? " USDC isn't used for Kraken buys." : ""),
         icon,
       };
     }
     case "AUTOBUY_AUTH_FAILURE":
+      if (kraken) {
+        return {
+          title: "Auto-Buy paused: Kraken key refused",
+          message: "Kraken refused the API key. Check that the key still exists with the five permissions, then connect it again.",
+          icon,
+        };
+      }
       return {
         title: "Auto-Buy paused — Coinbase credentials rejected",
         message:
@@ -107,6 +123,14 @@ export function summarizeAlert(alert: AutoBuyAlert): AlertSummary {
         icon,
       };
     case "AUTOBUY_RATE_LIMITED": {
+      if (kraken) {
+        const err = ctxStr(ctx, "error") ?? "an error";
+        return {
+          title: "Kraken busy or rate-limited",
+          message: `Kraken returned "${err}". This is usually brief; Auto-Buy tries again on its next run.`,
+          icon,
+        };
+      }
       const status = ctxNum(ctx, "http_status");
       return {
         title: "Coinbase rate-limited or unavailable",
@@ -117,24 +141,87 @@ export function summarizeAlert(alert: AutoBuyAlert): AlertSummary {
       };
     }
     case "AUTOBUY_ORDER_FAILED": {
+      if (ctxStr(ctx, "error_code") === "outcome_unknown") {
+        const usd = ctxNum(ctx, "intended_buy_usd");
+        return {
+          title: "Buy outcome unknown",
+          message:
+            `${ex} didn't confirm whether the ${usd != null ? `${fmtUsd(usd)} ` : ""}buy went through. ` +
+            `Auto-Buy won't buy twice: it checks on its next run. Three unknowns in a row pause Auto-Buy.`,
+          icon,
+        };
+      }
       const err = ctxStr(ctx, "error_message") ?? ctxStr(ctx, "error_code") ?? "an unexpected error";
       return {
         title: "Auto-Buy order rejected",
         message:
-          `Coinbase rejected the buy order: ${err}. Repeated rejections ` +
+          `${ex} rejected the buy order: ${err}. Repeated rejections ` +
           `(×${alert.consecutive_count}) suggest a persistent problem.`,
         icon,
       };
     }
     case "AUTOBUY_SWEEP_FAILED": {
-      const btc = ctxNum(ctx, "btc_amount");
       const err = ctxStr(ctx, "error_code") ?? ctxStr(ctx, "error_message") ?? "unknown error";
+      if (kraken && ctxStr(ctx, "error_code") === "withdraw_outcome_unknown") {
+        // D-P6-3: the BTC may already be on its way, so never "withdraw it yourself" first.
+        return {
+          title: "Withdrawal outcome unknown",
+          message:
+            `Kraken didn't confirm whether ${amtBtc} was sent to your node, and Auto-Buy won't send it again. ` +
+            `Check Withdrawals in Kraken. If it's listed, it's on its way. ` +
+            `If not, the BTC is still on Kraken; withdraw it yourself to your node's saved address.`,
+          icon,
+        };
+      }
+      if (kraken) {
+        // G6: the BTC did not leave Kraken; say so, and how to move it by hand.
+        return {
+          title: "Withdrawal failed: your BTC is safe on Kraken",
+          message:
+            `${btc != null ? amtBtc : "The BTC"} was bought but Kraken didn't send it to your node (${err}). ` +
+            `For example, Kraken may be holding the funds for review. ` +
+            `To move it yourself, in Kraken go to Withdraw → Bitcoin, pick your node's saved address, and withdraw ${amtBtc}. ` +
+            `Auto-Buy won't retry this withdrawal.`,
+          icon,
+        };
+      }
       const amt = btc != null ? `${btc} BTC` : "BTC";
       return {
         title: "Sweep failed — BTC held on Coinbase",
         message:
           `${amt} was bought but not swept to your node (${err}). Your value is ` +
           `sitting on the exchange — investigate promptly.`,
+        icon,
+      };
+    }
+    case "AUTOBUY_BUY_BELOW_MINIMUM": {
+      const usd = ctxNum(ctx, "intended_buy_usd");
+      const min = ctxNum(ctx, "minimum_usd");
+      return {
+        title: `Buy skipped: below ${ex}'s minimum`,
+        message:
+          `Auto-Buy skipped a ${fmtUsd(usd)} buy because ${min != null ? `${ex}'s minimum is about ${fmtUsd(min)}` : `it is below ${ex}'s minimum`}. ` +
+          `Buys are never rounded up. To buy in this zone, raise your base buy or this zone's multiplier.`,
+        icon,
+      };
+    }
+    case "AUTOBUY_WITHDRAWAL_AWAITING_APPROVAL":
+      return {
+        title: "Withdrawal waiting for approval",
+        message:
+          `${ex} is holding a withdrawal of ${amtBtc} to your node until someone on your ${ex} account approves it. ` +
+          `Approve it in ${ex} and Auto-Buy will pick up the result. If it's rejected, the BTC stays on ${ex}.`,
+        icon,
+      };
+    case "AUTOBUY_LOW_FUNDS": {
+      const usd = ctxNum(ctx, "usd_available");
+      const next = ctxNum(ctx, "next_buy_usd");
+      const n = ctxNum(ctx, "buys_covered");
+      return {
+        title: `Low funds on ${ex}`,
+        message:
+          `${fmtUsd(usd)} USD covers ${n ?? "fewer than 2"} of your next buys (${fmtUsd(next)} each at the current zone). ` +
+          `Add USD to ${ex}, or raise your recurring deposit, to keep Auto-Buy buying. USDC isn't used for ${ex} buys.`,
         icon,
       };
     }

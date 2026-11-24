@@ -5,8 +5,7 @@
 // still in progress (409 provider_switch_in_flight), and a switch pauses
 // Auto-Buy so the farm re-enables it on the new exchange.
 //
-// ⚠ DRAFT COPY — every user-facing string in this file is a draft for Ethan's
-// P6 copy review (E4, D11). Kept plain on purpose.
+// Copy: reviewed and approved by Ethan at P6 (E4, D11).
 
 import { useState } from "react";
 import { api, type AutoBuyProvider, type AutoBuyStatus } from "../../api/client";
@@ -17,6 +16,8 @@ interface Props {
 }
 
 const LABEL: Record<AutoBuyProvider, string> = { coinbase: "Coinbase", kraken: "Kraken" };
+
+const count = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 export default function ProviderChoice({ status, onRefresh }: Props) {
   const current: AutoBuyProvider = status.config?.provider ?? "coinbase";
@@ -35,7 +36,7 @@ export default function ProviderChoice({ status, onRefresh }: Props) {
       if (e.status === 409 && e.body?.error === "provider_switch_in_flight") {
         setMessage({
           kind: "error",
-          text: `You can't switch yet: ${e.body.in_flight_runs ?? 0} buy(s) and ${e.body.in_flight_sweeps ?? 0} withdrawal(s) are still in progress on ${LABEL[current]}. Try again once they finish.`,
+          text: `You can't switch yet: ${count(e.body.in_flight_runs ?? 0, "buy", "buys")} and ${count(e.body.in_flight_sweeps ?? 0, "withdrawal", "withdrawals")} are still in progress on ${LABEL[current]}. Try again once they finish.`,
         });
       } else {
         setMessage({ kind: "error", text: err instanceof Error ? err.message : "Switch failed." });
@@ -46,7 +47,7 @@ export default function ProviderChoice({ status, onRefresh }: Props) {
   };
 
   return (
-    <div className="panel" style={{ marginBottom: 16 }} data-copy="draft">
+    <div className="panel" style={{ marginBottom: 16 }}>
       <div className="panel-header">Exchange</div>
       <div className="panel-body">
         <p style={{ marginTop: 0, marginBottom: 12 }}>
@@ -61,7 +62,7 @@ export default function ProviderChoice({ status, onRefresh }: Props) {
           {busy ? "Switching…" : `Switch to ${LABEL[other]}`}
         </button>
         <p className="text-dim" style={{ marginBottom: 0, fontSize: "0.8125rem" }}>
-          Switching pauses Auto-Buy. It is refused while a buy or withdrawal is in progress.
+          Switching pauses Auto-Buy. You can't switch while a buy or withdrawal is in progress.
         </p>
       </div>
     </div>

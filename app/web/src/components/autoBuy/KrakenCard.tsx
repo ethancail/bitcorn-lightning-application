@@ -7,8 +7,9 @@
 // that address (it never holds "Add withdrawal addresses"), so the farm saves
 // it in Kraken and presses Verify.
 //
-// ⚠ DRAFT COPY — every user-facing string in this file is a draft for Ethan's
-// P6 copy review (E4, D11; the setup guidance is copy under G4). Kept plain.
+// Copy: reviewed and approved by Ethan at P6 (E4, D11; the setup guidance is
+// copy under G4). The full setup guide is docs/AUTOBUY_OPERATOR_GUIDE.md's
+// Kraken section; this card carries the short version with Kraken's own pages.
 
 import { useState } from "react";
 import {
@@ -25,14 +26,30 @@ interface Props {
 
 type Note = { kind: "success" | "error" | "info"; text: string } | null;
 
-/** The five permissions the key must have, and no others (ruling K1), as Kraken's key page names them. */
+/**
+ * The five permissions the key must have, and no others (ruling K1), as Kraken
+ * names them. Kraken's developer docs say "Create & Modify Orders" and its key
+ * page "Modify Orders", so the fifth names both (D-P6-8).
+ */
 export const KRAKEN_KEY_PERMISSIONS = [
   "Query Funds",
   "Withdraw Funds",
   "Query Open Orders & Trades",
   "Query Closed Orders & Trades",
-  "Create & Modify Orders",
+  "Create & Modify Orders (called Modify Orders on some screens)",
 ];
+
+/** Kraken's own pages behind each setup step (read 2026-11-24). */
+const KRAKEN_HELP = {
+  settingsLock: "https://support.kraken.com/articles/201396877-what-is-the-global-settings-lock-gsl-",
+  apiKey: "https://support.kraken.com/articles/how-to-create-an-api-key-on-kraken-pro",
+  address: "https://support.kraken.com/articles/360000672863-adding-and-confirming-a-new-cryptocurrency-withdrawal-address",
+  recurringAch: "https://support.kraken.com/articles/recurring-ach-deposits",
+};
+
+function HelpLink({ href, children }: { href: string; children: string }) {
+  return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+}
 
 export function addressStatusText(status: KrakenAddressStatus): string {
   switch (status) {
@@ -59,7 +76,7 @@ export function fundsText(status: AutoBuyStatus): string {
 
 export function minimumWarningText(w: KrakenMinimumWarning | null): string | null {
   if (!w || !w.below) return null;
-  return `Your smallest buy ($${w.smallest_buy_usd.toFixed(2)}) is below Kraken's minimum (about $${w.minimum_usd.toFixed(2)} at today's price). Buys that small will be skipped, not rounded up.`;
+  return `Your smallest buy ($${w.smallest_buy_usd.toFixed(2)}) is below Kraken's minimum (about $${w.minimum_usd.toFixed(2)} at today's price). Those buys will be skipped, not rounded up.`;
 }
 
 /** A refusal from the server → plain text (the structured body, never a parsed message). */
@@ -130,11 +147,28 @@ function DisconnectedState({ status, onRefresh }: Props) {
   };
 
   return (
-    <div className="panel" style={{ marginBottom: 16 }} data-copy="draft">
+    <div className="panel" style={{ marginBottom: 16 }}>
       <div className="panel-header">Kraken</div>
       <div className="panel-body">
+        <ol data-testid="kraken-setup-steps" style={{ marginTop: 0, marginBottom: 12, paddingLeft: 20 }}>
+          <li>If Kraken's Global Settings Lock is on, unlock it first. <HelpLink href={KRAKEN_HELP.settingsLock}>About the lock</HelpLink></li>
+          <li>
+            In Kraken, go to Settings → API → Create API key. Don't add 2FA to the key, and leave Key Expiration
+            and the nonce window unset. Restrict it to an IP address only if your node has a static IP.{" "}
+            <HelpLink href={KRAKEN_HELP.apiKey}>Creating a key</HelpLink>
+          </li>
+          <li>
+            Save your node's address (below) in Kraken: Withdraw → Bitcoin → Add new withdrawal address, with a
+            unique label, and confirm it. <HelpLink href={KRAKEN_HELP.address}>Adding an address</HelpLink>
+          </li>
+          <li>
+            Set up one recurring ACH deposit in Kraken, covering a full interval of buys at your highest zone
+            multiplier, plus a margin. Each deposit can be withdrawn seven days after it arrives.{" "}
+            <HelpLink href={KRAKEN_HELP.recurringAch}>Recurring deposits</HelpLink>
+          </li>
+        </ol>
         <p style={{ marginTop: 0, marginBottom: 8 }}>
-          Create an API key in Kraken with exactly these permissions:
+          Create the API key with exactly these permissions:
         </p>
         <ul data-testid="kraken-permissions" style={{ marginTop: 0, marginBottom: 8 }}>
           {KRAKEN_KEY_PERMISSIONS.map((p) => <li key={p}>{p}</li>)}
@@ -198,7 +232,7 @@ function ConnectedState({ status, onRefresh }: Props) {
   };
 
   return (
-    <div className="panel" style={{ marginBottom: 16 }} data-copy="draft">
+    <div className="panel" style={{ marginBottom: 16 }}>
       <div className="panel-header">Kraken</div>
       <div className="panel-body">
         <p style={{ marginTop: 0, marginBottom: 8 }}>
